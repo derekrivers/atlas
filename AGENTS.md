@@ -1,0 +1,56 @@
+# AGENTS.md
+
+## Purpose
+
+This repository contains Atlas, a stateful organisational operating system
+for autonomous software delivery, planning, evidence tracking, and knowledge
+accumulation.
+
+## How to navigate
+
+`docs/MANIFEST.md` lists every canonical document. Read what your task
+needs:
+
+- Strategy and philosophy → `docs/atlas/atlas-master-plan.md`
+- Platform overview → `docs/atlas/system-specification.md`
+- Engineering architecture → `docs/architecture/technical-architecture.md`
+- Models, tables, contracts → `docs/architecture/data-model-and-schemas.md`
+- Planning (plan/apply, reconciler, gates) →
+  `docs/atlas/planning-engine-specification.md`
+- Delivery programme → `docs/atlas/implementation-roadmap.md`
+- Governing decisions → `docs/decisions/` (ADR-0001..0009; ADR-0004
+  retired, number not reused)
+- Day-one setup → `docs/atlas/bootstrap-guide.md`
+
+## Rules
+
+- Treat `docs/atlas/atlas-master-plan.md` as the single canonical master
+  plan; the MANIFEST resolves conflicts.
+- Documents are the source of truth for intent; the database for
+  operational state; `docs/planning/` files are renders (ADR-0006).
+- Never hand-edit `docs/planning/`; only `atlas apply` writes there
+  (ADR-0007).
+- Never invent ticket keys; keys are assigned by the reconciler on apply.
+- Evidence rules per ADR-0008: agent-submitted evidence is PENDING until
+  corroborated; no system-tier evidence means no completion.
+- Agent-authored lessons are DRAFT until the operator promotes them
+  (ADR-0009).
+- Do not reference retired v1/v2/v3 document naming in active docs.
+- Do not build product features before the Atlas harness foundation exists.
+- Do not introduce Linear integration before local planning works.
+- Do not introduce Symphony integration before context packs exist.
+- Keep tickets small and dependency-aware. Update documentation when
+  behaviour changes. Tests must pass before work is considered complete.
+
+## First Milestone
+
+A local generative planning loop:
+
+```bash
+atlas plan    # LLM proposal -> gates -> reconciled diff
+atlas apply   # operator approval -> docs/planning renders + PlanRun
+```
+
+Outputs: `docs/planning/epics.yaml`, `tickets.yaml`, `dependencies.yaml`,
+`roadmap.mmd`. Acceptance tests AT-1..AT-7 are defined in
+`docs/atlas/planning-engine-specification.md`.
