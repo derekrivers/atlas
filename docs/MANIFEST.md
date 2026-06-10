@@ -68,8 +68,14 @@ Prompts and tools:
 - `tools/run_planner.py` — dry-run harness (renders, calls, saves; never
   writes docs/planning/)
 
-Stubs awaiting content: `docs/product/`, `docs/runbooks/`,
-`docs/tech-debt/`.
+Runbooks (`docs/runbooks/`):
+
+- `docs/runbooks/agent-ticket-prompt.md` — reusable agent ticket prompt
+  (required reading, plan gate, scope and definition-of-done rules)
+- Stubs awaiting content: `docs/runbooks/local-development.md`,
+  `docs/runbooks/running-atlas-plan.md`, `docs/runbooks/troubleshooting.md`
+
+Stubs awaiting content: `docs/product/`, `docs/tech-debt/`.
 
 ## Phase readiness rule
 

@@ -365,29 +365,30 @@ Recommended stack:
 ```text
 Python 3.11+
 Pydantic
-Typer
+Jinja2
 PyYAML
 NetworkX
-Rich
-Jinja2
-pytest
+SQLAlchemy
+Alembic
 ```
 
-Use `uv` if you are comfortable with it.
+Dev tooling: pytest, ruff, mypy, pre-commit.
+
+Typer and Rich arrive with the `atlas` CLI (Phase 2); they are not part
+of the Phase 0 project setup.
+
+The project is managed with `uv` and `uv.lock` is committed. On a fresh
+clone:
 
 ```bash
-uv init
-uv add pydantic typer pyyaml networkx rich jinja2
-uv add --dev pytest
+uv sync
 ```
 
-Alternative using pip:
+To add dependencies later:
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install pydantic typer pyyaml networkx rich jinja2 pytest
-pip freeze > requirements.txt
+uv add <package>
+uv add --dev <dev-tool>
 ```
 
 Recommended package layout:
@@ -426,20 +427,20 @@ The first working command:
 atlas plan
 ```
 
-For the MVP, this command can be mostly deterministic.
-
-It does not need to use an LLM yet.
+`atlas plan` is generative from day one (ADR-0007); there is no
+deterministic-only mode.
 
 It should:
 
-1. Load docs from `docs/atlas`.
-2. Generate seed epics from `implementation-roadmap.md`.
-3. Generate seed tickets from roadmap sections.
-4. Generate dependencies.
-5. Write YAML files.
-6. Render a simple HTML roadmap.
+1. Load the canonical documents from `docs/atlas`.
+2. Produce an LLM proposal anchored to document headings.
+3. Run the validation gates over the proposal.
+4. Reconcile the proposal into a deterministic diff against the current
+   backlog.
+5. Stop. `atlas plan` never writes planning renders; on operator
+   approval, `atlas apply` writes them (human-gated apply).
 
-Output files:
+Output files (written only by `atlas apply`):
 
 ```text
 docs/planning/epics.yaml
@@ -450,159 +451,30 @@ docs/planning/roadmap.mmd
 
 ---
 
-# 8. First Ten Manual Tickets
+# 8. First Tickets
 
-Before Atlas can generate its own tickets, manually create these as your first implementation backlog.
+The canonical first backlog is the Phase 0 epic in
+`docs/atlas/implementation-roadmap.md`, and later phases live there
+too; do not maintain a parallel ticket list in this guide. Roadmap keys
+are illustrative seeds until `atlas apply` assigns real keys
+(ADR-0007). Reproduced from the roadmap for orientation:
 
-## ATLAS-1: Create Repository Skeleton
+```text
+ATLAS-1  Repository structure per bootstrap guide
+ATLAS-2  Python project setup (uv, pytest, ruff, mypy, pre-commit)
+ATLAS-3  CI pipeline: tests, lint, type-check on every PR
+ATLAS-4  Doc linter v1: validate ADR files against the ADR model; check
+         MANIFEST cross-links and intra-doc links; ban legacy v1/v2/v3
+         document names in active docs; flag hand-edits to docs/planning/
+         outside `atlas apply`
+ATLAS-5  Repair documentation drift surfaced by the linter
+ATLAS-6  Land ADR-0006..0009 and the Planning Engine Specification as
+         canonical; update root control documents
+```
 
-Objective:
-
-Create the Atlas repository structure.
-
-Acceptance criteria:
-
-- Root docs folders exist.
-- Atlas package folder exists.
-- Tests folder exists.
-- Core generated documents are placed under docs/atlas.
-
----
-
-## ATLAS-2: Add Root Control Docs
-
-Objective:
-
-Create root-level AGENTS.md, PRODUCT.md, ARCHITECTURE.md, ROADMAP.md, and WORKFLOW.md.
-
-Acceptance criteria:
-
-- Each file exists.
-- Each file points to docs/atlas.
-- AGENTS.md defines first milestone.
-- WORKFLOW.md prevents premature Linear/Symphony integration.
-
----
-
-## ATLAS-3: Initialise Python Project
-
-Objective:
-
-Create a Python project for Atlas.
-
-Acceptance criteria:
-
-- Python package exists.
-- Dependencies installed.
-- Test runner works.
-- CLI entrypoint exists.
-
----
-
-## ATLAS-4: Add Core Pydantic Schemas
-
-Objective:
-
-Implement initial schemas from data-model-and-schemas.md.
-
-Acceptance criteria:
-
-- Product schema exists.
-- Epic schema exists.
-- Ticket schema exists.
-- Dependency schema exists.
-- ContextPack schema exists.
-- Tests cover basic validation.
-
----
-
-## ATLAS-5: Add Planning Document Loader
-
-Objective:
-
-Create a loader for Atlas markdown documents.
-
-Acceptance criteria:
-
-- Can load files from docs/atlas.
-- Can return file name, path, and content.
-- Handles missing docs cleanly.
-- Tests exist.
-
----
-
-## ATLAS-6: Add Seed Roadmap Parser
-
-Objective:
-
-Parse implementation-roadmap.md into rough phase, epic, and ticket sections.
-
-Acceptance criteria:
-
-- Phases can be detected.
-- Ticket keys can be extracted.
-- Ticket titles can be extracted.
-- Tests cover parsing.
-
----
-
-## ATLAS-7: Generate epics.yaml
-
-Objective:
-
-Generate an initial epics YAML file.
-
-Acceptance criteria:
-
-- epics.yaml is created.
-- Epics include key, title, description, phase.
-- Output is deterministic.
-- Tests exist.
-
----
-
-## ATLAS-8: Generate tickets.yaml
-
-Objective:
-
-Generate an initial tickets YAML file.
-
-Acceptance criteria:
-
-- tickets.yaml is created.
-- Tickets include key, title, objective, type, status.
-- Tickets are associated with epics where possible.
-- Tests exist.
-
----
-
-## ATLAS-9: Generate dependencies.yaml
-
-Objective:
-
-Generate basic dependencies from the roadmap order.
-
-Acceptance criteria:
-
-- dependencies.yaml is created.
-- Dependencies are represented as source and target ticket keys.
-- Output can be loaded into the graph engine.
-- Tests exist.
-
----
-
-## ATLAS-10: Generate roadmap.mmd
-
-Objective:
-
-Render a simple visual roadmap from the generated YAML files.
-
-Acceptance criteria:
-
-- roadmap.mmd (Mermaid render of the dependency DAG) is created.
-- Shows phases, epics, and tickets.
-- Shows blocked/ready status if available.
-- Can be opened locally in a browser.
+Milestone test: CI is green; the doc linter passes on the whole
+repository and fails on a seeded bad fixture (an ADR missing rationale,
+a stale MANIFEST link, a hand-edited planning file).
 
 ---
 

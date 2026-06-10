@@ -130,6 +130,14 @@ def test_canonical_doc_not_listed_fails(tmp_path: Path) -> None:
     assert any("unlisted.md" in finding.path for finding in findings)
 
 
+def test_canonical_runbook_not_listed_fails(tmp_path: Path) -> None:
+    build_good_repo(tmp_path)
+    write(tmp_path, "docs/runbooks/new-runbook.md", "# Runbook\n\nSteps.\n")
+    findings = lint_repo(tmp_path)
+    assert "MAN005" in codes(findings)
+    assert any("new-runbook.md" in finding.path for finding in findings)
+
+
 def test_legacy_historic_name_in_active_doc_fails(tmp_path: Path) -> None:
     build_good_repo(tmp_path)
     write(
