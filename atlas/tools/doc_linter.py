@@ -8,10 +8,10 @@ Checks, per the implementation roadmap and ADR-0006/0007:
   non-empty Status / Context / Decision / Rationale / Consequences /
   Alternatives considered sections.
 - MANIFEST: every path referenced in docs/MANIFEST.md exists, and every
-  canonical doc (docs/atlas/, docs/architecture/, docs/decisions/) is
-  listed. Stub directories the MANIFEST declares as awaiting content
-  (docs/product/, docs/runbooks/, docs/tech-debt/) are not yet required
-  to be listed; widening that is ATLAS-5 territory.
+  canonical doc (docs/atlas/, docs/architecture/, docs/decisions/,
+  docs/runbooks/) is listed. Stub directories the MANIFEST declares as
+  awaiting content (docs/product/, docs/tech-debt/) are not yet
+  required to be listed.
 - LEGACY: retired v1/v2/v3 document names are banned outside
   docs/archive/ — ``*-v[123].md`` forms, ``ATLAS_V[123]``, ``_V[123]_``
   infixes, and ``roadmap.html``. Lines that explicitly mark retirement
@@ -45,7 +45,12 @@ PLANNING_DIR = "docs/planning"
 ARCHIVE_DIR = "docs/archive"
 
 # Directories whose *.md files must all be listed in the MANIFEST.
-CANONICAL_DIRS = ("docs/atlas", "docs/architecture", "docs/decisions")
+CANONICAL_DIRS = (
+    "docs/atlas",
+    "docs/architecture",
+    "docs/decisions",
+    "docs/runbooks",
+)
 
 # Directories bare .md names in the MANIFEST may resolve against.
 BARE_NAME_DIRS = ("", "docs/atlas", "docs/architecture")

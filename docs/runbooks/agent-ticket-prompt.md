@@ -61,7 +61,8 @@ agents most often break)
 
 - Acceptance criteria: {1–7 concrete, falsifiable criteria}
 - All tests pass locally: {command, e.g. `uv run pytest`}
-- Lint and type-check pass: {e.g. `uv run ruff check . && uv run mypy .`}
+- Lint and type-check pass: {e.g. `uv run ruff check . &&
+  uv run ruff format --check . && uv run mypy atlas tests`}
 - New behaviour is covered by new tests, including at least one negative
   case
 - Docs updated if behaviour changed; no unrelated diffs
@@ -132,7 +133,9 @@ turn.
   legacy name in an active doc, a hand-edited planning file
 - `uv run pytest` passes; linter behaviour covered by tests including
   the negative fixtures
-- `uv run ruff check .` and `uv run mypy .` pass
+- `uv run ruff check .`, `uv run ruff format --check .`, and
+  `uv run mypy atlas tests` pass; `uv run pre-commit run --all-files`
+  passes
 - Completion report mapping each criterion to its evidence
 ```
 
