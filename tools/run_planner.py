@@ -22,7 +22,7 @@ import json
 import re
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import yaml
@@ -60,7 +60,10 @@ def git_blob_sha(repo: Path, relpath: str) -> str:
     try:
         out = subprocess.run(
             ["git", "rev-parse", f"HEAD:{relpath}"],
-            cwd=repo, capture_output=True, text=True, check=True,
+            cwd=repo,
+            capture_output=True,
+            text=True,
+            check=True,
         )
         return out.stdout.strip()
     except subprocess.CalledProcessError:
@@ -76,11 +79,13 @@ def collect_documents(repo: Path) -> list[dict]:
             if rel in seen or not p.is_file():
                 continue
             seen.add(rel)
-            docs.append({
-                "path": rel,
-                "sha": git_blob_sha(repo, rel),
-                "content": p.read_text(encoding="utf-8"),
-            })
+            docs.append(
+                {
+                    "path": rel,
+                    "sha": git_blob_sha(repo, rel),
+                    "content": p.read_text(encoding="utf-8"),
+                }
+            )
     return docs
 
 
@@ -95,8 +100,14 @@ def load_backlog(repo: Path) -> tuple[str | None, list[str]]:
             parts.append(f"# --- {name} ---\n{text}")
             if name == "tickets.yaml":
                 data = yaml.safe_load(text) or {}
-                immutable = {"in_progress", "pr_open", "review_required",
-                             "changes_requested", "done", "rejected"}
+                immutable = {
+                    "in_progress",
+                    "pr_open",
+                    "review_required",
+                    "changes_requested",
+                    "done",
+                    "rejected",
+                }
                 for t in data.get("tickets", []):
                     if t.get("status") in immutable:
                         frozen.append(t["key"])
@@ -109,7 +120,7 @@ def render_prompt(repo: Path, docs, backlog_yaml, frozen) -> tuple[str, str]:
     if not fm:
         sys.exit("Template missing YAML front matter.")
     meta = yaml.safe_load(fm.group(1))
-    body = raw[fm.end():]
+    body = raw[fm.end() :]
 
     env = Environment(undefined=StrictUndefined)
     rendered = env.from_string(body).render(
@@ -125,6 +136,7 @@ def render_prompt(repo: Path, docs, backlog_yaml, frozen) -> tuple[str, str]:
 
 def call_model(prompt: str) -> str:
     import anthropic
+
     client = anthropic.Anthropic()  # reads ANTHROPIC_API_KEY
     resp = client.messages.create(
         model="claude-sonnet-4-6",
@@ -138,8 +150,11 @@ def call_model(prompt: str) -> str:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--repo", default=".", help="Path to the atlas repo")
-    ap.add_argument("--dry-render", action="store_true",
-                    help="Render and save the prompt without calling a model")
+    ap.add_argument(
+        "--dry-render",
+        action="store_true",
+        help="Render and save the prompt without calling a model",
+    )
     args = ap.parse_args()
     repo = Path(args.repo).resolve()
 
@@ -149,7 +164,7 @@ def main() -> None:
     backlog_yaml, frozen = load_backlog(repo)
     prompt, prompt_version = render_prompt(repo, docs, backlog_yaml, frozen)
 
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     outdir = repo / "proposals" / stamp
     outdir.mkdir(parents=True)
     (outdir / "rendered_prompt.md").write_text(prompt, encoding="utf-8")
@@ -160,12 +175,12 @@ def main() -> None:
         "input_doc_shas": {d["path"]: d["sha"] for d in docs},
         "model_provider": "anthropic",
         "model_name": "claude-sonnet-4-6",
-        "similarity_threshold": None,   # reconciler not built yet
+        "similarity_threshold": None,  # reconciler not built yet
         "created_at": stamp,
     }
 
     if args.dry_render:
-        print(f"Rendered prompt only -> {outdir/'rendered_prompt.md'}")
+        print(f"Rendered prompt only -> {outdir / 'rendered_prompt.md'}")
     else:
         raw = call_model(prompt)
         (outdir / "raw_output.txt").write_text(raw, encoding="utf-8")
@@ -173,19 +188,23 @@ def main() -> None:
         try:
             proposal = json.loads(raw)
             (outdir / "proposal.json").write_text(
-                json.dumps(proposal, indent=2), encoding="utf-8")
+                json.dumps(proposal, indent=2), encoding="utf-8"
+            )
             missing = [k for k in PROPOSAL_SCHEMA["required"] if k not in proposal]
             run_record["parse"] = "ok" if not missing else f"missing keys: {missing}"
-            print(f"Proposal: {len(proposal.get('epics', []))} epics, "
-                  f"{len(proposal.get('tickets', []))} tickets, "
-                  f"{len(proposal.get('dependencies', []))} dependencies, "
-                  f"{len(proposal.get('planner_notes', []))} notes")
+            print(
+                f"Proposal: {len(proposal.get('epics', []))} epics, "
+                f"{len(proposal.get('tickets', []))} tickets, "
+                f"{len(proposal.get('dependencies', []))} dependencies, "
+                f"{len(proposal.get('planner_notes', []))} notes"
+            )
         except json.JSONDecodeError as e:
             run_record["parse"] = f"FAILED: {e}"
             print("Model output was not valid JSON — see raw_output.txt")
 
     (outdir / "plan_run.json").write_text(
-        json.dumps(run_record, indent=2), encoding="utf-8")
+        json.dumps(run_record, indent=2), encoding="utf-8"
+    )
     print(f"Artifacts -> {outdir}")
 
 

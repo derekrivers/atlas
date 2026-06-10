@@ -1,0 +1,18 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.16
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: local
+    hooks:
+      # Run mypy through uv so it sees the project's real environment
+      # (dependencies and their type stubs) instead of an isolated one.
+      - id: mypy
+        name: mypy
+        entry: uv run mypy atlas tests
+        language: system
+        types: [python]
+        pass_filenames: false

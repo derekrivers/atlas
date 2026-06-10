@@ -36,7 +36,9 @@ fixes are their own ticket.
 
 Before editing anything, present a short plan: files you will create or
 change, the tests you will add, and anything you will explicitly NOT do.
-Wait for my approval, then implement.
+Wait for my approval, then implement. If you are running in a mode that
+cannot pause for input, present the plan and end your turn; do not
+proceed to implementation in the same turn.
 
 ## Scope
 
@@ -99,6 +101,9 @@ If anything is ambiguous or the docs conflict, stop and ask.
 ## Plan first
 
 Present a short plan (files, tests, non-goals) and wait for approval.
+If you are running in a mode that cannot pause for input, present the
+plan and end your turn; do not proceed to implementation in the same
+turn.
 
 ## Scope
 
@@ -138,7 +143,8 @@ Present a short plan (files, tests, non-goals) and wait for approval.
 - One ticket per session. If the agent proposes bundling a second
   ticket, decline and start a fresh session for it.
 - The plan-approval gate is the cheapest review you will ever do; never
-  skip it.
+  skip it. A post-hoc review of a finished tree is weaker than
+  pre-approval of a plan, because sunk work biases the review.
 - When the agent gets something wrong, the durable fix is usually a
   missing rule or doc clarification — encode it in AGENTS.md or the
   relevant canonical doc and commit, so every future session inherits

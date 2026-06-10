@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(uv --version)",
+      "Bash(git ls-remote *)",
+      "Bash(awk -F/ '{print $3}')",
+      "Bash(xxd)",
+      "Bash(git status *)"
+    ],
+    "additionalDirectories": [
+      "/tmp/atlas-fresh"
+    ]
+  }
+}
