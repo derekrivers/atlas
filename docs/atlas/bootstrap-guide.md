@@ -28,13 +28,14 @@ The first milestone is:
 
 This is the first proof that Atlas is becoming a real harness rather than just a document set.
 
-The first working command should be:
+The first working commands should be:
 
 ```bash
-atlas plan
+atlas plan    # LLM proposal -> validation gates -> reconciled diff
+atlas apply   # operator approval -> renders + PlanRun
 ```
 
-The command should read the Atlas docs and generate:
+On operator approval, `atlas apply` writes the renders:
 
 ```text
 docs/planning/epics.yaml
@@ -42,6 +43,8 @@ docs/planning/tickets.yaml
 docs/planning/dependencies.yaml
 docs/planning/roadmap.mmd
 ```
+
+`atlas plan` never writes them (ADR-0007).
 
 Do not start with Symphony.
 
@@ -63,6 +66,8 @@ Documents
 Repository skeleton
     ↓
 Python project setup
+    ↓
+CI and doc linter (mechanical trust)
     ↓
 Pydantic schemas
     ↓
@@ -107,18 +112,18 @@ Create the folder structure:
 
 ```bash
 mkdir -p docs/atlas
+mkdir -p docs/architecture
 mkdir -p docs/decisions
-mkdir -p docs/domain
 mkdir -p docs/planning
-mkdir -p docs/tech-debt
+mkdir -p docs/product
 mkdir -p docs/runbooks
-mkdir -p apps
-mkdir -p packages
-mkdir -p workers
-mkdir -p infra
+mkdir -p docs/tech-debt
 mkdir -p tests
 mkdir -p atlas
 ```
+
+Create further structure (`apps/`, `workers/`, `infra/`) only when the
+phase that needs it arrives.
 
 Expected structure:
 
@@ -131,16 +136,13 @@ atlas/
 ├── WORKFLOW.md
 ├── docs/
 │   ├── atlas/
+│   ├── architecture/
 │   ├── decisions/
-│   ├── domain/
 │   ├── planning/
+│   ├── product/
 │   ├── runbooks/
 │   └── tech-debt/
 ├── atlas/
-├── apps/
-├── packages/
-├── workers/
-├── infra/
 └── tests/
 ```
 
@@ -215,18 +217,12 @@ Before starting work, read:
 
 ## First Milestone
 
-The first milestone is a local planning CLI:
+A local generative planning loop:
 
 ```bash
-atlas plan
+atlas plan    # LLM proposal -> gates -> reconciled diff
+atlas apply   # operator approval -> docs/planning renders + PlanRun
 ```
-
-This should generate:
-
-- docs/planning/epics.yaml
-- docs/planning/tickets.yaml
-- docs/planning/dependencies.yaml
-- docs/planning/roadmap.mmd
 ```
 
 ---
@@ -280,24 +276,22 @@ Atlas has the following architecture:
 
 Human Intent
 → Knowledge System
-→ Planning Engine
+→ Planning Engine (plan/apply, ADR-0007)
 → Dependency Engine
 → Project Manager Engine
 → Context Renderer
 → Execution Agents
-→ Evidence Store
+→ Evidence Store (trust-tiered, ADR-0008)
 → Verification Engine
-→ Knowledge Update
+→ Knowledge Update (lesson promotion gate, ADR-0009)
 
-The MVP starts locally with:
+Source of truth (ADR-0006): repository documents for intent; the Atlas
+database (SQLite locally, PostgreSQL-compatible) for operational state;
+docs/planning/ files are renders written only by atlas apply.
 
-- Python
-- Pydantic
-- YAML files
-- NetworkX
-- Markdown documents
-
-PostgreSQL, Linear, GitHub and Symphony integrations come later.
+The MVP starts locally with Python, Pydantic, SQLAlchemy/Alembic, YAML
+renders, NetworkX, and markdown documents. Linear, GitHub evidence
+ingestion, and Symphony integrations come later, in that order.
 ```
 
 ---
@@ -343,11 +337,11 @@ No Linear or Symphony automation should be introduced until the local planning C
 
 ## First Workflow
 
-1. Edit Atlas docs.
-2. Run atlas plan.
-3. Generate YAML backlog.
-4. Review generated tickets.
-5. Commit generated planning output.
+1. Edit Atlas docs (intent).
+2. Run atlas plan — LLM proposal, validation gates, reconciled diff.
+3. Review the diff.
+4. Run atlas apply — keys assigned, renders written, PlanRun recorded.
+5. Commit docs and generated planning output together.
 
 ## Future Workflow
 
@@ -484,12 +478,13 @@ The initial CLI should support:
 
 ```bash
 atlas plan
+atlas apply
 atlas validate
 atlas graph
 atlas context ATLAS-1
 ```
 
-But only `atlas plan` needs to exist first.
+But only the `atlas plan` / `atlas apply` pair needs to exist first.
 
 Recommended Typer structure:
 
@@ -500,7 +495,12 @@ app = typer.Typer()
 
 @app.command()
 def plan():
-    \"\"\"Generate Atlas planning outputs from docs.\"\"\"
+    \"\"\"Propose a plan diff; never writes planning renders (ADR-0007).\"\"\"
+    ...
+
+@app.command()
+def apply():
+    \"\"\"Write planning renders after operator approval of the diff.\"\"\"
     ...
 
 @app.command()
@@ -526,9 +526,16 @@ if __name__ == "__main__":
 
 # 10. Generated YAML Shapes
 
+Shapes below are illustrative; the Pydantic models are the single
+contract, and the full render format (generated header, field order,
+sorting, key + id pairing) is defined in
+`docs/architecture/knowledge-core.md`.
+
 ## epics.yaml
 
 ```yaml
+# Render written only by atlas apply. plan_run_id: <uuid>
+# prompt_version: planner-v1.0.0
 epics:
   - key: EPIC-FOUNDATION
     title: Repository Foundation
@@ -540,6 +547,8 @@ epics:
 ## tickets.yaml
 
 ```yaml
+# Render written only by atlas apply. plan_run_id: <uuid>
+# prompt_version: planner-v1.0.0
 tickets:
   - key: ATLAS-1
     epic_key: EPIC-FOUNDATION
@@ -555,6 +564,8 @@ tickets:
 ## dependencies.yaml
 
 ```yaml
+# Render written only by atlas apply. plan_run_id: <uuid>
+# prompt_version: planner-v1.0.0
 dependencies:
   - source: ATLAS-2
     target: ATLAS-1
@@ -566,22 +577,25 @@ dependencies:
 
 # 11. Definition of Done for Phase 0
 
-Phase 0 is complete when:
+Phase 0 is complete when (per the roadmap's Phase 0 milestone test):
 
-- Repository exists.
-- Core documents are committed.
-- Root control docs exist.
-- Python project runs.
-- `atlas plan` command exists.
-- Planning outputs are generated.
-- Tests pass.
+- Repository structure and root control docs exist.
+- Core documents are committed and internally consistent.
+- The Python project runs and tests pass.
+- CI runs tests, lint, type-check, and the doc linter on every PR.
+- The doc linter passes on the whole repository and fails on a seeded
+  bad fixture (an ADR missing rationale, a stale MANIFEST link, a
+  hand-edited planning file).
 
-The proof command:
+The proof commands:
 
 ```bash
-atlas plan
-pytest
+uv run pytest
+uv run python -m atlas.tools.doc_linter
 ```
+
+The planning CLI is not Phase 0 work; the plan/apply loop is the
+Phase 2 milestone.
 
 ---
 
@@ -664,9 +678,9 @@ Do this first:
 4. Add generated Atlas docs under docs/atlas.
 5. Add root AGENTS.md, PRODUCT.md, ARCHITECTURE.md, ROADMAP.md, WORKFLOW.md.
 6. Initialise Python project.
-7. Add first schemas.
-8. Add simple CLI.
-9. Make atlas plan generate static YAML from the roadmap.
+7. Add CI: tests, lint, type-check on every PR.
+8. Add the doc linter and wire it into CI and pre-commit.
+9. Stop: Phase 0 ends here; the roadmap drives Phase 1 onward.
 10. Commit everything.
 ```
 
@@ -700,21 +714,17 @@ The first thing to prove is:
 
 # 17. The First Real Milestone
 
-The first meaningful milestone is:
+The first meaningful milestone is the plan/apply loop:
 
 ```bash
 atlas plan
+atlas apply
 ```
 
-Expected output:
-
-```text
-Generated:
-- 10 epics
-- 100 tickets
-- 120 dependencies
-- roadmap.mmd
-```
+Expected outcome: `atlas plan` prints a reconciled diff (counts of
+ADD / MODIFY / PROPOSE_ARCHIVE / CONFLICT entries and one block per
+entry); after operator approval, `atlas apply` writes the renders and
+records a PlanRun.
 
 That is the moment Atlas becomes more than a plan.
 
@@ -727,33 +737,35 @@ It becomes the first version of the planning engine.
 ```text
 atlas/
 ├── AGENTS.md
+├── CLAUDE.md
+├── README.md
 ├── PRODUCT.md
 ├── ARCHITECTURE.md
 ├── ROADMAP.md
 ├── WORKFLOW.md
 ├── pyproject.toml
+├── uv.lock
+├── .github/
+│   └── workflows/
+│       └── ci.yml
 ├── docs/
+│   ├── MANIFEST.md
 │   ├── atlas/
-│   │   ├── atlas-master-plan.md
-│   │   ├── system-specification.md
-│   │   ├── technical-architecture.md
-│   │   ├── implementation-roadmap.md
-│   │   └── data-model-and-schemas.md
+│   ├── architecture/
+│   ├── archive/
 │   ├── decisions/
-│   ├── domain/
-│   ├── planning/
-│   │   ├── epics.yaml
-│   │   ├── tickets.yaml
-│   │   ├── dependencies.yaml
-│   │   └── roadmap.mmd
+│   ├── planning/          # empty render target; written only by atlas apply
+│   ├── product/
+│   ├── runbooks/
 │   └── tech-debt/
 ├── atlas/
 │   ├── __init__.py
-│   ├── cli.py
-│   ├── schemas/
 │   ├── planning/
-│   ├── dependencies/
-│   └── rendering/
+│   │   └── prompts/
+│   └── tools/
+│       └── doc_linter.py
+├── tools/
+│   └── run_planner.py
 └── tests/
 ```
 
@@ -761,39 +773,12 @@ atlas/
 
 # 19. Recommended First Agent Prompt
 
-Once the repo exists, the first agent prompt should be:
-
-```text
-We are bootstrapping Atlas.
-
-Read:
-- AGENTS.md
-- PRODUCT.md
-- ARCHITECTURE.md
-- ROADMAP.md
-- WORKFLOW.md
-- docs/atlas/implementation-roadmap.md
-- docs/architecture/data-model-and-schemas.md
-
-Your task:
-Implement ATLAS-3, ATLAS-4 and ATLAS-5 only.
-
-That means:
-- initialise the Python project if missing
-- create the core Pydantic schemas for Product, Epic, Ticket, Dependency and ContextPack
-- create the markdown document loader
-- add tests
-
-Do not implement Linear.
-Do not implement Symphony.
-Do not build product features.
-Do not add a database yet.
-
-Definition of done:
-- pytest passes
-- docs updated if needed
-- no unrelated work
-```
+Use the reusable ticket prompt template in
+`docs/runbooks/agent-ticket-prompt.md`: fill in `{TICKET-KEY}` and the
+ticket's scope from the roadmap, keep the plan-approval gate, and run
+one ticket per session. Do not paste ticket lists with hard-coded keys
+into prompts; keys live in the roadmap and, once the planner is live,
+in the rendered backlog.
 
 ---
 

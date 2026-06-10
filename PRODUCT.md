@@ -15,10 +15,11 @@ The first goal is to build the Atlas harness:
 - Verification Engine
 - Learning System
 
-The first working feature is:
+The first working feature is the plan/apply loop:
 
 ```bash
 atlas plan
+atlas apply
 ```
 
 For the full strategy, read `docs/atlas/atlas-master-plan.md`.
