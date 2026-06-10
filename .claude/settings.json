@@ -5,10 +5,25 @@
       "Bash(git ls-remote *)",
       "Bash(awk -F/ '{print $3}')",
       "Bash(xxd)",
-      "Bash(git status *)"
+      "Bash(git status *)",
+      "Bash(command -v gh actionlint)",
+      "Bash(awk -F/ '{print $3, $1}')",
+      "Bash(sort -V -k1)",
+      "Bash(curl -sSLo actionlint.tar.gz https://github.com/rhysd/actionlint/releases/download/v1.7.10/actionlint_1.7.10_linux_amd64.tar.gz)",
+      "Bash(tar xzf *)",
+      "Bash(./actionlint -version)",
+      "Bash(./actionlint /home/derek/code/atlas/.github/workflows/ci.yml)",
+      "Bash(cat > *)",
+      "Bash(gh run *)",
+      "Bash(git pull *)",
+      "Bash(git cherry-pick *)",
+      "Bash(git revert *)",
+      "Bash(git branch *)",
+      "Bash(git fetch *)"
     ],
     "additionalDirectories": [
-      "/tmp/atlas-fresh"
+      "/tmp/atlas-fresh",
+      "/tmp"
     ]
   }
 }
