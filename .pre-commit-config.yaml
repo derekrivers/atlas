@@ -16,3 +16,12 @@ repos:
         language: system
         types: [python]
         pass_filenames: false
+      # Doc-set consistency is repo-global (MANIFEST completeness is
+      # cross-file), so the linter always runs rather than filtering on
+      # changed files.
+      - id: doc-linter
+        name: doc-linter
+        entry: uv run python -m atlas.tools.doc_linter
+        language: system
+        pass_filenames: false
+        always_run: true
