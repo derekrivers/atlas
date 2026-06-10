@@ -92,4 +92,3 @@ Documents are the source of truth for intent; the Atlas database for
 operational state; `docs/planning/` files are renders written only by
 `atlas apply` (ADR-0006). If any archived document conflicts with an
 active canonical document, the active canonical document wins.
-- `ghost-doc-for-atlas5-falsifiability.md`
