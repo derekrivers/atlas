@@ -141,6 +141,53 @@ turn.
 
 ---
 
+## Variant: audit-class tickets (two gates)
+
+Use this variant when the ticket is an audit, review, or drift repair
+whose fixes cannot be enumerated in advance — the findings are the
+work. Replace the template's "Plan first" section with:
+
+```text
+## Plan first — two gates
+
+This ticket is an audit: its repairs cannot be fully listed in
+advance, so it runs with two pauses.
+
+Gate 1 (method): present your plan — what will be verified, the
+audit method and anchors, any mechanical changes — and stop. If you
+are running in a mode that cannot pause for input, present the plan
+and end your turn.
+
+Gate 2 (findings): after the read-through but before editing
+anything, present the complete findings list, each item with
+file:line, a quoted excerpt, and a classification:
+  (a) contradiction — content contradicts an accepted ADR or a
+      canonical document; repair in scope once approved
+  (b) staleness — accurate-but-outdated framing, missing or
+      dangling references; repair in scope on approval
+  (c) improvement — stylistic or structural suggestions; report
+      only, never implement
+Stop at gate 2 and wait for approval of the classification before
+making any edit. The approval may reclassify items; repair only
+what is approved as (a) or (b).
+```
+
+Rules of the variant:
+
+- Class (c) items are never implemented in the audit ticket. At close,
+  every (c) item must be explicitly assigned — to a named future
+  ticket, an owning design doc, or linter v2 — or dropped with a
+  one-line rationale. Nothing vague survives.
+- Route repairs to the canonical source: mirror it or point at it
+  rather than hand-writing parallel content. Maintained copies of
+  canonical content are drift on a timer.
+- Why two gates: a single plan gate forces an audit agent to guess its
+  repairs or proceed unapproved; gate 2 catches misclassification at
+  the cost of one reply, before any edit exists to redo. First use:
+  ATLAS-6, where gate 2 reclassified one finding.
+
+---
+
 ## Notes on use
 
 - One ticket per session. If the agent proposes bundling a second
