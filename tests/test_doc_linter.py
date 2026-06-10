@@ -1,11 +1,11 @@
-"""Doc linter v1 (ATLAS-4): positive fixture, the seeded bad fixtures from
-the ticket's definition of done, and a clean pass over the real repo."""
+"""Doc linter v1 (ATLAS-4): positive fixture and the seeded bad fixtures
+from the ticket's definition of done. Real-repo cleanliness is enforced
+solely by the lint-docs CI job (single-owner LINT_RESULT, ADR-0008), not
+by a pytest pin."""
 
 from pathlib import Path
 
 from atlas.tools.doc_linter import Finding, lint_repo, main
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
 
 GOOD_ADR = """\
 # ADR-0001: Test decision
@@ -220,7 +220,3 @@ def test_planning_render_with_apply_header_passes(tmp_path: Path) -> None:
         "tickets: []\n",
     )
     assert "PLAN001" not in codes(lint_repo(tmp_path))
-
-
-def test_real_repository_is_clean() -> None:
-    assert lint_repo(REPO_ROOT) == []
