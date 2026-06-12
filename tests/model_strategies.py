@@ -274,6 +274,7 @@ STRATEGIES: dict[type[BaseModel], st.SearchStrategy[BaseModel]] = {
         model_provider=texts,
         model_name=texts,
         prompt_version=texts,
+        prompt_hash=texts,
         similarity_threshold=unit_floats,
         raw_output_hash=texts,
         diff_summary=json_dicts,

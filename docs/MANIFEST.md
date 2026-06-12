@@ -63,7 +63,11 @@ number is not reused.)
 
 Prompts and tools:
 
-- `atlas/planning/prompts/planner-v1.0.0.md.j2` — versioned planner prompt
+- `atlas/planning/prompts/planner-v1.0.0.md.j2` and
+  `atlas/planning/prompts/planner-v1.1.0.md.j2` — versioned planner
+  prompt templates (released artifacts; never edited in place)
+- `atlas/planning/prompts/CURRENT` — explicit current-release pointer
+  (the renderer never infers the release; ATLAS-22)
 - `atlas/planning/prompts/README.md` — prompt versioning and release rules
 - `tools/run_planner.py` — dry-run harness (renders, calls, saves; never
   writes docs/planning/)

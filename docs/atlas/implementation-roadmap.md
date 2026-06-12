@@ -80,8 +80,9 @@ Design doc: docs/atlas/planning-engine-specification.md.
 
 ATLAS-21 Document ingestion and heading-anchor index with git blob SHAs
 ATLAS-22 Versioned planner prompt renderer (Jinja2 StrictUndefined,
-         front-matter variable validation, prompt-hash recording) using
-         atlas/planning/prompts/planner-v1.0.0.md.j2
+         front-matter variable validation, prompt-hash recording) over
+         the versioned templates in atlas/planning/prompts/
+         (version-agnostic, defaulting to the current release)
 ATLAS-23 Proposal parsing and validation gates 1–7 (spec §5)
 ATLAS-24 Deterministic reconciler: key / anchor / similarity matching;
          ADD / MODIFY / PROPOSE_ARCHIVE / CONFLICT diffing; immutability

@@ -783,6 +783,9 @@ class PlanRun(BaseModel):
     model_provider: str
     model_name: str
     prompt_version: str
+    # Provenance chain: input_doc_shas (what was read) -> prompt_hash
+    # (what was asked) -> raw_output_hash (what came back).
+    prompt_hash: str  # SHA-256 of the rendered prompt text
     similarity_threshold: float
     raw_output_hash: str
     diff_summary: dict = Field(default_factory=dict)
@@ -803,6 +806,7 @@ CREATE TABLE plan_runs (
     model_provider TEXT NOT NULL,
     model_name TEXT NOT NULL,
     prompt_version TEXT NOT NULL,
+    prompt_hash TEXT NOT NULL,
     similarity_threshold NUMERIC(4,3) NOT NULL,
     raw_output_hash TEXT NOT NULL,
     diff_summary JSONB NOT NULL DEFAULT '{}',

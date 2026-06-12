@@ -28,6 +28,7 @@ DOCUMENTED_FIELDS: dict[str, tuple[Any, Any]] = {
     "model_provider": (str, REQUIRED),
     "model_name": (str, REQUIRED),
     "prompt_version": (str, REQUIRED),
+    "prompt_hash": (str, REQUIRED),
     "similarity_threshold": (float, REQUIRED),
     "raw_output_hash": (str, REQUIRED),
     "diff_summary": (dict[str, Any], DICT_FACTORY),
@@ -55,6 +56,8 @@ def plan_run_kwargs() -> dict[str, Any]:
         "model_provider": "anthropic",
         "model_name": "claude-fable-5",
         "prompt_version": "1.0.0",
+        "prompt_hash": "9f2b4c6d8e0a1b3c5d7e9f0a2b4c6d8e"
+        "9f2b4c6d8e0a1b3c5d7e9f0a2b4c6d8e",
         "similarity_threshold": 0.85,
         "raw_output_hash": "sha256:deadbeef",
         "created_at": datetime(2026, 6, 12, tzinfo=UTC),

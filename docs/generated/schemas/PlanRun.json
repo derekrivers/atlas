@@ -86,6 +86,10 @@
       "title": "Product Id",
       "type": "string"
     },
+    "prompt_hash": {
+      "title": "Prompt Hash",
+      "type": "string"
+    },
     "prompt_version": {
       "title": "Prompt Version",
       "type": "string"
@@ -110,6 +114,7 @@
     "model_provider",
     "model_name",
     "prompt_version",
+    "prompt_hash",
     "similarity_threshold",
     "raw_output_hash",
     "created_at"
