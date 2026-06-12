@@ -14,6 +14,11 @@ storage, serialisation, and enforcement decisions Phase 1 tickets anchor to.
 - One repository class per aggregate (TicketRepo, EvidenceRepo, …). All
   reads and writes go through repositories; no ad-hoc sessions in CLI or
   engine code.
+- Datetime contract (ATLAS-18): repositories reject naive datetimes with
+  a typed error; timezone-aware values are normalised to UTC on write and
+  returned UTC-aware on read — round-trip identity is by instant, not by
+  offset. The YAML layer (ATLAS-17) preserves offsets; storage owns
+  normalisation.
 
 ## Append-only and finalise-once enforcement
 

@@ -16,3 +16,6 @@ dist/
 build/
 
 # uv: uv.lock is committed deliberately — do not ignore it.
+
+# Local Atlas database (knowledge-core: default SQLite at .atlas/atlas.db)
+.atlas/
