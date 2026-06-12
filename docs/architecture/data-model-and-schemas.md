@@ -840,7 +840,7 @@ canonical model's type and constraints.
 
 A proposal is a single JSON object with exactly four keys:
 
-```json no-schema
+```json model=Proposal
 {
   "epics": [],
   "tickets": [],

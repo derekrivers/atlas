@@ -141,6 +141,11 @@ All gates must pass before a diff is presented. Failures fail the
    10 dependencies is rejected as oversized (per the seeded lesson that
    oversized tickets reduce agent success).
 
+Attribution: per-item, context-free checks are enforced by the Proposal
+models and fail as gate 1 (schema validity); gates 4 and 7 cover the
+context-dependent remainder (anchor resolution; dependency count). A
+violation fails in exactly one attributable place.
+
 ## 6. PlanRun schema
 
 The `PlanRun` model and the `plan_runs` table are defined once, in

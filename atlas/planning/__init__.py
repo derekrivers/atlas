@@ -1,5 +1,6 @@
 """Planning engine: plan/apply loop, reconciler, validation gates."""
 
+from atlas.planning.gates import GateFailure, run_gates
 from atlas.planning.ingestion import (
     AnchorIndex,
     DirtyInputError,
@@ -11,6 +12,17 @@ from atlas.planning.ingestion import (
     UnknownDocumentError,
     collect_input_documents,
     slugify,
+)
+from atlas.planning.proposal import (
+    Proposal,
+    ProposalDependency,
+    ProposalEpic,
+    ProposalError,
+    ProposalParseError,
+    ProposalReferenceError,
+    ProposalTicket,
+    ProposalValidationError,
+    parse_proposal,
 )
 from atlas.planning.renderer import (
     CurrentReleaseError,
@@ -30,9 +42,18 @@ __all__ = [
     "CurrentReleaseError",
     "DirtyInputError",
     "FrontMatterError",
+    "GateFailure",
     "IngestionError",
     "MalformedAnchorError",
     "MissingVariableError",
+    "Proposal",
+    "ProposalDependency",
+    "ProposalEpic",
+    "ProposalError",
+    "ProposalParseError",
+    "ProposalReferenceError",
+    "ProposalTicket",
+    "ProposalValidationError",
     "RenderError",
     "RenderedPrompt",
     "RendererError",
@@ -44,6 +65,8 @@ __all__ = [
     "UnknownTemplateVersionError",
     "collect_input_documents",
     "current_release",
+    "parse_proposal",
     "render_planner_prompt",
+    "run_gates",
     "slugify",
 ]

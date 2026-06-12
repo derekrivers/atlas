@@ -29,8 +29,8 @@ referenced by every `PlanRun` via `prompt_version`.
   at render time — the schema in the prompt can never drift from the
   code. The canonical contract is data-model-and-schemas.md §3.11. The
   renderer (ATLAS-22) takes the schema as a caller-supplied parameter,
-  validated for presence like any other variable; generation belongs to
-  the Proposal models (ATLAS-23).
+  validated for presence like any other variable; since ATLAS-23 it is
+  generated from the Proposal models (atlas/planning/proposal.py).
 - Required variables are listed in each template's front matter; the
   renderer validates presence before calling the model.
 

@@ -1,0 +1,43 @@
+{
+  "$defs": {
+    "DependencyType": {
+      "enum": [
+        "depends_on",
+        "relates_to",
+        "implements",
+        "supersedes"
+      ],
+      "title": "DependencyType",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "dependency_type": {
+      "$ref": "#/$defs/DependencyType"
+    },
+    "reason": {
+      "minLength": 1,
+      "title": "Reason",
+      "type": "string"
+    },
+    "source": {
+      "minLength": 1,
+      "title": "Source",
+      "type": "string"
+    },
+    "target": {
+      "minLength": 1,
+      "title": "Target",
+      "type": "string"
+    }
+  },
+  "required": [
+    "source",
+    "target",
+    "dependency_type",
+    "reason"
+  ],
+  "title": "ProposalDependency",
+  "type": "object"
+}
