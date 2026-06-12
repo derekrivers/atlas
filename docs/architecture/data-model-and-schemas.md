@@ -588,7 +588,7 @@ CREATE TABLE evidence (
     id UUID PRIMARY KEY,
     product_id UUID NOT NULL REFERENCES products(id),
     ticket_id UUID REFERENCES tickets(id),
-    agent_run_id UUID,
+    agent_run_id UUID, -- deliberately no FK: Phase 8 reconstructs agent runs from observation, so evidence may precede its run row
     evidence_type TEXT NOT NULL,
     status TEXT NOT NULL,
     summary TEXT NOT NULL,
@@ -731,7 +731,7 @@ CREATE TABLE context_packs (
 
 # 3.10 Plan Run
 
-A plan run records one execution of the Planning Engine (ADR-0007). Rows are append-only.
+A plan run records one execution of the Planning Engine (ADR-0007). Rows are inserted at `proposed` and finalised exactly once to `applied`, `rejected`, or `failed`, setting only `approved_by`, `applied_at`, and `failure_reason`; all other fields are immutable after insert, and rows are never deleted.
 
 ## Pydantic Model
 
@@ -977,10 +977,10 @@ CREATE TABLE debt_items (
 
 This is the payload Atlas should pass to execution agents.
 
-```json
+```json partial
 {
-  "context_pack_id": "uuid",
-  "ticket_key": "ATLAS-42",
+  "id": "7f3e9b2a-5c1d-4e8f-a6b4-9d2c8e7f1a30",
+  "ticket_id": "c4a8d1f6-2b9e-4d57-8e3a-6f1b0c9d4e72",
   "title": "Implement Dependency Graph v1",
   "objective": "Create the first dependency graph implementation using NetworkX.",
   "constraints": [
@@ -1024,7 +1024,7 @@ This is the payload Atlas should pass to execution agents.
 
 The Pydantic models are the single contract; JSON Schemas are generated from them (Phase 1, ATLAS-16) and the example below is illustrative only.
 
-```json
+```json partial
 {
   "key": "ATLAS-42",
   "title": "Implement Dependency Graph v1",
@@ -1035,10 +1035,6 @@ The Pydantic models are the single contract; JSON Schemas are generated from the
   "priority": 10,
   "relevant_docs": [
     "technical-architecture.md"
-  ],
-  "dependencies": [
-    "ATLAS-14",
-    "ATLAS-32"
   ],
   "acceptance_criteria": [
     "Graph can be constructed from tickets.",
@@ -1065,7 +1061,7 @@ The Pydantic models are the single contract; JSON Schemas are generated from the
 
 # 9. ADR JSON Contract
 
-```json
+```json partial
 {
   "number": 3,
   "title": "Use PostgreSQL as the initial source of truth",
@@ -1089,7 +1085,7 @@ The Pydantic models are the single contract; JSON Schemas are generated from the
 
 # 10. Lesson JSON Contract
 
-```json
+```json partial
 {
   "category": "failure_pattern",
   "title": "Oversized tickets reduce agent success rate",
@@ -1104,16 +1100,6 @@ The Pydantic models are the single contract; JSON Schemas are generated from the
 ---
 
 # 11. Initial MVP Storage Recommendation
-
-For the first implementation, use:
-
-```text
-PostgreSQL
-SQLAlchemy
-Alembic
-Pydantic
-NetworkX
-```
 
 Avoid adding:
 
