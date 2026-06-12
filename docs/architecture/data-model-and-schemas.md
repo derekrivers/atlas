@@ -25,7 +25,10 @@ This document defines the initial schema blueprint for:
 
 The code blocks in this document are contractual for field names, string
 values, requiredness, and defaults; declaration idioms (enum base class,
-union syntax) follow repository lint conventions.
+union syntax) follow repository lint conventions. Completion of bare
+generic parameters (e.g. `dict` → `dict[str, Any]`) likewise follows
+repository lint conventions; JSON-object keys are strings, so the
+parameterisation matches the storage contract.
 
 ## 1.1 Models Are Replaceable, Data Is Permanent
 
