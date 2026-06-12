@@ -15,11 +15,14 @@ storage, serialisation, and enforcement decisions Phase 1 tickets anchor to.
   reads and writes go through repositories; no ad-hoc sessions in CLI or
   engine code.
 
-## Append-only enforcement
+## Append-only and finalise-once enforcement
 
-`evidence` and `plan_runs` are append-only (ADR-0007/0008). Enforcement is
-at the repository layer: their repositories expose `add` and query methods
-only — no update, no delete. Tests assert the absence of mutating methods
+`evidence` is strictly append-only (ADR-0008): its repository exposes `add`
+and query methods only — no update, no delete. `plan_runs` is
+insert-plus-single-finalisation (ADR-0007): its repository exposes `add`,
+`finalize`, and query methods, where `finalize` rejects any row not in
+`proposed` with a typed error and writes only `approved_by`, `applied_at`,
+and `failure_reason`. Tests assert the absence of any other mutating method
 and that a second record for the same logical event creates a new row.
 Database triggers may harden this later; they are not Phase 1 scope.
 
@@ -60,6 +63,12 @@ canonical model to `docs/generated/schemas/*.json`. The doc linter (v2)
 validates every JSON example in canonical docs against these files and
 fails CI on drift. Hand-editing `docs/generated/` is banned, same rule as
 `docs/planning/`.
+
+Convention: every JSON example in canonical docs is validated for key
+existence and type correctness against the generated schemas;
+required-field completeness is additionally enforced unless the code fence
+is marked ` ```json partial `. Enforcement lands with doc linter v2
+(ATLAS-16); until then the convention is a documented contract.
 
 ## Testing strategy
 

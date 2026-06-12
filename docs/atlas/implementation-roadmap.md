@@ -53,7 +53,7 @@ ATLAS-13 Lesson model with status field, DRAFT default for agent-authored
          lessons (ADR-0009)
 ATLAS-14 Evidence model with commit_sha, external_run_id, payload_hash and
          append-only semantics (ADR-0008)
-ATLAS-15 PlanRun and ContextPack models (ContextPack carries
+ATLAS-15 PlanRun, ContextPack, and AgentRun models (ContextPack carries
          input_doc_shas for staleness detection)
 ATLAS-16 JSON Schema generation from the Pydantic models; doc linter v2
          validates JSON examples in canonical docs against generated

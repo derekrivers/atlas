@@ -50,7 +50,8 @@ Current backlog ──────────► Reconciler ◄─────�
 5. Write `docs/planning/epics.yaml`, `tickets.yaml`, `dependencies.yaml`,
    and regenerate `docs/planning/roadmap.mmd` (Mermaid render of the
    dependency DAG).
-6. Update the `PlanRun` to `status: applied` with `approved_by: operator`.
+6. Finalize the `PlanRun` to `status: applied` with `approved_by: operator`
+   — the single permitted finalising transition (§6).
 
 Rejecting a diff sets `status: rejected`. Apply is the only legal writer of
 planning renders (ADR-0006); the doc linter flags out-of-band edits.
@@ -156,7 +157,10 @@ class PlanRun(BaseModel):
 ```
 
 PostgreSQL table mirrors the model (`plan_runs`), following the existing
-schema conventions. `PlanRun` rows are append-only.
+schema conventions. A `PlanRun` row is inserted at `status: proposed`;
+exactly one finalising transition to `applied`, `rejected`, or `failed` is
+permitted, setting only `approved_by`, `applied_at`, and `failure_reason`.
+All other fields are immutable after insert, and rows are never deleted.
 
 ## 7. Acceptance tests (milestone 1)
 
@@ -187,7 +191,7 @@ Atlas documents:
 ## 8. Non-goals for milestone 1
 
 No Linear writes. No Symphony dispatch. No HTML roadmap (Mermaid render
-only). No estimation fields (add `estimated_effort` to the Ticket model
-when critical-path analysis lands in Phase 3, resolving the §4.4 schema
-inconsistency). No automatic re-planning triggers; planning runs only when
+only). No estimation logic (`estimated_effort` exists on the Ticket
+model from Phase 1, remains null, and is populated when critical-path
+analysis lands in Phase 3, ATLAS-32). No automatic re-planning triggers; planning runs only when
 the operator invokes it.
