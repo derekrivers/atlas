@@ -1,0 +1,192 @@
+{
+  "$defs": {
+    "AgentProvider": {
+      "description": "Which execution provider ran the work (data-model §3.8).",
+      "enum": [
+        "openai",
+        "symphony",
+        "codex",
+        "claude",
+        "local",
+        "human"
+      ],
+      "title": "AgentProvider",
+      "type": "string"
+    },
+    "AgentRunStatus": {
+      "description": "Lifecycle of an agent run (data-model §3.8).",
+      "enum": [
+        "queued",
+        "running",
+        "succeeded",
+        "failed",
+        "cancelled",
+        "needs_human"
+      ],
+      "title": "AgentRunStatus",
+      "type": "string"
+    }
+  },
+  "description": "A discrete execution by an AI agent or orchestration system.",
+  "properties": {
+    "completed_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Completed At"
+    },
+    "completion_tokens": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Completion Tokens"
+    },
+    "cost_estimate_usd": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Cost Estimate Usd"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "error_summary": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Error Summary"
+    },
+    "id": {
+      "format": "uuid",
+      "title": "Id",
+      "type": "string"
+    },
+    "input_context_pack_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Input Context Pack Id"
+    },
+    "model": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Model"
+    },
+    "objective": {
+      "title": "Objective",
+      "type": "string"
+    },
+    "output_summary": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Output Summary"
+    },
+    "product_id": {
+      "format": "uuid",
+      "title": "Product Id",
+      "type": "string"
+    },
+    "prompt_tokens": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Prompt Tokens"
+    },
+    "provider": {
+      "$ref": "#/$defs/AgentProvider"
+    },
+    "started_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Started At"
+    },
+    "status": {
+      "$ref": "#/$defs/AgentRunStatus"
+    },
+    "ticket_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Ticket Id"
+    }
+  },
+  "required": [
+    "id",
+    "product_id",
+    "provider",
+    "status",
+    "objective",
+    "created_at"
+  ],
+  "title": "AgentRun",
+  "type": "object"
+}

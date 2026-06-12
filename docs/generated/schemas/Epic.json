@@ -1,0 +1,123 @@
+{
+  "$defs": {
+    "ActorType": {
+      "description": "Who or what created a record (data-model §2.2, attribution §1.5).",
+      "enum": [
+        "human",
+        "agent",
+        "system"
+      ],
+      "title": "ActorType",
+      "type": "string"
+    },
+    "EpicStatus": {
+      "description": "Lifecycle of an epic (data-model §3.3).",
+      "enum": [
+        "backlog",
+        "planned",
+        "in_progress",
+        "done",
+        "archived"
+      ],
+      "title": "EpicStatus",
+      "type": "string"
+    },
+    "RiskLevel": {
+      "description": "Risk classification shared by epics and tickets (data-model §2.4).",
+      "enum": [
+        "low",
+        "medium",
+        "high",
+        "critical"
+      ],
+      "title": "RiskLevel",
+      "type": "string"
+    }
+  },
+  "description": "An epic groups related work.",
+  "properties": {
+    "completed_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Completed At"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "created_by_id": {
+      "title": "Created By Id",
+      "type": "string"
+    },
+    "created_by_type": {
+      "$ref": "#/$defs/ActorType"
+    },
+    "description": {
+      "title": "Description",
+      "type": "string"
+    },
+    "id": {
+      "format": "uuid",
+      "title": "Id",
+      "type": "string"
+    },
+    "key": {
+      "title": "Key",
+      "type": "string"
+    },
+    "objective": {
+      "title": "Objective",
+      "type": "string"
+    },
+    "priority": {
+      "title": "Priority",
+      "type": "integer"
+    },
+    "product_id": {
+      "format": "uuid",
+      "title": "Product Id",
+      "type": "string"
+    },
+    "risk_level": {
+      "$ref": "#/$defs/RiskLevel"
+    },
+    "status": {
+      "$ref": "#/$defs/EpicStatus"
+    },
+    "title": {
+      "title": "Title",
+      "type": "string"
+    },
+    "updated_at": {
+      "format": "date-time",
+      "title": "Updated At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "product_id",
+    "key",
+    "title",
+    "description",
+    "objective",
+    "status",
+    "priority",
+    "risk_level",
+    "created_by_type",
+    "created_by_id",
+    "created_at",
+    "updated_at"
+  ],
+  "title": "Epic",
+  "type": "object"
+}

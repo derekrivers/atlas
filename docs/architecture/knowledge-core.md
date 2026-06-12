@@ -67,8 +67,21 @@ fails CI on drift. Hand-editing `docs/generated/` is banned, same rule as
 Convention: every JSON example in canonical docs is validated for key
 existence and type correctness against the generated schemas;
 required-field completeness is additionally enforced unless the code fence
-is marked ` ```json partial `. Enforcement lands with doc linter v2
-(ATLAS-16); until then the convention is a documented contract.
+is marked ` ```json partial `. Enforcement landed with doc linter v2
+(ATLAS-16).
+
+Every ` ```json ` fence in a canonical doc declares its schema in the
+fence info string: ` ```json model=<ModelName> `, composing with
+`partial` as ` ```json partial model=<ModelName> `. A json fence that is
+not a model example must be marked ` ```json no-schema `; the linter
+fails any unmarked fence and any `model=` naming a schema absent from
+`docs/generated/schemas/`. Type correctness includes declared string
+formats (`uuid`, `date-time`); schema constructs the linter does not
+recognise fail closed, never skip. The linter also regenerates every
+schema in memory and fails when `docs/generated/schemas/` differs from
+the regeneration, making the hand-edit ban mechanical. Until the `atlas`
+CLI lands (Phase 2), the export entry point is
+`python -m atlas.tools.schemas_export`.
 
 ## Testing strategy
 

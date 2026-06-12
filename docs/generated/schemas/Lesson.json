@@ -1,0 +1,136 @@
+{
+  "$defs": {
+    "ActorType": {
+      "description": "Who or what created a record (data-model §2.2, attribution §1.5).",
+      "enum": [
+        "human",
+        "agent",
+        "system"
+      ],
+      "title": "ActorType",
+      "type": "string"
+    },
+    "EntityStatus": {
+      "description": "Generic lifecycle status for knowledge entities (data-model §2.3).",
+      "enum": [
+        "draft",
+        "active",
+        "archived",
+        "deprecated"
+      ],
+      "title": "EntityStatus",
+      "type": "string"
+    },
+    "LessonCategory": {
+      "description": "What kind of organisational learning a lesson records (data-model\n§3.6).",
+      "enum": [
+        "success_pattern",
+        "failure_pattern",
+        "architecture",
+        "testing",
+        "delivery",
+        "product",
+        "research",
+        "tech_debt"
+      ],
+      "title": "LessonCategory",
+      "type": "string"
+    }
+  },
+  "description": "Organisational learning from successful work, failed work, incidents,\nrecurring blockers, or human decisions.",
+  "properties": {
+    "category": {
+      "$ref": "#/$defs/LessonCategory"
+    },
+    "confidence": {
+      "title": "Confidence",
+      "type": "number"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "created_by_id": {
+      "title": "Created By Id",
+      "type": "string"
+    },
+    "created_by_type": {
+      "$ref": "#/$defs/ActorType"
+    },
+    "id": {
+      "format": "uuid",
+      "title": "Id",
+      "type": "string"
+    },
+    "outcome": {
+      "title": "Outcome",
+      "type": "string"
+    },
+    "problem": {
+      "title": "Problem",
+      "type": "string"
+    },
+    "product_id": {
+      "format": "uuid",
+      "title": "Product Id",
+      "type": "string"
+    },
+    "related_adr_ids": {
+      "items": {
+        "format": "uuid",
+        "type": "string"
+      },
+      "title": "Related Adr Ids",
+      "type": "array"
+    },
+    "related_ticket_ids": {
+      "items": {
+        "format": "uuid",
+        "type": "string"
+      },
+      "title": "Related Ticket Ids",
+      "type": "array"
+    },
+    "solution": {
+      "title": "Solution",
+      "type": "string"
+    },
+    "status": {
+      "$ref": "#/$defs/EntityStatus",
+      "default": "draft"
+    },
+    "tags": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Tags",
+      "type": "array"
+    },
+    "title": {
+      "title": "Title",
+      "type": "string"
+    },
+    "updated_at": {
+      "format": "date-time",
+      "title": "Updated At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "product_id",
+    "category",
+    "title",
+    "problem",
+    "solution",
+    "outcome",
+    "confidence",
+    "created_by_type",
+    "created_by_id",
+    "created_at",
+    "updated_at"
+  ],
+  "title": "Lesson",
+  "type": "object"
+}

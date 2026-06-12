@@ -984,7 +984,7 @@ CREATE TABLE debt_items (
 
 This is the payload Atlas should pass to execution agents.
 
-```json partial
+```json partial model=ContextPack
 {
   "id": "7f3e9b2a-5c1d-4e8f-a6b4-9d2c8e7f1a30",
   "ticket_id": "c4a8d1f6-2b9e-4d57-8e3a-6f1b0c9d4e72",
@@ -999,11 +999,11 @@ This is the payload Atlas should pass to execution agents.
     "data-model-and-schemas.md"
   ],
   "relevant_adrs": [
-    "ADR-0003"
+    "2c8e5f1a-9b4d-4e6c-8a3f-7d2b9c4e6f10"
   ],
   "related_tickets": [
-    "ATLAS-31",
-    "ATLAS-32"
+    "5e2d8c4b-7f1a-4b9e-a6c3-1f8d4b7e2a90",
+    "8a4f2e6c-3d9b-4c7a-b1e5-6c2f9a3d7b41"
   ],
   "historical_lessons": [],
   "acceptance_criteria": [
@@ -1031,7 +1031,7 @@ This is the payload Atlas should pass to execution agents.
 
 The Pydantic models are the single contract; JSON Schemas are generated from them (Phase 1, ATLAS-16) and the example below is illustrative only.
 
-```json partial
+```json partial model=Ticket
 {
   "key": "ATLAS-42",
   "title": "Implement Dependency Graph v1",
@@ -1068,7 +1068,7 @@ The Pydantic models are the single contract; JSON Schemas are generated from the
 
 # 9. ADR JSON Contract
 
-```json partial
+```json partial model=ArchitectureDecisionRecord
 {
   "number": 3,
   "title": "Use PostgreSQL as the initial source of truth",
@@ -1092,7 +1092,7 @@ The Pydantic models are the single contract; JSON Schemas are generated from the
 
 # 10. Lesson JSON Contract
 
-```json partial
+```json partial model=Lesson
 {
   "category": "failure_pattern",
   "title": "Oversized tickets reduce agent success rate",

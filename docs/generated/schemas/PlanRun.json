@@ -1,0 +1,119 @@
+{
+  "$defs": {
+    "PlanRunStatus": {
+      "description": "Lifecycle of a planning run (data-model §3.10).",
+      "enum": [
+        "proposed",
+        "applied",
+        "rejected",
+        "failed"
+      ],
+      "title": "PlanRunStatus",
+      "type": "string"
+    }
+  },
+  "description": "One execution of the Planning Engine (ADR-0007).",
+  "properties": {
+    "applied_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Applied At"
+    },
+    "approved_by": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Approved By"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "diff_summary": {
+      "additionalProperties": true,
+      "title": "Diff Summary",
+      "type": "object"
+    },
+    "failure_reason": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Failure Reason"
+    },
+    "id": {
+      "format": "uuid",
+      "title": "Id",
+      "type": "string"
+    },
+    "input_doc_shas": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Input Doc Shas",
+      "type": "object"
+    },
+    "model_name": {
+      "title": "Model Name",
+      "type": "string"
+    },
+    "model_provider": {
+      "title": "Model Provider",
+      "type": "string"
+    },
+    "product_id": {
+      "format": "uuid",
+      "title": "Product Id",
+      "type": "string"
+    },
+    "prompt_version": {
+      "title": "Prompt Version",
+      "type": "string"
+    },
+    "raw_output_hash": {
+      "title": "Raw Output Hash",
+      "type": "string"
+    },
+    "similarity_threshold": {
+      "title": "Similarity Threshold",
+      "type": "number"
+    },
+    "status": {
+      "$ref": "#/$defs/PlanRunStatus"
+    }
+  },
+  "required": [
+    "id",
+    "product_id",
+    "status",
+    "input_doc_shas",
+    "model_provider",
+    "model_name",
+    "prompt_version",
+    "similarity_threshold",
+    "raw_output_hash",
+    "created_at"
+  ],
+  "title": "PlanRun",
+  "type": "object"
+}
