@@ -23,6 +23,10 @@ This document defines the initial schema blueprint for:
 
 # 1. Schema Principles
 
+The code blocks in this document are contractual for field names, string
+values, requiredness, and defaults; declaration idioms (enum base class,
+union syntax) follow repository lint conventions.
+
 ## 1.1 Models Are Replaceable, Data Is Permanent
 
 Atlas should treat AI models as interchangeable execution providers.
