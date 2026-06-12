@@ -106,19 +106,40 @@ Pure deterministic code. Matching passes, in order:
 
 1. **Key match** — proposal item echoes an existing key.
 2. **Anchor match** — equal `source_anchor` and same entity type.
-3. **Similarity match** — normalised title + objective similarity ≥ 0.85
-   (token-set ratio; threshold is config, fixed per run, recorded in the
-   `PlanRun`).
+3. **Similarity match** — normalised title + objective similarity ≥ the
+   per-run threshold. The threshold is a per-run parameter with the spec
+   default 0.85 (`DEFAULT_SIMILARITY_THRESHOLD`), supplied by the caller,
+   fixed for the run, and recorded in `PlanRun.similarity_threshold` — no
+   config file, environment variable, or settings layer. Normalisation:
+   casefold; every non-alphanumeric character becomes a space;
+   whitespace-split into a token set. Similarity is the Sørensen–Dice
+   coefficient over the token sets of the concatenated title and
+   objective — 2·|A∩B| / (|A| + |B|); two empty sets score 1.0.
 4. **No match** — proposal item becomes `ADD`.
 
 Existing items unmatched by any pass become `PROPOSE_ARCHIVE`. Nothing is
 ever deleted.
+
+Match ambiguity: duplicate echoed keys are a `CONFLICT` naming every
+claimant. The anchor pass matches only unambiguous 1:1 (anchor, entity
+type) pairs; ambiguous groups fall through to the similarity pass.
+Similarity assignment is greedy by descending score under a total
+deterministic order; an exact score tie competing for the same item is a
+`CONFLICT` — never a silent arbitrary choice.
 
 Matched items diff field-by-field into `MODIFY` entries (or no-ops).
 Immutability rule: tickets with status `in_progress`, `pr_open`,
 `review_required`, `changes_requested`, `done`, or `rejected` are frozen to
 planning. Any `MODIFY` or `PROPOSE_ARCHIVE` touching them invalidates that
 diff entry and is reported as a planner conflict for the operator.
+
+Dependency edges reconcile by resolved (source, target) identity after
+matching: proposal-only edges are `ADD`, backlog-only edges are
+`PROPOSE_ARCHIVE` (archiving a ticket archives its edges as their own
+explicit entries), and a changed `reason` is `MODIFY`. An edge entry
+whose source ticket is frozen follows the immutability rule and becomes
+`CONFLICT`; targeting a frozen ticket is permitted — new work may depend
+on completed work.
 
 Diff entry types: `ADD`, `MODIFY` (with per-field before/after),
 `PROPOSE_ARCHIVE`, `CONFLICT`.

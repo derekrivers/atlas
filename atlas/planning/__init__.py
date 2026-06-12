@@ -24,6 +24,15 @@ from atlas.planning.proposal import (
     ProposalValidationError,
     parse_proposal,
 )
+from atlas.planning.reconciler import (
+    DEFAULT_SIMILARITY_THRESHOLD,
+    FROZEN_STATUSES,
+    Backlog,
+    DiffEntry,
+    PlanDiff,
+    reconcile,
+    similarity,
+)
 from atlas.planning.renderer import (
     CurrentReleaseError,
     FrontMatterError,
@@ -38,14 +47,19 @@ from atlas.planning.renderer import (
 )
 
 __all__ = [
+    "DEFAULT_SIMILARITY_THRESHOLD",
+    "FROZEN_STATUSES",
     "AnchorIndex",
+    "Backlog",
     "CurrentReleaseError",
+    "DiffEntry",
     "DirtyInputError",
     "FrontMatterError",
     "GateFailure",
     "IngestionError",
     "MalformedAnchorError",
     "MissingVariableError",
+    "PlanDiff",
     "Proposal",
     "ProposalDependency",
     "ProposalEpic",
@@ -66,7 +80,9 @@ __all__ = [
     "collect_input_documents",
     "current_release",
     "parse_proposal",
+    "reconcile",
     "render_planner_prompt",
     "run_gates",
+    "similarity",
     "slugify",
 ]
