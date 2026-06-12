@@ -31,6 +31,10 @@ needs:
 - Never hand-edit `docs/planning/`; only `atlas apply` writes there
   (ADR-0007).
 - Never invent ticket keys; keys are assigned by the reconciler on apply.
+- Documentation edits are exact-match replacements: if the text an
+  instruction quotes does not match the file verbatim, stop and
+  report the mismatch — never approximate, never patch the nearest
+  similar text.
 - Evidence rules per ADR-0008: agent-submitted evidence is PENDING until
   corroborated; no system-tier evidence means no completion.
 - Agent-authored lessons are DRAFT until the operator promotes them
