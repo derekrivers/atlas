@@ -30,5 +30,6 @@ class ContextPack(BaseModel):
     definition_of_done: list[str] = Field(default_factory=list)
     rendered_markdown: str
     input_doc_shas: dict[str, str] = Field(default_factory=dict)  # staleness detection
-    token_estimate: int | None = None
+    # SQL INTEGER range.
+    token_estimate: int | None = Field(default=None, ge=-2147483648, le=2147483647)
     created_at: datetime

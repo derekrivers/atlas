@@ -45,6 +45,8 @@
     "completion_tokens": {
       "anyOf": [
         {
+          "maximum": 2147483647,
+          "minimum": -2147483648,
           "type": "integer"
         },
         {
@@ -137,6 +139,8 @@
     "prompt_tokens": {
       "anyOf": [
         {
+          "maximum": 2147483647,
+          "minimum": -2147483648,
           "type": "integer"
         },
         {

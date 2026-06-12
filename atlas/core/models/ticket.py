@@ -51,7 +51,7 @@ class Ticket(BaseModel):
     status: TicketStatus
     ticket_type: TicketType
     risk_level: RiskLevel
-    priority: int
+    priority: int = Field(ge=-2147483648, le=2147483647)  # SQL INTEGER range
     relevant_docs: list[str] = Field(default_factory=list)
     acceptance_criteria: list[str] = Field(default_factory=list)
     non_goals: list[str] = Field(default_factory=list)
@@ -59,9 +59,13 @@ class Ticket(BaseModel):
     test_requirements: list[str] = Field(default_factory=list)
     documentation_requirements: list[str] = Field(default_factory=list)
     definition_of_done: list[str] = Field(default_factory=list)
-    estimated_effort: int | None = None  # populated from Phase 3 (critical path)
+    # Populated from Phase 3 (critical path); SQL INTEGER range.
+    estimated_effort: int | None = Field(default=None, ge=-2147483648, le=2147483647)
     external_linear_id: str | None = None
     external_github_issue_id: str | None = None
+    # Reconciler anchor-match pass; AT-1 traceability — every item
+    # traceable to a document anchor.
+    source_anchor: str
     created_by_type: ActorType
     created_by_id: str
     created_at: datetime

@@ -30,6 +30,13 @@ generic parameters (e.g. `dict` → `dict[str, Any]`) likewise follows
 repository lint conventions; JSON-object keys are strings, so the
 parameterisation matches the storage contract.
 
+Platform constraints (Phase 1 closure): text fields do not carry NUL
+(U+0000) or surrogate code points (PostgreSQL TEXT and valid Unicode
+forbid them), and datetimes lie within years 1900–9000 (UTC
+normalisation overflows near the extremes). These are contract,
+documented rather than enforced per-field; revisit and add validators
+if property tests or production evidence force enforcement.
+
 ## 1.1 Models Are Replaceable, Data Is Permanent
 
 Atlas should treat AI models as interchangeable execution providers.
@@ -307,8 +314,11 @@ class Epic(BaseModel):
     description: str
     objective: str
     status: EpicStatus
-    priority: int
+    priority: int = Field(ge=-2147483648, le=2147483647)  # SQL INTEGER range
     risk_level: RiskLevel
+    # Reconciler anchor-match pass; AT-1 traceability — every item
+    # traceable to a document anchor.
+    source_anchor: str
     created_by_type: ActorType
     created_by_id: str
     created_at: datetime
@@ -329,6 +339,7 @@ CREATE TABLE epics (
     status TEXT NOT NULL,
     priority INTEGER NOT NULL DEFAULT 0,
     risk_level TEXT NOT NULL,
+    source_anchor TEXT NOT NULL,
     created_by_type TEXT NOT NULL,
     created_by_id TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL,
@@ -381,7 +392,7 @@ class Ticket(BaseModel):
     status: TicketStatus
     ticket_type: TicketType
     risk_level: RiskLevel
-    priority: int
+    priority: int = Field(ge=-2147483648, le=2147483647)  # SQL INTEGER range
     relevant_docs: list[str] = Field(default_factory=list)
     acceptance_criteria: list[str] = Field(default_factory=list)
     non_goals: list[str] = Field(default_factory=list)
@@ -389,9 +400,15 @@ class Ticket(BaseModel):
     test_requirements: list[str] = Field(default_factory=list)
     documentation_requirements: list[str] = Field(default_factory=list)
     definition_of_done: list[str] = Field(default_factory=list)
-    estimated_effort: Optional[int] = None  # populated from Phase 3 (critical path)
+    # Populated from Phase 3 (critical path); SQL INTEGER range.
+    estimated_effort: Optional[int] = Field(
+        default=None, ge=-2147483648, le=2147483647
+    )
     external_linear_id: Optional[str] = None
     external_github_issue_id: Optional[str] = None
+    # Reconciler anchor-match pass; AT-1 traceability — every item
+    # traceable to a document anchor.
+    source_anchor: str
     created_by_type: ActorType
     created_by_id: str
     created_at: datetime
@@ -424,6 +441,7 @@ CREATE TABLE tickets (
     estimated_effort INTEGER,
     external_linear_id TEXT,
     external_github_issue_id TEXT,
+    source_anchor TEXT NOT NULL,
     created_by_type TEXT NOT NULL,
     created_by_id TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL,
@@ -651,8 +669,11 @@ class AgentRun(BaseModel):
     output_summary: Optional[str] = None
     error_summary: Optional[str] = None
     cost_estimate_usd: Optional[float] = None
-    prompt_tokens: Optional[int] = None
-    completion_tokens: Optional[int] = None
+    # SQL INTEGER range.
+    prompt_tokens: Optional[int] = Field(default=None, ge=-2147483648, le=2147483647)
+    completion_tokens: Optional[int] = Field(
+        default=None, ge=-2147483648, le=2147483647
+    )
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     created_at: datetime
@@ -709,7 +730,8 @@ class ContextPack(BaseModel):
     definition_of_done: list[str] = Field(default_factory=list)
     rendered_markdown: str
     input_doc_shas: dict[str, str] = Field(default_factory=dict)  # staleness detection
-    token_estimate: Optional[int] = None
+    # SQL INTEGER range.
+    token_estimate: Optional[int] = Field(default=None, ge=-2147483648, le=2147483647)
     created_at: datetime
 ```
 
@@ -790,6 +812,85 @@ CREATE TABLE plan_runs (
     applied_at TIMESTAMPTZ
 );
 ```
+
+---
+
+# 3.11 Planning Proposal Contract
+
+A proposal is the structured output of the planner (ADR-0007): the
+complete desired backlog state, parsed and validated before the
+reconciler runs. This section is the canonical contract. The Pydantic
+models implementing it — `Proposal`, `ProposalEpic`, `ProposalTicket`,
+`ProposalDependency` — land with ATLAS-23; the planner template renders
+their generated JSON Schema at run time. The versioned prompt templates
+implement this contract; where a released template's illustrative
+example differs from this section, this section wins.
+
+Proposal items carry no `id`, `status`, timestamps, or `created_by`
+fields — system-owned fields are assigned at apply (ADR-0007). Where a
+proposal field shares its name with a canonical model field
+(`priority`, `risk_level`, `acceptance_criteria`, …), it carries the
+canonical model's type and constraints.
+
+## Envelope
+
+A proposal is a single JSON object with exactly four keys:
+
+```json no-schema
+{
+  "epics": [],
+  "tickets": [],
+  "dependencies": [],
+  "planner_notes": []
+}
+```
+
+`planner_notes` is a list of strings recording anything ambiguous,
+contradictory, unanchorable, or in conflict with a frozen ticket — an
+empty list when there is nothing to report. A proposal is full-state:
+it is the complete desired backlog, and an existing item it omits is a
+proposal to archive that item.
+
+## ProposalEpic
+
+Required fields: `key` (string or null), `title`, `description`,
+`objective`, `priority` (integer), `risk_level`, `source_anchor`.
+
+- `key` is `null` for new epics; an existing epic echoes its exact key.
+  Epic keys take the form `ATLAS-E<n>` and are assigned by
+  `atlas apply`, never by the model.
+- `source_anchor` is `<doc path>#<heading-slug>` and must resolve to a
+  real heading at the recorded input SHA.
+
+## ProposalTicket
+
+Required fields: `key` (string or null), `epic_ref`, `title`,
+`objective`, `context` (non-empty), `ticket_type`, `risk_level`,
+`priority` (integer), `source_anchor`, `relevant_docs`,
+`acceptance_criteria` (1–7 entries), `non_goals` (≥1),
+`test_requirements` (≥1), `implementation_notes`,
+`documentation_requirements`, `definition_of_done` (≥1).
+
+- `epic_ref` is an echoed epic key or `new_epic:<n>`, where `<n>` is
+  the zero-based position of the referenced epic in this proposal's
+  `epics` array. `epic_ref` may be `null` only when `ticket_type` is
+  `tech_debt` (structure gate).
+- `key` and `source_anchor` follow the same rules as ProposalEpic;
+  ticket keys take the form `ATLAS-<n>`.
+
+## ProposalDependency
+
+Required fields: `source`, `target`, `dependency_type`, `reason`
+(non-empty).
+
+- `source` and `target` reference tickets: an echoed key for existing
+  tickets, or `new:<n>` with `<n>` the zero-based position in this
+  proposal's `tickets` array. Index bounds are validated at parse time.
+- `dependency_type` is `depends_on` only — the inverse is derived,
+  never stored (§3.5).
+- Milestone 1 limitation: proposal dependencies are ticket-to-ticket
+  only. ADR and component targets (§3.5's polymorphic range) enter the
+  proposal contract in a later phase.
 
 ---
 

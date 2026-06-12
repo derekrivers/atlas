@@ -75,7 +75,8 @@ the key-counter high-water mark.
 
 The monotonic ticket-key counter is operational state: a single-row
 `key_counters` table (per product key prefix), incremented inside the
-apply transaction. The current high-water mark is also written into the
+apply transaction. One counter row per key prefix: `ATLAS` (tickets)
+and `ATLAS-E` (epics) are distinct prefixes. The current high-water mark is also written into the
 render header comment for operator visibility, but the table is
 authoritative.
 

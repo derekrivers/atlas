@@ -11,7 +11,7 @@ from datetime import datetime
 from enum import StrEnum
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class AgentProvider(StrEnum):
@@ -50,8 +50,9 @@ class AgentRun(BaseModel):
     output_summary: str | None = None
     error_summary: str | None = None
     cost_estimate_usd: float | None = None
-    prompt_tokens: int | None = None
-    completion_tokens: int | None = None
+    # SQL INTEGER range.
+    prompt_tokens: int | None = Field(default=None, ge=-2147483648, le=2147483647)
+    completion_tokens: int | None = Field(default=None, ge=-2147483648, le=2147483647)
     started_at: datetime | None = None
     completed_at: datetime | None = None
     created_at: datetime
