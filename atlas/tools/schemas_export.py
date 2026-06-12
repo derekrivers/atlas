@@ -32,10 +32,18 @@ from atlas.core.models import (
     Ticket,
     TicketDependency,
 )
+from atlas.planning.proposal import (
+    Proposal,
+    ProposalDependency,
+    ProposalEpic,
+    ProposalTicket,
+)
 
-# The canonical model set whose schemas are exported. Kept in name order;
-# tests assert this matches every public BaseModel in atlas.core.models.
-CANONICAL_MODELS: tuple[type[BaseModel], ...] = (
+# The canonical model sets whose schemas are exported, in name order.
+# Completeness tests pin CORE_MODELS to every public BaseModel in
+# atlas.core.models and PLANNING_MODELS to every public BaseModel in
+# atlas.planning (D1, ATLAS-23).
+CORE_MODELS: tuple[type[BaseModel], ...] = (
     AgentRun,
     ArchitectureDecisionRecord,
     ContextPack,
@@ -47,6 +55,13 @@ CANONICAL_MODELS: tuple[type[BaseModel], ...] = (
     Ticket,
     TicketDependency,
 )
+PLANNING_MODELS: tuple[type[BaseModel], ...] = (
+    Proposal,
+    ProposalDependency,
+    ProposalEpic,
+    ProposalTicket,
+)
+CANONICAL_MODELS: tuple[type[BaseModel], ...] = CORE_MODELS + PLANNING_MODELS
 
 SCHEMAS_DIR = "docs/generated/schemas"
 

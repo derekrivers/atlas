@@ -1,0 +1,157 @@
+{
+  "$defs": {
+    "RiskLevel": {
+      "description": "Risk classification shared by epics and tickets (data-model §2.4).",
+      "enum": [
+        "low",
+        "medium",
+        "high",
+        "critical"
+      ],
+      "title": "RiskLevel",
+      "type": "string"
+    },
+    "TicketType": {
+      "description": "Kind of work a ticket represents (data-model §3.4).",
+      "enum": [
+        "feature",
+        "bug",
+        "tech_debt",
+        "spike",
+        "documentation",
+        "infrastructure",
+        "research"
+      ],
+      "title": "TicketType",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "acceptance_criteria": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 7,
+      "minItems": 1,
+      "title": "Acceptance Criteria",
+      "type": "array"
+    },
+    "context": {
+      "minLength": 1,
+      "title": "Context",
+      "type": "string"
+    },
+    "definition_of_done": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Definition Of Done",
+      "type": "array"
+    },
+    "documentation_requirements": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Documentation Requirements",
+      "type": "array"
+    },
+    "epic_ref": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Epic Ref"
+    },
+    "implementation_notes": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Implementation Notes",
+      "type": "array"
+    },
+    "key": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Key"
+    },
+    "non_goals": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Non Goals",
+      "type": "array"
+    },
+    "objective": {
+      "title": "Objective",
+      "type": "string"
+    },
+    "priority": {
+      "maximum": 2147483647,
+      "minimum": -2147483648,
+      "title": "Priority",
+      "type": "integer"
+    },
+    "relevant_docs": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Relevant Docs",
+      "type": "array"
+    },
+    "risk_level": {
+      "$ref": "#/$defs/RiskLevel"
+    },
+    "source_anchor": {
+      "title": "Source Anchor",
+      "type": "string"
+    },
+    "test_requirements": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Test Requirements",
+      "type": "array"
+    },
+    "ticket_type": {
+      "$ref": "#/$defs/TicketType"
+    },
+    "title": {
+      "title": "Title",
+      "type": "string"
+    }
+  },
+  "required": [
+    "key",
+    "epic_ref",
+    "title",
+    "objective",
+    "context",
+    "ticket_type",
+    "risk_level",
+    "priority",
+    "source_anchor",
+    "relevant_docs",
+    "acceptance_criteria",
+    "non_goals",
+    "test_requirements",
+    "implementation_notes",
+    "documentation_requirements",
+    "definition_of_done"
+  ],
+  "title": "ProposalTicket",
+  "type": "object"
+}

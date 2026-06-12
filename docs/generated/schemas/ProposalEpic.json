@@ -1,0 +1,65 @@
+{
+  "$defs": {
+    "RiskLevel": {
+      "description": "Risk classification shared by epics and tickets (data-model §2.4).",
+      "enum": [
+        "low",
+        "medium",
+        "high",
+        "critical"
+      ],
+      "title": "RiskLevel",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "description": {
+      "title": "Description",
+      "type": "string"
+    },
+    "key": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Key"
+    },
+    "objective": {
+      "title": "Objective",
+      "type": "string"
+    },
+    "priority": {
+      "maximum": 2147483647,
+      "minimum": -2147483648,
+      "title": "Priority",
+      "type": "integer"
+    },
+    "risk_level": {
+      "$ref": "#/$defs/RiskLevel"
+    },
+    "source_anchor": {
+      "title": "Source Anchor",
+      "type": "string"
+    },
+    "title": {
+      "title": "Title",
+      "type": "string"
+    }
+  },
+  "required": [
+    "key",
+    "title",
+    "description",
+    "objective",
+    "priority",
+    "risk_level",
+    "source_anchor"
+  ],
+  "title": "ProposalEpic",
+  "type": "object"
+}
