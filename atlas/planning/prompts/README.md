@@ -7,6 +7,10 @@ referenced by every `PlanRun` via `prompt_version`.
 ## Versioning rules
 
 - Filename and front matter carry the version: `planner-vMAJOR.MINOR.PATCH`.
+- The current release is declared explicitly in `CURRENT` (one line
+  naming the version, e.g. `planner-v1.1.0`); releasing a new version
+  updates `CURRENT` in the same reviewed change. The renderer never
+  infers the current release from the directory listing.
 - Never edit a released template in place. Copy to a new version, change,
   review, release. Old versions are retained so any historical `PlanRun`
   can be reproduced exactly.
@@ -23,7 +27,10 @@ referenced by every `PlanRun` via `prompt_version`.
 - `proposal_json_schema` is generated from the Proposal Pydantic models
   (Proposal, ProposalEpic, ProposalTicket, ProposalDependency; ATLAS-23)
   at render time — the schema in the prompt can never drift from the
-  code. The canonical contract is data-model-and-schemas.md §3.11.
+  code. The canonical contract is data-model-and-schemas.md §3.11. The
+  renderer (ATLAS-22) takes the schema as a caller-supplied parameter,
+  validated for presence like any other variable; generation belongs to
+  the Proposal models (ATLAS-23).
 - Required variables are listed in each template's front matter; the
   renderer validates presence before calling the model.
 

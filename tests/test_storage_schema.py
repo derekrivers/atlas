@@ -207,6 +207,7 @@ DOCUMENTED_COLUMNS: dict[str, dict[str, tuple[bool, str | None]]] = {
         "model_provider": (NN, None),
         "model_name": (NN, None),
         "prompt_version": (NN, None),
+        "prompt_hash": (NN, None),
         "similarity_threshold": (NN, None),
         "raw_output_hash": (NN, None),
         "diff_summary": (NN, "'{}'"),

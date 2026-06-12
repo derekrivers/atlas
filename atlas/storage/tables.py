@@ -306,6 +306,7 @@ class PlanRunRow(Base):
     model_provider: Mapped[str] = mapped_column(sa.Text)
     model_name: Mapped[str] = mapped_column(sa.Text)
     prompt_version: Mapped[str] = mapped_column(sa.Text)
+    prompt_hash: Mapped[str] = mapped_column(sa.Text)
     similarity_threshold: Mapped[float] = mapped_column(
         sa.Numeric(4, 3, asdecimal=False)
     )

@@ -40,6 +40,9 @@ class PlanRun(BaseModel):
     model_provider: str
     model_name: str
     prompt_version: str
+    # Provenance chain: input_doc_shas (what was read) -> prompt_hash
+    # (what was asked) -> raw_output_hash (what came back).
+    prompt_hash: str  # SHA-256 of the rendered prompt text
     similarity_threshold: float
     raw_output_hash: str  # SHA-256 of raw model output
     diff_summary: dict[str, Any] = Field(default_factory=dict)  # counts + entries
