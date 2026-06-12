@@ -149,7 +149,7 @@ class PlanRun(BaseModel):
     prompt_version: str
     similarity_threshold: float
     raw_output_hash: str                  # SHA-256 of raw model output
-    diff_summary: dict                    # counts + entries by type
+    diff_summary: dict = Field(default_factory=dict)  # counts + entries by type
     failure_reason: Optional[str] = None
     approved_by: Optional[str] = None
     created_at: datetime
