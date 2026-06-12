@@ -1,0 +1,117 @@
+{
+  "$defs": {
+    "ActorType": {
+      "description": "Who or what created a record (data-model §2.2, attribution §1.5).",
+      "enum": [
+        "human",
+        "agent",
+        "system"
+      ],
+      "title": "ActorType",
+      "type": "string"
+    },
+    "EntityStatus": {
+      "description": "Generic lifecycle status for knowledge entities (data-model §2.3).",
+      "enum": [
+        "draft",
+        "active",
+        "archived",
+        "deprecated"
+      ],
+      "title": "EntityStatus",
+      "type": "string"
+    }
+  },
+  "description": "A software product, platform, or internal system managed by Atlas.",
+  "properties": {
+    "archived_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Archived At"
+    },
+    "constraints": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Constraints",
+      "type": "array"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "created_by_id": {
+      "title": "Created By Id",
+      "type": "string"
+    },
+    "created_by_type": {
+      "$ref": "#/$defs/ActorType"
+    },
+    "description": {
+      "title": "Description",
+      "type": "string"
+    },
+    "goals": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Goals",
+      "type": "array"
+    },
+    "id": {
+      "format": "uuid",
+      "title": "Id",
+      "type": "string"
+    },
+    "key": {
+      "title": "Key",
+      "type": "string"
+    },
+    "name": {
+      "title": "Name",
+      "type": "string"
+    },
+    "non_goals": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Non Goals",
+      "type": "array"
+    },
+    "status": {
+      "$ref": "#/$defs/EntityStatus"
+    },
+    "updated_at": {
+      "format": "date-time",
+      "title": "Updated At",
+      "type": "string"
+    },
+    "vision": {
+      "title": "Vision",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "key",
+    "name",
+    "description",
+    "vision",
+    "status",
+    "created_by_type",
+    "created_by_id",
+    "created_at",
+    "updated_at"
+  ],
+  "title": "Product",
+  "type": "object"
+}

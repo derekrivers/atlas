@@ -1,0 +1,121 @@
+{
+  "$defs": {
+    "ADRStatus": {
+      "description": "Lifecycle of an architecture decision record (data-model §3.2).",
+      "enum": [
+        "proposed",
+        "accepted",
+        "superseded",
+        "rejected"
+      ],
+      "title": "ADRStatus",
+      "type": "string"
+    },
+    "ActorType": {
+      "description": "Who or what created a record (data-model §2.2, attribution §1.5).",
+      "enum": [
+        "human",
+        "agent",
+        "system"
+      ],
+      "title": "ActorType",
+      "type": "string"
+    }
+  },
+  "description": "An architectural decision; prevents agents from rediscovering or\ncontradicting previous choices.",
+  "properties": {
+    "alternatives_considered": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Alternatives Considered",
+      "type": "array"
+    },
+    "consequences": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Consequences",
+      "type": "array"
+    },
+    "context": {
+      "title": "Context",
+      "type": "string"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "created_by_id": {
+      "title": "Created By Id",
+      "type": "string"
+    },
+    "created_by_type": {
+      "$ref": "#/$defs/ActorType"
+    },
+    "decision": {
+      "title": "Decision",
+      "type": "string"
+    },
+    "id": {
+      "format": "uuid",
+      "title": "Id",
+      "type": "string"
+    },
+    "number": {
+      "title": "Number",
+      "type": "integer"
+    },
+    "product_id": {
+      "format": "uuid",
+      "title": "Product Id",
+      "type": "string"
+    },
+    "rationale": {
+      "title": "Rationale",
+      "type": "string"
+    },
+    "status": {
+      "$ref": "#/$defs/ADRStatus"
+    },
+    "supersedes_adr_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Supersedes Adr Id"
+    },
+    "title": {
+      "title": "Title",
+      "type": "string"
+    },
+    "updated_at": {
+      "format": "date-time",
+      "title": "Updated At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "product_id",
+    "number",
+    "title",
+    "status",
+    "context",
+    "decision",
+    "rationale",
+    "created_by_type",
+    "created_by_id",
+    "created_at",
+    "updated_at"
+  ],
+  "title": "ArchitectureDecisionRecord",
+  "type": "object"
+}

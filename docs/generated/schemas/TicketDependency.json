@@ -1,0 +1,59 @@
+{
+  "$defs": {
+    "DependencyType": {
+      "enum": [
+        "depends_on",
+        "relates_to",
+        "implements",
+        "supersedes"
+      ],
+      "title": "DependencyType",
+      "type": "string"
+    }
+  },
+  "description": "Records that one ticket cannot proceed until another ticket, ADR, or\ncomponent exists. ``target_entity_type`` stays a plain string;\npolymorphic target validation is ATLAS-19's concern.",
+  "properties": {
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "dependency_type": {
+      "$ref": "#/$defs/DependencyType"
+    },
+    "id": {
+      "format": "uuid",
+      "title": "Id",
+      "type": "string"
+    },
+    "reason": {
+      "title": "Reason",
+      "type": "string"
+    },
+    "source_ticket_id": {
+      "format": "uuid",
+      "title": "Source Ticket Id",
+      "type": "string"
+    },
+    "target_entity_id": {
+      "format": "uuid",
+      "title": "Target Entity Id",
+      "type": "string"
+    },
+    "target_entity_type": {
+      "title": "Target Entity Type",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "source_ticket_id",
+    "target_entity_type",
+    "target_entity_id",
+    "dependency_type",
+    "reason",
+    "created_at"
+  ],
+  "title": "TicketDependency",
+  "type": "object"
+}

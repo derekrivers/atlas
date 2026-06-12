@@ -1,0 +1,245 @@
+{
+  "$defs": {
+    "ActorType": {
+      "description": "Who or what created a record (data-model §2.2, attribution §1.5).",
+      "enum": [
+        "human",
+        "agent",
+        "system"
+      ],
+      "title": "ActorType",
+      "type": "string"
+    },
+    "RiskLevel": {
+      "description": "Risk classification shared by epics and tickets (data-model §2.4).",
+      "enum": [
+        "low",
+        "medium",
+        "high",
+        "critical"
+      ],
+      "title": "RiskLevel",
+      "type": "string"
+    },
+    "TicketStatus": {
+      "description": "Lifecycle of a ticket (data-model §3.4).",
+      "enum": [
+        "backlog",
+        "planned",
+        "blocked",
+        "ready_for_agent",
+        "in_progress",
+        "pr_open",
+        "review_required",
+        "changes_requested",
+        "done",
+        "rejected",
+        "needs_human_decision"
+      ],
+      "title": "TicketStatus",
+      "type": "string"
+    },
+    "TicketType": {
+      "description": "Kind of work a ticket represents (data-model §3.4).",
+      "enum": [
+        "feature",
+        "bug",
+        "tech_debt",
+        "spike",
+        "documentation",
+        "infrastructure",
+        "research"
+      ],
+      "title": "TicketType",
+      "type": "string"
+    }
+  },
+  "description": "The atomic unit of agent-executable work: small, scoped,\ndependency-aware, and verifiable.",
+  "properties": {
+    "acceptance_criteria": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Acceptance Criteria",
+      "type": "array"
+    },
+    "completed_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Completed At"
+    },
+    "context": {
+      "title": "Context",
+      "type": "string"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "created_by_id": {
+      "title": "Created By Id",
+      "type": "string"
+    },
+    "created_by_type": {
+      "$ref": "#/$defs/ActorType"
+    },
+    "definition_of_done": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Definition Of Done",
+      "type": "array"
+    },
+    "documentation_requirements": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Documentation Requirements",
+      "type": "array"
+    },
+    "epic_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Epic Id"
+    },
+    "estimated_effort": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Estimated Effort"
+    },
+    "external_github_issue_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "External Github Issue Id"
+    },
+    "external_linear_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "External Linear Id"
+    },
+    "id": {
+      "format": "uuid",
+      "title": "Id",
+      "type": "string"
+    },
+    "implementation_notes": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Implementation Notes",
+      "type": "array"
+    },
+    "key": {
+      "title": "Key",
+      "type": "string"
+    },
+    "non_goals": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Non Goals",
+      "type": "array"
+    },
+    "objective": {
+      "title": "Objective",
+      "type": "string"
+    },
+    "priority": {
+      "title": "Priority",
+      "type": "integer"
+    },
+    "product_id": {
+      "format": "uuid",
+      "title": "Product Id",
+      "type": "string"
+    },
+    "relevant_docs": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Relevant Docs",
+      "type": "array"
+    },
+    "risk_level": {
+      "$ref": "#/$defs/RiskLevel"
+    },
+    "status": {
+      "$ref": "#/$defs/TicketStatus"
+    },
+    "test_requirements": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Test Requirements",
+      "type": "array"
+    },
+    "ticket_type": {
+      "$ref": "#/$defs/TicketType"
+    },
+    "title": {
+      "title": "Title",
+      "type": "string"
+    },
+    "updated_at": {
+      "format": "date-time",
+      "title": "Updated At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "product_id",
+    "key",
+    "title",
+    "objective",
+    "context",
+    "status",
+    "ticket_type",
+    "risk_level",
+    "priority",
+    "created_by_type",
+    "created_by_id",
+    "created_at",
+    "updated_at"
+  ],
+  "title": "Ticket",
+  "type": "object"
+}

@@ -1,0 +1,168 @@
+{
+  "$defs": {
+    "ActorType": {
+      "description": "Who or what created a record (data-model §2.2, attribution §1.5).",
+      "enum": [
+        "human",
+        "agent",
+        "system"
+      ],
+      "title": "ActorType",
+      "type": "string"
+    },
+    "EvidenceStatus": {
+      "description": "Outcome of an evidence record or verification check (data-model §2.5).",
+      "enum": [
+        "pending",
+        "passed",
+        "failed",
+        "warning",
+        "not_applicable"
+      ],
+      "title": "EvidenceStatus",
+      "type": "string"
+    },
+    "EvidenceType": {
+      "description": "What an evidence record attests (data-model §3.7).",
+      "enum": [
+        "test_result",
+        "build_result",
+        "lint_result",
+        "coverage_report",
+        "screenshot",
+        "pr_review",
+        "deployment_result",
+        "documentation_update",
+        "manual_approval"
+      ],
+      "title": "EvidenceType",
+      "type": "string"
+    }
+  },
+  "description": "Proof of completion, failure, warning, or validation.\n\nAppend-only. Trust tiers per ADR-0008: created_by_type system|human\nmay carry any status; agent-created evidence is capped at PENDING\nuntil corroborated by a system-tier record or human approval.",
+  "properties": {
+    "agent_run_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Agent Run Id"
+    },
+    "commit_sha": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Commit Sha"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "created_by_id": {
+      "title": "Created By Id",
+      "type": "string"
+    },
+    "created_by_type": {
+      "$ref": "#/$defs/ActorType"
+    },
+    "evidence_type": {
+      "$ref": "#/$defs/EvidenceType"
+    },
+    "external_run_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "External Run Id"
+    },
+    "id": {
+      "format": "uuid",
+      "title": "Id",
+      "type": "string"
+    },
+    "payload_hash": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Payload Hash"
+    },
+    "product_id": {
+      "format": "uuid",
+      "title": "Product Id",
+      "type": "string"
+    },
+    "raw_payload": {
+      "additionalProperties": true,
+      "title": "Raw Payload",
+      "type": "object"
+    },
+    "source_uri": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Source Uri"
+    },
+    "status": {
+      "$ref": "#/$defs/EvidenceStatus"
+    },
+    "summary": {
+      "title": "Summary",
+      "type": "string"
+    },
+    "ticket_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Ticket Id"
+    }
+  },
+  "required": [
+    "id",
+    "product_id",
+    "evidence_type",
+    "status",
+    "summary",
+    "created_by_type",
+    "created_by_id",
+    "created_at"
+  ],
+  "title": "Evidence",
+  "type": "object"
+}

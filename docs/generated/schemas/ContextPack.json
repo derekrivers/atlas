@@ -1,0 +1,140 @@
+{
+  "description": "The compact execution brief given to an agent.",
+  "properties": {
+    "acceptance_criteria": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Acceptance Criteria",
+      "type": "array"
+    },
+    "constraints": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Constraints",
+      "type": "array"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "definition_of_done": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Definition Of Done",
+      "type": "array"
+    },
+    "historical_lessons": {
+      "items": {
+        "format": "uuid",
+        "type": "string"
+      },
+      "title": "Historical Lessons",
+      "type": "array"
+    },
+    "id": {
+      "format": "uuid",
+      "title": "Id",
+      "type": "string"
+    },
+    "input_doc_shas": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Input Doc Shas",
+      "type": "object"
+    },
+    "objective": {
+      "title": "Objective",
+      "type": "string"
+    },
+    "product_id": {
+      "format": "uuid",
+      "title": "Product Id",
+      "type": "string"
+    },
+    "related_tickets": {
+      "items": {
+        "format": "uuid",
+        "type": "string"
+      },
+      "title": "Related Tickets",
+      "type": "array"
+    },
+    "relevant_adrs": {
+      "items": {
+        "format": "uuid",
+        "type": "string"
+      },
+      "title": "Relevant Adrs",
+      "type": "array"
+    },
+    "relevant_docs": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Relevant Docs",
+      "type": "array"
+    },
+    "rendered_markdown": {
+      "title": "Rendered Markdown",
+      "type": "string"
+    },
+    "risks": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Risks",
+      "type": "array"
+    },
+    "test_commands": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Test Commands",
+      "type": "array"
+    },
+    "ticket_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Ticket Id"
+    },
+    "title": {
+      "title": "Title",
+      "type": "string"
+    },
+    "token_estimate": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Token Estimate"
+    }
+  },
+  "required": [
+    "id",
+    "product_id",
+    "title",
+    "objective",
+    "rendered_markdown",
+    "created_at"
+  ],
+  "title": "ContextPack",
+  "type": "object"
+}

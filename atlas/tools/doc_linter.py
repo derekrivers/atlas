@@ -1,4 +1,5 @@
-"""Doc linter v1 (ATLAS-4): mechanical validation of the canonical doc set.
+"""Doc linter (v1: ATLAS-4; v2: ATLAS-16): mechanical validation of the
+canonical doc set.
 
 Checks, per the implementation roadmap and ADR-0006/0007:
 
@@ -18,7 +19,8 @@ Checks, per the implementation roadmap and ADR-0006/0007:
   (containing "retired") are allowed: the roadmap's "Retired:" lines are
   the documented mechanism for recording retirements, not live use.
 - LINK: relative ``.md`` link targets in active docs must resolve to
-  existing files. ``#fragment`` validation is deferred to linter v2.
+  existing files. ``#fragment`` validation is deferred to the
+  heading-anchor index (ATLAS-21), which owns the slug algorithm.
 - PLANNING: docs/planning/ files are renders written only by
   ``atlas apply`` (ADR-0007). Per the render format in
   docs/architecture/knowledge-core.md, a render carries a generated
@@ -27,6 +29,20 @@ Checks, per the implementation roadmap and ADR-0006/0007:
   edit that preserves the header — content-hash integrity arrives with
   PlanRun ingestion in later phases.
 
+v2 (ATLAS-16) adds, per knowledge-core.md "JSON Schema generation":
+
+- JSON: every ```json fence in an active doc declares its schema via
+  ``model=<ModelName>`` in the fence info string (``partial`` suppresses
+  required-field completeness only) or is exempted with ``no-schema``.
+  Mapped examples validate against docs/generated/schemas/: unmapped or
+  malformed fence markers (JSN001), unknown model (JSN002), invalid JSON
+  (JSN003), unknown key (JSN004), type/format mismatch (JSN005), missing
+  required field in a non-partial fence (JSN006). Schema constructs the
+  validator does not recognise fail closed (JSN007), never skip.
+- GENERATED: docs/generated/schemas/ must byte-match an in-memory
+  regeneration from the canonical models (GEN001) — the hand-edit ban on
+  docs/generated/ is mechanical, same rule as docs/planning/.
+
 Exit status: 0 when the doc set is clean, 1 when there are findings.
 This linter only reports; repairing drift is ATLAS-5.
 """
@@ -34,10 +50,16 @@ This linter only reports; repairing drift is ATLAS-5.
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import sys
+import uuid
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
+from typing import Any
+
+from atlas.tools.schemas_export import SCHEMAS_DIR, expected_schemas
 
 MANIFEST_PATH = "docs/MANIFEST.md"
 DECISIONS_DIR = "docs/decisions"
@@ -367,6 +389,325 @@ def check_planning_renders(root: Path) -> list[Finding]:
     return findings
 
 
+# --- v2 (ATLAS-16): JSON examples and generated-schema integrity ----------
+
+# Annotation keys carry no validation semantics; everything else the
+# validator does not explicitly handle fails closed (JSN007).
+_ANNOTATION_KEYS = {"$defs", "default", "description", "title"}
+_HANDLED_SCHEMA_KEYS = _ANNOTATION_KEYS | {
+    "$ref",
+    "additionalProperties",
+    "allOf",
+    "anyOf",
+    "enum",
+    "format",
+    "items",
+    "properties",
+    "required",
+    "type",
+}
+_KNOWN_FORMATS = ("date-time", "uuid")
+_JSON_TYPE_NAMES = {
+    str: "string",
+    bool: "boolean",
+    int: "integer",
+    float: "number",
+    list: "array",
+    dict: "object",
+    type(None): "null",
+}
+
+
+def _json_type_matches(value: Any, type_name: str) -> bool | None:
+    """True/False on a known type name, None on an unknown one."""
+    if type_name == "string":
+        return isinstance(value, str)
+    if type_name == "boolean":
+        return isinstance(value, bool)
+    if type_name == "integer":
+        return isinstance(value, int) and not isinstance(value, bool)
+    if type_name == "number":
+        return isinstance(value, int | float) and not isinstance(value, bool)
+    if type_name == "array":
+        return isinstance(value, list)
+    if type_name == "object":
+        return isinstance(value, dict)
+    if type_name == "null":
+        return value is None
+    return None
+
+
+def _format_ok(value: str, fmt: str) -> bool:
+    try:
+        if fmt == "uuid":
+            uuid.UUID(value)
+        elif fmt == "date-time":
+            datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    return True
+
+
+def _validate_value(
+    value: Any,
+    schema: dict[str, Any],
+    defs: dict[str, Any],
+    path: str,
+    partial: bool,
+) -> list[tuple[str, str]]:
+    """Validate one JSON value against one schema node; fail closed."""
+    unknown = set(schema) - _HANDLED_SCHEMA_KEYS
+    if unknown:
+        return [
+            (
+                "JSN007",
+                f"unsupported schema construct(s) {sorted(unknown)} at {path}; "
+                "the validator fails closed rather than skipping",
+            )
+        ]
+    if "$ref" in schema:
+        ref = schema["$ref"]
+        name = ref.rsplit("/", 1)[-1]
+        target = defs.get(name)
+        if not ref.startswith("#/$defs/") or not isinstance(target, dict):
+            return [("JSN007", f"unresolvable $ref {ref!r} at {path}")]
+        return _validate_value(value, target, defs, path, partial)
+    if "allOf" in schema:
+        findings = []
+        for sub in schema["allOf"]:
+            findings.extend(_validate_value(value, sub, defs, path, partial))
+        return findings
+    if "anyOf" in schema:
+        branches = [
+            _validate_value(value, sub, defs, path, partial) for sub in schema["anyOf"]
+        ]
+        if any(not branch for branch in branches):
+            return []
+        closed = [f for branch in branches for f in branch if f[0] == "JSN007"]
+        if closed:
+            return closed
+        return [("JSN005", f"value does not match any permitted type at {path}")]
+    if "enum" in schema:
+        if value not in schema["enum"]:
+            return [("JSN005", f"{value!r} is not a permitted enum value at {path}")]
+        return []
+    if "type" not in schema:
+        return []  # unconstrained (e.g. dict[str, Any] values)
+    type_name = schema["type"]
+    if not isinstance(type_name, str):
+        return [("JSN007", f"unsupported type form {type_name!r} at {path}")]
+    matches = _json_type_matches(value, type_name)
+    if matches is None:
+        return [("JSN007", f"unknown schema type {type_name!r} at {path}")]
+    if not matches:
+        actual = _JSON_TYPE_NAMES.get(type(value), type(value).__name__)
+        return [("JSN005", f"expected {type_name}, got {actual} at {path}")]
+    findings = []
+    if type_name == "string" and "format" in schema:
+        fmt = schema["format"]
+        if fmt not in _KNOWN_FORMATS:
+            findings.append(("JSN007", f"unknown string format {fmt!r} at {path}"))
+        elif not _format_ok(value, fmt):
+            findings.append(("JSN005", f"{value!r} is not a valid {fmt} at {path}"))
+    elif type_name == "array" and isinstance(schema.get("items"), dict):
+        for index, element in enumerate(value):
+            findings.extend(
+                _validate_value(
+                    element, schema["items"], defs, f"{path}[{index}]", partial
+                )
+            )
+    elif type_name == "object":
+        properties = schema.get("properties")
+        if isinstance(properties, dict):
+            for key, item in value.items():
+                if key not in properties:
+                    findings.append(("JSN004", f"unknown key {path}.{key}"))
+                else:
+                    findings.extend(
+                        _validate_value(
+                            item, properties[key], defs, f"{path}.{key}", partial
+                        )
+                    )
+            if not partial:
+                for required in schema.get("required", []):
+                    if required not in value:
+                        findings.append(
+                            ("JSN006", f"missing required key {path}.{required}")
+                        )
+        else:
+            additional = schema.get("additionalProperties", True)
+            if isinstance(additional, dict):
+                for key, item in value.items():
+                    findings.extend(
+                        _validate_value(
+                            item, additional, defs, f"{path}.{key}", partial
+                        )
+                    )
+            elif additional is not True:
+                findings.append(
+                    ("JSN007", f"unsupported additionalProperties at {path}")
+                )
+    return findings
+
+
+def _json_fences(lines: list[str]) -> list[tuple[int, list[str], str]]:
+    """(opening line number, info tokens, body) per ```json fence."""
+    fences = []
+    in_fence = False
+    tokens: list[str] = []
+    start = 0
+    body: list[str] = []
+    for lineno, line in enumerate(lines, start=1):
+        stripped = line.lstrip()
+        if stripped.startswith("```"):
+            if in_fence:
+                if tokens and tokens[0] == "json":
+                    fences.append((start, tokens, "\n".join(body)))
+                in_fence = False
+            else:
+                in_fence = True
+                tokens = stripped[3:].strip().split()
+                start = lineno
+                body = []
+            continue
+        if in_fence:
+            body.append(line)
+    return fences
+
+
+def _parse_fence_marker(
+    tokens: list[str],
+) -> tuple[str | None, bool, bool, list[str]]:
+    """-> (model, partial, exempt, bad tokens) from a json info string."""
+    model: str | None = None
+    partial = False
+    exempt = False
+    bad = []
+    for token in tokens[1:]:
+        if token == "partial":
+            partial = True
+        elif token == "no-schema":
+            exempt = True
+        elif token.startswith("model=") and len(token) > len("model="):
+            model = token.removeprefix("model=")
+        else:
+            bad.append(token)
+    return model, partial, exempt, bad
+
+
+def check_json_examples(root: Path) -> list[Finding]:
+    findings = []
+    schemas_dir = root / SCHEMAS_DIR
+    for path in _active_md_files(root):
+        rel = _rel(root, path)
+        lines = path.read_text(encoding="utf-8").splitlines()
+        for lineno, tokens, body in _json_fences(lines):
+            model, partial, exempt, bad = _parse_fence_marker(tokens)
+            if bad:
+                findings.append(
+                    Finding(
+                        rel,
+                        lineno,
+                        "JSN001",
+                        f"unrecognised fence marker(s) {bad}: expected "
+                        "model=<ModelName>, partial, or no-schema",
+                    )
+                )
+                continue
+            if exempt:
+                if model or partial:
+                    findings.append(
+                        Finding(
+                            rel,
+                            lineno,
+                            "JSN001",
+                            "no-schema contradicts model=/partial markers",
+                        )
+                    )
+                continue
+            if model is None:
+                findings.append(
+                    Finding(
+                        rel,
+                        lineno,
+                        "JSN001",
+                        "json fence is not mapped: declare model=<ModelName> "
+                        "or mark it no-schema (knowledge-core.md)",
+                    )
+                )
+                continue
+            schema_path = schemas_dir / f"{model}.json"
+            if not schema_path.is_file():
+                findings.append(
+                    Finding(
+                        rel,
+                        lineno,
+                        "JSN002",
+                        f"model={model} has no schema in {SCHEMAS_DIR}/",
+                    )
+                )
+                continue
+            try:
+                schema = json.loads(schema_path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                findings.append(
+                    Finding(
+                        rel,
+                        lineno,
+                        "JSN002",
+                        f"schema for model={model} is unreadable",
+                    )
+                )
+                continue
+            try:
+                example = json.loads(body)
+            except json.JSONDecodeError as error:
+                findings.append(
+                    Finding(rel, lineno, "JSN003", f"invalid JSON: {error}")
+                )
+                continue
+            defs = schema.get("$defs", {})
+            for code, message in _validate_value(example, schema, defs, model, partial):
+                findings.append(Finding(rel, lineno, code, message))
+    return findings
+
+
+def check_generated_schemas(root: Path) -> list[Finding]:
+    """docs/generated/schemas must byte-match an in-memory regeneration."""
+    expected = expected_schemas()
+    schemas_dir = root / SCHEMAS_DIR
+    hint = "docs/generated is machine-written; run python -m atlas.tools.schemas_export"
+    if not schemas_dir.is_dir():
+        return [Finding(SCHEMAS_DIR, 1, "GEN001", f"directory is missing; {hint}")]
+    findings = []
+    for name, content in sorted(expected.items()):
+        rel = f"{SCHEMAS_DIR}/{name}.json"
+        path = schemas_dir / f"{name}.json"
+        if not path.is_file():
+            findings.append(Finding(rel, 1, "GEN001", f"schema is missing; {hint}"))
+        elif path.read_text(encoding="utf-8") != content:
+            findings.append(
+                Finding(
+                    rel,
+                    1,
+                    "GEN001",
+                    f"schema does not match regeneration (hand-edited or "
+                    f"stale); {hint}",
+                )
+            )
+    for path in sorted(schemas_dir.glob("*.json")):
+        if path.stem not in expected:
+            findings.append(
+                Finding(
+                    f"{SCHEMAS_DIR}/{path.name}",
+                    1,
+                    "GEN001",
+                    f"file is not a canonical model schema; {hint}",
+                )
+            )
+    return findings
+
+
 def lint_repo(root: Path) -> list[Finding]:
     findings = [
         *check_adrs(root),
@@ -374,13 +715,15 @@ def lint_repo(root: Path) -> list[Finding]:
         *check_legacy_names(root),
         *check_intra_doc_links(root),
         *check_planning_renders(root),
+        *check_json_examples(root),
+        *check_generated_schemas(root),
     ]
     return sorted(findings, key=lambda f: (f.path, f.line, f.code))
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        prog="doc_linter", description="Atlas doc linter v1 (ATLAS-4)"
+        prog="doc_linter", description="Atlas doc linter (ATLAS-4 v1, ATLAS-16 v2)"
     )
     parser.add_argument(
         "--repo", default=".", help="repository root (default: current directory)"

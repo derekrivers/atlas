@@ -6,6 +6,7 @@ by a pytest pin."""
 from pathlib import Path
 
 from atlas.tools.doc_linter import Finding, lint_repo, main
+from atlas.tools.schemas_export import export
 
 GOOD_ADR = """\
 # ADR-0001: Test decision
@@ -70,6 +71,9 @@ def build_good_repo(root: Path) -> None:
     write(root, "docs/architecture/arch.md", "# Architecture\n\nDetail.\n")
     write(root, "docs/decisions/0001-test-decision.md", GOOD_ADR)
     write(root, "docs/planning/.gitkeep", "")
+    # Linter v2's regeneration check (GEN001) requires real generated
+    # schemas in any clean fixture repo.
+    export(root)
 
 
 def codes(findings: list[Finding]) -> set[str]:
