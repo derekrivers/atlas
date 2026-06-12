@@ -7,6 +7,8 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
+from atlas.core.enums import ActorType
+
 
 class DependencyType(StrEnum):
     # depends_on is the single stored direction; "blocks" is derived at
@@ -28,4 +30,6 @@ class TicketDependency(BaseModel):
     target_entity_id: UUID
     dependency_type: DependencyType
     reason: str
+    created_by_type: ActorType
+    created_by_id: str
     created_at: datetime

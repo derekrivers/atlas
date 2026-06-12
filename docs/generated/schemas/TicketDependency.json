@@ -1,5 +1,15 @@
 {
   "$defs": {
+    "ActorType": {
+      "description": "Who or what created a record (data-model §2.2, attribution §1.5).",
+      "enum": [
+        "human",
+        "agent",
+        "system"
+      ],
+      "title": "ActorType",
+      "type": "string"
+    },
     "DependencyType": {
       "enum": [
         "depends_on",
@@ -17,6 +27,13 @@
       "format": "date-time",
       "title": "Created At",
       "type": "string"
+    },
+    "created_by_id": {
+      "title": "Created By Id",
+      "type": "string"
+    },
+    "created_by_type": {
+      "$ref": "#/$defs/ActorType"
     },
     "dependency_type": {
       "$ref": "#/$defs/DependencyType"
@@ -52,6 +69,8 @@
     "target_entity_id",
     "dependency_type",
     "reason",
+    "created_by_type",
+    "created_by_id",
     "created_at"
   ],
   "title": "TicketDependency",

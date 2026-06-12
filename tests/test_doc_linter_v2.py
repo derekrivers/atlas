@@ -7,6 +7,7 @@ mismatched JSON example")."""
 import shutil
 from pathlib import Path
 
+import pytest
 from test_doc_linter import build_good_repo, codes, write
 
 from atlas.tools.doc_linter import lint_repo, main
@@ -143,6 +144,25 @@ def test_key_string_in_uuid_list_fails_jsn005(tmp_path: Path) -> None:
     findings = lint_repo(tmp_path)
     assert codes(findings) == {"JSN005"}
     assert any("uuid" in finding.message for finding in findings)
+
+
+@pytest.mark.parametrize("out_of_bounds", ["-0.1", "1.1"])
+def test_numeric_bound_violation_fails_jsn005(
+    tmp_path: Path, out_of_bounds: str
+) -> None:
+    # Lesson.confidence carries minimum 0 / maximum 1 in the generated
+    # schema; both directions are JSN005, not a skipped construct.
+    build_good_repo(tmp_path)
+    write_fence(tmp_path, f'{{"confidence": {out_of_bounds}}}')
+    findings = lint_repo(tmp_path)
+    assert codes(findings) == {"JSN005"}
+    assert any("Lesson.confidence" in finding.message for finding in findings)
+
+
+def test_numeric_bounds_accept_boundary_values(tmp_path: Path) -> None:
+    build_good_repo(tmp_path)
+    write_fence(tmp_path, '{"confidence": 1}')
+    assert lint_repo(tmp_path) == []
 
 
 def test_missing_required_fails_jsn006_in_non_partial(tmp_path: Path) -> None:

@@ -99,6 +99,8 @@ def dependency_kwargs() -> dict[str, Any]:
         "target_entity_id": uuid4(),
         "dependency_type": "depends_on",
         "reason": "Models must exist before serialisation.",
+        "created_by_type": "human",
+        "created_by_id": "operator",
         "created_at": NOW,
     }
 

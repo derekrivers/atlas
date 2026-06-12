@@ -456,6 +456,8 @@ class TicketDependency(BaseModel):
     target_entity_id: UUID
     dependency_type: DependencyType
     reason: str
+    created_by_type: ActorType
+    created_by_id: str
     created_at: datetime
 ```
 
@@ -469,6 +471,8 @@ CREATE TABLE ticket_dependencies (
     target_entity_id UUID NOT NULL,
     dependency_type TEXT NOT NULL,
     reason TEXT NOT NULL,
+    created_by_type TEXT NOT NULL,
+    created_by_id TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL
 );
 ```
@@ -514,7 +518,7 @@ class Lesson(BaseModel):
     problem: str
     solution: str
     outcome: str
-    confidence: float
+    confidence: float = Field(ge=0, le=1)
     related_ticket_ids: list[UUID] = Field(default_factory=list)
     related_adr_ids: list[UUID] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)
@@ -536,7 +540,7 @@ CREATE TABLE lessons (
     problem TEXT NOT NULL,
     solution TEXT NOT NULL,
     outcome TEXT NOT NULL,
-    confidence NUMERIC(4,3) NOT NULL,
+    confidence NUMERIC(4,3) NOT NULL CHECK (confidence >= 0 AND confidence <= 1),
     related_ticket_ids JSONB NOT NULL DEFAULT '[]',
     related_adr_ids JSONB NOT NULL DEFAULT '[]',
     tags JSONB NOT NULL DEFAULT '[]',
