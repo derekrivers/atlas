@@ -55,10 +55,21 @@ class _RenderDumper(yaml.SafeDumper):
         return True
 
 
+# YAML treats these as line breaks and normalises raw occurrences to \n
+# on load (silent corruption, found by the ATLAS-19 property tests);
+# strings containing them must emit double-quoted with escapes.
+_UNICODE_BREAKS = ("\x85", "\u2028", "\u2029")
+
+
 def _str_representer(dumper: yaml.SafeDumper, data: str) -> yaml.ScalarNode:
     # Multi-line strings emit as literal block scalars for diff
     # readability (knowledge-core "Planning render format").
-    style = "|" if "\n" in data else None
+    if any(break_char in data for break_char in _UNICODE_BREAKS):
+        style: str | None = '"'
+    elif "\n" in data:
+        style = "|"
+    else:
+        style = None
     return dumper.represent_scalar("tag:yaml.org,2002:str", data, style=style)
 
 

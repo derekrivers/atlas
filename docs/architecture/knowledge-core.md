@@ -63,8 +63,11 @@ and enums serialise as plain strings (enum values); datetimes as ISO 8601
 timezone exactly; floats in shortest-repr form. Optional fields are always present, `null` when
 unset, so every entry carries the full declaration-order field set.
 Multi-line strings emit as literal block scalars for diff readability;
-mapping-valued fields emit with sorted keys. Deserialisation is
-fail-closed: an unknown key in an entry is a typed error, never ignored.
+strings containing Unicode line-break characters other than `\n` (NEL
+U+0085, LS U+2028, PS U+2029) emit double-quoted with escapes, because
+YAML normalises raw occurrences to `\n` on load. Mapping-valued fields
+emit with sorted keys. Deserialisation is fail-closed: an unknown key
+in an entry is a typed error, never ignored.
 The render header comment records `plan_run_id`, the prompt version, and
 the key-counter high-water mark.
 
@@ -110,7 +113,9 @@ CLI lands (Phase 2), the export entry point is
 - Render determinism: serialising the same backlog twice is byte-identical.
 - Polymorphic integrity: a dependency whose target id resolves to nothing
   is detected by the validation helper (consumed later by graph
-  validation).
+  validation). The helper resolves targets against every table-backed
+  entity type; `component` is documented but storeless and is reported
+  unresolvable; unknown target types are detections, never skips.
 
 ## Open items
 

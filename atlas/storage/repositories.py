@@ -94,14 +94,30 @@ class _Repo(Generic[M]):
         self._db = db
         self._model_cls = model_cls
         self._row_cls = row_cls
+        # JSON columns need JSON-compatible values: a list[UUID] field
+        # dumped in python mode reaches json.dumps unserialised (found
+        # by the ATLAS-19 property tests).
+        self._json_fields = {
+            column.name
+            for column in row_cls.__table__.columns
+            if isinstance(column.type, sa.JSON)
+        }
 
     def _to_model(self, row: Base) -> M:
         return self._model_cls.model_validate(row, from_attributes=True)
 
+    def _to_row(self, model: M) -> Base:
+        payload = model.model_dump()
+        if self._json_fields:
+            json_payload = model.model_dump(mode="json")
+            for name in self._json_fields:
+                payload[name] = json_payload[name]
+        return self._row_cls(**payload)
+
     def add(self, model: M) -> M:
         _reject_naive(model)
         with self._db.session() as session, session.begin():
-            session.add(self._row_cls(**model.model_dump()))
+            session.add(self._to_row(model))
         return model
 
     def get(self, entity_id: UUID) -> M | None:
