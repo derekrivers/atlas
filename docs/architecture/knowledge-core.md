@@ -38,15 +38,30 @@ is no bypass parameter.
 `docs/planning/` renders must be byte-stable so AT-2 can compare them:
 
 - `epics.yaml`, `tickets.yaml`, `dependencies.yaml`: top-level key is the
-  plural entity name; entries sorted by `key` ascending; field order fixed
-  to the Pydantic model declaration order; block style; LF endings; UTF-8;
-  no anchors/aliases.
-- Each entry carries both `key` (human identity, used by the reconciler)
-  and `id` (UUID, traceability into the database).
+  plural entity name; entries sorted ascending (collation below); field
+  order fixed to the Pydantic model declaration order; block style; LF
+  endings; UTF-8; no anchors/aliases.
+- Keyed entities (epics, tickets) carry both `key` (human identity, used
+  by the reconciler) and `id` (UUID, traceability into the database), and
+  sort numerically within a shared key prefix (ATLAS-2 before ATLAS-10).
+  Dependency entries are keyless (data-model §3.5): they carry `id` and
+  sort by (source_ticket_id, target_entity_type, target_entity_id,
+  dependency_type).
 - A generated header comment records `plan_run_id` and the prompt version,
   and states the file is a render written only by `atlas apply`.
 - `roadmap.mmd` is a Mermaid `graph TD` of ticket keys with `depends_on`
   edges, epic subgraphs, and status-based classes.
+
+Scalar and entry conventions (ATLAS-17, `atlas/core/yaml_io.py`): UUIDs
+and enums serialise as plain strings (enum values); datetimes as ISO 8601
+(UTC as the `Z` suffix, other offsets as `±HH:MM`), preserving the stored
+timezone exactly; floats in shortest-repr form. Optional fields are always present, `null` when
+unset, so every entry carries the full declaration-order field set.
+Multi-line strings emit as literal block scalars for diff readability;
+mapping-valued fields emit with sorted keys. Deserialisation is
+fail-closed: an unknown key in an entry is a typed error, never ignored.
+The render header comment records `plan_run_id`, the prompt version, and
+the key-counter high-water mark.
 
 ## Key counter
 
