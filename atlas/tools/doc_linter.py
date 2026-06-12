@@ -402,6 +402,8 @@ _HANDLED_SCHEMA_KEYS = _ANNOTATION_KEYS | {
     "enum",
     "format",
     "items",
+    "maximum",
+    "minimum",
     "properties",
     "required",
     "type",
@@ -503,6 +505,17 @@ def _validate_value(
         actual = _JSON_TYPE_NAMES.get(type(value), type(value).__name__)
         return [("JSN005", f"expected {type_name}, got {actual} at {path}")]
     findings = []
+    if type_name in ("integer", "number"):
+        minimum = schema.get("minimum")
+        if minimum is not None and value < minimum:
+            findings.append(
+                ("JSN005", f"{value!r} is below the minimum {minimum} at {path}")
+            )
+        maximum = schema.get("maximum")
+        if maximum is not None and value > maximum:
+            findings.append(
+                ("JSN005", f"{value!r} is above the maximum {maximum} at {path}")
+            )
     if type_name == "string" and "format" in schema:
         fmt = schema["format"]
         if fmt not in _KNOWN_FORMATS:

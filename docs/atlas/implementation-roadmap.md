@@ -257,8 +257,6 @@ ATLAS-90 End-to-end delivery automation test (#boundary)
 Retired: ATLAS-89 (Agent dashboard). Intra-ticket retry orchestration is
 Symphony's responsibility, not an Atlas ticket (#retry-and-failure-seam).
 
-Retired: ATLAS-89 (Agent dashboard).
-
 Milestone test: a ready, context-rich fixture ticket flows
 pack → Symphony → PR → evidence → verification without manual steps other
 than the defined human gates.

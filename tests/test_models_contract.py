@@ -126,6 +126,8 @@ DOCUMENTED_FIELDS: dict[type[BaseModel], dict[str, FieldSpec]] = {
         "target_entity_id": (UUID, REQUIRED),
         "dependency_type": (DependencyType, REQUIRED),
         "reason": (str, REQUIRED),
+        "created_by_type": (ActorType, REQUIRED),
+        "created_by_id": (str, REQUIRED),
         "created_at": (datetime, REQUIRED),
     },
 }
@@ -166,7 +168,13 @@ def test_status_fields_use_shared_enums() -> None:
     assert Product.model_fields["status"].annotation is EntityStatus
     assert Epic.model_fields["risk_level"].annotation is RiskLevel
     assert Ticket.model_fields["risk_level"].annotation is RiskLevel
-    for model_cls in (Product, ArchitectureDecisionRecord, Epic, Ticket):
+    for model_cls in (
+        Product,
+        ArchitectureDecisionRecord,
+        Epic,
+        Ticket,
+        TicketDependency,
+    ):
         assert model_cls.model_fields["created_by_type"].annotation is ActorType
 
 

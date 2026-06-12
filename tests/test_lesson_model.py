@@ -12,6 +12,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
+from annotated_types import Ge, Le
 from pydantic import ValidationError
 
 import atlas.core.enums
@@ -31,6 +32,7 @@ DOCUMENTED_FIELDS: dict[str, tuple[Any, Any]] = {
     "problem": (str, REQUIRED),
     "solution": (str, REQUIRED),
     "outcome": (str, REQUIRED),
+    # Required, bounded 0..1 (ratified; SQL CHECK mirrors it).
     "confidence": (float, REQUIRED),
     "related_ticket_ids": (list[UUID], LIST_FACTORY),
     "related_adr_ids": (list[UUID], LIST_FACTORY),
@@ -127,6 +129,27 @@ def test_missing_required_field_rejected() -> None:
 def test_wrong_type_rejected() -> None:
     with pytest.raises(ValidationError):
         Lesson(**lesson_kwargs() | {"confidence": "high"})
+
+
+def test_confidence_declares_documented_bounds() -> None:
+    # §3.6: Field(ge=0, le=1). Asserted against the documented bounds so
+    # a silently loosened constraint fails.
+    metadata = Lesson.model_fields["confidence"].metadata
+    assert Ge(0) in metadata
+    assert Le(1) in metadata
+
+
+@pytest.mark.parametrize("out_of_bounds", [-0.1, 1.1])
+def test_confidence_out_of_bounds_rejected(out_of_bounds: float) -> None:
+    with pytest.raises(ValidationError, match="confidence"):
+        Lesson(**lesson_kwargs() | {"confidence": out_of_bounds})
+
+
+@pytest.mark.parametrize("in_bounds", [0, 1, 0.9])
+def test_confidence_boundaries_accepted(in_bounds: float) -> None:
+    assert Lesson(**lesson_kwargs() | {"confidence": in_bounds}).confidence == (
+        in_bounds
+    )
 
 
 def test_status_uses_canonical_shared_enum() -> None:

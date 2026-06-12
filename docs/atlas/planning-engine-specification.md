@@ -132,32 +132,9 @@ All gates must pass before a diff is presented. Failures fail the
 
 ## 6. PlanRun schema
 
-```python
-class PlanRunStatus(str, Enum):
-    PROPOSED = "proposed"
-    APPLIED = "applied"
-    REJECTED = "rejected"
-    FAILED = "failed"
-
-class PlanRun(BaseModel):
-    id: UUID
-    product_id: UUID
-    status: PlanRunStatus
-    input_doc_shas: dict[str, str]        # path -> git blob SHA
-    model_provider: str
-    model_name: str
-    prompt_version: str
-    similarity_threshold: float
-    raw_output_hash: str                  # SHA-256 of raw model output
-    diff_summary: dict = Field(default_factory=dict)  # counts + entries by type
-    failure_reason: Optional[str] = None
-    approved_by: Optional[str] = None
-    created_at: datetime
-    applied_at: Optional[datetime] = None
-```
-
-PostgreSQL table mirrors the model (`plan_runs`), following the existing
-schema conventions. A `PlanRun` row is inserted at `status: proposed`;
+The `PlanRun` model and the `plan_runs` table are defined once, in
+`data-model-and-schemas.md` §3.10; this specification deliberately
+maintains no copy. A `PlanRun` row is inserted at `status: proposed`;
 exactly one finalising transition to `applied`, `rejected`, or `failed` is
 permitted, setting only `approved_by`, `applied_at`, and `failure_reason`.
 All other fields are immutable after insert, and rows are never deleted.

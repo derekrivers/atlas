@@ -43,6 +43,8 @@
       "$ref": "#/$defs/LessonCategory"
     },
     "confidence": {
+      "maximum": 1,
+      "minimum": 0,
       "title": "Confidence",
       "type": "number"
     },
