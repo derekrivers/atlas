@@ -41,10 +41,18 @@ Current backlog ──────────► Reconciler ◄─────�
 
 `atlas plan` never writes to `docs/planning/`.
 
+Inputs are read from HEAD: each document's content is the blob at its
+recorded SHA, so content and SHA are consistent by construction. A
+working tree that is dirty or carries untracked files within the input
+set fails ingestion with a typed error — planning runs only against
+committed state (ADR-0006); there is no untracked-file fallback.
+
 ### 2.2 `atlas apply`
 
 1. Load the most recent `PlanRun` with `status: proposed`.
-2. Refuse if input doc SHAs no longer match the working tree (stale plan).
+2. Refuse if fresh ingestion (which itself fails with a typed error on
+   a dirty input set) yields input doc SHAs that no longer match the
+   recorded `input_doc_shas` (stale plan).
 3. Display the diff; require explicit operator confirmation.
 4. Assign keys to `ADD` items (monotonic `ATLAS-n` from a persisted
    counter; the counter never reuses keys, including archived ones).
@@ -64,7 +72,8 @@ planning renders (ADR-0006); the doc linter flags out-of-band edits.
 `source_anchor` slugs are GitHub-style: heading text lowercased, characters
 outside `[a-z0-9 -]` stripped, spaces to hyphens, duplicate headings within
 a file suffixed `-1`, `-2`. The ingestion index (ATLAS-21) is the single
-implementation; the doc linter and the renderer reuse it.
+implementation; the doc linter and the renderer reuse it. Headings inside
+fenced code blocks are not headings; the scan excludes them.
 
 ## 2.4 Diff presentation
 
