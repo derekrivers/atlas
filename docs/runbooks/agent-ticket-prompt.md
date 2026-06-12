@@ -275,6 +275,13 @@ Rules of the variant:
   may improve indicative elements within the approved scope, reporting
   each such change as a judgment call in the completion report.
   (Origin: ATLAS-18's conversion-site centralisation.)
+- Gate presentations and completion reports are repo-resident PR
+  artefacts: the gate presentation is posted as the opening PR
+  description (or first comment when the branch precedes the plan),
+  and the completion report is posted as a PR comment at close. A
+  remote reviewer works from the PR by number; the operator relays
+  verdicts. The conversation pane is a working surface, not the
+  record.
 - When the agent gets something wrong, the durable fix is usually a
   missing rule or doc clarification — encode it in AGENTS.md or the
   relevant canonical doc and commit, so every future session inherits

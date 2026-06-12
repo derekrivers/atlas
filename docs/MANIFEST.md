@@ -76,6 +76,9 @@ Runbooks (`docs/runbooks/`):
 
 - `docs/runbooks/agent-ticket-prompt.md` — reusable agent ticket prompt
   (required reading, plan gate, scope and definition-of-done rules)
+- `docs/runbooks/review-doctrine.md` — review contract for gate
+  presentations and completion reports (gate and close checklists,
+  verdict forms, reviewer conduct)
 - Stubs awaiting content: `docs/runbooks/local-development.md`,
   `docs/runbooks/running-atlas-plan.md`, `docs/runbooks/troubleshooting.md`
 
