@@ -27,8 +27,9 @@ Current backlog ──────────► Reconciler ◄─────�
 ### 2.1 `atlas plan`
 
 1. Collect inputs: `PRODUCT.md`, `ARCHITECTURE.md`, `ROADMAP.md`,
-   `WORKFLOW.md`, all accepted ADRs, all `docs/atlas/` and `docs/domain/`
-   documents. Record the git blob SHA of every input.
+   `WORKFLOW.md`, all accepted ADRs, all `docs/atlas/` documents, and
+   `docs/domain/` documents if present. Record the git blob SHA of every
+   input.
 2. Load the current backlog from `docs/planning/` (empty on first run).
 3. Render the planner prompt (versioned template) containing the documents,
    the current backlog, and the output schema.
@@ -47,6 +48,8 @@ Current backlog ──────────► Reconciler ◄─────�
 3. Display the diff; require explicit operator confirmation.
 4. Assign keys to `ADD` items (monotonic `ATLAS-n` from a persisted
    counter; the counter never reuses keys, including archived ones).
+   Tickets take `ATLAS-<n>` and epics `ATLAS-E<n>`, each from its own
+   monotonic counter; neither ever reuses a key.
 5. Write `docs/planning/epics.yaml`, `tickets.yaml`, `dependencies.yaml`,
    and regenerate `docs/planning/roadmap.mmd` (Mermaid render of the
    dependency DAG).
@@ -73,21 +76,20 @@ counts per type. The key counter lives in the `key_counters` table
 
 ## 3. Proposal contract
 
-The proposer emits epics and tickets conforming to the canonical Pydantic
-models, with these planning-specific rules:
+The proposal shape — the envelope (`epics`, `tickets`, `dependencies`,
+`planner_notes`), ProposalEpic, ProposalTicket, ProposalDependency,
+reference forms, and required-field sets — is defined once, in
+`data-model-and-schemas.md` §3.11 (Planning Proposal Contract); this
+specification maintains no copy. Rules about gate behaviour rather than
+shape:
 
-- `key` is `null` for new items and an echoed existing key otherwise. The
-  model never invents keys.
-- Every epic and ticket carries `source_anchor: <doc path>#<heading-slug>`
-  pointing at the document section that motivates it.
-- Dependencies reference tickets by echoed key or by proposal-local index
-  for new items; the reconciler resolves indices after key assignment.
-- Tickets must include `objective`, `acceptance_criteria` (≥1),
-  `non_goals`, `test_requirements`, `ticket_type`, and `risk_level`.
-
-JSON Schema for the proposal is generated from the Pydantic models. JSON
-examples in documentation are illustrative only; the models are the single
-contract.
+- The model never invents keys (ADR-0007); key integrity is gate 6's.
+- The reconciler resolves `new:<n>` and `new_epic:<n>` references after
+  key assignment; the parser validates index bounds before the
+  reconciler runs.
+- JSON Schema for the proposal is generated from the Proposal Pydantic
+  models (ATLAS-23). JSON examples in documentation are illustrative
+  only; the models are the single contract.
 
 ## 4. Reconciler
 

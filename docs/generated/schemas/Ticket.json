@@ -122,6 +122,8 @@
     "estimated_effort": {
       "anyOf": [
         {
+          "maximum": 2147483647,
+          "minimum": -2147483648,
           "type": "integer"
         },
         {
@@ -183,6 +185,8 @@
       "type": "string"
     },
     "priority": {
+      "maximum": 2147483647,
+      "minimum": -2147483648,
       "title": "Priority",
       "type": "integer"
     },
@@ -200,6 +204,10 @@
     },
     "risk_level": {
       "$ref": "#/$defs/RiskLevel"
+    },
+    "source_anchor": {
+      "title": "Source Anchor",
+      "type": "string"
     },
     "status": {
       "$ref": "#/$defs/TicketStatus"
@@ -235,6 +243,7 @@
     "ticket_type",
     "risk_level",
     "priority",
+    "source_anchor",
     "created_by_type",
     "created_by_id",
     "created_at",

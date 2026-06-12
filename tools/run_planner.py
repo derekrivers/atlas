@@ -41,8 +41,9 @@ INPUT_GLOBS = [
     "docs/domain/*.md",
 ]
 
-# Placeholder proposal schema. Once ATLAS-16 exists, replace this with the
-# JSON Schema generated from the Pydantic models.
+# Placeholder proposal schema. The Proposal models (ProposalEpic,
+# ProposalTicket, ProposalDependency; ATLAS-23) generate the real schema;
+# this harness is retired by ATLAS-26, so the placeholder stays.
 PROPOSAL_SCHEMA = {
     "type": "object",
     "required": ["epics", "tickets", "dependencies", "planner_notes"],
