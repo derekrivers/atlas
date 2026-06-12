@@ -188,13 +188,93 @@ Rules of the variant:
 
 ---
 
+## Variant: specification-gap tickets (single gate, named gaps)
+
+Use the specification-gap variant when a design doc leaves a genuine
+design gap the ticket must close. Add to the template, before the
+Plan-first section:
+
+```text
+## The design gap(s) you must resolve in your plan
+
+{The operator names each gap and constrains the proposal space —
+e.g. "propose the mapping mechanism, with the failure mode for an
+unmapped fence stated".}
+
+Resolve these BY PROPOSAL AT THE PLAN GATE, never silently mid-read.
+Your plan must state, per gap: the chosen convention, its failure
+modes, and the exact wording added to the owning canonical doc —
+convention and enforcement land in the same change. Default
+constraint: prefer explicit declaration over inference — mechanical
+trust beats cleverness.
+```
+
+Rules of the variant:
+
+- The OPERATOR names the gaps. An agent that discovers an unnamed gap
+  mid-read stops and asks — a named-gap licence never extends to
+  gaps the prompt did not name.
+- The chosen convention's wording lands in the owning canonical doc
+  in the same change as its enforcement; a convention without
+  enforcement is a documented wish.
+- First uses: ATLAS-16 (fence mapping), ATLAS-17 (scalar
+  representation), ATLAS-18 (four gaps), ATLAS-19 (three gaps).
+
+---
+
+## Variant: single-gate autonomy
+
+Use this variant when the operator grants execution autonomy.
+Replace the template's "Plan first" section with:
+
+```text
+## Plan first — single gate, then autonomous execution
+
+Before editing anything, present a short plan: files you will create
+or change, the tests you will add, and anything you will explicitly
+NOT do. Wait for my approval. If you are running in a mode that
+cannot pause for input, present the plan and end your turn.
+
+After the plan is approved, execute to completion WITHOUT further
+prompts:
+- Run any read, build, test, lint, type-check, or pre-commit command
+  freely — no permission requests, no narration before routine
+  commands.
+- Make all in-scope file edits without per-edit confirmation.
+- No "shall I continue", no progress check-ins, no pauses between
+  steps.
+- Stop and ask ONLY if: (a) the docs conflict or are genuinely
+  ambiguous beyond any operator-named gaps; (b) correct
+  implementation would require touching files outside the approved
+  plan; or (c) an operation would be destructive or irreversible
+  outside the repository working tree.
+```
+
+Rules of the variant:
+
+- The three stop conditions are the only three. Everything else —
+  including failures, lint errors, and forced consequences of the
+  approved plan — is the agent's to resolve within it.
+- Prompt text cannot grant client-side permissions: the operator's
+  tool allowlist must match the autonomy granted, or the session
+  degrades into the permission prompts the prompt promised away.
+- First use: ATLAS-11; zero mid-execution prompts and zero gate
+  violations across ATLAS-11..19.
+
+---
+
 ## Notes on use
 
 - One ticket per session. If the agent proposes bundling a second
   ticket, decline and start a fresh session for it.
 - The plan-approval gate is the cheapest review you will ever do; never
   skip it. A post-hoc review of a finished tree is weaker than
-  pre-approval of a plan, because sunk work biases the review.
+  pre-approval of a plan, because sunk work biases the review. A plan's
+  scope boundaries, contract decisions, and operator rulings are
+  binding; layout and implementation details are indicative — an agent
+  may improve indicative elements within the approved scope, reporting
+  each such change as a judgment call in the completion report.
+  (Origin: ATLAS-18's conversion-site centralisation.)
 - When the agent gets something wrong, the durable fix is usually a
   missing rule or doc clarification — encode it in AGENTS.md or the
   relevant canonical doc and commit, so every future session inherits
