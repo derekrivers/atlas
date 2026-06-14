@@ -324,6 +324,9 @@ class PlanRunRow(Base):
     model_name: Mapped[str] = mapped_column(sa.Text)
     prompt_version: Mapped[str] = mapped_column(sa.Text)
     prompt_hash: Mapped[str] = mapped_column(sa.Text)
+    model_parameters: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, server_default=_EMPTY_DICT
+    )
     similarity_threshold: Mapped[float] = mapped_column(
         sa.Numeric(4, 3, asdecimal=False)
     )

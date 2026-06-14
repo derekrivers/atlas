@@ -760,12 +760,11 @@ atlas/
 │   └── tech-debt/
 ├── atlas/
 │   ├── __init__.py
+│   ├── cli.py
 │   ├── planning/
 │   │   └── prompts/
 │   └── tools/
 │       └── doc_linter.py
-├── tools/
-│   └── run_planner.py
 └── tests/
 ```
 

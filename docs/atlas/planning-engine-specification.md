@@ -30,16 +30,29 @@ Current backlog ──────────► Reconciler ◄─────�
    `WORKFLOW.md`, all accepted ADRs, all `docs/atlas/` documents, and
    `docs/domain/` documents if present. Record the git blob SHA of every
    input.
-2. Load the current backlog from `docs/planning/` (empty on first run).
+2. Load the current backlog from operational state (the database; empty on
+   first run). `docs/planning/` holds renders of that state (ADR-0006), not
+   the source the reconciler reads.
 3. Render the planner prompt (versioned template) containing the documents,
    the current backlog, and the output schema.
 4. Call the configured model with structured output. Parse into the
-   Proposal schema; a parse failure fails the run.
+   Proposal schema; a parse failure records a failed run (the failure
+   contract below).
 5. Run validation gates (section 5).
 6. Run the reconciler (section 4) to produce a Plan Diff.
 7. Persist a `PlanRun` with `status: proposed` and print the diff.
 
 `atlas plan` never writes to `docs/planning/`.
+
+Failure contract. Failures split by whether the model's raw output exists.
+Before it does — a dirty or untracked input set (a typed ingestion error), a
+missing product, an empty input set, or a model-call failure — `atlas plan`
+exits with a typed message and persists no `PlanRun`. Once raw output exists,
+the outcome is recorded: a parse failure (gate 1) or any gate 2–7 failure
+inserts a `PlanRun` at `proposed` and finalises it to `failed` (§6) with a
+machine-readable `failure_reason`, preserving the full provenance chain
+including `raw_output_hash` — a failed run is as auditable as a successful
+one. Only an all-gates-pass run remains at `proposed` for `atlas apply`.
 
 Inputs are read from HEAD: each document's content is the blob at its
 recorded SHA, so content and SHA are consistent by construction. A

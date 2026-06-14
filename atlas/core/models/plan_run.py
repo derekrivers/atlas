@@ -43,6 +43,10 @@ class PlanRun(BaseModel):
     # Provenance chain: input_doc_shas (what was read) -> prompt_hash
     # (what was asked) -> raw_output_hash (what came back).
     prompt_hash: str  # SHA-256 of the rendered prompt text
+    # Model identity is reproducible-by-record: model_name names the model,
+    # model_parameters the call settings (temperature, max_tokens) — together
+    # with prompt_hash a run can be reproduced from its record (ATLAS-26 D3).
+    model_parameters: dict[str, Any] = Field(default_factory=dict)
     similarity_threshold: float
     raw_output_hash: str  # SHA-256 of raw model output
     diff_summary: dict[str, Any] = Field(default_factory=dict)  # counts + entries

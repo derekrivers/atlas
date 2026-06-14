@@ -69,8 +69,10 @@ Prompts and tools:
 - `atlas/planning/prompts/CURRENT` — explicit current-release pointer
   (the renderer never infers the release; ATLAS-22)
 - `atlas/planning/prompts/README.md` — prompt versioning and release rules
-- `tools/run_planner.py` — dry-run harness (renders, calls, saves; never
-  writes docs/planning/)
+- `atlas/cli.py` — the `atlas` CLI; `atlas plan` composes ingestion →
+  render → model → parse → gates → reconcile and persists a PlanRun
+  (ATLAS-26; never writes docs/planning/). Replaces the retired dry-run
+  harness.
 
 Runbooks (`docs/runbooks/`):
 
