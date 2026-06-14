@@ -237,6 +237,19 @@ class PlanRunRepo(_Repo[PlanRun]):
             ).first()
             return None if row is None else self._to_model(row)
 
+    def latest_applied(self) -> PlanRun | None:
+        """The most recent applied PlanRun — the provenance-retrieval
+        counterpart of `latest_proposed` (ATLAS-28). Lets a caller read an
+        applied backlog's plan back by recency without scanning `list()`;
+        ordered by `applied_at` (set on the finalising transition)."""
+        with self._db.session() as session:
+            row = session.scalars(
+                sa.select(PlanRunRow)
+                .where(PlanRunRow.status == PlanRunStatus.APPLIED.value)
+                .order_by(PlanRunRow.applied_at.desc())
+            ).first()
+            return None if row is None else self._to_model(row)
+
     def finalize(
         self,
         plan_run_id: UUID,

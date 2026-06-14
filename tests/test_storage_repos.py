@@ -52,6 +52,7 @@ def test_plan_run_repo_exposes_documented_surface_only() -> None:
         "list",
         "finalize",
         "latest_proposed",
+        "latest_applied",
     }
 
 
@@ -195,6 +196,33 @@ def test_latest_proposed_returns_most_recent(db: Database) -> None:
     latest = repo.latest_proposed()
     assert latest is not None
     assert latest.id == older.id
+
+
+def test_latest_applied_returns_most_recent_applied(db: Database) -> None:
+    repo = PlanRunRepo(db)
+    assert repo.latest_applied() is None  # none applied yet
+    older = PlanRun(**plan_run_kwargs() | {"id": uuid4()})
+    newer = PlanRun(**plan_run_kwargs() | {"id": uuid4()})
+    repo.add(older)
+    repo.add(newer)
+    repo.finalize(
+        older.id,
+        PlanRunStatus.APPLIED,
+        approved_by="operator",
+        applied_at=datetime(2026, 6, 12, tzinfo=UTC),
+    )
+    repo.finalize(
+        newer.id,
+        PlanRunStatus.APPLIED,
+        approved_by="operator",
+        applied_at=datetime(2026, 6, 13, tzinfo=UTC),
+    )
+    latest = repo.latest_applied()
+    assert latest is not None
+    assert latest.id == newer.id  # ordered by applied_at
+    # Provenance reads back through the retrieval surface.
+    assert latest.status is PlanRunStatus.APPLIED
+    assert latest.input_doc_shas == older.input_doc_shas  # same kwargs payload
 
 
 # --- datetime contract ------------------------------------------------------
