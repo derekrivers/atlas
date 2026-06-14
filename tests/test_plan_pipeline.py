@@ -8,6 +8,7 @@ shadow, and one test per gap-1 failure class.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import subprocess
 from datetime import UTC, datetime
@@ -15,7 +16,12 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from planner_fakes import FAKE_IDENTITY, FakePlannerClient, RaisingPlannerClient
+from planner_fakes import (
+    FAKE_IDENTITY,
+    FakePlannerClient,
+    RaisingPlannerClient,
+    TruncatingPlannerClient,
+)
 from test_models_validation import product_kwargs
 
 from atlas.core.models import PlanRunStatus, Product
@@ -236,6 +242,28 @@ def test_malformed_json_records_failed_plan_run(tmp_path: Path) -> None:
     assert len(stored.raw_output_hash) == 64
     assert stored.input_doc_shas  # provenance chain intact
     assert stored.diff_summary == {}
+
+
+def test_truncation_records_failed_plan_run_with_specific_reason(
+    tmp_path: Path,
+) -> None:
+    repo = fixture_repo(tmp_path)
+    database = fresh_db(tmp_path)
+    partial = '{"epics": [], "tickets": [{"title": "cut off'
+    result = run(repo, database, TruncatingPlannerClient(partial=partial))
+
+    # Recorded, not a clean exit; named truncation, NOT a generic parse error.
+    assert result.status is PlanRunStatus.FAILED
+    reason = json.loads(result.failure_reason)
+    assert reason["stage"] == "truncation"
+    assert "max_tokens" in reason["error"]
+
+    stored = PlanRunRepo(database).list()[0]
+    assert stored.status is PlanRunStatus.FAILED
+    assert stored.input_doc_shas  # provenance chain intact
+    # raw_output_hash is taken over the partial output (hash parity: same
+    # value the non-streaming path would have produced for this text).
+    assert stored.raw_output_hash == hashlib.sha256(partial.encode()).hexdigest()
 
 
 def test_gate_failure_records_failed_plan_run(tmp_path: Path) -> None:

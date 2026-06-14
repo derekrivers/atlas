@@ -41,7 +41,7 @@ from atlas.core.models import (
     Ticket,
     TicketDependency,
 )
-from atlas.planning.client import ModelIdentity, PlannerClient
+from atlas.planning.client import ModelIdentity, PlannerClient, TruncatedOutputError
 from atlas.planning.gates import GateFailure, run_gates
 from atlas.planning.ingestion import AnchorIndex, collect_input_documents
 from atlas.planning.proposal import Proposal, ProposalError, parse_proposal
@@ -186,8 +186,15 @@ def run_plan(
         prompts_dir=prompts_dir,
     )
 
-    # Model call (clean exit on failure: no raw output to record).
-    raw_output = client.generate(rendered.text)
+    # Model call. A network/timeout/API failure is a clean exit (no raw
+    # output). A token-limit truncation IS raw output — partial — and is
+    # recorded with a specific reason rather than misparsed (ATLAS-101).
+    truncation_limit: int | None = None
+    try:
+        raw_output = client.generate(rendered.text)
+    except TruncatedOutputError as error:
+        raw_output = error.raw_output
+        truncation_limit = error.max_tokens
     raw_output_hash = _sha256(raw_output)
 
     provenance: dict[str, Any] = {
@@ -201,6 +208,21 @@ def run_plan(
         "similarity_threshold": similarity_threshold,
         "raw_output_hash": raw_output_hash,
     }
+
+    # Truncation (stop_reason == max_tokens): a recorded failure carrying the
+    # full provenance chain, named honestly so it is not a confusing parse error.
+    if truncation_limit is not None:
+        reason = json.dumps(
+            {
+                "stage": "truncation",
+                "error": (
+                    f"model output truncated at the token limit "
+                    f"(max_tokens={truncation_limit}); the corpus is too large "
+                    "for a single proposal"
+                ),
+            }
+        )
+        return _record_failed(database, provenance, now, reason)
 
     # Parse (gate 1, the parser's): a recorded failure with raw_output_hash.
     try:
