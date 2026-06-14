@@ -53,6 +53,14 @@ from atlas.planning.reconciler import (
     reconcile,
 )
 from atlas.planning.renderer import render_planner_prompt
+from atlas.planning.staged import (
+    StageContext,
+    StagedGenerationError,
+    StagedProposalGenerator,
+    StageTruncatedError,
+    composite_prompt_hash,
+    composite_prompt_version,
+)
 from atlas.storage import (
     Database,
     EpicRepo,
@@ -81,6 +89,15 @@ class NoInputDocumentsError(PlanPreconditionError):
     """The §2.1 input set is empty (wrong repo root, or nothing tracked)."""
 
 
+class StagedReplanUnsupportedError(PlanPreconditionError):
+    """The staged path was selected against a non-empty backlog. The
+    ATLAS-103 templates carry no current-backlog seeding, so a staged
+    re-plan would emit a partial-state proposal that archives everything it
+    omits. Refuse honestly (clean exit, no PlanRun) rather than seed badly:
+    staged generation is first-run only until re-plan seeding lands
+    (ADR-0010; the capability is preserved via echoed keys)."""
+
+
 @dataclass(frozen=True)
 class PlanResult:
     """The outcome of a plan run. ``status`` is PROPOSED on success or
@@ -90,6 +107,20 @@ class PlanResult:
     status: PlanRunStatus
     plan_run: PlanRun
     diff: PlanDiff | None
+    failure_reason: str | None
+
+
+@dataclass(frozen=True)
+class _Generated:
+    """The generation step's product, single-call or staged: the raw output
+    the pipeline hashes and parses, plus the prompt provenance. ``failure_reason``
+    is set when generation itself produced a recordable failure (truncation,
+    or a staged protocol break) — raw output exists, so a PlanRun is recorded
+    rather than a clean exit."""
+
+    raw_output: str
+    prompt_version: str
+    prompt_hash: str
     failure_reason: str | None
 
 
@@ -143,8 +174,15 @@ def run_plan(
     similarity_threshold: float = DEFAULT_SIMILARITY_THRESHOLD,
     now: datetime,
     prompts_dir: Path | None = None,
+    staged_generator: StagedProposalGenerator | None = None,
 ) -> PlanResult:
-    """Run the full `atlas plan` pipeline once (spec §2.1)."""
+    """Run the full `atlas plan` pipeline once (spec §2.1).
+
+    Generation is single-call by default. When ``staged_generator`` is
+    supplied (``atlas plan --staged``), generation runs across the three
+    bounded staged calls and assembles one §3.11 envelope (ADR-0010); the
+    parse → gates → reconcile → PlanRun path downstream is identical.
+    """
     # Pre-flight: product attribution (clean exit, no PlanRun).
     product = ProductRepo(database).get_by_key(PRODUCT_KEY)
     if product is None:
@@ -170,63 +208,58 @@ def run_plan(
     backlog_keys = {epic.key for epic in epics} | {ticket.key for ticket in tickets}
     frozen = [ticket.key for ticket in tickets if ticket.status in FROZEN_STATUSES]
 
-    # Render the versioned prompt (prompt_hash = provenance middle link).
-    rendered = render_planner_prompt(
-        {
-            "product_key": product.key,
-            "documents": [
-                {"path": doc.path, "sha": doc.sha, "content": doc.content}
-                for doc in documents
-            ],
-            "current_backlog_yaml": _backlog_yaml(epics, tickets, dependencies),
-            "frozen_ticket_keys": frozen,
-            "next_key_hint": _next_key_hint(database),
-            "proposal_json_schema": json.dumps(Proposal.model_json_schema(), indent=2),
-        },
-        prompts_dir=prompts_dir,
-    )
+    # Generate: single-call by default, or the staged sequence (ADR-0010).
+    # Both yield one raw output the rest of the pipeline hashes and parses.
+    document_payload = [
+        {"path": doc.path, "sha": doc.sha, "content": doc.content} for doc in documents
+    ]
+    if staged_generator is None:
+        generated = _generate_single_call(
+            client=client,
+            product_key=product.key,
+            documents=document_payload,
+            backlog_yaml=_backlog_yaml(epics, tickets, dependencies),
+            frozen=frozen,
+            next_key_hint=_next_key_hint(database),
+            prompts_dir=prompts_dir,
+        )
+    else:
+        if epics or tickets or dependencies:
+            raise StagedReplanUnsupportedError(
+                "the staged path is first-run only (ADR-0010): the current "
+                "backlog is non-empty, and the staged templates carry no "
+                "re-emission seeding, so a staged proposal would archive "
+                "every omitted item; re-run without --staged"
+            )
+        generated = _generate_staged(
+            staged_generator,
+            client=client,
+            product_key=product.key,
+            documents=document_payload,
+            prompts_dir=prompts_dir,
+        )
 
-    # Model call. A network/timeout/API failure is a clean exit (no raw
-    # output). A token-limit truncation IS raw output — partial — and is
-    # recorded with a specific reason rather than misparsed (ATLAS-101).
-    truncation_limit: int | None = None
-    try:
-        raw_output = client.generate(rendered.text)
-    except TruncatedOutputError as error:
-        raw_output = error.raw_output
-        truncation_limit = error.max_tokens
-    raw_output_hash = _sha256(raw_output)
-
+    raw_output_hash = _sha256(generated.raw_output)
     provenance: dict[str, Any] = {
         "product_id": product.id,
         "input_doc_shas": anchor_index.input_doc_shas,
         "model_provider": identity.provider,
         "model_name": identity.model,
         "model_parameters": dict(identity.parameters),
-        "prompt_version": rendered.prompt_version,
-        "prompt_hash": rendered.prompt_hash,
+        "prompt_version": generated.prompt_version,
+        "prompt_hash": generated.prompt_hash,
         "similarity_threshold": similarity_threshold,
         "raw_output_hash": raw_output_hash,
     }
 
-    # Truncation (stop_reason == max_tokens): a recorded failure carrying the
+    # Truncation (single-call or per-stage) is a recorded failure carrying the
     # full provenance chain, named honestly so it is not a confusing parse error.
-    if truncation_limit is not None:
-        reason = json.dumps(
-            {
-                "stage": "truncation",
-                "error": (
-                    f"model output truncated at the token limit "
-                    f"(max_tokens={truncation_limit}); the corpus is too large "
-                    "for a single proposal"
-                ),
-            }
-        )
-        return _record_failed(database, provenance, now, reason)
+    if generated.failure_reason is not None:
+        return _record_failed(database, provenance, now, generated.failure_reason)
 
     # Parse (gate 1, the parser's): a recorded failure with raw_output_hash.
     try:
-        proposal = parse_proposal(raw_output)
+        proposal = parse_proposal(generated.raw_output)
     except ProposalError as error:
         reason = json.dumps({"stage": "parse", "error": str(error)})
         return _record_failed(database, provenance, now, reason)
@@ -257,6 +290,115 @@ def run_plan(
         status=PlanRunStatus.PROPOSED,
         plan_run=plan_run,
         diff=diff,
+        failure_reason=None,
+    )
+
+
+def _generate_single_call(
+    *,
+    client: PlannerClient,
+    product_key: str,
+    documents: list[dict[str, str]],
+    backlog_yaml: str | None,
+    frozen: list[str],
+    next_key_hint: str,
+    prompts_dir: Path | None,
+) -> _Generated:
+    """The single-call generation path (ATLAS-26/101), unchanged in behaviour:
+    render the versioned prompt, call the model, treat a token-limit
+    truncation as a recordable partial output."""
+    rendered = render_planner_prompt(
+        {
+            "product_key": product_key,
+            "documents": documents,
+            "current_backlog_yaml": backlog_yaml,
+            "frozen_ticket_keys": frozen,
+            "next_key_hint": next_key_hint,
+            "proposal_json_schema": json.dumps(Proposal.model_json_schema(), indent=2),
+        },
+        prompts_dir=prompts_dir,
+    )
+    try:
+        raw_output = client.generate(rendered.text)
+    except TruncatedOutputError as error:
+        reason = json.dumps(
+            {
+                "stage": "truncation",
+                "error": (
+                    f"model output truncated at the token limit "
+                    f"(max_tokens={error.max_tokens}); the corpus is too large "
+                    "for a single proposal"
+                ),
+            }
+        )
+        return _Generated(
+            raw_output=error.raw_output,
+            prompt_version=rendered.prompt_version,
+            prompt_hash=rendered.prompt_hash,
+            failure_reason=reason,
+        )
+    return _Generated(
+        raw_output=raw_output,
+        prompt_version=rendered.prompt_version,
+        prompt_hash=rendered.prompt_hash,
+        failure_reason=None,
+    )
+
+
+def _generate_staged(
+    staged_generator: StagedProposalGenerator,
+    *,
+    client: PlannerClient,
+    product_key: str,
+    documents: list[dict[str, str]],
+    prompts_dir: Path | None,
+) -> _Generated:
+    """The staged generation path (ADR-0010): three bounded calls assembled
+    into one §3.11 envelope. raw_output is the assembled JSON (its hash is the
+    provenance link, §5.3); prompt_version/prompt_hash are composites over the
+    per-stage records. A per-stage truncation or protocol break is a recorded
+    failure naming the stage (§5.4)."""
+    context = StageContext(
+        product_key=product_key, documents=documents, prompts_dir=prompts_dir
+    )
+    try:
+        result = staged_generator.generate(client=client, context=context)
+    except StageTruncatedError as error:
+        reason = json.dumps(
+            {
+                "stage": "truncation",
+                "generation_stage": error.stage,
+                "error": (
+                    f"staged generation truncated in stage {error.stage!r} "
+                    f"(max_tokens={error.max_tokens}); the stage output exceeded "
+                    "the single-call ceiling"
+                ),
+            }
+        )
+        return _Generated(
+            raw_output=error.raw_output,
+            prompt_version=composite_prompt_version(error.records),
+            prompt_hash=composite_prompt_hash(error.records),
+            failure_reason=reason,
+        )
+    except StagedGenerationError as error:
+        reason = json.dumps(
+            {
+                "stage": "staged_generation",
+                "generation_stage": error.stage,
+                "error": str(error),
+            }
+        )
+        return _Generated(
+            raw_output=error.raw_output,
+            prompt_version=composite_prompt_version(error.records),
+            prompt_hash=composite_prompt_hash(error.records),
+            failure_reason=reason,
+        )
+    return _Generated(
+        raw_output=result.assembled_json,
+        prompt_version=result.prompt_version,
+        prompt_hash=result.prompt_hash,
         failure_reason=None,
     )
 

@@ -44,6 +44,7 @@ from atlas.planning.pipeline import (
     run_plan,
 )
 from atlas.planning.reconciler import DEFAULT_SIMILARITY_THRESHOLD, PlanDiff
+from atlas.planning.staged import StagedProposalGenerator, TemplateStagedGenerator
 from atlas.storage import Database
 
 EXIT_OK = 0
@@ -76,6 +77,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--repo",
         default=".",
         help="repository root to plan against (default: current directory)",
+    )
+    plan.add_argument(
+        "--staged",
+        action="store_true",
+        help="generate across the three staged calls and assemble one "
+        "proposal (ADR-0010); first-run only — refuses a non-empty backlog",
     )
     apply = subcommands.add_parser(
         "apply",
@@ -145,6 +152,7 @@ def _plan_command(
     database: Database | None,
     client: PlannerClient | None,
     identity: ModelIdentity | None,
+    staged_generator: StagedProposalGenerator | None = None,
 ) -> int:
     resolved_db = database if database is not None else Database(args.db)
     if client is None:
@@ -156,6 +164,11 @@ def _plan_command(
         identity = ANTHROPIC_IDENTITY
     assert identity is not None  # paired with client by every caller
 
+    # --staged selects multi-call generation (ADR-0010). The default single
+    # call stays the live path; an injected generator (tests) overrides.
+    if staged_generator is None and getattr(args, "staged", False):
+        staged_generator = TemplateStagedGenerator()
+
     try:
         result = run_plan(
             repo_root=Path(args.repo).resolve(),
@@ -164,6 +177,7 @@ def _plan_command(
             identity=identity,
             similarity_threshold=args.similarity_threshold,
             now=datetime.now(UTC),
+            staged_generator=staged_generator,
         )
     except (DirtyInputError, PlanPreconditionError, ModelCallError) as error:
         print(error, file=sys.stderr)
@@ -186,12 +200,19 @@ def main(
     database: Database | None = None,
     client: PlannerClient | None = None,
     identity: ModelIdentity | None = None,
+    staged_generator: StagedProposalGenerator | None = None,
 ) -> int:
-    """Entry point. ``database``/``client``/``identity`` are injectable for
-    tests; production builds them from the environment."""
+    """Entry point. ``database``/``client``/``identity``/``staged_generator``
+    are injectable for tests; production builds them from the environment."""
     args = build_parser().parse_args(argv)
     if args.command == "plan":
-        return _plan_command(args, database=database, client=client, identity=identity)
+        return _plan_command(
+            args,
+            database=database,
+            client=client,
+            identity=identity,
+            staged_generator=staged_generator,
+        )
     if args.command == "apply":
         return _apply_command(args, database=database)
     return EXIT_PRECONDITION  # unreachable: subparser is required
