@@ -145,19 +145,22 @@ def load_entity(model_cls: type[M], text: str) -> M:
 
 @dataclass(frozen=True)
 class RenderHeader:
-    """Generated header for planning renders; atlas apply (ATLAS-27)
-    supplies real values in Phase 2."""
+    """Generated header for planning renders. The two key counters are
+    independent (knowledge-core "Key counter"), so the header carries both
+    high-water marks, not one; atlas apply (ATLAS-27) supplies the values."""
 
     plan_run_id: UUID | str
     prompt_version: str
-    key_counter_high_water: int
+    ticket_key_high_water: int
+    epic_key_high_water: int
 
     def lines(self) -> list[str]:
         return [
             "# Render written only by `atlas apply` (ADR-0006/0007); do not hand-edit.",
             f"# plan_run_id: {self.plan_run_id}",
             f"# prompt_version: {self.prompt_version}",
-            f"# key_counter_high_water: {self.key_counter_high_water}",
+            f"# ticket_key_high_water: {self.ticket_key_high_water}",
+            f"# epic_key_high_water: {self.epic_key_high_water}",
         ]
 
 

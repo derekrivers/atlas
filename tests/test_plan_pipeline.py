@@ -152,6 +152,14 @@ def test_happy_path_persists_proposed_plan_run(tmp_path: Path) -> None:
     assert run_row.diff_summary == result.diff.as_summary()
     assert run_row.failure_reason is None
     assert run_row.applied_at is None
+    # Gap 0: the validated proposal is persisted for apply to materialise.
+    assert set(run_row.proposal) == {
+        "epics",
+        "tickets",
+        "dependencies",
+        "planner_notes",
+    }
+    assert run_row.proposal["tickets"][0]["title"] == "Build plan CLI"
 
 
 def test_at5_input_doc_shas_equal_ingested_head_shas(tmp_path: Path) -> None:

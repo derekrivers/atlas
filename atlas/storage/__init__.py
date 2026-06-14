@@ -4,6 +4,7 @@ Public currency is Pydantic models only; ORM rows and sessions stay
 inside this package.
 """
 
+from atlas.storage.apply import apply_backlog
 from atlas.storage.db import Database
 from atlas.storage.repositories import (
     ADRRepo,
@@ -42,4 +43,5 @@ __all__ = [
     "TicketDependencyRepo",
     "TicketRepo",
     "TrustTierError",
+    "apply_backlog",
 ]

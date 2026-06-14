@@ -792,6 +792,10 @@ class PlanRun(BaseModel):
     model_parameters: dict = Field(default_factory=dict)
     similarity_threshold: float
     raw_output_hash: str
+    # The validated proposal (post-parse, pre-key-assignment): the input
+    # `atlas apply` materialises the backlog from, keeping the chain
+    # raw_output_hash -> proposal -> renders legible.
+    proposal: dict = Field(default_factory=dict)
     diff_summary: dict = Field(default_factory=dict)
     failure_reason: Optional[str] = None
     approved_by: Optional[str] = None
@@ -814,6 +818,7 @@ CREATE TABLE plan_runs (
     model_parameters JSONB NOT NULL DEFAULT '{}',
     similarity_threshold NUMERIC(4,3) NOT NULL,
     raw_output_hash TEXT NOT NULL,
+    proposal JSONB NOT NULL DEFAULT '{}',
     diff_summary JSONB NOT NULL DEFAULT '{}',
     failure_reason TEXT,
     approved_by TEXT,
