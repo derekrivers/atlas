@@ -91,6 +91,13 @@ Runbooks (`docs/runbooks/`):
 - Stubs awaiting content: `docs/runbooks/local-development.md`,
   `docs/runbooks/troubleshooting.md`
 
+Phase closure reports (`docs/closure/`):
+
+- `docs/closure/phase-1-closure-report.md` — Phase 1 (Knowledge Core)
+  closure: milestone evidence, harness ledger, carry-forwards
+- `docs/closure/phase-2-closure-report.md` — Phase 2 (Planning Engine)
+  closure: milestone evidence, the capacity boundary, carry-forwards
+
 Stubs awaiting content: `docs/product/`, `docs/tech-debt/`.
 
 ## Phase readiness rule
