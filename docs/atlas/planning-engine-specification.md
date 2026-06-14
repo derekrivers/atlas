@@ -48,11 +48,22 @@ Failure contract. Failures split by whether the model's raw output exists.
 Before it does — a dirty or untracked input set (a typed ingestion error), a
 missing product, an empty input set, or a model-call failure — `atlas plan`
 exits with a typed message and persists no `PlanRun`. Once raw output exists,
-the outcome is recorded: a parse failure (gate 1) or any gate 2–7 failure
+the outcome is recorded: a truncation (the model hit its output token limit,
+`stop_reason: max_tokens`), a parse failure (gate 1), or any gate 2–7 failure
 inserts a `PlanRun` at `proposed` and finalises it to `failed` (§6) with a
 machine-readable `failure_reason`, preserving the full provenance chain
-including `raw_output_hash` — a failed run is as auditable as a successful
-one. Only an all-gates-pass run remains at `proposed` for `atlas apply`.
+including `raw_output_hash` (over the partial output on truncation) — a failed
+run is as auditable as a successful one. Only an all-gates-pass run remains at
+`proposed` for `atlas apply`.
+
+Output capacity boundary. A proposal is a single model response, so Milestone 1
+plans corpora whose proposal fits the model's maximum output (64K tokens for
+the pinned `claude-sonnet-4-6`; the call streams). A corpus large enough to
+exceed it is truncated and recorded as a `failed` run with a specific
+truncation `failure_reason` — distinct from a parse error, so the cause is
+unambiguous — rather than misparsed as broken JSON. Chunked or continuation
+generation that would lift this boundary is a deferred follow-up; until then the
+boundary is honest and named, not a silent corruption.
 
 Inputs are read from HEAD: each document's content is the blob at its
 recorded SHA, so content and SHA are consistent by construction. A

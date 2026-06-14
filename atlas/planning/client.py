@@ -21,9 +21,13 @@ from typing import Any, Protocol, runtime_checkable
 
 # Pinned call settings (D3): a single model string, temperature 0, an
 # explicit max_tokens. Recorded on every PlanRun via ANTHROPIC_IDENTITY.
+# MAX_TOKENS is the model's maximum output (claude-sonnet-4-6: 64K), raised
+# from 16000 after a full-corpus proposal truncated there (ATLAS-101). A
+# fixed ceiling is still finite — a large enough corpus is detected and
+# reported as truncation (TruncatedOutputError), not parsed as broken JSON.
 MODEL_NAME = "claude-sonnet-4-6"
 TEMPERATURE = 0
-MAX_TOKENS = 16000
+MAX_TOKENS = 64000
 
 API_KEY_ENV = "ANTHROPIC_API_KEY"
 
@@ -39,6 +43,21 @@ class MissingAPIKeyError(PlannerClientError):
 class ModelCallError(PlannerClientError):
     """The model call failed (network/timeout/API). Clean exit: no raw
     output exists to record, and the failure is transient — retry."""
+
+
+class TruncatedOutputError(PlannerClientError):
+    """The model hit the output token limit (stop_reason == max_tokens): the
+    response is cut off mid-content. A recorded outcome, not a clean exit —
+    the partial output is carried so its hash preserves the provenance chain
+    (ATLAS-101). Distinct from ModelCallError so the pipeline records a
+    specific truncation reason rather than the generic JSON parse failure."""
+
+    def __init__(self, raw_output: str, max_tokens: int) -> None:
+        super().__init__(
+            f"model output truncated at the token limit (max_tokens={max_tokens})"
+        )
+        self.raw_output = raw_output
+        self.max_tokens = max_tokens
 
 
 @dataclass(frozen=True)
@@ -91,18 +110,28 @@ class AnthropicPlannerClient:
     def generate(self, prompt: str) -> str:
         import anthropic  # lazy: keeps the SDK out of the import path
 
+        # Streaming, not messages.create: the SDK refuses non-streaming
+        # requests it estimates will exceed ~10 min, which a 64K max_tokens
+        # call can trip — and the final message exposes stop_reason so a
+        # token-limit cutoff is detected, not silently returned (ATLAS-101).
         try:
             client = anthropic.Anthropic(api_key=self._api_key)
-            response = client.messages.create(
+            with client.messages.stream(
                 model=MODEL_NAME,
                 max_tokens=MAX_TOKENS,
                 temperature=TEMPERATURE,
                 messages=[{"role": "user", "content": prompt}],
-            )
+            ) as stream:
+                message = stream.get_final_message()
         except Exception as error:  # SDK raises a family of errors
             raise ModelCallError(f"model call failed: {error}") from error
-        return "".join(
+        # Assembled identically to the former non-streaming path, so the
+        # hash the pipeline takes over this text is byte-identical.
+        text = "".join(
             getattr(block, "text", "")
-            for block in response.content
+            for block in message.content
             if getattr(block, "type", None) == "text"
         )
+        if message.stop_reason == "max_tokens":
+            raise TruncatedOutputError(raw_output=text, max_tokens=MAX_TOKENS)
+        return text

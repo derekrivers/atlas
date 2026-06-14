@@ -7,7 +7,11 @@ only) and carry their own ModelIdentity for the CLI to record.
 
 from __future__ import annotations
 
-from atlas.planning.client import ModelCallError, ModelIdentity
+from atlas.planning.client import (
+    ModelCallError,
+    ModelIdentity,
+    TruncatedOutputError,
+)
 
 FAKE_IDENTITY = ModelIdentity(
     provider="fake",
@@ -33,3 +37,22 @@ class RaisingPlannerClient:
 
     def generate(self, prompt: str) -> str:
         raise ModelCallError("simulated model call failure")
+
+
+class TruncatingPlannerClient:
+    """Simulates a token-limit truncation (stop_reason == max_tokens): the
+    real client raises this on a cut-off response, carrying the partial
+    output. The default partial is deliberately truncated JSON."""
+
+    def __init__(
+        self,
+        partial: str = '{"epics": [], "tickets": [{"title": "cut off',
+        max_tokens: int = 64000,
+    ) -> None:
+        self._partial = partial
+        self._max_tokens = max_tokens
+
+    def generate(self, prompt: str) -> str:
+        raise TruncatedOutputError(
+            raw_output=self._partial, max_tokens=self._max_tokens
+        )
