@@ -99,6 +99,23 @@ ATLAS-30 Runbook: docs/runbooks/running-atlas-plan.md written for real
 Retired: roadmap.html (replaced by Mermaid render); standalone Planning
 API (the CLI is the interface).
 
+Post-milestone hardening (out-of-band finding numbers, discovered after the
+sequence above; design in docs/atlas/planning-large-corpora.md, ADR-0010):
+
+ATLAS-101 Planner output-truncation: max_tokens to the model ceiling, honest
+         truncation detection (done)
+ATLAS-102 Large-corpus planning design (done): staged generation, single-proposal
+         reconciliation
+ATLAS-103 Staged planner prompt templates (epics / tickets-per-epic /
+         dependencies projections of §3.11)
+ATLAS-104 Multi-call generation orchestration: environment-owned index assembly
+         into one full-state proposal
+ATLAS-105 PlanRun multi-call provenance (generation_stages field; §3.10 +
+         migration + schema regen)
+ATLAS-106 Per-stage truncation handling and batch sizing
+ATLAS-107 Acceptance coverage for staged generation (AT-1/AT-7 staged path;
+         AT-2 across the multi-call sequence)
+
 Milestone test: AT-1 through AT-7 pass in CI against the seeded Atlas
 documents.
 
