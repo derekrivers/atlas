@@ -48,7 +48,8 @@ from atlas.core.yaml_io import (
 HEADER = RenderHeader(
     plan_run_id="b3a9f1e2-7c4d-4a8b-9e6f-1d2c3b4a5e60",
     prompt_version="planner-v1.0.0",
-    key_counter_high_water=42,
+    ticket_key_high_water=42,
+    epic_key_high_water=7,
 )
 
 ROUND_TRIP_CASES = [
@@ -155,8 +156,9 @@ def test_render_document_format(tmp_path: Path) -> None:
     assert "atlas apply" in lines[0]
     assert lines[1] == f"# plan_run_id: {HEADER.plan_run_id}"
     assert lines[2] == "# prompt_version: planner-v1.0.0"
-    assert lines[3] == "# key_counter_high_water: 42"
-    assert lines[4] == "tickets:"
+    assert lines[3] == "# ticket_key_high_water: 42"
+    assert lines[4] == "# epic_key_high_water: 7"
+    assert lines[5] == "tickets:"
     # Numeric collation within the shared prefix: ATLAS-2 before ATLAS-10.
     assert text.index("key: ATLAS-2\n") < text.index("key: ATLAS-10\n")
     # Each entry carries both key and id.

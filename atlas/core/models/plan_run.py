@@ -49,6 +49,10 @@ class PlanRun(BaseModel):
     model_parameters: dict[str, Any] = Field(default_factory=dict)
     similarity_threshold: float
     raw_output_hash: str  # SHA-256 of raw model output
+    # The validated proposal (post-parse, pre-key-assignment): apply reads
+    # it to materialise the backlog, keeping the chain raw_output_hash ->
+    # proposal -> renders legible (ATLAS-26 persists it; ATLAS-27 applies it).
+    proposal: dict[str, Any] = Field(default_factory=dict)
     diff_summary: dict[str, Any] = Field(default_factory=dict)  # counts + entries
     failure_reason: str | None = None
     approved_by: str | None = None

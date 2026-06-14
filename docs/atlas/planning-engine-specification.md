@@ -66,7 +66,10 @@ committed state (ADR-0006); there is no untracked-file fallback.
 2. Refuse if fresh ingestion (which itself fails with a typed error on
    a dirty input set) yields input doc SHAs that no longer match the
    recorded `input_doc_shas` (stale plan).
-3. Display the diff; require explicit operator confirmation.
+3. Display the diff; require explicit operator confirmation. Confirmation
+   is an interactive `y/N` prompt, or `--yes` for non-interactive use; with
+   neither a TTY nor `--yes`, apply refuses rather than assume consent. No
+   write of any kind happens before confirmation.
 4. Assign keys to `ADD` items (monotonic `ATLAS-n` from a persisted
    counter; the counter never reuses keys, including archived ones).
    Tickets take `ATLAS-<n>` and epics `ATLAS-E<n>`, each from its own
@@ -79,6 +82,23 @@ committed state (ADR-0006); there is no untracked-file fallback.
 
 Rejecting a diff sets `status: rejected`. Apply is the only legal writer of
 planning renders (ADR-0006); the doc linter flags out-of-band edits.
+
+Atomicity. The DB commit (counter increment + backlog rows + the
+finalising transition, in one transaction) is the single linearisation
+point. The renders are a deterministic projection of committed state, so
+apply writes them to temp files and atomically moves them into place only
+after the commit. A crash before the commit leaves nothing durable (the
+transaction rolls back; temp files are inert); a crash during the
+post-commit move is repaired by re-running apply, which completes the
+pending move from the committed state. After any crash the backlog is
+either fully pre-apply or fully post-apply — keys, rows, and renders never
+disagree.
+
+Applied diff entries. Milestone 1 apply materialises `ADD` items and
+excludes `PROPOSE_ARCHIVE` items from the renders. A diff that touches a
+frozen ticket (`CONFLICT`) is refused (AT-4). `MODIFY` application is
+deferred to a follow-up; a diff containing `MODIFY` entries is refused
+rather than applied with invented semantics.
 
 ## 2.3 Anchor slug algorithm
 

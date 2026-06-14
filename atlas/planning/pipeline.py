@@ -216,11 +216,13 @@ def run_plan(
     if failures:
         return _record_failed(database, provenance, now, _gate_failure_reason(failures))
 
-    # Reconcile against the backlog and persist at proposed.
+    # Reconcile against the backlog and persist at proposed. The validated
+    # proposal is stored so apply (ATLAS-27) can materialise the backlog.
     diff = reconcile(proposal, backlog, similarity_threshold=similarity_threshold)
     plan_run = PlanRun(
         id=uuid4(),
         status=PlanRunStatus.PROPOSED,
+        proposal=proposal.model_dump(mode="json"),
         diff_summary=diff.as_summary(),
         failure_reason=None,
         approved_by=None,

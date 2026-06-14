@@ -103,6 +103,46 @@ def test_no_subcommand_errors() -> None:
         main([])
 
 
+def test_apply_yes_proceeds(tmp_path: Path) -> None:
+    repo = fixture_repo(tmp_path)
+    database = fresh_db(tmp_path)
+    main(
+        plan_argv(repo),
+        database=database,
+        client=FakePlannerClient(proposal_json()),
+        identity=FAKE_IDENTITY,
+    )
+    # apply writes to the repo's docs/planning; use a throwaway cwd repo so
+    # the real tree is untouched — here the fixture repo is itself tmp.
+    code = main(["apply", "--repo", str(repo), "--yes"], database=database)
+    assert code == EXIT_OK
+    assert (repo / "docs" / "planning" / "tickets.yaml").exists()
+
+
+def test_apply_without_tty_or_yes_refuses(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = fixture_repo(tmp_path)
+    database = fresh_db(tmp_path)
+    main(
+        plan_argv(repo),
+        database=database,
+        client=FakePlannerClient(proposal_json()),
+        identity=FAKE_IDENTITY,
+    )
+    monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+    code = main(["apply", "--repo", str(repo)], database=database)
+    assert code == EXIT_PRECONDITION
+    assert not (repo / "docs" / "planning").exists()
+
+
+def test_apply_no_proposed_plan_refused(tmp_path: Path) -> None:
+    repo = fixture_repo(tmp_path)
+    database = fresh_db(tmp_path)
+    code = main(["apply", "--repo", str(repo), "--yes"], database=database)
+    assert code == EXIT_PRECONDITION
+
+
 def test_python_m_atlas_resolves() -> None:
     # The module entry point imports and shows help without error.
     result = subprocess.run(

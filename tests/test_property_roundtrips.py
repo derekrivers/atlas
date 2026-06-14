@@ -28,7 +28,8 @@ MODEL_IDS = [model.__name__ for model in STRATEGIES]
 HEADER = RenderHeader(
     plan_run_id="b3a9f1e2-7c4d-4a8b-9e6f-1d2c3b4a5e60",
     prompt_version="planner-v1.0.0",
-    key_counter_high_water=42,
+    ticket_key_high_water=42,
+    epic_key_high_water=7,
 )
 REPO_BY_MODEL: dict[type[BaseModel], Any] = {
     cast(type[BaseModel], model): repo for repo, model, _ in REPO_CASES

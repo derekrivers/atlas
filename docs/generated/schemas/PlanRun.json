@@ -99,6 +99,11 @@
       "title": "Prompt Version",
       "type": "string"
     },
+    "proposal": {
+      "additionalProperties": true,
+      "title": "Proposal",
+      "type": "object"
+    },
     "raw_output_hash": {
       "title": "Raw Output Hash",
       "type": "string"

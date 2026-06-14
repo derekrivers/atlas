@@ -52,10 +52,14 @@ is no bypass parameter.
   Dependency entries are keyless (data-model §3.5): they carry `id` and
   sort by (source_ticket_id, target_entity_type, target_entity_id,
   dependency_type).
-- A generated header comment records `plan_run_id` and the prompt version,
-  and states the file is a render written only by `atlas apply`.
+- A generated header comment records `plan_run_id`, the prompt version, and
+  both key-counter high-water marks (ticket and epic are independent
+  counters), and states the file is a render written only by `atlas apply`.
 - `roadmap.mmd` is a Mermaid `graph TD` of ticket keys with `depends_on`
-  edges, epic subgraphs, and status-based classes.
+  edges (`SOURCE --> TARGET` reads "SOURCE depends on TARGET"), epic
+  subgraphs, and status-based classes. Its header is emitted as Mermaid
+  `%%` comments (not the YAML `#` comments) carrying the same fields;
+  archived items do not appear.
 
 Scalar and entry conventions (ATLAS-17, `atlas/core/yaml_io.py`): UUIDs
 and enums serialise as plain strings (enum values); datetimes as ISO 8601
