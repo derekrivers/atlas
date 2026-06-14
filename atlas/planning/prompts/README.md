@@ -48,8 +48,9 @@ generation stage (planning-large-corpora.md §4/§4.1, ADR-0010):
   `depends_on` edges.
 
 The orchestration that sequences these calls and assembles their slices
-into one full-state proposal is ATLAS-104; this directory holds the
-template artifacts only.
+into one full-state proposal is ATLAS-104 (`atlas/planning/staged.py`,
+run via `atlas plan --staged`); this directory holds the template
+artifacts only.
 
 - **Separate version lineage and naming.** Staged templates are named
   `planner-stage-<stage>-vMAJOR.MINOR.PATCH` and version independently of
@@ -64,9 +65,11 @@ template artifacts only.
   `new:<n>` and mints no ticket identity.
 - **Projection schema.** Each template embeds a caller-supplied
   `stage_output_schema` — the per-stage projection of §3.11, a distinct
-  object from the full-envelope `proposal_json_schema`. Generating these
-  projection schemas is ATLAS-104's work; the renderer takes the schema
-  as a variable (the same D2 seam as the single-call template).
+  object from the full-envelope `proposal_json_schema`. ATLAS-104 derives
+  these schemas from the §3.11 field models (`StageEpicsOutput` wraps
+  `ProposalEpic`, and so on), so they cannot drift from the contract; the
+  renderer takes the schema as a variable (the same D2 seam as the
+  single-call template).
 - **CURRENT is unchanged.** `CURRENT` still names the live single-call
   release (`planner-v1.1.0`); the staged set is selected only by explicit
   `version=`. The renderer's CURRENT version pattern structurally rejects

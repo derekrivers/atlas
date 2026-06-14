@@ -21,10 +21,11 @@ uv run atlas apply                 # review the diff, confirm y/N, writes docs/p
 produces a proposal at ~95–97% of the model's single-call output ceiling. A full
 `atlas plan` run takes **~15 minutes** and **may truncate** — recorded honestly as
 a failed run with a specific truncation reason (it is *not* a corruption or a bug
-in your setup). This is a known boundary with a designed resolution that is not
-yet built; see [The capacity boundary](#the-capacity-boundary) and
-`docs/atlas/planning-large-corpora.md`. If a run truncates, re-running often
-succeeds, because natural length variation tips the corpus over the edge.
+in your setup). This is a known boundary; its resolution — staged generation — is
+now runnable for a first run via `atlas plan --staged` (see [The capacity
+boundary](#the-capacity-boundary) and `docs/atlas/planning-large-corpora.md`). For
+a single-call run that truncates, re-running often succeeds, because natural length
+variation tips the corpus over the edge.
 
 ## Prerequisites
 
@@ -115,6 +116,8 @@ uv run atlas plan
 # options: --similarity-threshold F   reconciler threshold (default 0.85)
 #          --db URL                    database URL (overrides ATLAS_DATABASE_URL)
 #          --repo PATH                 repository root (default: current directory)
+#          --staged                    multi-call staged generation (ADR-0010;
+#                                       first-run only — see below)
 ```
 
 The command runs the full proposer pipeline: **ingest** the committed documents →
@@ -137,6 +140,23 @@ before/after) — then `PlanRun <id> persisted at status proposed.`
 | `2` | A clean-exit precondition — dirty tree, missing key, missing product, or a model-call error; no `PlanRun` exists. |
 
 `atlas plan` never writes `docs/planning/`.
+
+### Staged generation (`--staged`, first-run only)
+
+`--staged` generates the proposal across three bounded model calls — epics, then
+tickets one call per epic, then dependencies — and the environment assembles the
+slices into one complete §3.11 proposal before the gates and reconciler run, which
+are unchanged (ADR-0010, `docs/atlas/planning-large-corpora.md`). This is the
+designed resolution to [the capacity boundary](#the-capacity-boundary): each call
+sits well inside the 64K ceiling. The downstream diff, exit codes, and provenance
+are identical to a single-call run; a stage that still truncates is recorded as a
+`failed` run whose reason names the stage.
+
+**First-run only for now.** The staged templates do not yet carry current-backlog
+seeding, so a staged re-plan against a non-empty backlog would archive everything
+it omits. `--staged` therefore refuses a non-empty backlog with a clean-exit
+precondition (exit `2`) rather than seed badly — use it for the initial plan of an
+empty backlog. Re-plan seeding is a tracked follow-up.
 
 ## Reviewing the diff and running `atlas apply`
 
@@ -179,7 +199,7 @@ Every row is the actual message and exit code from the commands.
 | `ANTHROPIC_API_KEY is not set; export it to run \`atlas plan\`…` | plan | 2 | `export ANTHROPIC_API_KEY=…` (Prerequisite 4). |
 | `no 'ATLAS' product in the database; bootstrap the product before planning` | plan | 2 | Create the product row (Prerequisite 3). |
 | `model call failed: …` | plan | 2 | Transient (network/timeout/API). Re-run. |
-| `Plan failed (recorded):` + `{"stage": "truncation", …max_tokens=64000…}` | plan | 1 | The capacity boundary (below). Re-running often succeeds; the durable fix is staged generation (pending). |
+| `Plan failed (recorded):` + `{"stage": "truncation", …max_tokens=64000…}` | plan | 1 | The capacity boundary (below). Re-running a single-call plan often succeeds; the durable fix is `atlas plan --staged` (first-run only). |
 | `Plan failed (recorded):` + `{"stage": "parse", …}` | plan | 1 | The model output was not valid JSON. Re-run; if persistent, the prompt/model needs attention. |
 | `Plan failed (recorded):` + `{"stage": "gates", "failures": […]}` | plan | 1 | A validation gate failed. Read the per-failure `gate`/`code`/`reason` — usually an unresolvable `source_anchor` (gate 4), an orphan epic (gate 5), or an oversized ticket (gate 7). |
 | `no proposed PlanRun to apply; run \`atlas plan\` first` | apply | 2 | Run `atlas plan` first (the last run failed or none exists). |
@@ -214,12 +234,14 @@ truncates from one run to the next — truncation is detected and recorded as a
 `failed` run with the `{"stage": "truncation", …}` reason, never misreported as a
 parse error or a corrupt write.
 
-The resolution is designed but not yet built: generate the proposal in bounded
-stages (epics → tickets → dependencies) and assemble one complete full-state
-proposal before reconciliation, so the reconciler and the proposal contract are
-unchanged. See `docs/atlas/planning-large-corpora.md` and ADR-0010; the
-implementation is tracked as ATLAS-103..107. Until it lands, a truncated run is a
-known, honest outcome — re-run, and it will usually succeed.
+The resolution is staged generation: generate the proposal in bounded stages
+(epics → tickets → dependencies) and assemble one complete full-state proposal
+before reconciliation, so the reconciler and the proposal contract are unchanged.
+See `docs/atlas/planning-large-corpora.md` and ADR-0010; the implementation is
+tracked as ATLAS-103..107. The staged path is runnable now via
+[`atlas plan --staged`](#staged-generation---staged-first-run-only) for a first
+run against an empty backlog (re-plan seeding is a tracked follow-up). For a
+single-call run that truncates, re-running will usually succeed.
 
 ## See also
 
