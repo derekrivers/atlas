@@ -85,8 +85,11 @@ Runbooks (`docs/runbooks/`):
 - `docs/runbooks/review-doctrine.md` — review contract for gate
   presentations and completion reports (gate and close checklists,
   verdict forms, reviewer conduct)
+- `docs/runbooks/running-atlas-plan.md` — operator runbook for the
+  plan/apply workflow: prerequisites, the commands and their exit
+  codes, every failure mode, the capacity boundary, and provenance
 - Stubs awaiting content: `docs/runbooks/local-development.md`,
-  `docs/runbooks/running-atlas-plan.md`, `docs/runbooks/troubleshooting.md`
+  `docs/runbooks/troubleshooting.md`
 
 Stubs awaiting content: `docs/product/`, `docs/tech-debt/`.
 
