@@ -29,6 +29,7 @@ DOCUMENTED_FIELDS: dict[str, tuple[Any, Any]] = {
     "model_name": (str, REQUIRED),
     "prompt_version": (str, REQUIRED),
     "prompt_hash": (str, REQUIRED),
+    "model_parameters": (dict[str, Any], DICT_FACTORY),
     "similarity_threshold": (float, REQUIRED),
     "raw_output_hash": (str, REQUIRED),
     "diff_summary": (dict[str, Any], DICT_FACTORY),

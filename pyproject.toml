@@ -12,7 +12,11 @@ dependencies = [
     "networkx>=3.2",
     "sqlalchemy>=2.0",
     "alembic>=1.13",
+    "anthropic>=0.40",
 ]
+
+[project.scripts]
+atlas = "atlas.cli:main"
 
 [dependency-groups]
 dev = [
@@ -63,6 +67,13 @@ strict = true
 # rest of strict mode intact.
 [[tool.mypy.overrides]]
 module = ["networkx.*"]
+ignore_missing_imports = true
+
+# The Anthropic SDK ships types but is imported lazily inside the concrete
+# client only (atlas/planning/client.py); the override keeps strict mode
+# intact if a build lacks the stubs.
+[[tool.mypy.overrides]]
+module = ["anthropic.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

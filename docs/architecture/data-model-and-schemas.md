@@ -786,6 +786,10 @@ class PlanRun(BaseModel):
     # Provenance chain: input_doc_shas (what was read) -> prompt_hash
     # (what was asked) -> raw_output_hash (what came back).
     prompt_hash: str  # SHA-256 of the rendered prompt text
+    # Reproducible-by-record: model_name names the model, model_parameters
+    # the call settings (temperature, max_tokens). With prompt_hash, a run is
+    # reproducible from its record.
+    model_parameters: dict = Field(default_factory=dict)
     similarity_threshold: float
     raw_output_hash: str
     diff_summary: dict = Field(default_factory=dict)
@@ -807,6 +811,7 @@ CREATE TABLE plan_runs (
     model_name TEXT NOT NULL,
     prompt_version TEXT NOT NULL,
     prompt_hash TEXT NOT NULL,
+    model_parameters JSONB NOT NULL DEFAULT '{}',
     similarity_threshold NUMERIC(4,3) NOT NULL,
     raw_output_hash TEXT NOT NULL,
     diff_summary JSONB NOT NULL DEFAULT '{}',

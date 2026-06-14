@@ -77,6 +77,11 @@
       "title": "Model Name",
       "type": "string"
     },
+    "model_parameters": {
+      "additionalProperties": true,
+      "title": "Model Parameters",
+      "type": "object"
+    },
     "model_provider": {
       "title": "Model Provider",
       "type": "string"
