@@ -70,6 +70,12 @@ Prompts and tools:
 - `atlas/planning/prompts/planner-v1.0.0.md.j2` and
   `atlas/planning/prompts/planner-v1.1.0.md.j2` — versioned planner
   prompt templates (released artifacts; never edited in place)
+- `atlas/planning/prompts/planner-stage-epics-v1.0.0.md.j2`,
+  `atlas/planning/prompts/planner-stage-tickets-v1.0.0.md.j2`, and
+  `atlas/planning/prompts/planner-stage-dependencies-v1.0.0.md.j2` —
+  staged planner templates: per-stage projections of the §3.11 proposal
+  contract, assembled into one full-state proposal by ATLAS-104
+  (ADR-0010; ATLAS-103)
 - `atlas/planning/prompts/CURRENT` — explicit current-release pointer
   (the renderer never infers the release; ATLAS-22)
 - `atlas/planning/prompts/README.md` — prompt versioning and release rules
