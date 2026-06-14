@@ -19,6 +19,9 @@ Strategy and specification (`docs/atlas/`):
 - `system-specification.md` — concise platform specification
 - `planning-engine-specification.md` — plan/apply, reconciler, validation
   gates, PlanRun, acceptance tests AT-1..AT-7
+- `planning-large-corpora.md` — design for generating a complete full-state
+  proposal across multiple bounded model calls (the output-capacity boundary;
+  ADR-0010)
 - `implementation-roadmap.md` — executable delivery programme (Revision 1)
 - `bootstrap-guide.md` — day-one bootstrap guide
 - `symphony-integration.md` — Phase 8 integration design (state mapping,
@@ -60,6 +63,7 @@ number is not reused.)
 - ADR-0007 Generative planning with deterministic reconciliation
 - ADR-0008 CI-sourced evidence with trust tiers
 - ADR-0009 Single-operator governance
+- ADR-0010 Multi-call generation with single-proposal reconciliation
 
 Prompts and tools:
 

@@ -61,9 +61,13 @@ plans corpora whose proposal fits the model's maximum output (64K tokens for
 the pinned `claude-sonnet-4-6`; the call streams). A corpus large enough to
 exceed it is truncated and recorded as a `failed` run with a specific
 truncation `failure_reason` — distinct from a parse error, so the cause is
-unambiguous — rather than misparsed as broken JSON. Chunked or continuation
-generation that would lift this boundary is a deferred follow-up; until then the
-boundary is honest and named, not a silent corruption.
+unambiguous — rather than misparsed as broken JSON. The committed Atlas corpus
+already sits against this ceiling (one full proposal fits at ~95–97% of it; small
+length variation truncates), so the boundary is resolved by design in
+planning-large-corpora.md (ADR-0010): generation is split into bounded stages and
+assembled into one full-state proposal before the reconciler. Until that lands
+(ATLAS-103..107), single-call truncation is honest and named, not a silent
+corruption.
 
 Inputs are read from HEAD: each document's content is the blob at its
 recorded SHA, so content and SHA are consistent by construction. A
