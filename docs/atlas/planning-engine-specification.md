@@ -235,6 +235,36 @@ Atlas documents:
   roadmap, the planner's proposal covers ≥90% of hand-written tickets by
   anchor match (the roadmap is the evaluation fixture, per ADR-0007).
 
+## 7.1 AT-7 coverage metric
+
+AT-7's "≥90% of hand-written tickets by anchor match" is measured as
+follows (the single implementation is the acceptance suite's
+`anchor_coverage`, ATLAS-29):
+
+- **Hand-written tickets.** A hand-written ticket is a line in
+  `docs/atlas/implementation-roadmap.md` matching `^ATLAS-<n> <title>` —
+  the key at line start. Wrapped continuation lines (indented, no leading
+  key) and `Retired:` lines are not tickets. Headings and ticket lines
+  inside fenced code blocks are excluded (§2.3).
+- **Anchor.** Each ticket's anchor is
+  `docs/atlas/implementation-roadmap.md#<slug>`, where `<slug>` is the
+  ingestion slug (§2.3) of the nearest preceding Markdown heading — the
+  `## Epic:`/`# Phase` section the ticket sits under, the finest anchor a
+  roadmap ticket has.
+- **Match.** A hand-written ticket is covered iff at least one proposed
+  ticket's `source_anchor` equals its anchor exactly — no similarity, no
+  tolerance.
+- **Coverage.** `covered ÷ total`; AT-7 passes at `≥ 0.90`. Because matching
+  is at the section heading, covering a section with one proposed ticket
+  covers every hand-written ticket in it: the metric measures that the
+  proposal reaches ≥90% of the roadmap's ticket-bearing sections,
+  ticket-weighted.
+- **Conservative floor.** Exact-anchor matching can only undercount — a
+  correct proposal anchored to an adjacent heading scores as a miss, never
+  a false hit — so the reported coverage is a lower bound on true coverage.
+  A future sub-90% result is therefore a planner-quality signal to
+  investigate, not something to resolve by loosening the matcher.
+
 ## 8. Non-goals for milestone 1
 
 No Linear writes. No Symphony dispatch. No HTML roadmap (Mermaid render
