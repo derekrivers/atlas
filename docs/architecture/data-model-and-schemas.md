@@ -898,6 +898,43 @@ Required fields: `source`, `target`, `dependency_type`, `reason`
 
 ---
 
+# 3.12 Key Counter
+
+The monotonic key counter is operational state (ADR-0007; design in
+knowledge-core.md "Key counter"): keys are assigned only at apply, only
+by the environment, and never reused — including across archived keys.
+The table holds one row per key prefix, keyed on the prefix itself.
+`ATLAS` (tickets) and `ATLAS-E` (epics) are distinct prefixes with
+independent counters; the prefix is the product-scoped identity. An
+unseen prefix has no row and reads as a high-water mark of `0`; its
+first assignment mints `<prefix>-1`.
+
+No-reuse is structural, not caller discipline: `high_water` is a pure
+high-water mark decoupled from backlog membership (archiving a ticket
+cannot lower it), the primary key on `prefix` makes one authoritative
+counter per prefix, and the repository exposes only a monotonic advance
+(no setter, no decrement) that participates in the caller-supplied apply
+transaction. The advance is the single stateful operation; the
+deterministic mapping of `new:<n>`/`new_epic:<n>` placeholders to
+assigned keys is a pure function over the diff and the current marks
+(ATLAS-25).
+
+This is operational infrastructure, not a document-rendered entity: it
+has no canonical Pydantic model and no `docs/generated/` schema. The
+repository's public currency is plain integers and an assigned range,
+never a row.
+
+## PostgreSQL Table
+
+```sql
+CREATE TABLE key_counters (
+    prefix TEXT PRIMARY KEY,
+    high_water INTEGER NOT NULL DEFAULT 0 CHECK (high_water >= 0)
+);
+```
+
+---
+
 # 4. Dependency Graph Schema
 
 Atlas should maintain a graph abstraction over the relational tables.

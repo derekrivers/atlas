@@ -294,6 +294,23 @@ class ContextPackRow(Base):
     created_at: Mapped[datetime] = mapped_column(UTCDateTime())
 
 
+class KeyCounterRow(Base):
+    """Monotonic per-prefix key counter (ATLAS-25, data-model §3.12).
+
+    One row per key prefix, keyed on the prefix itself: no-reuse is
+    structural (the value only advances and is decoupled from backlog
+    membership; the PK makes one authoritative counter per prefix).
+    """
+
+    __tablename__ = "key_counters"
+    __table_args__ = (
+        sa.CheckConstraint("high_water >= 0", name="key_counters_high_water_nonneg"),
+    )
+
+    prefix: Mapped[str] = mapped_column(sa.Text, primary_key=True)
+    high_water: Mapped[int] = mapped_column(sa.Integer, server_default=sa.text("0"))
+
+
 class PlanRunRow(Base):
     __tablename__ = "plan_runs"
 

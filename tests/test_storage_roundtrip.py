@@ -116,7 +116,13 @@ def test_public_surface_is_pydantic_only() -> None:
     # Gap-1 pin: nothing outside the storage package touches an ORM row
     # or a session. Every public repo method annotates its returns with
     # Pydantic models (or builtins) — no Session, no Row.
+    #
+    # Sole ratified exception: KeyCounterRepo.reserve takes a
+    # caller-supplied Session by design (ATLAS-25 gap 3) so the counter
+    # advance composes inside ATLAS-27's apply transaction. The caller is
+    # itself storage-resident; the session does not escape the package.
     banned = ("Session", "Row")
+    exempt = {("KeyCounterRepo", "reserve", "session")}
     for name in storage.__all__:
         exported = getattr(storage, name)
         if not (isinstance(exported, type) and name.endswith("Repo")):
@@ -126,7 +132,10 @@ def test_public_surface_is_pydantic_only() -> None:
                 continue
             method = getattr(exported, method_name)
             annotations = getattr(method, "__annotations__", {})
-            for annotation in map(str, annotations.values()):
-                assert not any(token in annotation for token in banned), (
-                    f"{name}.{method_name} leaks {annotation}"
+            for arg_name, annotation in annotations.items():
+                if (name, method_name, arg_name) in exempt:
+                    continue
+                rendered = str(annotation)
+                assert not any(token in rendered for token in banned), (
+                    f"{name}.{method_name} leaks {rendered}"
                 )

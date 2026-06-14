@@ -18,12 +18,14 @@ storage normalises to UTC and returns UTC-aware values.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Generic, TypeVar
 from uuid import UUID
 
 import sqlalchemy as sa
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
 from atlas.core.enums import EvidenceStatus
 from atlas.core.models import (
@@ -48,6 +50,7 @@ from atlas.storage.tables import (
     ContextPackRow,
     EpicRow,
     EvidenceRow,
+    KeyCounterRow,
     LessonRow,
     PlanRunRow,
     ProductRow,
@@ -78,6 +81,21 @@ class TrustTierError(ValueError):
 
 class PlanRunStateError(ValueError):
     """finalize applies only to rows in `proposed`, exactly once."""
+
+
+class KeyCounterError(ValueError):
+    """A reservation requested a non-positive count."""
+
+
+@dataclass(frozen=True)
+class Reservation:
+    """The keys an apply reserved from one prefix's counter: the assigned
+    range [first, last] and the resulting high-water mark."""
+
+    prefix: str
+    first: int
+    last: int
+    high_water: int
 
 
 def _reject_naive(model: BaseModel) -> None:
@@ -250,3 +268,51 @@ class PlanRunRepo(_Repo[PlanRun]):
             row.applied_at = applied_at
             row.failure_reason = failure_reason
             return self._to_model(row)
+
+
+class KeyCounterRepo:
+    """Monotonic per-prefix key counter (ATLAS-25, knowledge-core "Key
+    counter"; contract data-model §3.12).
+
+    Surface is exactly read + reserve. No setter and no decrement exist,
+    so no-reuse — including across archived keys — is structural: the
+    value only advances and is decoupled from backlog membership (AT-6).
+
+    reserve participates in a CALLER-SUPPLIED session (gap 3): it neither
+    opens nor commits a transaction, so ATLAS-27 composes the increment
+    with the render writes and the PlanRun finalise atomically. Sessions
+    and row classes stay inside this package; the public currency here is
+    plain ints and a Reservation, never an ORM row.
+    """
+
+    def __init__(self, db: Database) -> None:
+        self._db = db
+
+    def high_water_marks(self) -> dict[str, int]:
+        """The current high-water mark per seen prefix. An unseen prefix
+        is absent; callers read it as 0 (its first key is `<prefix>-1`)."""
+        with self._db.session() as session:
+            rows = session.scalars(sa.select(KeyCounterRow))
+            return {row.prefix: row.high_water for row in rows}
+
+    def reserve(self, session: Session, prefix: str, count: int) -> Reservation:
+        """Advance `prefix` by `count` inside the caller's transaction and
+        return the assigned range [first, last].
+
+        Monotonic by construction — the value only ever increases — so a
+        number once assigned, including one whose ticket was later
+        archived, is never reissued. The read-increment-persist happens on
+        the supplied session; the caller commits."""
+        if count <= 0:
+            raise KeyCounterError(f"reserve requires a positive count; got {count}")
+        row = session.get(KeyCounterRow, prefix)
+        if row is None:
+            first = 1
+            row = KeyCounterRow(prefix=prefix, high_water=count)
+            session.add(row)
+        else:
+            first = row.high_water + 1
+            row.high_water = row.high_water + count
+        return Reservation(
+            prefix=prefix, first=first, last=row.high_water, high_water=row.high_water
+        )

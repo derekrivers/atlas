@@ -216,6 +216,11 @@ DOCUMENTED_COLUMNS: dict[str, dict[str, tuple[bool, str | None]]] = {
         "created_at": (NN, None),
         "applied_at": (True, None),
     },
+    # §3.12
+    "key_counters": {
+        "prefix": (NN, None),
+        "high_water": (NN, "0"),
+    },
 }
 
 # Transcribed FK targets: table -> {column: referred table}. Absence is
@@ -234,6 +239,7 @@ DOCUMENTED_FOREIGN_KEYS: dict[str, dict[str, str]] = {
     "agent_runs": {"product_id": "products", "ticket_id": "tickets"},
     "context_packs": {"product_id": "products", "ticket_id": "tickets"},
     "plan_runs": {"product_id": "products"},
+    "key_counters": {},
 }
 
 DOCUMENTED_UNIQUES: dict[str, list[list[str]]] = {
@@ -309,6 +315,24 @@ def test_lessons_confidence_check_constraint(migrated_db: Database) -> None:
     )
     assert "confidence >= 0" in checks
     assert "confidence <= 1" in checks
+
+
+def test_key_counters_high_water_check_constraint(migrated_db: Database) -> None:
+    # §3.12: high_water is non-negative — the monotonic-from-zero floor.
+    inspector = sa.inspect(migrated_db.engine)
+    checks = " ".join(
+        constraint["sqltext"]
+        for constraint in inspector.get_check_constraints("key_counters")
+    )
+    assert "high_water >= 0" in checks
+
+
+def test_key_counters_primary_key_is_prefix(migrated_db: Database) -> None:
+    # §3.12 / gap 1: row identity is the prefix alone — one authoritative
+    # counter per prefix, which is what makes no-reuse structural.
+    inspector = sa.inspect(migrated_db.engine)
+    pk = inspector.get_pk_constraint("key_counters")
+    assert pk["constrained_columns"] == ["prefix"]
 
 
 def test_alembic_upgrades_fresh_db_and_matches_metadata(tmp_path: Path) -> None:
