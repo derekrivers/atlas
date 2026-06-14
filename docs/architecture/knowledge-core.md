@@ -73,12 +73,28 @@ the key-counter high-water mark.
 
 ## Key counter
 
-The monotonic ticket-key counter is operational state: a single-row
-`key_counters` table (per product key prefix), incremented inside the
-apply transaction. One counter row per key prefix: `ATLAS` (tickets)
-and `ATLAS-E` (epics) are distinct prefixes. The current high-water mark is also written into the
-render header comment for operator visibility, but the table is
-authoritative.
+The monotonic key counter is operational state: the `key_counters`
+table holds one row per key prefix, keyed on the prefix itself (primary
+key `prefix`). `ATLAS` (tickets) and `ATLAS-E` (epics) are distinct
+prefixes with independent counters; the prefix is the product-scoped
+identity, so "per product key prefix" and one row per prefix are the
+same thing (M1 is single-product, ADR-0009; a future second product
+takes a distinct prefix). An unseen prefix has no row and reads as a
+high-water mark of `0`; its first assignment mints `<prefix>-1` and
+writes the row.
+
+No-reuse — including across archived keys — is structural, not caller
+discipline: the stored value is a pure high-water mark
+(`high_water INTEGER NOT NULL DEFAULT 0 CHECK (high_water >= 0)`)
+decoupled from backlog membership, so archiving a ticket cannot lower
+it; the primary key on `prefix` makes one authoritative counter per
+prefix; and the repository exposes only a monotonic advance — no setter,
+no decrement. The advance reads-increments-persists inside the
+caller-supplied apply transaction (`atlas apply`), composing atomically
+with the render writes and the PlanRun finalise. The current high-water
+mark is also written into the render header comment for operator
+visibility, but the table is authoritative. The table contract is
+data-model-and-schemas.md §3.12.
 
 ## JSON Schema generation
 
