@@ -33,7 +33,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol, TypeVar, runtime_checkable
@@ -53,8 +53,17 @@ from atlas.planning.renderer import RenderedPrompt, render_planner_prompt
 # The staged templates (ATLAS-103). Distinct version lineage from the
 # single-call planner-v* templates; selected by explicit version=.
 STAGE_EPICS_VERSION = "planner-stage-epics-v1.0.0"
-STAGE_TICKETS_VERSION = "planner-stage-tickets-v1.0.0"
+STAGE_TICKETS_VERSION = "planner-stage-tickets-v1.1.0"
 STAGE_DEPENDENCIES_VERSION = "planner-stage-dependencies-v1.0.0"
+
+# ATLAS-109: bounded directed retry on a projection-bound graze. A stage that
+# emits valid JSON violating a §3.11 field bound (the measured case: a ticket
+# with 8 acceptance_criteria against the ≤7 cap) is re-called WITH a directed
+# correction up to this many total attempts (the original call plus retries),
+# then fails honestly with the typed StageOutputError. The cap is enforced,
+# never relaxed — this only makes delivery resilient to the model's occasional
+# one-over. A named constant, not config: 3 is the value (D1).
+MAX_STAGE_ATTEMPTS = 3
 
 _NEW_TICKET_RE = re.compile(r"^new:(\d+)$")
 
@@ -185,6 +194,84 @@ class StageOutputError(StagedGenerationError):
     """A stage's raw output was not valid JSON / not a valid projection, or
     the assembled references were inconsistent — the model broke the
     generation protocol."""
+
+
+class StageProjectionError(StageOutputError):
+    """A stage emitted valid JSON that violated a §3.11 projection FIELD BOUND
+    — a pydantic ``ValidationError`` (the measured case: a ticket with 8
+    ``acceptance_criteria`` against the ≤7 cap). Distinct from a
+    ``JSONDecodeError`` (structurally broken output) by TYPE, not by message,
+    so the generate() loop can retry this and only this (ATLAS-109, gap 1):
+    the output is sound and the model merely grazed a bound, so a directed
+    re-call telling it exactly what it violated reliably fixes it. It carries
+    the underlying ``ValidationError`` so the retry can derive the correction.
+    As a ``StageOutputError`` subclass it still records honestly as a failed
+    PlanRun if every retry is exhausted — no pipeline change, no hidden retry."""
+
+    def __init__(
+        self,
+        *,
+        stage: str,
+        records: Sequence[StageRecord],
+        raw_output: str,
+        message: str,
+        validation_error: ValidationError,
+    ) -> None:
+        super().__init__(
+            stage=stage, records=records, raw_output=raw_output, message=message
+        )
+        self.validation_error = validation_error
+
+
+def _correction_message(error: StageProjectionError) -> str:
+    """A directed correction (D2) derived from the rejected attempt's
+    ``ValidationError``: which ticket, which field, the actual count, the
+    bound — in a form the model can act on. The raw output parsed as JSON (the
+    failure was validation, not decode), so re-parsing it to name the offending
+    ticket by title is safe; if a lookup misses we fall back to the loc path.
+    The closing clause forecloses the wrong fix (padding or dropping)."""
+    try:
+        payload = json.loads(extract_json_object(error.raw_output))
+    except json.JSONDecodeError:
+        payload = None
+
+    lines: list[str] = []
+    for detail in error.validation_error.errors():
+        loc = detail["loc"]
+        location = ".".join(str(part) for part in loc)
+        item = _describe_item(payload, loc)
+        lines.append(f"- {location}{item}: {detail['msg']}.")
+
+    return (
+        "Your previous attempt was REJECTED for violating the §3.11 proposal "
+        "field bounds. Fix EXACTLY these and re-emit the FULL corrected JSON "
+        "for this epic (return the whole object — do not just send the changed "
+        "ticket):\n"
+        + "\n".join(lines)
+        + "\nFor an over-long acceptance_criteria list, SPLIT the ticket into "
+        "smaller tickets or TRIM to the most essential criteria so each ticket "
+        "has at most 7 — do NOT pad short lists and do NOT drop required "
+        "tickets to dodge the bound."
+    )
+
+
+def _describe_item(payload: object, loc: Sequence[object]) -> str:
+    """Best-effort human label for the offending item, e.g. the ticket title,
+    so the correction names what the model wrote rather than only a path."""
+    if (
+        isinstance(payload, Mapping)
+        and len(loc) >= 2
+        and loc[0] == "tickets"
+        and isinstance(loc[1], int)
+    ):
+        tickets = payload.get("tickets")
+        if isinstance(tickets, Sequence) and 0 <= loc[1] < len(tickets):
+            ticket = tickets[loc[1]]
+            if isinstance(ticket, Mapping):
+                title = ticket.get("title")
+                if isinstance(title, str):
+                    return f' (ticket "{title}")'
+    return ""
 
 
 # --- pure assembly (gap 1) ---------------------------------------------------
@@ -364,29 +451,39 @@ class TemplateStagedGenerator:
         ]
 
         # Stage 2: tickets, one call per epic (ATLAS-106 owns batch sizing).
+        # A projection-bound graze here (the measured ≤7 acceptance_criteria
+        # case) is re-rolled with a directed correction up to MAX_STAGE_ATTEMPTS
+        # (ATLAS-109); truncation and non-JSON still fail honestly, no retry.
         ticket_batches: list[TicketBatch] = []
         for index, epic in enumerate(epics_output.epics):
             identity = epic.key if epic.key is not None else f"new_epic:{index}"
             stage = f"tickets:{identity}"
-            tickets_prompt = render_planner_prompt(
-                {
-                    "product_key": context.product_key,
-                    "documents": context.documents,
-                    "epic": {
-                        "title": epic.title,
-                        "objective": epic.objective,
-                        "description": epic.description,
+
+            def _render_tickets(
+                correction: str | None,
+                epic: ProposalEpic = epic,
+                identity: str = identity,
+            ) -> RenderedPrompt:
+                return render_planner_prompt(
+                    {
+                        "product_key": context.product_key,
+                        "documents": context.documents,
+                        "epic": {
+                            "title": epic.title,
+                            "objective": epic.objective,
+                            "description": epic.description,
+                        },
+                        "epic_index": identity,
+                        "assembled_epics": assembled_epics,
+                        "stage_output_schema": _projection_schema(StageTicketsOutput),
+                        "correction": correction,
                     },
-                    "epic_index": identity,
-                    "assembled_epics": assembled_epics,
-                    "stage_output_schema": _projection_schema(StageTicketsOutput),
-                },
-                version=STAGE_TICKETS_VERSION,
-                prompts_dir=context.prompts_dir,
-            )
-            tickets_raw = self._call(client, tickets_prompt, stage, records)
-            tickets_output = self._parse(
-                StageTicketsOutput, tickets_raw, stage, records
+                    version=STAGE_TICKETS_VERSION,
+                    prompts_dir=context.prompts_dir,
+                )
+
+            tickets_output = self._call_stage_with_retry(
+                client, StageTicketsOutput, stage, records, _render_tickets
             )
             ticket_batches.append(
                 TicketBatch(epic_index=identity, output=tickets_output)
@@ -451,6 +548,39 @@ class TemplateStagedGenerator:
             assembled_json=assembled_json, stage_records=tuple(records)
         )
 
+    def _call_stage_with_retry(
+        self,
+        client: PlannerClient,
+        model: type[_StageModelT],
+        stage: str,
+        records: list[StageRecord],
+        render: Callable[[str | None], RenderedPrompt],
+    ) -> _StageModelT:
+        """Render → call → parse a stage, retrying a projection-bound graze
+        with a directed correction up to ``MAX_STAGE_ATTEMPTS`` total attempts
+        (ATLAS-109). The retry trigger is purely structural: only a
+        ``StageProjectionError`` (a §3.11 field-bound ValidationError) is
+        caught here; a base ``StageOutputError`` (non-JSON) and a
+        ``StageTruncatedError`` (raised by ``_call``, upstream of the parse)
+        both propagate immediately — no retry. Each attempt is a real model
+        call, so each appends its own ``StageRecord`` via ``_call``; retries
+        carry a ``(retry N)`` stage label so the provenance is self-describing
+        (gap 3). After the final still-failing attempt, the last typed
+        ``StageProjectionError`` is re-raised — failing honestly, naming the
+        stage and the violation, the cap enforced not relaxed."""
+        last_error: StageProjectionError | None = None
+        for attempt in range(MAX_STAGE_ATTEMPTS):
+            label = stage if attempt == 0 else f"{stage} (retry {attempt})"
+            correction = None if last_error is None else _correction_message(last_error)
+            prompt = render(correction)
+            raw = self._call(client, prompt, label, records)
+            try:
+                return self._parse(model, raw, label, records)
+            except StageProjectionError as error:
+                last_error = error
+        assert last_error is not None  # MAX_STAGE_ATTEMPTS >= 1
+        raise last_error
+
     @staticmethod
     def _call(
         client: PlannerClient,
@@ -509,7 +639,11 @@ class TemplateStagedGenerator:
         try:
             return model.model_validate(payload)
         except ValidationError as error:
-            raise StageOutputError(
+            # A §3.11 field-bound violation on otherwise-valid JSON: the
+            # retry-eligible class (ATLAS-109, gap 1). Raised as the distinct
+            # StageProjectionError so generate() retries this and only this; a
+            # JSONDecodeError above stays a base StageOutputError and propagates.
+            raise StageProjectionError(
                 stage=stage,
                 records=records,
                 raw_output=raw,
@@ -517,4 +651,5 @@ class TemplateStagedGenerator:
                     f"stage {stage!r} output is not a valid {model.__name__} "
                     f"projection: {error}"
                 ),
+                validation_error=error,
             ) from error

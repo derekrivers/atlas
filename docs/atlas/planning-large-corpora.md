@@ -207,6 +207,19 @@ hand-waved:
   but this is a risk single-call planning already carries (the model can decompose
   differently run-to-run); staging does not add it. It is validated, not asserted,
   by AT-2 across the multi-call sequence (§7, ATLAS-107).
+- **Directed retry does not move the boundary (ATLAS-109).** A stage that emits
+  valid JSON grazing a §3.11 field bound (measured: a ticket with 8
+  `acceptance_criteria` against the ≤7 cap; overshoots are rare and always by
+  exactly one) is re-called up to a small limit with a directed correction
+  naming the violation, then fails honestly. This adds a new model call — more
+  generation-side non-determinism — but the stability guarantee is unchanged:
+  it lives in the **reconciled diff**, not in regeneration. The retry only
+  changes *which* compliant raw output is assembled; that output reconciles
+  exactly like any other, prose drift absorbed as `MODIFY`-only. The ≤7 cap is
+  **enforced, never relaxed** — a stage still violating after the attempt limit
+  fails, dropping no data and loosening no bound — and every attempt is recorded
+  in `generation_stages`, so the added non-determinism is auditable rather than
+  hidden (an operator can see the model grazed and was corrected).
 
 ## 7. Open items (need runtime data, not hand-waving)
 
@@ -216,6 +229,11 @@ hand-waved:
 - **Cross-run assembled-proposal stability.** §6 argues the reconciler's matching
   absorbs model drift into `MODIFY`-only diffs; AT-2 across the staged sequence
   (ATLAS-107) is how that argument is confirmed against live output, not assumed.
+  First runtime data (ATLAS-109): re-rolling one epic's tickets stage three times
+  gave acceptance-criteria counts clustered at 5–7 with rare overshoots always at
+  exactly 8 (one ticket over on two of three rolls, none on the third) — the model
+  respects the ≤7 cap and a re-roll clears the graze, which the directed retry now
+  exploits (§6).
 - **Staged prompt-template versioning.** The three per-stage templates are new
   versioned artifacts (ADR-0007 versions prompts); their release/versioning follows
   the existing prompts README rules (ATLAS-103).
