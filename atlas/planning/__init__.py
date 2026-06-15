@@ -22,6 +22,7 @@ from atlas.planning.proposal import (
     ProposalReferenceError,
     ProposalTicket,
     ProposalValidationError,
+    extract_json_object,
     parse_proposal,
 )
 from atlas.planning.reconciler import (
@@ -79,6 +80,7 @@ __all__ = [
     "UnknownTemplateVersionError",
     "collect_input_documents",
     "current_release",
+    "extract_json_object",
     "parse_proposal",
     "reconcile",
     "render_planner_prompt",

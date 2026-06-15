@@ -170,14 +170,65 @@ def _reference_problems(proposal: Proposal) -> list[str]:
     return problems
 
 
+def extract_json_object(raw: str) -> str:
+    """Return the JSON object embedded in raw model output, tolerant of a
+    surrounding markdown code fence or leading/trailing prose (ATLAS-108).
+
+    The planner templates instruct "no surrounding text", but a prompt
+    instruction is a request, not a guarantee: a live staged run returned
+    valid JSON wrapped in a ```json ... ``` fence, and ``json.loads`` from
+    char 0 failed. A fence is just leading/trailing prose around the object,
+    so one mechanism handles both — locate the first ``{`` and scan, with
+    brace-depth and JSON-string/escape awareness, to its matching ``}``,
+    returning that slice. A ``}`` inside a string value does not end the
+    object; an escaped quote does not close the string.
+
+    This is a parse-time convenience only: callers hash the UNSTRIPPED raw
+    output for provenance before parsing, so the strip never touches the
+    hashed bytes. The helper never raises and never invents an error: when no
+    balanced object is found (genuine garbage), the original string is
+    returned so the caller's ``json.loads`` fails with the existing typed
+    parse error. Bare JSON is a no-op (the slice parses to the same object).
+    """
+    start = raw.find("{")
+    if start == -1:
+        return raw  # no object opener: let json.loads fail as today
+    depth = 0
+    in_string = False
+    escaped = False
+    for index in range(start, len(raw)):
+        char = raw[index]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+        elif char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return raw[start : index + 1]
+    return raw  # unbalanced object: let json.loads fail as today
+
+
 def parse_proposal(raw: str) -> Proposal:
     """Raw model output -> validated Proposal; every failure typed.
 
     Index bounds for new:<n>/new_epic:<n> are validated here, at parse
     time, before the reconciler ever runs (prompts README sensitivity).
+
+    A surrounding code fence or leading/trailing prose is tolerated
+    (extract_json_object, ATLAS-108); genuine non-JSON still fails as a
+    typed ProposalParseError.
     """
     try:
-        payload = json.loads(raw)
+        payload = json.loads(extract_json_object(raw))
     except json.JSONDecodeError as error:
         raise ProposalParseError(f"model output is not valid JSON: {error}") from error
     try:

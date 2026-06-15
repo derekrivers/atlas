@@ -37,7 +37,12 @@ Current backlog ──────────► Reconciler ◄─────�
    the current backlog, and the output schema.
 4. Call the configured model with structured output. Parse into the
    Proposal schema; a parse failure records a failed run (the failure
-   contract below).
+   contract below). The parser tolerates a surrounding markdown code
+   fence or leading/trailing prose, extracting the embedded JSON object
+   (a model may add a fence despite the template's "no surrounding text"
+   instruction); `raw_output_hash` is over the true raw output regardless
+   (the extraction is parse-time only, never on the hashed bytes), and
+   genuinely non-JSON output still fails as a typed parse error.
 5. Run validation gates (section 5).
 6. Run the reconciler (section 4) to produce a Plan Diff.
 7. Persist a `PlanRun` with `status: proposed` and print the diff.

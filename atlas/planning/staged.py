@@ -46,6 +46,7 @@ from atlas.planning.proposal import (
     ProposalDependency,
     ProposalEpic,
     ProposalTicket,
+    extract_json_object,
 )
 from atlas.planning.renderer import RenderedPrompt, render_planner_prompt
 
@@ -494,7 +495,10 @@ class TemplateStagedGenerator:
         records: list[StageRecord],
     ) -> _StageModelT:
         try:
-            payload = json.loads(raw)
+            # Fence/prose-tolerant extraction (ATLAS-108); raw_output stays the
+            # unstripped bytes (already hashed in _call), so provenance is
+            # unaffected. Genuine non-JSON still fails as StageOutputError.
+            payload = json.loads(extract_json_object(raw))
         except json.JSONDecodeError as error:
             raise StageOutputError(
                 stage=stage,
