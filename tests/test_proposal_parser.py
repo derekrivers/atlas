@@ -5,7 +5,9 @@ import json
 
 import pytest
 from proposal_fixtures import (
+    braces_in_strings_epic,
     dependency_payload,
+    fenced,
     proposal_json,
     proposal_payload,
     ticket_payload,
@@ -15,6 +17,7 @@ from atlas.planning import (
     ProposalParseError,
     ProposalReferenceError,
     ProposalValidationError,
+    extract_json_object,
     parse_proposal,
 )
 
@@ -28,6 +31,72 @@ def test_valid_proposal_parses() -> None:
 def test_malformed_json_is_parse_error() -> None:
     with pytest.raises(ProposalParseError, match="not valid JSON"):
         parse_proposal('{"epics": [')
+
+
+# --- ATLAS-108: fence/prose-tolerant extraction -----------------------------
+
+
+def test_fenced_proposal_parses() -> None:
+    # The live defect: valid JSON wrapped in a ```json ... ``` fence.
+    proposal = parse_proposal(fenced(proposal_json()))
+    assert len(proposal.epics) == 1
+    assert len(proposal.tickets) == 1
+
+
+def test_bare_json_passes_through_unchanged() -> None:
+    # No-op on the happy path: extraction is parse-EQUIVALENT (same object),
+    # not byte-identical — incidental whitespace must not matter.
+    raw = proposal_json()
+    assert json.loads(extract_json_object(raw)) == json.loads(raw)
+    # And with surrounding whitespace, still the same parsed object.
+    assert json.loads(extract_json_object(f"\n  {raw}  \n")) == json.loads(raw)
+
+
+def test_leading_prose_tolerated() -> None:
+    raw = "Here is the proposal you asked for:\n" + proposal_json()
+    proposal = parse_proposal(raw)
+    assert len(proposal.epics) == 1
+
+
+def test_trailing_prose_tolerated() -> None:
+    raw = proposal_json() + "\n\nLet me know if you'd like changes!"
+    proposal = parse_proposal(raw)
+    assert len(proposal.epics) == 1
+
+
+def test_fence_with_no_language_tolerated() -> None:
+    proposal = parse_proposal(fenced(proposal_json(), language=""))
+    assert len(proposal.tickets) == 1
+
+
+def test_genuine_garbage_is_typed_parse_error() -> None:
+    # No JSON object at all: the helper returns the input unchanged and the
+    # EXISTING typed error fires — no new opaque failure type.
+    with pytest.raises(ProposalParseError, match="not valid JSON"):
+        parse_proposal("I could not produce a plan for this corpus, sorry.")
+
+
+def test_unbalanced_object_is_typed_parse_error() -> None:
+    with pytest.raises(ProposalParseError, match="not valid JSON"):
+        parse_proposal(fenced('{"epics": [{"title": "x"'))
+
+
+def test_extraction_is_string_and_escape_aware() -> None:
+    # A } inside a string value (and an escaped ") must not end the object;
+    # the prose fields survive the round-trip intact.
+    payload = proposal_payload(epics=[braces_in_strings_epic()])
+    proposal = parse_proposal(fenced(json.dumps(payload)))
+    assert proposal.epics[0].objective == (
+        'Support the {token: value} form and a "quoted" clause.'
+    )
+    description = proposal.epics[0].description
+    assert "}" in description and "\\" in description
+
+
+def test_no_object_opener_returns_input_unchanged() -> None:
+    # Unit-level: the helper itself never raises and is a pure pass-through
+    # when there is no '{' to anchor on.
+    assert extract_json_object("no json here") == "no json here"
 
 
 def test_schema_invalid_payload_is_validation_error() -> None:

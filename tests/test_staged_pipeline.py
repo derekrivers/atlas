@@ -29,6 +29,7 @@ from atlas.planning.staged import (
     STAGE_EPICS_VERSION,
     STAGE_TICKETS_VERSION,
     StageContext,
+    StageEpicsOutput,
     TemplateStagedGenerator,
 )
 from atlas.storage import EpicRepo, PlanRunRepo
@@ -172,6 +173,53 @@ def test_template_generator_assembles_section_4_1() -> None:
         f"staged[{STAGE_EPICS_VERSION}+{STAGE_TICKETS_VERSION}"
         f"+{STAGE_DEPENDENCIES_VERSION}]"
     )
+
+
+# --- ATLAS-108: fence-tolerant parsing on the staged path --------------------
+
+
+def test_real_fenced_epics_output_parses_to_correct_stage_output() -> None:
+    # The exact live failure: the epics stage returned valid JSON in a ```json
+    # fence. The tolerant extraction recovers the correct StageEpicsOutput.
+    from proposal_fixtures import FENCED_EPICS_OUTPUT
+
+    from atlas.planning import extract_json_object
+
+    output = StageEpicsOutput.model_validate(
+        json.loads(extract_json_object(FENCED_EPICS_OUTPUT))
+    )
+    assert [e.title for e in output.epics] == ["Knowledge Core", "Dependency Engine"]
+
+
+def test_staged_run_tolerates_a_fence_on_every_stage() -> None:
+    # All three stage call sites use the tolerant parse: fence each of the four
+    # canned outputs and the run still assembles and persists.
+    from proposal_fixtures import fenced
+
+    fenced_outputs = [fenced(o) for o in worked_example_stage_outputs()]
+    client = SequencedFakeClient(fenced_outputs)
+    result = TemplateStagedGenerator().generate(client=client, context=_context())
+    proposal = parse_proposal(result.assembled_json)
+    assert [t.title for t in proposal.tickets] == [
+        "Document ingestion",
+        "Deterministic reconciler",
+        "Graph schema and build",
+        "Readiness detection",
+    ]
+
+
+def test_staged_hash_invariant_is_over_the_unstripped_stage_bytes() -> None:
+    # Gap 2 on the staged path: each StageRecord.raw_output_hash is the hash of
+    # the FENCED bytes the model sent, not the stripped object — provenance
+    # records what the model actually returned, fence and all.
+    from proposal_fixtures import fenced
+
+    fenced_outputs = [fenced(o) for o in worked_example_stage_outputs()]
+    client = SequencedFakeClient(fenced_outputs)
+    result = TemplateStagedGenerator().generate(client=client, context=_context())
+    for record, sent in zip(result.stage_records, fenced_outputs, strict=True):
+        expected = hashlib.sha256(sent.encode("utf-8")).hexdigest()
+        assert record.raw_output_hash == expected
 
 
 def _context() -> StageContext:

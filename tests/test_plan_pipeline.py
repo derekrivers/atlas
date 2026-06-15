@@ -187,6 +187,24 @@ def test_single_call_populates_degenerate_one_stage_list(tmp_path: Path) -> None
     assert stage["raw_output_hash"] == stored.raw_output_hash
 
 
+def test_single_call_tolerates_a_fence_and_hashes_the_unstripped_output(
+    tmp_path: Path,
+) -> None:
+    # ATLAS-108: a fenced single-call response parses (the run succeeds), and
+    # the hash invariant (gap 2) holds — raw_output_hash is over the FENCED
+    # bytes the model sent, not the stripped object.
+    repo = fixture_repo(tmp_path)
+    database = fresh_db(tmp_path)
+    fenced_output = "```json\n" + proposal_json() + "\n```"
+    result = run(repo, database, FakePlannerClient(fenced_output))
+
+    assert result.status is PlanRunStatus.PROPOSED
+    expected_hash = hashlib.sha256(fenced_output.encode("utf-8")).hexdigest()
+    assert result.plan_run.raw_output_hash == expected_hash
+    # The degenerate one-stage record also hashes the unstripped bytes.
+    assert result.plan_run.generation_stages[0]["raw_output_hash"] == expected_hash
+
+
 def test_at5_input_doc_shas_equal_ingested_head_shas(tmp_path: Path) -> None:
     repo = fixture_repo(tmp_path)
     database = fresh_db(tmp_path)

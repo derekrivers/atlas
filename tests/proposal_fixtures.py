@@ -71,3 +71,40 @@ def proposal_payload(**overrides: Any) -> dict[str, Any]:
 
 def proposal_json(**overrides: Any) -> str:
     return json.dumps(proposal_payload(**overrides))
+
+
+def fenced(body: str, language: str = "json") -> str:
+    """Wrap a JSON body in a markdown code fence, as the model did live."""
+    return f"```{language}\n{body}\n```"
+
+
+def epics_stage_payload(**overrides: Any) -> dict[str, Any]:
+    """A StageEpicsOutput projection (epics + planner_notes) — the stage-1
+    shape the live staged run emitted."""
+    return {
+        "epics": [
+            epic_payload(),
+            epic_payload(title="Dependency Engine", source_anchor="docs/a.md#beta"),
+        ],
+        "planner_notes": [],
+    } | overrides
+
+
+# Captured from the live staged run (ATLAS-108): the epics stage returned
+# complete, valid JSON wrapped in a ```json ... ``` fence, which the parser's
+# json.loads(raw) from char 0 rejected ("Expecting value: line 1 column 1
+# (char 0)"). The content was correct; only the wrapper broke the parse.
+# Committed as a regression fixture — the indented body mirrors the real
+# output, which began ```json\n{\n  "epics": [ ...
+FENCED_EPICS_OUTPUT = fenced(json.dumps(epics_stage_payload(), indent=2))
+
+
+def braces_in_strings_epic(**overrides: Any) -> dict[str, Any]:
+    """An epic whose free-text fields carry braces and escaped quotes — the
+    string/escape-awareness fixture: a } inside a string value must not end
+    the object, and a \\" must not close the string."""
+    return epic_payload(
+        objective='Support the {token: value} form and a "quoted" clause.',
+        description="Close brace } then text; a backslash \\ and a brace {.",
+        **overrides,
+    )
