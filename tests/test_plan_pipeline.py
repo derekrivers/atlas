@@ -168,6 +168,25 @@ def test_happy_path_persists_proposed_plan_run(tmp_path: Path) -> None:
     assert run_row.proposal["tickets"][0]["title"] == "Build plan CLI"
 
 
+def test_single_call_populates_degenerate_one_stage_list(tmp_path: Path) -> None:
+    # ATLAS-105 gap 2: the single-call path populates generation_stages with a
+    # one-element list, so the field's meaning is uniform — a reader always
+    # learns how many stages produced the proposal (here, one).
+    repo = fixture_repo(tmp_path)
+    database = fresh_db(tmp_path)
+    run(repo, database, FakePlannerClient(proposal_json()))
+
+    stored = PlanRunRepo(database).list()[0]
+    assert len(stored.generation_stages) == 1
+    stage = stored.generation_stages[0]
+    assert stage["stage"] == "single"
+    # The degenerate one-stage record mirrors the top-level chain (ATLAS-104's
+    # composite over a single stage is that stage): same prompt + output hashes.
+    assert stage["prompt_version"] == stored.prompt_version
+    assert stage["prompt_hash"] == stored.prompt_hash
+    assert stage["raw_output_hash"] == stored.raw_output_hash
+
+
 def test_at5_input_doc_shas_equal_ingested_head_shas(tmp_path: Path) -> None:
     repo = fixture_repo(tmp_path)
     database = fresh_db(tmp_path)

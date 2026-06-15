@@ -21,6 +21,7 @@ from test_plan_pipeline import NOW, fixture_repo, fresh_db, proposal_json
 from atlas import cli
 from atlas.core.models import Epic, PlanRunStatus
 from atlas.planning.client import TruncatedOutputError
+from atlas.planning.ingestion import collect_input_documents
 from atlas.planning.pipeline import StagedReplanUnsupportedError, run_plan
 from atlas.planning.proposal import parse_proposal
 from atlas.planning.staged import (
@@ -219,6 +220,68 @@ def test_run_plan_staged_path_persists_proposed_planrun(tmp_path: Any) -> None:
     assert len(run.proposal["tickets"]) == 4
     # The run is actually persisted.
     assert PlanRunRepo(database).get(run.id) is not None
+
+
+def test_run_plan_staged_path_persists_generation_stages(tmp_path: Any) -> None:
+    # ATLAS-105: the per-stage records ATLAS-104 produces are persisted on
+    # PlanRun.generation_stages — one record per call, byte-matching the
+    # generator's stage_records — and survive a round-trip through storage.
+    repo = fixture_repo(tmp_path)
+    database = fresh_db(tmp_path)
+
+    # Mirror run_plan's own document payload so the expected per-stage prompt
+    # hashes are computed against the same rendered prompts (prompt_hash depends
+    # on the ingested documents, raw_output_hash on the canned stage outputs).
+    documents = collect_input_documents(repo)
+    payload = [
+        {"path": doc.path, "sha": doc.sha, "content": doc.content} for doc in documents
+    ]
+    expected_records = (
+        TemplateStagedGenerator()
+        .generate(
+            client=SequencedFakeClient(worked_example_stage_outputs()),
+            context=StageContext(product_key="ATLAS", documents=payload),
+        )
+        .stage_records
+    )
+    expected_stages = [
+        {
+            "stage": r.stage,
+            "prompt_version": r.prompt_version,
+            "prompt_hash": r.prompt_hash,
+            "raw_output_hash": r.raw_output_hash,
+        }
+        for r in expected_records
+    ]
+
+    result = run_plan(
+        repo_root=repo,
+        database=database,
+        client=SequencedFakeClient(worked_example_stage_outputs()),
+        identity=FAKE_IDENTITY,
+        now=NOW,
+        staged_generator=TemplateStagedGenerator(),
+    )
+
+    # Four stages, in call order, each carrying the verbatim stage label that
+    # disambiguates the two ticket batches (same prompt_version, distinct stage).
+    assert [s["stage"] for s in result.plan_run.generation_stages] == [
+        "epics",
+        "tickets:new_epic:0",
+        "tickets:new_epic:1",
+        "dependencies",
+    ]
+    assert result.plan_run.generation_stages == expected_stages
+    # Persisted, not just in-memory: it reads back identically.
+    stored = PlanRunRepo(database).get(result.plan_run.id)
+    assert stored is not None
+    assert stored.generation_stages == expected_stages
+    # The top-level composite chain ATLAS-104 established is unchanged: the
+    # composite prompt_hash is derived from these per-stage prompt_hashes, and
+    # the assembled raw_output_hash differs from every per-stage hash.
+    assert result.plan_run.prompt_version.startswith("staged[")
+    per_stage_raw_hashes = {s["raw_output_hash"] for s in expected_stages}
+    assert result.plan_run.raw_output_hash not in per_stage_raw_hashes
 
 
 def test_run_plan_staged_path_records_truncation_naming_the_stage(

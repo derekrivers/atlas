@@ -61,6 +61,16 @@
       "default": null,
       "title": "Failure Reason"
     },
+    "generation_stages": {
+      "items": {
+        "additionalProperties": {
+          "type": "string"
+        },
+        "type": "object"
+      },
+      "title": "Generation Stages",
+      "type": "array"
+    },
     "id": {
       "format": "uuid",
       "title": "Id",
