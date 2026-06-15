@@ -53,7 +53,10 @@ from atlas.planning.renderer import RenderedPrompt, render_planner_prompt
 # The staged templates (ATLAS-103). Distinct version lineage from the
 # single-call planner-v* templates; selected by explicit version=.
 STAGE_EPICS_VERSION = "planner-stage-epics-v1.0.0"
-STAGE_TICKETS_VERSION = "planner-stage-tickets-v1.1.0"
+# v1.2.0 (ATLAS-110): the output-contract example shows "key": null and an
+# anti-copy instruction forbids transcribing ATLAS-<n> keys from the corpus
+# (a live run failed gate 6 by copying roadmap keys). v1.1.0 retained.
+STAGE_TICKETS_VERSION = "planner-stage-tickets-v1.2.0"
 STAGE_DEPENDENCIES_VERSION = "planner-stage-dependencies-v1.0.0"
 
 # ATLAS-109: bounded directed retry on a projection-bound graze. A stage that

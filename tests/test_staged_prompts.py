@@ -39,6 +39,7 @@ VariablesFactory = Callable[[], dict[str, object]]
 EPICS_VERSION = "planner-stage-epics-v1.0.0"
 TICKETS_VERSION = "planner-stage-tickets-v1.0.0"
 TICKETS_V1_1_0_VERSION = "planner-stage-tickets-v1.1.0"
+TICKETS_V1_2_0_VERSION = "planner-stage-tickets-v1.2.0"
 DEPENDENCIES_VERSION = "planner-stage-dependencies-v1.0.0"
 
 # The live single-call template is an unchanged artifact: pin its file
@@ -290,6 +291,82 @@ def test_tickets_v1_1_0_is_additive_over_v1_0_0() -> None:
     ).text
     assert "**Tickets for this epic only.**" in text
     assert "No ticket may have more than 7 acceptance criteria." in text
+
+
+# --- the staged tickets v1.2.0 template: the key example + anti-copy (ATLAS-110)
+
+
+def tickets_v1_2_0_variables(correction: object = None) -> dict[str, object]:
+    return tickets_variables() | {"correction": correction}
+
+
+def test_tickets_v1_1_0_is_retained_unchanged() -> None:
+    # Never edit a released template in place: v1.1.0 stays renderable so any
+    # historical PlanRun pinned to it (the ATLAS-109 lineage) reproduces exactly.
+    from atlas.planning.renderer import PROMPTS_DIR
+
+    assert (PROMPTS_DIR / f"{TICKETS_V1_1_0_VERSION}.md.j2").is_file()
+    rendered = render_planner_prompt(
+        tickets_v1_1_0_variables(), version=TICKETS_V1_1_0_VERSION
+    )
+    assert rendered.prompt_version == TICKETS_V1_1_0_VERSION
+
+
+def test_tickets_v1_2_0_example_shows_null_key_not_a_concrete_key() -> None:
+    # The root-cause fix: the JSON output-contract example shows the safe default
+    # ("key": null), and no concrete ATLAS-<n> appears in the example the model
+    # copied. A real-looking key in the example is exactly what failed gate 6.
+    text = render_planner_prompt(
+        tickets_v1_2_0_variables(), version=TICKETS_V1_2_0_VERSION
+    ).text
+    example = text.split("# Output contract", 1)[1]
+    assert '"key": null' in example
+    # The pre-fix concrete example value is gone from the example block, and no
+    # ATLAS-<n> ticket key is modelled there at all.
+    assert '"key": "ATLAS-24 or null"' not in text
+    assert '"key": "ATLAS' not in text
+
+
+def test_tickets_v1_2_0_forbids_copying_source_document_keys() -> None:
+    # The anti-copy instruction names the trap: ATLAS-<n> keys in the documents
+    # are not the model's to assign; a new ticket uses null regardless.
+    text = render_planner_prompt(
+        tickets_v1_2_0_variables(), version=TICKETS_V1_2_0_VERSION
+    ).text
+    assert "those are NOT keys for you to assign" in text
+    assert "regardless of any `ATLAS-<n>` key shown in any" in text
+    # The self-check echoes it, so instruction and check agree.
+    assert "No invented or copied keys" in text
+
+
+def test_tickets_v1_2_0_retains_correction_block_and_other_rules() -> None:
+    # Additive over v1.1.0: the ATLAS-109 correction/retry block still works and
+    # every carried instruction (projection, sizing) is intact.
+    heading = "Correction — your previous attempt was rejected"
+    first = render_planner_prompt(
+        tickets_v1_2_0_variables(correction=None), version=TICKETS_V1_2_0_VERSION
+    )
+    assert heading not in first.text
+    message = "ATLAS-110 carries the retry block — trim to 7."
+    retry = render_planner_prompt(
+        tickets_v1_2_0_variables(correction=message), version=TICKETS_V1_2_0_VERSION
+    )
+    assert heading in retry.text
+    assert message in retry.text
+    assert "**Tickets for this epic only.**" in first.text
+    assert "No ticket may have more than 7 acceptance criteria." in first.text
+
+
+def test_tickets_v1_2_0_renders_with_a_stable_hash() -> None:
+    first = render_planner_prompt(
+        tickets_v1_2_0_variables(), version=TICKETS_V1_2_0_VERSION
+    )
+    second = render_planner_prompt(
+        tickets_v1_2_0_variables(), version=TICKETS_V1_2_0_VERSION
+    )
+    assert first.text == second.text
+    assert first.prompt_version == TICKETS_V1_2_0_VERSION
+    assert first.prompt_hash == hashlib.sha256(first.text.encode("utf-8")).hexdigest()
 
 
 @pytest.mark.parametrize(

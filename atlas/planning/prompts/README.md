@@ -42,9 +42,9 @@ generation stage (planning-large-corpora.md §4/§4.1, ADR-0010):
 
 - `planner-stage-epics-v1.0.0.md.j2` — stage 1, emits the epics-only
   slice;
-- `planner-stage-tickets-v1.1.0.md.j2` — stage 2, emits one epic's
+- `planner-stage-tickets-v1.2.0.md.j2` — stage 2, emits one epic's
   tickets (rendered once per epic); the live staged tickets template
-  (v1.0.0 is retained for historical `PlanRun` reproduction);
+  (v1.0.0 and v1.1.0 are retained for historical `PlanRun` reproduction);
 - `planner-stage-dependencies-v1.0.0.md.j2` — stage 3, emits the
   `depends_on` edges.
 
@@ -96,6 +96,35 @@ naming exactly what was violated and re-calls, up to `MAX_STAGE_ATTEMPTS`
 total attempts, then fails honestly. Truncation and non-JSON output do NOT
 retry. v1.0.0 is retained unchanged so any historical `PlanRun` pinned to it
 reproduces exactly; only v1.1.0 carries the `correction` variable.
+
+### Staged tickets v1.2.0 (ATLAS-110)
+
+`planner-stage-tickets-v1.2.0.md.j2` is the live staged tickets template. Two
+changes from v1.1.0, both targeting a single observed failure: a live staged
+run cleared all three stages but failed gate 6 (`GATE6_UNKNOWN_KEY`, ~50 times)
+because the model emitted tickets carrying `ATLAS-<n>` keys it had transcribed
+from the roadmap in the corpus, instead of `"key": null` for new tickets. The
+template's prose was already correct; its JSON output-contract **example**
+contradicted it by showing a concrete `"key": "ATLAS-24 or null"`, which the
+model pattern-matched over the prose.
+
+- The output-contract example's key value is corrected to `null` — the safe
+  default every new ticket needs on a greenfield plan. The "existing ticket
+  echoes its key" case stays in prose; it is never modelled with a real-looking
+  key (a concrete `ATLAS-<n>` in the example is exactly what the model copied).
+- Rule 2 and the final self-check gain an explicit anti-copy instruction: the
+  source documents contain `ATLAS-<n>` keys that are NOT the model's to assign;
+  a new ticket uses `"key": null` regardless of any key shown in any document.
+
+MINOR — every other instruction (including the ATLAS-109 `correction`/retry
+block) is carried verbatim; the projection schema, reconciler, and gates are
+unchanged. v1.0.0 and v1.1.0 are retained for historical `PlanRun`
+reproduction. The same example-key contradiction is latent in
+`planner-stage-epics-v1.0.0` (line 99, `"key": "ATLAS-E1 or null"`) and the
+single-call `planner-v*` templates; it has not surfaced there (the corpus
+carries ticket keys, not epic keys, and the single-call path has stronger
+holistic prose) and is tracked as a near-term follow-up, not fixed
+speculatively here.
 
 ## Evaluation
 
