@@ -42,8 +42,9 @@ generation stage (planning-large-corpora.md §4/§4.1, ADR-0010):
 
 - `planner-stage-epics-v1.0.0.md.j2` — stage 1, emits the epics-only
   slice;
-- `planner-stage-tickets-v1.0.0.md.j2` — stage 2, emits one epic's
-  tickets (rendered once per epic);
+- `planner-stage-tickets-v1.1.0.md.j2` — stage 2, emits one epic's
+  tickets (rendered once per epic); the live staged tickets template
+  (v1.0.0 is retained for historical `PlanRun` reproduction);
 - `planner-stage-dependencies-v1.0.0.md.j2` — stage 3, emits the
   `depends_on` edges.
 
@@ -76,6 +77,25 @@ artifacts only.
   staged names, so they can never repoint the live release. A staged
   "current" pointer, if ever needed, is ATLAS-104's decision, not this
   ticket's.
+
+### Staged tickets v1.1.0 (ATLAS-109)
+
+`planner-stage-tickets-v1.1.0.md.j2` is the live staged tickets template.
+It adds one declared variable, `correction`, and an additive
+`{% if correction %}` block; every v1.0.0 instruction is unchanged and the
+§3.11 bounds are enforced, never relaxed. MINOR — the projection schema and
+the assembled-proposal contract are unchanged, so the reconciler and gates
+are unaffected.
+
+The orchestrator (`atlas/planning/staged.py`) supplies `correction` on every
+render: `None` on the first attempt (the block renders empty), and a directed
+correction string on a retry. When a tickets stage emits valid JSON that
+grazes a §3.11 field bound (the measured case: 8 `acceptance_criteria` against
+the ≤7 cap), the orchestrator re-renders this template with a correction
+naming exactly what was violated and re-calls, up to `MAX_STAGE_ATTEMPTS`
+total attempts, then fails honestly. Truncation and non-JSON output do NOT
+retry. v1.0.0 is retained unchanged so any historical `PlanRun` pinned to it
+reproduces exactly; only v1.1.0 carries the `correction` variable.
 
 ## Evaluation
 

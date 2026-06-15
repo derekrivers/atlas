@@ -38,6 +38,7 @@ VariablesFactory = Callable[[], dict[str, object]]
 
 EPICS_VERSION = "planner-stage-epics-v1.0.0"
 TICKETS_VERSION = "planner-stage-tickets-v1.0.0"
+TICKETS_V1_1_0_VERSION = "planner-stage-tickets-v1.1.0"
 DEPENDENCIES_VERSION = "planner-stage-dependencies-v1.0.0"
 
 # The live single-call template is an unchanged artifact: pin its file
@@ -234,6 +235,61 @@ def test_single_call_template_file_is_byte_for_byte_unchanged() -> None:
         "the single-call template is the live path until ATLAS-104; "
         "any change to it requires a version bump, not an in-place edit"
     )
+
+
+# --- the staged tickets v1.1.0 template: the correction variable (ATLAS-109) -
+
+
+def tickets_v1_1_0_variables(correction: object = None) -> dict[str, object]:
+    return tickets_variables() | {"correction": correction}
+
+
+def test_tickets_v1_0_0_is_retained_unchanged() -> None:
+    # Never edit a released template in place: v1.0.0 stays a renderable artifact
+    # so any historical PlanRun pinned to it reproduces exactly.
+    from atlas.planning.renderer import PROMPTS_DIR
+
+    assert (PROMPTS_DIR / f"{TICKETS_VERSION}.md.j2").is_file()
+    rendered = render_planner_prompt(tickets_variables(), version=TICKETS_VERSION)
+    assert rendered.prompt_version == TICKETS_VERSION
+
+
+def test_tickets_v1_1_0_declares_correction_variable() -> None:
+    # v1.0.0 does not declare `correction`; v1.1.0 does (and requires it).
+    with pytest.raises(UndeclaredVariableError, match="correction"):
+        render_planner_prompt(
+            tickets_variables() | {"correction": None}, version=TICKETS_VERSION
+        )
+    with pytest.raises(MissingVariableError, match="correction"):
+        render_planner_prompt(tickets_variables(), version=TICKETS_V1_1_0_VERSION)
+
+
+def test_tickets_v1_1_0_correction_block_renders_only_when_populated() -> None:
+    heading = "Correction — your previous attempt was rejected"
+    # Absent on the first attempt (correction is None): the block is empty.
+    first = render_planner_prompt(
+        tickets_v1_1_0_variables(correction=None),
+        version=TICKETS_V1_1_0_VERSION,
+    )
+    assert heading not in first.text
+    # Present and verbatim on a retry (correction populated).
+    message = "ATLAS-109 directed correction probe — split or trim."
+    retry = render_planner_prompt(
+        tickets_v1_1_0_variables(correction=message),
+        version=TICKETS_V1_1_0_VERSION,
+    )
+    assert heading in retry.text
+    assert message in retry.text
+
+
+def test_tickets_v1_1_0_is_additive_over_v1_0_0() -> None:
+    # The v1.0.0 instructions survive verbatim into v1.1.0 (additive bump): the
+    # sizing rule and the projection instruction are unchanged.
+    text = render_planner_prompt(
+        tickets_v1_1_0_variables(), version=TICKETS_V1_1_0_VERSION
+    ).text
+    assert "**Tickets for this epic only.**" in text
+    assert "No ticket may have more than 7 acceptance criteria." in text
 
 
 @pytest.mark.parametrize(
