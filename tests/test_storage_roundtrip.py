@@ -100,6 +100,35 @@ def test_jsonb_shimmed_dict_fields_round_trip(db: Database) -> None:
     assert stored_run.input_doc_shas == shas
 
 
+def test_generation_stages_server_default_backfills_existing_rows(db: Database) -> None:
+    # ATLAS-105 gap 3: a plan_runs row written before this field existed (here,
+    # inserted without generation_stages) is backfilled by the NOT NULL '[]'
+    # server default and reads back as the empty list — no data surgery.
+    import sqlalchemy as sa
+
+    from atlas.storage.tables import PlanRunRow
+
+    kwargs = plan_run_kwargs()
+    with db.session() as session, session.begin():
+        session.execute(
+            sa.insert(PlanRunRow).values(
+                id=kwargs["id"],
+                product_id=kwargs["product_id"],
+                status=kwargs["status"],
+                model_provider=kwargs["model_provider"],
+                model_name=kwargs["model_name"],
+                prompt_version=kwargs["prompt_version"],
+                prompt_hash=kwargs["prompt_hash"],
+                similarity_threshold=kwargs["similarity_threshold"],
+                raw_output_hash=kwargs["raw_output_hash"],
+                created_at=kwargs["created_at"],
+            )
+        )
+    stored = PlanRunRepo(db).get(kwargs["id"])
+    assert stored is not None
+    assert stored.generation_stages == []
+
+
 def test_get_by_key_for_keyed_aggregates(db: Database) -> None:
     repo = TicketRepo(db)
     ticket = Ticket(**ticket_kwargs())

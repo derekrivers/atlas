@@ -332,6 +332,9 @@ class PlanRunRow(Base):
     )
     raw_output_hash: Mapped[str] = mapped_column(sa.Text)
     proposal: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default=_EMPTY_DICT)
+    generation_stages: Mapped[list[dict[str, str]]] = mapped_column(
+        JSONB, server_default=_EMPTY_LIST
+    )
     diff_summary: Mapped[dict[str, Any]] = mapped_column(
         JSONB, server_default=_EMPTY_DICT
     )

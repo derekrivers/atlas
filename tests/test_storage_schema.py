@@ -212,6 +212,7 @@ DOCUMENTED_COLUMNS: dict[str, dict[str, tuple[bool, str | None]]] = {
         "similarity_threshold": (NN, None),
         "raw_output_hash": (NN, None),
         "proposal": (NN, "'{}'"),
+        "generation_stages": (NN, "'[]'"),
         "diff_summary": (NN, "'{}'"),
         "failure_reason": (True, None),
         "approved_by": (True, None),

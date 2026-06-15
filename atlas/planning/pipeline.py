@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -52,11 +53,12 @@ from atlas.planning.reconciler import (
     PlanDiff,
     reconcile,
 )
-from atlas.planning.renderer import render_planner_prompt
+from atlas.planning.renderer import RenderedPrompt, render_planner_prompt
 from atlas.planning.staged import (
     StageContext,
     StagedGenerationError,
     StagedProposalGenerator,
+    StageRecord,
     StageTruncatedError,
     composite_prompt_hash,
     composite_prompt_version,
@@ -121,11 +123,30 @@ class _Generated:
     raw_output: str
     prompt_version: str
     prompt_hash: str
+    # Per-stage generation provenance (ATLAS-105, §5.3): the staged path's
+    # per-call records, or the single-call path's degenerate one-stage list.
+    generation_stages: list[dict[str, str]]
     failure_reason: str | None
 
 
 def _sha256(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _stage_payload(records: Sequence[StageRecord]) -> list[dict[str, str]]:
+    """The persisted ``generation_stages`` shape (ATLAS-105, §5.3): each
+    ATLAS-104 ``StageRecord`` as a plain JSON object, in call order. The
+    ``stage`` string is copied verbatim, so the stored value byte-matches the
+    composite-hash input and a future audit can tie the two together."""
+    return [
+        {
+            "stage": record.stage,
+            "prompt_version": record.prompt_version,
+            "prompt_hash": record.prompt_hash,
+            "raw_output_hash": record.raw_output_hash,
+        }
+        for record in records
+    ]
 
 
 def _backlog_yaml(
@@ -250,6 +271,7 @@ def run_plan(
         "prompt_hash": generated.prompt_hash,
         "similarity_threshold": similarity_threshold,
         "raw_output_hash": raw_output_hash,
+        "generation_stages": generated.generation_stages,
     }
 
     # Truncation (single-call or per-stage) is a recorded failure carrying the
@@ -335,14 +357,32 @@ def _generate_single_call(
             raw_output=error.raw_output,
             prompt_version=rendered.prompt_version,
             prompt_hash=rendered.prompt_hash,
+            generation_stages=_single_call_stages(rendered, error.raw_output),
             failure_reason=reason,
         )
     return _Generated(
         raw_output=raw_output,
         prompt_version=rendered.prompt_version,
         prompt_hash=rendered.prompt_hash,
+        generation_stages=_single_call_stages(rendered, raw_output),
         failure_reason=None,
     )
+
+
+def _single_call_stages(
+    rendered: RenderedPrompt, raw_output: str
+) -> list[dict[str, str]]:
+    """The single-call path's degenerate one-stage list (gap 2, §5.3): one
+    record so the field's meaning is uniform across paths. Its prompt_hash and
+    raw_output_hash equal the run's top-level chain (a one-stage composite)."""
+    return [
+        {
+            "stage": "single",
+            "prompt_version": rendered.prompt_version,
+            "prompt_hash": rendered.prompt_hash,
+            "raw_output_hash": _sha256(raw_output),
+        }
+    ]
 
 
 def _generate_staged(
@@ -379,6 +419,7 @@ def _generate_staged(
             raw_output=error.raw_output,
             prompt_version=composite_prompt_version(error.records),
             prompt_hash=composite_prompt_hash(error.records),
+            generation_stages=_stage_payload(error.records),
             failure_reason=reason,
         )
     except StagedGenerationError as error:
@@ -393,12 +434,14 @@ def _generate_staged(
             raw_output=error.raw_output,
             prompt_version=composite_prompt_version(error.records),
             prompt_hash=composite_prompt_hash(error.records),
+            generation_stages=_stage_payload(error.records),
             failure_reason=reason,
         )
     return _Generated(
         raw_output=result.assembled_json,
         prompt_version=result.prompt_version,
         prompt_hash=result.prompt_hash,
+        generation_stages=_stage_payload(result.stage_records),
         failure_reason=None,
     )
 

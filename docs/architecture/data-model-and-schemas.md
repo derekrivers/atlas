@@ -796,6 +796,12 @@ class PlanRun(BaseModel):
     # `atlas apply` materialises the backlog from, keeping the chain
     # raw_output_hash -> proposal -> renders legible.
     proposal: dict = Field(default_factory=dict)
+    # Per-stage generation provenance (ADR-0010; planning-large-corpora §5.3):
+    # one record per model call — {stage, prompt_version, prompt_hash,
+    # raw_output_hash} — that the composite prompt_hash/prompt_version are
+    # derived from. The single-call path is the degenerate one-stage list, so
+    # the count truthfully answers "how many stages produced this proposal".
+    generation_stages: list[dict] = Field(default_factory=list)
     diff_summary: dict = Field(default_factory=dict)
     failure_reason: Optional[str] = None
     approved_by: Optional[str] = None
@@ -819,6 +825,7 @@ CREATE TABLE plan_runs (
     similarity_threshold NUMERIC(4,3) NOT NULL,
     raw_output_hash TEXT NOT NULL,
     proposal JSONB NOT NULL DEFAULT '{}',
+    generation_stages JSONB NOT NULL DEFAULT '[]',
     diff_summary JSONB NOT NULL DEFAULT '{}',
     failure_reason TEXT,
     approved_by TEXT,

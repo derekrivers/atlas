@@ -53,6 +53,13 @@ class PlanRun(BaseModel):
     # it to materialise the backlog, keeping the chain raw_output_hash ->
     # proposal -> renders legible (ATLAS-26 persists it; ATLAS-27 applies it).
     proposal: dict[str, Any] = Field(default_factory=dict)
+    # Per-stage generation provenance (ATLAS-105; planning-large-corpora §5.3):
+    # one record per model call — {stage, prompt_version, prompt_hash,
+    # raw_output_hash} — that the composite top-level prompt_hash/prompt_version
+    # are derived from (ADR-0010). The staged path stores result.stage_records;
+    # the single-call path stores its degenerate one-stage list, so the field's
+    # meaning is uniform (how many stages produced this proposal).
+    generation_stages: list[dict[str, str]] = Field(default_factory=list)
     diff_summary: dict[str, Any] = Field(default_factory=dict)  # counts + entries
     failure_reason: str | None = None
     approved_by: str | None = None

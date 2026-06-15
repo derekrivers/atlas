@@ -18,6 +18,7 @@ from atlas.core.models import PlanRun, PlanRunStatus
 
 REQUIRED = object()  # sentinel: field has no default
 DICT_FACTORY = object()  # sentinel: default_factory=dict
+LIST_FACTORY = object()  # sentinel: default_factory=list
 
 # data-model §3.10, in documented order: field -> (annotation, default).
 DOCUMENTED_FIELDS: dict[str, tuple[Any, Any]] = {
@@ -33,6 +34,7 @@ DOCUMENTED_FIELDS: dict[str, tuple[Any, Any]] = {
     "similarity_threshold": (float, REQUIRED),
     "raw_output_hash": (str, REQUIRED),
     "proposal": (dict[str, Any], DICT_FACTORY),
+    "generation_stages": (list[dict[str, str]], LIST_FACTORY),
     "diff_summary": (dict[str, Any], DICT_FACTORY),
     "failure_reason": (str | None, None),
     "approved_by": (str | None, None),
@@ -80,6 +82,8 @@ def test_annotations_requiredness_defaults() -> None:
             assert field.is_required(), name
         elif default is DICT_FACTORY:
             assert field.default_factory is dict, name
+        elif default is LIST_FACTORY:
+            assert field.default_factory is list, name
         else:
             assert not field.is_required(), name
             assert field.default == default, name
