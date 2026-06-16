@@ -21,7 +21,7 @@ from test_plan_pipeline import NOW, fixture_repo, fresh_db, proposal_json
 from atlas import cli
 from atlas.core.models import Epic, PlanRunStatus
 from atlas.planning.client import TruncatedOutputError
-from atlas.planning.ingestion import collect_input_documents
+from atlas.planning.ingestion import AnchorIndex, collect_input_documents
 from atlas.planning.pipeline import StagedReplanUnsupportedError, run_plan
 from atlas.planning.proposal import parse_proposal
 from atlas.planning.staged import (
@@ -270,6 +270,43 @@ def test_run_plan_staged_path_persists_proposed_planrun(tmp_path: Any) -> None:
     assert PlanRunRepo(database).get(run.id) is not None
 
 
+def test_run_plan_staged_renders_the_anchor_list_and_passes_gate_4(
+    tmp_path: Any,
+) -> None:
+    # ATLAS-111: the pipeline renders the valid-anchor list (from the same
+    # AnchorIndex gate 4 validates against) into the epics and tickets stages,
+    # and a run whose stage outputs anchor to entries IN that list passes gate 4
+    # end to end (reaches PROPOSED). The worked-example anchors
+    # (docs/atlas/plan.md#planning / #backlog) resolve against the fixture.
+    repo = fixture_repo(tmp_path)
+    database = fresh_db(tmp_path)
+    client = SequencedFakeClient(worked_example_stage_outputs())
+
+    result = run_plan(
+        repo_root=repo,
+        database=database,
+        client=client,
+        identity=FAKE_IDENTITY,
+        now=NOW,
+        staged_generator=TemplateStagedGenerator(),
+    )
+
+    # Gate 4 passes (anchors drawn from the rendered list resolve).
+    assert result.status is PlanRunStatus.PROPOSED
+    # The epics stage (prompt 0) and a tickets stage (prompt 1) each carry the
+    # valid-anchor list, and the exact anchors the outputs used appear in it.
+    epics_prompt, tickets_prompt = client.prompts[0], client.prompts[1]
+    assert "## Valid source anchors" in epics_prompt
+    assert "## Valid source anchors" in tickets_prompt
+    assert ANCHOR_EPIC in epics_prompt  # docs/atlas/plan.md#planning
+    assert ANCHOR_TICKET in tickets_prompt  # docs/atlas/plan.md#backlog
+    # Select-not-construct instruction, not the old slug-construction rule
+    # (whitespace-normalised: the instruction wraps across lines).
+    assert "Do NOT construct, slugify, or guess an anchor" in " ".join(
+        tickets_prompt.split()
+    )
+
+
 def test_run_plan_staged_path_persists_generation_stages(tmp_path: Any) -> None:
     # ATLAS-105: the per-stage records ATLAS-104 produces are persisted on
     # PlanRun.generation_stages — one record per call, byte-matching the
@@ -284,11 +321,17 @@ def test_run_plan_staged_path_persists_generation_stages(tmp_path: Any) -> None:
     payload = [
         {"path": doc.path, "sha": doc.sha, "content": doc.content} for doc in documents
     ]
+    # Mirror run_plan's valid-anchor wiring (ATLAS-111): the prompt_hash now
+    # depends on the rendered anchor list, so the expected generator must be fed
+    # the same anchors the pipeline derives from its AnchorIndex.
+    valid_anchors = AnchorIndex.build(documents).anchor_choices()
     expected_records = (
         TemplateStagedGenerator()
         .generate(
             client=SequencedFakeClient(worked_example_stage_outputs()),
-            context=StageContext(product_key="ATLAS", documents=payload),
+            context=StageContext(
+                product_key="ATLAS", documents=payload, valid_anchors=valid_anchors
+            ),
         )
         .stage_records
     )
@@ -433,9 +476,9 @@ def test_default_path_is_single_call_when_no_generator(tmp_path: Any) -> None:
         now=NOW,
     )
     assert result.status is PlanRunStatus.PROPOSED
-    # The single-call prompt_version is the live single-call template, not a
-    # composite — staged is purely additive.
-    assert result.plan_run.prompt_version == "planner-v1.1.0"
+    # The single-call prompt_version is the live single-call template (CURRENT,
+    # bumped to v1.2.0 by ATLAS-111), not a composite — staged is purely additive.
+    assert result.plan_run.prompt_version == "planner-v1.2.0"
 
 
 # --- the CLI --staged flag routes to the staged path -------------------------
