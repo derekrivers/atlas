@@ -40,11 +40,11 @@ Alongside the single-call `planner-v*` templates there are three staged
 templates — projections of the §3.11 proposal contract, one per
 generation stage (planning-large-corpora.md §4/§4.1, ADR-0010):
 
-- `planner-stage-epics-v1.0.0.md.j2` — stage 1, emits the epics-only
-  slice;
-- `planner-stage-tickets-v1.2.0.md.j2` — stage 2, emits one epic's
+- `planner-stage-epics-v1.1.0.md.j2` — stage 1, emits the epics-only
+  slice (v1.0.0 retained for historical `PlanRun` reproduction);
+- `planner-stage-tickets-v1.3.0.md.j2` — stage 2, emits one epic's
   tickets (rendered once per epic); the live staged tickets template
-  (v1.0.0 and v1.1.0 are retained for historical `PlanRun` reproduction);
+  (v1.0.0/v1.1.0/v1.2.0 are retained for historical `PlanRun` reproduction);
 - `planner-stage-dependencies-v1.0.0.md.j2` — stage 3, emits the
   `depends_on` edges.
 
@@ -71,12 +71,12 @@ artifacts only.
   `ProposalEpic`, and so on), so they cannot drift from the contract; the
   renderer takes the schema as a variable (the same D2 seam as the
   single-call template).
-- **CURRENT is unchanged.** `CURRENT` still names the live single-call
-  release (`planner-v1.1.0`); the staged set is selected only by explicit
-  `version=`. The renderer's CURRENT version pattern structurally rejects
-  staged names, so they can never repoint the live release. A staged
-  "current" pointer, if ever needed, is ATLAS-104's decision, not this
-  ticket's.
+- **CURRENT names a single-call release.** `CURRENT` names the live
+  single-call release (`planner-v1.2.0` since ATLAS-111; was `planner-v1.1.0`);
+  the staged set is selected only by explicit `version=`. The renderer's
+  CURRENT version pattern structurally rejects staged names, so they can never
+  repoint the live release. A staged "current" pointer, if ever needed, is
+  ATLAS-104's decision, not this ticket's.
 
 ### Staged tickets v1.1.0 (ATLAS-109)
 
@@ -125,6 +125,41 @@ single-call `planner-v*` templates; it has not surfaced there (the corpus
 carries ticket keys, not epic keys, and the single-call path has stronger
 holistic prose) and is tracked as a near-term follow-up, not fixed
 speculatively here.
+
+### Anchor selection from the index — all paths (ATLAS-111)
+
+Three new template versions land together so every path that emits a
+`source_anchor` SELECTS it from an environment-supplied list instead of
+CONSTRUCTING a slug from a rule:
+
+- `planner-v1.2.0.md.j2` (single-call) — **CURRENT is bumped to this**, so the
+  fix reaches the documented default path;
+- `planner-stage-epics-v1.1.0.md.j2` (`STAGE_EPICS_VERSION`);
+- `planner-stage-tickets-v1.3.0.md.j2` (`STAGE_TICKETS_VERSION`) — carries the
+  ATLAS-109 `correction`/retry block and the ATLAS-110 key instruction verbatim.
+
+A live `--staged` run failed gate 4 (`GATE4_UNRESOLVED_ANCHOR`): a ticket
+anchored into `planning-large-corpora.md`, whose headings are the most
+slug-hostile in the corpus (numbered `## 4.`, lettered `### A.`, em-dashed
+`— chosen`), with a slug that matched no heading. The model cannot reliably
+reverse-engineer the `slugify` algorithm (ingestion.py §2.3) for such headings —
+and need not: the environment already holds the authoritative slug→heading map
+in the `AnchorIndex` before the prompt renders. Each template now declares a
+`valid_anchors` variable and renders a **Valid source anchors** section (one
+`` `path#slug` — heading `` per line); the anchoring rule, source-docs prose,
+example anchor (a select-from-list placeholder, per the ATLAS-110 example
+lesson), and self-check all say select-not-construct. The list is derived from
+`AnchorIndex.anchor_choices()` — the single slug implementation — so the list
+the model selects from is the exact list gate 4 validates against; there is no
+second slug computation. The single-call and both affected staged paths share
+this fix; the dependencies stage carries no `source_anchor` and is untouched.
+
+MINOR each — the §3.11 schema, reconciler, and gates are unchanged. Priors are
+retained for historical `PlanRun` reproduction. **Forced consequence:** bumping
+CURRENT makes `planner-v1.2.0` the live single-call release, subject to the
+post-ATLAS-29 release gate below (AT-2 + AT-7); those legs are operator-run
+(skipped in CI), so the operator runs the live AT suite to ratify the release —
+the AT-7 number doubles as the gate-4-resolution evidence.
 
 ## Evaluation
 

@@ -135,6 +135,43 @@ def test_fenced_headings_are_not_headings() -> None:
     assert index.slugs_for("doc.md") == ["real"]
 
 
+# --- anchor_choices: the select-from list for the prompt (ATLAS-111) ---------
+
+
+def test_anchor_choices_lists_every_anchor_with_heading_in_order() -> None:
+    # path#slug + heading for every indexed heading, in document then heading
+    # order — the deterministic payload the prompt renders.
+    index = AnchorIndex.build(
+        [
+            SourceDocument(path="a.md", sha="s1", content="# One\n\n## Two\n"),
+            SourceDocument(path="b.md", sha="s2", content="### Three — chosen\n"),
+        ]
+    )
+    assert index.anchor_choices() == [
+        {"anchor": "a.md#one", "heading": "One"},
+        {"anchor": "a.md#two", "heading": "Two"},
+        {"anchor": "b.md#three--chosen", "heading": "Three — chosen"},
+    ]
+
+
+def test_anchor_choices_are_exactly_the_gate_4_validated_set() -> None:
+    # One source of slugs: every anchor in the list resolves via the SAME index
+    # gate 4 uses, to the same heading. The list the model selects from IS the
+    # list gate 4 validates against — there is no second slug computation.
+    index = AnchorIndex.build(
+        [
+            SourceDocument(
+                path="docs/atlas/plan.md",
+                sha="sha-x",
+                content="## 4. The boundary\n\n### A. Split — chosen\n",
+            )
+        ]
+    )
+    for choice in index.anchor_choices():
+        resolved = index.resolve(choice["anchor"])
+        assert resolved.heading == choice["heading"]
+
+
 # --- the repository as reference corpus -------------------------------------
 
 

@@ -216,6 +216,22 @@ class AnchorIndex:
             raise UnknownDocumentError(f"{path!r} is not in the indexed input set")
         return list(self._slugs[path])
 
+    def anchor_choices(self) -> list[dict[str, str]]:
+        """Every resolvable ``path#slug`` anchor paired with its heading, for the
+        prompt's valid-anchor list (ATLAS-111).
+
+        DERIVED from the indexed ``_slugs`` map — the single slug implementation
+        (``slugify``) — never recomputed: the list the model selects from is the
+        exact list gate 4 validates against, so the two cannot drift. Document
+        and heading order are preserved (dict insertion order), so the rendered
+        list is deterministic and the ``prompt_hash`` stable.
+        """
+        return [
+            {"anchor": f"{path}#{slug}", "heading": heading}
+            for path, slugs in self._slugs.items()
+            for slug, heading in slugs.items()
+        ]
+
     def resolve(self, anchor: str) -> ResolvedAnchor:
         """Resolve ``<path>#<slug>``; every failure is a typed error."""
         if "#" not in anchor:

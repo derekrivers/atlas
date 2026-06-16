@@ -37,13 +37,16 @@ FIXTURE_SCHEMA = (
 VariablesFactory = Callable[[], dict[str, object]]
 
 EPICS_VERSION = "planner-stage-epics-v1.0.0"
+EPICS_V1_1_0_VERSION = "planner-stage-epics-v1.1.0"
 TICKETS_VERSION = "planner-stage-tickets-v1.0.0"
 TICKETS_V1_1_0_VERSION = "planner-stage-tickets-v1.1.0"
 TICKETS_V1_2_0_VERSION = "planner-stage-tickets-v1.2.0"
+TICKETS_V1_3_0_VERSION = "planner-stage-tickets-v1.3.0"
 DEPENDENCIES_VERSION = "planner-stage-dependencies-v1.0.0"
 
-# The live single-call template is an unchanged artifact: pin its file
-# bytes so any edit to it (the live path until ATLAS-104) fails this test.
+# A retained prior single-call template (no longer the live release since
+# ATLAS-111 bumped CURRENT to planner-v1.2.0): pin its file bytes so the
+# retained artifact is never edited in place — historical PlanRuns reproduce.
 SINGLE_CALL_VERSION = "planner-v1.1.0"
 SINGLE_CALL_FILE_SHA256 = (
     "8e4e4a4aaf9a547595954524aede0db8f45f7cf1ebd99a825c5c53141369208f"
@@ -52,6 +55,13 @@ SINGLE_CALL_FILE_SHA256 = (
 DOCUMENTS = [
     SourceDocument(path="docs/a.md", sha="sha-aaa", content="# A\n"),
     SourceDocument(path="docs/b.md", sha="sha-bbb", content="# B\n"),
+]
+
+# The valid-anchor list payload (ATLAS-111): {anchor, heading} dicts, as the
+# pipeline derives from AnchorIndex.anchor_choices().
+VALID_ANCHORS = [
+    {"anchor": "docs/a.md#a", "heading": "A"},
+    {"anchor": "docs/b.md#b", "heading": "B"},
 ]
 
 
@@ -222,9 +232,10 @@ def test_dependencies_stage_forbids_minting_ticket_identity() -> None:
 # --- the live single-call path: structurally protected and unchanged ---------
 
 
-def test_current_release_is_still_the_single_call_template() -> None:
-    # CURRENT is untouched; the staged set is selected only by explicit version=.
-    assert current_release() == SINGLE_CALL_VERSION
+def test_current_release_is_a_single_call_template() -> None:
+    # CURRENT names a single-call release (planner-v1.2.0 since ATLAS-111), never
+    # a staged name; the staged set is selected only by explicit version=.
+    assert current_release() == "planner-v1.2.0"
 
 
 def test_single_call_template_file_is_byte_for_byte_unchanged() -> None:
@@ -367,6 +378,90 @@ def test_tickets_v1_2_0_renders_with_a_stable_hash() -> None:
     assert first.text == second.text
     assert first.prompt_version == TICKETS_V1_2_0_VERSION
     assert first.prompt_hash == hashlib.sha256(first.text.encode("utf-8")).hexdigest()
+
+
+# --- anchor SELECTION from the index (ATLAS-111): epics v1.1.0 + tickets v1.3.0 -
+
+
+def epics_v1_1_0_variables() -> dict[str, object]:
+    return epics_variables() | {"valid_anchors": VALID_ANCHORS}
+
+
+def tickets_v1_3_0_variables(correction: object = None) -> dict[str, object]:
+    return tickets_variables() | {
+        "valid_anchors": VALID_ANCHORS,
+        "correction": correction,
+    }
+
+
+def test_epics_v1_0_0_is_retained_unchanged() -> None:
+    # Prior epics version is a renderable artifact (no valid_anchors variable).
+    from atlas.planning.renderer import PROMPTS_DIR
+
+    assert (PROMPTS_DIR / f"{EPICS_VERSION}.md.j2").is_file()
+    rendered = render_planner_prompt(epics_variables(), version=EPICS_VERSION)
+    assert rendered.prompt_version == EPICS_VERSION
+
+
+def test_epics_v1_1_0_declares_valid_anchors() -> None:
+    # v1.0.0 does not declare valid_anchors; v1.1.0 does (and requires it).
+    with pytest.raises(UndeclaredVariableError, match="valid_anchors"):
+        render_planner_prompt(epics_v1_1_0_variables(), version=EPICS_VERSION)
+    with pytest.raises(MissingVariableError, match="valid_anchors"):
+        render_planner_prompt(epics_variables(), version=EPICS_V1_1_0_VERSION)
+
+
+def test_epics_v1_1_0_renders_anchor_list_and_select_instruction() -> None:
+    text = render_planner_prompt(
+        epics_v1_1_0_variables(), version=EPICS_V1_1_0_VERSION
+    ).text
+    flat = " ".join(text.split())  # robust to line-wrapping of the instruction
+    assert "## Valid source anchors" in text
+    assert "`docs/a.md#a` — A" in text
+    assert "`docs/b.md#b` — B" in text
+    assert "Do NOT construct, slugify, or guess an anchor" in flat
+    # The example anchor is a select-from-list placeholder, not a concrete slug
+    # (the ATLAS-110 example lesson applied to anchors).
+    assert "<one of the Valid source anchors above, copied verbatim>" in text
+    assert "#planning-engine" not in text
+
+
+def test_tickets_v1_3_0_renders_anchor_list_and_select_instruction() -> None:
+    text = render_planner_prompt(
+        tickets_v1_3_0_variables(), version=TICKETS_V1_3_0_VERSION
+    ).text
+    flat = " ".join(text.split())
+    assert "## Valid source anchors" in text
+    assert "`docs/a.md#a` — A" in text
+    assert "Do NOT construct, slugify, or guess an anchor" in flat
+    assert "<one of the Valid source anchors above, copied verbatim>" in text
+    assert "#reconciler" not in text
+
+
+def test_tickets_v1_3_0_carries_atlas_109_and_atlas_110_verbatim() -> None:
+    # The retry-correction block (ATLAS-109) and the key instruction (ATLAS-110)
+    # survive into v1.3.0 unchanged.
+    heading = "Correction — your previous attempt was rejected"
+    first = render_planner_prompt(
+        tickets_v1_3_0_variables(correction=None), version=TICKETS_V1_3_0_VERSION
+    )
+    assert heading not in first.text
+    # ATLAS-110: null key example + anti-copy instruction.
+    assert '"key": null' in first.text
+    assert "those are NOT keys for you to assign" in first.text
+    # ATLAS-109: the correction block renders when populated.
+    message = "ATLAS-111 carries the retry block — trim to 7."
+    retry = render_planner_prompt(
+        tickets_v1_3_0_variables(correction=message), version=TICKETS_V1_3_0_VERSION
+    )
+    assert heading in retry.text
+    assert message in retry.text
+
+
+def test_tickets_v1_2_0_is_retained_unchanged() -> None:
+    from atlas.planning.renderer import PROMPTS_DIR
+
+    assert (PROMPTS_DIR / f"{TICKETS_V1_2_0_VERSION}.md.j2").is_file()
 
 
 @pytest.mark.parametrize(

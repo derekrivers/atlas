@@ -28,6 +28,7 @@ FIXTURE_SCHEMA = '{"$comment": "FIXTURE SCHEMA - not the proposal schema (ATLAS-
 DECLARED_VARIABLES = (
     "product_key",
     "documents",
+    "valid_anchors",
     "current_backlog_yaml",
     "frozen_ticket_keys",
     "next_key_hint",
@@ -52,6 +53,10 @@ def golden_variables() -> dict[str, object]:
             SourceDocument(path="docs/a.md", sha="sha-aaa", content="# A\n"),
             SourceDocument(path="docs/b.md", sha="sha-bbb", content="# B\n"),
         ],
+        "valid_anchors": [
+            {"anchor": "docs/a.md#a", "heading": "A"},
+            {"anchor": "docs/b.md#b", "heading": "B"},
+        ],
         "current_backlog_yaml": "tickets: []\n",
         "frozen_ticket_keys": ["ATLAS-1", "ATLAS-2"],
         "next_key_hint": "ATLAS-101",
@@ -68,18 +73,19 @@ def fixture_prompts_dir(tmp_path: Path, current: str | None) -> Path:
     return directory
 
 
-# --- golden renders against the released v1.1.0 ------------------------------
+# --- golden renders against the released v1.2.0 ------------------------------
 
 
-def test_default_release_is_v1_1_0() -> None:
-    assert current_release() == "planner-v1.1.0"
+def test_default_release_is_v1_2_0() -> None:
+    # ATLAS-111 bumped CURRENT to the anchor-selection single-call release.
+    assert current_release() == "planner-v1.2.0"
 
 
 def test_golden_render_is_byte_identical_and_positioned() -> None:
     first = render_planner_prompt(golden_variables())
     second = render_planner_prompt(golden_variables())
     assert first.text == second.text
-    assert first.prompt_version == "planner-v1.1.0"
+    assert first.prompt_version == "planner-v1.2.0"
 
     text = first.text
     assert '<document path="docs/a.md" sha="sha-aaa">' in text
@@ -89,6 +95,11 @@ def test_golden_render_is_byte_identical_and_positioned() -> None:
     assert FIXTURE_SCHEMA in text
     # v1.1.0 marker: rule 4 carries the definition_of_done requirement.
     assert "definition_of_done" in text
+    # v1.2.0 marker (ATLAS-111): the valid-anchor list is rendered and the
+    # anchoring rule says select, not construct.
+    assert "## Valid source anchors" in text
+    assert "`docs/a.md#a` — A" in text
+    assert "Do NOT construct, slugify, or guess an anchor" in text
 
 
 def test_first_run_branch_renders_alternate_sections() -> None:

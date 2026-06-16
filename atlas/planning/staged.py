@@ -52,11 +52,14 @@ from atlas.planning.renderer import RenderedPrompt, render_planner_prompt
 
 # The staged templates (ATLAS-103). Distinct version lineage from the
 # single-call planner-v* templates; selected by explicit version=.
-STAGE_EPICS_VERSION = "planner-stage-epics-v1.0.0"
-# v1.2.0 (ATLAS-110): the output-contract example shows "key": null and an
-# anti-copy instruction forbids transcribing ATLAS-<n> keys from the corpus
-# (a live run failed gate 6 by copying roadmap keys). v1.1.0 retained.
-STAGE_TICKETS_VERSION = "planner-stage-tickets-v1.2.0"
+# v1.1.0 (ATLAS-111): the epic's source_anchor is selected from the supplied
+# valid-anchor list, not constructed from a slug rule. v1.0.0 retained.
+STAGE_EPICS_VERSION = "planner-stage-epics-v1.1.0"
+# v1.2.0 (ATLAS-110): example key "key": null + anti-copy instruction (gate 6).
+# v1.3.0 (ATLAS-111): source_anchor selected from the supplied valid-anchor list,
+# not constructed from a slug rule (a live run failed gate 4 guessing slugs);
+# the ATLAS-109 correction block and ATLAS-110 key instruction are carried.
+STAGE_TICKETS_VERSION = "planner-stage-tickets-v1.3.0"
 STAGE_DEPENDENCIES_VERSION = "planner-stage-dependencies-v1.0.0"
 
 # ATLAS-109: bounded directed retry on a projection-bound graze. A stage that
@@ -398,11 +401,19 @@ class StageContext:
     """Everything the staged generator needs, built by the pipeline. The
     current-backlog seeding payload is deliberately absent: the ATLAS-103
     templates declare no backlog variable, so the staged path is first-run
-    only — the pipeline refuses a staged re-plan rather than seed badly."""
+    only — the pipeline refuses a staged re-plan rather than seed badly.
+
+    ``valid_anchors`` (ATLAS-111) is the resolvable ``{anchor, heading}`` list
+    the epics and tickets stages SELECT their ``source_anchor`` from — derived
+    by the pipeline from the same ``AnchorIndex`` gate 4 validates against
+    (``AnchorIndex.anchor_choices()``), so the prompt's list and the gate's
+    validator cannot drift. Defaults to empty for generator-only tests that do
+    not exercise gate 4."""
 
     product_key: str
     documents: Sequence[Mapping[str, str]]
     prompts_dir: Path | None = None
+    valid_anchors: Sequence[Mapping[str, str]] = ()
 
 
 @runtime_checkable
@@ -437,6 +448,7 @@ class TemplateStagedGenerator:
             {
                 "product_key": context.product_key,
                 "documents": context.documents,
+                "valid_anchors": context.valid_anchors,
                 "stage_output_schema": _projection_schema(StageEpicsOutput),
             },
             version=STAGE_EPICS_VERSION,
@@ -471,6 +483,7 @@ class TemplateStagedGenerator:
                     {
                         "product_key": context.product_key,
                         "documents": context.documents,
+                        "valid_anchors": context.valid_anchors,
                         "epic": {
                             "title": epic.title,
                             "objective": epic.objective,

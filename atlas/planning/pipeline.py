@@ -234,11 +234,17 @@ def run_plan(
     document_payload = [
         {"path": doc.path, "sha": doc.sha, "content": doc.content} for doc in documents
     ]
+    # The valid-anchor list (ATLAS-111): both paths render it so the model
+    # SELECTS source_anchor from the index rather than constructing a slug.
+    # Derived from the same anchor_index gate 4 validates against, so the
+    # prompt's list and the gate's validator cannot drift.
+    valid_anchors = anchor_index.anchor_choices()
     if staged_generator is None:
         generated = _generate_single_call(
             client=client,
             product_key=product.key,
             documents=document_payload,
+            valid_anchors=valid_anchors,
             backlog_yaml=_backlog_yaml(epics, tickets, dependencies),
             frozen=frozen,
             next_key_hint=_next_key_hint(database),
@@ -257,6 +263,7 @@ def run_plan(
             client=client,
             product_key=product.key,
             documents=document_payload,
+            valid_anchors=valid_anchors,
             prompts_dir=prompts_dir,
         )
 
@@ -321,18 +328,21 @@ def _generate_single_call(
     client: PlannerClient,
     product_key: str,
     documents: list[dict[str, str]],
+    valid_anchors: list[dict[str, str]],
     backlog_yaml: str | None,
     frozen: list[str],
     next_key_hint: str,
     prompts_dir: Path | None,
 ) -> _Generated:
-    """The single-call generation path (ATLAS-26/101), unchanged in behaviour:
-    render the versioned prompt, call the model, treat a token-limit
-    truncation as a recordable partial output."""
+    """The single-call generation path (ATLAS-26/101): render the versioned
+    prompt (resolving CURRENT, now planner-v1.2.0), call the model, treat a
+    token-limit truncation as a recordable partial output. ``valid_anchors``
+    (ATLAS-111) is the select-from list rendered into the prompt."""
     rendered = render_planner_prompt(
         {
             "product_key": product_key,
             "documents": documents,
+            "valid_anchors": valid_anchors,
             "current_backlog_yaml": backlog_yaml,
             "frozen_ticket_keys": frozen,
             "next_key_hint": next_key_hint,
@@ -391,15 +401,20 @@ def _generate_staged(
     client: PlannerClient,
     product_key: str,
     documents: list[dict[str, str]],
+    valid_anchors: list[dict[str, str]],
     prompts_dir: Path | None,
 ) -> _Generated:
     """The staged generation path (ADR-0010): three bounded calls assembled
     into one §3.11 envelope. raw_output is the assembled JSON (its hash is the
     provenance link, §5.3); prompt_version/prompt_hash are composites over the
     per-stage records. A per-stage truncation or protocol break is a recorded
-    failure naming the stage (§5.4)."""
+    failure naming the stage (§5.4). ``valid_anchors`` (ATLAS-111) is the
+    select-from list the epics and tickets stages render."""
     context = StageContext(
-        product_key=product_key, documents=documents, prompts_dir=prompts_dir
+        product_key=product_key,
+        documents=documents,
+        prompts_dir=prompts_dir,
+        valid_anchors=valid_anchors,
     )
     try:
         result = staged_generator.generate(client=client, context=context)
