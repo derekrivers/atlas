@@ -285,6 +285,80 @@ follows (the single implementation is the acceptance suite's
   A future sub-90% result is therefore a planner-quality signal to
   investigate, not something to resolve by loosening the matcher.
 
+## 7.2 AT-7 work-coverage finding (ATLAS-112)
+
+Two live staged runs against the same corpus scored 82.6% and 63.0% on
+`anchor_coverage` — a ~20-point swing. Offline analysis of the lower run
+showed all 34 of its misses were Phase 4–8 tickets (Delivery Coordination,
+Execution Context, Evidence-Driven Delivery, Autonomous Delivery) whose
+**work is present in the proposal** but which the planner anchored to their
+**design documents** (`pm-engine-and-linear-sync.md`, `context-renderer.md`,
+`evidence-pipeline.md`, `symphony-integration.md`) rather than to the
+roadmap epic heading the hand-written ticket used.
+
+`anchor_coverage` therefore conflates two questions: *did the planner cover
+the work?* and *did it anchor where the roadmap author did?* The swing is in
+the second. Anchoring a PM-engine ticket to `pm-engine-and-linear-sync.md#sync-loop`
+is arguably **more precise** than anchoring it to a vague epic heading; it is
+a different convention, not a defect, and is **not to be "corrected"** to
+raise the number (that would be a Goodhart failure).
+
+**Content-coverage metric.** `content_coverage` (a sibling of `anchor_coverage`
+in the acceptance suite) measures work coverage: a hand-written roadmap ticket
+is covered iff *some* proposed ticket's title is similar to the roadmap
+ticket's title at or above a recorded threshold, **independent of which
+document the proposed ticket is anchored to**. It reuses the reconciler's
+Sørensen–Dice primitive (`reconciler.similarity`) — there is exactly one
+similarity implementation in the codebase.
+
+- **Comparand.** Title-vs-title (both sides pass an empty objective). The
+  roadmap carries a terse title; concatenating the planner's descriptive
+  objective onto its side structurally dilutes the coefficient and drives
+  genuinely-covered work below threshold. Comparing like with like is a
+  measurement-correctness choice, not a score optimisation.
+- **Threshold.** `CONTENT_COVERAGE_THRESHOLD = 0.5` — at least half the
+  combined token mass overlaps. Set for correctness and **recorded**; it is
+  never tuned against the metric, and the reconciler's 0.85 entity-match
+  threshold does not transfer because that compares title+objective pairs for
+  identity, a different question.
+
+**Corrected adjacency analysis.** The offline tool classifies an exact-anchor
+miss as an *adjacent-anchor undercount* only when a planner **ticket** is
+anchored to a heading **near** the wanted heading **within the same
+document** — within one position in the document's heading index, or sharing
+the immediate parent heading. The earlier "any anchor in the same document"
+test was defeated by the roadmap holding many unrelated Phase 0–3 ticket
+anchors, so every roadmap-doc miss trivially passed it (a false 100%
+optimistic ceiling). A candidate anchored to a *different document* is never
+adjacent — that is a different-document anchoring choice, the case this
+finding is about.
+
+**Falsifiability.** The offline evaluation (`scripts/at7_miss_analysis.py`,
+free, no API call) reports both metrics side by side and prints an explicit
+verdict on whether the exact-anchor misses are predominantly
+design-doc-anchored Phase 4–8 work — it reads **CONFIRMED or CONTRADICTED**,
+so the tool can prove the finding wrong, not only confirm it. On the one
+durably-saved capture (10 epics / 95 tickets) it reports exact-anchor 63.4%,
+content-coverage 68.8%, and CONFIRMED (27/34 misses are Phase 4–8 work
+present but anchored off the roadmap). These are stated as measurement; a
+higher content figure is **not** a success signal.
+
+**Run-to-run spread.** Only one capture is durably on disk; the 82.6% run was
+never saved and regenerating it is an API call not spent here. Exact-anchor
+spread is therefore the documented swing (82.6% vs the saved capture);
+content-coverage spread requires a second saved capture — a free byproduct of
+the next staged run, scored by the same tool — and is not manufactured from a
+single file.
+
+> **Operator decision PENDING (ATLAS-112).** Whether the AT-7 bar becomes
+> content-coverage, stays exact-anchor, or becomes a reported pair
+> (exact-anchor as a strict floor, content-coverage as the bar) is the
+> operator's decision on this evidence — chosen because it measures the right
+> thing, never because it produces a higher number. Until that decision, AT-7
+> above is unchanged: its pass condition remains exact-anchor `anchor_coverage`
+> at ≥ 0.90. ATLAS-107 encodes the chosen metric into the CI acceptance suite;
+> it is downstream of this decision.
+
 ## 8. Non-goals for milestone 1
 
 No Linear writes. No Symphony dispatch. No HTML roadmap (Mermaid render
