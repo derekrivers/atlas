@@ -69,6 +69,27 @@ data-model §4.3):
 Readiness does not require a rendered context pack — pack rendering is the
 PM Engine's promotion step (Phase 4), which consumes this predicate.
 
+ATLAS-34 implements the predicate in `atlas/dependencies/readiness.py`:
+`is_ready(graph, key)` for one ticket and `ready_tickets(graph)` for the
+whole set. It reads ATLAS-31's node attributes only (`status`, `node_type`,
+`present`, `acceptance_criteria_count`) — never storage — and returns a
+typed `ReadinessResult` carrying the failing condition(s), not a bare
+boolean, so a caller sees WHY a ticket is not ready: each failure is a
+`NotReadyReason` with a machine `NotReadyCode` (wrong status, a depends_on
+ticket not done, a depends_on ADR not accepted, no acceptance criteria, a
+dangling target), and `ReadinessResult.ready` is derived from the reasons so
+it can never contradict them. The target's `node_type` selects condition 2
+vs 3 (ticket→done, ADR→accepted); target types the conditions do not name
+(epic, component) are not gating.
+
+Condition 5 and ATLAS-40: readiness runs on an already-validated graph,
+where ATLAS-40's `validate_graph` has already raised `DanglingTargetError`
+on any `present=False` target before readiness is computed — that raise is
+the hard gate. Readiness does not re-detect dangling targets; it defends
+against a `present=False` target by reporting a not-ready `DANGLING_TARGET`
+reason rather than crashing or treating it as satisfied. A dangling target
+is therefore never silently ready on either side.
+
 ## Critical path
 
 Computed over the subgraph of tickets not in a terminal status:

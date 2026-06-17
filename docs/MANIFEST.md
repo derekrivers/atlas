@@ -93,6 +93,12 @@ Prompts and tools:
   graph (reading ATLAS-31's `present`/`status`/`node_type` attributes, never
   storage); `atlas apply` refuses an invalid graph before its commit seam
   (ATLAS-40).
+- `atlas/dependencies/readiness.py` — the dependency-engine.md "Readiness
+  predicate": `is_ready(graph, key)` and `ready_tickets(graph)` over the
+  validated projection, returning a typed `ReadinessResult` with the failing
+  reason(s) (reading ATLAS-31's `status`/`node_type`/`present`/
+  `acceptance_criteria_count`, never storage); the PM Engine consumes it for
+  promotion to Ready for Agent (ATLAS-34).
 
 Runbooks (`docs/runbooks/`):
 
