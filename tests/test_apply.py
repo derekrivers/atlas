@@ -31,8 +31,10 @@ from atlas.core.models import (
     PlanRun,
     PlanRunStatus,
     Ticket,
+    TicketDependency,
 )
 from atlas.core.yaml_io import parse_document
+from atlas.dependencies import DanglingTargetError, GraphValidationFailed
 from atlas.planning.apply import (
     ApplyDecision,
     ConflictRefusalError,
@@ -385,6 +387,58 @@ def test_recovery_completes_move_after_commit(
 
 
 # --- model-kwargs helpers for seeded backlogs -------------------------------
+
+
+# --- ATLAS-40: apply refuses an invalid graph, writing nothing -------------
+
+
+def test_apply_refuses_invalid_graph_and_writes_nothing(tmp_path: Path) -> None:
+    repo = fixture_repo(tmp_path)
+    database = fresh_db(tmp_path)
+    product = ProductRepo(database).get_by_key("ATLAS")
+    assert product is not None
+    # Seed an applied backlog whose dependency targets a no-longer-stored
+    # entity: ATLAS-31 projects that as a present=False dangling node.
+    epic = Epic(**_epic_model_kwargs(product.id, key="ATLAS-E1"))
+    EpicRepo(database).add(epic)
+    ticket = Ticket(**_ticket_model_kwargs(product.id, epic.id, key="ATLAS-1"))
+    TicketRepo(database).add(ticket)
+    missing_target = uuid4()
+    TicketDependencyRepo(database).add(
+        TicketDependency(
+            id=uuid4(),
+            source_ticket_id=ticket.id,
+            target_entity_type="ticket",
+            target_entity_id=missing_target,
+            dependency_type="depends_on",  # type: ignore[arg-type]
+            reason="depends on a target that no longer exists",
+            created_by_type="agent",  # type: ignore[arg-type]
+            created_by_id="planner",
+            created_at=NOW,
+        )
+    )
+    # A proposal that merely echoes the existing epic+ticket (empty diff):
+    # render_deps still carries the seeded dangling dependency, so the
+    # post-apply projection is invalid and apply must refuse BEFORE the
+    # commit seam.
+    proposal = {
+        "epics": [_epic(key="ATLAS-E1")],
+        "tickets": [_ticket(key="ATLAS-1", epic_ref="ATLAS-E1")],
+        "dependencies": [],
+        "planner_notes": [],
+    }
+    _add_proposed_plan_run(database, repo, product.id, proposal)
+
+    with pytest.raises(GraphValidationFailed) as caught:
+        apply(repo, database, planning_dir(tmp_path))
+    assert any(
+        isinstance(v, DanglingTargetError) and v.target == str(missing_target)
+        for v in caught.value.violations
+    )
+    # Nothing written: no renders, and the PlanRun is still proposed (not
+    # applied) because the refusal lands before the commit.
+    assert not planning_dir(tmp_path).exists()
+    assert PlanRunRepo(database).latest_proposed() is not None
 
 
 def _epic_model_kwargs(product_id: object, *, key: str) -> dict[str, Any]:

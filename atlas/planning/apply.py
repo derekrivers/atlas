@@ -17,6 +17,11 @@ Scope (operator ruling): apply materialises ADD items; PROPOSE_ARCHIVE
 items are excluded from the renders; a diff containing MODIFY or CONFLICT
 entries is refused (MODIFY is a follow-up; CONFLICT is AT-4 — a diff
 touching a frozen ticket is not applied).
+
+Graph validation (ATLAS-40): before the commit seam, apply projects the
+post-apply backlog and runs validate_graph; a typed GraphValidationError
+refuses the apply with nothing written (DB rolled back implicitly — it has
+not committed — and the renders not yet materialised).
 """
 
 from __future__ import annotations
@@ -41,6 +46,7 @@ from atlas.core.models import (
 )
 from atlas.core.models.dependency import DependencyType
 from atlas.core.yaml_io import RenderHeader, render_document
+from atlas.dependencies import project_graph, validate_graph
 from atlas.planning.ingestion import collect_input_documents
 from atlas.planning.key_authority import (
     EPIC_PREFIX,
@@ -60,6 +66,7 @@ from atlas.planning.reconciler import (
     reconcile,
 )
 from atlas.storage import (
+    ADRRepo,
     Database,
     EpicRepo,
     KeyCounterRepo,
@@ -336,6 +343,20 @@ def run_apply(
         ticket for ticket in current_tickets if ticket.key not in archived_tickets
     ] + new_tickets
     render_deps = list(current_deps) + new_deps
+
+    # Refuse to proceed on an invalid graph (ATLAS-40, dependency-engine.md
+    # "Validation rules"). This runs BEFORE the apply_backlog commit seam,
+    # so a GraphValidationError refusal leaves the DB and docs/planning
+    # untouched. The validator reads the projected graph; ADRs are loaded
+    # here only so polymorphic targets resolve rather than read as dangling.
+    validate_graph(
+        project_graph(
+            tickets=render_tickets,
+            epics=render_epics,
+            adrs=ADRRepo(database).list(),
+            dependencies=render_deps,
+        )
+    )
 
     header = RenderHeader(
         plan_run_id=plan_run.id,
