@@ -83,6 +83,10 @@ Prompts and tools:
   render → model → parse → gates → reconcile and persists a PlanRun
   (ATLAS-26; never writes docs/planning/). Replaces the retired dry-run
   harness.
+- `atlas/dependencies/graph.py` — the Phase 3 dependency-graph projection:
+  `build_dependency_graph(db)` / `project_graph(...)` build a NetworkX
+  `DiGraph` on demand from the relational tables, never persisted
+  (ATLAS-31; dependency-engine.md "Graph projection").
 
 Runbooks (`docs/runbooks/`):
 

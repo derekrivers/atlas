@@ -14,6 +14,46 @@ tables (never persisted; the database is authoritative per ADR-0006).
 - Execution order is therefore a reverse topological order of the ticket
   subgraph.
 
+## Graph projection (build)
+
+ATLAS-31 builds the projection above; the analyses below consume it.
+
+- Entry points (`atlas/dependencies/graph.py`): `build_dependency_graph(db)`
+  reads the applied tickets, epics, ADRs, and `TicketDependency` rows from
+  storage and returns the `DiGraph`; `project_graph(tickets, epics, adrs,
+  dependencies)` is the pure core — models in, graph out, no I/O, so the
+  same state yields an identical graph. Neither writes; the graph is never
+  persisted.
+- Node identity is the **entity key**: ticket `ATLAS-<n>`, epic
+  `ATLAS-E<n>`, ADR `ADR-<nnnn>` (synthesised `ADR-{number:04d}` — ADRs
+  have no key column). The UUID-based dependency endpoints resolve to these
+  keys once at build time.
+- Each node carries `node_type`, `key`, `entity_id`, `present`, and a typed
+  payload sufficient for the analyses without re-querying storage: a ticket
+  node carries `status`, `priority`, `risk_level`, `estimated_effort` (as
+  stored — may be null until ATLAS-32), `ticket_type`,
+  `acceptance_criteria_count`, and `epic_key`; an epic node carries
+  `status`, `priority`, `risk_level`; an ADR node carries `status` and
+  `number`. These mirror data-model §4.1 `GraphNode`, carried as native
+  graph attributes — the §4.1/§4.2 Pydantic models are reserved for a
+  possible future persisted graph.
+- Each edge carries `dependency_type`, `reason`, and `dependency_id` (the
+  row id, so validation can attribute a finding to its row). All stored
+  dependency rows are projected, each tagged with its `dependency_type`;
+  execution-order analyses (readiness, critical path, blockers) traverse
+  the `depends_on` edges. Only `depends_on` is stored — `blocks` is the
+  derived reverse view — so a single real edge type exists per pair and a
+  plain `DiGraph` (one edge per `(source, target)`) is sufficient and
+  structurally forbids a duplicate `depends_on` between a pair. Revisit
+  `MultiDiGraph` only if a future stored edge type can coexist with
+  `depends_on` on the same pair; until then a same-pair collision keeps the
+  lowest-`id` row deterministically.
+- A dependency target that resolves to no stored entity is represented as
+  an **absent node** (`present=False`, `node_type` the declared target
+  type, keyed by the target UUID) with its edge intact — never dropped and
+  never raised on. Graph validation (ATLAS-40) detects these; a `component`
+  target is absent-but-dormant until Phase 5 (D2), not an error here.
+
 ## Readiness predicate
 
 A ticket is ready exactly when all of the following hold (refines
