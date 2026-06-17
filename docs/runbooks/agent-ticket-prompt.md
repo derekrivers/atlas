@@ -286,6 +286,14 @@ Rules of the variant:
   missing rule or doc clarification — encode it in AGENTS.md or the
   relevant canonical doc and commit, so every future session inherits
   it. That is the harness loop working as designed.
+- If the operator's own uncommitted working-tree edits are present when
+  execution begins and an in-scope test or pin depends on them (e.g. a
+  hand-written roadmap line a count-pin must match), surface them at the
+  first gate or in the completion report and land the dependent change
+  together with the edit, so the committed tree is internally
+  consistent — never silently absorb the edit, and never silently
+  exclude it and leave the pin to fail. (Origin: ATLAS-112's roadmap
+  line and the 92→93 enumeration pin.)
 - Roadmap keys are illustrative seeds until `atlas apply` exists; once
   the planner is live, paste the rendered ticket (objective, acceptance
   criteria, context pack) in place of the hand-filled sections above.
