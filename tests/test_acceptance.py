@@ -22,7 +22,14 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from acceptance_metrics import anchor_coverage, enumerate_roadmap_tickets
+from acceptance_metrics import (
+    CONTENT_COVERAGE_THRESHOLD,
+    anchor_coverage,
+    content_coverage,
+    enumerate_roadmap_tickets,
+    heading_index,
+    is_adjacent_anchor,
+)
 from planner_fakes import FAKE_IDENTITY, FakePlannerClient
 from test_apply import _epic_model_kwargs, _ticket_model_kwargs
 from test_plan_pipeline import (
@@ -314,13 +321,144 @@ def test_anchor_coverage_percentage_on_synthetic_pair() -> None:
     assert anchor_coverage(set(), _SYNTHETIC_ROADMAP, path="r.md") == 0.0
 
 
+# --- AT-7 content-coverage sibling metric (ATLAS-112) ------------------------
+
+
+class _FakeProposedTicket:
+    """Minimal stand-in for a Proposal ticket: title + objective only."""
+
+    def __init__(self, title: str, objective: str = "") -> None:
+        self.title = title
+        self.objective = objective
+
+
+def test_heading_index_orders_slugs_and_excludes_fenced_headings() -> None:
+    text = "# Top\n\n## Alpha\n\n```\n# Not A Heading\n```\n\n## Beta\n### Beta Child\n"
+    index = heading_index(text)
+    # The fenced `# Not A Heading` is not a heading (§2.3); order is preserved.
+    assert [h.slug for h in index] == ["top", "alpha", "beta", "beta-child"]
+    assert [h.level for h in index] == [1, 2, 2, 3]
+
+
+def test_content_coverage_covers_work_anchored_to_a_different_document() -> None:
+    # The case ATLAS-112 exists for: the planner covers the work but anchors
+    # it to a DESIGN DOC, not the roadmap epic heading. Exact-anchor scores it
+    # a miss; content-coverage scores it covered.
+    roadmap = (
+        "# Phase 4\n\n## Epic: Delivery Coordination\n\n"
+        "ATLAS-43 Ready state detection\n"
+    )
+    # The planner's ticket: same work, richer title, anchored elsewhere.
+    proposed = [
+        _FakeProposedTicket(
+            "Ready State Detection and Promotion",
+            "Detect when a ticket becomes ready and promote it.",
+        )
+    ]
+    # Exact-anchor: the planner anchored to a design doc, not the roadmap epic,
+    # so nothing matches the roadmap anchor -> a miss.
+    assert (
+        anchor_coverage(
+            {"docs/atlas/pm-engine-and-linear-sync.md#sync-loop"},
+            roadmap,
+            path="r.md",
+        )
+        == 0.0
+    )
+    # Content-coverage: the work is present -> covered, document-independent.
+    result = content_coverage(proposed, roadmap, path="r.md")
+    assert result.fraction == 1.0
+    assert result.covered[0].roadmap_key == "ATLAS-43"
+    assert result.covered[0].best_score >= CONTENT_COVERAGE_THRESHOLD
+
+
+def test_content_coverage_threshold_is_a_boundary() -> None:
+    roadmap = "## Epic: E\n\nATLAS-1 Token budget compression ladder\n"
+    # Above threshold: a faithful restatement is covered.
+    near = [_FakeProposedTicket("Token Budget and Compression Ladder")]
+    assert content_coverage(near, roadmap, path="r.md").fraction == 1.0
+    # Below threshold: an unrelated ticket sharing no work is missed (negative).
+    far = [_FakeProposedTicket("Linear API client and field ownership")]
+    far_result = content_coverage(far, roadmap, path="r.md")
+    assert far_result.fraction == 0.0
+    assert far_result.missed[0].best_score < CONTENT_COVERAGE_THRESHOLD
+
+
+def test_content_coverage_routes_through_reconciler_similarity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Reuse, not reimplementation: there is one similarity implementation, and
+    # content_coverage must call it. A spy on the real reconciler module (the
+    # same object content_coverage looks the function up on) proves the routing.
+    from atlas.planning import reconciler
+
+    original = reconciler.similarity
+    calls: list[tuple[str, str, str, str]] = []
+
+    def spy(title_a: str, objective_a: str, title_b: str, objective_b: str) -> float:
+        calls.append((title_a, objective_a, title_b, objective_b))
+        return original(title_a, objective_a, title_b, objective_b)
+
+    monkeypatch.setattr(reconciler, "similarity", spy)
+    roadmap = "## Epic: E\n\nATLAS-1 Ready state detection\n"
+    content_coverage(
+        [_FakeProposedTicket("Ready State Detection")], roadmap, path="r.md"
+    )
+    assert calls  # the metric routed through the reconciler primitive
+
+
+# --- AT-7 adjacency classification fix (ATLAS-112 named gap) -----------------
+
+_CLUSTER_ROADMAP = """\
+# Phase 0
+
+## Epic: Bootstrap Repository
+
+ATLAS-1 Repository skeleton
+
+# Phase 4
+
+## Epic: Delivery Coordination
+
+ATLAS-41 Linear integration
+"""
+
+
+def test_adjacency_rejects_far_same_doc_anchor_no_false_ceiling() -> None:
+    # The roadmap-clustering case: a Phase 4 miss whose only same-doc planner
+    # anchor is a FAR Phase 0 heading must NOT be classified adjacent. Under
+    # the old "any anchor in the same document" test this was a false adjacent
+    # (and a false 100% optimistic ceiling); the proximity rule rejects it.
+    headings = heading_index(_CLUSTER_ROADMAP)
+    wanted = "r.md#epic-delivery-coordination"  # Phase 4
+    far = "r.md#epic-bootstrap-repository"  # Phase 0 — same doc, far away
+    assert is_adjacent_anchor(wanted, far, headings) is False
+
+
+def test_adjacency_accepts_neighbouring_and_rejects_other_document() -> None:
+    headings = heading_index(_CLUSTER_ROADMAP)
+    wanted = "r.md#epic-delivery-coordination"
+    # An immediate neighbour heading IS adjacent (the genuine undercount case).
+    assert is_adjacent_anchor(wanted, "r.md#phase-4", headings) is True
+    # A different document is never adjacent — it is a different-doc anchoring
+    # choice, the case ATLAS-112 distinguishes.
+    assert (
+        is_adjacent_anchor(
+            wanted, "docs/atlas/pm-engine-and-linear-sync.md#sync-loop", headings
+        )
+        is False
+    )
+
+
 def test_enumeration_pins_real_roadmap_count() -> None:
     # The denominator is a prose parser; a roadmap reformat the parser
     # misses changes this hand-verified count and fires the test.
     tickets = enumerate_roadmap_tickets(ROADMAP.read_text(encoding="utf-8"))
     # 85 milestone tickets + 7 post-milestone hardening tickets (ATLAS-101..107,
-    # ATLAS-102's roadmap addition). The pin fires on exactly this kind of change.
-    assert len(tickets) == 92
+    # ATLAS-102's roadmap addition) + ATLAS-112 (the AT-7 work-coverage record
+    # this ticket serves, added to the roadmap as hand-written intent). The pin
+    # fires on exactly this kind of change.
+    assert len(tickets) == 93
     keys = [t.key for t in tickets]
     assert len(keys) == len(set(keys))  # unique
     assert "ATLAS-20" not in keys  # retired lines are not tickets

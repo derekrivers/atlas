@@ -115,6 +115,9 @@ ATLAS-105 PlanRun multi-call provenance (generation_stages field; §3.10 +
 ATLAS-106 Per-stage truncation handling and batch sizing
 ATLAS-107 Acceptance coverage for staged generation (AT-1/AT-7 staged path;
          AT-2 across the multi-call sequence)
+ATLAS-112 AT-7 measures anchoring-convention agreement, not work coverage;
+         define a content-coverage variant and evaluate both (operator gate
+         on the bar; ATLAS-107 encodes the chosen metric)
 
 Milestone test: AT-1 through AT-7 pass in CI against the seeded Atlas
 documents.
