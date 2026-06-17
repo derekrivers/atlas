@@ -19,7 +19,10 @@
       "Bash(git cherry-pick *)",
       "Bash(git revert *)",
       "Bash(git branch *)",
-      "Bash(git fetch *)"
+      "Bash(git fetch *)",
+      "Bash(awk '/^## 6|^### 6|^## §6|determinism boundary/{p=1} p{print} /^## 7|^## §7/{if\\(p\\)exit}' docs/atlas/planning-large-corpora.md)",
+      "Bash(awk '/^## 7/{p=1} p{print} /^## 8|^## §8/{if\\(p\\)exit}' docs/atlas/planning-large-corpora.md)",
+      "Bash(git rev-list *)"
     ],
     "additionalDirectories": [
       "/tmp/atlas-fresh",
