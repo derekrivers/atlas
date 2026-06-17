@@ -101,6 +101,30 @@ Computed over the subgraph of tickets not in a terminal status:
   consumed by the PM Engine for sequencing hints. It is advisory; it never
   gates dispatch.
 
+ATLAS-35 implements it in `atlas/dependencies/critical_path.py`:
+`critical_path(graph)` returns a typed `CriticalPath` of ordered
+`CriticalPathStep`s (ticket key, the effort weighted for it, and cumulative
+effort), mirroring ATLAS-34's typed-result idiom. It reads ATLAS-31's node
+attributes only — never storage — and reuses ATLAS-40's `TERMINAL_STATUSES`
+for "not in a terminal status" (single source, never redefined). An empty
+non-terminal subgraph returns an empty path, not an error. Precise
+semantics fixed by this ticket:
+
+- Edge direction: `A -> B` means A depends_on B, so B executes first; the
+  path is the longest chain in EXECUTION order, computed over the execution
+  DAG (an edge `B -> A` for every `depends_on` edge `A -> B` between two
+  non-terminal tickets). A chain `A depends_on B depends_on C` (efforts
+  5, 3, 2) yields `[C, B, A]` with cumulative effort `[2, 5, 10]`.
+- null `estimated_effort` is weighted as 1 at COMPUTE time only; the stored
+  node value is never mutated (effort population is ATLAS-32's, not this).
+- "downstream dependent count" is a ticket's DIRECT dependents — the tickets
+  that `depends_on` it — counted over the full graph regardless of status.
+- "higher priority" is the greater `priority` integer; a lower priority
+  integer sorts last.
+- Ties are resolved per node from the execution root down (lexicographic),
+  so the first node at which two equal-effort paths diverge decides; node
+  keys are unique, so the order is strict and the result deterministic.
+
 ## Blocker analysis
 
 - `blocked(t)`: the set of unfinished `depends_on` targets of `t`.

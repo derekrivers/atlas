@@ -99,6 +99,13 @@ Prompts and tools:
   reason(s) (reading ATLAS-31's `status`/`node_type`/`present`/
   `acceptance_criteria_count`, never storage); the PM Engine consumes it for
   promotion to Ready for Agent (ATLAS-34).
+- `atlas/dependencies/critical_path.py` — the dependency-engine.md "Critical
+  path": `critical_path(graph)` over the non-terminal ticket subgraph,
+  returning the longest effort-weighted execution chain as a typed
+  `CriticalPath` (ordered keys + cumulative effort), with the three-level
+  tie-break in spec order. Reuses ATLAS-40's `TERMINAL_STATUSES`, reads
+  ATLAS-31's node attributes only (null `estimated_effort` weighted as 1 at
+  compute, node never mutated); advisory, never gates dispatch (ATLAS-35).
 
 Runbooks (`docs/runbooks/`):
 
