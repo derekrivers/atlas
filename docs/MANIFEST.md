@@ -87,6 +87,12 @@ Prompts and tools:
   `build_dependency_graph(db)` / `project_graph(...)` build a NetworkX
   `DiGraph` on demand from the relational tables, never persisted
   (ATLAS-31; dependency-engine.md "Graph projection").
+- `atlas/dependencies/validation.py` and `atlas/dependencies/errors.py` —
+  `validate_graph(graph)` and the typed `GraphValidationError` hierarchy:
+  the four dependency-engine.md "Validation rules" run over the projected
+  graph (reading ATLAS-31's `present`/`status`/`node_type` attributes, never
+  storage); `atlas apply` refuses an invalid graph before its commit seam
+  (ATLAS-40).
 
 Runbooks (`docs/runbooks/`):
 
