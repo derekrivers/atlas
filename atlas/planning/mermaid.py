@@ -15,21 +15,12 @@ appear — the renderer only ever sees the applied backlog.
 
 from __future__ import annotations
 
-import re
 from collections.abc import Sequence
 
+from atlas.core.keys import natural_key
+from atlas.core.mermaid import escape_label
 from atlas.core.models import Epic, Ticket, TicketDependency
 from atlas.core.yaml_io import RenderHeader
-
-_KEY_RE = re.compile(r"^([A-Za-z-]+?)-?(\d+)$")
-
-
-def _natural(key: str) -> tuple[str, int, str]:
-    """ATLAS-2 before ATLAS-10; stable for non-conforming keys."""
-    match = _KEY_RE.match(key)
-    if match:
-        return (match.group(1), int(match.group(2)), "")
-    return (key, 0, key)
 
 
 def _mermaid_header(header: RenderHeader) -> list[str]:
@@ -41,11 +32,6 @@ def _mermaid_header(header: RenderHeader) -> list[str]:
         f"%% ticket_key_high_water: {header.ticket_key_high_water}",
         f"%% epic_key_high_water: {header.epic_key_high_water}",
     ]
-
-
-def _escape(text: str) -> str:
-    """Quote-safe label text for a Mermaid `["..."]` node."""
-    return text.replace("\\", "\\\\").replace('"', "'")
 
 
 def render_roadmap(
@@ -64,19 +50,21 @@ def render_roadmap(
         epic_key = epic_key_by_id.get(ticket.epic_id) if ticket.epic_id else None
         grouped.setdefault(epic_key, []).append(ticket)
     for group in grouped.values():
-        group.sort(key=lambda ticket: _natural(ticket.key))
+        group.sort(key=lambda ticket: natural_key(ticket.key))
 
     lines = [*_mermaid_header(header), "graph TD"]
 
     # Epic subgraphs in natural key order, then ungrouped tickets.
-    for epic in sorted(epics, key=lambda epic: _natural(epic.key)):
+    for epic in sorted(epics, key=lambda epic: natural_key(epic.key)):
         members = grouped.get(epic.key, [])
-        lines.append(f'  subgraph {epic.key}["{_escape(epic.title)}"]')
+        lines.append(f'  subgraph {epic.key}["{escape_label(epic.title)}"]')
         for ticket in members:
-            lines.append(f'    {ticket.key}["{ticket.key} {_escape(ticket.title)}"]')
+            label = escape_label(ticket.title)
+            lines.append(f'    {ticket.key}["{ticket.key} {label}"]')
         lines.append("  end")
     for ticket in grouped.get(None, []):
-        lines.append(f'  {ticket.key}["{ticket.key} {_escape(ticket.title)}"]')
+        label = escape_label(ticket.title)
+        lines.append(f'  {ticket.key}["{ticket.key} {label}"]')
 
     # depends_on edges: SOURCE --> TARGET, sorted by (source, target).
     edges = []
@@ -88,7 +76,7 @@ def render_roadmap(
         if source is not None and target is not None:
             edges.append((source.key, target.key))
     for source_key, target_key in sorted(
-        edges, key=lambda edge: (_natural(edge[0]), _natural(edge[1]))
+        edges, key=lambda edge: (natural_key(edge[0]), natural_key(edge[1]))
     ):
         lines.append(f"  {source_key} --> {target_key}")
 
@@ -99,7 +87,7 @@ def render_roadmap(
     for status in statuses:
         member_keys = sorted(
             (ticket.key for ticket in tickets if ticket.status.value == status),
-            key=_natural,
+            key=natural_key,
         )
         if member_keys:
             lines.append(f"  class {','.join(member_keys)} {status};")

@@ -169,6 +169,21 @@ def test_render_document_format(tmp_path: Path) -> None:
     (tmp_path / "tickets.yaml").write_text(text, encoding="utf-8")
 
 
+def test_render_document_orders_epic_keys_naturally() -> None:
+    # ATLAS-113 behaviour fix: epic keys (ATLAS-E<n>) the old strict grammar
+    # could not parse used to sort lexically (E1, E10, E2). The shared
+    # natural_key now orders them E1, E2, …, E10. The E10 span is load-bearing:
+    # with only E1-E9 lexical and natural orderings agree and this would not
+    # bite the regression it exists to pin.
+    epics = [
+        Epic(**epic_kwargs() | {"key": f"ATLAS-E{n}", "id": uuid4()})
+        for n in (10, 2, 1)
+    ]
+    text = render_document("epics", epics, HEADER)
+    positions = [text.index(f"key: ATLAS-E{n}\n") for n in (1, 2, 10)]
+    assert positions == sorted(positions)
+
+
 def test_render_document_double_render_byte_identical() -> None:
     tickets = [Ticket(**ticket_kwargs())]
     assert render_document("tickets", tickets, HEADER) == render_document(

@@ -10,11 +10,11 @@ docs/planning/ is apply's write monopoly) and never regenerates roadmap.mmd; it
 returns a string the CLI prints.
 
 It reuses the ONE implementation of the Mermaid emission primitives —
-``_natural`` key ordering and ``_escape`` label quoting — by importing them from
-atlas.planning.mermaid, and follows the same ``graph TD`` edge convention
-(``SOURCE --> TARGET`` reads "SOURCE depends on TARGET"). Binding the lens's
-ordering to render_roadmap's is deliberate: a single emission contract, no
-divergent copy.
+``natural_key`` key ordering and ``escape_label`` label quoting — by importing
+them from the neutral atlas.core layer (shared with render_roadmap), and follows
+the same ``graph TD`` edge convention (``SOURCE --> TARGET`` reads "SOURCE
+depends on TARGET"). Binding the lens's ordering to render_roadmap's is
+deliberate: a single emission contract, no divergent copy.
 
 The overlay is the analysis value-add, computed from the existing Phase 3
 functions and NEVER reimplemented: ``critical_path`` (ATLAS-35), ``blocked``
@@ -36,11 +36,12 @@ from dataclasses import dataclass
 
 import networkx as nx
 
+from atlas.core.keys import natural_key
+from atlas.core.mermaid import escape_label
 from atlas.core.models.dependency import DependencyType
 from atlas.dependencies.blockers import blocked
 from atlas.dependencies.critical_path import critical_path
 from atlas.dependencies.readiness import ready_tickets
-from atlas.planning.mermaid import _escape, _natural
 
 # Only depends_on edges impose execution ordering; the lens renders them.
 _DEPENDS_ON = DependencyType.DEPENDS_ON.value
@@ -152,7 +153,7 @@ def analyse_graph(graph: nx.DiGraph[str]) -> GraphView:
                 overlay=overlay,
             )
         )
-    nodes.sort(key=lambda node: _natural(node.key))
+    nodes.sort(key=lambda node: natural_key(node.key))
 
     edges: list[GraphEdgeView] = []
     for source, target, dep_type in graph.edges(data="dependency_type"):
@@ -163,7 +164,7 @@ def analyse_graph(graph: nx.DiGraph[str]) -> GraphView:
         if not _is_present_ticket(graph.nodes[target]):
             continue
         edges.append(GraphEdgeView(source, target, (source, target) in critical_edges))
-    edges.sort(key=lambda edge: (_natural(edge.source), _natural(edge.target)))
+    edges.sort(key=lambda edge: (natural_key(edge.source), natural_key(edge.target)))
 
     return GraphView(tuple(nodes), tuple(edges))
 
@@ -185,18 +186,18 @@ def render_graph(graph: nx.DiGraph[str]) -> str:
     for node in view.nodes:
         grouped.setdefault(node.epic_key, []).append(node)
 
-    for epic_key in sorted((k for k in grouped if k is not None), key=_natural):
+    for epic_key in sorted((k for k in grouped if k is not None), key=natural_key):
         epic_title = (
             str(graph.nodes[epic_key].get("title", epic_key))
             if epic_key in graph
             else epic_key
         )
-        lines.append(f'  subgraph {epic_key}["{_escape(epic_title)}"]')
+        lines.append(f'  subgraph {epic_key}["{escape_label(epic_title)}"]')
         for node in grouped[epic_key]:
-            lines.append(f'    {node.key}["{node.key} {_escape(node.title)}"]')
+            lines.append(f'    {node.key}["{node.key} {escape_label(node.title)}"]')
         lines.append("  end")
     for node in grouped.get(None, []):
-        lines.append(f'  {node.key}["{node.key} {_escape(node.title)}"]')
+        lines.append(f'  {node.key}["{node.key} {escape_label(node.title)}"]')
 
     # depends_on edges: critical-path links thick (==>), others thin (-->).
     for edge in view.edges:
@@ -215,7 +216,7 @@ def render_graph(graph: nx.DiGraph[str]) -> str:
     for overlay in present:
         members = sorted(
             (node.key for node in view.nodes if node.overlay == overlay),
-            key=_natural,
+            key=natural_key,
         )
         lines.append(f"  class {','.join(members)} {overlay};")
 
