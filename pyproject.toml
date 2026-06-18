@@ -97,5 +97,6 @@ layers = [
     "atlas.planning",
     "atlas.dependencies",
     "atlas.storage",
+    "atlas.linear",
     "atlas.core",
 ]

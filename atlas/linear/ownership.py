@@ -1,0 +1,187 @@
+"""Field-ownership allow-list for the Linear boundary (ATLAS-41).
+
+This module is the mechanical expression of the ADR-0006 ownership rule
+(``pm-engine-and-linear-sync.md`` "Field ownership"): definitions flow
+Atlas -> Linear, status flows Linear -> Atlas, and nothing else crosses.
+It is a hard allow-list -- a field absent from the tables below is
+*mechanically incapable* of crossing, not merely "not currently mapped".
+
+It imports only ``atlas.core`` (the provider-agnostic domain) and the
+boundary DTOs (under ``TYPE_CHECKING`` only, so there is no runtime import
+cycle with ``client.py``). It performs no I/O: the two translation helpers
+are pure functions over a Ticket / a fetched issue, and the status map is
+injected, never read from the environment inside a translation call.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+from collections.abc import Callable, Iterable, Mapping
+from typing import TYPE_CHECKING
+
+from atlas.core.models.ticket import Ticket, TicketStatus
+
+if TYPE_CHECKING:  # back-reference only; avoids a runtime client <-> ownership cycle
+    from atlas.linear.client import LinearIssue, WorkflowState
+
+STATE_MAP_ENV = "LINEAR_STATE_MAP"
+
+
+class LinearStatusMapError(ValueError):
+    """The configured Linear status map is missing, malformed, or
+    contradicts the workspace's workflow states (ATLAS-41 D7/D8/D9)."""
+
+
+# --- Definition direction: Atlas -> Linear ---------------------------------
+#
+# An explicit (linear_input_key, getter) table. The outbound payload is
+# built ONLY by iterating this table, so a Ticket attribute that is not
+# listed here cannot appear in a Linear payload, and `stateId` -- absent
+# here -- can never be pushed Atlas -> Linear.
+#
+# The ADR-0006 ownership table also owns `labels` (Atlas -> Linear), but the
+# Ticket model has no `labels` field yet: labels are *owned but not yet
+# syncable*, deferred until a `Ticket.labels` field exists. `description` is
+# the v1 human-readable summary (the ticket objective); richer descriptions
+# / context-pack embedding arrive in Phase 5/8 per the design doc.
+OWNED_DEFINITION_FIELDS: tuple[tuple[str, Callable[[Ticket], object]], ...] = (
+    ("title", lambda ticket: ticket.title),
+    ("priority", lambda ticket: ticket.priority),
+    ("description", lambda ticket: ticket.objective),
+)
+
+OWNED_LINEAR_INPUT_KEYS: frozenset[str] = frozenset(
+    key for key, _ in OWNED_DEFINITION_FIELDS
+)
+
+
+def definition_payload(ticket: Ticket) -> dict[str, object]:
+    """The Linear ``input`` for a definition push, built only from the owned
+    table. By construction it contains no state key, so ticket *status* can
+    never cross Atlas -> Linear through this boundary."""
+
+    return {key: getter(ticket) for key, getter in OWNED_DEFINITION_FIELDS}
+
+
+# --- Status direction: Linear -> Atlas -------------------------------------
+#
+# Permissive contradiction filter (D7). Each Atlas status accepts one or
+# more Linear state *types*; validation rejects only a clear contradiction
+# (e.g. a `completed` state mapped to `in_progress`, or a `started` state
+# mapped to `done`). Many active statuses deliberately share `started`, so
+# the filter is a contradiction check, not a rigid 1:1 oracle.
+_ACCEPTED_TYPES: dict[TicketStatus, frozenset[str]] = {
+    TicketStatus.BACKLOG: frozenset({"backlog", "triage"}),
+    TicketStatus.PLANNED: frozenset({"backlog", "unstarted", "triage"}),
+    TicketStatus.BLOCKED: frozenset({"backlog", "unstarted", "triage"}),
+    TicketStatus.READY_FOR_AGENT: frozenset({"unstarted", "backlog"}),
+    TicketStatus.IN_PROGRESS: frozenset({"started"}),
+    TicketStatus.PR_OPEN: frozenset({"started"}),
+    TicketStatus.REVIEW_REQUIRED: frozenset({"started"}),
+    TicketStatus.CHANGES_REQUESTED: frozenset({"started"}),
+    TicketStatus.DONE: frozenset({"completed"}),
+    TicketStatus.REJECTED: frozenset({"cancelled"}),
+    TicketStatus.NEEDS_HUMAN_DECISION: frozenset(
+        {"started", "unstarted", "backlog", "triage"}
+    ),
+}
+
+
+class LinearStatusMap:
+    """An operator-configured ``dict[linear_state_id -> TicketStatus]``.
+
+    The lookup key is the stable Linear state id (UUID) -- never the
+    customizable name, never the coarse type. Built from the
+    ``LINEAR_STATE_MAP`` JSON env var at the client boundary and injected
+    into ``status_from_issue`` (dependency injection; the translation never
+    reads the environment).
+    """
+
+    def __init__(self, mapping: Mapping[str, TicketStatus]) -> None:
+        self._mapping: dict[str, TicketStatus] = dict(mapping)
+
+    def __len__(self) -> int:
+        return len(self._mapping)
+
+    @classmethod
+    def from_env(cls, env: Mapping[str, str] | None = None) -> LinearStatusMap:
+        """Parse ``LINEAR_STATE_MAP`` (JSON object of state-id -> status).
+
+        Raises ``LinearStatusMapError`` on a missing/empty value (D8: a
+        live path with no map is a loud failure, never a silent
+        drop-everything), on malformed JSON, or on an unknown status value.
+        """
+
+        source = os.environ if env is None else env
+        raw = source.get(STATE_MAP_ENV, "").strip()
+        if not raw:
+            raise LinearStatusMapError(
+                f"{STATE_MAP_ENV} is not set; configure the Linear state-id -> "
+                "Atlas status map (a missing map would silently disable status "
+                "sync and flood anomalies)"
+            )
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError as error:
+            raise LinearStatusMapError(
+                f"{STATE_MAP_ENV} is not valid JSON: {error}"
+            ) from error
+        if not isinstance(parsed, dict) or not parsed:
+            raise LinearStatusMapError(
+                f"{STATE_MAP_ENV} must be a non-empty JSON object of state-id -> status"
+            )
+        mapping: dict[str, TicketStatus] = {}
+        for state_id, status_value in parsed.items():
+            try:
+                mapping[state_id] = TicketStatus(status_value)
+            except ValueError as error:
+                raise LinearStatusMapError(
+                    f"{STATE_MAP_ENV}[{state_id!r}] = {status_value!r} is not a "
+                    "known TicketStatus"
+                ) from error
+        return cls(mapping)
+
+    def validate_against_states(self, states: Iterable[WorkflowState]) -> None:
+        """Load-time validation against the workspace's workflow states (D7).
+
+        Confirms each configured id still exists (stale-map guard: rotated
+        UUIDs fail loudly instead of silently dropping) and that its type is
+        not contradictory with the mapped status. Permissive: several Atlas
+        statuses may share one Linear type.
+        """
+
+        by_id = {state.id: state for state in states}
+        for state_id, status in self._mapping.items():
+            state = by_id.get(state_id)
+            if state is None:
+                raise LinearStatusMapError(
+                    f"{STATE_MAP_ENV} maps state id {state_id!r} which does not "
+                    "exist in the workspace's workflow states (stale map?)"
+                )
+            accepted = _ACCEPTED_TYPES[status]
+            if state.type not in accepted:
+                raise LinearStatusMapError(
+                    f"{STATE_MAP_ENV} maps state {state_id!r} (Linear type "
+                    f"{state.type!r}) to {status.value!r}, which only accepts "
+                    f"Linear type(s) {sorted(accepted)}"
+                )
+
+    def status_for(self, state_id: str | None) -> TicketStatus | None:
+        if state_id is None:
+            return None
+        return self._mapping.get(state_id)
+
+
+def status_from_issue(
+    issue: LinearIssue, status_map: LinearStatusMap
+) -> TicketStatus | None:
+    """Translate a fetched Linear issue into an Atlas status, or ``None``.
+
+    Reads ONLY the issue's state id, so no Linear definition field (title,
+    priority, description, ...) can cross Linear -> Atlas. An id absent from
+    the configured map yields ``None`` -- dropped, not guessed (ATLAS-42
+    surfaces it as a reconciliation anomaly).
+    """
+
+    return status_map.status_for(issue.state_id)

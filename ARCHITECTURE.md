@@ -37,6 +37,7 @@ atlas.cli           # CLI entry point and command wiring
 atlas.planning      # plan/apply pipeline, reconciler, renderer
 atlas.dependencies  # dependency-graph projection and analyses
 atlas.storage       # database, tables, repositories
+atlas.linear        # Phase 4 Linear boundary: client + field ownership
 atlas.core          # models, enums, shared primitives
 ```
 

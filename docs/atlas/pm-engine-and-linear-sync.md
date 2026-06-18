@@ -24,6 +24,54 @@ and never writes to `docs/planning/` (that is `atlas apply`'s monopoly).
 `external_linear_id` on the ticket is the join key; it is written once at
 issue creation and never reused.
 
+### Field-ownership boundary (ATLAS-41)
+
+The ownership rule is enforced as a hard allow-list in `atlas/linear/`, the
+Phase-4 provider boundary (a layer above `atlas.core`, which imports nothing
+Linear/HTTP/GraphQL — import-linter spine; ADR-0006). ATLAS-41 delivers this
+boundary only; the reconcile loop that drives it on a cadence is ATLAS-42.
+
+**Client.** `LinearClient` (`atlas/linear/client.py`) is the atlas-side
+protocol: `create_issue`/`update_issue` (definitions, Atlas → Linear),
+`fetch_issue` and `fetch_workflow_states` (status direction and validation).
+It returns a `LinearIssue` DTO (`id`, `title`, `state_id`, `state_name`,
+`state_type`). The real `LinearGraphQLClient` talks request/response GraphQL
+at `https://api.linear.app/graphql` (stdlib transport, no webhooks —
+ADR-0008); `InMemoryLinearClient` is the contract-tested fake.
+
+**Definitions (Atlas → Linear).** `definition_payload(ticket)` is built only
+by iterating `OWNED_DEFINITION_FIELDS` (title, priority, and a description
+that is the v1 human-readable summary). It carries no state key, and the
+client rejects any key outside `OWNED_LINEAR_INPUT_KEYS`, so ticket *status*
+is mechanically incapable of crossing Atlas → Linear. A doctrine field with
+no Atlas source is owned but not yet syncable: `labels` is owned in the table
+above but has no `Ticket.labels` field, so it is deferred until that field
+exists rather than silently guessed.
+
+**Status (Linear → Atlas).** `LinearStatusMap` is an operator-configured
+`dict[linear_state_id → TicketStatus]`, sourced from the JSON env var
+`LINEAR_STATE_MAP` (e.g. `{"<state-uuid>": "in_progress"}`). The stable
+Linear state **id** is the lookup key — never the customizable name
+(rename-fragile), never the coarse type (`in_progress`, `pr_open`,
+`review_required`, `changes_requested` all share Linear type `started`, and
+the anomaly engine needs them distinguished). `status_from_issue(issue,
+status_map)` reads only the state id and returns the mapped status or `None`;
+an unmapped id is dropped, not guessed (ATLAS-42 surfaces it as an anomaly).
+The Linear state `type` is used only as load-time validation
+(`validate_against_states`): it confirms each configured id still exists in
+the workspace (stale-map guard — rotated UUIDs fail loudly) and rejects a
+type-contradictory mapping, while permissively allowing several Atlas
+statuses under one Linear type. A missing or empty `LINEAR_STATE_MAP` on the
+live path raises `LinearStatusMapError` rather than silently disabling
+status sync.
+
+**Secrets.** `LINEAR_API_KEY`, `LINEAR_TEAM_ID`, and `LINEAR_STATE_MAP` are
+read only at the client boundary, never logged, never committed (`.env` is
+git-ignored). The deterministic core never touches them; tests inject the
+client and the status map directly, so CI runs with no network and no
+secrets. An opt-in live smoke test (`ATLAS_LIVE_TESTS=1` plus the token)
+exercises the real workspace and is skipped in default CI.
+
 ## Sync loop
 
 Pull-based, consistent with ADR-0008 (no webhooks before hosting):

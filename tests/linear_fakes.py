@@ -1,0 +1,89 @@
+"""In-memory fake Linear client for deterministic tests (ATLAS-41 D10).
+
+Mirrors the ``tests/planner_fakes.py`` precedent: a test double that does
+NOT ship in the package and makes no network call. It satisfies the
+``LinearClient`` protocol and is held to the same behavioural contract as
+the real ``LinearGraphQLClient`` (the parametrized contract test in
+``tests/test_linear_client.py``), so it is honest confidence, not a stub
+that drifts from reality. ATLAS-42's sync-loop tests inject it too.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Mapping
+from typing import Any
+
+from atlas.linear.client import (
+    LinearIssue,
+    WorkflowState,
+    reject_unowned_keys,
+)
+
+# A default state assigned on creation, shared with the contract test's
+# stub-real emulator so both clients return the same shape.
+DEFAULT_STATE = WorkflowState(id="state-unstarted", name="Todo", type="unstarted")
+
+
+class InMemoryLinearClient:
+    """A dict-backed ``LinearClient``.
+
+    ``create_issue`` mints a sequential id and assigns ``DEFAULT_STATE``;
+    ``update_issue``/``fetch_issue`` operate on the stored issue. The owned
+    key allow-list is enforced exactly as the real client enforces it.
+    ``set_state`` is a test-only helper to simulate a Linear-side status
+    change (it is not part of the protocol).
+    """
+
+    def __init__(self, workflow_states: list[WorkflowState] | None = None) -> None:
+        self._issues: dict[str, LinearIssue] = {}
+        self._counter = 0
+        self._states = (
+            list(workflow_states) if workflow_states is not None else [DEFAULT_STATE]
+        )
+
+    def create_issue(
+        self, definition: Mapping[str, Any], *, team_id: str
+    ) -> LinearIssue:
+        reject_unowned_keys(definition)
+        self._counter += 1
+        issue_id = f"issue-{self._counter}"
+        issue = LinearIssue(
+            id=issue_id,
+            title=str(definition.get("title", "")),
+            state_id=DEFAULT_STATE.id,
+            state_name=DEFAULT_STATE.name,
+            state_type=DEFAULT_STATE.type,
+        )
+        self._issues[issue_id] = issue
+        return issue
+
+    def update_issue(self, issue_id: str, definition: Mapping[str, Any]) -> LinearIssue:
+        reject_unowned_keys(definition)
+        current = self._issues[issue_id]
+        updated = LinearIssue(
+            id=current.id,
+            title=str(definition.get("title", current.title)),
+            state_id=current.state_id,
+            state_name=current.state_name,
+            state_type=current.state_type,
+        )
+        self._issues[issue_id] = updated
+        return updated
+
+    def fetch_issue(self, issue_id: str) -> LinearIssue | None:
+        return self._issues.get(issue_id)
+
+    def fetch_workflow_states(self) -> list[WorkflowState]:
+        return list(self._states)
+
+    # --- test-only helper (not part of LinearClient) -----------------------
+    def set_state(self, issue_id: str, state: WorkflowState) -> None:
+        """Simulate a Linear-side status change to ``state``."""
+        current = self._issues[issue_id]
+        self._issues[issue_id] = LinearIssue(
+            id=current.id,
+            title=current.title,
+            state_id=state.id,
+            state_name=state.name,
+            state_type=state.type,
+        )
