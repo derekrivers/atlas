@@ -18,8 +18,9 @@ import pytest
 from pydantic import ValidationError
 
 import atlas.core.enums
-from atlas.core.enums import ActorType, AnomalyType
-from atlas.core.models import DebtItem
+import atlas.core.models
+from atlas.core.enums import ActorType
+from atlas.core.models import AnomalyType, DebtItem
 
 REQUIRED = object()  # sentinel: field has no default
 
@@ -124,10 +125,12 @@ def test_wrong_type_rejected() -> None:
         DebtItem(**debt_item_kwargs() | {"anomaly_type": "not-an-anomaly"})
 
 
-def test_shared_enum_identity() -> None:
-    # Identity, not equality: the annotations are ATLAS-11/116's classes.
+def test_enum_identity() -> None:
+    # Identity, not equality: the annotations are the canonical classes.
+    # anomaly_type is the model-local AnomalyType (data-model §6.1);
+    # created_by_type is the §2 shared ActorType.
     assert DebtItem.model_fields["anomaly_type"].annotation is (
-        atlas.core.enums.AnomalyType
+        atlas.core.models.AnomalyType
     )
     assert DebtItem.model_fields["created_by_type"].annotation is (
         atlas.core.enums.ActorType

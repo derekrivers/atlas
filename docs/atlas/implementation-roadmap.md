@@ -333,6 +333,13 @@ ATLAS-96 Delivery analytics
 ATLAS-97 Lesson promotion CLI (operator gate)
 ATLAS-99 Organisational memory search
 ATLAS-100 Continuous learning scheduler
+ATLAS-117 Code-quality debt register — distinct entity, NOT DebtItem and
+         NOT table debt_items (ADR-0011 D2); gated on the first
+         debt-RECORDING sensor (one that persists code-quality debt rows,
+         e.g. mutation/coverage, duplication or large-file, KB-freshness),
+         not a pass/fail CI gate — ATLAS-114's import-linter already
+         shipped and does NOT count, as it gates rather than records;
+         consumed by Phase 9 debt-pattern detection
 
 Retired: ATLAS-98 (Learning dashboard), Learning API.
 

@@ -44,7 +44,7 @@ than implicit in a model diff.
   (import-linter / dependency-cruiser). That entity is a **named
   precondition** of the first such sensor — the sensor that produces
   code-quality debt defines the entity that stores it. Until then Atlas has
-  no code-quality-debt entity.
+  no code-quality-debt entity. Tracked as ATLAS-117.
 
 ## Rationale
 

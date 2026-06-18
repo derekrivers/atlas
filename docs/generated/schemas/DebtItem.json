@@ -11,7 +11,7 @@
       "type": "string"
     },
     "AnomalyType": {
-      "description": "Class of delivery anomaly a DebtItem records (ATLAS-116, data-model\n§6.1; pm-engine-and-linear-sync.md \"Anomaly and dwell detection\").\n\nThe three observation classes the PM Engine appends one row per. Lives\nhere, not with the model, by ATLAS-116 decision D5 (it is shared\noperational vocabulary the delivery report also reads), unlike the\nmodel-specific EvidenceType/TicketStatus enums.",
+      "description": "Class of delivery anomaly a DebtItem records (data-model §6.1;\npm-engine-and-linear-sync.md \"Anomaly and dwell detection\").\n\nThe three observation classes the PM Engine appends one row per. A\nmodel-specific enum, defined with its model like EvidenceType — not a\n§2 shared type — and used only by DebtItem and DebtItemRepo.",
       "enum": [
         "out_of_ownership_transition",
         "review_cycle",
