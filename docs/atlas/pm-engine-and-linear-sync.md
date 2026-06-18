@@ -16,7 +16,7 @@ and never writes to `docs/planning/` (that is `atlas apply`'s monopoly).
 | Field                      | Owner / direction              |
 | -------------------------- | ------------------------------ |
 | title, priority, labels    | Atlas → Linear                 |
-| description (context pack) | Atlas → Linear, frozen once In Progress (`symphony-integration.md#context-pack-delivery`) |
+| description | Atlas → Linear, frozen once In Progress. Summary only in v1; context pack embedded from Phase 8 (`symphony-integration.md#context-pack-delivery`) |
 | state                      | split by transition edge (see symphony-integration state table) |
 | comments                   | agent writes; Atlas reads tagged follow-ups |
 | assignee, estimates        | unsynced in v1                 |
@@ -35,10 +35,20 @@ Pull-based, consistent with ADR-0008 (no webhooks before hosting):
    tickets whose Atlas `updated_at` is newer, only while the ticket is in
    a pre-dispatch status or `Ready for Agent`.
 3. Run the readiness predicate (dependency-engine.md#readiness-predicate);
-   for each newly ready ticket: render its context pack (Phase 5), create
-   or update the Linear issue with the embedded pack, set
+   for each newly ready ticket: create or update the Linear issue with its
+   definition (title/priority/labels) and human-readable summary, set
    `ready_for_agent` in Atlas and `Ready for Agent` in Linear. The PM
    Engine is the **sole writer** into this state.
+
+   Context-pack rendering (Phase 5) and embedding the pack into the issue
+   description (Phase 8, ATLAS-82, per
+   `symphony-integration.md#context-pack-delivery`) are forward
+   capabilities. Distinguish dependency-readiness (the Phase 3 predicate,
+   live now) from dispatch-readiness (dependency-ready + criteria-present +
+   pack-rendered): the `pack-rendered` conjunct becomes load-bearing only
+   when Symphony consumes this state (Phase 8). Promoting without a pack in
+   Phase 4–7 is harmless — nothing dispatches off `Ready for Agent` until
+   Phase 8.
 4. Scan recent issue comments for the `atlas:proposed-follow-up` tag.
 5. Run anomaly and dwell checks (below).
 
@@ -56,8 +66,18 @@ moved to `docs/planning/inbox/processed/` by `atlas apply`.
 
 ## Anomaly and dwell detection
 
-- Out-of-ownership state transitions: logged; three occurrences for the
-  same ticket creates a `DebtItem`.
+- Out-of-ownership state transitions: each observed transition appends one
+  `DebtItem` row. Recurrence (default: ≥3 rows for the same
+  ticket/anomaly type) is a **query-time predicate** surfaced in the
+  delivery report, never a creation gate and never a stored counter.
+
+`DebtItem` is an operational record (ADR-0006 §2), append-only, written by
+the PM Engine from deterministic observation — `created_by_type = system`,
+so no trust tier and no PENDING cap (it is not evidence). One row per
+observation; recurrence and severity derive by query. Recording a
+`DebtItem` never changes ticket state: only the review-cycling rule below
+routes to `Needs Human`. Logging debt and moving a ticket are separate
+concerns.
 - Review cycling: more than 3 `changes_requested → pr_open` round trips
   routes the ticket to `Needs Human` with a failure-analysis note.
 - Dwell horizons (config, defaults): `in_progress` 24h, `pr_open` 48h,

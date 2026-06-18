@@ -30,7 +30,14 @@
       "Bash(git switch *)",
       "Bash(PYTHONPATH=tests uv run python -c ' *)",
       "Bash(PYTHONPATH=tests uv run pytest tests/test_acceptance.py -q -k \"content_coverage or heading_index or adjacency or enumeration_pins or anchor_coverage_percentage\")",
-      "Bash(git merge *)"
+      "Bash(git merge *)",
+      "Bash(python -)",
+      "Bash(echo \"exit=$?\")",
+      "Bash(git restore *)",
+      "Bash(uv add *)",
+      "Bash(echo \"EXIT=$?\")",
+      "Bash(grep -vE '^\\\\*|\\(^| \\)main$')",
+      "Bash(xargs -r git branch -d)"
     ],
     "additionalDirectories": [
       "/tmp/atlas-fresh",

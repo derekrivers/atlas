@@ -195,6 +195,8 @@ ATLAS-44 Blocked state detection
 ATLAS-45 Follow-up ticket generation (as plan proposals, not direct
          writes)
 ATLAS-46 Roadmap synchronisation
+ATLAS-116 Delivery-anomaly model (DebtItem, append-only, one row per
+         observation) and recurrence predicate
 ATLAS-47 Delivery metrics (CLI report)
 ATLAS-50 PM scheduler
 

@@ -461,7 +461,7 @@ def test_enumeration_pins_real_roadmap_count() -> None:
     # layer-consolidation tickets (ATLAS-113..115). Addition couples to the
     # pin, the mirror of the retirement rule. The pin fires on exactly this kind
     # of change.
-    assert len(tickets) == 99
+    assert len(tickets) == 100
     keys = [t.key for t in tickets]
     assert len(keys) == len(set(keys))  # unique
     assert "ATLAS-20" not in keys  # retired lines are not tickets
