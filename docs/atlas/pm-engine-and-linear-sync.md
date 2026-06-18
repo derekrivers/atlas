@@ -67,9 +67,10 @@ moved to `docs/planning/inbox/processed/` by `atlas apply`.
 ## Anomaly and dwell detection
 
 - Out-of-ownership state transitions: each observed transition appends one
-  `DebtItem` row. Recurrence (default: ≥3 rows for the same
-  ticket/anomaly type) is a **query-time predicate** surfaced in the
-  delivery report, never a creation gate and never a stored counter.
+  `DebtItem` row (append-only, system-written). Recurrence — default: three
+  or more rows for the same ticket and anomaly type — is the query-time
+  `recurring(...)` predicate surfaced in the delivery report, never a
+  creation gate and never a stored counter.
 
 `DebtItem` is an operational record (ADR-0006 §2), append-only, written by
 the PM Engine from deterministic observation — `created_by_type = system`,

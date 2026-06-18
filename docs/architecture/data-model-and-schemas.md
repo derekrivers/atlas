@@ -1097,6 +1097,9 @@ carries no trust tier and no PENDING cap; it is NOT evidence (ADR-0008).
 Recording a `DebtItem` never changes ticket state. Recurrence and
 severity are derived by query — never stored, never a creation gate.
 
+ADR-0011 records why this name now denotes the delivery anomaly and how
+the prior code-quality technical-debt register is deferred.
+
 ---
 
 ## 6.1 Debt Item
