@@ -126,6 +126,8 @@ Phase closure reports (`docs/closure/`):
   closure: milestone evidence, harness ledger, carry-forwards
 - `docs/closure/phase-2-closure-report.md` — Phase 2 (Planning Engine)
   closure: milestone evidence, the capacity boundary, carry-forwards
+- `docs/closure/phase-3-closure-report.md` — Phase 3 (Dependency Engine)
+  closure: milestone evidence, harness ledger, carry-forwards
 
 Stubs awaiting content: `docs/product/`, `docs/tech-debt/`.
 
