@@ -346,3 +346,76 @@ def test_effort_drives_critical_path(
     # cosmetic. The heavy chain must drive the path.
     assert payload["keys"] == ["ATLAS-5", "ATLAS-4"]
     assert payload["total_effort"] == 10
+
+
+# --- graph (ATLAS-37) ------------------------------------------------------
+
+
+def _planning_snapshot() -> dict[str, bytes]:
+    """File path -> bytes for everything under the repo's docs/planning/, the
+    apply-only write monopoly (ADR-0007). `deps graph` must leave it byte-
+    identical: it renders to stdout and writes nothing."""
+    planning = Path(__file__).resolve().parents[1] / "docs" / "planning"
+    return {
+        str(path): path.read_bytes() for path in planning.rglob("*") if path.is_file()
+    }
+
+
+def test_graph_prints_mermaid_to_stdout(
+    db: Database, capsys: pytest.CaptureFixture[str]
+) -> None:
+    seed(db, [make_ticket("ATLAS-1")], [])
+
+    code = main(["deps", "graph"], database=db)
+    captured = capsys.readouterr()
+
+    assert code == EXIT_OK
+    assert "graph TD" in captured.out
+    # The advisory marker, so the lens is not mistakable for roadmap.mmd.
+    assert captured.out.startswith("%% Atlas dependency ANALYSIS view")
+
+
+def test_graph_cyclic_graph_refuses_no_render(
+    db: Database, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _cyclic(db)
+
+    code = main(["deps", "graph"], database=db)
+    captured = capsys.readouterr()
+
+    # The wrong answer: a render emitted for a cyclic graph. It must refuse on
+    # the validate-first gate, emitting no `graph TD`.
+    assert code == EXIT_PRECONDITION
+    assert "graph TD" not in captured.out
+    assert "cycle" in captured.err.lower()
+
+
+def test_graph_writes_no_file(db: Database, capsys: pytest.CaptureFixture[str]) -> None:
+    seed(db, [make_ticket("ATLAS-1")], [])
+
+    before = _planning_snapshot()
+    code = main(["deps", "graph"], database=db)
+    after = _planning_snapshot()
+
+    assert code == EXIT_OK
+    # The wrong answer: the command writes (or rewrites) a docs/planning/ file.
+    assert before == after
+
+
+def test_graph_json_parses_and_carries_overlay(
+    db: Database, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # The 2-chain (ATLAS-2 -> ATLAS-3) owns the critical path; ATLAS-1 is a
+    # free planned ticket with an acceptance criterion and off the path ->
+    # ready. ATLAS-2 (on the path) is `critical`.
+    chain = [make_ticket("ATLAS-2"), make_ticket("ATLAS-3")]
+    free = make_ticket("ATLAS-1")
+    seed(db, [*chain, free], [depends_on(chain[0], chain[1])])
+
+    code = main(["deps", "graph", "--json"], database=db)
+    payload = json.loads(capsys.readouterr().out)
+
+    assert code == EXIT_OK
+    nodes = {node["key"]: node["overlay"] for node in payload["nodes"]}
+    assert nodes["ATLAS-1"] == "ready"
+    assert nodes["ATLAS-2"] == "critical"

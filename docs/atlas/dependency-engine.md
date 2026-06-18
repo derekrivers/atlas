@@ -204,14 +204,22 @@ computation:
   effort (`<= 0`) or unknown key exits non-zero without persisting. `effort`
   does not build the graph; it is a direct ticket write.
 
-The four computation commands (`ready`, `blocked`, `critical-path`,
-`unlocks`) **validate first**: they build the graph, run `validate_graph`,
+The computation commands (`ready`, `blocked`, `critical-path`, `unlocks`,
+and `graph`) **validate first**: they build the graph, run `validate_graph`,
 and refuse an invalid graph (printing the typed violations, exiting the
 precondition code) rather than computing on it — a cycle must refuse, not
-loop. `validate` is the explicit form of that same check.
+loop or emit a partial render. `validate` is the explicit form of that same
+check.
 
-`graph` regenerates `roadmap.mmd` (Mermaid); it and its renderer are
-delivered by ATLAS-37, not ATLAS-39.
+`graph` (ATLAS-37) prints an ADVISORY Mermaid analysis view to **stdout** —
+the dependency `graph TD` overlaid with readiness/blocker/critical-path state
+(node classes `critical` > `blocked` > `ready`, one per ticket; critical-path
+links emphasised as `==>`). It is validate-first like the other computation
+commands (a cyclic or dangling graph refuses, emitting no render) and writes
+**no file**: it is NOT the canonical `docs/planning/roadmap.mmd`, which only
+`atlas apply` writes (ADR-0007) via its own byte-stable render (ATLAS-27,
+`atlas/planning/mermaid.py`). The lens reuses that renderer's emission
+primitives (natural key ordering, label quoting) rather than duplicating them.
 
 ## Open items
 
