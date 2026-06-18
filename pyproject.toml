@@ -26,6 +26,7 @@ dev = [
     "pre-commit>=4.0",
     "types-pyyaml>=6.0.12.20260518",
     "hypothesis>=6.100",
+    "import-linter>=2.0",
 ]
 
 [build-system]
@@ -78,3 +79,23 @@ ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+# Architecture-fitness sensor (ATLAS-114): the layer spine is executable.
+# Layers run high -> low; a lower layer may never import a higher one
+# (e.g. dependencies -> planning, the edge ATLAS-113 removed). atlas.cli is
+# a module, the rest packages; both are valid layer names. atlas.tools and
+# atlas.__main__ are consumers outside the spine and are intentionally
+# unconstrained. The canonical order is mirrored in ARCHITECTURE.md.
+[tool.importlinter]
+root_package = "atlas"
+
+[[tool.importlinter.contracts]]
+name = "Atlas layer spine"
+type = "layers"
+layers = [
+    "atlas.cli",
+    "atlas.planning",
+    "atlas.dependencies",
+    "atlas.storage",
+    "atlas.core",
+]
