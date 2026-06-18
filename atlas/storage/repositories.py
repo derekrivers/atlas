@@ -27,11 +27,12 @@ import sqlalchemy as sa
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from atlas.core.enums import EvidenceStatus
+from atlas.core.enums import AnomalyType, EvidenceStatus
 from atlas.core.models import (
     AgentRun,
     ArchitectureDecisionRecord,
     ContextPack,
+    DebtItem,
     Epic,
     Evidence,
     Lesson,
@@ -48,6 +49,7 @@ from atlas.storage.tables import (
     ArchitectureDecisionRecordRow,
     Base,
     ContextPackRow,
+    DebtItemRow,
     EpicRow,
     EvidenceRow,
     KeyCounterRow,
@@ -264,6 +266,64 @@ class EvidenceRepo(_Repo[Evidence]):
                 "from a system-tier record or human approval, not a bypass."
             )
         return super().add(model)
+
+
+class DebtItemRepo(_Repo[DebtItem]):
+    """Append-only delivery-anomaly log (ATLAS-116).
+
+    Mirrors EvidenceRepo's append-only shape: it exposes an append verb
+    (``record``) and queries only — no update, no delete, no bypass — so
+    one-row-per-observation (decision D1) is structural (decision D4). It
+    is NOT EvidenceRepo: a DebtItem is an operational record, not
+    evidence, so there is no trust-tier cap (decision D2).
+
+    Recurrence is computed here at query time over the rows
+    (``recurring``); it is never stored on a row and never gates a
+    ``record`` (decision D3).
+    """
+
+    def __init__(self, db: Database) -> None:
+        super().__init__(db, DebtItem, DebtItemRow)
+
+    def record(self, model: DebtItem) -> DebtItem:
+        """Append one observation and return the persisted row.
+
+        The PM Engine's sole append verb. Recording never reads or writes
+        ticket state and never consults recurrence — logging debt and
+        moving a ticket are separate concerns (pm-engine-and-linear-sync.md).
+        """
+        return self.add(model)
+
+    def list_for_ticket(self, ticket_id: UUID) -> list[DebtItem]:
+        """Every recorded anomaly for ``ticket_id``, oldest observation
+        first (then by id for a stable order on identical timestamps)."""
+        with self._db.session() as session:
+            rows = session.scalars(
+                sa.select(DebtItemRow)
+                .where(DebtItemRow.ticket_id == ticket_id)
+                .order_by(DebtItemRow.observed_at, DebtItemRow.id)
+            )
+            return [self._to_model(row) for row in rows]
+
+    def recurring(
+        self, ticket_id: UUID, anomaly_type: AnomalyType, threshold: int = 3
+    ) -> bool:
+        """True when ``ticket_id`` has at least ``threshold`` rows of
+        ``anomaly_type`` (default 3, per pm-engine-and-linear-sync.md).
+
+        A pure query-time predicate: it reads the rows, stores nothing, and
+        is not a creation gate. The boundary is inclusive — exactly
+        ``threshold`` rows recurs; ``threshold - 1`` does not."""
+        with self._db.session() as session:
+            count = session.scalar(
+                sa.select(sa.func.count())
+                .select_from(DebtItemRow)
+                .where(
+                    DebtItemRow.ticket_id == ticket_id,
+                    DebtItemRow.anomaly_type == anomaly_type.value,
+                )
+            )
+            return (count or 0) >= threshold
 
 
 class PlanRunRepo(_Repo[PlanRun]):

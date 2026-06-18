@@ -224,6 +224,19 @@ DOCUMENTED_COLUMNS: dict[str, dict[str, tuple[bool, str | None]]] = {
         "prefix": (NN, None),
         "high_water": (NN, "0"),
     },
+    # §6.2 (delivery-anomaly record, ATLAS-116): append-only — no status,
+    # no updated_at.
+    "debt_items": {
+        "id": (NN, None),
+        "product_id": (NN, None),
+        "ticket_id": (NN, None),
+        "anomaly_type": (NN, None),
+        "summary": (NN, None),
+        "observed_at": (NN, None),
+        "created_by_type": (NN, None),
+        "created_by_id": (NN, None),
+        "created_at": (NN, None),
+    },
 }
 
 # Transcribed FK targets: table -> {column: referred table}. Absence is
@@ -243,6 +256,7 @@ DOCUMENTED_FOREIGN_KEYS: dict[str, dict[str, str]] = {
     "context_packs": {"product_id": "products", "ticket_id": "tickets"},
     "plan_runs": {"product_id": "products"},
     "key_counters": {},
+    "debt_items": {"product_id": "products", "ticket_id": "tickets"},
 }
 
 DOCUMENTED_UNIQUES: dict[str, list[list[str]]] = {

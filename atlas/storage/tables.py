@@ -294,6 +294,29 @@ class ContextPackRow(Base):
     created_at: Mapped[datetime] = mapped_column(UTCDateTime())
 
 
+class DebtItemRow(Base):
+    """One delivery-anomaly observation (ATLAS-116, data-model §6.2).
+
+    Append-only (enforced in DebtItemRepo, not here). ticket_id is
+    FK-backed and NOT NULL: a delivery anomaly is always observed against
+    an existing synced Atlas ticket (unlike evidence.agent_run_id, which
+    is deliberately FK-less). No status, no updated_at — recurrence and
+    severity derive by query.
+    """
+
+    __tablename__ = "debt_items"
+
+    id: Mapped[UUID] = mapped_column(sa.Uuid, primary_key=True)
+    product_id: Mapped[UUID] = mapped_column(sa.Uuid, sa.ForeignKey("products.id"))
+    ticket_id: Mapped[UUID] = mapped_column(sa.Uuid, sa.ForeignKey("tickets.id"))
+    anomaly_type: Mapped[str] = mapped_column(sa.Text)
+    summary: Mapped[str] = mapped_column(sa.Text)
+    observed_at: Mapped[datetime] = mapped_column(UTCDateTime())
+    created_by_type: Mapped[str] = mapped_column(sa.Text)
+    created_by_id: Mapped[str] = mapped_column(sa.Text)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime())
+
+
 class KeyCounterRow(Base):
     """Monotonic per-prefix key counter (ATLAS-25, data-model §3.12).
 
