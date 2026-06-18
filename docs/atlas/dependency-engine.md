@@ -131,8 +131,9 @@ semantics fixed by this ticket:
 - `unlocks(t)`: tickets that become ready if `t` completes — the metric
   for "what unlocks the most future work".
 - High-risk blocker report: any blocking ticket with `risk_level` in
-  {high, critical}, surfaced because the readiness rule treats unresolved
-  high-risk blockers as blocking even for otherwise-ready work.
+  {high, critical} that a non-terminal ticket depends on. The report is
+  advisory only — it surfaces risky work that other tickets depend on and
+  does NOT gate readiness or dispatch.
 
 ## Validation rules
 
