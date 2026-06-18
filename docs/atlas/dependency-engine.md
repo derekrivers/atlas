@@ -184,9 +184,34 @@ proceed on an invalid graph.
 
 ## CLI
 
-`atlas deps ready | blocked | critical-path | unlocks <KEY> | validate |
-graph` — `graph` regenerates `roadmap.mmd`. All subcommands support
-`--json` for machine consumption.
+`atlas deps ready | blocked [KEY] [--high-risk] | critical-path |
+unlocks <KEY> | validate | effort <KEY> (VALUE | --clear) | graph`. All
+subcommands support `--json` for machine consumption and `--db` to select
+the database.
+
+ATLAS-39 delivers the group and the first six subcommands as a thin surface
+over the Phase 3 functions — it calls them and never reimplements a
+computation:
+
+- `ready` lists ready tickets; `blocked KEY` shows what blocks one ticket and
+  `blocked` (no key) every blocked ticket, while `blocked --high-risk` emits
+  the graph-wide high/critical-risk report — KEY and `--high-risk` are
+  mutually exclusive (the report has no per-ticket variant).
+- `critical-path` shows the longest effort-weighted execution chain;
+  `unlocks KEY` the tickets a key would unlock.
+- `effort KEY VALUE` sets `estimated_effort` and `effort KEY --clear` sets it
+  null, both via `TicketRepo.set_estimated_effort` (ATLAS-32) — a rejected
+  effort (`<= 0`) or unknown key exits non-zero without persisting. `effort`
+  does not build the graph; it is a direct ticket write.
+
+The four computation commands (`ready`, `blocked`, `critical-path`,
+`unlocks`) **validate first**: they build the graph, run `validate_graph`,
+and refuse an invalid graph (printing the typed violations, exiting the
+precondition code) rather than computing on it — a cycle must refuse, not
+loop. `validate` is the explicit form of that same check.
+
+`graph` regenerates `roadmap.mmd` (Mermaid); it and its renderer are
+delivered by ATLAS-37, not ATLAS-39.
 
 ## Open items
 
