@@ -14,17 +14,19 @@ database and make zero real API calls.
 refusal/precondition (no proposed plan, stale plan, dirty tree,
 unsupported diff/CONFLICT, or no way to confirm).
 
-`deps` (ATLAS-39) is a thin read-mostly surface over the Phase 3 dependency
-functions: `ready`, `blocked`, `critical-path`, `unlocks`, `validate`, and
-`effort`. It modifies no computation module — it only calls them. The four
-computation commands (ready/blocked/critical-path/unlocks) build the graph
-and run `validate_graph` FIRST, refusing an invalid graph (EXIT_PRECONDITION
-with the typed violations) rather than computing on it; `validate` is the
-explicit form of that check. `effort` writes `estimated_effort` directly via
-the ATLAS-32 setter (no graph). The Mermaid `graph` subcommand is ATLAS-37's,
-added into this group later. `deps` exit codes: 0 success; 2 precondition (an
-invalid graph, an unknown key, or a rejected effort). Every deps subcommand
-takes `--db` and `--json`.
+`deps` (ATLAS-39, ATLAS-37) is a thin read-mostly surface over the Phase 3
+dependency functions: `ready`, `blocked`, `critical-path`, `unlocks`,
+`validate`, `effort`, and `graph`. It modifies no computation module — it only
+calls them. The five computation commands (ready/blocked/critical-path/unlocks/
+graph) build the graph and run `validate_graph` FIRST, refusing an invalid
+graph (EXIT_PRECONDITION with the typed violations) rather than computing on it;
+`validate` is the explicit form of that check. `graph` (ATLAS-37) prints an
+ADVISORY Mermaid analysis view to stdout — readiness/blocker/critical-path
+overlays — and writes NO file; it is NOT the canonical docs/planning/roadmap.mmd
+(that render is `atlas apply`'s, ATLAS-27). `effort` writes `estimated_effort`
+directly via the ATLAS-32 setter (no graph). `deps` exit codes: 0 success; 2
+precondition (an invalid graph, an unknown key, or a rejected effort). Every
+deps subcommand takes `--db` and `--json`.
 """
 
 from __future__ import annotations
@@ -52,6 +54,8 @@ from atlas.dependencies import (
     critical_path,
     high_risk_blockers,
     ready_tickets,
+    render_graph,
+    render_graph_json,
     unlocks,
     validate_graph,
 )
@@ -140,10 +144,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _add_deps_parser(subcommands: argparse._SubParsersAction) -> None:  # type: ignore[type-arg]
-    """The `atlas deps` group (ATLAS-39) and its six subcommands. Its own
-    nested subparsers (dest="deps_command", required=True) so ATLAS-37 can add
-    `graph` (Mermaid) later without restructuring. Every subcommand carries
-    `--db` and `--json`."""
+    """The `atlas deps` group (ATLAS-39, ATLAS-37) and its seven subcommands.
+    Its own nested subparsers (dest="deps_command", required=True). Every
+    subcommand carries `--db` and `--json`."""
     deps = subcommands.add_parser(
         "deps",
         help="Inspect the dependency graph: readiness, blockers, critical path",
@@ -182,6 +185,11 @@ def _add_deps_parser(subcommands: argparse._SubParsersAction) -> None:  # type: 
     unlocks_parser.add_argument("key", help="the ticket key")
 
     _add("validate", "Validate the graph; refuse an invalid one")
+
+    _add(
+        "graph",
+        "Advisory Mermaid view (stdout) with ready/blocked/critical overlays",
+    )
 
     effort_parser = _add("effort", "Set or clear a ticket's estimated_effort")
     effort_parser.add_argument("key", help="the ticket key")
@@ -445,6 +453,19 @@ def _deps_validate(graph: nx.DiGraph[str], *, as_json: bool) -> int:
     return EXIT_OK
 
 
+def _deps_graph(graph: nx.DiGraph[str], *, as_json: bool) -> int:
+    """Print the advisory Mermaid analysis view (ATLAS-37) to stdout. Writes NO
+    file — docs/planning/roadmap.mmd is `atlas apply`'s (ADR-0007). Runs after
+    the validate-first gate, so it never renders an invalid graph."""
+    if as_json:
+        print(json.dumps(render_graph_json(graph)))
+    else:
+        # render_graph already terminates with a newline; end="" avoids a
+        # spurious trailing blank line so stdout equals the rendered text.
+        print(render_graph(graph), end="")
+    return EXIT_OK
+
+
 def _deps_effort(
     args: argparse.Namespace, resolved_db: Database, *, as_json: bool
 ) -> int:
@@ -479,9 +500,10 @@ def _deps_effort(
 
 
 def _deps_command(args: argparse.Namespace, *, database: Database | None) -> int:
-    """Route `atlas deps <subcommand>`. The four computation commands build the
-    graph and validate FIRST, refusing an invalid one; `validate` is the
-    explicit form; `effort` writes directly without a graph."""
+    """Route `atlas deps <subcommand>`. The five computation commands (ready/
+    blocked/critical-path/unlocks/graph) build the graph and validate FIRST,
+    refusing an invalid one; `validate` is the explicit form; `effort` writes
+    directly without a graph."""
     resolved_db = database if database is not None else Database(args.db)
     as_json = args.json
 
@@ -491,8 +513,9 @@ def _deps_command(args: argparse.Namespace, *, database: Database | None) -> int
     if args.deps_command == "validate":
         return _deps_validate(build_dependency_graph(resolved_db), as_json=as_json)
 
-    # ready / blocked / critical-path / unlocks: validate-first, never compute
-    # on an invalid graph (a cycle must refuse, not loop).
+    # ready / blocked / critical-path / unlocks / graph: validate-first, never
+    # compute on an invalid graph (a cycle must refuse, not loop or emit a
+    # partial render).
     graph = build_dependency_graph(resolved_db)
     try:
         validate_graph(graph)
@@ -509,6 +532,8 @@ def _deps_command(args: argparse.Namespace, *, database: Database | None) -> int
             return _deps_critical_path(graph, as_json=as_json)
         if args.deps_command == "unlocks":
             return _deps_unlocks(graph, args.key, as_json=as_json)
+        if args.deps_command == "graph":
+            return _deps_graph(graph, as_json=as_json)
     except ValueError as error:
         # An unknown/non-ticket key from blocked/unlocks: a clean precondition
         # exit, not a traceback.

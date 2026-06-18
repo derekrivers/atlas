@@ -1,9 +1,9 @@
 """Phase 3 dependency engine (ATLAS-31): the on-demand graph projection,
 with graph validation (ATLAS-40) layered over it.
 
-Later Phase 3 tickets add Mermaid viz (ATLAS-37) and the ``atlas deps`` CLI
-(ATLAS-39) on top of this projection; readiness (ATLAS-34), critical path
-(ATLAS-35), and blockers (ATLAS-36) are layered here already.
+The analyses are layered on top of this projection: readiness (ATLAS-34),
+critical path (ATLAS-35), blockers (ATLAS-36), the advisory Mermaid view
+(ATLAS-37), and the ``atlas deps`` CLI (ATLAS-39) that surfaces them.
 """
 
 from atlas.dependencies.blockers import (
@@ -34,6 +34,14 @@ from atlas.dependencies.graph import (
     build_dependency_graph,
     project_graph,
 )
+from atlas.dependencies.mermaid import (
+    GraphEdgeView,
+    GraphNodeView,
+    GraphView,
+    analyse_graph,
+    render_graph,
+    render_graph_json,
+)
 from atlas.dependencies.readiness import (
     READY_STATUSES,
     NotReadyCode,
@@ -57,8 +65,11 @@ __all__ = [
     "CycleError",
     "DanglingTargetError",
     "DuplicateEdgeError",
+    "GraphEdgeView",
+    "GraphNodeView",
     "GraphValidationError",
     "GraphValidationFailed",
+    "GraphView",
     "HighRiskBlocker",
     "NotReadyCode",
     "NotReadyReason",
@@ -67,6 +78,7 @@ __all__ = [
     "TerminalDependencyError",
     "UnlocksResult",
     "adr_key",
+    "analyse_graph",
     "blocked",
     "build_dependency_graph",
     "critical_path",
@@ -74,6 +86,8 @@ __all__ = [
     "is_ready",
     "project_graph",
     "ready_tickets",
+    "render_graph",
+    "render_graph_json",
     "unlocks",
     "validate_graph",
 ]
