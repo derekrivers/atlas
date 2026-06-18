@@ -64,6 +64,8 @@ number is not reused.)
 - ADR-0008 CI-sourced evidence with trust tiers
 - ADR-0009 Single-operator governance
 - ADR-0010 Multi-call generation with single-proposal reconciliation
+- ADR-0011 DebtItem denotes delivery anomalies; code-quality debt register
+  deferred
 
 Prompts and tools:
 

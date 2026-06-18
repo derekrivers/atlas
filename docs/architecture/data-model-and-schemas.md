@@ -1086,39 +1086,47 @@ CREATE TABLE verification_checks (
 
 ---
 
-# 6. Technical Debt Schema
+# 6. Delivery-Anomaly Schema
 
-Technical debt should be structured, tracked, and linked to tickets.
+The PM Engine records delivery anomalies as it reconciles Atlas and
+Linear (pm-engine-and-linear-sync.md "Anomaly and dwell detection"). A
+`DebtItem` is an append-only operational record (ADR-0006 §2), **one row
+per observation** — not a mutable tracked item. It is written by the
+system from deterministic observation (`created_by_type = system`), so it
+carries no trust tier and no PENDING cap; it is NOT evidence (ADR-0008).
+Recording a `DebtItem` never changes ticket state. Recurrence and
+severity are derived by query — never stored, never a creation gate.
+
+ADR-0011 records why this name now denotes the delivery anomaly and how
+the prior code-quality technical-debt register is deferred.
 
 ---
 
 ## 6.1 Debt Item
 
 ```python
-class DebtCategory(str, Enum):
-    TEST_COVERAGE = "test_coverage"
-    DUPLICATION = "duplication"
-    LARGE_FILE = "large_file"
-    STALE_DOCS = "stale_docs"
-    SECURITY = "security"
-    PERFORMANCE = "performance"
-    ARCHITECTURE = "architecture"
-    DEPENDENCY = "dependency"
+class AnomalyType(str, Enum):
+    OUT_OF_OWNERSHIP_TRANSITION = "out_of_ownership_transition"
+    REVIEW_CYCLE = "review_cycle"
+    DWELL_BREACH = "dwell_breach"
 
 class DebtItem(BaseModel):
     id: UUID
     product_id: UUID
-    category: DebtCategory
-    title: str
-    description: str
-    severity: RiskLevel
-    detected_by: str
-    source_uri: Optional[str] = None
-    remediation_ticket_id: Optional[UUID] = None
-    status: EntityStatus
+    ticket_id: UUID
+    anomaly_type: AnomalyType
+    summary: str
+    observed_at: datetime
+    created_by_type: ActorType
+    created_by_id: str
     created_at: datetime
-    updated_at: datetime
 ```
+
+`observed_at` is when the anomaly occurred; `created_at` is when the row
+was written. There is no `updated_at` and no `status`: the row is never
+mutated (append-only enforcement lives in `DebtItemRepo`, not the model).
+Unlike `evidence.agent_run_id`, `ticket_id` is required and FK-backed — an
+anomaly is always observed against an existing synced ticket.
 
 ---
 
@@ -1128,16 +1136,13 @@ class DebtItem(BaseModel):
 CREATE TABLE debt_items (
     id UUID PRIMARY KEY,
     product_id UUID NOT NULL REFERENCES products(id),
-    category TEXT NOT NULL,
-    title TEXT NOT NULL,
-    description TEXT NOT NULL,
-    severity TEXT NOT NULL,
-    detected_by TEXT NOT NULL,
-    source_uri TEXT,
-    remediation_ticket_id UUID REFERENCES tickets(id),
-    status TEXT NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL,
-    updated_at TIMESTAMPTZ NOT NULL
+    ticket_id UUID NOT NULL REFERENCES tickets(id),
+    anomaly_type TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    observed_at TIMESTAMPTZ NOT NULL,
+    created_by_type TEXT NOT NULL,
+    created_by_id TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL
 );
 ```
 

@@ -1,0 +1,79 @@
+{
+  "$defs": {
+    "ActorType": {
+      "description": "Who or what created a record (data-model §2.2, attribution §1.5).",
+      "enum": [
+        "human",
+        "agent",
+        "system"
+      ],
+      "title": "ActorType",
+      "type": "string"
+    },
+    "AnomalyType": {
+      "description": "Class of delivery anomaly a DebtItem records (ATLAS-116, data-model\n§6.1; pm-engine-and-linear-sync.md \"Anomaly and dwell detection\").\n\nThe three observation classes the PM Engine appends one row per. Lives\nhere, not with the model, by ATLAS-116 decision D5 (it is shared\noperational vocabulary the delivery report also reads), unlike the\nmodel-specific EvidenceType/TicketStatus enums.",
+      "enum": [
+        "out_of_ownership_transition",
+        "review_cycle",
+        "dwell_breach"
+      ],
+      "title": "AnomalyType",
+      "type": "string"
+    }
+  },
+  "description": "One observed delivery anomaly (data-model §6.1).\n\nAppend-only. Unlike Evidence's deliberately FK-less ``ticket_id`` (an\nagent run may be reconstructed after the fact, so evidence can precede\nits run row), a delivery anomaly is always observed by the PM Engine\nagainst an existing synced Atlas ticket — the observation never\nprecedes the ticket — so ``ticket_id`` is required and FK-backed.\n\n``observed_at`` is when the anomaly occurred; ``created_at`` is when\nthe row was written. There is no ``updated_at`` and no ``status``:\nseverity and recurrence derive by query, never by mutation.",
+  "properties": {
+    "anomaly_type": {
+      "$ref": "#/$defs/AnomalyType"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "created_by_id": {
+      "title": "Created By Id",
+      "type": "string"
+    },
+    "created_by_type": {
+      "$ref": "#/$defs/ActorType"
+    },
+    "id": {
+      "format": "uuid",
+      "title": "Id",
+      "type": "string"
+    },
+    "observed_at": {
+      "format": "date-time",
+      "title": "Observed At",
+      "type": "string"
+    },
+    "product_id": {
+      "format": "uuid",
+      "title": "Product Id",
+      "type": "string"
+    },
+    "summary": {
+      "title": "Summary",
+      "type": "string"
+    },
+    "ticket_id": {
+      "format": "uuid",
+      "title": "Ticket Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "product_id",
+    "ticket_id",
+    "anomaly_type",
+    "summary",
+    "observed_at",
+    "created_by_type",
+    "created_by_id",
+    "created_at"
+  ],
+  "title": "DebtItem",
+  "type": "object"
+}
