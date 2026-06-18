@@ -25,3 +25,13 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
+      # The import graph is repo-global (a layer violation can live in any
+      # module), so like doc-linter the contract always runs rather than
+      # filtering on changed files. Enforces the layer spine in pyproject
+      # [tool.importlinter] (ATLAS-114).
+      - id: import-linter
+        name: import-linter
+        entry: uv run lint-imports
+        language: system
+        pass_filenames: false
+        always_run: true
