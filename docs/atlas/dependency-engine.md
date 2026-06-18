@@ -90,6 +90,39 @@ against a `present=False` target by reporting a not-ready `DANGLING_TARGET`
 reason rather than crashing or treating it as satisfied. A dangling target
 is therefore never silently ready on either side.
 
+## Effort population
+
+`estimated_effort` is operator-supplied and NEVER computed: no heuristic
+infers it from acceptance-criteria count, risk, or anything else. It is
+written out-of-band by `TicketRepo.set_estimated_effort(key, effort)`
+(ATLAS-32) — the SINGLE writer of this column. The value must be a positive
+integer (>= 1) or null; the setter rejects `<= 0` with a typed
+`EffortValidationError` (no silent persistence; 0 is never a stand-in for
+"unknown") and an unknown key with `TicketNotFoundError`. Null is the
+legitimate "not yet estimated" state, weighted as 1 by the critical path at
+compute time (see below), and is also how an operator clears a prior estimate.
+
+Single-writer ownership is **per-field** (ADR-0006/0007). `atlas apply` owns
+the doc-sourced definition fields; the operator owns this one operational
+field. `atlas apply` NEVER writes `estimated_effort` — it inserts every ticket
+with the column null — so the setter and apply touch disjoint columns and no
+field has two writers.
+
+This per-field partition is a **durable invariant, not an artifact of apply
+being ADD-only today**. Any future MODIFY-apply path MUST update only the
+doc-sourced definition fields and leave `estimated_effort` untouched. The trap
+to avoid: reconstructing a `Ticket` from a proposal (as the ADD path's
+`_materialise` does — it omits the field, so the model defaults it to null)
+and writing that row would null the operator's value and make apply a second
+writer into the column the operator owns. A MODIFY-apply must therefore patch
+named definition columns, never overwrite the whole row.
+
+`set_estimated_effort` DELIBERATELY does not bump `updated_at`. Beyond keeping
+the write clock-free, `estimated_effort` is a Phase 4 PM-unsynced field: the
+Linear sync pushes definition fields gated on `updated_at` being newer, so
+bumping it here would trigger a spurious definition re-push for a field that
+never syncs. `updated_at` is left alone by design — do not "fix" this later.
+
 ## Critical path
 
 Computed over the subgraph of tickets not in a terminal status:

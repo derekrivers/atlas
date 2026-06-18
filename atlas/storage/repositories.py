@@ -87,6 +87,16 @@ class KeyCounterError(ValueError):
     """A reservation requested a non-positive count."""
 
 
+class EffortValidationError(ValueError):
+    """estimated_effort must be a positive integer (>= 1) or null (ATLAS-32
+    G1). Effort is operator-supplied and NEVER inferred; <= 0 is rejected
+    rather than silently persisted."""
+
+
+class TicketNotFoundError(ValueError):
+    """set_estimated_effort named a key with no stored ticket."""
+
+
 @dataclass(frozen=True)
 class Reservation:
     """The keys an apply reserved from one prefix's counter: the assigned
@@ -180,6 +190,41 @@ class EpicRepo(_KeyedRepo[Epic]):
 class TicketRepo(_KeyedRepo[Ticket]):
     def __init__(self, db: Database) -> None:
         super().__init__(db, Ticket, TicketRow)
+
+    def set_estimated_effort(self, key: str, effort: int | None) -> Ticket:
+        """Set ``estimated_effort`` on the stored ticket ``key`` (ATLAS-32).
+
+        The SINGLE writer of ``estimated_effort`` — an operator-supplied,
+        never-computed operational input (dependency-engine.md "Effort
+        population"). ``effort`` must be a positive integer (>= 1) or
+        ``None``; ``None`` is the legitimate "not yet estimated" state the
+        critical path weights as 1, and is also how an operator clears a
+        prior estimate. A value <= 0 raises :class:`EffortValidationError`
+        with no persistence (G1: never silently store a non-positive effort,
+        never use 0 as a stand-in for "unknown").
+
+        Ownership stays per-field (ADR-0006/0007): ``atlas apply`` inserts
+        every ticket with this field null and owns the doc-sourced definition
+        fields; this writer owns only ``estimated_effort``. The two touch
+        disjoint columns, so no field has two writers. ``updated_at`` is
+        DELIBERATELY left untouched — effort is a Phase 4-unsynced field, and
+        bumping ``updated_at`` would trigger a spurious definition re-push for
+        a field that never syncs (see the design doc).
+        """
+        if effort is not None and effort < 1:
+            raise EffortValidationError(
+                "estimated_effort must be a positive integer (>= 1) or null; "
+                f"got {effort!r}. Effort is operator-supplied and never "
+                "inferred (ATLAS-32 G1)."
+            )
+        with self._db.session() as session, session.begin():
+            row = session.scalars(
+                sa.select(TicketRow).where(TicketRow.key == key)
+            ).first()
+            if row is None:
+                raise TicketNotFoundError(f"no ticket with key {key!r}")
+            row.estimated_effort = effort
+            return self._to_model(row)
 
 
 class TicketDependencyRepo(_Repo[TicketDependency]):

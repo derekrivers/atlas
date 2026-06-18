@@ -362,7 +362,14 @@ single file.
 ## 8. Non-goals for milestone 1
 
 No Linear writes. No Symphony dispatch. No HTML roadmap (Mermaid render
-only). No estimation logic (`estimated_effort` exists on the Ticket
-model from Phase 1, remains null, and is populated when critical-path
-analysis lands in Phase 3, ATLAS-32). No automatic re-planning triggers; planning runs only when
-the operator invokes it.
+only). No estimation logic: `estimated_effort` exists on the Ticket model
+from Phase 1, is never computed or inferred, and the planner never emits
+it — `atlas apply` inserts every ticket with the field null. An operator
+supplies it out-of-band through `TicketRepo.set_estimated_effort` (Phase 3,
+ATLAS-32), which accepts a positive integer (>= 1) or null and rejects
+`<= 0`; the critical path weights a null as 1. That setter is the single
+writer of the field, owning it per-field while apply owns the doc-sourced
+definition fields — a partition apply must preserve across any future
+MODIFY-apply path (see dependency-engine.md "Effort population"). No
+automatic re-planning triggers; planning runs only when the operator
+invokes it.
