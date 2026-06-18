@@ -133,7 +133,6 @@ Design doc: docs/atlas/dependency-engine.md.
 ATLAS-31 Graph schema and build from storage
 ATLAS-32 Dependency model integration; add estimated_effort population to
          the Ticket model (resolves the critical-path field gap)
-ATLAS-33 Graph storage projection (NetworkX from relational tables)
 ATLAS-34 Readiness detection
 ATLAS-35 Critical path analysis
 ATLAS-36 Blocker detection
@@ -142,7 +141,9 @@ ATLAS-39 Dependency CLI
 ATLAS-40 Graph validation, including dangling polymorphic targets and
          acyclicity on every mutation
 
-Retired: ATLAS-38 (Dependency API).
+Retired: ATLAS-38 (Dependency API); ATLAS-33 (storage projection —
+delivered by ATLAS-31's build_dependency_graph; see
+dependency-engine.md "Graph projection (build)").
 
 Milestone test: readiness, blockers, and critical path computed correctly
 on fixture graphs including cycle and dangling-target failures.

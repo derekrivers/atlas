@@ -454,11 +454,11 @@ def test_enumeration_pins_real_roadmap_count() -> None:
     # The denominator is a prose parser; a roadmap reformat the parser
     # misses changes this hand-verified count and fires the test.
     tickets = enumerate_roadmap_tickets(ROADMAP.read_text(encoding="utf-8"))
-    # 85 milestone tickets + 7 post-milestone hardening tickets (ATLAS-101..107,
-    # ATLAS-102's roadmap addition) + ATLAS-112 (the AT-7 work-coverage record
-    # this ticket serves, added to the roadmap as hand-written intent). The pin
-    # fires on exactly this kind of change.
-    assert len(tickets) == 93
+    # 84 milestone tickets (ATLAS-33 retired into the Phase 3 Retired line) +
+    # 7 post-milestone hardening tickets (ATLAS-101..107, ATLAS-102's roadmap
+    # addition) + ATLAS-112 (the AT-7 work-coverage record, hand-written intent).
+    # The pin fires on exactly this kind of change.
+    assert len(tickets) == 92
     keys = [t.key for t in tickets]
     assert len(keys) == len(set(keys))  # unique
     assert "ATLAS-20" not in keys  # retired lines are not tickets
