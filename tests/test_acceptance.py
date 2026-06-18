@@ -456,9 +456,12 @@ def test_enumeration_pins_real_roadmap_count() -> None:
     tickets = enumerate_roadmap_tickets(ROADMAP.read_text(encoding="utf-8"))
     # 84 milestone tickets (ATLAS-33 retired into the Phase 3 Retired line) +
     # 7 post-milestone hardening tickets (ATLAS-101..107, ATLAS-102's roadmap
-    # addition) + ATLAS-112 (the AT-7 work-coverage record, hand-written intent).
-    # The pin fires on exactly this kind of change.
-    assert len(tickets) == 92
+    # addition) + ATLAS-112 (the AT-7 work-coverage record, hand-written intent)
+    # + 4 Phase 2.5 live-discovered fixes (ATLAS-108..111) + 3 Phase 3.5
+    # layer-consolidation tickets (ATLAS-113..115). Addition couples to the
+    # pin, the mirror of the retirement rule. The pin fires on exactly this kind
+    # of change.
+    assert len(tickets) == 99
     keys = [t.key for t in tickets]
     assert len(keys) == len(set(keys))  # unique
     assert "ATLAS-20" not in keys  # retired lines are not tickets
