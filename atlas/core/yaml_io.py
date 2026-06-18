@@ -12,7 +12,6 @@ nothing here ever touches that directory.
 
 from __future__ import annotations
 
-import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any, TypeVar
@@ -21,9 +20,10 @@ from uuid import UUID
 import yaml
 from pydantic import BaseModel
 
+from atlas.core.keys import natural_key
+
 M = TypeVar("M", bound=BaseModel)
 
-_KEY_RE = re.compile(r"^([A-Za-z]+)-(\d+)$")
 _DEPENDENCY_SORT_FIELDS = (
     "source_ticket_id",
     "target_entity_type",
@@ -110,18 +110,10 @@ def _check_unknown_keys(
         raise UnknownFieldError(model_cls.__name__, where, unknown)
 
 
-def _natural_key(key: str) -> tuple[str, str]:
-    """ATLAS-2 sorts before ATLAS-10: numeric within a shared prefix."""
-    match = _KEY_RE.match(key)
-    if match:
-        return (match.group(1), f"{int(match.group(2)):012d}")
-    return (key, "")
-
-
-def _sort_key(model: BaseModel) -> tuple[str, ...]:
+def _sort_key(model: BaseModel) -> tuple[str | int, ...]:
     fields = type(model).model_fields
     if "key" in fields:
-        return _natural_key(str(model.key))  # type: ignore[attr-defined]
+        return natural_key(str(model.key))  # type: ignore[attr-defined]
     if set(_DEPENDENCY_SORT_FIELDS) <= fields.keys():
         return tuple(str(getattr(model, name)) for name in _DEPENDENCY_SORT_FIELDS)
     return (str(getattr(model, "id", "")),)
