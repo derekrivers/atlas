@@ -22,3 +22,7 @@ build/
 
 # Throwaway DB written by scripts/scratch_seed.py for hand-testing the CLI
 scratch.db
+
+# Local secrets: Linear token / state map and any other env-sourced creds
+# are injected at the client boundary and never committed (ATLAS-41).
+.env
