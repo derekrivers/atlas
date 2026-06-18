@@ -115,6 +115,19 @@ ATLAS-105 PlanRun multi-call provenance (generation_stages field; §3.10 +
 ATLAS-106 Per-stage truncation handling and batch sizing
 ATLAS-107 Acceptance coverage for staged generation (AT-1/AT-7 staged path;
          AT-2 across the multi-call sequence)
+
+Phase 2.5 live-discovered fixes (found running the staged path against the real
+model; Phase 2.5 closure report §3):
+
+ATLAS-108 Fence-tolerant parsing: a shared string/escape-aware brace-scan
+         extractor at both parse sites, raw-output hash invariant preserved
+ATLAS-109 Bounded directed retry on projection-validation failure (3 attempts,
+         the model told what it violated; truncation and json-decode do not retry)
+ATLAS-110 Staged-tickets template null-key example: corrected to null with an
+         anti-copy instruction (the model was copying roadmap keys)
+ATLAS-111 Anchor selection from the heading index, not slug construction: the
+         planner selects from valid anchors; CURRENT bumped to planner-v1.2.0
+
 ATLAS-112 AT-7 measures anchoring-convention agreement, not work coverage;
          define a content-coverage variant and evaluate both (operator gate
          on the bar; ATLAS-107 encodes the chosen metric)
@@ -147,6 +160,24 @@ dependency-engine.md "Graph projection (build)").
 
 Milestone test: readiness, blockers, and critical path computed correctly
 on fixture graphs including cycle and dangling-target failures.
+
+---
+
+# Phase 3.5 — Layer Consolidation
+
+Architecture-fitness consolidation surfaced by the Phase 3 closure report
+(§7/§8): collapse the duplicated natural-key helpers, break the
+dependencies→planning import inversion, and install mechanical guards so the
+layering cannot silently regress.
+
+## Epic: Layer Spine
+
+ATLAS-113 Consolidate the natural-key sort into a single core primitive and
+         break the dependencies→planning import cycle
+ATLAS-114 import-linter layers contract enforcing the layer spine (first
+         architecture-fitness sensor)
+ATLAS-115 Roadmap-coverage sensor: every ticket referenced in a closure report
+         must appear in this roadmap
 
 ---
 
