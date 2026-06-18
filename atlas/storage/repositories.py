@@ -27,9 +27,10 @@ import sqlalchemy as sa
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from atlas.core.enums import AnomalyType, EvidenceStatus
+from atlas.core.enums import EvidenceStatus
 from atlas.core.models import (
     AgentRun,
+    AnomalyType,
     ArchitectureDecisionRecord,
     ContextPack,
     DebtItem,

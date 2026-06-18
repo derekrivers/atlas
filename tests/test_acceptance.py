@@ -458,10 +458,11 @@ def test_enumeration_pins_real_roadmap_count() -> None:
     # 7 post-milestone hardening tickets (ATLAS-101..107, ATLAS-102's roadmap
     # addition) + ATLAS-112 (the AT-7 work-coverage record, hand-written intent)
     # + 4 Phase 2.5 live-discovered fixes (ATLAS-108..111) + 3 Phase 3.5
-    # layer-consolidation tickets (ATLAS-113..115). Addition couples to the
+    # layer-consolidation tickets (ATLAS-113..115) + ATLAS-117 (the Phase 9
+    # code-quality debt-register seed, ADR-0011 D2). Addition couples to the
     # pin, the mirror of the retirement rule. The pin fires on exactly this kind
     # of change.
-    assert len(tickets) == 100
+    assert len(tickets) == 101
     keys = [t.key for t in tickets]
     assert len(keys) == len(set(keys))  # unique
     assert "ATLAS-20" not in keys  # retired lines are not tickets

@@ -9,7 +9,7 @@ set.
 from atlas.core.models.adr import ADRStatus, ArchitectureDecisionRecord
 from atlas.core.models.agent_run import AgentProvider, AgentRun, AgentRunStatus
 from atlas.core.models.context_pack import ContextPack
-from atlas.core.models.debt_item import DebtItem
+from atlas.core.models.debt_item import AnomalyType, DebtItem
 from atlas.core.models.dependency import DependencyType, TicketDependency
 from atlas.core.models.epic import Epic, EpicStatus
 from atlas.core.models.evidence import Evidence, EvidenceType
@@ -23,6 +23,7 @@ __all__ = [
     "AgentProvider",
     "AgentRun",
     "AgentRunStatus",
+    "AnomalyType",
     "ArchitectureDecisionRecord",
     "ContextPack",
     "DebtItem",

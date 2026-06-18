@@ -17,8 +17,7 @@ import pytest
 import sqlalchemy as sa
 from test_debt_item_model import debt_item_kwargs
 
-from atlas.core.enums import AnomalyType
-from atlas.core.models import DebtItem
+from atlas.core.models import AnomalyType, DebtItem
 from atlas.storage import Database, DebtItemRepo, NaiveDatetimeError
 
 

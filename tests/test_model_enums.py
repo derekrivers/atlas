@@ -10,6 +10,7 @@ import pytest
 
 from atlas.core.models import (
     ADRStatus,
+    AnomalyType,
     DependencyType,
     EpicStatus,
     TicketStatus,
@@ -62,6 +63,12 @@ DOCUMENTED_MEMBERS: dict[type[Enum], dict[str, str]] = {
         "RELATES_TO": "relates_to",
         "IMPLEMENTS": "implements",
         "SUPERSEDES": "supersedes",
+    },
+    # data-model §6.1
+    AnomalyType: {
+        "OUT_OF_OWNERSHIP_TRANSITION": "out_of_ownership_transition",
+        "REVIEW_CYCLE": "review_cycle",
+        "DWELL_BREACH": "dwell_breach",
     },
 }
 
