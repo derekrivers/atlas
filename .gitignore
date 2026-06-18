@@ -19,3 +19,6 @@ build/
 
 # Local Atlas database (knowledge-core: default SQLite at .atlas/atlas.db)
 .atlas/
+
+# Throwaway DB written by scripts/scratch_seed.py for hand-testing the CLI
+scratch.db
