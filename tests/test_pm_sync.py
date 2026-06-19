@@ -44,6 +44,8 @@ from atlas.storage import Database, DebtItemRepo, TicketRepo
 STARTED = WorkflowState(id="state-started", name="In Progress", type="started")
 UNSTARTED = WorkflowState(id="state-unstarted", name="Todo", type="unstarted")
 UNMAPPED = WorkflowState(id="state-orphan", name="Orphan", type="started")
+# The unique Ready-for-Agent state the readiness promotion (step 3) writes into.
+READY = WorkflowState(id="state-ready", name="Ready for Agent", type="unstarted")
 TEAM_ID = "team-1"
 
 EARLIER = NOW
@@ -55,9 +57,10 @@ class RecordingClient(InMemoryLinearClient):
     assert exactly what crossed Atlas -> Linear (and how often)."""
 
     def __init__(self) -> None:
-        super().__init__(workflow_states=[STARTED, UNSTARTED, UNMAPPED])
+        super().__init__(workflow_states=[STARTED, UNSTARTED, UNMAPPED, READY])
         self.creates: list[dict[str, Any]] = []
         self.updates: list[tuple[str, dict[str, Any]]] = []
+        self.state_writes: list[tuple[str, str]] = []
 
     def create_issue(
         self, definition: Mapping[str, Any], *, team_id: str
@@ -69,14 +72,20 @@ class RecordingClient(InMemoryLinearClient):
         self.updates.append((issue_id, dict(definition)))
         return super().update_issue(issue_id, definition)
 
+    def set_state(self, issue_id: str, state_id: str) -> LinearIssue:
+        self.state_writes.append((issue_id, state_id))
+        return super().set_state(issue_id, state_id)
+
 
 def status_map() -> LinearStatusMap:
-    # unstarted -> planned, started -> in_progress. state-orphan is in the
-    # workspace but absent from the map: the unmapped case.
+    # unstarted -> planned, started -> in_progress, state-ready -> the unique
+    # ready_for_agent promotion target. state-orphan is in the workspace but
+    # absent from the map: the unmapped case.
     return LinearStatusMap(
         {
             UNSTARTED.id: TicketStatus.PLANNED,
             STARTED.id: TicketStatus.IN_PROGRESS,
+            READY.id: TicketStatus.READY_FOR_AGENT,
         }
     )
 
@@ -112,7 +121,7 @@ def seed_ticket(
         )
         external_id = issue.id
         if issue_state is not None:
-            client.set_state(external_id, issue_state)
+            client.simulate_linear_state(external_id, issue_state)
     ticket = Ticket(
         **ticket_kwargs()
         | {
@@ -130,12 +139,17 @@ def seed_ticket(
     TicketRepo(db).add(ticket)
     client.creates.clear()
     client.updates.clear()
+    client.state_writes.clear()
     return ticket
 
 
 def run(db: Database, client: RecordingClient) -> SyncResult:
     return sync_tick(
-        tickets=TicketRepo(db), client=client, status_map=status_map(), team_id=TEAM_ID
+        tickets=TicketRepo(db),
+        db=db,
+        client=client,
+        status_map=status_map(),
+        team_id=TEAM_ID,
     )
 
 

@@ -59,7 +59,10 @@ class _Emulator:
     def __init__(self) -> None:
         self.issues: dict[str, dict[str, Any]] = {}
         self.counter = 0
-        self.states = [{"id": "state-unstarted", "name": "Todo", "type": "unstarted"}]
+        self.states = [
+            {"id": "state-unstarted", "name": "Todo", "type": "unstarted"},
+            {"id": "state-ready", "name": "Ready for Agent", "type": "unstarted"},
+        ]
 
     def handle(self, request: Any) -> dict[str, Any]:
         body = json.loads(request.data.decode())
@@ -78,8 +81,15 @@ class _Emulator:
             return {"data": {"issueCreate": {"success": True, "issue": issue}}}
         if "issueUpdate" in query:
             issue = self.issues[variables["id"]]
-            if "title" in variables["input"]:
-                issue["title"] = variables["input"]["title"]
+            payload = variables.get("input", {})
+            if "title" in payload:
+                issue["title"] = payload["title"]
+            if "stateId" in variables:
+                # The sanctioned set_state path (ATLAS-43): the mutation pins
+                # `input: { stateId: $stateId }`, so $stateId is a top-level
+                # variable. Move the issue to that workflow state.
+                state = next(s for s in self.states if s["id"] == variables["stateId"])
+                issue["state"] = dict(state)
             return {"data": {"issueUpdate": {"success": True, "issue": issue}}}
         if "workflowStates" in query:
             return {"data": {"workflowStates": {"nodes": self.states}}}
@@ -121,13 +131,24 @@ def _run_contract(client: LinearClient, *, team_id: str) -> None:
 
     assert client.fetch_issue("nonexistent") is None
 
-    # The allow-list is enforced at the client: a non-owned key cannot cross.
+    # The allow-list is enforced at the client: a non-owned key cannot cross
+    # the definition path -- not on create, not on update.
     with pytest.raises(UnownedFieldError):
         client.create_issue({"title": "x", "stateId": "s"}, team_id=team_id)
+    with pytest.raises(UnownedFieldError):
+        client.update_issue(created.id, {"title": "x", "stateId": "s"})
 
     states = client.fetch_workflow_states()
     assert states
     assert all(isinstance(state, WorkflowState) for state in states)
+
+    # set_state is the ONE sanctioned Atlas -> Linear state write (ATLAS-43):
+    # a bare state id moves the issue, distinct from the definition path above.
+    moved = client.set_state(created.id, "state-ready")
+    assert moved.state_id == "state-ready"
+    after_move = client.fetch_issue(created.id)
+    assert after_move is not None
+    assert after_move.state_id == "state-ready"
 
 
 @pytest.fixture(params=["fake", "stub-real"])

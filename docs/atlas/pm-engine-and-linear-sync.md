@@ -88,20 +88,33 @@ Pull-based, consistent with ADR-0008 (no webhooks before hosting):
    tickets whose Atlas `updated_at` is newer, only while the ticket is in
    a pre-dispatch status or `Ready for Agent`.
 3. Run the readiness predicate (dependency-engine.md#readiness-predicate);
-   for each newly ready ticket: create or update the Linear issue with its
-   definition (title/priority/labels) and human-readable summary, set
-   `ready_for_agent` in Atlas and `Ready for Agent` in Linear. The PM
-   Engine is the **sole writer** into this state.
+   for each newly ready ticket, write `Ready for Agent` in Linear through the
+   PM Engine's dedicated state-write path (`LinearClient.set_state`). The
+   definition (title/labels and human-readable summary) is already mirrored by
+   step 2's push, which is reused — step 3 adds only the state transition. The
+   PM Engine is the **sole writer** into this state, and this is the **one
+   sanctioned outbound status write** Atlas → Linear: it cannot carry a
+   definition field, the general allow-list is unchanged (`stateId` stays out
+   of it), and every other status write Atlas → Linear remains mechanically
+   impossible. The write is Linear-only: Atlas's own `ready_for_agent` is
+   reconciled by step 1's next pull, which keeps the pull the single writer of
+   Atlas status (one tick of latency). The write is idempotent — setting the
+   already-set state is a no-op — so an interrupted or repeated promotion is
+   safe, and a ticket already in `ready_for_agent` is never re-promoted. The
+   target Linear state is resolved by inverting the configured status map
+   (exactly one state must map to `ready_for_agent`, validated at load), so the
+   state written is exactly the one the next pull reads back.
 
    Context-pack rendering (Phase 5) and embedding the pack into the issue
    description (Phase 8, ATLAS-82, per
    `symphony-integration.md#context-pack-delivery`) are forward
    capabilities. Distinguish dependency-readiness (the Phase 3 predicate,
-   live now) from dispatch-readiness (dependency-ready + criteria-present +
-   pack-rendered): the `pack-rendered` conjunct becomes load-bearing only
-   when Symphony consumes this state (Phase 8). Promoting without a pack in
-   Phase 4–7 is harmless — nothing dispatches off `Ready for Agent` until
-   Phase 8.
+   live now — which already enforces criteria-present and ADR-accepted, not
+   dependencies alone) from dispatch-readiness (dependency-ready +
+   pack-rendered): only the `pack-rendered` conjunct is deferred, becoming
+   load-bearing when Symphony consumes this state (Phase 8). Promoting without
+   a pack in Phase 4–7 is harmless — nothing dispatches off `Ready for Agent`
+   until Phase 8.
 4. Scan recent issue comments for the `atlas:proposed-follow-up` tag.
 5. Run anomaly and dwell checks (below).
 

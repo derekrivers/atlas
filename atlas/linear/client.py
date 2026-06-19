@@ -95,6 +95,17 @@ class LinearClient(Protocol):
         """Update an issue's owned definition fields (Atlas -> Linear)."""
         ...
 
+    def set_state(self, issue_id: str, state_id: str) -> LinearIssue:
+        """Write an issue's workflow state (Atlas -> Linear; ATLAS-43).
+
+        The ONE sanctioned outbound status write: the PM Engine's readiness
+        promotion to ``Ready for Agent``. It takes a bare ``state_id`` and
+        builds the ``{stateId: ...}`` input itself, so it can carry no
+        definition field -- ``update_issue`` / ``definition_payload`` remain
+        mechanically incapable of crossing a state, and ``stateId`` stays out
+        of ``OWNED_LINEAR_INPUT_KEYS``. Used solely for this one promotion."""
+        ...
+
     def fetch_issue(self, issue_id: str) -> LinearIssue | None:
         """Fetch one issue for the status direction; ``None`` if absent."""
         ...
@@ -128,6 +139,14 @@ _CREATE_MUTATION = (
 _UPDATE_MUTATION = (
     "mutation IssueUpdate($id: String!, $input: IssueUpdateInput!) { "
     f"issueUpdate(id: $id, input: $input) {{ success issue {{ {_ISSUE_FIELDS} }} }} }}"
+)
+# The sanctioned state write (ATLAS-43). A dedicated mutation that builds the
+# `stateId` input itself: it never accepts a definition dict, so it cannot
+# carry title/description/etc. This is the only document that sends `stateId`.
+_SET_STATE_MUTATION = (
+    "mutation IssueSetState($id: String!, $stateId: String!) { "
+    f"issueUpdate(id: $id, input: {{ stateId: $stateId }}) "
+    f"{{ success issue {{ {_ISSUE_FIELDS} }} }} }}"
 )
 _ISSUE_QUERY = f"query Issue($id: String!) {{ issue(id: $id) {{ {_ISSUE_FIELDS} }} }}"
 # `first: 250` covers any realistic workspace; paginating beyond it is an
@@ -212,6 +231,12 @@ class LinearGraphQLClient:
         data = self._execute(
             _UPDATE_MUTATION, {"id": issue_id, "input": dict(definition)}
         )
+        return _issue_from_node(data["issueUpdate"]["issue"])
+
+    def set_state(self, issue_id: str, state_id: str) -> LinearIssue:
+        # The sanctioned promotion write (ATLAS-43): the input is built here
+        # from the bare state id, so no definition field can ride along.
+        data = self._execute(_SET_STATE_MUTATION, {"id": issue_id, "stateId": state_id})
         return _issue_from_node(data["issueUpdate"]["issue"])
 
     def fetch_issue(self, issue_id: str) -> LinearIssue | None:

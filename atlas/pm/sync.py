@@ -1,18 +1,23 @@
 """PM-Engine ticket synchronisation (ATLAS-42).
 
 One idempotent sync pass (:func:`sync_tick`) wiring the ATLAS-41 boundary
-primitives into steps 1+2 of the ``pm-engine-and-linear-sync.md`` "Sync loop":
-pull status Linear -> Atlas, push owned definitions Atlas -> Linear, and
-*nothing else crossing*. The "log anomalies otherwise" clause of step 1 and
-steps 3-5 (readiness promotion, the anomaly/DebtItem write, the follow-up
-scan, the scheduler) are ATLAS-118/-43/-45/-50 and are deliberately NOT here.
+primitives into steps 1-3 of the ``pm-engine-and-linear-sync.md`` "Sync loop":
+pull status Linear -> Atlas, push owned definitions Atlas -> Linear, promote
+dependency-ready tickets to ``Ready for Agent`` (:mod:`atlas.pm.promotion`),
+and *nothing else crossing*. The "log anomalies otherwise" clause of step 1 and
+steps 4-5 (the anomaly/DebtItem write, the follow-up scan, the scheduler) are
+ATLAS-118/-45/-50 and are deliberately NOT here.
 
 Directionality is structural, not conventional. The pull reads only the
 issue's state id (:func:`status_from_issue`) and writes only ``status``; the
 push sends only :func:`definition_payload` (title + description — priority and
 labels are owned-but-deferred) and the client rejects any unowned key. So a
 Linear-side edit of an Atlas-owned field is never pulled, and an Atlas status
-change is mechanically incapable of being pushed.
+change is mechanically incapable of being pushed *through the definition path*.
+The one exception is step 3's readiness promotion, which writes the ``Ready
+for Agent`` state through the dedicated :meth:`LinearClient.set_state` (never
+the definition push) and only that one state -- a narrow, sanctioned path that
+leaves ``OWNED_LINEAR_INPUT_KEYS`` unchanged.
 
 Idempotency rests on the sync cursor ``Ticket.linear_synced_at``: a definition
 is re-pushed only while ``updated_at > linear_synced_at`` (or it has never
@@ -34,6 +39,7 @@ import logging
 from dataclasses import dataclass
 
 from atlas.core.models.ticket import Ticket, TicketStatus
+from atlas.dependencies.graph import build_dependency_graph
 from atlas.dependencies.validation import TERMINAL_STATUSES
 from atlas.linear.client import LinearClient
 from atlas.linear.ownership import (
@@ -41,6 +47,8 @@ from atlas.linear.ownership import (
     definition_payload,
     status_from_issue,
 )
+from atlas.pm.promotion import promote_ready
+from atlas.storage.db import Database
 from atlas.storage.repositories import TicketRepo
 
 logger = logging.getLogger("atlas.pm.sync")
@@ -70,6 +78,7 @@ class SyncResult:
     pushed_created: int = 0
     pushed_updated: int = 0
     push_skipped: int = 0
+    promoted: int = 0
 
 
 def _definition_changed(ticket: Ticket) -> bool:
@@ -171,21 +180,33 @@ def _push(
 def sync_tick(
     *,
     tickets: TicketRepo,
+    db: Database,
     client: LinearClient,
     status_map: LinearStatusMap,
     team_id: str,
 ) -> SyncResult:
-    """Run one idempotent sync pass over every ticket (steps 1+2).
+    """Run one idempotent sync pass over every ticket (steps 1-3).
 
     Per ticket: pull a mapped status (Linear -> Atlas), then push the owned
     definition (Atlas -> Linear) if the cursor says it changed. Pull precedes
     push so a status pulled into a frozen state freezes the same tick's push.
     Each Linear call is bracketed by its own DB commit (push-then-stamp), so an
-    interrupted tick is safe to re-run. Returns per-tick counters.
+    interrupted tick is safe to re-run.
+
+    Then step 3 (ATLAS-43): project the dependency graph and promote every
+    dependency-ready ticket to ``Ready for Agent`` via the sanctioned
+    :meth:`LinearClient.set_state`. The graph is built AFTER the pull/push loop
+    so it reflects pulled statuses and any issue step 2 just created; the
+    promotion is Linear-only, so the next tick's pull reconciles Atlas (keeping
+    the pull the single Atlas-status writer). Returns per-tick counters.
     """
 
     result = SyncResult()
     for ticket in tickets.list():
         after_pull = _pull(ticket, tickets, client, status_map, result)
         _push(after_pull, tickets, client, team_id, result)
+    graph = build_dependency_graph(db)
+    result.promoted = promote_ready(
+        tickets=tickets, graph=graph, client=client, status_map=status_map
+    )
     return result
