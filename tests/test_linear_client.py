@@ -99,8 +99,11 @@ def _stub_urlopen(emulator: _Emulator) -> Any:
 
 
 def _run_contract(client: LinearClient, *, team_id: str) -> None:
+    # priority is owned but not yet syncable (deferred like labels, ATLAS-42):
+    # it is absent from the allow-list, so the payload carries title +
+    # description only.
     created = client.create_issue(
-        {"title": "Alpha", "priority": 0, "description": "d"}, team_id=team_id
+        {"title": "Alpha", "description": "d"}, team_id=team_id
     )
     assert created.id
     assert created.title == "Alpha"
@@ -256,13 +259,12 @@ _LIVE_READY = (
 def test_live_smoke() -> None:  # pragma: no cover - operator-run only
     client = LinearGraphQLClient()
     team_id = os.environ["LINEAR_TEAM_ID"]
-    # priority 0 (no-priority) is in Linear's 0-4 range; Atlas-int ->
-    # Linear-priority normalization is ATLAS-42, so the one live call uses a
-    # safe value.
+    # priority is owned but not yet syncable (ATLAS-42 deferred it like
+    # labels, pending an honest Atlas-int -> inverted Linear 0-4 mapping), so
+    # the live payload carries title + description only.
     created = client.create_issue(
         {
             "title": "atlas-41 live smoke (throwaway)",
-            "priority": 0,
             "description": "throwaway issue created by the ATLAS-41 live smoke test",
         },
         team_id=team_id,

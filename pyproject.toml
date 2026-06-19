@@ -95,6 +95,7 @@ type = "layers"
 layers = [
     "atlas.cli",
     "atlas.planning",
+    "atlas.pm",
     "atlas.dependencies",
     "atlas.storage",
     "atlas.linear",

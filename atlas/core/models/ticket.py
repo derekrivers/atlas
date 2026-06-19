@@ -63,6 +63,12 @@ class Ticket(BaseModel):
     estimated_effort: int | None = Field(default=None, ge=-2147483648, le=2147483647)
     external_linear_id: str | None = None
     external_github_issue_id: str | None = None
+    # PM-Engine sync cursor (ATLAS-42): the value of ``updated_at`` at the
+    # last confirmed definition push to Linear. A definition is re-pushed
+    # only while ``updated_at > linear_synced_at`` (or this is null and the
+    # ticket has never synced). Written by the sync loop, never by an Atlas
+    # definition edit, so stamping it cannot itself trigger a re-push.
+    linear_synced_at: datetime | None = None
     # Reconciler anchor-match pass; AT-1 traceability — every item
     # traceable to a document anchor.
     source_anchor: str

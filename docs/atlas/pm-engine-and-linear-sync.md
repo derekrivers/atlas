@@ -40,13 +40,17 @@ at `https://api.linear.app/graphql` (stdlib transport, no webhooks —
 ADR-0008); `InMemoryLinearClient` is the contract-tested fake.
 
 **Definitions (Atlas → Linear).** `definition_payload(ticket)` is built only
-by iterating `OWNED_DEFINITION_FIELDS` (title, priority, and a description
-that is the v1 human-readable summary). It carries no state key, and the
-client rejects any key outside `OWNED_LINEAR_INPUT_KEYS`, so ticket *status*
-is mechanically incapable of crossing Atlas → Linear. A doctrine field with
-no Atlas source is owned but not yet syncable: `labels` is owned in the table
-above but has no `Ticket.labels` field, so it is deferred until that field
-exists rather than silently guessed.
+by iterating `OWNED_DEFINITION_FIELDS` (title and a description that is the v1
+human-readable summary). It carries no state key, and the client rejects any
+key outside `OWNED_LINEAR_INPUT_KEYS`, so ticket *status* is mechanically
+incapable of crossing Atlas → Linear. Two doctrine fields are owned but not
+yet syncable, deferred rather than silently guessed: `labels` is owned in the
+table above but has no `Ticket.labels` field; and `priority` is owned but has
+no honest mapping yet — Atlas `priority` is an unconstrained signed integer
+while Linear `priority` is an inverted 4-value enum (0 = None, 1 = Urgent …
+4 = Low), so ATLAS-42 deferred it (a naive clamp would lose information and
+invert meaning) until that mapping is pinned (tracked in
+`docs/tech-debt/debt-register.md`). v1 therefore syncs title + description.
 
 **Status (Linear → Atlas).** `LinearStatusMap` is an operator-configured
 `dict[linear_state_id → TicketStatus]`, sourced from the JSON env var
@@ -56,7 +60,8 @@ Linear state **id** is the lookup key — never the customizable name
 `review_required`, `changes_requested` all share Linear type `started`, and
 the anomaly engine needs them distinguished). `status_from_issue(issue,
 status_map)` reads only the state id and returns the mapped status or `None`;
-an unmapped id is dropped, not guessed (ATLAS-42 surfaces it as an anomaly).
+an unmapped id is dropped, not guessed (ATLAS-42 counts and logs it; ATLAS-118
+surfaces it as an anomaly).
 The Linear state `type` is used only as load-time validation
 (`validate_against_states`): it confirms each configured id still exists in
 the workspace (stale-map guard — rotated UUIDs fail loudly) and rejects a
@@ -102,6 +107,14 @@ Pull-based, consistent with ADR-0008 (no webhooks before hosting):
 
 Ticks are idempotent; a missed tick costs latency only. The scheduler is a
 plain loop (or cron) — no distributed job system.
+
+**Step → ticket map.** Steps 1+2 (pull a mapped status; push owned
+definitions) are ATLAS-42 (`atlas/pm/sync.py`, `sync_tick`). Step 1's "log
+anomalies otherwise" clause (an unmapped Linear state → `DebtItem`) and step 5
+(anomaly and dwell checks) are ATLAS-118. Step 3 (readiness promotion, sole
+writer into `Ready for Agent`) is ATLAS-43. Step 4 (the follow-up comment
+scan) is ATLAS-45. The recurring scheduler that calls `sync_tick` on a cadence
+is ATLAS-50.
 
 ## Follow-up ingestion
 

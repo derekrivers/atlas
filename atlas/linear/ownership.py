@@ -40,14 +40,22 @@ class LinearStatusMapError(ValueError):
 # listed here cannot appear in a Linear payload, and `stateId` -- absent
 # here -- can never be pushed Atlas -> Linear.
 #
-# The ADR-0006 ownership table also owns `labels` (Atlas -> Linear), but the
-# Ticket model has no `labels` field yet: labels are *owned but not yet
-# syncable*, deferred until a `Ticket.labels` field exists. `description` is
+# The ADR-0006 ownership table also owns `labels` and `priority`
+# (Atlas -> Linear), but neither is syncable in v1:
+#   - `labels` has no `Ticket.labels` field yet.
+#   - `priority` is owned but *not yet mappable*. Atlas `priority` is an
+#     unconstrained signed integer (the data-model example uses 10), whereas
+#     Linear `priority` is an inverted 4-value category enum (0 = None,
+#     1 = Urgent ... 4 = Low). A naive clamp would both lose information and
+#     invert meaning, so priority is deferred -- like labels -- until a real
+#     mapping (Atlas's convention pinned, Linear's inverted 0-4 respected)
+#     exists. Tracked in docs/tech-debt/debt-register.md.
+# Both are *owned but not yet syncable*: present in the ADR-0006 ownership
+# table, absent from the payload, never silently guessed. `description` is
 # the v1 human-readable summary (the ticket objective); richer descriptions
 # / context-pack embedding arrive in Phase 5/8 per the design doc.
 OWNED_DEFINITION_FIELDS: tuple[tuple[str, Callable[[Ticket], object]], ...] = (
     ("title", lambda ticket: ticket.title),
-    ("priority", lambda ticket: ticket.priority),
     ("description", lambda ticket: ticket.objective),
 )
 
@@ -181,7 +189,7 @@ def status_from_issue(
     Reads ONLY the issue's state id, so no Linear definition field (title,
     priority, description, ...) can cross Linear -> Atlas. An id absent from
     the configured map yields ``None`` -- dropped, not guessed (ATLAS-42
-    surfaces it as a reconciliation anomaly).
+    counts and logs it; ATLAS-118 surfaces it as a reconciliation anomaly).
     """
 
     return status_map.status_for(issue.state_id)
