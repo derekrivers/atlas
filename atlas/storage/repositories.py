@@ -42,6 +42,7 @@ from atlas.core.models import (
     Product,
     Ticket,
     TicketDependency,
+    TicketStatus,
 )
 from atlas.core.trust import evidence_tier
 from atlas.storage.db import Database
@@ -227,6 +228,55 @@ class TicketRepo(_KeyedRepo[Ticket]):
             if row is None:
                 raise TicketNotFoundError(f"no ticket with key {key!r}")
             row.estimated_effort = effort
+            return self._to_model(row)
+
+    def apply_linear_status(self, key: str, status: TicketStatus) -> Ticket:
+        """Set ``status`` from a Linear pull (Linear -> Atlas; ATLAS-42).
+
+        The status direction's sole Atlas writer. ``updated_at`` is
+        DELIBERATELY left untouched: status is Linear-owned, and the sync
+        cursor compares ``updated_at > linear_synced_at`` — bumping
+        ``updated_at`` on an inbound status change would spuriously re-push the
+        definition Atlas -> Linear (a directionality leak). Disjoint-column
+        discipline, exactly like ``set_estimated_effort`` (ADR-0006/0007).
+        """
+        with self._db.session() as session, session.begin():
+            row = session.scalars(
+                sa.select(TicketRow).where(TicketRow.key == key)
+            ).first()
+            if row is None:
+                raise TicketNotFoundError(f"no ticket with key {key!r}")
+            row.status = status.value
+            return self._to_model(row)
+
+    def mark_definition_pushed(
+        self,
+        key: str,
+        *,
+        synced_at: datetime,
+        external_linear_id: str | None = None,
+    ) -> Ticket:
+        """Stamp the sync cursor after a confirmed definition push (ATLAS-42).
+
+        Writes ``linear_synced_at`` (``synced_at`` is the ``updated_at`` value
+        that was pushed, so a later tick sees ``updated_at == linear_synced_at``
+        and does not re-push) and, only on first creation, ``external_linear_id``
+        (the join key — written once and never reused). Touches no definition
+        column and never ``updated_at``: stamping must not itself look like a
+        new Atlas edit, or the ticket would re-push every tick. Order is
+        push-then-stamp (D5): the caller confirms the Linear write before this.
+        """
+        if synced_at.utcoffset() is None:
+            raise NaiveDatetimeError("Ticket", "linear_synced_at")
+        with self._db.session() as session, session.begin():
+            row = session.scalars(
+                sa.select(TicketRow).where(TicketRow.key == key)
+            ).first()
+            if row is None:
+                raise TicketNotFoundError(f"no ticket with key {key!r}")
+            if external_linear_id is not None and row.external_linear_id is None:
+                row.external_linear_id = external_linear_id
+            row.linear_synced_at = synced_at
             return self._to_model(row)
 
 

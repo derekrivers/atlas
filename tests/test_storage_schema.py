@@ -102,6 +102,7 @@ DOCUMENTED_COLUMNS: dict[str, dict[str, tuple[bool, str | None]]] = {
         "estimated_effort": (True, None),
         "external_linear_id": (True, None),
         "external_github_issue_id": (True, None),
+        "linear_synced_at": (True, None),
         "source_anchor": (NN, None),
         "created_by_type": (NN, None),
         "created_by_id": (NN, None),

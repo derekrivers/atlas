@@ -49,8 +49,17 @@ def issue(
 def test_definition_payload_contains_only_owned_keys() -> None:
     payload = definition_payload(make_ticket(title="T", priority=3, objective="obj"))
     assert set(payload) == OWNED_LINEAR_INPUT_KEYS
-    assert {"title", "priority", "description"} == OWNED_LINEAR_INPUT_KEYS
-    assert payload == {"title": "T", "priority": 3, "description": "obj"}
+    assert {"title", "description"} == OWNED_LINEAR_INPUT_KEYS
+    assert payload == {"title": "T", "description": "obj"}
+
+
+def test_priority_is_owned_but_not_yet_syncable() -> None:
+    # priority is owned (ADR-0006) but deferred like labels: Atlas's
+    # unconstrained integer has no honest mapping to Linear's inverted 0-4
+    # enum yet, so it must NOT cross. Wrong answer: 'priority' in the payload
+    # -> a raw, meaning-inverted value reaches Linear.
+    payload = definition_payload(make_ticket(priority=10))
+    assert "priority" not in payload
 
 
 def test_status_cannot_cross_atlas_to_linear() -> None:

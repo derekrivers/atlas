@@ -197,6 +197,9 @@ ATLAS-45 Follow-up ticket generation (as plan proposals, not direct
 ATLAS-46 Roadmap synchronisation
 ATLAS-116 Delivery-anomaly model (DebtItem, append-only, one row per
          observation) and recurrence predicate
+ATLAS-118 Sync anomaly/dwell wiring: the step-1 "log anomalies" clause
+         (unmapped Linear state → DebtItem) and step 5 (anomaly and dwell
+         checks); split out of ATLAS-42, which delivers steps 1+2 only
 ATLAS-47 Delivery metrics (CLI report)
 ATLAS-50 PM scheduler
 

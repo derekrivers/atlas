@@ -173,6 +173,19 @@
       "title": "Key",
       "type": "string"
     },
+    "linear_synced_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Linear Synced At"
+    },
     "non_goals": {
       "items": {
         "type": "string"

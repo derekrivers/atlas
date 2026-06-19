@@ -113,6 +113,8 @@ DOCUMENTED_FIELDS: dict[type[BaseModel], dict[str, FieldSpec]] = {
         "estimated_effort": (int | None, None),
         "external_linear_id": (str | None, None),
         "external_github_issue_id": (str | None, None),
+        # PM-Engine sync cursor; written only by the sync loop (ATLAS-42).
+        "linear_synced_at": (datetime | None, None),
         "source_anchor": (str, REQUIRED),
         "created_by_type": (ActorType, REQUIRED),
         "created_by_id": (str, REQUIRED),

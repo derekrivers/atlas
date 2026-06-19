@@ -35,6 +35,7 @@ lower layer must never import a higher one. Ordered high → low:
 ```text
 atlas.cli           # CLI entry point and command wiring
 atlas.planning      # plan/apply pipeline, reconciler, renderer
+atlas.pm            # Phase 4 PM Engine: Linear sync loop (sync_tick)
 atlas.dependencies  # dependency-graph projection and analyses
 atlas.storage       # database, tables, repositories
 atlas.linear        # Phase 4 Linear boundary: client + field ownership

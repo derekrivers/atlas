@@ -406,6 +406,11 @@ class Ticket(BaseModel):
     )
     external_linear_id: Optional[str] = None
     external_github_issue_id: Optional[str] = None
+    # PM-Engine sync cursor (ATLAS-42): updated_at at the last confirmed
+    # definition push to Linear; a push happens only while
+    # updated_at > linear_synced_at. Written by the sync loop, never bumped
+    # by an Atlas definition edit.
+    linear_synced_at: Optional[datetime] = None
     # Reconciler anchor-match pass; AT-1 traceability — every item
     # traceable to a document anchor.
     source_anchor: str
@@ -441,6 +446,7 @@ CREATE TABLE tickets (
     estimated_effort INTEGER,
     external_linear_id TEXT,
     external_github_issue_id TEXT,
+    linear_synced_at TIMESTAMPTZ,
     source_anchor TEXT NOT NULL,
     created_by_type TEXT NOT NULL,
     created_by_id TEXT NOT NULL,
