@@ -20,8 +20,10 @@ from atlas.linear.client import (
 )
 
 # A default state assigned on creation, shared with the contract test's
-# stub-real emulator so both clients return the same shape.
+# stub-real emulator so both clients return the same shape. ``READY_STATE`` is
+# a second default so the contract can exercise ``set_state`` moving an issue.
 DEFAULT_STATE = WorkflowState(id="state-unstarted", name="Todo", type="unstarted")
+READY_STATE = WorkflowState(id="state-ready", name="Ready for Agent", type="unstarted")
 
 
 class InMemoryLinearClient:
@@ -30,15 +32,18 @@ class InMemoryLinearClient:
     ``create_issue`` mints a sequential id and assigns ``DEFAULT_STATE``;
     ``update_issue``/``fetch_issue`` operate on the stored issue. The owned
     key allow-list is enforced exactly as the real client enforces it.
-    ``set_state`` is a test-only helper to simulate a Linear-side status
-    change (it is not part of the protocol).
+    ``set_state`` is the protocol's sanctioned state write (ATLAS-43), taking a
+    bare state id; ``simulate_linear_state`` is a distinct test-only helper that
+    simulates a Linear-side status change from a full ``WorkflowState``.
     """
 
     def __init__(self, workflow_states: list[WorkflowState] | None = None) -> None:
         self._issues: dict[str, LinearIssue] = {}
         self._counter = 0
         self._states = (
-            list(workflow_states) if workflow_states is not None else [DEFAULT_STATE]
+            list(workflow_states)
+            if workflow_states is not None
+            else [DEFAULT_STATE, READY_STATE]
         )
 
     def create_issue(
@@ -76,9 +81,27 @@ class InMemoryLinearClient:
     def fetch_workflow_states(self) -> list[WorkflowState]:
         return list(self._states)
 
+    def set_state(self, issue_id: str, state_id: str) -> LinearIssue:
+        """The sanctioned state write (Atlas -> Linear; ATLAS-43), mirroring the
+        real client. Takes a bare state id; resolves name/type from the known
+        workflow states when present (else ``None``, as the real API would for
+        an id this fake has not been told about)."""
+        current = self._issues[issue_id]
+        match = next((state for state in self._states if state.id == state_id), None)
+        updated = LinearIssue(
+            id=current.id,
+            title=current.title,
+            state_id=state_id,
+            state_name=match.name if match else None,
+            state_type=match.type if match else None,
+        )
+        self._issues[issue_id] = updated
+        return updated
+
     # --- test-only helper (not part of LinearClient) -----------------------
-    def set_state(self, issue_id: str, state: WorkflowState) -> None:
-        """Simulate a Linear-side status change to ``state``."""
+    def simulate_linear_state(self, issue_id: str, state: WorkflowState) -> None:
+        """Simulate a Linear-side status change to ``state`` (distinct from the
+        protocol ``set_state``, which takes only a state id)."""
         current = self._issues[issue_id]
         self._issues[issue_id] = LinearIssue(
             id=current.id,

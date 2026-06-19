@@ -180,6 +180,37 @@ class LinearStatusMap:
             return None
         return self._mapping.get(state_id)
 
+    def state_id_for(self, status: TicketStatus) -> str:
+        """The unique Linear state id mapped to ``status`` -- the inverse of the
+        forward map, for the sanctioned PM-Engine promotion write (ATLAS-43).
+
+        The forward map permits several Linear states under one Atlas status
+        (many ``started`` ids -> ``in_progress``), but a promotion TARGET must
+        be unambiguous: exactly one configured state must map to ``status``.
+        Zero (the operator configured no such state) or more than one
+        (ambiguous target) raises :class:`LinearStatusMapError`. Resolving this
+        up front -- before any write -- is the load-time guard that the
+        Ready-for-Agent state is configured and unique. Round-trip (D4): the id
+        returned is exactly the one :meth:`status_for` maps back to ``status``,
+        so ATLAS-42's next pull reads the promotion as ``status`` and no-ops."""
+
+        matches = sorted(
+            state_id for state_id, mapped in self._mapping.items() if mapped == status
+        )
+        if not matches:
+            raise LinearStatusMapError(
+                f"{STATE_MAP_ENV} configures no Linear state for {status.value!r}; "
+                "the PM Engine needs exactly one state to promote into "
+                "(configure a unique Ready-for-Agent state)"
+            )
+        if len(matches) > 1:
+            raise LinearStatusMapError(
+                f"{STATE_MAP_ENV} maps {len(matches)} Linear states to "
+                f"{status.value!r} ({matches}); exactly one is required so the "
+                "promotion target is unambiguous"
+            )
+        return matches[0]
+
 
 def status_from_issue(
     issue: LinearIssue, status_map: LinearStatusMap
