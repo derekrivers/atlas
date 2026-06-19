@@ -24,6 +24,12 @@ Falsifiable, with the wrong answer named in each case:
   no-horizon status, and a NULL entry time each log nothing; when the status
   changes the episode advances and a new breach logs again. status_entered_at
   is stamped only on a real status change and never bumps updated_at.
+- Review cycling (ATLAS-120): the counter fires only on changes_requested ->
+  pr_open (no other transition; never bumps updated_at); over the threshold the
+  step-5 pass routes to needs_human_decision via set_state and logs ONE
+  REVIEW_CYCLE note, at or under it neither; an already-reconciled ticket is not
+  re-routed; a not-yet-reconciled route across N ticks logs exactly one row
+  while the route is called idempotently every tick (the load-bearing dedup).
 
 Deterministic: the in-memory fake, no network, no secrets.
 """
@@ -60,6 +66,14 @@ READY = WorkflowState(id="state-ready", name="Ready for Agent", type="unstarted"
 # A state mapped to pr_open — used to drive a real in_progress -> pr_open
 # transition (re-stamping status_entered_at) for the dwell episode-advance proof.
 PR_OPEN_STATE = WorkflowState(id="state-pr-open", name="PR Open", type="started")
+# A state mapped to changes_requested — drives the changes_requested -> pr_open
+# round trip the review-cycling counter (ATLAS-120) counts.
+CHANGES_REQUESTED_STATE = WorkflowState(
+    id="state-changes", name="Changes Requested", type="started"
+)
+# The unique Needs-Human state the review-cycling route (step 5, ATLAS-120) writes
+# into via set_state — the one anomaly that moves a ticket.
+NEEDS_HUMAN = WorkflowState(id="state-needs-human", name="Needs Human", type="started")
 TEAM_ID = "team-1"
 
 EARLIER = NOW
@@ -72,7 +86,15 @@ class RecordingClient(InMemoryLinearClient):
 
     def __init__(self) -> None:
         super().__init__(
-            workflow_states=[STARTED, UNSTARTED, UNMAPPED, READY, PR_OPEN_STATE]
+            workflow_states=[
+                STARTED,
+                UNSTARTED,
+                UNMAPPED,
+                READY,
+                PR_OPEN_STATE,
+                CHANGES_REQUESTED_STATE,
+                NEEDS_HUMAN,
+            ]
         )
         self.creates: list[dict[str, Any]] = []
         self.updates: list[tuple[str, dict[str, Any]]] = []
@@ -103,6 +125,11 @@ def status_map() -> LinearStatusMap:
             STARTED.id: TicketStatus.IN_PROGRESS,
             READY.id: TicketStatus.READY_FOR_AGENT,
             PR_OPEN_STATE.id: TicketStatus.PR_OPEN,
+            CHANGES_REQUESTED_STATE.id: TicketStatus.CHANGES_REQUESTED,
+            # The unique Needs-Human state the review-cycling route resolves via
+            # state_id_for(NEEDS_HUMAN_DECISION); sync_tick resolves it up front
+            # every tick (the load-time guard), so the map must carry it.
+            NEEDS_HUMAN.id: TicketStatus.NEEDS_HUMAN_DECISION,
         }
     )
 
@@ -123,6 +150,7 @@ def seed_ticket(
     updated_at: datetime = EARLIER,
     linear_synced_at: datetime | None = None,
     status_entered_at: datetime | None = None,
+    review_cycle_count: int = 0,
     title: str = "Atlas Title",
     priority: int = 10,
     with_issue: bool = True,
@@ -153,6 +181,7 @@ def seed_ticket(
             "updated_at": updated_at,
             "linear_synced_at": linear_synced_at,
             "status_entered_at": status_entered_at,
+            "review_cycle_count": review_cycle_count,
         }
     )
     TicketRepo(db).add(ticket)
@@ -651,3 +680,182 @@ def test_apply_linear_status_stamps_entry_only_on_real_change(db: Database) -> N
     same = repo.apply_linear_status("ATLAS-226", TicketStatus.IN_PROGRESS, now=later)
     assert same.status_entered_at == first
     assert same.updated_at == ticket.updated_at
+
+
+# --- review cycling (ATLAS-120): the counter, the route, the per-episode log --
+#
+# The one anomaly that moves a ticket. The counter fires only on
+# changes_requested -> pr_open; over the threshold the step-5 pass routes to
+# needs_human_decision via the sanctioned set_state and logs ONE REVIEW_CYCLE.
+
+
+class NonReconcilingClient(RecordingClient):
+    """A ``RecordingClient`` whose ``set_state`` records the route but does NOT
+    move the issue's pulled state — modelling a routed ticket whose pull has not
+    yet reconciled it out of the cycling states (lagging or repeatedly-retried
+    reconciliation). This is the window the per-episode log dedup must survive:
+    the route fires every tick while the ticket stays cycling, and the log must
+    still land exactly once."""
+
+    def set_state(self, issue_id: str, state_id: str) -> LinearIssue:
+        self.state_writes.append((issue_id, state_id))
+        return self._issues[issue_id]  # deliberately unchanged: no reconciliation
+
+
+def test_changes_requested_to_pr_open_increments_count(db: Database) -> None:
+    client = RecordingClient()
+    ticket = seed_ticket(
+        db,
+        client,
+        key="ATLAS-230",
+        status=TicketStatus.CHANGES_REQUESTED,
+        updated_at=EARLIER,
+        review_cycle_count=0,
+        with_issue=False,
+    )
+    repo = TicketRepo(db)
+
+    moved = repo.apply_linear_status("ATLAS-230", TicketStatus.PR_OPEN, now=LATER)
+
+    # The one transition the round-trip counter counts.
+    assert moved.review_cycle_count == 1  # wrong answer: 0 (transition not counted)
+    # Status-coupled, disjoint from the definition cursor: never re-pushes.
+    assert moved.updated_at == ticket.updated_at
+
+
+def test_only_changes_requested_to_pr_open_increments(db: Database) -> None:
+    client = RecordingClient()
+    repo = TicketRepo(db)
+    # in_progress -> pr_open is ALSO an arrival into pr_open, but it is NOT a
+    # round trip. Wrong answer: any arrival into pr_open increments the counter.
+    seed_ticket(
+        db,
+        client,
+        key="ATLAS-231",
+        status=TicketStatus.IN_PROGRESS,
+        review_cycle_count=0,
+        with_issue=False,
+    )
+    arrived = repo.apply_linear_status("ATLAS-231", TicketStatus.PR_OPEN, now=LATER)
+    assert arrived.review_cycle_count == 0  # only changes_requested -> pr_open counts
+
+    # The reverse leg pr_open -> changes_requested does not count either.
+    bounced = repo.apply_linear_status(
+        "ATLAS-231", TicketStatus.CHANGES_REQUESTED, now=LATER + timedelta(hours=1)
+    )
+    assert bounced.review_cycle_count == 0
+
+
+def test_over_threshold_routes_to_needs_human_and_logs_one_note(db: Database) -> None:
+    client = RecordingClient()
+    # 4 round trips (> 3), still in pr_open, joined to a Linear issue sitting in
+    # pr_open so the pull is set-to-same and does not perturb the count/status.
+    ticket = seed_ticket(
+        db,
+        client,
+        key="ATLAS-232",
+        status=TicketStatus.PR_OPEN,
+        status_entered_at=NOW,
+        review_cycle_count=4,
+        issue_state=PR_OPEN_STATE,
+    )
+    assert ticket.external_linear_id is not None
+
+    result = run(db, client, now=LATER)
+
+    # Routed via the sanctioned set_state to the resolved Needs-Human state — the
+    # SAME outbound path ATLAS-43 uses, not a new mechanism, not a status push.
+    assert client.state_writes == [(ticket.external_linear_id, NEEDS_HUMAN.id)]
+    assert result.routed_to_human == 1
+    # No definition push carried a state: the general status-write path stays shut.
+    assert all(
+        "stateId" not in body and "state" not in body for _, body in client.updates
+    )
+    # Exactly one system-written REVIEW_CYCLE note (the failure analysis).
+    items = DebtItemRepo(db).list()
+    assert len(items) == 1  # wrong answer: zero (threshold not enforced)
+    (item,) = items
+    assert item.anomaly_type == AnomalyType.REVIEW_CYCLE
+    assert item.created_by_type == ActorType.SYSTEM
+    assert item.ticket_id == ticket.id
+    assert item.product_id == ticket.product_id
+    assert item.observed_at == LATER
+    assert "4" in item.summary  # the round-trip count is in the note
+    assert result.review_cycles_logged == 1
+
+
+def test_at_threshold_does_not_route_or_log(db: Database) -> None:
+    client = RecordingClient()
+    # Exactly 3 round trips: "more than 3" routes, so 3 does NOT. Wrong answer:
+    # routing at 3 (>= instead of >).
+    seed_ticket(
+        db,
+        client,
+        key="ATLAS-233",
+        status=TicketStatus.PR_OPEN,
+        status_entered_at=NOW,
+        review_cycle_count=3,
+        issue_state=PR_OPEN_STATE,
+    )
+
+    result = run(db, client, now=LATER)
+
+    assert client.state_writes == []  # not routed
+    assert DebtItemRepo(db).list() == []  # not logged
+    assert result.routed_to_human == 0 and result.review_cycles_logged == 0
+
+
+def test_already_reconciled_ticket_is_not_rerouted(db: Database) -> None:
+    client = RecordingClient()
+    # Over threshold but already reconciled into needs_human_decision: it has left
+    # the cycling states, so the self-clearing guard skips it. Wrong answer: a
+    # monotonic count > 3 re-routes a ticket already handed to a human.
+    seed_ticket(
+        db,
+        client,
+        key="ATLAS-234",
+        status=TicketStatus.NEEDS_HUMAN_DECISION,
+        status_entered_at=NOW,
+        review_cycle_count=9,
+        issue_state=NEEDS_HUMAN,
+    )
+
+    result = run(db, client, now=LATER)
+
+    assert client.state_writes == []
+    assert DebtItemRepo(db).list() == []
+    assert result.routed_to_human == 0 and result.review_cycles_logged == 0
+
+
+def test_over_threshold_logs_one_row_across_n_ticks_route_idempotent(
+    db: Database,
+) -> None:
+    client = NonReconcilingClient()
+    # Over threshold, joined to a pr_open issue, and the route never reconciles
+    # (NonReconcilingClient leaves the pulled state in pr_open). The ticket stays
+    # cycling with count > 3 across every tick.
+    ticket = seed_ticket(
+        db,
+        client,
+        key="ATLAS-235",
+        status=TicketStatus.PR_OPEN,
+        status_entered_at=NOW,
+        review_cycle_count=4,
+        issue_state=PR_OPEN_STATE,
+    )
+    assert ticket.external_linear_id is not None
+
+    results = [run(db, client, now=NOW + timedelta(hours=n)) for n in range(5)]
+
+    # The load-bearing dedup: ONE REVIEW_CYCLE for the whole pr_open episode, not
+    # one per tick. Wrong answer: five rows, which makes recurring(...) lie.
+    assert len(DebtItemRepo(db).list()) == 1
+    assert results[0].review_cycles_logged == 1
+    assert all(r.review_cycles_logged == 0 for r in results[1:])
+    # The route is idempotent and re-attempted every tick until reconciliation:
+    # five route calls, all to the Needs-Human state.
+    assert results[0].routed_to_human == 1
+    assert all(r.routed_to_human == 1 for r in results)
+    assert client.state_writes == [
+        (ticket.external_linear_id, NEEDS_HUMAN.id) for _ in range(5)
+    ]

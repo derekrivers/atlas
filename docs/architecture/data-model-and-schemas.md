@@ -424,6 +424,14 @@ class Ticket(BaseModel):
     # NULL means "unknown entry time" and dwell SKIPS it (never a false breach).
     # Written only by the sync loop, never bumped by an Atlas definition edit.
     status_entered_at: Optional[datetime] = None
+    # PM-Engine review-cycling counter (ATLAS-120): the number of
+    # changes_requested -> pr_open round trips. Incremented by
+    # apply_linear_status (the sole post-creation status writer) only on that
+    # transition; at more than three the step-5 review-cycling pass routes the
+    # ticket to needs_human_decision via set_state. Monotonic in v1 (no reset on
+    # human intervention). Status-coupled, never bumped by an Atlas definition
+    # edit.
+    review_cycle_count: int = 0
     # Reconciler anchor-match pass; AT-1 traceability — every item
     # traceable to a document anchor.
     source_anchor: str
@@ -462,6 +470,7 @@ CREATE TABLE tickets (
     linear_synced_at TIMESTAMPTZ,
     last_observed_linear_state_id TEXT,
     status_entered_at TIMESTAMPTZ,
+    review_cycle_count INTEGER NOT NULL DEFAULT 0,
     source_anchor TEXT NOT NULL,
     created_by_type TEXT NOT NULL,
     created_by_id TEXT NOT NULL,

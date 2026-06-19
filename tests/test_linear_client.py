@@ -298,3 +298,48 @@ def test_live_smoke() -> None:  # pragma: no cover - operator-run only
         assert states
     finally:
         client.delete_issue(created.id)
+
+
+# --- ATLAS-120 review-cycling live route gate (operator-run) -----------------
+#
+# 120 is NOT a CI-only completion: it writes a real Linear state. This is the
+# operator-run live evidence (ADR-0008) that the sanctioned set_state route
+# reaches a real Needs-Human state while the general status-write path stays
+# shut. Needs the operator's unique Needs-Human state id in
+# LINEAR_NEEDS_HUMAN_STATE_ID; skipped (and never run in CI) otherwise. Driving a
+# ticket past 3 changes_requested -> pr_open round trips through sync_tick in the
+# real workspace is the operator runbook step the PR evidence records; this test
+# pins the load-bearing primitive that step relies on.
+_LIVE_NEEDS_HUMAN_READY = _LIVE_READY and bool(
+    os.environ.get("LINEAR_NEEDS_HUMAN_STATE_ID")
+)
+
+
+@pytest.mark.skipif(
+    not _LIVE_NEEDS_HUMAN_READY,
+    reason=(
+        "live review-cycling route test; set ATLAS_LIVE_TESTS=1, LINEAR_API_KEY, "
+        "LINEAR_TEAM_ID and LINEAR_NEEDS_HUMAN_STATE_ID to run by hand"
+    ),
+)
+def test_live_review_cycle_route_to_needs_human() -> None:  # pragma: no cover
+    client = LinearGraphQLClient()
+    team_id = os.environ["LINEAR_TEAM_ID"]
+    needs_human_state_id = os.environ["LINEAR_NEEDS_HUMAN_STATE_ID"]
+    created = client.create_issue(
+        {
+            "title": "atlas-120 review-cycle route (throwaway)",
+            "description": "throwaway issue for the ATLAS-120 live route gate",
+        },
+        team_id=team_id,
+    )
+    try:
+        # The sanctioned move: set_state lands the real Needs-Human state.
+        moved = client.set_state(created.id, needs_human_state_id)
+        assert moved.state_id == needs_human_state_id
+        # The general status-write path stays blocked: a definition update cannot
+        # carry a state, so even a buggy caller cannot route through it.
+        with pytest.raises(UnownedFieldError):
+            client.update_issue(created.id, {"stateId": needs_human_state_id})
+    finally:
+        client.delete_issue(created.id)

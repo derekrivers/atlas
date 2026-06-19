@@ -127,11 +127,14 @@ anomalies otherwise" clause — an unmapped Linear state appends one
 `OUT_OF_OWNERSHIP_TRANSITION` `DebtItem` per transition — is ATLAS-118 (woven
 into `sync_tick`'s pull). Step 3 (readiness promotion, sole writer into `Ready
 for Agent`) is ATLAS-43. Step 4 (the follow-up comment scan) is ATLAS-45.
-Step 5's anomaly checks split by mechanism: dwell-breach logging is ATLAS-119
-(woven into `sync_tick` as a `_detect_dwell` pass after `promote_ready`, keyed
-on `Ticket.status_entered_at`; report-only, never moves a ticket) and
-review-cycling is ATLAS-120. The recurring scheduler that calls `sync_tick` on a
-cadence is ATLAS-50.
+Step 5's anomaly checks split by mechanism, both woven into `sync_tick`'s final
+pass after `promote_ready`: dwell-breach logging is ATLAS-119 (a `_detect_dwell`
+pass keyed on `Ticket.status_entered_at`; report-only, never moves a ticket) and
+review-cycling is ATLAS-120 (a `_detect_review_cycle` pass keyed on
+`Ticket.review_cycle_count`, routing over-threshold tickets to
+`needs_human_decision` via `set_state` and logging one `REVIEW_CYCLE` `DebtItem`
+— the one anomaly that moves a ticket). The recurring scheduler that calls
+`sync_tick` on a cadence is ATLAS-50.
 
 ## Follow-up ingestion
 
@@ -165,8 +168,26 @@ observation; recurrence and severity derive by query. Recording a
 routes to `Needs Human`. Logging debt and moving a ticket are separate
 concerns.
 - Review cycling (ATLAS-120): more than 3 `changes_requested → pr_open` round
-  trips routes the ticket to `Needs Human` with a failure-analysis note. This
-  is the one anomaly that changes ticket state (via `LinearClient.set_state`).
+  trips routes the ticket to `Needs Human` with a failure-analysis note. This is
+  the **one anomaly that changes ticket state** — it both logs AND moves, where
+  the out-of-ownership and dwell logs only log. The round trips are counted on
+  `Ticket.review_cycle_count`, incremented by `apply_linear_status` (the sole
+  post-creation status writer) only on a `changes_requested → pr_open`
+  transition — no other transition touches it, and like `status_entered_at` it
+  never bumps `updated_at`. The step-5 pass routes a ticket whose count exceeds
+  the threshold while it is still in a cycling state (`changes_requested` or
+  `pr_open`) through the sanctioned `LinearClient.set_state` to
+  `needs_human_decision` — the **same** outbound write ATLAS-43 uses, resolved
+  via `state_id_for(needs_human_decision)` (a unique Needs-Human state required,
+  validated up front like the Ready-for-Agent target); `stateId` stays out of
+  the allow-list and no new outbound mechanism is added. The write is Linear-only
+  (ATLAS-42's next pull reconciles Atlas, after which the ticket leaves the
+  cycling states and the pass self-clears) and idempotent. The route runs first,
+  then the note: one `REVIEW_CYCLE` `DebtItem` (system-written, the deterministic
+  failure-analysis summary — no model call, no Linear comment) deduped per
+  `pr_open` episode by the same `Ticket.status_entered_at` boundary dwell uses,
+  so a not-yet-reconciled or retrying route logs one row, not one per tick. The
+  counter is monotonic in v1 (no reset on human intervention).
 - Dwell horizons (ATLAS-119; config, defaults): `in_progress` 24h, `pr_open`
   48h, `review_required` 7d. When a ticket sits in one of these working states
   past its horizon, the sync loop's step-5 pass appends one `DWELL_BREACH`

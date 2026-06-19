@@ -119,6 +119,8 @@ DOCUMENTED_FIELDS: dict[type[BaseModel], dict[str, FieldSpec]] = {
         "last_observed_linear_state_id": (str | None, None),
         # PM-Engine dwell clock / episode boundary (ATLAS-119).
         "status_entered_at": (datetime | None, None),
+        # PM-Engine review-cycling round-trip counter (ATLAS-120).
+        "review_cycle_count": (int, 0),
         "source_anchor": (str, REQUIRED),
         "created_by_type": (ActorType, REQUIRED),
         "created_by_id": (str, REQUIRED),
