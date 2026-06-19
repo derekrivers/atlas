@@ -197,9 +197,20 @@ ATLAS-45 Follow-up ticket generation (as plan proposals, not direct
 ATLAS-46 Roadmap synchronisation
 ATLAS-116 Delivery-anomaly model (DebtItem, append-only, one row per
          observation) and recurrence predicate
-ATLAS-118 Sync anomaly/dwell wiring: the step-1 "log anomalies" clause
-         (unmapped Linear state → DebtItem) and step 5 (anomaly and dwell
-         checks); split out of ATLAS-42, which delivers steps 1+2 only
+ATLAS-118 Out-of-ownership transition logging: step 1's "log anomalies"
+         clause — an unmapped Linear state appends one
+         OUT_OF_OWNERSHIP_TRANSITION DebtItem per transition (per-transition
+         dedup via Ticket.last_observed_linear_state_id); the first writer of
+         the ATLAS-116 model. Never changes ticket state. Split out of
+         ATLAS-42 (steps 1+2 only); the other anomaly mechanisms are
+         ATLAS-119/-120
+ATLAS-119 Dwell-breach logging: per-state dwell horizons (in_progress 24h,
+         pr_open 48h, review_required 7d) append a DWELL_BREACH DebtItem and
+         surface in the delivery report; needs a per-state entry timestamp the
+         data model does not yet carry (do not add it in ATLAS-118)
+ATLAS-120 Review-cycling detection: more than 3 changes_requested → pr_open
+         round trips routes the ticket to Needs Human via set_state with a
+         failure-analysis note (the one anomaly that changes ticket state)
 ATLAS-47 Delivery metrics (CLI report)
 ATLAS-50 PM scheduler
 

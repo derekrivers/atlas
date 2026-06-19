@@ -123,11 +123,13 @@ plain loop (or cron) — no distributed job system.
 
 **Step → ticket map.** Steps 1+2 (pull a mapped status; push owned
 definitions) are ATLAS-42 (`atlas/pm/sync.py`, `sync_tick`). Step 1's "log
-anomalies otherwise" clause (an unmapped Linear state → `DebtItem`) and step 5
-(anomaly and dwell checks) are ATLAS-118. Step 3 (readiness promotion, sole
-writer into `Ready for Agent`) is ATLAS-43. Step 4 (the follow-up comment
-scan) is ATLAS-45. The recurring scheduler that calls `sync_tick` on a cadence
-is ATLAS-50.
+anomalies otherwise" clause — an unmapped Linear state appends one
+`OUT_OF_OWNERSHIP_TRANSITION` `DebtItem` per transition — is ATLAS-118 (woven
+into `sync_tick`'s pull). Step 3 (readiness promotion, sole writer into `Ready
+for Agent`) is ATLAS-43. Step 4 (the follow-up comment scan) is ATLAS-45.
+Step 5's anomaly checks split by mechanism: dwell-breach logging is ATLAS-119
+and review-cycling is ATLAS-120. The recurring scheduler that calls `sync_tick`
+on a cadence is ATLAS-50.
 
 ## Follow-up ingestion
 
@@ -140,11 +142,18 @@ moved to `docs/planning/inbox/processed/` by `atlas apply`.
 
 ## Anomaly and dwell detection
 
-- Out-of-ownership state transitions: each observed transition appends one
-  `DebtItem` row (append-only, system-written). Recurrence — default: three
-  or more rows for the same ticket and anomaly type — is the query-time
-  `recurring(...)` predicate surfaced in the delivery report, never a
-  creation gate and never a stored counter.
+- Out-of-ownership state transitions (ATLAS-118): each observed transition
+  appends one `OUT_OF_OWNERSHIP_TRANSITION` `DebtItem` row (append-only,
+  system-written). The pull observes this when a Linear state does not follow
+  the ownership table — i.e. `status_from_issue` returns `None` (an unmapped
+  state). "Per transition" is enforced by `Ticket.last_observed_linear_state_id`:
+  the row fires only when the observed state id *changes* into an
+  out-of-ownership state, so an unmapped state that persists across ticks logs
+  one row, not one per tick, while a re-occurrence (unmapped → mapped →
+  unmapped) is a genuine new transition. Recurrence — default: three or more
+  rows for the same ticket and anomaly type — is the query-time `recurring(...)`
+  predicate surfaced in the delivery report, never a creation gate and never a
+  stored counter.
 
 `DebtItem` is an operational record (ADR-0006 §2), append-only, written by
 the PM Engine from deterministic observation — `created_by_type = system`,
@@ -153,11 +162,14 @@ observation; recurrence and severity derive by query. Recording a
 `DebtItem` never changes ticket state: only the review-cycling rule below
 routes to `Needs Human`. Logging debt and moving a ticket are separate
 concerns.
-- Review cycling: more than 3 `changes_requested → pr_open` round trips
-  routes the ticket to `Needs Human` with a failure-analysis note.
-- Dwell horizons (config, defaults): `in_progress` 24h, `pr_open` 48h,
-  `review_required` 7d. Breaches surface in the delivery report; only the
-  review-cycle rule changes state automatically.
+- Review cycling (ATLAS-120): more than 3 `changes_requested → pr_open` round
+  trips routes the ticket to `Needs Human` with a failure-analysis note. This
+  is the one anomaly that changes ticket state (via `LinearClient.set_state`).
+- Dwell horizons (ATLAS-119; config, defaults): `in_progress` 24h, `pr_open`
+  48h, `review_required` 7d. A breach appends a `DWELL_BREACH` `DebtItem` and
+  surfaces in the delivery report; it needs a per-state entry timestamp the
+  data model does not yet carry. Only the review-cycle rule changes state
+  automatically.
 
 ## Delivery metrics
 

@@ -69,6 +69,14 @@ class Ticket(BaseModel):
     # ticket has never synced). Written by the sync loop, never by an Atlas
     # definition edit, so stamping it cannot itself trigger a re-push.
     linear_synced_at: datetime | None = None
+    # PM-Engine transition signal (ATLAS-118): the Linear state id observed on
+    # the last pull. The out-of-ownership anomaly detector compares the freshly
+    # fetched id against it so an unmapped state that persists across ticks logs
+    # one DebtItem (a transition), not one per tick, while a genuine
+    # re-occurrence (unmapped -> mapped -> unmapped) is a new transition.
+    # Written only by the sync loop and, like linear_synced_at, never bumps
+    # updated_at — an inbound observation must not re-push the definition.
+    last_observed_linear_state_id: str | None = None
     # Reconciler anchor-match pass; AT-1 traceability — every item
     # traceable to a document anchor.
     source_anchor: str

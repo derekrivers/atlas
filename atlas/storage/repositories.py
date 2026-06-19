@@ -249,6 +249,30 @@ class TicketRepo(_KeyedRepo[Ticket]):
             row.status = status.value
             return self._to_model(row)
 
+    def mark_linear_state_observed(self, key: str, state_id: str | None) -> Ticket:
+        """Record the Linear state id observed on this pull (ATLAS-118).
+
+        The out-of-ownership anomaly detector's dedup signal: the next pull
+        compares the freshly fetched id against ``last_observed_linear_state_id``
+        and logs one ``DebtItem`` only on a *transition* into an unmapped state,
+        so a persisting unmapped state writes no new row while a genuine
+        re-occurrence (unmapped -> mapped -> unmapped) is a new transition.
+
+        ``updated_at`` is DELIBERATELY left untouched: this is an inbound
+        observation, not an Atlas edit, and the sync cursor compares
+        ``updated_at > linear_synced_at`` — bumping ``updated_at`` here would
+        spuriously re-push the definition Atlas -> Linear. Disjoint-column
+        discipline, exactly like ``apply_linear_status`` (ADR-0006/0007).
+        """
+        with self._db.session() as session, session.begin():
+            row = session.scalars(
+                sa.select(TicketRow).where(TicketRow.key == key)
+            ).first()
+            if row is None:
+                raise TicketNotFoundError(f"no ticket with key {key!r}")
+            row.last_observed_linear_state_id = state_id
+            return self._to_model(row)
+
     def mark_definition_pushed(
         self,
         key: str,

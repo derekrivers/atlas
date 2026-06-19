@@ -411,6 +411,12 @@ class Ticket(BaseModel):
     # updated_at > linear_synced_at. Written by the sync loop, never bumped
     # by an Atlas definition edit.
     linear_synced_at: Optional[datetime] = None
+    # PM-Engine transition signal (ATLAS-118): the Linear state id observed on
+    # the last pull. The out-of-ownership anomaly detector logs one DebtItem
+    # per transition into an unmapped state by comparing the fetched id against
+    # this; a persisting unmapped state writes no new row. Written only by the
+    # sync loop, never bumped by an Atlas definition edit (like linear_synced_at).
+    last_observed_linear_state_id: Optional[str] = None
     # Reconciler anchor-match pass; AT-1 traceability — every item
     # traceable to a document anchor.
     source_anchor: str
@@ -447,6 +453,7 @@ CREATE TABLE tickets (
     external_linear_id TEXT,
     external_github_issue_id TEXT,
     linear_synced_at TIMESTAMPTZ,
+    last_observed_linear_state_id TEXT,
     source_anchor TEXT NOT NULL,
     created_by_type TEXT NOT NULL,
     created_by_id TEXT NOT NULL,

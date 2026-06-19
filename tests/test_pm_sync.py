@@ -7,9 +7,11 @@ Falsifiable, with the wrong answer named in each case:
   called exactly once total). Wrong answer: the cursor doesn't hold and the
   definition re-pushes every tick.
 - Pull: a Linear status change lands in Atlas in one tick. An unmapped Linear
-  state leaves status unchanged, increments the counter, writes NO DebtItem
-  (the ATLAS-118 split), and does not crash. Wrong answer: a guessed status,
-  a crash, or a DebtItem leaking in from a later ticket.
+  state leaves status unchanged, increments the counter, and (ATLAS-118)
+  appends one OUT_OF_OWNERSHIP_TRANSITION DebtItem on the transition into it.
+  Wrong answer: a guessed status, a crash, or a status write on the anomaly
+  path. The dedup proofs (one row per transition, not per tick) are the
+  "out-of-ownership anomaly" section below.
 - Push: a changed pre-dispatch ticket is pushed; an unchanged one is not
   (cursor); a frozen In-Progress ticket is not pushed even when newer; the
   payload carries only title + description (priority deferred like labels —
@@ -33,7 +35,8 @@ import pytest
 from linear_fakes import InMemoryLinearClient
 from test_models_validation import NOW, ticket_kwargs
 
-from atlas.core.models import Ticket
+from atlas.core.enums import ActorType
+from atlas.core.models import AnomalyType, Ticket
 from atlas.core.models.ticket import TicketStatus
 from atlas.linear.client import LinearIssue, WorkflowState
 from atlas.linear.ownership import LinearStatusMap
@@ -44,6 +47,9 @@ from atlas.storage import Database, DebtItemRepo, TicketRepo
 STARTED = WorkflowState(id="state-started", name="In Progress", type="started")
 UNSTARTED = WorkflowState(id="state-unstarted", name="Todo", type="unstarted")
 UNMAPPED = WorkflowState(id="state-orphan", name="Orphan", type="started")
+# A second unmapped state: a transition from UNMAPPED into a *different*
+# out-of-ownership state must log a new row.
+UNMAPPED2 = WorkflowState(id="state-orphan-2", name="Orphan Two", type="started")
 # The unique Ready-for-Agent state the readiness promotion (step 3) writes into.
 READY = WorkflowState(id="state-ready", name="Ready for Agent", type="unstarted")
 TEAM_ID = "team-1"
@@ -143,13 +149,14 @@ def seed_ticket(
     return ticket
 
 
-def run(db: Database, client: RecordingClient) -> SyncResult:
+def run(db: Database, client: RecordingClient, *, now: datetime = NOW) -> SyncResult:
     return sync_tick(
         tickets=TicketRepo(db),
         db=db,
         client=client,
         status_map=status_map(),
         team_id=TEAM_ID,
+        now=now,
     )
 
 
@@ -190,9 +197,11 @@ def test_linear_status_change_lands_in_one_tick(db: Database) -> None:
     assert result.status_pulled == 1
 
 
-def test_unmapped_state_leaves_status_and_writes_no_debt_item(db: Database) -> None:
+def test_unmapped_state_logs_one_debt_item_without_changing_status(
+    db: Database,
+) -> None:
     client = RecordingClient()
-    seed_ticket(
+    ticket = seed_ticket(
         db, client, key="ATLAS-202", status=TicketStatus.PLANNED, issue_state=UNMAPPED
     )
 
@@ -202,8 +211,23 @@ def test_unmapped_state_leaves_status_and_writes_no_debt_item(db: Database) -> N
     assert pulled is not None
     assert pulled.status == TicketStatus.PLANNED  # unchanged, never guessed
     assert result.unmapped == 1
-    # The split: the DebtItem write is ATLAS-118, not ATLAS-42.
-    assert DebtItemRepo(db).list() == []
+    assert result.anomalies_logged == 1
+    # The first writer of the ATLAS-116 model: exactly one system-written
+    # OUT_OF_OWNERSHIP_TRANSITION row for this ticket. Wrong answer = no row,
+    # the wrong type, or not system-written.
+    items = DebtItemRepo(db).list()
+    assert len(items) == 1
+    (item,) = items
+    assert item.anomaly_type == AnomalyType.OUT_OF_OWNERSHIP_TRANSITION
+    assert item.created_by_type == ActorType.SYSTEM
+    assert item.ticket_id == ticket.id
+    assert item.product_id == ticket.product_id
+    assert item.observed_at == NOW
+    # The transition signal was stamped so a persisting state won't re-log.
+    assert pulled.last_observed_linear_state_id == UNMAPPED.id
+    # No ticket-state write on the anomaly path: status stayed, and nothing
+    # crossed Atlas -> Linear (no push of a planned set-to-... and no set_state).
+    assert client.state_writes == []
 
 
 def test_terminal_ticket_is_not_pulled(db: Database) -> None:
@@ -327,3 +351,103 @@ def test_linear_title_edit_does_not_overwrite_atlas(db: Database) -> None:
     assert pulled is not None
     assert pulled.title == "Atlas Title"  # wrong answer: Linear title leaks in
     assert client.updates == [] and client.creates == []
+
+
+# --- out-of-ownership anomaly (ATLAS-118): per-transition dedup -------------
+#
+# The load-bearing proofs: one DebtItem per *transition* into an unmapped
+# state, not one per tick — or recurrence (3+ rows) is meaningless.
+
+
+def test_persisting_unmapped_state_logs_exactly_one_row_across_n_ticks(
+    db: Database,
+) -> None:
+    client = RecordingClient()
+    seed_ticket(
+        db, client, key="ATLAS-210", status=TicketStatus.PLANNED, issue_state=UNMAPPED
+    )
+
+    results = [run(db, client) for _ in range(5)]
+
+    # The dedup: five ticks over a state that stays unmapped yield ONE row.
+    # Wrong answer: five rows (one per tick), which makes recurring(...) lie.
+    assert len(DebtItemRepo(db).list()) == 1
+    assert results[0].anomalies_logged == 1
+    assert all(r.anomalies_logged == 0 for r in results[1:])
+    assert all(r.unmapped == 1 for r in results)  # the state is observed every tick
+
+
+def test_transition_into_a_different_unmapped_state_logs_a_new_row(
+    db: Database,
+) -> None:
+    client = RecordingClient()
+    ticket = seed_ticket(
+        db, client, key="ATLAS-211", status=TicketStatus.PLANNED, issue_state=UNMAPPED
+    )
+    assert ticket.external_linear_id is not None
+
+    run(db, client)  # transition into UNMAPPED -> row 1
+    client.simulate_linear_state(ticket.external_linear_id, UNMAPPED2)
+    run(db, client)  # transition into a DIFFERENT unmapped state -> row 2
+
+    items = DebtItemRepo(db).list_for_ticket(ticket.id)
+    assert len(items) == 2  # wrong answer: 1 (a naive "already logged" dedup)
+    # One row per distinct out-of-ownership state (order-independent: both
+    # observations share observed_at, so the list tiebreaks by id).
+    summaries = " ".join(i.summary for i in items)
+    assert UNMAPPED.id in summaries and UNMAPPED2.id in summaries
+
+
+def test_unmapped_then_mapped_then_unmapped_logs_a_new_row(db: Database) -> None:
+    client = RecordingClient()
+    ticket = seed_ticket(
+        db, client, key="ATLAS-212", status=TicketStatus.PLANNED, issue_state=UNMAPPED
+    )
+    assert ticket.external_linear_id is not None
+
+    run(db, client)  # transition into UNMAPPED -> row 1
+    client.simulate_linear_state(ticket.external_linear_id, STARTED)
+    run(db, client)  # mapped: status moves, no DebtItem
+    client.simulate_linear_state(ticket.external_linear_id, UNMAPPED)
+    run(db, client)  # re-occurrence is a genuine NEW transition -> row 2
+
+    assert len(DebtItemRepo(db).list_for_ticket(ticket.id)) == 2  # wrong answer: 1
+    pulled = TicketRepo(db).get_by_key("ATLAS-212")
+    assert pulled is not None
+    assert pulled.status == TicketStatus.IN_PROGRESS  # the mapped pull stuck
+
+
+def test_mapped_state_logs_no_debt_item(db: Database) -> None:
+    client = RecordingClient()
+    seed_ticket(
+        db, client, key="ATLAS-213", status=TicketStatus.PLANNED, issue_state=STARTED
+    )
+
+    result = run(db, client)
+
+    assert DebtItemRepo(db).list() == []  # a mapped transition is not an anomaly
+    assert result.anomalies_logged == 0
+
+
+def test_recurring_reports_the_true_count_after_three_transitions(
+    db: Database,
+) -> None:
+    client = RecordingClient()
+    ticket = seed_ticket(
+        db, client, key="ATLAS-214", status=TicketStatus.PLANNED, issue_state=UNMAPPED
+    )
+    assert ticket.external_linear_id is not None
+    repo = DebtItemRepo(db)
+    kind = AnomalyType.OUT_OF_OWNERSHIP_TRANSITION
+
+    run(db, client)  # transition 1
+    for _ in range(2):  # two more transitions, each via an intervening mapped pull
+        client.simulate_linear_state(ticket.external_linear_id, STARTED)
+        run(db, client)
+        client.simulate_linear_state(ticket.external_linear_id, UNMAPPED)
+        run(db, client)
+
+    assert len(repo.list_for_ticket(ticket.id)) == 3
+    # Three real transitions -> recurring is True (the predicate is now honest
+    # because dedup kept the count to genuine transitions, not ticks).
+    assert repo.recurring(ticket.id, kind) is True

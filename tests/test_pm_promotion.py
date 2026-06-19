@@ -106,6 +106,7 @@ def run(db: Database, client: RecordingClient) -> SyncResult:
         client=client,
         status_map=status_map(),
         team_id=TEAM_ID,
+        now=NOW,
     )
 
 
@@ -287,6 +288,7 @@ def test_zero_ready_for_agent_states_raises(db: Database) -> None:
             client=client,
             status_map=no_ready_map,
             team_id=TEAM_ID,
+            now=NOW,
         )
 
 
