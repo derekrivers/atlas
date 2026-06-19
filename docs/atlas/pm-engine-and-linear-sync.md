@@ -128,8 +128,10 @@ anomalies otherwise" clause — an unmapped Linear state appends one
 into `sync_tick`'s pull). Step 3 (readiness promotion, sole writer into `Ready
 for Agent`) is ATLAS-43. Step 4 (the follow-up comment scan) is ATLAS-45.
 Step 5's anomaly checks split by mechanism: dwell-breach logging is ATLAS-119
-and review-cycling is ATLAS-120. The recurring scheduler that calls `sync_tick`
-on a cadence is ATLAS-50.
+(woven into `sync_tick` as a `_detect_dwell` pass after `promote_ready`, keyed
+on `Ticket.status_entered_at`; report-only, never moves a ticket) and
+review-cycling is ATLAS-120. The recurring scheduler that calls `sync_tick` on a
+cadence is ATLAS-50.
 
 ## Follow-up ingestion
 
@@ -166,10 +168,20 @@ concerns.
   trips routes the ticket to `Needs Human` with a failure-analysis note. This
   is the one anomaly that changes ticket state (via `LinearClient.set_state`).
 - Dwell horizons (ATLAS-119; config, defaults): `in_progress` 24h, `pr_open`
-  48h, `review_required` 7d. A breach appends a `DWELL_BREACH` `DebtItem` and
-  surfaces in the delivery report; it needs a per-state entry timestamp the
-  data model does not yet carry. Only the review-cycle rule changes state
-  automatically.
+  48h, `review_required` 7d. When a ticket sits in one of these working states
+  past its horizon, the sync loop's step-5 pass appends one `DWELL_BREACH`
+  `DebtItem` (append-only, system-written) and the breach surfaces in the
+  delivery report (ATLAS-47). It is report-only — like the out-of-ownership
+  log, it NEVER changes ticket state; only the review-cycle rule does that.
+  "Per episode" is enforced by `Ticket.status_entered_at` (the per-state entry
+  timestamp the model now carries): a breach fires only when no `DWELL_BREACH`
+  row exists for the ticket since it entered its current status, so a ticket
+  that stays past its horizon across ticks logs one row, not one per tick. When
+  the status changes, `status_entered_at` advances and a fresh episode can log
+  again. `status_entered_at` is stamped by `apply_linear_status` (the sole
+  post-creation status writer) only on a real status change, and a NULL entry
+  time (unknown) is skipped, never breached. Recurrence is the same query-time
+  `recurring(...)` predicate, never a stored counter.
 
 ## Delivery metrics
 

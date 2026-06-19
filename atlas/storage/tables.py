@@ -163,6 +163,7 @@ class TicketRow(Base):
     external_github_issue_id: Mapped[str | None] = mapped_column(sa.Text)
     linear_synced_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     last_observed_linear_state_id: Mapped[str | None] = mapped_column(sa.Text)
+    status_entered_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     source_anchor: Mapped[str] = mapped_column(sa.Text)
     created_by_type: Mapped[str] = mapped_column(sa.Text)
     created_by_id: Mapped[str] = mapped_column(sa.Text)

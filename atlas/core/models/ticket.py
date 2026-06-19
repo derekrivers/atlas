@@ -77,6 +77,17 @@ class Ticket(BaseModel):
     # Written only by the sync loop and, like linear_synced_at, never bumps
     # updated_at — an inbound observation must not re-push the definition.
     last_observed_linear_state_id: str | None = None
+    # PM-Engine dwell clock (ATLAS-119): when the ticket entered its current
+    # status. Stamped by ``apply_linear_status`` — the sole post-creation status
+    # writer — only on a real status change, so it marks the start of the current
+    # dwell episode. Dwell-breach detection measures ``now - status_entered_at``
+    # against the per-status horizon, and it is also the per-episode dedup
+    # boundary (one DWELL_BREACH per episode = none logged since this time).
+    # NULL means "unknown entry time" (e.g. a ticket whose status predates this
+    # field) and dwell SKIPS it rather than guessing a false breach. Written
+    # only by the sync loop and, like the cursor fields above, never bumps
+    # updated_at — an inbound observation must not re-push the definition.
+    status_entered_at: datetime | None = None
     # Reconciler anchor-match pass; AT-1 traceability — every item
     # traceable to a document anchor.
     source_anchor: str

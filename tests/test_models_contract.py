@@ -117,6 +117,8 @@ DOCUMENTED_FIELDS: dict[type[BaseModel], dict[str, FieldSpec]] = {
         "linear_synced_at": (datetime | None, None),
         # PM-Engine out-of-ownership transition signal (ATLAS-118).
         "last_observed_linear_state_id": (str | None, None),
+        # PM-Engine dwell clock / episode boundary (ATLAS-119).
+        "status_entered_at": (datetime | None, None),
         "source_anchor": (str, REQUIRED),
         "created_by_type": (ActorType, REQUIRED),
         "created_by_id": (str, REQUIRED),
