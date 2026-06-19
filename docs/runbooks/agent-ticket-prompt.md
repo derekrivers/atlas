@@ -27,10 +27,14 @@ docs/atlas/implementation-roadmap.md ({Phase N — Phase name}).
    or the relevant ADRs}
 
 State, in two or three sentences, your understanding of the ticket's
-objective and the phase milestone it serves. If the ticket is ambiguous
-or the docs conflict, stop and ask before implementing — do not resolve
-doc conflicts yourself; the MANIFEST's conflict order decides, and doc
-fixes are their own ticket.
+objective and the phase milestone it serves, plus any working assumptions
+you are making about ambiguous points. This is a statement, not a question
+turn: fold those assumptions into the plan below, where the operator vetoes
+or corrects them at the single gate (AGENTS.md, gate conduct). Do not open
+an interactive exchange of clarifying questions. Halt and flag only for a
+genuine blocker — docs that conflict, or ambiguity no reasonable assumption
+resolves; a doc conflict is never yours to resolve, the MANIFEST's conflict
+order decides and doc fixes are their own ticket.
 
 ## Plan first
 
@@ -96,8 +100,10 @@ Mechanical Trust).
    linter validates against)
 4. ADR-0006 and ADR-0007 (why docs/planning/ must be machine-written)
 
-State your understanding of the objective in two or three sentences.
-If anything is ambiguous or the docs conflict, stop and ask.
+State your understanding of the objective in two or three sentences,
+with any working assumptions. Present them in the plan; do not ask
+clarifying questions (AGENTS.md, gate conduct). Halt only for a genuine
+blocker or a doc conflict.
 
 ## Plan first
 

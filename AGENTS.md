@@ -45,6 +45,14 @@ needs:
 - Do not introduce Symphony integration before context packs exist.
 - Keep tickets small and dependency-aware. Update documentation when
   behaviour changes. Tests must pass before work is considered complete.
+- Gate conduct: a plan gate is a single presentation, not a conversation.
+  Present your understanding, the plan, and any working assumptions, then
+  stop once. Resolve minor ambiguity by stating an assumption the operator
+  can veto at the gate — never by asking a clarifying question, which costs
+  a round trip a stated assumption would not. Halt and flag (do not
+  interrogate) only for a genuine blocker: conflicting canonical docs,
+  ambiguity no reasonable assumption resolves, or a required out-of-scope
+  or destructive action.
 
 ## First Milestone
 
