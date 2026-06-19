@@ -62,6 +62,7 @@ def test_repo_exposes_append_and_queries_only() -> None:
         "list",
         "record",
         "list_for_ticket",
+        "logged_since",
         "recurring",
     }
 
@@ -163,6 +164,43 @@ def test_list_for_ticket_returns_only_that_ticket_in_observation_order(
 
     listed = repo.list_for_ticket(ticket_id)
     assert [d.id for d in listed] == [earlier.id, later.id]  # oldest first
+
+
+# --- logged_since (ATLAS-119 dwell episode boundary) -----------------------
+
+
+def test_logged_since_is_inclusive_and_scoped_per_ticket_and_type(
+    db: Database,
+) -> None:
+    repo = DebtItemRepo(db)
+    ticket_id = uuid4()
+    other = uuid4()
+    kind = AnomalyType.DWELL_BREACH
+    entered = datetime(2026, 6, 12, tzinfo=UTC)
+
+    # No rows yet: nothing logged since the boundary.
+    assert repo.logged_since(ticket_id, kind, entered) is False
+
+    # A row exactly AT the boundary counts (the boundary is inclusive: a breach
+    # observed at the entry instant is "already logged this episode").
+    repo.record(an_item(ticket_id=ticket_id, anomaly_type=kind, observed_at=entered))
+    assert repo.logged_since(ticket_id, kind, entered) is True
+
+    # The episode advances: a later entry time leaves the prior row behind, so a
+    # fresh episode reports nothing logged yet. Wrong answer: "any breach ever".
+    advanced = entered + timedelta(hours=1)
+    assert repo.logged_since(ticket_id, kind, advanced) is False
+
+    # Scoped per type and per ticket: a different type or ticket never satisfies.
+    assert repo.logged_since(ticket_id, AnomalyType.REVIEW_CYCLE, entered) is False
+    assert repo.logged_since(other, kind, entered) is False
+
+
+def test_logged_since_rejects_naive_boundary(db: Database) -> None:
+    with pytest.raises(NaiveDatetimeError, match="observed_at"):
+        DebtItemRepo(db).logged_since(
+            uuid4(), AnomalyType.DWELL_BREACH, datetime(2026, 6, 12, 10, 0, 0)
+        )
 
 
 # --- no trust-tier cap (decision D2) ---------------------------------------

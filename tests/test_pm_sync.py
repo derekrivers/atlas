@@ -19,6 +19,11 @@ Falsifiable, with the wrong answer named in each case:
 - Directionality: a Linear-side title divergence never overwrites Atlas, and
   an Atlas status is mechanically incapable of crossing (no state key in any
   pushed definition).
+- Dwell breach (ATLAS-119): a ticket past its per-status horizon logs ONE
+  DWELL_BREACH per dwell episode (not one per tick); inside the horizon, a
+  no-horizon status, and a NULL entry time each log nothing; when the status
+  changes the episode advances and a new breach logs again. status_entered_at
+  is stamped only on a real status change and never bumps updated_at.
 
 Deterministic: the in-memory fake, no network, no secrets.
 """
@@ -52,6 +57,9 @@ UNMAPPED = WorkflowState(id="state-orphan", name="Orphan", type="started")
 UNMAPPED2 = WorkflowState(id="state-orphan-2", name="Orphan Two", type="started")
 # The unique Ready-for-Agent state the readiness promotion (step 3) writes into.
 READY = WorkflowState(id="state-ready", name="Ready for Agent", type="unstarted")
+# A state mapped to pr_open — used to drive a real in_progress -> pr_open
+# transition (re-stamping status_entered_at) for the dwell episode-advance proof.
+PR_OPEN_STATE = WorkflowState(id="state-pr-open", name="PR Open", type="started")
 TEAM_ID = "team-1"
 
 EARLIER = NOW
@@ -63,7 +71,9 @@ class RecordingClient(InMemoryLinearClient):
     assert exactly what crossed Atlas -> Linear (and how often)."""
 
     def __init__(self) -> None:
-        super().__init__(workflow_states=[STARTED, UNSTARTED, UNMAPPED, READY])
+        super().__init__(
+            workflow_states=[STARTED, UNSTARTED, UNMAPPED, READY, PR_OPEN_STATE]
+        )
         self.creates: list[dict[str, Any]] = []
         self.updates: list[tuple[str, dict[str, Any]]] = []
         self.state_writes: list[tuple[str, str]] = []
@@ -92,6 +102,7 @@ def status_map() -> LinearStatusMap:
             UNSTARTED.id: TicketStatus.PLANNED,
             STARTED.id: TicketStatus.IN_PROGRESS,
             READY.id: TicketStatus.READY_FOR_AGENT,
+            PR_OPEN_STATE.id: TicketStatus.PR_OPEN,
         }
     )
 
@@ -111,6 +122,7 @@ def seed_ticket(
     status: TicketStatus,
     updated_at: datetime = EARLIER,
     linear_synced_at: datetime | None = None,
+    status_entered_at: datetime | None = None,
     title: str = "Atlas Title",
     priority: int = 10,
     with_issue: bool = True,
@@ -140,6 +152,7 @@ def seed_ticket(
             "created_at": updated_at,
             "updated_at": updated_at,
             "linear_synced_at": linear_synced_at,
+            "status_entered_at": status_entered_at,
         }
     )
     TicketRepo(db).add(ticket)
@@ -451,3 +464,190 @@ def test_recurring_reports_the_true_count_after_three_transitions(
     # Three real transitions -> recurring is True (the predicate is now honest
     # because dedup kept the count to genuine transitions, not ticks).
     assert repo.recurring(ticket.id, kind) is True
+
+
+# --- dwell breach (ATLAS-119): per-episode dedup ---------------------------
+#
+# The dwell clock is status_entered_at; the breach is report-only (never moves
+# a ticket); one DWELL_BREACH per dwell *episode*, not per tick.
+
+# in_progress horizon is 24h (DWELL_HORIZONS).
+PAST_IN_PROGRESS = NOW + timedelta(hours=25)  # 1h past the 24h horizon
+INSIDE_IN_PROGRESS = NOW + timedelta(hours=23)  # still inside the 24h horizon
+
+
+def test_dwell_breach_logged_once_past_horizon(db: Database) -> None:
+    client = RecordingClient()
+    # In Progress since NOW; no Linear issue, so pull/push/promote are all no-ops
+    # and only the step-5 dwell pass acts (in_progress is frozen, not promotable).
+    ticket = seed_ticket(
+        db,
+        client,
+        key="ATLAS-220",
+        status=TicketStatus.IN_PROGRESS,
+        status_entered_at=NOW,
+        with_issue=False,
+    )
+
+    result = run(db, client, now=PAST_IN_PROGRESS)
+
+    items = DebtItemRepo(db).list()
+    assert len(items) == 1  # wrong answer: zero (horizon not enforced)
+    (item,) = items
+    assert item.anomaly_type == AnomalyType.DWELL_BREACH
+    assert item.created_by_type == ActorType.SYSTEM  # system-written, not evidence
+    assert item.ticket_id == ticket.id
+    assert item.product_id == ticket.product_id
+    assert item.observed_at == PAST_IN_PROGRESS  # the injected tick clock
+    assert result.dwell_breaches == 1
+    # Report-only: no ticket-state write of any kind.
+    assert client.state_writes == []
+    pulled = TicketRepo(db).get_by_key("ATLAS-220")
+    assert pulled is not None and pulled.status == TicketStatus.IN_PROGRESS
+
+
+def test_no_breach_inside_horizon(db: Database) -> None:
+    client = RecordingClient()
+    seed_ticket(
+        db,
+        client,
+        key="ATLAS-221",
+        status=TicketStatus.IN_PROGRESS,
+        status_entered_at=NOW,
+        with_issue=False,
+    )
+
+    result = run(db, client, now=INSIDE_IN_PROGRESS)
+
+    # 23h < 24h: not yet a breach. Wrong answer: one row (off-by-a-tick).
+    assert DebtItemRepo(db).list() == []
+    assert result.dwell_breaches == 0
+
+
+def test_status_without_horizon_never_breaches(db: Database) -> None:
+    client = RecordingClient()
+    # ready_for_agent carries no dwell horizon. Already synced (clean cursor) so
+    # the push is skipped; with no issue there is nothing to pull or promote.
+    seed_ticket(
+        db,
+        client,
+        key="ATLAS-222",
+        status=TicketStatus.READY_FOR_AGENT,
+        status_entered_at=NOW,
+        updated_at=EARLIER,
+        linear_synced_at=EARLIER,
+        with_issue=False,
+    )
+
+    # Far past any horizon: only a horizoned status could breach here.
+    result = run(db, client, now=NOW + timedelta(days=100))
+
+    assert DebtItemRepo(db).list() == []  # wrong answer: a breach on a no-horizon state
+    assert result.dwell_breaches == 0
+
+
+def test_null_status_entered_at_is_skipped_not_breached(db: Database) -> None:
+    client = RecordingClient()
+    # status_entered_at unknown (NULL) — e.g. a ticket whose status predates the
+    # field. Dwell must SKIP it, never guess a breach.
+    seed_ticket(
+        db,
+        client,
+        key="ATLAS-223",
+        status=TicketStatus.IN_PROGRESS,
+        status_entered_at=None,
+        with_issue=False,
+    )
+
+    result = run(db, client, now=NOW + timedelta(days=100))
+
+    assert DebtItemRepo(db).list() == []  # wrong answer: a breach off a NULL clock
+    assert result.dwell_breaches == 0
+
+
+def test_dwell_breach_logs_exactly_one_row_across_n_ticks(db: Database) -> None:
+    client = RecordingClient()
+    seed_ticket(
+        db,
+        client,
+        key="ATLAS-224",
+        status=TicketStatus.IN_PROGRESS,
+        status_entered_at=NOW,
+        with_issue=False,
+    )
+
+    # Five ticks, each well past the 24h horizon, the status never changing.
+    results = [run(db, client, now=NOW + timedelta(hours=25 + n)) for n in range(5)]
+
+    # The load-bearing dedup: one row for the whole episode, NOT one per tick.
+    # Wrong answer: five rows, which makes recurring(...) lie.
+    assert len(DebtItemRepo(db).list()) == 1
+    assert results[0].dwell_breaches == 1
+    assert all(r.dwell_breaches == 0 for r in results[1:])
+
+
+def test_episode_advances_on_status_change_and_logs_a_new_row(db: Database) -> None:
+    client = RecordingClient()
+    # In Progress since NOW, joined to a Linear issue sitting in a started state
+    # (maps to in_progress, so the first pulls are set-to-same — no re-stamp).
+    ticket = seed_ticket(
+        db,
+        client,
+        key="ATLAS-225",
+        status=TicketStatus.IN_PROGRESS,
+        status_entered_at=NOW,
+        issue_state=STARTED,
+    )
+    assert ticket.external_linear_id is not None
+    repo = DebtItemRepo(db)
+
+    # Tick 1: 25h into in_progress -> breach row 1 (in_progress episode).
+    run(db, client, now=PAST_IN_PROGRESS)
+    assert len(repo.list_for_ticket(ticket.id)) == 1
+
+    # Linear moves the issue to pr_open: the next pull re-stamps status_entered_at
+    # to that tick, opening a FRESH episode whose horizon (48h) is not yet met.
+    client.simulate_linear_state(ticket.external_linear_id, PR_OPEN_STATE)
+    moved_at = NOW + timedelta(hours=26)
+    run(db, client, now=moved_at)
+    pulled = TicketRepo(db).get_by_key("ATLAS-225")
+    assert pulled is not None
+    assert pulled.status == TicketStatus.PR_OPEN
+    assert pulled.status_entered_at == moved_at  # the dwell clock advanced
+    assert len(repo.list_for_ticket(ticket.id)) == 1  # 0h into pr_open: no new row
+
+    # Tick 3: 49h into the pr_open episode (past its 48h horizon) -> NEW row.
+    run(db, client, now=moved_at + timedelta(hours=49))
+
+    items = repo.list_for_ticket(ticket.id)
+    assert len(items) == 2  # wrong answer: 1 (a naive "already breached" dedup)
+    assert all(i.anomaly_type == AnomalyType.DWELL_BREACH for i in items)
+    summaries = " ".join(i.summary for i in items)
+    assert "in_progress" in summaries and "pr_open" in summaries
+
+
+def test_apply_linear_status_stamps_entry_only_on_real_change(db: Database) -> None:
+    client = RecordingClient()
+    ticket = seed_ticket(
+        db,
+        client,
+        key="ATLAS-226",
+        status=TicketStatus.PLANNED,
+        updated_at=EARLIER,
+        status_entered_at=None,
+        with_issue=False,
+    )
+    repo = TicketRepo(db)
+    first = NOW + timedelta(hours=1)
+    later = NOW + timedelta(hours=2)
+
+    # A real change stamps the entry time and leaves updated_at untouched.
+    changed = repo.apply_linear_status("ATLAS-226", TicketStatus.IN_PROGRESS, now=first)
+    assert changed.status_entered_at == first
+    assert changed.updated_at == ticket.updated_at  # disjoint-column discipline
+
+    # A set-to-same status does NOT re-stamp (the episode did not restart) and,
+    # again, does not bump updated_at. Wrong answer: the clock resets every pull.
+    same = repo.apply_linear_status("ATLAS-226", TicketStatus.IN_PROGRESS, now=later)
+    assert same.status_entered_at == first
+    assert same.updated_at == ticket.updated_at

@@ -1,16 +1,20 @@
-"""PM-Engine ticket synchronisation (ATLAS-42, extended by ATLAS-118).
+"""PM-Engine ticket synchronisation (ATLAS-42, extended by ATLAS-118/-119).
 
 One idempotent sync pass (:func:`sync_tick`) wiring the ATLAS-41 boundary
-primitives into steps 1-3 of the ``pm-engine-and-linear-sync.md`` "Sync loop":
+primitives into steps 1-3+5 of the ``pm-engine-and-linear-sync.md`` "Sync loop":
 pull status Linear -> Atlas, push owned definitions Atlas -> Linear, promote
 dependency-ready tickets to ``Ready for Agent`` (:mod:`atlas.pm.promotion`),
 and *nothing else crossing*. Step 1's "log anomalies otherwise" clause is
 ATLAS-118: an unmapped Linear state appends one ``OUT_OF_OWNERSHIP_TRANSITION``
 ``DebtItem`` per *transition* (see :func:`_pull` and the transition signal
-``Ticket.last_observed_linear_state_id``). Logging an anomaly never moves a
-ticket. The remaining work — step 4's follow-up scan (ATLAS-45), step 5's
-dwell-breach (ATLAS-119) and review-cycling (ATLAS-120) checks, and the
-recurring scheduler (ATLAS-50) — is deliberately NOT here.
+``Ticket.last_observed_linear_state_id``). Step 5's dwell-breach clause is
+ATLAS-119: a ticket sitting in a working state past its horizon appends one
+``DWELL_BREACH`` ``DebtItem`` per dwell *episode* (see :func:`_detect_dwell`,
+``DWELL_HORIZONS``, and the episode boundary ``Ticket.status_entered_at``).
+Both are report-only — logging an anomaly NEVER moves a ticket. The remaining
+work — step 4's follow-up scan (ATLAS-45), step 5's review-cycling check
+(ATLAS-120, the one anomaly that *does* move a ticket), and the recurring
+scheduler (ATLAS-50) — is deliberately NOT here.
 
 Directionality is structural, not conventional. The pull reads only the
 issue's state id (:func:`status_from_issue`) and writes only ``status``; the
@@ -41,7 +45,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from uuid import uuid4
 
 from atlas.core.enums import ActorType
@@ -65,6 +69,19 @@ from atlas.storage.repositories import DebtItemRepo, TicketRepo
 # One definition for the system-actor id, mirroring planning's CREATED_BY.
 CREATED_BY = "pm-engine"
 
+# Per-status dwell horizons (ATLAS-119; pm-engine-and-linear-sync.md "Anomaly and
+# dwell detection"). A ticket whose time in one of these working states exceeds
+# its horizon has dwelt too long and appends one ``DWELL_BREACH`` DebtItem per
+# episode. Config with these defaults (D2): a module-level map, env-overridable
+# later like the status map — there is no scheduler config wiring yet. Only these
+# three statuses dwell-breach; any other status has no horizon and never
+# breaches (``.get`` returns ``None``).
+DWELL_HORIZONS: dict[TicketStatus, timedelta] = {
+    TicketStatus.IN_PROGRESS: timedelta(hours=24),
+    TicketStatus.PR_OPEN: timedelta(hours=48),
+    TicketStatus.REVIEW_REQUIRED: timedelta(days=7),
+}
+
 logger = logging.getLogger("atlas.pm.sync")
 
 # "Frozen once In Progress" (pm-engine-and-linear-sync.md "Field ownership"):
@@ -87,7 +104,10 @@ class SyncResult:
     totals; no I/O. ``unmapped`` counts every observed unmapped state this
     tick; ``anomalies_logged`` counts only the subset that were *transitions*
     into an unmapped state and therefore appended a DebtItem (a persisting
-    unmapped state increments ``unmapped`` but not ``anomalies_logged``)."""
+    unmapped state increments ``unmapped`` but not ``anomalies_logged``).
+    ``dwell_breaches`` (ATLAS-119) counts the ``DWELL_BREACH`` rows appended
+    this tick — one per dwell *episode*, so a ticket dwelling past its horizon
+    across N ticks increments it once, not once per tick."""
 
     status_pulled: int = 0
     status_unchanged: int = 0
@@ -97,6 +117,7 @@ class SyncResult:
     pushed_updated: int = 0
     push_skipped: int = 0
     promoted: int = 0
+    dwell_breaches: int = 0
 
 
 def _definition_changed(ticket: Ticket) -> bool:
@@ -133,6 +154,73 @@ def _out_of_ownership_item(
         created_by_type=ActorType.SYSTEM,
         created_by_id=CREATED_BY,
         created_at=now,
+    )
+
+
+def _dwell_breach_item(ticket: Ticket, horizon: timedelta, now: datetime) -> DebtItem:
+    """Build the ``DWELL_BREACH`` DebtItem for a ticket past its dwell horizon.
+
+    System-attributed and append-only (data-model §6.1), exactly like the
+    out-of-ownership item: ``product_id``/``ticket_id`` come from the dwelling
+    ticket (D3), the type is ``DWELL_BREACH`` (D1), and ``observed_at`` /
+    ``created_at`` are the injected tick clock (D3). Report-only — building or
+    recording this never changes ticket state. The caller (:func:`_detect_dwell`)
+    only builds this once ``status_entered_at`` is known non-NULL."""
+
+    entered = ticket.status_entered_at.isoformat() if ticket.status_entered_at else "?"
+    return DebtItem(
+        id=uuid4(),
+        product_id=ticket.product_id,
+        ticket_id=ticket.id,
+        anomaly_type=AnomalyType.DWELL_BREACH,
+        summary=(
+            f"{ticket.key} has dwelt in {ticket.status.value} since {entered}, "
+            f"past its {horizon} horizon; status unchanged"
+        ),
+        observed_at=now,
+        created_by_type=ActorType.SYSTEM,
+        created_by_id=CREATED_BY,
+        created_at=now,
+    )
+
+
+def _detect_dwell(
+    ticket: Ticket,
+    debt: DebtItemRepo,
+    result: SyncResult,
+    now: datetime,
+) -> None:
+    """Step 5 (ATLAS-119): append one ``DWELL_BREACH`` per dwell *episode* when
+    ``ticket`` has sat in a horizoned working state too long. Report-only — it
+    NEVER writes ticket state (that is ATLAS-120's review-cycling rule).
+
+    Skips, in order: a status with no configured horizon (``DWELL_HORIZONS.get``
+    is ``None`` — only ``in_progress``/``pr_open``/``review_required`` breach); a
+    NULL ``status_entered_at`` (unknown entry time — skipped rather than guessing
+    a false breach); a ticket still inside its horizon. Otherwise it logs once
+    per episode: ``status_entered_at`` is the episode boundary, so a row is
+    appended only when none has been logged since the ticket entered this status
+    (:meth:`DebtItemRepo.logged_since`). When the status later changes,
+    ``status_entered_at`` advances and a fresh episode can log again."""
+
+    horizon = DWELL_HORIZONS.get(ticket.status)
+    if horizon is None:
+        return  # this status carries no dwell horizon; never breaches
+    if ticket.status_entered_at is None:
+        return  # unknown entry time: skip, never a false breach
+    if now - ticket.status_entered_at < horizon:
+        return  # still inside the horizon
+    if debt.logged_since(ticket.id, AnomalyType.DWELL_BREACH, ticket.status_entered_at):
+        return  # this episode already logged one breach; not one per tick
+    debt.record(_dwell_breach_item(ticket, horizon, now))
+    result.dwell_breaches += 1
+    logger.info(
+        "linear-sync: dwell breach for %s in %s (entered %s, horizon %s); "
+        "DebtItem logged, status unchanged",
+        ticket.key,
+        ticket.status.value,
+        ticket.status_entered_at.isoformat(),
+        horizon,
     )
 
 
@@ -200,7 +288,7 @@ def _pull(
     if mapped == ticket.status:
         result.status_unchanged += 1  # set-to-same is a no-op
         return ticket
-    updated = tickets.apply_linear_status(ticket.key, mapped)
+    updated = tickets.apply_linear_status(ticket.key, mapped, now=now)
     result.status_pulled += 1
     logger.info(
         "linear-sync: pulled %s -> %s for %s",
@@ -269,11 +357,19 @@ def sync_tick(
     :meth:`LinearClient.set_state`. The graph is built AFTER the pull/push loop
     so it reflects pulled statuses and any issue step 2 just created; the
     promotion is Linear-only, so the next tick's pull reconciles Atlas (keeping
-    the pull the single Atlas-status writer). Returns per-tick counters.
+    the pull the single Atlas-status writer).
+
+    Then step 5 (ATLAS-119): a final pass re-reads the tickets and appends one
+    ``DWELL_BREACH`` DebtItem per dwell episode for any ticket sitting in a
+    horizoned working state past its horizon (:func:`_detect_dwell`). It runs
+    after promotion so it sees this tick's pulled statuses and freshly stamped
+    ``status_entered_at``, and like step 1's anomaly logging it writes no ticket
+    state. Returns per-tick counters.
 
     ``now`` is the injected tick clock (no hidden ``datetime.now``): it stamps
-    the ``observed_at``/``created_at`` of any DebtItem this tick appends, so the
-    flow stays deterministic under test.
+    the ``observed_at``/``created_at`` of any DebtItem this tick appends and the
+    ``status_entered_at`` of any status this tick pulls, so the flow stays
+    deterministic under test.
     """
 
     result = SyncResult()
@@ -285,4 +381,11 @@ def sync_tick(
     result.promoted = promote_ready(
         tickets=tickets, graph=graph, client=client, status_map=status_map
     )
+    # Step 5 (ATLAS-119): dwell-breach logging. A sibling pass after promotion,
+    # re-reading tickets so it sees this tick's pulled statuses and freshly
+    # stamped ``status_entered_at`` (promotion writes Linear only, so it does not
+    # perturb Atlas status). Report-only: appends a DWELL_BREACH per episode and
+    # writes no ticket state.
+    for ticket in tickets.list():
+        _detect_dwell(ticket, debt, result, now)
     return result

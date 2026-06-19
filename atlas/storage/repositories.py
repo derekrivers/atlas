@@ -230,7 +230,9 @@ class TicketRepo(_KeyedRepo[Ticket]):
             row.estimated_effort = effort
             return self._to_model(row)
 
-    def apply_linear_status(self, key: str, status: TicketStatus) -> Ticket:
+    def apply_linear_status(
+        self, key: str, status: TicketStatus, *, now: datetime
+    ) -> Ticket:
         """Set ``status`` from a Linear pull (Linear -> Atlas; ATLAS-42).
 
         The status direction's sole Atlas writer. ``updated_at`` is
@@ -239,13 +241,25 @@ class TicketRepo(_KeyedRepo[Ticket]):
         ``updated_at`` on an inbound status change would spuriously re-push the
         definition Atlas -> Linear (a directionality leak). Disjoint-column
         discipline, exactly like ``set_estimated_effort`` (ADR-0006/0007).
+
+        ``status_entered_at`` (ATLAS-119) is stamped to ``now`` ONLY when the
+        status actually changes — being the sole status writer, this is the one
+        place the dwell clock can advance, and it must mark a *real* transition,
+        not every pull. A set-to-same status leaves it untouched (the episode
+        did not restart). Like ``updated_at``, the dwell clock is disjoint from
+        the definition cursor; stamping it never re-pushes. ``now`` is the
+        injected tick clock and must be timezone-aware.
         """
+        if now.utcoffset() is None:
+            raise NaiveDatetimeError("Ticket", "status_entered_at")
         with self._db.session() as session, session.begin():
             row = session.scalars(
                 sa.select(TicketRow).where(TicketRow.key == key)
             ).first()
             if row is None:
                 raise TicketNotFoundError(f"no ticket with key {key!r}")
+            if row.status != status.value:
+                row.status_entered_at = now
             row.status = status.value
             return self._to_model(row)
 
@@ -379,6 +393,35 @@ class DebtItemRepo(_Repo[DebtItem]):
                 .order_by(DebtItemRow.observed_at, DebtItemRow.id)
             )
             return [self._to_model(row) for row in rows]
+
+    def logged_since(
+        self, ticket_id: UUID, anomaly_type: AnomalyType, since: datetime
+    ) -> bool:
+        """True when ``ticket_id`` already has a row of ``anomaly_type`` whose
+        ``observed_at`` is at or after ``since`` (ATLAS-119 per-episode dedup).
+
+        The dwell-breach episode predicate: ``since`` is the ticket's
+        ``status_entered_at`` (the episode boundary), so this answers "has a
+        breach already been logged since the ticket entered this status?" — one
+        ``DWELL_BREACH`` per episode, not per tick. The boundary is INCLUSIVE
+        (``>= since``): a row written exactly at the entry instant counts as
+        already-logged. When the status changes, ``status_entered_at`` advances
+        past the prior episode's rows, so a fresh episode logs again. A pure
+        query-time predicate: it reads the rows, stores nothing, never gates a
+        ``record``."""
+        if since.utcoffset() is None:
+            raise NaiveDatetimeError("DebtItem", "observed_at")
+        with self._db.session() as session:
+            count = session.scalar(
+                sa.select(sa.func.count())
+                .select_from(DebtItemRow)
+                .where(
+                    DebtItemRow.ticket_id == ticket_id,
+                    DebtItemRow.anomaly_type == anomaly_type.value,
+                    DebtItemRow.observed_at >= since,
+                )
+            )
+            return (count or 0) > 0
 
     def recurring(
         self, ticket_id: UUID, anomaly_type: AnomalyType, threshold: int = 3

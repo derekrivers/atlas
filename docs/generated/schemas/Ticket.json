@@ -237,6 +237,19 @@
     "status": {
       "$ref": "#/$defs/TicketStatus"
     },
+    "status_entered_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Status Entered At"
+    },
     "test_requirements": {
       "items": {
         "type": "string"

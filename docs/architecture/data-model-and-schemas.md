@@ -417,6 +417,13 @@ class Ticket(BaseModel):
     # this; a persisting unmapped state writes no new row. Written only by the
     # sync loop, never bumped by an Atlas definition edit (like linear_synced_at).
     last_observed_linear_state_id: Optional[str] = None
+    # PM-Engine dwell clock (ATLAS-119): when the ticket entered its current
+    # status. Stamped by apply_linear_status (the sole post-creation status
+    # writer) only on a real status change, so it marks the start of the current
+    # dwell episode and is the per-episode dedup boundary for DWELL_BREACH.
+    # NULL means "unknown entry time" and dwell SKIPS it (never a false breach).
+    # Written only by the sync loop, never bumped by an Atlas definition edit.
+    status_entered_at: Optional[datetime] = None
     # Reconciler anchor-match pass; AT-1 traceability — every item
     # traceable to a document anchor.
     source_anchor: str
@@ -454,6 +461,7 @@ CREATE TABLE tickets (
     external_github_issue_id TEXT,
     linear_synced_at TIMESTAMPTZ,
     last_observed_linear_state_id TEXT,
+    status_entered_at TIMESTAMPTZ,
     source_anchor TEXT NOT NULL,
     created_by_type TEXT NOT NULL,
     created_by_id TEXT NOT NULL,
