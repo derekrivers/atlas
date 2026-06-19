@@ -249,6 +249,15 @@ class TicketRepo(_KeyedRepo[Ticket]):
         did not restart). Like ``updated_at``, the dwell clock is disjoint from
         the definition cursor; stamping it never re-pushes. ``now`` is the
         injected tick clock and must be timezone-aware.
+
+        ``review_cycle_count`` (ATLAS-120) is incremented in the same real-change
+        branch, but ONLY on a ``changes_requested -> pr_open`` transition (the
+        round trip the review-cycling rule counts). Every other transition —
+        including any other arrival into ``pr_open`` (e.g. ``in_progress ->
+        pr_open``) or the reverse ``pr_open -> changes_requested`` — leaves it
+        untouched, and a set-to-same never reaches this branch. Status-coupled
+        and disjoint from the definition cursor, exactly like the dwell clock, so
+        it too never bumps ``updated_at``.
         """
         if now.utcoffset() is None:
             raise NaiveDatetimeError("Ticket", "status_entered_at")
@@ -260,6 +269,11 @@ class TicketRepo(_KeyedRepo[Ticket]):
                 raise TicketNotFoundError(f"no ticket with key {key!r}")
             if row.status != status.value:
                 row.status_entered_at = now
+                if (
+                    row.status == TicketStatus.CHANGES_REQUESTED.value
+                    and status == TicketStatus.PR_OPEN
+                ):
+                    row.review_cycle_count = row.review_cycle_count + 1
             row.status = status.value
             return self._to_model(row)
 

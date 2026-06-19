@@ -227,6 +227,11 @@
       "title": "Relevant Docs",
       "type": "array"
     },
+    "review_cycle_count": {
+      "default": 0,
+      "title": "Review Cycle Count",
+      "type": "integer"
+    },
     "risk_level": {
       "$ref": "#/$defs/RiskLevel"
     },

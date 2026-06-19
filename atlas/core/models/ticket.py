@@ -88,6 +88,15 @@ class Ticket(BaseModel):
     # only by the sync loop and, like the cursor fields above, never bumps
     # updated_at — an inbound observation must not re-push the definition.
     status_entered_at: datetime | None = None
+    # PM-Engine review-cycling counter (ATLAS-120): the number of
+    # ``changes_requested -> pr_open`` round trips. Incremented by
+    # ``apply_linear_status`` (the sole post-creation status writer) only on that
+    # specific transition; every other transition leaves it untouched. At more
+    # than three round trips the step-5 review-cycling pass routes the ticket to
+    # ``needs_human_decision`` via the sanctioned ``set_state``. Monotonic in v1
+    # (no reset on human intervention — deferred). Like the cursor fields above
+    # it is status-coupled and NEVER bumps ``updated_at``.
+    review_cycle_count: int = 0
     # Reconciler anchor-match pass; AT-1 traceability — every item
     # traceable to a document anchor.
     source_anchor: str

@@ -164,6 +164,9 @@ class TicketRow(Base):
     linear_synced_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     last_observed_linear_state_id: Mapped[str | None] = mapped_column(sa.Text)
     status_entered_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    review_cycle_count: Mapped[int] = mapped_column(
+        sa.Integer, server_default=sa.text("0")
+    )
     source_anchor: Mapped[str] = mapped_column(sa.Text)
     created_by_type: Mapped[str] = mapped_column(sa.Text)
     created_by_id: Mapped[str] = mapped_column(sa.Text)

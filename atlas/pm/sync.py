@@ -1,4 +1,4 @@
-"""PM-Engine ticket synchronisation (ATLAS-42, extended by ATLAS-118/-119).
+"""PM-Engine ticket synchronisation (ATLAS-42, extended by ATLAS-118/-119/-120).
 
 One idempotent sync pass (:func:`sync_tick`) wiring the ATLAS-41 boundary
 primitives into steps 1-3+5 of the ``pm-engine-and-linear-sync.md`` "Sync loop":
@@ -7,14 +7,18 @@ dependency-ready tickets to ``Ready for Agent`` (:mod:`atlas.pm.promotion`),
 and *nothing else crossing*. Step 1's "log anomalies otherwise" clause is
 ATLAS-118: an unmapped Linear state appends one ``OUT_OF_OWNERSHIP_TRANSITION``
 ``DebtItem`` per *transition* (see :func:`_pull` and the transition signal
-``Ticket.last_observed_linear_state_id``). Step 5's dwell-breach clause is
-ATLAS-119: a ticket sitting in a working state past its horizon appends one
+``Ticket.last_observed_linear_state_id``). Step 5 has two clauses. Dwell-breach
+(ATLAS-119): a ticket sitting in a working state past its horizon appends one
 ``DWELL_BREACH`` ``DebtItem`` per dwell *episode* (see :func:`_detect_dwell`,
-``DWELL_HORIZONS``, and the episode boundary ``Ticket.status_entered_at``).
-Both are report-only — logging an anomaly NEVER moves a ticket. The remaining
-work — step 4's follow-up scan (ATLAS-45), step 5's review-cycling check
-(ATLAS-120, the one anomaly that *does* move a ticket), and the recurring
-scheduler (ATLAS-50) — is deliberately NOT here.
+``DWELL_HORIZONS``, and the episode boundary ``Ticket.status_entered_at``) —
+report-only, it NEVER moves a ticket. Review-cycling (ATLAS-120): a ticket that
+has made more than ``REVIEW_CYCLE_THRESHOLD`` ``changes_requested -> pr_open``
+round trips is routed to ``Needs Human`` via the sanctioned
+:meth:`LinearClient.set_state` and one ``REVIEW_CYCLE`` ``DebtItem`` is appended
+as the deterministic failure-analysis note (see :func:`_detect_review_cycle`).
+This is the ONE anomaly that both logs AND moves a ticket — everywhere else the
+two are separate. The remaining work — step 4's follow-up scan (ATLAS-45) and
+the recurring scheduler (ATLAS-50) — is deliberately NOT here.
 
 Directionality is structural, not conventional. The pull reads only the
 issue's state id (:func:`status_from_issue`) and writes only ``status``; the
@@ -82,6 +86,24 @@ DWELL_HORIZONS: dict[TicketStatus, timedelta] = {
     TicketStatus.REVIEW_REQUIRED: timedelta(days=7),
 }
 
+# Review-cycling threshold (ATLAS-120; pm-engine-and-linear-sync.md "Anomaly and
+# dwell detection"). "More than 3 ``changes_requested -> pr_open`` round trips"
+# routes the ticket to ``Needs Human`` — so a ticket is routed when its
+# ``review_cycle_count`` is STRICTLY GREATER than this (count > 3 routes; count
+# == 3 does not). A module-level config constant beside ``DWELL_HORIZONS``,
+# env-overridable later like the status map.
+REVIEW_CYCLE_THRESHOLD = 3
+
+# The states a ticket cycles between on a ``changes_requested -> pr_open`` round
+# trip. The review-cycling pass acts only while the ticket is still in one of
+# these (D6/GAP B): the moment ATLAS-42's pull reconciles the routed ticket into
+# ``needs_human_decision`` it leaves this set, so the pass self-clears and stops
+# re-routing. Both transitions into these states stamp ``status_entered_at``, so
+# a ticket here always has a non-NULL episode boundary for the log dedup.
+CYCLING_STATES: frozenset[TicketStatus] = frozenset(
+    {TicketStatus.CHANGES_REQUESTED, TicketStatus.PR_OPEN}
+)
+
 logger = logging.getLogger("atlas.pm.sync")
 
 # "Frozen once In Progress" (pm-engine-and-linear-sync.md "Field ownership"):
@@ -107,7 +129,13 @@ class SyncResult:
     unmapped state increments ``unmapped`` but not ``anomalies_logged``).
     ``dwell_breaches`` (ATLAS-119) counts the ``DWELL_BREACH`` rows appended
     this tick — one per dwell *episode*, so a ticket dwelling past its horizon
-    across N ticks increments it once, not once per tick."""
+    across N ticks increments it once, not once per tick. ``routed_to_human``
+    and ``review_cycles_logged`` (ATLAS-120) split the review-cycling pass the
+    same way ``unmapped``/``anomalies_logged`` split step 1: ``routed_to_human``
+    counts every ``set_state`` route this tick (the route fires idempotently
+    each tick until the pull reconciles the ticket, so a not-yet-reconciled
+    ticket increments it every tick), while ``review_cycles_logged`` counts only
+    the deduped ``REVIEW_CYCLE`` rows appended — one per ``pr_open`` episode."""
 
     status_pulled: int = 0
     status_unchanged: int = 0
@@ -118,6 +146,8 @@ class SyncResult:
     push_skipped: int = 0
     promoted: int = 0
     dwell_breaches: int = 0
+    routed_to_human: int = 0
+    review_cycles_logged: int = 0
 
 
 def _definition_changed(ticket: Ticket) -> bool:
@@ -221,6 +251,95 @@ def _detect_dwell(
         ticket.status.value,
         ticket.status_entered_at.isoformat(),
         horizon,
+    )
+
+
+def _review_cycle_item(ticket: Ticket, now: datetime) -> DebtItem:
+    """Build the ``REVIEW_CYCLE`` DebtItem — the deterministic failure-analysis
+    note (D5). No model call (the PM Engine is deterministic) and no Linear
+    comment: the note IS the row's summary, naming the round-trip count, the
+    cycling pattern, and the route taken. System-attributed and append-only
+    (data-model §6.1), exactly like the dwell and out-of-ownership items."""
+
+    return DebtItem(
+        id=uuid4(),
+        product_id=ticket.product_id,
+        ticket_id=ticket.id,
+        anomaly_type=AnomalyType.REVIEW_CYCLE,
+        summary=(
+            f"{ticket.key} made {ticket.review_cycle_count} changes_requested -> "
+            f"pr_open round trips (more than the {REVIEW_CYCLE_THRESHOLD} "
+            "threshold); routed to needs_human_decision via set_state"
+        ),
+        observed_at=now,
+        created_by_type=ActorType.SYSTEM,
+        created_by_id=CREATED_BY,
+        created_at=now,
+    )
+
+
+def _detect_review_cycle(
+    ticket: Ticket,
+    debt: DebtItemRepo,
+    client: LinearClient,
+    needs_human_state_id: str,
+    result: SyncResult,
+    now: datetime,
+) -> None:
+    """Step 5 (ATLAS-120): route a review-cycling ticket to ``Needs Human`` and
+    log one ``REVIEW_CYCLE`` note. The ONE anomaly that both moves a ticket AND
+    logs — everywhere else the two are separate (D6).
+
+    Skips, in order: a ticket not in a ``CYCLING_STATES`` working state (e.g.
+    already reconciled into ``needs_human_decision`` — the self-clearing guard);
+    one at or under the threshold (``review_cycle_count <= REVIEW_CYCLE_THRESHOLD``
+    — the wrong answer routes at 3); one with no Linear join (cannot route, like
+    :func:`promote_ready`'s skip); a NULL ``status_entered_at`` (no episode
+    boundary for the log dedup — unreachable when the count exceeds the
+    threshold, since the increment and the ``pr_open`` entry stamp are written
+    together, but guarded for a hand-seeded inconsistency).
+
+    Route first, then log (the ordering). The route is the EXISTING sanctioned
+    outbound write — ATLAS-43's :meth:`LinearClient.set_state` to the resolved
+    Needs-Human state, Linear-only (ATLAS-42's next pull reconciles Atlas) and
+    idempotent (``set_state`` to the same state is a no-op). It is attempted on
+    EVERY tick until the pull reconciles the ticket out of the cycling states, so
+    ``routed_to_human`` counts route attempts. A failed ``set_state`` raises and
+    aborts the tick before the log (so a row is never written without a real
+    routing attempt) and the route is retried next tick. The log is then deduped
+    per ``pr_open`` episode via :meth:`DebtItemRepo.logged_since` keyed on
+    ``status_entered_at`` (ATLAS-119's machinery), so a not-yet-reconciled route
+    retrying across ticks logs exactly ONE ``REVIEW_CYCLE``, not one per tick."""
+
+    if ticket.status not in CYCLING_STATES:
+        return  # not cycling (e.g. already routed and reconciled into Needs Human)
+    if ticket.review_cycle_count <= REVIEW_CYCLE_THRESHOLD:
+        return  # at or under threshold; routing at 3 would be the wrong answer
+    if ticket.external_linear_id is None:
+        return  # no Linear join: nothing to route (mirrors promote_ready)
+    if ticket.status_entered_at is None:
+        return  # no episode boundary for dedup; unreachable when count > threshold
+    # Route first: the one sanctioned move (ATLAS-43), idempotent and Linear-only.
+    # A raise here aborts the tick before the log and is retried next tick.
+    client.set_state(ticket.external_linear_id, needs_human_state_id)
+    result.routed_to_human += 1
+    logger.info(
+        "linear-sync: review-cycling %s (%d round trips) routed to "
+        "needs_human_decision via set_state (Linear state %s)",
+        ticket.key,
+        ticket.review_cycle_count,
+        needs_human_state_id,
+    )
+    # Then log once per pr_open episode: a route retrying across ticks (not yet
+    # reconciled) must not double-log. status_entered_at is the episode boundary.
+    if debt.logged_since(ticket.id, AnomalyType.REVIEW_CYCLE, ticket.status_entered_at):
+        return  # this episode already logged its note; not one per tick
+    debt.record(_review_cycle_item(ticket, now))
+    result.review_cycles_logged += 1
+    logger.info(
+        "linear-sync: review-cycle DebtItem logged for %s (%d round trips)",
+        ticket.key,
+        ticket.review_cycle_count,
     )
 
 
@@ -359,12 +478,18 @@ def sync_tick(
     promotion is Linear-only, so the next tick's pull reconciles Atlas (keeping
     the pull the single Atlas-status writer).
 
-    Then step 5 (ATLAS-119): a final pass re-reads the tickets and appends one
-    ``DWELL_BREACH`` DebtItem per dwell episode for any ticket sitting in a
-    horizoned working state past its horizon (:func:`_detect_dwell`). It runs
-    after promotion so it sees this tick's pulled statuses and freshly stamped
-    ``status_entered_at``, and like step 1's anomaly logging it writes no ticket
-    state. Returns per-tick counters.
+    Then step 5: a final pass re-reads the tickets and runs both clauses per
+    ticket. Dwell-breach (ATLAS-119): append one ``DWELL_BREACH`` DebtItem per
+    dwell episode for a ticket sitting in a horizoned working state past its
+    horizon (:func:`_detect_dwell`) — report-only. Review-cycling (ATLAS-120):
+    route a ticket over ``REVIEW_CYCLE_THRESHOLD`` round trips to ``Needs Human``
+    via :meth:`LinearClient.set_state` and log one ``REVIEW_CYCLE`` note
+    (:func:`_detect_review_cycle`) — the one anomaly that moves a ticket. The
+    Needs-Human target state is resolved ONCE up front (like
+    :func:`promote_ready`'s Ready-for-Agent resolution), so a status map missing
+    a unique ``needs_human_decision`` state fails loudly even when nothing is
+    cycling. The pass runs after promotion so it sees this tick's pulled statuses
+    and freshly stamped ``status_entered_at``. Returns per-tick counters.
 
     ``now`` is the injected tick clock (no hidden ``datetime.now``): it stamps
     the ``observed_at``/``created_at`` of any DebtItem this tick appends and the
@@ -381,11 +506,15 @@ def sync_tick(
     result.promoted = promote_ready(
         tickets=tickets, graph=graph, client=client, status_map=status_map
     )
-    # Step 5 (ATLAS-119): dwell-breach logging. A sibling pass after promotion,
-    # re-reading tickets so it sees this tick's pulled statuses and freshly
-    # stamped ``status_entered_at`` (promotion writes Linear only, so it does not
-    # perturb Atlas status). Report-only: appends a DWELL_BREACH per episode and
-    # writes no ticket state.
+    # Step 5: a sibling pass after promotion, re-reading tickets so it sees this
+    # tick's pulled statuses and freshly stamped ``status_entered_at`` (promotion
+    # writes Linear only, so it does not perturb Atlas status). Dwell-breach
+    # (ATLAS-119) is report-only; review-cycling (ATLAS-120) routes via
+    # set_state. The Needs-Human target is resolved up front (the load-time
+    # guard, mirroring promote_ready), before the loop, so a misconfigured map
+    # fails loudly even when no ticket is over threshold.
+    needs_human_state_id = status_map.state_id_for(TicketStatus.NEEDS_HUMAN_DECISION)
     for ticket in tickets.list():
         _detect_dwell(ticket, debt, result, now)
+        _detect_review_cycle(ticket, debt, client, needs_human_state_id, result, now)
     return result
