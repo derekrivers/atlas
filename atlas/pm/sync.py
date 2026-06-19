@@ -62,7 +62,8 @@ from atlas.storage.repositories import DebtItemRepo, TicketRepo
 # Attribution for system-observed anomalies (data-model §6.1): the PM Engine
 # writes DebtItems from deterministic observation, so created_by_type is
 # ``system`` and created_by_id names the writer (matches the §6.1 example).
-_PM_ENGINE_ACTOR = "pm-engine"
+# One definition for the system-actor id, mirroring planning's CREATED_BY.
+CREATED_BY = "pm-engine"
 
 logger = logging.getLogger("atlas.pm.sync")
 
@@ -130,7 +131,7 @@ def _out_of_ownership_item(
         ),
         observed_at=now,
         created_by_type=ActorType.SYSTEM,
-        created_by_id=_PM_ENGINE_ACTOR,
+        created_by_id=CREATED_BY,
         created_at=now,
     )
 
