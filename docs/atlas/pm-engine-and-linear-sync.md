@@ -206,9 +206,36 @@ concerns.
 
 ## Delivery metrics
 
-`atlas pm report`: throughput (tickets done/week), cycle time per state,
-ready-queue depth, anomaly counts, dwell breaches. CLI/markdown output;
-no dashboard (Revision 1).
+`atlas pm report` (ATLAS-47): throughput (tickets done/week), cycle time per
+state, ready-queue depth, anomaly counts, dwell breaches. CLI/markdown output
+with a `--json` form; no dashboard (Revision 1). A PURE READER — it makes no
+Linear calls and writes nothing, computing every metric from stored tickets and
+`DebtItem`s (never from the per-tick, ephemeral `SyncResult`), so it runs with
+no network and no secrets.
+
+The five metrics, as computed in v1:
+
+- **Throughput** — tickets currently `done`, bucketed by the ISO week
+  (`YYYY-Www`) of `status_entered_at`. A `done` ticket with a null entry time
+  falls in an `unknown` bucket rather than being dropped.
+- **Cycle time per state** — reported as a **current-dwell proxy**, NOT
+  historical per-state cycle time. The data model carries only
+  `status_entered_at` (when a ticket entered its *current* status), so full
+  historical time-in-each-state is not computable. v1 therefore reports, per
+  non-terminal status, the current time-in-state (min/median/max hours) of the
+  in-flight tickets, labelled *current dwell per state*. Failure modes: a ticket
+  that was `done` and later reopened has lost its earlier entry time, so its
+  prior dwell is invisible; a ticket whose `status_entered_at` is null (unknown
+  entry) is excluded from the durations and counted separately rather than
+  guessed. The true historical metric needs a per-transition history the model
+  does not yet carry; that schema is deferred to ATLAS-121 (an append-only
+  `TicketStatusTransition` log written by `apply_linear_status`, owner: PM
+  Engine) and is NOT added here.
+- **Ready-queue depth** — the count of tickets in `ready_for_agent`.
+- **Anomaly counts** — `DebtItem`s grouped by `AnomalyType`, with the recurring
+  ones (the query-time `recurring(...)` predicate) called out per type.
+- **Dwell breaches** — the `DWELL_BREACH` subset of the anomaly log (ATLAS-119),
+  surfaced per ticket.
 
 ## Open items
 

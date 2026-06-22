@@ -212,6 +212,13 @@ ATLAS-120 Review-cycling detection: more than 3 changes_requested → pr_open
          round trips routes the ticket to Needs Human via set_state with a
          failure-analysis note (the one anomaly that changes ticket state)
 ATLAS-47 Delivery metrics (CLI report)
+ATLAS-121 State-transition history for true cycle time: an append-only
+         TicketStatusTransition model (data-model-and-schemas.md) recording
+         every status change with its timestamp, written by
+         apply_linear_status (the sole status writer). Prerequisite for
+         historical per-state cycle time; until it lands, ATLAS-47 reports
+         only the current-dwell proxy, never historical cycle time. Owner:
+         PM Engine (Phase 4).
 ATLAS-50 PM scheduler
 
 Retired: ATLAS-48 (PM dashboard), ATLAS-49 (PM API).
