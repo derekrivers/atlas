@@ -163,9 +163,13 @@ measurement and a recorded decision*, not a higher figure.
 
 ## Relationship to existing follow-ons
 
-- **ATLAS-107** (staged acceptance suite) is where the chosen AT-7 metric is
-  ultimately wired into CI. This ticket decides *which* metric 107 should
-  encode. Sequence: 112 (define + decide) → 107 (encode in the suite).
+- **ATLAS-123** (pair-metric encoding) is where the chosen AT-7 metric is
+  wired into the acceptance suite: the exact-anchor floor live, content_coverage
+  reported until pinned. This ticket (112) decides *which* metric 123 encodes.
+  Sequence: 112 (define + decide) → 123 (encode in the suite) → 124 (pin the
+  content bar after a second capture).
+- **ATLAS-107** (staged acceptance suite) *reuses* the metric ATLAS-123
+  encodes for the staged path; it does not re-derive the bar.
 - **ATLAS-106** (batch sizing) is unrelated and remains independently owned.
 
 ## Evidence on file (this session)

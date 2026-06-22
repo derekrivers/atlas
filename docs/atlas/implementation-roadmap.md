@@ -130,7 +130,17 @@ ATLAS-111 Anchor selection from the heading index, not slug construction: the
 
 ATLAS-112 AT-7 measures anchoring-convention agreement, not work coverage;
          define a content-coverage variant and evaluate both (operator gate
-         on the bar; ATLAS-107 encodes the chosen metric)
+         on the bar — RESOLVED §7.2: a pair, exact-anchor floor + content bar;
+         ATLAS-123 encodes it, ATLAS-107 reuses it)
+ATLAS-123 Encode the resolved AT-7 pair metric (§7.2): ANCHOR_COVERAGE_FLOOR =
+         0.50 as a live exact-anchor floor, content_coverage computed and
+         reported but not gated; the live AT-7 leg gates on the floor. Realises
+         ATLAS-112's chosen-metric decision — the clause ATLAS-107's staged-path
+         acceptance reuses, not re-derives
+ATLAS-124 AT-7 content-coverage bar pinning: after a second durably-saved staged
+         capture, set the content_coverage bar a recorded margin below the lower
+         of the two captures and flip the content leg from reported to gating.
+         Prerequisite: the second capture from the next staged run (ATLAS-107)
 
 Milestone test: AT-1 through AT-7 pass in CI against the seeded Atlas
 documents.
