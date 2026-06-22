@@ -25,6 +25,7 @@ Deterministic: the in-memory fake, no network, no secrets.
 
 from __future__ import annotations
 
+import tempfile
 from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
@@ -100,12 +101,15 @@ def seed(
 
 
 def run(db: Database, client: RecordingClient) -> SyncResult:
+    # A throwaway inbox dir for step 4 (ATLAS-45); these promotion tests seed no
+    # comments, so the follow-up scan writes nothing.
     return sync_tick(
         tickets=TicketRepo(db),
         db=db,
         client=client,
         status_map=status_map(),
         team_id=TEAM_ID,
+        inbox_dir=Path(tempfile.mkdtemp()),
         now=NOW,
     )
 
@@ -288,6 +292,7 @@ def test_zero_ready_for_agent_states_raises(db: Database) -> None:
             client=client,
             status_map=no_ready_map,
             team_id=TEAM_ID,
+            inbox_dir=Path(tempfile.mkdtemp()),
             now=NOW,
         )
 

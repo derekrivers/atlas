@@ -139,11 +139,52 @@ review-cycling is ATLAS-120 (a `_detect_review_cycle` pass keyed on
 ## Follow-up ingestion
 
 Tagged comments are converted into proposal stubs written to
-`docs/planning/inbox/<ticket-key>-<n>.md` (title, verbatim comment body,
-source issue link). The inbox is an *input document set* for the next
-`atlas plan` run — follow-ups enter the backlog only through plan/apply
-(ADR-0007), never as direct ticket creation. Applied or rejected stubs are
-moved to `docs/planning/inbox/processed/` by `atlas apply`.
+`docs/planning/inbox/<ticket-key>-<n>.md`. The inbox is a *separate plan input
+source* — its own input document set for the next `atlas plan` run, distinct
+from the operator's hand-authored input docs — and follow-ups enter the backlog
+only through plan/apply (ADR-0007), never as direct ticket creation.
+
+**Producer / consumer split.** This loop is delivered in two halves:
+
+- The **producer** (step 4, ATLAS-45) is the comment scan. Per synced ticket
+  (one with an `external_linear_id`, in a non-terminal status), the sync loop
+  reads the issue's comments through the read-only `LinearClient.fetch_comments`
+  and, for each comment whose body contains the `atlas:proposed-follow-up` tag,
+  writes one stub to the working tree. The stub carries a title, the verbatim
+  comment body, an honest source reference (the source ticket key and its Linear
+  issue id), and the source comment id. The write is atomic (temp + rename) and
+  is the **one sanctioned `docs/planning/` write** outside `atlas apply` — the
+  inbox's machine writer, like `apply` writes the backlog renders (ADR-0007);
+  it writes only under `inbox/`, nowhere else in `docs/planning/`. The producer
+  creates no ticket and writes no Atlas or Linear state, and it **does not commit
+  the stubs**: it writes to the working tree and stops. The follow-up scan reads
+  real Linear, so ATLAS-45 carries an operator-run live gate (a real
+  `atlas:proposed-follow-up` comment producing one stub) — CI green is necessary
+  but not sufficient (ADR-0008).
+- The **operator** commits the inbox. This is the human-steered gate that decides
+  which follow-ups become plan inputs — surfacing a follow-up is mechanical;
+  admitting it to the backlog is a deliberate act.
+- The **consumer** (ATLAS-122) closes the loop: `atlas plan` reads the committed
+  inbox as the separate input source above, and `atlas apply` moves applied or
+  rejected stubs to `docs/planning/inbox/processed/`. ATLAS-45 does **not** wire
+  either side.
+
+**Dedup.** The scan sees the same tagged comment on every tick, so each stub is
+made self-identifying by recording its **source comment id** as the dedup key: a
+comment whose id already has a stub under `docs/planning/inbox/` **or**
+`docs/planning/inbox/processed/` is skipped. A comment is therefore stubbed once
+on first sight and never again — robust to a comment tagged late (an older
+comment newly tagged is stubbed on first sight, then skipped), and needing no
+per-ticket timestamp cursor (which would miss late-tagged older comments) and no
+schema field. The key is written as a non-rendering HTML comment
+(`<!-- atlas-source-comment-id: <id> -->`) on the stub's first line, kept
+**separate** from the verbatim body so body text that itself contains the tag can
+never be mistaken for the key. `<n>` is the next free index for the ticket key,
+computed across both `inbox/` and `inbox/processed/` so indices stay monotonic
+even after `atlas apply` (ATLAS-122) moves a stub to `processed/`. Accepted
+failure modes: a stub manually deleted from `inbox/` before processing is
+re-stubbed on next sight; a verbatim body containing the exact marker line would
+false-dedup (vanishingly unlikely).
 
 ## Anomaly and dwell detection
 

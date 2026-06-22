@@ -79,6 +79,21 @@ class WorkflowState:
     type: str
 
 
+@dataclass(frozen=True)
+class LinearComment:
+    """One issue comment, the only comment shape that crosses the boundary
+    (ATLAS-45). Carries the minimum the follow-up scan needs: the stable ``id``
+    (the dedup key recorded in each inbox stub), the verbatim ``body`` (scanned
+    for the ``atlas:proposed-follow-up`` tag and reproduced into the stub), and
+    ``created_at`` (the ISO string Linear returns, carried for provenance; the
+    scan logic never parses it). Reading comments is the one new capability and
+    it is read-only -- no comment write crosses Atlas -> Linear."""
+
+    id: str
+    body: str
+    created_at: str
+
+
 @runtime_checkable
 class LinearClient(Protocol):
     """The atlas-side Linear boundary: the minimal request/response
@@ -112,6 +127,14 @@ class LinearClient(Protocol):
 
     def fetch_workflow_states(self) -> list[WorkflowState]:
         """The workspace's workflow states, for status-map validation (D7)."""
+        ...
+
+    def fetch_comments(self, issue_id: str) -> list[LinearComment]:
+        """Read an issue's comments for the follow-up scan (Linear -> Atlas;
+        ATLAS-45). Read-only: the PM Engine reads agent-written comments and
+        never writes one back, so this adds no mutation and leaves
+        ``OWNED_LINEAR_INPUT_KEYS`` untouched. Empty list if the issue is
+        absent or has no comments."""
         ...
 
 
@@ -149,6 +172,14 @@ _SET_STATE_MUTATION = (
     f"{{ success issue {{ {_ISSUE_FIELDS} }} }} }}"
 )
 _ISSUE_QUERY = f"query Issue($id: String!) {{ issue(id: $id) {{ {_ISSUE_FIELDS} }} }}"
+# Read-only comment fetch (ATLAS-45). Every comment selection returns the same
+# fragment so the DTO is assembled identically. `first: 250` covers any
+# realistic comment thread, mirroring the workflow-states query's bound.
+_COMMENT_FIELDS = "id body createdAt"
+_COMMENTS_QUERY = (
+    "query IssueComments($id: String!) { "
+    f"issue(id: $id) {{ comments(first: 250) {{ nodes {{ {_COMMENT_FIELDS} }} }} }} }}"
+)
 # `first: 250` covers any realistic workspace; paginating beyond it is an
 # ATLAS-42 concern, not the boundary's.
 _STATES_QUERY = (
@@ -167,6 +198,14 @@ def _issue_from_node(node: Mapping[str, Any]) -> LinearIssue:
         state_id=state["id"] if state else None,
         state_name=state["name"] if state else None,
         state_type=state["type"] if state else None,
+    )
+
+
+def _comment_from_node(node: Mapping[str, Any]) -> LinearComment:
+    return LinearComment(
+        id=node["id"],
+        body=node["body"],
+        created_at=node["createdAt"],
     )
 
 
@@ -250,6 +289,16 @@ class LinearGraphQLClient:
             WorkflowState(id=node["id"], name=node["name"], type=node["type"])
             for node in data["workflowStates"]["nodes"]
         ]
+
+    def fetch_comments(self, issue_id: str) -> list[LinearComment]:
+        # Read-only (ATLAS-45): selects the issue's comment connection and
+        # assembles a DTO per node. A missing issue (or one with no comments)
+        # yields an empty list, never a raise -- the scan simply finds nothing.
+        data = self._execute(_COMMENTS_QUERY, {"id": issue_id})
+        issue = data.get("issue")
+        if not issue:
+            return []
+        return [_comment_from_node(node) for node in issue["comments"]["nodes"]]
 
     def delete_issue(self, issue_id: str) -> bool:
         """Delete (trash) an issue. Not part of the ``LinearClient`` boundary
