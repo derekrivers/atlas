@@ -23,8 +23,10 @@ from typing import Any
 
 import pytest
 from acceptance_metrics import (
+    ANCHOR_COVERAGE_FLOOR,
     CONTENT_COVERAGE_THRESHOLD,
     anchor_coverage,
+    at7_pair_verdict,
     content_coverage,
     enumerate_roadmap_tickets,
     heading_index,
@@ -407,6 +409,32 @@ def test_content_coverage_routes_through_reconciler_similarity(
     assert calls  # the metric routed through the reconciler primitive
 
 
+# --- AT-7 pair verdict: floor gates, content reported (ATLAS-112 RESOLVED) ---
+
+
+def test_at7_pair_floor_gates_and_content_is_reported_not_gated() -> None:
+    # The pair logic the live leg runs, proved deterministically in CI (the
+    # live leg is skipped here). Floor = ANCHOR_COVERAGE_FLOOR (0.50).
+
+    # 1. Sub-floor anchor_coverage FAILS, regardless of content. The wrong
+    #    answer asserts `below.passed`.
+    below = at7_pair_verdict(0.40, 0.99)
+    assert not below.passed
+    assert "40.00%" in below.message and "FAIL" in below.message  # names the figure
+
+    # 2. A LOW content_coverage does NOT fail while anchor clears the floor:
+    #    content is reported, not gated, until the bar is pinned (ATLAS-124).
+    #    The wrong answer — gating content — would assert `not low_content.passed`
+    #    on this 1% content figure; the pair must let it pass.
+    low_content = at7_pair_verdict(0.634, 0.01)
+    assert low_content.passed
+    assert "1.00%" in low_content.message  # surfaced for the record
+    assert "unpinned" in low_content.message  # and explicitly not a gate
+
+    # 3. The floor is inclusive: exactly at the floor passes.
+    assert at7_pair_verdict(ANCHOR_COVERAGE_FLOOR, 0.0).passed
+
+
 # --- AT-7 adjacency classification fix (ATLAS-112 named gap) -----------------
 
 _CLUSTER_ROADMAP = """\
@@ -466,9 +494,13 @@ def test_enumeration_pins_real_roadmap_count() -> None:
     # cycle-time metric needs, reported only as a current-dwell proxy until it
     # lands) + ATLAS-122 (the follow-up CONSUMER seed: plan reads the committed
     # inbox as a separate input source and apply moves processed stubs — the half
-    # the ATLAS-45 producer does not build). Addition couples to the pin, the
-    # mirror of the retirement rule. The pin fires on exactly this kind of change.
-    assert len(tickets) == 106
+    # the ATLAS-45 producer does not build) + ATLAS-123 (the AT-7 pair-metric
+    # encoding: exact-anchor floor live, content_coverage reported — realises
+    # ATLAS-112's RESOLVED decision, the clause ATLAS-107 reused) + ATLAS-124 (the
+    # content-coverage bar-pin follow-up seed, gated on a second staged capture).
+    # Addition couples to the pin, the mirror of the retirement rule. The pin
+    # fires on exactly this kind of change.
+    assert len(tickets) == 108
     keys = [t.key for t in tickets]
     assert len(keys) == len(set(keys))  # unique
     assert "ATLAS-20" not in keys  # retired lines are not tickets
@@ -539,7 +571,15 @@ def test_at1_real_proposal_passes_all_gates(live_plan_run: Any) -> None:
 
 @pytest.mark.skipif(not LIVE, reason=_LIVE_REASON)
 def test_at7_real_proposal_covers_roadmap(live_plan_run: Any) -> None:
+    # AT-7 is the pair (ATLAS-112 RESOLVED, §7.2): the exact-anchor floor
+    # gates; content_coverage is computed and surfaced but NOT asserted — its
+    # bar is unpinned until a second durably-saved capture (ATLAS-124). The
+    # gating logic is `at7_pair_verdict`, the same helper the synthetic CI test
+    # proves both ways.
     proposal = Proposal.model_validate(live_plan_run.plan_run.proposal)
+    roadmap_text = ROADMAP.read_text(encoding="utf-8")
     anchors = {ticket.source_anchor for ticket in proposal.tickets}
-    coverage = anchor_coverage(anchors, ROADMAP.read_text(encoding="utf-8"))
-    assert coverage >= 0.90, f"AT-7 coverage {coverage:.2%} < 90%"
+    anchor_cov = anchor_coverage(anchors, roadmap_text)
+    content_cov = content_coverage(proposal.tickets, roadmap_text).fraction
+    verdict = at7_pair_verdict(anchor_cov, content_cov)
+    assert verdict.passed, verdict.message

@@ -252,14 +252,24 @@ Atlas documents:
 - **AT-6 Key authority.** No key in any applied backlog originates from the
   model; the key counter is monotonic across archives.
 - **AT-7 Reference corpus.** Against the hand-written implementation
-  roadmap, the planner's proposal covers ≥90% of hand-written tickets by
-  anchor match (the roadmap is the evaluation fixture, per ADR-0007).
+  roadmap, the planner's proposal clears the AT-7 coverage bar defined in
+  §7.1–§7.2 — exact-anchor `anchor_coverage` as a strict floor,
+  `content_coverage` as the bar (the historical "≥90% by anchor match" is
+  now the floor, superseded per §7.2) — the roadmap being the evaluation
+  fixture, per ADR-0007.
 
 ## 7.1 AT-7 coverage metric
 
-AT-7's "≥90% of hand-written tickets by anchor match" is measured as
-follows (the single implementation is the acceptance suite's
-`anchor_coverage`, ATLAS-29):
+> **Superseded bar (ATLAS-112, resolved in §7.2).** Every "90%" in this
+> section is the *historical* exact-anchor pass line. The live AT-7 bar is
+> now the **pair** recorded in §7.2: exact-anchor `anchor_coverage` as a
+> strict floor (`ANCHOR_COVERAGE_FLOOR = 0.50`), `content_coverage` as the
+> bar (deferred until pinned). Read every figure below under this note — the
+> 0.90 is retained only to describe how exact-anchor was originally defined,
+> not as a current threshold.
+
+AT-7's exact-anchor metric (the single implementation is the acceptance
+suite's `anchor_coverage`, ATLAS-29) is measured as follows:
 
 - **Hand-written tickets.** A hand-written ticket is a line in
   `docs/atlas/implementation-roadmap.md` matching `^ATLAS-<n> <title>` —
@@ -274,16 +284,20 @@ follows (the single implementation is the acceptance suite's
 - **Match.** A hand-written ticket is covered iff at least one proposed
   ticket's `source_anchor` equals its anchor exactly — no similarity, no
   tolerance.
-- **Coverage.** `covered ÷ total`; AT-7 passes at `≥ 0.90`. Because matching
-  is at the section heading, covering a section with one proposed ticket
-  covers every hand-written ticket in it: the metric measures that the
-  proposal reaches ≥90% of the roadmap's ticket-bearing sections,
-  ticket-weighted.
+- **Coverage.** `covered ÷ total`. The historical exact-anchor pass line was
+  `≥ 0.90`; under the §7.2 resolution that line is now the strict floor
+  (`anchor_coverage >= ANCHOR_COVERAGE_FLOOR = 0.50`), with `content_coverage`
+  the bar. Because matching is at the section heading, covering a section with
+  one proposed ticket covers every hand-written ticket in it: the metric
+  measures what fraction of the roadmap's ticket-bearing sections the proposal
+  reaches, ticket-weighted.
 - **Conservative floor.** Exact-anchor matching can only undercount — a
   correct proposal anchored to an adjacent heading scores as a miss, never
   a false hit — so the reported coverage is a lower bound on true coverage.
-  A future sub-90% result is therefore a planner-quality signal to
-  investigate, not something to resolve by loosening the matcher.
+  A result below the exact-anchor floor (`anchor_coverage < 0.50`), or below
+  the `content_coverage` bar once it is pinned, is therefore a
+  planner-quality signal to investigate, not something to resolve by loosening
+  the matcher.
 
 ## 7.2 AT-7 work-coverage finding (ATLAS-112)
 
@@ -350,14 +364,32 @@ content-coverage spread requires a second saved capture — a free byproduct of
 the next staged run, scored by the same tool — and is not manufactured from a
 single file.
 
-> **Operator decision PENDING (ATLAS-112).** Whether the AT-7 bar becomes
-> content-coverage, stays exact-anchor, or becomes a reported pair
-> (exact-anchor as a strict floor, content-coverage as the bar) is the
-> operator's decision on this evidence — chosen because it measures the right
-> thing, never because it produces a higher number. Until that decision, AT-7
-> above is unchanged: its pass condition remains exact-anchor `anchor_coverage`
-> at ≥ 0.90. ATLAS-107 encodes the chosen metric into the CI acceptance suite;
-> it is downstream of this decision.
+> **Operator decision RESOLVED (ATLAS-112).** The AT-7 bar is a pair:
+> exact-anchor `anchor_coverage` as a strict floor, `content_coverage` as
+> the bar. Content-coverage measures what AT-7 is for — whether the
+> roadmap's work is covered, independent of anchoring convention — and the
+> CONFIRMED finding above shows exact-anchor alone fails work that is
+> present but re-anchored, so it cannot be the sole gate. The exact-anchor
+> floor is kept as a cheap, unambiguous catastrophe catch; both come from
+> the same offline tool. Chosen because it measures the right thing, not
+> because it scores higher.
+>
+> - Exact-anchor floor — `anchor_coverage >= 0.50`, live now. A
+>   catastrophe catch set safely below the observed 63.4%/82.6% range; not
+>   a precision gate, and not to be tuned upward against the metric.
+> - Content-coverage bar — pinned after a second durably-saved capture.
+>   One capture (68.8%) is n=1; a bar is not manufactured from a single
+>   file. The next staged run yields the second capture as a free
+>   byproduct; the bar is then set a recorded margin below the lower of
+>   the two.
+>
+> This supersedes the `anchor_coverage >= 0.90` pass condition in §7.1.
+>
+> The metric is encoded into the acceptance suite by ATLAS-123 (the
+> exact-anchor floor live, `content_coverage` reported-not-gated until
+> pinned); ATLAS-107's staged-path acceptance reuses it. Pinning the
+> `content_coverage` bar — and flipping its leg from reported to gating — is
+> the ATLAS-124 follow-up, gated on the second capture.
 
 ## 8. Non-goals for milestone 1
 

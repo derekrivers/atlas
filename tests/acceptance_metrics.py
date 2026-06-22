@@ -56,6 +56,16 @@ ROADMAP_PATH = "docs/atlas/implementation-roadmap.md"
 # Recorded here and in the spec; never tuned against the metric.
 CONTENT_COVERAGE_THRESHOLD = 0.5
 
+# Exact-anchor floor (ATLAS-112 RESOLVED, spec §7.2). The AT-7 bar is a pair:
+# this exact-anchor floor gates, and content_coverage is reported until a second
+# durably-saved capture pins it (ATLAS-124). Set for correctness as a cheap,
+# unambiguous catastrophe catch, NOT as a precision gate: 0.50 sits safely below
+# the observed 63.4%/82.6% exact-anchor range, so it catches a collapse without
+# penalising the anchoring-convention swing §7.2 documents. Recorded here and in
+# the spec; never tuned upward against the metric. Supersedes the historical
+# anchor_coverage >= 0.90 pass line.
+ANCHOR_COVERAGE_FLOOR = 0.50
+
 _TICKET_RE = re.compile(r"^ATLAS-\d+\s+\S")
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.*?)\s*$")
 _FENCE_RE = re.compile(r"^\s*```")
@@ -306,3 +316,45 @@ def content_coverage(
             )
         )
     return ContentCoverageResult(threshold=threshold, matches=tuple(matches))
+
+
+@dataclass(frozen=True)
+class AT7Verdict:
+    """The AT-7 pair verdict (ATLAS-112 RESOLVED, spec §7.2). The exact-anchor
+    floor gates; content-coverage is computed and surfaced but NOT asserted —
+    its bar is unpinned until a second durably-saved capture (ATLAS-124). One
+    helper so the logic the live leg runs is exactly the logic the synthetic
+    CI test proves (the live leg is skipped in CI)."""
+
+    anchor_coverage: float
+    content_coverage: float
+    floor: float
+    passed: bool
+    message: str
+
+
+def at7_pair_verdict(
+    anchor_cov: float,
+    content_cov: float,
+    *,
+    floor: float = ANCHOR_COVERAGE_FLOOR,
+) -> AT7Verdict:
+    """Apply the AT-7 pair: gate on the exact-anchor ``floor`` and surface
+    ``content_cov`` for the record. ``passed`` is solely ``anchor_cov >=
+    floor`` — content-coverage is reported in the message, never gated, until
+    the bar is pinned (ATLAS-124). The message names the floor figure so a
+    failure says exactly which leg fell and by how much."""
+    passed = anchor_cov >= floor
+    relation = ">=" if passed else "<"
+    message = (
+        f"AT-7 exact-anchor floor: anchor_coverage {anchor_cov:.2%} "
+        f"{relation} floor {floor:.2%} -> {'PASS' if passed else 'FAIL'}; "
+        f"content_coverage {content_cov:.2%} (reported, bar unpinned per §7.2)"
+    )
+    return AT7Verdict(
+        anchor_coverage=anchor_cov,
+        content_coverage=content_cov,
+        floor=floor,
+        passed=passed,
+        message=message,
+    )
