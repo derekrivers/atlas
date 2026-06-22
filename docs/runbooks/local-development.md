@@ -1,3 +1,152 @@
 # Local Development
 
-Runbook for local Atlas development.
+Runbook for working on Atlas locally: installing the toolchain, running the
+test suite, and reproducing every CI gate before you push. The guiding
+principle is that **the local gates and CI run the same commands** — nothing in
+CI is unavailable to you locally, so a clean local sweep predicts a clean CI
+run.
+
+## Toolchain
+
+Atlas uses [`uv`](https://docs.astral.sh/uv/) for environment and dependency
+management and targets Python >= 3.11. Install `uv`, then sync the locked
+environment from the repository root:
+
+```bash
+uv sync --locked
+```
+
+`--locked` installs exactly what `uv.lock` pins — the same resolution CI uses.
+Every command below runs through `uv run`, which executes inside that
+environment; there is no virtualenv to activate by hand.
+
+## The gates
+
+CI runs five independent jobs, each after `uv sync --locked`. To reproduce CI
+locally, run all five:
+
+```bash
+uv run pytest                              # tests
+uv run ruff check .                        # lint
+uv run ruff format --check .               # formatting
+uv run mypy atlas tests                    # type-checking
+uv run python -m atlas.tools.doc_linter    # documentation rules
+uv run lint-imports                        # architecture (import-linter)
+```
+
+A green sweep of these is the bar for a pushable branch. Two of them encode
+Atlas governance rather than ordinary correctness:
+
+- **`doc_linter`** enforces the documentation contract — every canonical doc is
+  registered in `docs/MANIFEST.md`, every referenced path and relative `.md`
+  link resolves, ADRs match their model, and `docs/planning/` holds only
+  machine-written renders. Hand-edited drift fails here.
+- **`lint-imports`** makes the layer spine executable. Layers run high to low —
+  `atlas.cli`, `atlas.planning`, `atlas.pm`, `atlas.dependencies`,
+  `atlas.storage`, `atlas.linear`, `atlas.core` — and a lower layer importing a
+  higher one is a hard failure. The canonical order is mirrored in
+  `ARCHITECTURE.md`; the two must change together.
+
+## pre-commit
+
+The pre-commit hooks run the same checks as the gates **except `pytest`**:
+ruff-check, ruff-format, mypy, doc-linter, and import-linter. Install once, then
+let them run on each commit, or run the whole set on demand:
+
+```bash
+uv run pre-commit install            # wire into git commit
+uv run pre-commit run --all-files    # run every hook now
+```
+
+`pytest` is deliberately not a pre-commit hook — it is too slow for every
+commit — so run `uv run pytest` yourself before pushing.
+
+## Running tests
+
+```bash
+uv run pytest                                # the whole suite
+uv run pytest tests/test_pm_follow_ups.py    # one file
+uv run pytest -k follow_ups                  # by keyword
+uv run pytest -k follow_ups -v               # verbose
+```
+
+`testpaths` is set to `tests/`, so a bare `uv run pytest` always means the full
+suite.
+
+## The shape of the suite
+
+- **Unit and contract tests** (`tests/test_*.py`) are the bulk. Boundary
+  contracts — for example, that the real Linear client and its in-memory fake
+  satisfy the *same* behaviour — are pinned by shared contract runners, so the
+  fake can never silently drift from the client it stands in for.
+- **Property tests** use [Hypothesis] over generated inputs
+  (`tests/model_strategies.py`) to check model invariants beyond hand-picked
+  cases.
+- **Acceptance tests** (`tests/test_acceptance.py`) pin milestone facts,
+  including the hand-verified roadmap ticket count (the *enumeration pin*) and
+  the AT-1..AT-7 acceptance criteria. Adding or removing a ticket line means
+  updating the pin in the same commit.
+- **Executable governance** (`tests/test_import_linter_contract.py`,
+  `tests/test_doc_linter*.py`) tests the gate tooling itself, so the rules above
+  cannot rot unnoticed.
+- **Fakes and fixtures** (`tests/linear_fakes.py`, `tests/planner_fakes.py`,
+  `tests/proposal_fixtures.py`, `tests/model_strategies.py`) are how you write a
+  test against a boundary without touching the network — prefer them to any real
+  call.
+
+### Hypothesis profiles
+
+Hypothesis is **derandomised by default** (the `atlas` profile: a fixed seed, 50
+examples), so milestone properties are reproducible by construction — a flaky
+milestone test is worse than none. For deliberate, deeper exploration, switch to
+the randomised profile:
+
+```bash
+HYPOTHESIS_PROFILE=explore uv run pytest   # randomised, 200 examples
+```
+
+## Live tests (operator-run)
+
+A handful of tests exercise the **real Linear API** — creating, reading, and
+deleting throwaway issues; reading comments; moving workflow state. They are
+**skipped in CI and skipped by default locally**, running only when you opt in
+through environment variables. This is the [ADR-0008] evidence discipline in
+practice: a deterministic ticket is complete on CI green, but a ticket that
+mutates or reads real Linear needs operator-run, system-tier evidence that CI
+cannot produce.
+
+The base opt-in is three variables; individual live tests require one or two
+more pointing at real workspace objects:
+
+```bash
+export ATLAS_LIVE_TESTS=1
+export LINEAR_API_KEY='lin_api_...'
+export LINEAR_TEAM_ID='...'
+# test-specific, for example:
+export LINEAR_FOLLOW_UP_ISSUE_ID='...'      # an issue carrying a tagged comment
+export LINEAR_NEEDS_HUMAN_STATE_ID='...'    # the needs-human workflow state id
+
+uv run pytest tests/test_linear_client.py -k live -v
+```
+
+Two cautions:
+
+- **They mutate the live workspace.** Run them against a throwaway issue or a
+  sandbox workspace, never production tickets, and clean up anything they leave
+  behind (for instance an inbox stub written to your working tree — do not
+  commit it).
+- **`LINEAR_*_ID` values are the API ids (UUIDs)**, not the human `ATL-123`
+  identifiers. An issue-not-found error is usually that mix-up.
+
+## Before you push
+
+A branch is pushable when, from a clean `uv sync --locked`:
+
+1. `uv run pytest` is green;
+2. `uv run pre-commit run --all-files` passes (ruff, mypy, doc-linter,
+   import-linter); and
+3. for any change that reads or writes real Linear, the relevant live test has
+   been run by hand and its result recorded on the PR ([ADR-0008]).
+
+[Hypothesis]: https://hypothesis.readthedocs.io/
+[ADR-0008]: ../decisions/0008-ci-sourced-evidence-with-trust-tiers.md

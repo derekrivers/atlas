@@ -119,8 +119,10 @@ Runbooks (`docs/runbooks/`):
 - `docs/runbooks/running-atlas-plan.md` — operator runbook for the
   plan/apply workflow: prerequisites, the commands and their exit
   codes, every failure mode, the capacity boundary, and provenance
-- Stubs awaiting content: `docs/runbooks/local-development.md`,
-  `docs/runbooks/troubleshooting.md`
+- `docs/runbooks/local-development.md` — toolchain, running the test
+  suite, reproducing the CI gates, pre-commit, the shape of the suite,
+  and the operator-run live tests
+- Stubs awaiting content: `docs/runbooks/troubleshooting.md`
 
 Phase closure reports (`docs/closure/`):
 

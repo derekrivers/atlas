@@ -12,6 +12,7 @@ Start here:
 - `ROADMAP.md` — roadmap pointer
 - `WORKFLOW.md` — delivery workflow
 - `AGENTS.md` — instructions for AI coding agents
+- `docs/runbooks/local-development.md` — toolchain, running the tests, and the CI gates
 
 Canonical deep docs live in `docs/atlas/` and `docs/architecture/`.
 Governing decisions live in `docs/decisions/`.
