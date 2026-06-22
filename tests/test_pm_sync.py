@@ -36,6 +36,7 @@ Deterministic: the in-memory fake, no network, no secrets.
 
 from __future__ import annotations
 
+import tempfile
 from collections.abc import Mapping
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -191,13 +192,24 @@ def seed_ticket(
     return ticket
 
 
-def run(db: Database, client: RecordingClient, *, now: datetime = NOW) -> SyncResult:
+def run(
+    db: Database,
+    client: RecordingClient,
+    *,
+    now: datetime = NOW,
+    inbox_dir: Path | None = None,
+) -> SyncResult:
+    # The follow-up scan (step 4, ATLAS-45) needs an inbox dir; these sync tests
+    # seed no comments, so it writes nothing. A throwaway temp dir per call keeps
+    # them isolated. The follow-up behaviour itself is covered in
+    # tests/test_pm_follow_ups.py.
     return sync_tick(
         tickets=TicketRepo(db),
         db=db,
         client=client,
         status_map=status_map(),
         team_id=TEAM_ID,
+        inbox_dir=inbox_dir or Path(tempfile.mkdtemp()),
         now=now,
     )
 

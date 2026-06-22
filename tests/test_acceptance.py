@@ -464,9 +464,11 @@ def test_enumeration_pins_real_roadmap_count() -> None:
     # anomaly mechanisms split out of ATLAS-118) + ATLAS-121 (the
     # state-transition-history seed: the data-model prerequisite ATLAS-47's true
     # cycle-time metric needs, reported only as a current-dwell proxy until it
-    # lands). Addition couples to the pin, the mirror of the retirement rule.
-    # The pin fires on exactly this kind of change.
-    assert len(tickets) == 105
+    # lands) + ATLAS-122 (the follow-up CONSUMER seed: plan reads the committed
+    # inbox as a separate input source and apply moves processed stubs — the half
+    # the ATLAS-45 producer does not build). Addition couples to the pin, the
+    # mirror of the retirement rule. The pin fires on exactly this kind of change.
+    assert len(tickets) == 106
     keys = [t.key for t in tickets]
     assert len(keys) == len(set(keys))  # unique
     assert "ATLAS-20" not in keys  # retired lines are not tickets

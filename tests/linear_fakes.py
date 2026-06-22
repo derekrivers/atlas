@@ -14,6 +14,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from atlas.linear.client import (
+    LinearComment,
     LinearIssue,
     WorkflowState,
     reject_unowned_keys,
@@ -39,7 +40,9 @@ class InMemoryLinearClient:
 
     def __init__(self, workflow_states: list[WorkflowState] | None = None) -> None:
         self._issues: dict[str, LinearIssue] = {}
+        self._comments: dict[str, list[LinearComment]] = {}
         self._counter = 0
+        self._comment_counter = 0
         self._states = (
             list(workflow_states)
             if workflow_states is not None
@@ -81,6 +84,12 @@ class InMemoryLinearClient:
     def fetch_workflow_states(self) -> list[WorkflowState]:
         return list(self._states)
 
+    def fetch_comments(self, issue_id: str) -> list[LinearComment]:
+        """Read-only comment fetch (ATLAS-45), mirroring the real client: an
+        unknown issue (or one with no comments) yields an empty list, never a
+        raise."""
+        return list(self._comments.get(issue_id, []))
+
     def set_state(self, issue_id: str, state_id: str) -> LinearIssue:
         """The sanctioned state write (Atlas -> Linear; ATLAS-43), mirroring the
         real client. Takes a bare state id; resolves name/type from the known
@@ -98,7 +107,25 @@ class InMemoryLinearClient:
         self._issues[issue_id] = updated
         return updated
 
-    # --- test-only helper (not part of LinearClient) -----------------------
+    # --- test-only helpers (not part of LinearClient) -----------------------
+    def seed_comment(
+        self, issue_id: str, body: str, *, comment_id: str | None = None
+    ) -> LinearComment:
+        """Attach a comment to an issue so the follow-up scan (ATLAS-45) can read
+        it back via ``fetch_comments``. Mints a sequential id when none is given
+        and a deterministic ``created_at`` (no wall clock), so tests stay
+        reproducible. Returns the stored comment."""
+        if comment_id is None:
+            self._comment_counter += 1
+            comment_id = f"comment-{self._comment_counter}"
+        comment = LinearComment(
+            id=comment_id,
+            body=body,
+            created_at="2026-01-01T00:00:00.000Z",
+        )
+        self._comments.setdefault(issue_id, []).append(comment)
+        return comment
+
     def simulate_linear_state(self, issue_id: str, state: WorkflowState) -> None:
         """Simulate a Linear-side status change to ``state`` (distinct from the
         protocol ``set_state``, which takes only a state id)."""

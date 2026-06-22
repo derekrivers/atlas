@@ -58,11 +58,26 @@ class _Emulator:
 
     def __init__(self) -> None:
         self.issues: dict[str, dict[str, Any]] = {}
+        self.comments: dict[str, list[dict[str, Any]]] = {}
         self.counter = 0
+        self.comment_counter = 0
         self.states = [
             {"id": "state-unstarted", "name": "Todo", "type": "unstarted"},
             {"id": "state-ready", "name": "Ready for Agent", "type": "unstarted"},
         ]
+
+    def add_comment(
+        self, issue_id: str, body: str, *, comment_id: str | None = None
+    ) -> None:
+        """Seed a comment so the real client's read-only fetch_comments
+        (ATLAS-45) can read it back. Mints a sequential id and a deterministic
+        createdAt when not given, mirroring the in-memory fake's seed_comment."""
+        if comment_id is None:
+            self.comment_counter += 1
+            comment_id = f"comment-{self.comment_counter}"
+        self.comments.setdefault(issue_id, []).append(
+            {"id": comment_id, "body": body, "createdAt": "2026-01-01T00:00:00.000Z"}
+        )
 
     def handle(self, request: Any) -> dict[str, Any]:
         body = json.loads(request.data.decode())
@@ -93,6 +108,15 @@ class _Emulator:
             return {"data": {"issueUpdate": {"success": True, "issue": issue}}}
         if "workflowStates" in query:
             return {"data": {"workflowStates": {"nodes": self.states}}}
+        if "comments" in query:
+            # The read-only comment fetch (ATLAS-45). Its document selects
+            # `issue(id) { comments { nodes } }`, so it contains `issue(` too --
+            # handle it BEFORE the bare issue query below. A missing issue yields
+            # `issue: null` (the client maps that to an empty list).
+            if variables["id"] not in self.issues:
+                return {"data": {"issue": None}}
+            nodes = self.comments.get(variables["id"], [])
+            return {"data": {"issue": {"comments": {"nodes": nodes}}}}
         if "issue(" in query:
             return {"data": {"issue": self.issues.get(variables["id"])}}
         raise AssertionError(f"unhandled query: {query}")
@@ -150,6 +174,11 @@ def _run_contract(client: LinearClient, *, team_id: str) -> None:
     assert after_move is not None
     assert after_move.state_id == "state-ready"
 
+    # fetch_comments is read-only (ATLAS-45): an issue with no comments and a
+    # nonexistent issue both yield an empty list, never a raise.
+    assert client.fetch_comments(created.id) == []
+    assert client.fetch_comments("nonexistent") == []
+
 
 @pytest.fixture(params=["fake", "stub-real"])
 def contract_client(
@@ -166,6 +195,43 @@ def contract_client(
 
 def test_clients_satisfy_the_same_contract(contract_client: LinearClient) -> None:
     _run_contract(contract_client, team_id="team-1")
+
+
+# A (client, seed) pair so the read-only fetch_comments data path is held to the
+# same contract across the fake and the stubbed real client -- each backs its own
+# comment store, and the seeder writes into it (the real client has no comment
+# write, so the test seeds Linear-side, mirroring an agent's comment).
+@pytest.fixture(params=["fake", "stub-real"])
+def commentable_client(
+    request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch
+) -> tuple[LinearClient, Any]:
+    if request.param == "fake":
+        fake = InMemoryLinearClient()
+        return fake, fake.seed_comment
+    emulator = _Emulator()
+    monkeypatch.setattr(
+        "atlas.linear.client.urllib_request.urlopen", _stub_urlopen(emulator)
+    )
+    real = LinearGraphQLClient(api_key="sk-test", team_id="team-1")
+    return real, emulator.add_comment
+
+
+def test_fetch_comments_reads_tagged_and_untagged(
+    commentable_client: tuple[LinearClient, Any],
+) -> None:
+    client, seed = commentable_client
+    created = client.create_issue({"title": "C", "description": "d"}, team_id="team-1")
+    assert client.fetch_comments(created.id) == []  # none yet
+
+    seed(created.id, "please atlas:proposed-follow-up split this out", comment_id="c-1")
+    seed(created.id, "just an ordinary review note")
+
+    comments = client.fetch_comments(created.id)
+    assert len(comments) == 2
+    assert comments[0].id == "c-1"
+    assert "atlas:proposed-follow-up" in comments[0].body
+    assert "atlas:proposed-follow-up" not in comments[1].body
+    assert all(comment.created_at for comment in comments)  # provenance carried
 
 
 # --- real-client specifics --------------------------------------------------
@@ -298,6 +364,37 @@ def test_live_smoke() -> None:  # pragma: no cover - operator-run only
         assert states
     finally:
         client.delete_issue(created.id)
+
+
+# --- ATLAS-45 follow-up read live gate (operator-run) ------------------------
+#
+# 45 reads real Linear (fetch_comments), so it is NOT a CI-only completion. This
+# operator-run smoke (ADR-0008) pins the load-bearing primitive: a real comment
+# tagged atlas:proposed-follow-up on a workspace issue is read back through the
+# read-only fetch_comments. The operator places the tagged comment on an issue
+# and exports its id in LINEAR_FOLLOW_UP_ISSUE_ID; the runbook step that drives
+# sync_tick to turn that comment into one inbox stub is the PR evidence. Skipped
+# (and never run in CI) otherwise.
+_LIVE_FOLLOW_UP_READY = _LIVE_READY and bool(
+    os.environ.get("LINEAR_FOLLOW_UP_ISSUE_ID")
+)
+
+
+@pytest.mark.skipif(
+    not _LIVE_FOLLOW_UP_READY,
+    reason=(
+        "live follow-up read test; set ATLAS_LIVE_TESTS=1, LINEAR_API_KEY, "
+        "LINEAR_TEAM_ID and LINEAR_FOLLOW_UP_ISSUE_ID (an issue carrying a real "
+        "atlas:proposed-follow-up comment) to run by hand"
+    ),
+)
+def test_live_fetch_comments_reads_tagged_comment() -> None:  # pragma: no cover
+    client = LinearGraphQLClient()
+    issue_id = os.environ["LINEAR_FOLLOW_UP_ISSUE_ID"]
+    comments = client.fetch_comments(issue_id)
+    assert comments, "expected at least one comment on the configured issue"
+    assert any("atlas:proposed-follow-up" in comment.body for comment in comments)
+    assert all(comment.id and comment.created_at for comment in comments)
 
 
 # --- ATLAS-120 review-cycling live route gate (operator-run) -----------------

@@ -193,7 +193,12 @@ ATLAS-42 Ticket synchronisation
 ATLAS-43 Ready state detection
 ATLAS-44 Blocked state detection
 ATLAS-45 Follow-up ticket generation (as plan proposals, not direct
-         writes)
+         writes) — the PRODUCER, step 4 of the sync loop: scan a synced
+         ticket's comments for the atlas:proposed-follow-up tag (read-only
+         LinearClient.fetch_comments) and write one inbox stub per tagged
+         comment to docs/planning/inbox/<ticket-key>-<n>.md, deduped by the
+         source comment id. Creates no ticket, writes no Atlas/Linear state,
+         does not commit the stubs. The consumer is ATLAS-122
 ATLAS-46 Roadmap synchronisation
 ATLAS-116 Delivery-anomaly model (DebtItem, append-only, one row per
          observation) and recurrence predicate
@@ -219,6 +224,14 @@ ATLAS-121 State-transition history for true cycle time: an append-only
          historical per-state cycle time; until it lands, ATLAS-47 reports
          only the current-dwell proxy, never historical cycle time. Owner:
          PM Engine (Phase 4).
+ATLAS-122 Follow-up consumer integration: the CONSUMER half of follow-up
+         ingestion, paired with the ATLAS-45 producer. atlas plan reads the
+         committed docs/planning/inbox/ as a separate plan input source (its
+         own input document set, distinct from the operator's hand-authored
+         input docs), and atlas apply moves applied or rejected stubs to
+         docs/planning/inbox/processed/. The operator commits the inbox (the
+         human-steered gate); follow-ups enter the backlog only through
+         plan/apply (ADR-0007), never as direct ticket creation.
 ATLAS-50 PM scheduler
 
 Retired: ATLAS-48 (PM dashboard), ATLAS-49 (PM API).

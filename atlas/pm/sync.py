@@ -1,10 +1,21 @@
-"""PM-Engine ticket synchronisation (ATLAS-42, extended by ATLAS-118/-119/-120).
+"""PM-Engine ticket synchronisation (ATLAS-42, extended by ATLAS-45/-118/-119/-120).
 
 One idempotent sync pass (:func:`sync_tick`) wiring the ATLAS-41 boundary
-primitives into steps 1-3+5 of the ``pm-engine-and-linear-sync.md`` "Sync loop":
+primitives into steps 1-5 of the ``pm-engine-and-linear-sync.md`` "Sync loop":
 pull status Linear -> Atlas, push owned definitions Atlas -> Linear, promote
 dependency-ready tickets to ``Ready for Agent`` (:mod:`atlas.pm.promotion`),
-and *nothing else crossing*. Step 1's "log anomalies otherwise" clause is
+scan tagged comments into inbox proposal stubs, and *nothing else crossing*.
+Step 4 (ATLAS-45) is the follow-up scan: per synced ticket, read its Linear
+comments (the read-only :meth:`LinearClient.fetch_comments`) and write one inbox
+stub per comment tagged ``atlas:proposed-follow-up`` to
+``docs/planning/inbox/<ticket-key>-<n>.md`` (see :func:`_scan_follow_ups`). It is
+the PRODUCER only -- it surfaces follow-ups as working-tree stubs and stops;
+the operator commits the inbox, and the consumer side (``atlas plan`` reading the
+committed inbox as a separate input source, ``atlas apply`` moving processed
+stubs) is ATLAS-122. The inbox stub is the ONE sanctioned ``docs/planning/``
+write (ADR-0007), atomic and machine-written like ``atlas apply``'s renders; no
+ticket is created and no Atlas/Linear state is written on the scan path. Step 1's
+"log anomalies otherwise" clause is
 ATLAS-118: an unmapped Linear state appends one ``OUT_OF_OWNERSHIP_TRANSITION``
 ``DebtItem`` per *transition* (see :func:`_pull` and the transition signal
 ``Ticket.last_observed_linear_state_id``). Step 5 has two clauses. Dwell-breach
@@ -17,8 +28,9 @@ round trips is routed to ``Needs Human`` via the sanctioned
 :meth:`LinearClient.set_state` and one ``REVIEW_CYCLE`` ``DebtItem`` is appended
 as the deterministic failure-analysis note (see :func:`_detect_review_cycle`).
 This is the ONE anomaly that both logs AND moves a ticket — everywhere else the
-two are separate. The remaining work — step 4's follow-up scan (ATLAS-45) and
-the recurring scheduler (ATLAS-50) — is deliberately NOT here.
+two are separate. The remaining work — the recurring scheduler (ATLAS-50) and the
+follow-up CONSUMER (ATLAS-122: plan reads the committed inbox, apply moves
+processed stubs) — is deliberately NOT here.
 
 Directionality is structural, not conventional. The pull reads only the
 issue's state id (:func:`status_from_issue`) and writes only ``status``; the
@@ -48,8 +60,11 @@ with no network and no secrets.
 from __future__ import annotations
 
 import logging
+import os
+import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from pathlib import Path
 from uuid import uuid4
 
 from atlas.core.enums import ActorType
@@ -106,6 +121,29 @@ CYCLING_STATES: frozenset[TicketStatus] = frozenset(
 
 logger = logging.getLogger("atlas.pm.sync")
 
+# Follow-up scan (ATLAS-45; pm-engine-and-linear-sync.md "Follow-up ingestion").
+# A comment whose body CONTAINS this tag is an agent-proposed follow-up; the scan
+# writes one inbox stub per such comment. Substring match (D3) — the tag may sit
+# anywhere in the body.
+FOLLOW_UP_TAG = "atlas:proposed-follow-up"
+
+# The dedup key. Each stub's first line is a non-rendering HTML comment carrying
+# its source comment id, kept SEPARATE from the verbatim body so a body that
+# itself contains ``FOLLOW_UP_TAG`` can never be mistaken for the key. A comment
+# whose id already appears in any stub under inbox/ or inbox/processed/ is skipped
+# (stubbed once on first sight, then never again) — robust to a comment tagged
+# late, and needing no per-ticket cursor or schema field. Failure modes
+# (acceptable): a stub manually deleted from inbox/ before processing is
+# re-stubbed; a verbatim body containing this exact marker line would false-dedup
+# (vanishingly unlikely).
+_SOURCE_COMMENT_MARKER = "atlas-source-comment-id"
+_MARKER_RE = re.compile(rf"<!-- {_SOURCE_COMMENT_MARKER}: (?P<id>.+?) -->")
+
+# The committed-inbox subdirectory ``atlas apply`` (ATLAS-122) moves processed
+# stubs into. The scan reads it only to keep the dedup key set and the per-ticket
+# index monotonic — it never writes there.
+_PROCESSED_SUBDIR = "processed"
+
 # "Frozen once In Progress" (pm-engine-and-linear-sync.md "Field ownership"):
 # definitions are pushed only while the ticket is pre-dispatch or Ready for
 # Agent. Every status from in_progress onward (pr_open, review_required,
@@ -135,7 +173,10 @@ class SyncResult:
     counts every ``set_state`` route this tick (the route fires idempotently
     each tick until the pull reconciles the ticket, so a not-yet-reconciled
     ticket increments it every tick), while ``review_cycles_logged`` counts only
-    the deduped ``REVIEW_CYCLE`` rows appended — one per ``pr_open`` episode."""
+    the deduped ``REVIEW_CYCLE`` rows appended — one per ``pr_open`` episode.
+    ``follow_ups_stubbed`` (ATLAS-45) counts the inbox stubs written this tick —
+    one per newly-seen tagged comment, so a tagged comment already stubbed under
+    inbox/ or inbox/processed/ increments it zero, not once per tick."""
 
     status_pulled: int = 0
     status_unchanged: int = 0
@@ -145,6 +186,7 @@ class SyncResult:
     pushed_updated: int = 0
     push_skipped: int = 0
     promoted: int = 0
+    follow_ups_stubbed: int = 0
     dwell_breaches: int = 0
     routed_to_human: int = 0
     review_cycles_logged: int = 0
@@ -343,6 +385,119 @@ def _detect_review_cycle(
     )
 
 
+def _stub_index(stem: str) -> tuple[str, int] | None:
+    """Parse an inbox stub stem ``<ticket-key>-<n>`` into ``(key, n)``. The key
+    itself contains hyphens (``ATLAS-200``), so the index is the trailing all-
+    digit segment: ``ATLAS-200-1`` -> ``("ATLAS-200", 1)``. A stem without a
+    numeric tail (not one of our stubs) returns ``None``."""
+
+    key, sep, tail = stem.rpartition("-")
+    if sep and tail.isdigit():
+        return key, int(tail)
+    return None
+
+
+def _inbox_state(inbox_dir: Path) -> tuple[set[str], dict[str, int]]:
+    """Read the existing inbox once per tick for the dedup. Returns the set of
+    source comment ids already stubbed (the dedup keys, scanned from the marker
+    line of every stub under inbox/ AND inbox/processed/) and the highest index
+    used per ticket key across BOTH directories — so a re-issued index stays
+    monotonic even after ``atlas apply`` (ATLAS-122) moves a stub to processed/.
+    A missing inbox (nothing produced yet) yields empties."""
+
+    seen_ids: set[str] = set()
+    max_index: dict[str, int] = {}
+    for directory in (inbox_dir, inbox_dir / _PROCESSED_SUBDIR):
+        if not directory.is_dir():
+            continue
+        for path in sorted(directory.glob("*.md")):
+            parsed = _stub_index(path.stem)
+            if parsed is not None:
+                key, index = parsed
+                max_index[key] = max(max_index.get(key, 0), index)
+            match = _MARKER_RE.search(path.read_text(encoding="utf-8"))
+            if match is not None:
+                seen_ids.add(match.group("id"))
+    return seen_ids, max_index
+
+
+def _stub_content(ticket: Ticket, comment_id: str, body: str) -> str:
+    """The inbox stub: the dedup marker (a non-rendering HTML comment, kept
+    separate from the body), a title, the honest source reference (the ticket key
+    and the Linear issue id — no fabricated URL, A3), the source comment id, and
+    the verbatim comment body."""
+
+    return (
+        f"<!-- {_SOURCE_COMMENT_MARKER}: {comment_id} -->\n"
+        f"# Follow-up from {ticket.key}\n"
+        "\n"
+        f"Source issue: {ticket.key} (Linear issue {ticket.external_linear_id})\n"
+        f"Source comment: {comment_id}\n"
+        "\n"
+        f"{body}\n"
+    )
+
+
+def _write_stub(
+    inbox_dir: Path, ticket: Ticket, comment_id: str, body: str, index: int
+) -> None:
+    """Write one inbox stub atomically (temp + ``os.replace``), mirroring
+    ``atlas apply``'s render writes. This is the ONE sanctioned ``docs/planning/``
+    write (ADR-0007) — the inbox's machine writer — and it writes ONLY under
+    inbox/, never elsewhere in docs/planning/. The operator commits it."""
+
+    inbox_dir.mkdir(parents=True, exist_ok=True)
+    final = inbox_dir / f"{ticket.key}-{index}.md"
+    temp = inbox_dir / f"{final.name}.tmp-{uuid4()}"
+    temp.write_text(_stub_content(ticket, comment_id, body), encoding="utf-8")
+    os.replace(temp, final)
+
+
+def _scan_follow_ups(
+    ticket: Ticket,
+    client: LinearClient,
+    inbox_dir: Path,
+    seen_ids: set[str],
+    max_index: dict[str, int],
+    result: SyncResult,
+) -> None:
+    """Step 4 (ATLAS-45): read ``ticket``'s Linear comments and write one inbox
+    stub per comment tagged ``atlas:proposed-follow-up`` that has not been stubbed
+    before. PRODUCER only — it creates no ticket and writes no Atlas/Linear state;
+    follow-ups enter the backlog solely through plan/apply (ADR-0007), and the
+    consumer side is ATLAS-122.
+
+    Skips, in order: a ticket with no Linear join (nothing to read) and a terminal
+    ticket (closed work is not polled — mirroring :func:`_pull`). Then per comment:
+    skip an untagged body and a comment id already stubbed (the dedup; the wrong
+    answer re-stubs it every tick). A newly-seen tagged comment is written at the
+    next free index for the ticket key, and ``seen_ids``/``max_index`` are advanced
+    so a second tagged comment this same tick lands at the next index without a
+    re-read."""
+
+    if ticket.external_linear_id is None:
+        return  # not joined to a Linear issue; no comments to scan
+    if ticket.status.value in TERMINAL_STATUSES:
+        return  # terminal work is closed; do not poll it (mirrors _pull)
+    for comment in client.fetch_comments(ticket.external_linear_id):
+        if FOLLOW_UP_TAG not in comment.body:
+            continue  # not a proposed follow-up
+        if comment.id in seen_ids:
+            continue  # already stubbed (inbox/ or processed/); dedup holds
+        index = max_index.get(ticket.key, 0) + 1
+        _write_stub(inbox_dir, ticket, comment.id, comment.body, index)
+        seen_ids.add(comment.id)
+        max_index[ticket.key] = index
+        result.follow_ups_stubbed += 1
+        logger.info(
+            "linear-sync: follow-up stub %s-%d written for %s (comment %s)",
+            ticket.key,
+            index,
+            ticket.key,
+            comment.id,
+        )
+
+
 def _pull(
     ticket: Ticket,
     tickets: TicketRepo,
@@ -460,9 +615,10 @@ def sync_tick(
     client: LinearClient,
     status_map: LinearStatusMap,
     team_id: str,
+    inbox_dir: Path,
     now: datetime,
 ) -> SyncResult:
-    """Run one idempotent sync pass over every ticket (steps 1-3).
+    """Run one idempotent sync pass over every ticket (steps 1-5).
 
     Per ticket: pull a mapped status (Linear -> Atlas) — logging an
     out-of-ownership ``DebtItem`` (ATLAS-118) on a transition into an unmapped
@@ -477,6 +633,17 @@ def sync_tick(
     so it reflects pulled statuses and any issue step 2 just created; the
     promotion is Linear-only, so the next tick's pull reconciles Atlas (keeping
     the pull the single Atlas-status writer).
+
+    Then step 4 (ATLAS-45): scan each synced, non-terminal ticket's Linear
+    comments and write one inbox stub per comment tagged
+    ``atlas:proposed-follow-up`` to ``<inbox_dir>/<ticket-key>-<n>.md``
+    (:func:`_scan_follow_ups`). PRODUCER only — it surfaces follow-ups as
+    working-tree stubs (the ONE sanctioned ``docs/planning/`` write, atomic;
+    ADR-0007), creating no ticket and writing no Atlas/Linear state; the operator
+    commits the inbox and the consumer side is ATLAS-122. The inbox is read once
+    up front (:func:`_inbox_state`) for the dedup key set and the per-ticket index,
+    so a tagged comment already stubbed (in inbox/ or inbox/processed/) is written
+    once, not once per tick.
 
     Then step 5: a final pass re-reads the tickets and runs both clauses per
     ticket. Dwell-breach (ATLAS-119): append one ``DWELL_BREACH`` DebtItem per
@@ -506,6 +673,14 @@ def sync_tick(
     result.promoted = promote_ready(
         tickets=tickets, graph=graph, client=client, status_map=status_map
     )
+    # Step 4 (ATLAS-45): the follow-up comment scan, after promotion and before
+    # the step-5 anomaly passes (the loop order). The inbox is read once up front
+    # for the dedup key set and per-ticket index; each newly-seen tagged comment
+    # is written as one atomic inbox stub. Read-only on Linear (fetch_comments);
+    # the only write is the stub under inbox/.
+    seen_ids, max_index = _inbox_state(inbox_dir)
+    for ticket in tickets.list():
+        _scan_follow_ups(ticket, client, inbox_dir, seen_ids, max_index, result)
     # Step 5: a sibling pass after promotion, re-reading tickets so it sees this
     # tick's pulled statuses and freshly stamped ``status_entered_at`` (promotion
     # writes Linear only, so it does not perturb Atlas status). Dwell-breach
