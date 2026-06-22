@@ -27,6 +27,15 @@ overlays — and writes NO file; it is NOT the canonical docs/planning/roadmap.m
 directly via the ATLAS-32 setter (no graph). `deps` exit codes: 0 success; 2
 precondition (an invalid graph, an unknown key, or a rejected effort). Every
 deps subcommand takes `--db` and `--json`.
+
+`pm report` (ATLAS-47) is the read side of the Phase 4 PM Engine: a PURE READER
+that renders the five `pm-engine-and-linear-sync.md` "Delivery metrics" —
+throughput, current dwell per state (the cycle-time proxy), ready-queue depth,
+anomaly counts, and dwell breaches — as markdown, or as structured JSON with
+`--json`. It computes everything from stored tickets and DebtItems
+(`atlas.pm.build_delivery_report`); it makes no Linear call and writes nothing,
+so it runs with no network and no secrets. `datetime.now(UTC)` is read only at
+this boundary and passed into the pure builder. `pm` exit codes: 0 success.
 """
 
 from __future__ import annotations
@@ -80,8 +89,10 @@ from atlas.planning.pipeline import (
 )
 from atlas.planning.reconciler import DEFAULT_SIMILARITY_THRESHOLD, PlanDiff
 from atlas.planning.staged import StagedProposalGenerator, TemplateStagedGenerator
+from atlas.pm import build_delivery_report, render_markdown, report_json
 from atlas.storage import (
     Database,
+    DebtItemRepo,
     EffortValidationError,
     TicketNotFoundError,
     TicketRepo,
@@ -140,6 +151,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="repository root to apply against (default: current directory)",
     )
     _add_deps_parser(subcommands)
+    _add_pm_parser(subcommands)
     return parser
 
 
@@ -198,6 +210,31 @@ def _add_deps_parser(subcommands: argparse._SubParsersAction) -> None:  # type: 
     )
     effort_parser.add_argument(
         "--clear", action="store_true", help="clear the estimate (set null)"
+    )
+
+
+def _add_pm_parser(subcommands: argparse._SubParsersAction) -> None:  # type: ignore[type-arg]
+    """The `atlas pm` group (ATLAS-47) and its sub-subcommands. Mirrors the
+    `deps` shape: its own nested subparsers (dest="pm_command", required=True),
+    each carrying `--db` and `--json`. `report` is the only one in v1 — a pure
+    reader of the delivery metrics."""
+    pm = subcommands.add_parser(
+        "pm",
+        help="PM Engine read surface: delivery metrics",
+    )
+    pm_sub = pm.add_subparsers(dest="pm_command", required=True)
+
+    def _add(name: str, help_text: str) -> argparse.ArgumentParser:
+        sub: argparse.ArgumentParser = pm_sub.add_parser(name, help=help_text)
+        sub.add_argument("--db", default=None, help="database URL")
+        sub.add_argument(
+            "--json", action="store_true", help="emit machine-readable JSON"
+        )
+        return sub
+
+    _add(
+        "report",
+        "Delivery metrics as markdown (read-only; --json for structured output)",
     )
 
 
@@ -543,6 +580,31 @@ def _deps_command(args: argparse.Namespace, *, database: Database | None) -> int
     return EXIT_PRECONDITION  # unreachable: deps subparser is required
 
 
+def _pm_report(resolved_db: Database, *, as_json: bool) -> int:
+    """Render the delivery metrics (ATLAS-47). A pure reader: it builds the
+    report from stored tickets and DebtItems and emits it, writing nothing and
+    making no Linear call. `datetime.now(UTC)` is read only here and passed into
+    the pure builder so the current-dwell proxy is deterministic under test."""
+    report = build_delivery_report(
+        TicketRepo(resolved_db),
+        DebtItemRepo(resolved_db),
+        now=datetime.now(UTC),
+    )
+    if as_json:
+        print(json.dumps(report_json(report)))
+    else:
+        print(render_markdown(report))
+    return EXIT_OK
+
+
+def _pm_command(args: argparse.Namespace, *, database: Database | None) -> int:
+    """Route `atlas pm <subcommand>`. `report` is the only v1 subcommand."""
+    resolved_db = database if database is not None else Database(args.db)
+    if args.pm_command == "report":
+        return _pm_report(resolved_db, as_json=args.json)
+    return EXIT_PRECONDITION  # unreachable: pm subparser is required
+
+
 def main(
     argv: list[str] | None = None,
     *,
@@ -566,6 +628,8 @@ def main(
         return _apply_command(args, database=database)
     if args.command == "deps":
         return _deps_command(args, database=database)
+    if args.command == "pm":
+        return _pm_command(args, database=database)
     return EXIT_PRECONDITION  # unreachable: subparser is required
 
 

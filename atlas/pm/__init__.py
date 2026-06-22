@@ -4,17 +4,37 @@ The reconciliation loop above the ATLAS-41 Linear boundary: it mirrors state
 between Atlas and Linear under strict field ownership. ATLAS-42 delivers steps
 1+2 of the ``pm-engine-and-linear-sync.md`` "Sync loop" (:func:`sync_tick`);
 ATLAS-43 adds step 3, readiness promotion to ``Ready for Agent``
-(:func:`promote_ready`, the sole writer of that transition). The anomaly
-writes, follow-up ingestion, and the scheduler are later tickets. A layer above
+(:func:`promote_ready`, the sole writer of that transition). ATLAS-47 adds the
+read side: :func:`build_delivery_report` and its renderers, a pure reader of
+stored tickets and ``DebtItem``s for the ``atlas pm report`` command. The
+follow-up ingestion and the scheduler are later tickets. A layer above
 ``atlas.storage``/``atlas.linear``/``atlas.core`` in the import spine.
 """
 
 from atlas.pm.promotion import promote_ready
+from atlas.pm.report import (
+    AnomalyCount,
+    DeliveryReport,
+    DwellBreach,
+    DwellStat,
+    ThroughputBucket,
+    build_delivery_report,
+    render_markdown,
+    report_json,
+)
 from atlas.pm.sync import PUSHABLE_STATUSES, SyncResult, sync_tick
 
 __all__ = [
     "PUSHABLE_STATUSES",
+    "AnomalyCount",
+    "DeliveryReport",
+    "DwellBreach",
+    "DwellStat",
     "SyncResult",
+    "ThroughputBucket",
+    "build_delivery_report",
     "promote_ready",
+    "render_markdown",
+    "report_json",
     "sync_tick",
 ]
