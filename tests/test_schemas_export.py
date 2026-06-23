@@ -25,8 +25,8 @@ def read_all(root: Path) -> dict[str, bytes]:
 
 def test_exports_one_schema_per_canonical_model(tmp_path: Path) -> None:
     written = export(tmp_path)
-    assert len(written) == len(CANONICAL_MODELS) == 16
-    assert len(CORE_MODELS) == 12
+    assert len(written) == len(CANONICAL_MODELS) == 17
+    assert len(CORE_MODELS) == 13
     assert len(PLANNING_MODELS) == 4
     names = {path.stem for path in written}
     assert names == {model.__name__ for model in CANONICAL_MODELS}

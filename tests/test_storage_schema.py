@@ -251,6 +251,18 @@ DOCUMENTED_COLUMNS: dict[str, dict[str, tuple[bool, str | None]]] = {
         "created_by_type": (NN, None),
         "created_by_id": (NN, None),
     },
+    # §6.6 (status-transition record, ATLAS-121): append-only — no status, no
+    # created_at, no updated_at. Ticket-scoped: ticket_id is FK-backed (modelled
+    # on debt_items), but there is NO product_id.
+    "ticket_status_transitions": {
+        "id": (NN, None),
+        "ticket_id": (NN, None),
+        "from_status": (NN, None),
+        "to_status": (NN, None),
+        "occurred_at": (NN, None),
+        "created_by_type": (NN, None),
+        "created_by_id": (NN, None),
+    },
 }
 
 # Transcribed FK targets: table -> {column: referred table}. Absence is
@@ -272,6 +284,7 @@ DOCUMENTED_FOREIGN_KEYS: dict[str, dict[str, str]] = {
     "key_counters": {},
     "debt_items": {"product_id": "products", "ticket_id": "tickets"},
     "tick_failures": {},
+    "ticket_status_transitions": {"ticket_id": "tickets"},
 }
 
 DOCUMENTED_UNIQUES: dict[str, list[list[str]]] = {

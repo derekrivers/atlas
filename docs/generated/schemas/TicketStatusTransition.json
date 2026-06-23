@@ -1,0 +1,58 @@
+{
+  "$defs": {
+    "ActorType": {
+      "description": "Who or what created a record (data-model §2.2, attribution §1.5).",
+      "enum": [
+        "human",
+        "agent",
+        "system"
+      ],
+      "title": "ActorType",
+      "type": "string"
+    }
+  },
+  "description": "One recorded real status transition for a ticket (data-model §6.5).\n\nAppend-only. Like ``DebtItem.ticket_id`` (and unlike ``TickFailure``, which\nhas no FK target), ``ticket_id`` is required and FK-backed: a transition is\nalways observed against an existing synced ticket.\n\n``from_status`` is the status left and ``to_status`` the status entered;\nboth are non-null because the sole writer records only inside the\nreal-change branch, where the prior status always exists and differs from\nthe new one (a set-to-same status records nothing). ``occurred_at`` is the\ntransition instant (timezone-aware; naive values are rejected at the\nstorage boundary). There is no ``updated_at``, no ``created_at``, and no\n``status``: the row is never mutated.",
+  "properties": {
+    "created_by_id": {
+      "title": "Created By Id",
+      "type": "string"
+    },
+    "created_by_type": {
+      "$ref": "#/$defs/ActorType"
+    },
+    "from_status": {
+      "title": "From Status",
+      "type": "string"
+    },
+    "id": {
+      "format": "uuid",
+      "title": "Id",
+      "type": "string"
+    },
+    "occurred_at": {
+      "format": "date-time",
+      "title": "Occurred At",
+      "type": "string"
+    },
+    "ticket_id": {
+      "format": "uuid",
+      "title": "Ticket Id",
+      "type": "string"
+    },
+    "to_status": {
+      "title": "To Status",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "ticket_id",
+    "from_status",
+    "to_status",
+    "occurred_at",
+    "created_by_type",
+    "created_by_id"
+  ],
+  "title": "TicketStatusTransition",
+  "type": "object"
+}

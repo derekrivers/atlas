@@ -254,6 +254,10 @@ ATLAS-50 PM scheduler — the recurring loop that calls sync_tick on a cadence,
          with create-on-crash (catch a crashing tick, record a TickFailure via
          ATLAS-125's repo, continue) and the dedup window policy. Depends on
          ATLAS-125 (the tick-failure record + recorded_since predicate)
+ATLAS-126 Historical cycle time from the transition log: upgrade atlas pm
+         report / build_delivery_report to compute true per-state cycle time
+         from TicketStatusTransition (the ATLAS-121 log), replacing the
+         current-dwell proxy ATLAS-47 reports today. Depends on ATLAS-121.
 
 Retired: ATLAS-48 (PM dashboard), ATLAS-49 (PM API).
 

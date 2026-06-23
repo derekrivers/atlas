@@ -499,10 +499,13 @@ def test_enumeration_pins_real_roadmap_count() -> None:
     # ATLAS-112's RESOLVED decision, the clause ATLAS-107 reused) + ATLAS-124 (the
     # content-coverage bar-pin follow-up seed, gated on a second staged capture)
     # + ATLAS-125 (the tick-failure record + recorded_since dedup predicate: the
-    # create-on-crash record half, a prerequisite for the ATLAS-50 scheduler).
+    # create-on-crash record half, a prerequisite for the ATLAS-50 scheduler) +
+    # ATLAS-126 (the historical-cycle-time CONSUMER seed: upgrade build_delivery_report
+    # to compute true per-state cycle time from the ATLAS-121 transition log,
+    # replacing the current-dwell proxy ATLAS-47 reports today).
     # Addition couples to the pin, the mirror of the retirement rule. The pin
     # fires on exactly this kind of change.
-    assert len(tickets) == 109
+    assert len(tickets) == 110
     keys = [t.key for t in tickets]
     assert len(keys) == len(set(keys))  # unique
     assert "ATLAS-20" not in keys  # retired lines are not tickets

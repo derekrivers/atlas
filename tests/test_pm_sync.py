@@ -53,7 +53,14 @@ from atlas.core.models.ticket import TicketStatus
 from atlas.linear.client import LinearIssue, WorkflowState
 from atlas.linear.ownership import LinearStatusMap
 from atlas.pm import SyncResult, sync_tick
-from atlas.storage import Database, DebtItemRepo, TicketDependencyRepo, TicketRepo
+from atlas.pm.sync import CREATED_BY
+from atlas.storage import (
+    Database,
+    DebtItemRepo,
+    TicketDependencyRepo,
+    TicketRepo,
+    TicketStatusTransitionRepo,
+)
 
 # Workflow states the fake exposes and the status map keys off (stable ids).
 STARTED = WorkflowState(id="state-started", name="In Progress", type="started")
@@ -683,15 +690,155 @@ def test_apply_linear_status_stamps_entry_only_on_real_change(db: Database) -> N
     later = NOW + timedelta(hours=2)
 
     # A real change stamps the entry time and leaves updated_at untouched.
-    changed = repo.apply_linear_status("ATLAS-226", TicketStatus.IN_PROGRESS, now=first)
+    changed = repo.apply_linear_status(
+        "ATLAS-226", TicketStatus.IN_PROGRESS, now=first, created_by_id=CREATED_BY
+    )
     assert changed.status_entered_at == first
     assert changed.updated_at == ticket.updated_at  # disjoint-column discipline
 
     # A set-to-same status does NOT re-stamp (the episode did not restart) and,
     # again, does not bump updated_at. Wrong answer: the clock resets every pull.
-    same = repo.apply_linear_status("ATLAS-226", TicketStatus.IN_PROGRESS, now=later)
+    same = repo.apply_linear_status(
+        "ATLAS-226", TicketStatus.IN_PROGRESS, now=later, created_by_id=CREATED_BY
+    )
     assert same.status_entered_at == first
     assert same.updated_at == ticket.updated_at
+
+
+# --- status-transition history (ATLAS-121): the append-only capture half ------
+#
+# apply_linear_status appends ONE TicketStatusTransition inline, atomically with
+# the status change, ONLY in the real-change branch. The traps below are the
+# falsifiable ones: from_status captured BEFORE reassignment (so from != to),
+# and a set-to-same recording nothing.
+
+
+def test_real_transition_records_exactly_one_row(db: Database) -> None:
+    client = RecordingClient()
+    ticket = seed_ticket(
+        db,
+        client,
+        key="ATLAS-240",
+        status=TicketStatus.IN_PROGRESS,
+        updated_at=EARLIER,
+        status_entered_at=None,
+        with_issue=False,
+    )
+    repo = TicketRepo(db)
+    transitions = TicketStatusTransitionRepo(db)
+    moved_at = NOW + timedelta(hours=1)
+
+    repo.apply_linear_status(
+        "ATLAS-240", TicketStatus.PR_OPEN, now=moved_at, created_by_id=CREATED_BY
+    )
+
+    rows = transitions.list_for_ticket(ticket.id)
+    assert len(rows) == 1  # wrong answer: 0 rows (no capture)
+    (row,) = rows
+    # from_status is the value BEFORE reassignment. Wrong answer: captured AFTER,
+    # so from == to == "pr_open".
+    assert row.from_status == "in_progress"
+    assert row.to_status == "pr_open"
+    assert row.from_status != row.to_status
+    assert row.occurred_at == moved_at
+    assert row.ticket_id == ticket.id
+    assert row.created_by_type == ActorType.SYSTEM
+    assert row.created_by_id == CREATED_BY
+
+
+def test_set_to_same_status_records_no_transition(db: Database) -> None:
+    client = RecordingClient()
+    ticket = seed_ticket(
+        db,
+        client,
+        key="ATLAS-241",
+        status=TicketStatus.IN_PROGRESS,
+        updated_at=EARLIER,
+        status_entered_at=NOW,
+        with_issue=False,
+    )
+    repo = TicketRepo(db)
+    transitions = TicketStatusTransitionRepo(db)
+
+    same = repo.apply_linear_status(
+        "ATLAS-241",
+        TicketStatus.IN_PROGRESS,
+        now=NOW + timedelta(hours=5),
+        created_by_id=CREATED_BY,
+    )
+
+    # No phantom transition for a no-op pull, and (as ATLAS-119) no re-stamp.
+    assert transitions.list_for_ticket(ticket.id) == []
+    assert same.status_entered_at == NOW
+
+
+def test_transition_and_status_change_commit_together(db: Database) -> None:
+    # Atomicity: after a real change both the new status and exactly one
+    # transition are present, and updated_at is unchanged (no directionality
+    # leak — the same disjoint-column discipline the dwell clock keeps).
+    client = RecordingClient()
+    ticket = seed_ticket(
+        db,
+        client,
+        key="ATLAS-242",
+        status=TicketStatus.PLANNED,
+        updated_at=EARLIER,
+        status_entered_at=None,
+        with_issue=False,
+    )
+    repo = TicketRepo(db)
+    transitions = TicketStatusTransitionRepo(db)
+    moved_at = NOW + timedelta(hours=2)
+
+    changed = repo.apply_linear_status(
+        "ATLAS-242", TicketStatus.IN_PROGRESS, now=moved_at, created_by_id=CREATED_BY
+    )
+
+    assert changed.status == TicketStatus.IN_PROGRESS
+    assert changed.updated_at == ticket.updated_at  # no re-push
+    rows = transitions.list_for_ticket(ticket.id)
+    assert len(rows) == 1
+    assert (rows[0].from_status, rows[0].to_status) == ("planned", "in_progress")
+
+
+def test_history_accumulates_one_ordered_row_per_real_change(db: Database) -> None:
+    # N successive real changes leave N ordered rows; status_entered_at still
+    # reflects ONLY the latest. Wrong answer: one row (overwrite), or unordered.
+    client = RecordingClient()
+    ticket = seed_ticket(
+        db,
+        client,
+        key="ATLAS-243",
+        status=TicketStatus.PLANNED,
+        updated_at=EARLIER,
+        status_entered_at=None,
+        with_issue=False,
+    )
+    repo = TicketRepo(db)
+    transitions = TicketStatusTransitionRepo(db)
+
+    legs = [
+        (TicketStatus.IN_PROGRESS, NOW + timedelta(hours=1)),
+        (TicketStatus.PR_OPEN, NOW + timedelta(hours=2)),
+        (TicketStatus.CHANGES_REQUESTED, NOW + timedelta(hours=3)),
+        (TicketStatus.PR_OPEN, NOW + timedelta(hours=4)),
+    ]
+    for status, when in legs:
+        latest = repo.apply_linear_status(
+            "ATLAS-243", status, now=when, created_by_id=CREATED_BY
+        )
+
+    rows = transitions.list_for_ticket(ticket.id)
+    assert len(rows) == len(legs)  # one per real change, not one overwritten row
+    assert [(r.from_status, r.to_status) for r in rows] == [
+        ("planned", "in_progress"),
+        ("in_progress", "pr_open"),
+        ("pr_open", "changes_requested"),
+        ("changes_requested", "pr_open"),
+    ]
+    assert [r.occurred_at for r in rows] == [when for _, when in legs]  # ordered
+    # The dwell clock holds only the latest episode's entry, not the history.
+    assert latest.status_entered_at == legs[-1][1]
 
 
 # --- review cycling (ATLAS-120): the counter, the route, the per-episode log --
@@ -727,7 +874,9 @@ def test_changes_requested_to_pr_open_increments_count(db: Database) -> None:
     )
     repo = TicketRepo(db)
 
-    moved = repo.apply_linear_status("ATLAS-230", TicketStatus.PR_OPEN, now=LATER)
+    moved = repo.apply_linear_status(
+        "ATLAS-230", TicketStatus.PR_OPEN, now=LATER, created_by_id=CREATED_BY
+    )
 
     # The one transition the round-trip counter counts.
     assert moved.review_cycle_count == 1  # wrong answer: 0 (transition not counted)
@@ -748,12 +897,17 @@ def test_only_changes_requested_to_pr_open_increments(db: Database) -> None:
         review_cycle_count=0,
         with_issue=False,
     )
-    arrived = repo.apply_linear_status("ATLAS-231", TicketStatus.PR_OPEN, now=LATER)
+    arrived = repo.apply_linear_status(
+        "ATLAS-231", TicketStatus.PR_OPEN, now=LATER, created_by_id=CREATED_BY
+    )
     assert arrived.review_cycle_count == 0  # only changes_requested -> pr_open counts
 
     # The reverse leg pr_open -> changes_requested does not count either.
     bounced = repo.apply_linear_status(
-        "ATLAS-231", TicketStatus.CHANGES_REQUESTED, now=LATER + timedelta(hours=1)
+        "ATLAS-231",
+        TicketStatus.CHANGES_REQUESTED,
+        now=LATER + timedelta(hours=1),
+        created_by_id=CREATED_BY,
     )
     assert bounced.review_cycle_count == 0
 

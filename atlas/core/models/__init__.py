@@ -18,6 +18,7 @@ from atlas.core.models.plan_run import PlanRun, PlanRunStatus
 from atlas.core.models.product import Product
 from atlas.core.models.tick_failure import TickFailure
 from atlas.core.models.ticket import Ticket, TicketStatus, TicketType
+from atlas.core.models.ticket_status_transition import TicketStatusTransition
 
 __all__ = [
     "ADRStatus",
@@ -42,5 +43,6 @@ __all__ = [
     "Ticket",
     "TicketDependency",
     "TicketStatus",
+    "TicketStatusTransition",
     "TicketType",
 ]
