@@ -1,13 +1,14 @@
 # Phase 4 Closure Report — PM Engine
 
 Status: **BUILD COMPLETE, PHASE OPEN** as of 2026-06-23. The delivery-
-coordination build is done and CI-evidenced — sixteen PRs (#63–#81), each
+coordination build is done and CI-evidenced — seventeen PRs (#63–#83), each
 under both evidence tiers (agent completion reports corroborated by
 system-tier CI pinned to head commits, per ADR-0008). The PM Engine pulls
 status from Linear, pushes definitions under ADR-0006 field ownership,
 promotes ready tickets, logs the full anomaly stack, ingests follow-ups
 end-to-end (produce → operator commits → plan reads → apply retires), records
-true status-transition history, reports delivery metrics, records tick crashes
+true status-transition history, reports delivery metrics including true
+per-state cycle time, records tick crashes
 durably, and drives the whole loop on a cadence with create-on-crash.
 
 One scoped ticket was **deliberately deferred** rather than built: ATLAS-46
@@ -58,12 +59,13 @@ status line above.
 | ATLAS-120 (#71) | Review-cycling detection — >3 `changes_requested → pr_open` round trips routes to Needs Human via the sanctioned `set_state`. The one anomaly that acts. |
 | ATLAS-44 (#76) | Stale-block detection — a report-only detector reusing the promotion graph; a BLOCKED ticket with no live blocker logs one `STALE_BLOCK` row. |
 | ATLAS-45 (#73) | Follow-up ingestion, **producer half** — scans tagged comments, writes one inbox stub per comment, deduped by source-comment id. Writes no Linear/Atlas state, does not commit. |
-| ATLAS-47 (#72) | Delivery metrics CLI — `atlas pm report`, a pure reader; cycle time honestly labelled the current-dwell proxy (true cycle time deferred to ATLAS-126). |
+| ATLAS-47 (#72) | Delivery metrics CLI — `atlas pm report`, a pure reader; cycle time honestly labelled the current-dwell proxy until ATLAS-126 delivered the true metric. |
 | ATLAS-123 (#75) | Encoded the resolved AT-7 pair metric — `ANCHOR_COVERAGE_FLOOR = 0.50` live; content coverage recorded-not-asserted. Resolved the AT-7 carry-forward Phase 3.5 §7 left open. |
 | ATLAS-125 (#78) | Tick-failure record — `TickFailure` (append-only, system-attributed, **ticket-less**) and the `recorded_since` dedup predicate; tick-failure count in `atlas pm report`. |
 | ATLAS-50 (#79) | PM scheduler — the recurring loop driving `sync_tick` on a cadence with create-on-crash and graceful SIGTERM/SIGINT shutdown after the in-flight tick. |
-| ATLAS-121 (#80) | State-transition history — `TicketStatusTransition` (append-only, FK-backed), appended **atomically** inside the sole status writer's real-change branch with `from_status` captured before reassignment. Capture half; the report consumer is seeded ATLAS-126. |
+| ATLAS-121 (#80) | State-transition history — `TicketStatusTransition` (append-only, FK-backed), appended **atomically** inside the sole status writer's real-change branch with `from_status` captured before reassignment. The capture half; consumed by ATLAS-126. |
 | ATLAS-122 (#81) | Follow-up **consumer** — `atlas plan` reads the committed inbox as a *separate* merged-for-provenance source (corpus globs untouched); `atlas apply` retires consumed stubs to `processed/` on applied or rejected. Closes the ATLAS-45 loop. |
+| ATLAS-126 (#83) | True per-state cycle time from the transition log — `pairwise` over each ticket's transitions yields completed episodes only (the initial and current-open episodes excluded by construction), retiring the ATLAS-47 dwell proxy. Closes the cycle-time arc 47 → 121 → 126. |
 
 ---
 
@@ -156,9 +158,9 @@ the milestone and is cleanly separable.
 | Item | Owner / home | Status |
 | --- | --- | --- |
 | AT-7 bar threshold | Phase 3.5 §7 → ATLAS-123 | **Resolved (partial)** — anchor floor 0.50 live; content bar deferred to ATLAS-124 |
-| State-transition capture for true cycle time | ATLAS-47 → ATLAS-121 | **Resolved** — capture landed; consumption is ATLAS-126 |
+| State-transition capture for true cycle time | ATLAS-47 → ATLAS-121 → ATLAS-126 | **Resolved** — capture landed (121) and is consumed as true cycle time (126); the proxy is retired |
 | ATLAS-46 roadmap synchronisation | Phase 4 → its own design pass | **Deferred (operator decision)** — needs a `roadmap.mmd` ⇄ Linear field-ownership ruling first; no design detail yet |
-| ATLAS-126 historical cycle time from the transition log | PM Engine (seeded by ATLAS-121) | **Open** — upgrade `atlas pm report` to compute true per-state cycle time, replacing the dwell proxy |
+| ATLAS-126 historical cycle time from the transition log | PM Engine (seeded by ATLAS-121) | **Resolved** — `atlas pm report` now computes true per-state cycle time over completed episodes; the dwell proxy is retired |
 | Planner promotion of inbox stubs | PM Engine (named by ATLAS-122) | **Open, observation** — ingestion + lifecycle landed; whether the planner reliably promotes a stub to a ticket may want a prompt-template refinement, seed only if live runs show it needed |
 | ATLAS-45 live smoke / ATLAS-50 live milestone | Operator (ADR-0008 system-tier) | **Open** — the §1 PENDING rows; the gate on closure |
 | ATLAS-124 content-coverage bar pinning | Planning track | **Open** — needs a second durably-saved staged capture |
@@ -179,5 +181,5 @@ the renderer can import the readiness and PM layers without risk of inversion.
 The honest gate before Phase 5 begins is §6: run and record the live milestone.
 A renderer built on an engine whose own milestone is unproven inherits that gap;
 closing Phase 4 cleanly first keeps the layering — and the evidence trail —
-trustworthy under what Phase 5 multiplies. ATLAS-46, ATLAS-124, and ATLAS-126 are
+trustworthy under what Phase 5 multiplies. ATLAS-46 and ATLAS-124 are
 homed carry-forwards, not Phase 5 blockers.
