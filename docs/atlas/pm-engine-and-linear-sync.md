@@ -312,19 +312,20 @@ The five metrics, as computed in v1:
 - **Throughput** — tickets currently `done`, bucketed by the ISO week
   (`YYYY-Www`) of `status_entered_at`. A `done` ticket with a null entry time
   falls in an `unknown` bucket rather than being dropped.
-- **Cycle time per state** — reported as a **current-dwell proxy**, NOT
-  historical per-state cycle time. The data model carries only
-  `status_entered_at` (when a ticket entered its *current* status), so full
-  historical time-in-each-state is not computable. v1 therefore reports, per
-  non-terminal status, the current time-in-state (min/median/max hours) of the
-  in-flight tickets, labelled *current dwell per state*. Failure modes: a ticket
-  that was `done` and later reopened has lost its earlier entry time, so its
-  prior dwell is invisible; a ticket whose `status_entered_at` is null (unknown
-  entry) is excluded from the durations and counted separately rather than
-  guessed. The true historical metric needs a per-transition history the model
-  does not yet carry; that schema is deferred to ATLAS-121 (an append-only
-  `TicketStatusTransition` log written by `apply_linear_status`, owner: PM
-  Engine) and is NOT added here.
+- **Cycle time per state** — true historical per-state cycle time from the
+  `TicketStatusTransition` log (ATLAS-121/126), measured over **completed
+  episodes**. ATLAS-121 made `apply_linear_status` append a transition on every
+  real status change, so the log now records each state entry and exit; for a
+  ticket's ordered transitions `T1..Tn`, episode `i` (`i` in `1..n-1`) is the
+  state `to_i` entered at `t_i` and exited at `t_{i+1}`, contributing duration
+  `t_{i+1} - t_i`. Aggregated per state across all tickets into min/median/max
+  hours and an episode count (a state re-visited N times contributes N
+  episodes; a state with no completed episodes does not appear). Two episodes
+  are deliberately not counted: the initial state before `T1` (no recorded
+  entry) and the current open episode after `Tn` (no recorded exit — the
+  current-dwell the retired ATLAS-47 proxy reported). The computation is
+  deterministic timestamp subtraction, so ADR-0005 holds by construction —
+  nothing is assigned, a duration is measured.
 - **Ready-queue depth** — the count of tickets in `ready_for_agent`.
 - **Anomaly counts** — `DebtItem`s grouped by `AnomalyType`, with the recurring
   ones (the query-time `recurring(...)` predicate) called out per type.
