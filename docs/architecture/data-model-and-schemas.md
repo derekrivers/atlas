@@ -1139,6 +1139,7 @@ class AnomalyType(str, Enum):
     OUT_OF_OWNERSHIP_TRANSITION = "out_of_ownership_transition"
     REVIEW_CYCLE = "review_cycle"
     DWELL_BREACH = "dwell_breach"
+    STALE_BLOCK = "stale_block"
 
 class DebtItem(BaseModel):
     id: UUID

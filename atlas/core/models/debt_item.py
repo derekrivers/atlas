@@ -28,7 +28,7 @@ class AnomalyType(StrEnum):
     """Class of delivery anomaly a DebtItem records (data-model §6.1;
     pm-engine-and-linear-sync.md "Anomaly and dwell detection").
 
-    The three observation classes the PM Engine appends one row per. A
+    The four observation classes the PM Engine appends one row per. A
     model-specific enum, defined with its model like EvidenceType — not a
     §2 shared type — and used only by DebtItem and DebtItemRepo.
     """
@@ -36,6 +36,7 @@ class AnomalyType(StrEnum):
     OUT_OF_OWNERSHIP_TRANSITION = "out_of_ownership_transition"
     REVIEW_CYCLE = "review_cycle"
     DWELL_BREACH = "dwell_breach"
+    STALE_BLOCK = "stale_block"
 
 
 class DebtItem(BaseModel):

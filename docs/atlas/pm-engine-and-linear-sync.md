@@ -127,14 +127,16 @@ anomalies otherwise" clause — an unmapped Linear state appends one
 `OUT_OF_OWNERSHIP_TRANSITION` `DebtItem` per transition — is ATLAS-118 (woven
 into `sync_tick`'s pull). Step 3 (readiness promotion, sole writer into `Ready
 for Agent`) is ATLAS-43. Step 4 (the follow-up comment scan) is ATLAS-45.
-Step 5's anomaly checks split by mechanism, both woven into `sync_tick`'s final
+Step 5's anomaly checks split by mechanism, all woven into `sync_tick`'s final
 pass after `promote_ready`: dwell-breach logging is ATLAS-119 (a `_detect_dwell`
-pass keyed on `Ticket.status_entered_at`; report-only, never moves a ticket) and
+pass keyed on `Ticket.status_entered_at`; report-only, never moves a ticket),
 review-cycling is ATLAS-120 (a `_detect_review_cycle` pass keyed on
 `Ticket.review_cycle_count`, routing over-threshold tickets to
 `needs_human_decision` via `set_state` and logging one `REVIEW_CYCLE` `DebtItem`
-— the one anomaly that moves a ticket). The recurring scheduler that calls
-`sync_tick` on a cadence is ATLAS-50.
+— the one anomaly that moves a ticket), and stale-block detection is ATLAS-44 (a
+`_detect_stale_block` pass keyed on `blocked(graph, key)` over the same
+dependency graph `promote_ready` consumes; report-only, never moves a ticket).
+The recurring scheduler that calls `sync_tick` on a cadence is ATLAS-50.
 
 ## Follow-up ingestion
 
@@ -244,6 +246,31 @@ concerns.
   post-creation status writer) only on a real status change, and a NULL entry
   time (unknown) is skipped, never breached. Recurrence is the same query-time
   `recurring(...)` predicate, never a stored counter.
+- Stale block (ATLAS-44): when a ticket sits in the `blocked` status but its
+  structural blockers have all cleared — i.e. `blocked(graph, key)` (the
+  dependency-engine blocker analysis) is empty — the step-5 pass appends one
+  `STALE_BLOCK` `DebtItem` (append-only, system-written) and the candidate
+  surfaces in the delivery report. It is **report-only — like the out-of-ownership
+  and dwell logs it NEVER changes ticket state**; only the review-cycle rule does
+  that. It surfaces a ticket that may be ready to move but is stranded in
+  `blocked`, where `promote_ready` will not touch it (that pass promotes only
+  `planned`/`backlog`). It deliberately does **not route**: the dependency graph
+  knows only *structural* blockers (`DEPENDENCY_NOT_DONE` / `ADR_NOT_ACCEPTED` /
+  `DANGLING_TARGET`), so a ticket may be `blocked` for a non-structural reason the
+  graph cannot see — the engine reports the candidate and the operator decides
+  whether to move it. The inverse direction (a ticket structurally blocked but
+  not marked `blocked`) is **out of scope**: `is_ready` already refuses to promote
+  it, so it is not stranded. This is distinct from blocked-dwell ("blocked too
+  long while genuinely blocked"), which is deliberately not detected — `blocked`
+  carries no dwell horizon. "Per episode" is enforced exactly as for dwell, by
+  `Ticket.status_entered_at`: a row fires only when no `STALE_BLOCK` row exists
+  for the ticket since it entered `blocked`, so a ticket stranded across ticks
+  logs one row, not one per tick; when the status changes, `status_entered_at`
+  advances and a fresh stranded episode can log again. A NULL entry time
+  (unknown) is skipped, never logged. The check is structural, not time-based —
+  it takes no horizon and no clock beyond stamping the row's `observed_at`. The
+  graph is the one `promote_ready` already projects this tick from current Atlas
+  state (promotion writes Linear only, so it does not perturb the graph).
 
 ## Delivery metrics
 
