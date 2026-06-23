@@ -13,10 +13,20 @@ from atlas.context.adr_retrieval import (
     ADRMatchSource,
     select_adrs,
 )
+from atlas.context.related_tickets import (
+    DEFAULT_RELATED_CAP,
+    RelatedTicket,
+    RelatedTicketSource,
+    select_related_tickets,
+)
 
 __all__ = [
     "DEFAULT_ADR_CAP",
+    "DEFAULT_RELATED_CAP",
     "ADRMatch",
     "ADRMatchSource",
+    "RelatedTicket",
+    "RelatedTicketSource",
     "select_adrs",
+    "select_related_tickets",
 ]
