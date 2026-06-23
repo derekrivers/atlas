@@ -43,6 +43,7 @@ from atlas.core.models import (
     Ticket,
     TicketDependency,
     TicketStatus,
+    TickFailure,
 )
 from atlas.core.trust import evidence_tier
 from atlas.storage.db import Database
@@ -60,6 +61,7 @@ from atlas.storage.tables import (
     ProductRow,
     TicketDependencyRow,
     TicketRow,
+    TickFailureRow,
 )
 
 M = TypeVar("M", bound=BaseModel)
@@ -456,6 +458,61 @@ class DebtItemRepo(_Repo[DebtItem]):
                 )
             )
             return (count or 0) >= threshold
+
+
+class TickFailureRepo(_Repo[TickFailure]):
+    """Append-only PM-scheduler tick-crash log (ATLAS-125).
+
+    Mirrors DebtItemRepo's append-only shape: it exposes an append verb
+    (``record``) and a query-time dedup predicate (``recorded_since``) only
+    — no update, no delete, no bypass — so one-row-per-crash is structural.
+    Like DebtItemRepo it is NOT EvidenceRepo: a TickFailure is an operational
+    record, not evidence, so there is no trust-tier cap.
+
+    The record half of create-on-crash: the PM scheduler (ATLAS-50) is the
+    SOLE writer; no other production path records a row. ``recorded_since``
+    is computed here at query time over the rows; it is never stored on a row
+    and never gates a ``record``.
+    """
+
+    def __init__(self, db: Database) -> None:
+        super().__init__(db, TickFailure, TickFailureRow)
+
+    def record(self, model: TickFailure) -> TickFailure:
+        """Append one tick-crash record and return the persisted row.
+
+        The scheduler's sole append verb (ATLAS-50). Recording never reads or
+        consults the dedup predicate — recording a crash and deciding whether
+        to record it are separate concerns; the caller dedups before calling.
+        """
+        return self.add(model)
+
+    def recorded_since(self, failure_signature: str, since: datetime) -> bool:
+        """True when a row of ``failure_signature`` has ``occurred_at`` at or
+        after ``since`` (ATLAS-125 query-time dedup predicate).
+
+        The create-on-crash dedup predicate, mirroring
+        ``DebtItemRepo.logged_since``: the caller (ATLAS-50) supplies ``since``
+        — the dedup window boundary — so this answers "has a crash of this
+        signature already been recorded since the window opened?" The window
+        policy lives with the caller; no default window is set here. The
+        boundary is INCLUSIVE (``>= since``): a row written exactly at the
+        boundary instant counts as already-recorded. Scoped per signature: a
+        different signature never satisfies. A pure query-time predicate — it
+        reads the rows, stores nothing, and never gates a ``record``.
+        """
+        if since.utcoffset() is None:
+            raise NaiveDatetimeError("TickFailure", "occurred_at")
+        with self._db.session() as session:
+            count = session.scalar(
+                sa.select(sa.func.count())
+                .select_from(TickFailureRow)
+                .where(
+                    TickFailureRow.failure_signature == failure_signature,
+                    TickFailureRow.occurred_at >= since,
+                )
+            )
+            return (count or 0) > 0
 
 
 class PlanRunRepo(_Repo[PlanRun]):

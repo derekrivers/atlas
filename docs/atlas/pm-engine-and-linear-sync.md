@@ -136,7 +136,14 @@ review-cycling is ATLAS-120 (a `_detect_review_cycle` pass keyed on
 — the one anomaly that moves a ticket), and stale-block detection is ATLAS-44 (a
 `_detect_stale_block` pass keyed on `blocked(graph, key)` over the same
 dependency graph `promote_ready` consumes; report-only, never moves a ticket).
-The recurring scheduler that calls `sync_tick` on a cadence is ATLAS-50.
+The recurring scheduler that calls `sync_tick` on a cadence is ATLAS-50. It
+also owns create-on-crash: when a `sync_tick` raises, the scheduler records one
+durable `TickFailure` (the append-only, system-attributed, tick-level crash
+record — no ticket, so a separate model from `DebtItem`) and continues. That
+record and its query-time dedup predicate (`recorded_since`, deduping by
+`failure_signature` over a caller-supplied window) are ATLAS-125, a prerequisite
+for ATLAS-50; the scheduler is the sole writer, and the count surfaces in the
+delivery report (ATLAS-47).
 
 ## Follow-up ingestion
 

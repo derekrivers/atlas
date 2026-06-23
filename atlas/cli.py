@@ -96,6 +96,7 @@ from atlas.storage import (
     EffortValidationError,
     TicketNotFoundError,
     TicketRepo,
+    TickFailureRepo,
 )
 
 EXIT_OK = 0
@@ -588,6 +589,7 @@ def _pm_report(resolved_db: Database, *, as_json: bool) -> int:
     report = build_delivery_report(
         TicketRepo(resolved_db),
         DebtItemRepo(resolved_db),
+        TickFailureRepo(resolved_db),
         now=datetime.now(UTC),
     )
     if as_json:

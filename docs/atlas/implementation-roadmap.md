@@ -242,7 +242,18 @@ ATLAS-122 Follow-up consumer integration: the CONSUMER half of follow-up
          docs/planning/inbox/processed/. The operator commits the inbox (the
          human-steered gate); follow-ups enter the backlog only through
          plan/apply (ADR-0007), never as direct ticket creation.
-ATLAS-50 PM scheduler
+ATLAS-125 Tick-failure record (TickFailure, append-only, system-attributed,
+         tick-level — no ticket, so a separate model from DebtItem) and the
+         query-time dedup predicate (recorded_since); surfaces a tick-failure
+         count in atlas pm report. The record half of create-on-crash; the
+         writer (the scheduler that catches a crashing sync_tick, records a
+         TickFailure, and continues) is ATLAS-50, for which this is a
+         prerequisite. Sets no dedup window — recorded_since takes the window
+         boundary from the caller (ATLAS-50)
+ATLAS-50 PM scheduler — the recurring loop that calls sync_tick on a cadence,
+         with create-on-crash (catch a crashing tick, record a TickFailure via
+         ATLAS-125's repo, continue) and the dedup window policy. Depends on
+         ATLAS-125 (the tick-failure record + recorded_since predicate)
 
 Retired: ATLAS-48 (PM dashboard), ATLAS-49 (PM API).
 
