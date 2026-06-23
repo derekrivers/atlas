@@ -42,6 +42,7 @@ TICKETS_VERSION = "planner-stage-tickets-v1.0.0"
 TICKETS_V1_1_0_VERSION = "planner-stage-tickets-v1.1.0"
 TICKETS_V1_2_0_VERSION = "planner-stage-tickets-v1.2.0"
 TICKETS_V1_3_0_VERSION = "planner-stage-tickets-v1.3.0"
+TICKETS_V1_4_0_VERSION = "planner-stage-tickets-v1.4.0"
 DEPENDENCIES_VERSION = "planner-stage-dependencies-v1.0.0"
 
 # A retained prior single-call template (no longer the live release since
@@ -462,6 +463,75 @@ def test_tickets_v1_2_0_is_retained_unchanged() -> None:
     from atlas.planning.renderer import PROMPTS_DIR
 
     assert (PROMPTS_DIR / f"{TICKETS_V1_2_0_VERSION}.md.j2").is_file()
+
+
+# --- tickets stage emits tags/component (ATLAS-128): v1.4.0 is live ----------
+
+
+def tickets_v1_4_0_variables(correction: object = None) -> dict[str, object]:
+    # v1.4.0 declares the same variables as v1.3.0 (the tags/component change is
+    # template prose + the auto-derived schema, no new variable).
+    return tickets_v1_3_0_variables(correction)
+
+
+def test_tickets_v1_4_0_instructs_tags_and_component_emission() -> None:
+    text = render_planner_prompt(
+        tickets_v1_4_0_variables(), version=TICKETS_V1_4_0_VERSION
+    ).text
+    flat = " ".join(text.split())
+    # The new hard rule names both required facets and the "nothing fits"
+    # emission ([]/null, never omitted) — the categorical-classification intent.
+    assert "`tags` and `component` are required" in flat
+    assert '"tags"' in text
+    assert '"component"' in text
+    assert "Emit `[]` when nothing genuinely fits" in flat
+    assert "or `null` when it genuinely spans several" in flat
+
+
+def test_tickets_v1_4_0_carries_v1_3_0_content_verbatim() -> None:
+    # v1.4.0 is additive: the anchor-selection (v1.3.0), key (ATLAS-110), and
+    # correction (ATLAS-109) content all survive unchanged.
+    heading = "Correction — your previous attempt was rejected"
+    first = render_planner_prompt(
+        tickets_v1_4_0_variables(correction=None), version=TICKETS_V1_4_0_VERSION
+    )
+    flat = " ".join(first.text.split())
+    assert "## Valid source anchors" in first.text
+    assert "Do NOT construct, slugify, or guess an anchor" in flat
+    assert '"key": null' in first.text
+    assert "those are NOT keys for you to assign" in first.text
+    assert heading not in first.text
+    message = "ATLAS-128 carries the retry block — trim to 7."
+    retry = render_planner_prompt(
+        tickets_v1_4_0_variables(correction=message), version=TICKETS_V1_4_0_VERSION
+    )
+    assert heading in retry.text
+    assert message in retry.text
+
+
+def test_tickets_v1_3_0_is_retained_unchanged() -> None:
+    # The superseded version stays on disk and renderable — historical PlanRuns
+    # reproduce; v1.4.0 is a NEW file, never an in-place edit of v1.3.0.
+    from atlas.planning.renderer import PROMPTS_DIR
+
+    assert (PROMPTS_DIR / f"{TICKETS_V1_3_0_VERSION}.md.j2").is_file()
+    rendered = render_planner_prompt(
+        tickets_v1_3_0_variables(), version=TICKETS_V1_3_0_VERSION
+    )
+    assert rendered.prompt_version == TICKETS_V1_3_0_VERSION
+
+
+def test_tickets_stage_schema_offers_tags_and_component() -> None:
+    # The schema the planner is SHOWN is StageTicketsOutput.model_json_schema()
+    # (wrapping ProposalTicket). If the projection omitted the facets the planner
+    # would never be offered them, and the feature would be hollow (Group 3).
+    from atlas.planning.staged import StageTicketsOutput
+
+    ticket_schema = StageTicketsOutput.model_json_schema()["$defs"]["ProposalTicket"]
+    assert "tags" in ticket_schema["properties"]
+    assert "component" in ticket_schema["properties"]
+    assert "tags" in ticket_schema["required"]
+    assert "component" in ticket_schema["required"]
 
 
 @pytest.mark.parametrize(

@@ -71,6 +71,13 @@ class ProposalTicket(BaseModel):
     priority: int = Field(ge=_INT_MIN, le=_INT_MAX)  # canonical bounds
     source_anchor: str
     relevant_docs: list[str]
+    # Free-form retrieval facets the planner populates (ATLAS-128), mirroring
+    # the stored Ticket's ATLAS-127 fields. Required like every §3.11 field —
+    # no default, in the relevant_docs / key|epic_ref pattern (a no-default
+    # list[str] / str | None): the planner always emits the keys, with []/null
+    # when nothing fits. They carry into the stored Ticket at materialisation.
+    tags: list[str]
+    component: str | None
     acceptance_criteria: list[str] = Field(min_length=1, max_length=7)
     non_goals: list[str] = Field(min_length=1)
     test_requirements: list[str] = Field(min_length=1)

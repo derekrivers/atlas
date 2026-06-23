@@ -44,6 +44,8 @@ DOCUMENTED_FIELDS: dict[type[BaseModel], list[str]] = {
         "priority",
         "source_anchor",
         "relevant_docs",
+        "tags",
+        "component",
         "acceptance_criteria",
         "non_goals",
         "test_requirements",
@@ -122,6 +124,35 @@ def test_dependency_type_depends_on_only_in_m1() -> None:
 def test_context_must_be_non_empty() -> None:
     with pytest.raises(ValidationError, match="context"):
         ProposalTicket(**ticket_payload(context=""))
+
+
+def test_tags_and_component_parse_populated() -> None:
+    # ATLAS-128: the planner's free-form facets validate into the ticket.
+    ticket = ProposalTicket(
+        **ticket_payload(tags=["pm-engine", "linear-sync"], component="pm")
+    )
+    assert ticket.tags == ["pm-engine", "linear-sync"]
+    assert ticket.component == "pm"
+
+
+def test_tags_and_component_accept_empty_and_null() -> None:
+    # The "nothing fits" emission: an empty tag list and a null component are
+    # valid values — but the keys are still PRESENT (required, no default).
+    ticket = ProposalTicket(**ticket_payload(tags=[], component=None))
+    assert ticket.tags == []
+    assert ticket.component is None
+
+
+@pytest.mark.parametrize("field", ["tags", "component"])
+def test_tags_and_component_are_required(field: str) -> None:
+    # ATLAS-128 reversed the loose "optional" reading: like relevant_docs and
+    # key/epic_ref, the facets are required with no default. Omitting a key
+    # RAISES rather than silently defaulting — that is what "required" buys.
+    payload = ticket_payload()
+    del payload[field]
+    with pytest.raises(ValidationError, match=field):
+        ProposalTicket(**payload)
+    assert ProposalTicket.model_fields[field].is_required()
 
 
 def test_envelope_is_exactly_four_keys() -> None:

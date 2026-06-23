@@ -59,7 +59,10 @@ STAGE_EPICS_VERSION = "planner-stage-epics-v1.1.0"
 # v1.3.0 (ATLAS-111): source_anchor selected from the supplied valid-anchor list,
 # not constructed from a slug rule (a live run failed gate 4 guessing slugs);
 # the ATLAS-109 correction block and ATLAS-110 key instruction are carried.
-STAGE_TICKETS_VERSION = "planner-stage-tickets-v1.3.0"
+# v1.4.0 (ATLAS-128): instructs the planner to emit the now-required free-form
+# tags/component facets (omitting them is a graze ATLAS-109's retry repairs);
+# v1.3.0's anchor/key/correction content is carried verbatim. v1.3.0 retained.
+STAGE_TICKETS_VERSION = "planner-stage-tickets-v1.4.0"
 STAGE_DEPENDENCIES_VERSION = "planner-stage-dependencies-v1.0.0"
 
 # ATLAS-109: bounded directed retry on a projection-bound graze. A stage that

@@ -99,6 +99,8 @@ def _ticket(**overrides: Any) -> dict[str, Any]:
         "priority": 10,
         "source_anchor": "docs/atlas/plan.md#backlog",
         "relevant_docs": [],
+        "tags": ["planning"],
+        "component": "planning",
         "acceptance_criteria": ["It composes the pipeline."],
         "non_goals": ["No apply."],
         "test_requirements": ["Pipeline tests."],

@@ -137,6 +137,37 @@ def test_full_apply_persists_keys_renders_and_finalises(tmp_path: Path) -> None:
     assert not list(pdir.glob("*.tmp-*"))
 
 
+def test_apply_carries_tags_and_component_into_stored_ticket(
+    tmp_path: Path,
+) -> None:
+    # ATLAS-128: the proposal's free-form facets survive materialisation into
+    # the stored Ticket (the only line that makes ATLAS-127's columns non-empty
+    # in practice). Wrong answer: the values are dropped at materialisation.
+    proposal = proposal_json(
+        tickets=[_ticket(tags=["pm-engine", "linear-sync"], component="pm")]
+    )
+    repo, database = plan_then(tmp_path, proposal)
+
+    apply(repo, database, planning_dir(tmp_path))
+
+    ticket = TicketRepo(database).list()[0]
+    assert ticket.tags == ["pm-engine", "linear-sync"]
+    assert ticket.component == "pm"
+
+
+def test_apply_carries_empty_facets_as_127_defaults(tmp_path: Path) -> None:
+    # The "nothing fits" emission ([] / null) round-trips to the ATLAS-127
+    # defaults on the stored Ticket — empty list, null component.
+    proposal = proposal_json(tickets=[_ticket(tags=[], component=None)])
+    repo, database = plan_then(tmp_path, proposal)
+
+    apply(repo, database, planning_dir(tmp_path))
+
+    ticket = TicketRepo(database).list()[0]
+    assert ticket.tags == []
+    assert ticket.component is None
+
+
 def test_repo_docs_planning_stays_empty(tmp_path: Path) -> None:
     # Sanity: applying to a tmp planning dir never touches the repo's.
     repo, database = plan_then(tmp_path)

@@ -42,9 +42,10 @@ generation stage (planning-large-corpora.md §4/§4.1, ADR-0010):
 
 - `planner-stage-epics-v1.1.0.md.j2` — stage 1, emits the epics-only
   slice (v1.0.0 retained for historical `PlanRun` reproduction);
-- `planner-stage-tickets-v1.3.0.md.j2` — stage 2, emits one epic's
+- `planner-stage-tickets-v1.4.0.md.j2` — stage 2, emits one epic's
   tickets (rendered once per epic); the live staged tickets template
-  (v1.0.0/v1.1.0/v1.2.0 are retained for historical `PlanRun` reproduction);
+  (v1.0.0/v1.1.0/v1.2.0/v1.3.0 are retained for historical `PlanRun`
+  reproduction);
 - `planner-stage-dependencies-v1.0.0.md.j2` — stage 3, emits the
   `depends_on` edges.
 
@@ -135,8 +136,9 @@ CONSTRUCTING a slug from a rule:
 - `planner-v1.2.0.md.j2` (single-call) — **CURRENT is bumped to this**, so the
   fix reaches the documented default path;
 - `planner-stage-epics-v1.1.0.md.j2` (`STAGE_EPICS_VERSION`);
-- `planner-stage-tickets-v1.3.0.md.j2` (`STAGE_TICKETS_VERSION`) — carries the
-  ATLAS-109 `correction`/retry block and the ATLAS-110 key instruction verbatim.
+- `planner-stage-tickets-v1.3.0.md.j2` (then `STAGE_TICKETS_VERSION`, since
+  superseded by v1.4.0 — see below) — carries the ATLAS-109 `correction`/retry
+  block and the ATLAS-110 key instruction verbatim.
 
 A live `--staged` run failed gate 4 (`GATE4_UNRESOLVED_ANCHOR`): a ticket
 anchored into `planning-large-corpora.md`, whose headings are the most
@@ -160,6 +162,21 @@ CURRENT makes `planner-v1.2.0` the live single-call release, subject to the
 post-ATLAS-29 release gate below (AT-2 + AT-7); those legs are operator-run
 (skipped in CI), so the operator runs the live AT suite to ratify the release —
 the AT-7 number doubles as the gate-4-resolution evidence.
+
+### Tickets stage emits tags/component (ATLAS-128)
+
+`planner-stage-tickets-v1.4.0.md.j2` (`STAGE_TICKETS_VERSION`) supersedes
+v1.3.0 as the live tickets template. ATLAS-127 added free-form `tags` and
+`component` to the stored `Ticket`, populated by nobody; ATLAS-128 makes the
+planner populate them. `ProposalTicket` gains the two required fields (no
+default, in the `relevant_docs` / `key` pattern), so they appear in the
+auto-derived stage schema without any template change; v1.4.0 adds the hard
+rule instructing the planner to emit them meaningfully (`[]` / `null` when
+nothing fits — never omitted) and `atlas apply` carries them into the stored
+`Ticket`. They are the categorical facets the Phase 5 context renderer matches
+against ADRs (ATLAS-51) and lessons (ATLAS-53). v1.3.0's anchor/key/correction
+content is carried verbatim; the §3.11 bounds are enforced, never relaxed.
+MINOR — v1.3.0 is retained for historical `PlanRun` reproduction.
 
 ## Evaluation
 

@@ -63,6 +63,8 @@ def _ticket(title: str, epic_ref: str, **overrides: Any) -> ProposalTicket:
         priority=10,
         source_anchor="docs/atlas/plan.md#backlog",
         relevant_docs=[],
+        tags=["planning"],
+        component="planning",
         acceptance_criteria=[f"{title} is done."],
         non_goals=["Out of scope."],
         test_requirements=["Tested."],
