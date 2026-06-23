@@ -10,6 +10,7 @@ from atlas.planning.ingestion import (
     SourceDocument,
     UnknownAnchorError,
     UnknownDocumentError,
+    collect_inbox_documents,
     collect_input_documents,
     slugify,
 )
@@ -78,6 +79,7 @@ __all__ = [
     "UnknownAnchorError",
     "UnknownDocumentError",
     "UnknownTemplateVersionError",
+    "collect_inbox_documents",
     "collect_input_documents",
     "current_release",
     "extract_json_object",

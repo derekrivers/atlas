@@ -19,8 +19,9 @@ from __future__ import annotations
 import fnmatch
 import re
 import subprocess
+from collections.abc import Callable
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 # §2.1 input set, in documented order. ADRs are filtered to accepted.
 _ROOT_DOCS = ("PRODUCT.md", "ARCHITECTURE.md", "ROADMAP.md", "WORKFLOW.md")
@@ -109,15 +110,39 @@ def _matches_input_set(path: str) -> bool:
     return any(fnmatch.fnmatch(path, pattern) for pattern in _INPUT_PATTERNS)
 
 
-def _assert_committed_state(repo_root: Path) -> None:
-    """Fail closed on dirty or untracked files within the input set."""
+def _matches_inbox(path: str, inbox_dir: str) -> bool:
+    """A top-level follow-up inbox stub (ATLAS-122): ``<inbox_dir>/<name>.md``.
+
+    Matches on the immediate parent directory, NOT a glob: ``fnmatch``'s ``*``
+    crosses ``/``, so ``<inbox_dir>/*.md`` would also match
+    ``<inbox_dir>/processed/x.md`` and re-read retired stubs forever. Comparing
+    ``PurePosixPath.parent`` excludes the ``processed/`` subdir by construction.
+    """
+    candidate = PurePosixPath(path)
+    return candidate.suffix == ".md" and candidate.parent == PurePosixPath(inbox_dir)
+
+
+def _assert_committed_state(
+    repo_root: Path, matches: Callable[[str], bool] = _matches_input_set
+) -> None:
+    """Fail closed on dirty or untracked files within the matched set.
+
+    ``matches`` selects which paths the gate covers: the §2.1 corpus by default,
+    or the follow-up inbox glob when ``collect_inbox_documents`` passes its own
+    matcher (ATLAS-122) — the same fail-closed contract, never a silent read.
+    """
     offending = []
-    for line in _git(repo_root, "status", "--porcelain").splitlines():
+    # --untracked-files=all lists each untracked file rather than collapsing a
+    # wholly-untracked directory to its dir entry — so a brand-new inbox/ whose
+    # every stub is uncommitted still fails closed per stub (ATLAS-122).
+    for line in _git(
+        repo_root, "status", "--porcelain", "--untracked-files=all"
+    ).splitlines():
         path = line[3:]
         if " -> " in path:  # rename: the new path is authoritative
             path = path.split(" -> ", 1)[1]
         path = path.strip('"')
-        if _matches_input_set(path):
+        if matches(path):
             offending.append(path)
     if offending:
         raise DirtyInputError(offending)
@@ -156,6 +181,34 @@ def collect_input_documents(repo_root: Path) -> list[SourceDocument]:
         content = _git(repo_root, "show", f"HEAD:{path}")
         if path.startswith("docs/decisions/") and not _is_accepted_adr(content):
             continue  # §2.1: accepted ADRs only
+        documents.append(SourceDocument(path=path, sha=sha, content=content))
+    return documents
+
+
+def collect_inbox_documents(repo_root: Path, inbox_dir: Path) -> list[SourceDocument]:
+    """The committed follow-up inbox stubs from HEAD (ATLAS-122).
+
+    A SEPARATE plan input source, NOT folded into the §2.1 corpus: the
+    committed top-level ``<inbox_dir>/*.md`` stubs, the ``processed/`` subdir
+    excluded (those are retired by a prior ``atlas apply`` and must never be
+    re-read). Reuses ``collect_input_documents``'s committed-only contract — an
+    uncommitted or untracked inbox stub raises ``DirtyInputError`` (the
+    committed-inbox gate: the operator commits the inbox, and only then does
+    plan see it). Sorted for determinism; an empty or missing inbox yields ``[]``
+    (an empty inbox is a no-op — the planner sees exactly the corpus).
+
+    ``inbox_dir`` is repo-relative; it is compared against the HEAD tree's
+    POSIX paths, so the producer's ``docs/planning/inbox`` default matches.
+    """
+    inbox = inbox_dir.as_posix()
+    _assert_committed_state(repo_root, lambda path: _matches_inbox(path, inbox))
+    tracked = _git(repo_root, "ls-tree", "-r", "--name-only", "HEAD").splitlines()
+    paths = sorted(path for path in tracked if _matches_inbox(path, inbox))
+
+    documents = []
+    for path in paths:
+        sha = _git(repo_root, "rev-parse", f"HEAD:{path}").strip()
+        content = _git(repo_root, "show", f"HEAD:{path}")
         documents.append(SourceDocument(path=path, sha=sha, content=content))
     return documents
 
