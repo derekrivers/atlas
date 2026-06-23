@@ -21,6 +21,7 @@ from atlas.planning import (
     SourceDocument,
     UnknownAnchorError,
     UnknownDocumentError,
+    collect_inbox_documents,
     collect_input_documents,
     slugify,
 )
@@ -331,3 +332,54 @@ def test_staleness_is_sha_comparison(tmp_path: Path) -> None:
     fresh = {doc.path: doc.sha for doc in collect_input_documents(repo)}
     assert fresh != index.input_doc_shas
     assert fresh["ROADMAP.md"] != index.input_doc_shas["ROADMAP.md"]
+
+
+# --- follow-up inbox as a separate source (ATLAS-122) ------------------------
+
+INBOX = Path("docs/planning/inbox")
+STUB = "<!-- atlas-source-comment-id: c-1 -->\n# Follow-up from ATLAS-9\n\nDo X.\n"
+
+
+def test_collect_inbox_reads_committed_top_level_stub(tmp_path: Path) -> None:
+    repo = make_repo(
+        tmp_path,
+        {"PRODUCT.md": "# P\n", "docs/planning/inbox/ATLAS-9-1.md": STUB},
+    )
+    documents = collect_inbox_documents(repo, INBOX)
+    assert [doc.path for doc in documents] == ["docs/planning/inbox/ATLAS-9-1.md"]
+    assert documents[0].content == STUB
+    # Read as the inbox source, NEVER via the §2.1 corpus globs.
+    corpus = [doc.path for doc in collect_input_documents(repo)]
+    assert "docs/planning/inbox/ATLAS-9-1.md" not in corpus
+
+
+def test_collect_inbox_excludes_processed(tmp_path: Path) -> None:
+    # The fnmatch *-crosses-/ trap: docs/planning/inbox/*.md must NOT match
+    # docs/planning/inbox/processed/x.md, or retired stubs are re-read forever.
+    repo = make_repo(
+        tmp_path,
+        {
+            "PRODUCT.md": "# P\n",
+            "docs/planning/inbox/ATLAS-9-1.md": STUB,
+            "docs/planning/inbox/processed/ATLAS-8-1.md": STUB,
+        },
+    )
+    paths = [doc.path for doc in collect_inbox_documents(repo, INBOX)]
+    assert paths == ["docs/planning/inbox/ATLAS-9-1.md"]
+
+
+def test_collect_inbox_untracked_stub_fails_closed(tmp_path: Path) -> None:
+    # The committed-inbox gate (D4): an uncommitted stub is a typed dirty error,
+    # never silently read.
+    repo = make_repo(tmp_path, {"PRODUCT.md": "# P\n"})
+    (repo / "docs" / "planning" / "inbox").mkdir(parents=True)
+    (repo / "docs" / "planning" / "inbox" / "ATLAS-9-2.md").write_text(
+        STUB, encoding="utf-8"
+    )
+    with pytest.raises(DirtyInputError, match=r"ATLAS-9-2\.md"):
+        collect_inbox_documents(repo, INBOX)
+
+
+def test_collect_inbox_empty_yields_nothing(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path, {"PRODUCT.md": "# P\n"})
+    assert collect_inbox_documents(repo, INBOX) == []

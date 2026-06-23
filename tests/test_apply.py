@@ -17,10 +17,12 @@ from uuid import uuid4
 import pytest
 from planner_fakes import FAKE_IDENTITY, FakePlannerClient
 from test_plan_pipeline import (
+    INBOX_STUB,
     NOW,
     _epic,
     _ticket,
     fixture_repo,
+    fixture_repo_with_inbox,
     fresh_db,
     git,
     proposal_json,
@@ -488,3 +490,103 @@ def _ticket_model_kwargs(
         "created_at": NOW,
         "updated_at": NOW,
     }
+
+
+# --- follow-up inbox lifecycle: apply retires consumed stubs (ATLAS-122) -----
+
+
+def plan_then_with_inbox(tmp_path: Path) -> tuple[Path, Database]:
+    repo = fixture_repo_with_inbox(tmp_path)
+    database = fresh_db(tmp_path)
+    run_plan(
+        repo_root=repo,
+        database=database,
+        client=FakePlannerClient(proposal_json()),
+        identity=FAKE_IDENTITY,
+        now=NOW,
+    )
+    return repo, database
+
+
+def test_apply_retires_stubs_on_applied(tmp_path: Path) -> None:
+    # AT-5: an applied plan's inbox stubs land under processed/ and are gone
+    # from inbox/. Wrong answer: they linger and reappear next plan.
+    repo, database = plan_then_with_inbox(tmp_path)
+    inbox = repo / "docs" / "planning" / "inbox"
+    assert (inbox / "ATLAS-9-1.md").exists()
+
+    result = apply(repo, database, planning_dir(tmp_path))
+
+    assert result.outcome == "applied"
+    assert not (inbox / "ATLAS-9-1.md").exists()
+    assert (inbox / "processed" / "ATLAS-9-1.md").exists()
+
+
+def test_apply_retires_stubs_on_rejected(tmp_path: Path) -> None:
+    # AT-6: rejected also means "considered" — its stubs move to processed/,
+    # so a declined follow-up does not reappear every plan.
+    repo, database = plan_then_with_inbox(tmp_path)
+    inbox = repo / "docs" / "planning" / "inbox"
+
+    result = apply(repo, database, planning_dir(tmp_path), confirm=rejected)
+
+    assert result.outcome == "rejected"
+    assert not (inbox / "ATLAS-9-1.md").exists()
+    assert (inbox / "processed" / "ATLAS-9-1.md").exists()
+
+
+def test_retire_is_idempotent(tmp_path: Path) -> None:
+    # AT-7: a stub already in processed/ (or a re-run) is a skip, not an error.
+    from atlas.planning.apply import DEFAULT_INBOX_DIR, _retire_inbox_stubs
+
+    repo, database = plan_then_with_inbox(tmp_path)
+    plan_run = PlanRunRepo(database).latest_proposed()
+    assert plan_run is not None
+    inbox = repo / "docs" / "planning" / "inbox"
+
+    _retire_inbox_stubs(repo, DEFAULT_INBOX_DIR, plan_run)
+    assert (inbox / "processed" / "ATLAS-9-1.md").exists()
+    # Source now gone → a re-run is a skip, no error.
+    _retire_inbox_stubs(repo, DEFAULT_INBOX_DIR, plan_run)
+    # Target already present → a re-appeared source is left untouched, no clobber.
+    (inbox / "ATLAS-9-1.md").write_text("re-appeared\n", encoding="utf-8")
+    _retire_inbox_stubs(repo, DEFAULT_INBOX_DIR, plan_run)
+    assert (inbox / "ATLAS-9-1.md").read_text(encoding="utf-8") == "re-appeared\n"
+    assert (inbox / "processed" / "ATLAS-9-1.md").exists()
+
+
+@pytest.mark.parametrize("mutate", ["change", "add", "remove"])
+def test_staleness_covers_inbox(tmp_path: Path, mutate: str) -> None:
+    # AT-8: an inbox stub changed, added, or removed between plan and apply
+    # reads as stale. Wrong answer: an inbox change slips past the re-check.
+    repo, database = plan_then_with_inbox(tmp_path)
+    inbox = repo / "docs" / "planning" / "inbox"
+    if mutate == "change":
+        (inbox / "ATLAS-9-1.md").write_text(INBOX_STUB + "\nmore.\n", encoding="utf-8")
+    elif mutate == "add":
+        (inbox / "ATLAS-9-2.md").write_text(INBOX_STUB, encoding="utf-8")
+    else:  # remove
+        (inbox / "ATLAS-9-1.md").unlink()
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", f"mutate inbox: {mutate}")
+
+    with pytest.raises(StalePlanError):
+        apply(repo, database, planning_dir(tmp_path))
+
+
+def test_unconfirmable_leaves_inbox_untouched(tmp_path: Path) -> None:
+    # AT-9: nothing was decided, so the inbox is untouched (no move).
+    repo, database = plan_then_with_inbox(tmp_path)
+    inbox = repo / "docs" / "planning" / "inbox"
+
+    result = run_apply(
+        repo_root=repo,
+        database=database,
+        now=APPLY_NOW,
+        confirm=lambda diff: ApplyDecision.UNCONFIRMABLE,
+        planning_dir=planning_dir(tmp_path),
+    )
+
+    assert result.outcome == "unconfirmed"
+    assert (inbox / "ATLAS-9-1.md").exists()
+    assert not (inbox / "processed").exists()

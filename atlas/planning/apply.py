@@ -31,7 +31,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum, auto
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from uuid import UUID, uuid4
 
 from atlas.core.enums import ActorType
@@ -47,7 +47,10 @@ from atlas.core.models import (
 from atlas.core.models.dependency import DependencyType
 from atlas.core.yaml_io import RenderHeader, render_document
 from atlas.dependencies import project_graph, validate_graph
-from atlas.planning.ingestion import collect_input_documents
+from atlas.planning.ingestion import (
+    collect_inbox_documents,
+    collect_input_documents,
+)
 from atlas.planning.key_authority import (
     EPIC_PREFIX,
     TICKET_PREFIX,
@@ -79,6 +82,12 @@ from atlas.storage import (
 
 CREATED_BY = "planner"
 RENDER_FILES = ("epics.yaml", "tickets.yaml", "dependencies.yaml", "roadmap.mmd")
+
+# The committed follow-up inbox (ATLAS-45 producer, ATLAS-122 consumer): apply
+# retires the stubs that fed a plan to the processed/ subdir. The default must
+# match the producer's (atlas/pm/sync.py) and plan's (atlas/planning/pipeline.py).
+DEFAULT_INBOX_DIR = Path("docs/planning/inbox")
+_PROCESSED_SUBDIR = "processed"
 
 
 class ApplyError(RuntimeError):
@@ -249,6 +258,36 @@ def _archived_keys(diff: PlanDiff, kind: str) -> set[str]:
     }
 
 
+def _retire_inbox_stubs(repo_root: Path, inbox_dir: Path, plan_run: PlanRun) -> None:
+    """Move the inbox stubs that fed this plan to processed/ (ATLAS-122, D2).
+
+    Run on BOTH the applied and the rejected outcome: both mean "considered," so
+    both retire the stub (it keeps a declined follow-up from reappearing every
+    plan). The stubs are the ``input_doc_shas`` paths whose immediate parent is
+    ``inbox_dir`` (the corpus docs and any already under ``processed/`` are left
+    alone). This is a legal ``docs/planning/`` write — apply is that tree's sole
+    writer (ADR-0006/0007).
+
+    Idempotent: a missing source (already moved) or an existing target is a skip,
+    not an error, so re-running apply is safe. The move is lifecycle metadata, not
+    backlog state: a crash mid-move may leave a stub in ``inbox/``, which is simply
+    re-read next plan (the producer's dedup + the operator absorb it) — there is no
+    separate recovery path, idempotence is enough.
+    """
+    inbox = inbox_dir.as_posix()
+    processed_dir = repo_root / inbox_dir / _PROCESSED_SUBDIR
+    for path in plan_run.input_doc_shas:
+        candidate = PurePosixPath(path)
+        if candidate.suffix != ".md" or candidate.parent != PurePosixPath(inbox):
+            continue  # a corpus doc, or already under processed/
+        source = repo_root / path
+        target = processed_dir / candidate.name
+        if not source.exists() or target.exists():
+            continue  # already moved, or the target is present: a skip
+        processed_dir.mkdir(parents=True, exist_ok=True)
+        os.replace(source, target)
+
+
 def run_apply(
     *,
     repo_root: Path,
@@ -256,6 +295,7 @@ def run_apply(
     now: datetime,
     confirm: Callable[[PlanDiff], ApplyDecision],
     planning_dir: Path | None = None,
+    inbox_dir: Path = DEFAULT_INBOX_DIR,
 ) -> ApplyResult:
     """Run the §2.2 apply sequence once. ``confirm`` receives the diff and
     returns the operator's decision; no write happens before CONFIRMED."""
@@ -270,7 +310,14 @@ def run_apply(
 
     # Staleness re-check BEFORE confirmation (AT-5); reuses ingestion's
     # dirty-tree + SHA machinery (a dirty tree raises DirtyInputError here).
-    fresh_shas = {doc.path: doc.sha for doc in collect_input_documents(repo_root)}
+    # The fresh set folds in the inbox (ATLAS-122, D3): input_doc_shas now
+    # carries the inbox stubs, so a corpus-only fresh set would always mismatch
+    # and refuse every apply. An added, removed, or changed inbox stub between
+    # plan and apply correctly reads as stale.
+    fresh_documents = collect_input_documents(repo_root) + collect_inbox_documents(
+        repo_root, inbox_dir
+    )
+    fresh_shas = {doc.path: doc.sha for doc in fresh_documents}
     if fresh_shas != plan_run.input_doc_shas:
         raise StalePlanError(
             "the plan is stale: input documents changed since planning; "
@@ -314,6 +361,8 @@ def run_apply(
         return ApplyResult("unconfirmed", plan_run, diff)
     if decision is ApplyDecision.REJECTED:
         rejected = PlanRunRepo(database).finalize(plan_run.id, PlanRunStatus.REJECTED)
+        # Rejected still means "considered": retire its inbox stubs (ATLAS-122).
+        _retire_inbox_stubs(repo_root, inbox_dir, plan_run)
         return ApplyResult("rejected", rejected, diff)
 
     # Assign keys from the current counter marks (single-operator, ADR-0009).
@@ -397,4 +446,6 @@ def run_apply(
 
     applied = PlanRunRepo(database).get(plan_run.id)
     assert applied is not None
+    # Retire the inbox stubs that fed this plan, post-commit (ATLAS-122).
+    _retire_inbox_stubs(repo_root, inbox_dir, plan_run)
     return ApplyResult("applied", applied, diff)

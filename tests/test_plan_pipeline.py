@@ -218,6 +218,66 @@ def test_at5_input_doc_shas_equal_ingested_head_shas(tmp_path: Path) -> None:
     assert stored.input_doc_shas == head_shas
 
 
+# --- follow-up inbox as a separate plan input source (ATLAS-122) ------------
+
+INBOX_STUB = (
+    "<!-- atlas-source-comment-id: c-1 -->\n# Follow-up from ATLAS-9\n\n"
+    "Investigate the retry seam.\n"
+)
+INBOX_PATH = "docs/planning/inbox/ATLAS-9-1.md"
+
+
+def fixture_repo_with_inbox(tmp_path: Path) -> Path:
+    return make_repo(
+        tmp_path,
+        {
+            "PRODUCT.md": PRODUCT_MD,
+            "docs/atlas/plan.md": PLAN_MD,
+            INBOX_PATH: INBOX_STUB,
+        },
+    )
+
+
+def test_committed_inbox_stub_is_planner_input(tmp_path: Path) -> None:
+    # AT-1: a committed inbox stub reaches the planner's document payload and is
+    # recorded in input_doc_shas under its inbox path — and gets there as the
+    # SEPARATE inbox source, never via the §2.1 corpus globs (_GLOBS untouched).
+    repo = fixture_repo_with_inbox(tmp_path)
+    database = fresh_db(tmp_path)
+    client = FakePlannerClient(proposal_json())
+
+    result = run(repo, database, client)
+
+    assert result.status is PlanRunStatus.PROPOSED
+    # Visible to the model: the stub content is rendered into the prompt.
+    assert client.last_prompt is not None
+    assert "Investigate the retry seam." in client.last_prompt
+    # Provenance: recorded under its inbox path.
+    stored = PlanRunRepo(database).list()[0]
+    assert INBOX_PATH in stored.input_doc_shas
+    assert (
+        stored.input_doc_shas[INBOX_PATH]
+        == git(repo, "rev-parse", f"HEAD:{INBOX_PATH}").strip()
+    )
+    # The corpus globs stay pure: the stub is NOT a §2.1 corpus document.
+    from atlas.planning.ingestion import collect_input_documents
+
+    assert INBOX_PATH not in {doc.path for doc in collect_input_documents(repo)}
+
+
+def test_empty_inbox_is_a_noop(tmp_path: Path) -> None:
+    # AT-4: no stubs → the planner input is exactly today's corpus.
+    repo = fixture_repo(tmp_path)
+    database = fresh_db(tmp_path)
+    run(repo, database, FakePlannerClient(proposal_json()))
+
+    stored = PlanRunRepo(database).list()[0]
+    assert stored.input_doc_shas == {
+        "PRODUCT.md": git(repo, "rev-parse", "HEAD:PRODUCT.md").strip(),
+        "docs/atlas/plan.md": git(repo, "rev-parse", "HEAD:docs/atlas/plan.md").strip(),
+    }
+
+
 def test_similarity_threshold_override_is_recorded(tmp_path: Path) -> None:
     repo = fixture_repo(tmp_path)
     database = fresh_db(tmp_path)

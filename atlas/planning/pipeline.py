@@ -44,7 +44,11 @@ from atlas.core.models import (
 )
 from atlas.planning.client import ModelIdentity, PlannerClient, TruncatedOutputError
 from atlas.planning.gates import GateFailure, run_gates
-from atlas.planning.ingestion import AnchorIndex, collect_input_documents
+from atlas.planning.ingestion import (
+    AnchorIndex,
+    collect_inbox_documents,
+    collect_input_documents,
+)
 from atlas.planning.proposal import Proposal, ProposalError, parse_proposal
 from atlas.planning.reconciler import (
     DEFAULT_SIMILARITY_THRESHOLD,
@@ -77,6 +81,11 @@ from atlas.storage import (
 # backlog's product by this key.
 PRODUCT_KEY = "ATLAS"
 TICKET_PREFIX = "ATLAS"
+
+# The committed follow-up inbox sync_tick (ATLAS-45) writes stubs to; plan reads
+# it as a separate input source (ATLAS-122). Planning-local default — it must
+# match the producer's (atlas/pm/sync.py) and apply's (atlas/planning/apply.py).
+DEFAULT_INBOX_DIR = Path("docs/planning/inbox")
 
 
 class PlanPreconditionError(RuntimeError):
@@ -196,6 +205,7 @@ def run_plan(
     now: datetime,
     prompts_dir: Path | None = None,
     staged_generator: StagedProposalGenerator | None = None,
+    inbox_dir: Path = DEFAULT_INBOX_DIR,
 ) -> PlanResult:
     """Run the full `atlas plan` pipeline once (spec §2.1).
 
@@ -219,7 +229,15 @@ def run_plan(
             f"no planner input documents found under {repo_root}; is the "
             "repo root correct and are the documents committed?"
         )
-    anchor_index = AnchorIndex.build(documents)
+    # The committed follow-up inbox is a SEPARATE source (ATLAS-122): merged into
+    # the planner input — anchor index, document payload, and input_doc_shas —
+    # so stubs are visible to the planner, their headings are valid source_anchor
+    # choices, and their provenance is recorded. The corpus globs stay pure (the
+    # inbox subset is identifiable by its <inbox_dir>/ path prefix). An empty
+    # inbox is a no-op; an uncommitted stub raises DirtyInputError (the gate).
+    inbox_documents = collect_inbox_documents(repo_root, inbox_dir)
+    all_documents = documents + inbox_documents
+    anchor_index = AnchorIndex.build(all_documents)
 
     # Current backlog from operational state (the database; ADR-0006).
     epics = EpicRepo(database).list()
@@ -232,7 +250,8 @@ def run_plan(
     # Generate: single-call by default, or the staged sequence (ADR-0010).
     # Both yield one raw output the rest of the pipeline hashes and parses.
     document_payload = [
-        {"path": doc.path, "sha": doc.sha, "content": doc.content} for doc in documents
+        {"path": doc.path, "sha": doc.sha, "content": doc.content}
+        for doc in all_documents
     ]
     # The valid-anchor list (ATLAS-111): both paths render it so the model
     # SELECTS source_anchor from the index rather than constructing a slug.

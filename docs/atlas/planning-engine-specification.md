@@ -80,6 +80,15 @@ working tree that is dirty or carries untracked files within the input
 set fails ingestion with a typed error — planning runs only against
 committed state (ADR-0006); there is no untracked-file fallback.
 
+The committed follow-up inbox is read as a *separate* input source
+alongside the corpus: its top-level stubs are merged into the planner
+input — anchor index, document payload, and recorded `input_doc_shas` —
+for visibility and provenance, but the inbox is not part of the §2.1
+corpus globs and the `processed/` subdir is excluded. It is committed-only
+on the same fail-closed contract (an uncommitted stub is a typed dirty
+error), and an empty inbox is a no-op. The producer/consumer mechanism is
+owned by pm-engine-and-linear-sync.md "Follow-up ingestion".
+
 ### 2.2 `atlas apply`
 
 1. Load the most recent `PlanRun` with `status: proposed`.
@@ -102,6 +111,13 @@ committed state (ADR-0006); there is no untracked-file fallback.
 
 Rejecting a diff sets `status: rejected`. Apply is the only legal writer of
 planning renders (ADR-0006); the doc linter flags out-of-band edits.
+
+On both the applied and the rejected outcome — both mean "considered" —
+apply retires the inbox stubs that fed the plan to
+`docs/planning/inbox/processed/`, an idempotent move (the staleness
+re-check in step 2 folds the inbox into the fresh SHA set, so an inbox
+change between plan and apply reads as stale). The mechanism is owned by
+pm-engine-and-linear-sync.md "Follow-up ingestion".
 
 Atomicity. The DB commit (counter increment + backlog rows + the
 finalising transition, in one transaction) is the single linearisation
