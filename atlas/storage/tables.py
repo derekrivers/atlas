@@ -344,6 +344,29 @@ class TickFailureRow(Base):
     created_by_id: Mapped[str] = mapped_column(sa.Text)
 
 
+class TicketStatusTransitionRow(Base):
+    """One recorded real status transition (ATLAS-121, data-model §6.6).
+
+    Append-only (enforced in TicketStatusTransitionRepo, not here). Modelled on
+    DebtItemRow for the ticket_id foreign key — and unlike TickFailureRow, which
+    is tick-level and has no FK, a transition is ALWAYS observed against an
+    existing synced ticket, so ticket_id is FK-backed and NOT NULL. There is no
+    product_id (transitions are ticket-scoped, not product-scoped). No status,
+    no created_at, no updated_at — occurred_at is the only instant and the row
+    is never mutated.
+    """
+
+    __tablename__ = "ticket_status_transitions"
+
+    id: Mapped[UUID] = mapped_column(sa.Uuid, primary_key=True)
+    ticket_id: Mapped[UUID] = mapped_column(sa.Uuid, sa.ForeignKey("tickets.id"))
+    from_status: Mapped[str] = mapped_column(sa.Text)
+    to_status: Mapped[str] = mapped_column(sa.Text)
+    occurred_at: Mapped[datetime] = mapped_column(UTCDateTime())
+    created_by_type: Mapped[str] = mapped_column(sa.Text)
+    created_by_id: Mapped[str] = mapped_column(sa.Text)
+
+
 class KeyCounterRow(Base):
     """Monotonic per-prefix key counter (ATLAS-25, data-model §3.12).
 

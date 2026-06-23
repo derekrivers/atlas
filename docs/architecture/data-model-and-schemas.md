@@ -1229,6 +1229,61 @@ CREATE TABLE tick_failures (
 
 ---
 
+## 6.5 Ticket Status Transition
+
+A `TicketStatusTransition` is the third operational record the PM Engine
+appends, a sibling of `DebtItem` and `TickFailure`: a durable, append-only
+record (ADR-0006 §2) of ONE real status transition — from/to status and the
+instant — written by the system from deterministic observation
+(`created_by_type = system`), so it carries no trust tier and no PENDING cap —
+it is NOT evidence (ADR-0008). Unlike `TickFailure` (tick-level, no FK target)
+and like `DebtItem`, it is **ticket-scoped**: every transition belongs to an
+existing synced ticket, so `ticket_id` is required and FK-backed; there is no
+`product_id`. The sole writer is `apply_linear_status` (the sole status
+writer), which appends one row inline on its own transaction so the transition
+commits atomically with the status change — a transition exists iff the status
+actually changed (a set-to-same status records nothing).
+
+```python
+class TicketStatusTransition(BaseModel):
+    id: UUID
+    ticket_id: UUID
+    from_status: str
+    to_status: str
+    occurred_at: datetime
+    created_by_type: ActorType
+    created_by_id: str
+```
+
+`from_status` is the status left and `to_status` the status entered; both are
+non-null because the writer records only inside the real-change branch, where
+the prior status always exists and differs from the new one. `occurred_at` is
+the transition instant. There is no `updated_at`, no `created_at`, and no
+`status`: the row is never mutated (append-only enforcement lives in
+`TicketStatusTransitionRepo`, not the model). This append-only log coexists with
+`Ticket.status_entered_at` (ATLAS-119) — the overwritten dwell clock for the
+*current* episode — and replaces neither it nor `review_cycle_count`
+(ATLAS-120). The single dwell value cannot reconstruct history; this log can, so
+historical per-state cycle time becomes computable (the consumer is ATLAS-126).
+
+---
+
+## 6.6 PostgreSQL Table
+
+```sql
+CREATE TABLE ticket_status_transitions (
+    id UUID PRIMARY KEY,
+    ticket_id UUID NOT NULL REFERENCES tickets(id),
+    from_status TEXT NOT NULL,
+    to_status TEXT NOT NULL,
+    occurred_at TIMESTAMPTZ NOT NULL,
+    created_by_type TEXT NOT NULL,
+    created_by_id TEXT NOT NULL
+);
+```
+
+---
+
 # 7. Context Pack JSON Contract
 
 This is the payload Atlas should pass to execution agents.

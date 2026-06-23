@@ -25,6 +25,7 @@ from atlas.storage.repositories import (
     TicketDependencyRepo,
     TicketNotFoundError,
     TicketRepo,
+    TicketStatusTransitionRepo,
     TickFailureRepo,
     TrustTierError,
 )
@@ -50,6 +51,7 @@ __all__ = [
     "TicketDependencyRepo",
     "TicketNotFoundError",
     "TicketRepo",
+    "TicketStatusTransitionRepo",
     "TrustTierError",
     "apply_backlog",
 ]

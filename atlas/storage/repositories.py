@@ -21,13 +21,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Generic, TypeVar
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import sqlalchemy as sa
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from atlas.core.enums import EvidenceStatus
+from atlas.core.enums import ActorType, EvidenceStatus
 from atlas.core.models import (
     AgentRun,
     AnomalyType,
@@ -43,6 +43,7 @@ from atlas.core.models import (
     Ticket,
     TicketDependency,
     TicketStatus,
+    TicketStatusTransition,
     TickFailure,
 )
 from atlas.core.trust import evidence_tier
@@ -61,6 +62,7 @@ from atlas.storage.tables import (
     ProductRow,
     TicketDependencyRow,
     TicketRow,
+    TicketStatusTransitionRow,
     TickFailureRow,
 )
 
@@ -119,6 +121,36 @@ def _reject_naive(model: BaseModel) -> None:
         value = getattr(model, name)
         if isinstance(value, datetime) and value.utcoffset() is None:
             raise NaiveDatetimeError(type(model).__name__, name)
+
+
+def _status_transition_row(
+    *,
+    transition_id: UUID,
+    ticket_id: UUID,
+    from_status: str,
+    to_status: str,
+    occurred_at: datetime,
+    created_by_id: str,
+) -> TicketStatusTransitionRow:
+    """The single definition of a status-transition row (ATLAS-121 D3).
+
+    Both write paths build their row here so the two cannot drift: the inline
+    writer in ``apply_linear_status`` (which appends atomically with the status
+    change) and ``TicketStatusTransitionRepo.record`` (the completeness/tests
+    verb). ``created_by_type`` is always ``system`` — a transition is observed
+    by deterministic system logic, never an agent or human — and the caller
+    supplies ``created_by_id``: storage never presumes its caller's identity,
+    so the PM sync loop threads its own ``CREATED_BY`` through.
+    """
+    return TicketStatusTransitionRow(
+        id=transition_id,
+        ticket_id=ticket_id,
+        from_status=from_status,
+        to_status=to_status,
+        occurred_at=occurred_at,
+        created_by_type=ActorType.SYSTEM.value,
+        created_by_id=created_by_id,
+    )
 
 
 class _Repo(Generic[M]):
@@ -233,7 +265,7 @@ class TicketRepo(_KeyedRepo[Ticket]):
             return self._to_model(row)
 
     def apply_linear_status(
-        self, key: str, status: TicketStatus, *, now: datetime
+        self, key: str, status: TicketStatus, *, now: datetime, created_by_id: str
     ) -> Ticket:
         """Set ``status`` from a Linear pull (Linear -> Atlas; ATLAS-42).
 
@@ -260,6 +292,20 @@ class TicketRepo(_KeyedRepo[Ticket]):
         untouched, and a set-to-same never reaches this branch. Status-coupled
         and disjoint from the definition cursor, exactly like the dwell clock, so
         it too never bumps ``updated_at``.
+
+        ``TicketStatusTransition`` (ATLAS-121) is appended in the same real-change
+        branch, on the SAME ``session`` already open here, so the transition
+        commits atomically with the status change: a transition exists iff the
+        status actually changed, and a crash rolls back both together. It records
+        ``from_status = row.status`` (the value BEFORE reassignment), ``to_status
+        = status.value``, and ``occurred_at = now``, attributed to ``system`` with
+        the caller-supplied ``created_by_id`` (storage never presumes the caller's
+        identity). Unlike the dwell clock it is append-only history, not an
+        overwritten value — every real change leaves its own row, so historical
+        per-state cycle time becomes computable (the consumer is ATLAS-126). A
+        set-to-same status records NO transition (it never enters this branch).
+        Like the clocks above it touches no definition column and never bumps
+        ``updated_at`` — no directionality leak.
         """
         if now.utcoffset() is None:
             raise NaiveDatetimeError("Ticket", "status_entered_at")
@@ -276,6 +322,16 @@ class TicketRepo(_KeyedRepo[Ticket]):
                     and status == TicketStatus.PR_OPEN
                 ):
                     row.review_cycle_count = row.review_cycle_count + 1
+                session.add(
+                    _status_transition_row(
+                        transition_id=uuid4(),
+                        ticket_id=row.id,
+                        from_status=row.status,
+                        to_status=status.value,
+                        occurred_at=now,
+                        created_by_id=created_by_id,
+                    )
+                )
             row.status = status.value
             return self._to_model(row)
 
@@ -513,6 +569,64 @@ class TickFailureRepo(_Repo[TickFailure]):
                 )
             )
             return (count or 0) > 0
+
+
+class TicketStatusTransitionRepo(_Repo[TicketStatusTransition]):
+    """Append-only status-transition history (ATLAS-121).
+
+    Mirrors DebtItemRepo/TickFailureRepo's append-only shape: it exposes an
+    append verb (``record``) and a read-only query (``list_for_ticket``) only —
+    no update, no delete, no bypass — so one-row-per-real-transition is
+    structural. Like them it is NOT EvidenceRepo: a TicketStatusTransition is an
+    operational record, not evidence, so there is no trust-tier cap.
+
+    The PRODUCTION writer is ``TicketRepo.apply_linear_status``, which appends
+    inline on its own transaction so the transition commits atomically with the
+    status change (atomicity is why that path does not route through ``record``).
+    ``record`` exists for completeness and tests; it builds its row through the
+    SAME ``_status_transition_row`` factory the inline writer uses, so the two
+    cannot drift. The log is append-only history — reads never mutate.
+    """
+
+    def __init__(self, db: Database) -> None:
+        super().__init__(db, TicketStatusTransition, TicketStatusTransitionRow)
+
+    def record(self, model: TicketStatusTransition) -> TicketStatusTransition:
+        """Append one transition record and return the persisted row.
+
+        Builds the row via the shared ``_status_transition_row`` factory — the
+        single row definition, so this path cannot drift from the inline writer
+        in ``apply_linear_status`` — preserving the model's own id. Recording
+        never reads or mutates ticket state.
+        """
+        _reject_naive(model)
+        with self._db.session() as session, session.begin():
+            session.add(
+                _status_transition_row(
+                    transition_id=model.id,
+                    ticket_id=model.ticket_id,
+                    from_status=model.from_status,
+                    to_status=model.to_status,
+                    occurred_at=model.occurred_at,
+                    created_by_id=model.created_by_id,
+                )
+            )
+        return model
+
+    def list_for_ticket(self, ticket_id: UUID) -> list[TicketStatusTransition]:
+        """Every recorded transition for ``ticket_id``, oldest first (by
+        ``occurred_at`` ascending, then by id for a stable order on identical
+        instants). Append-only: it reads the rows and mutates nothing."""
+        with self._db.session() as session:
+            rows = session.scalars(
+                sa.select(TicketStatusTransitionRow)
+                .where(TicketStatusTransitionRow.ticket_id == ticket_id)
+                .order_by(
+                    TicketStatusTransitionRow.occurred_at,
+                    TicketStatusTransitionRow.id,
+                )
+            )
+            return [self._to_model(row) for row in rows]
 
 
 class PlanRunRepo(_Repo[PlanRun]):

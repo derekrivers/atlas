@@ -665,7 +665,9 @@ def _pull(
     if mapped == ticket.status:
         result.status_unchanged += 1  # set-to-same is a no-op
         return ticket
-    updated = tickets.apply_linear_status(ticket.key, mapped, now=now)
+    updated = tickets.apply_linear_status(
+        ticket.key, mapped, now=now, created_by_id=CREATED_BY
+    )
     result.status_pulled += 1
     logger.info(
         "linear-sync: pulled %s -> %s for %s",
