@@ -76,6 +76,18 @@
       "default": null,
       "title": "Completed At"
     },
+    "component": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Component"
+    },
     "context": {
       "title": "Context",
       "type": "string"
@@ -254,6 +266,13 @@
       ],
       "default": null,
       "title": "Status Entered At"
+    },
+    "tags": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Tags",
+      "type": "array"
     },
     "test_requirements": {
       "items": {

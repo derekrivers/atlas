@@ -406,6 +406,11 @@ class Ticket(BaseModel):
     )
     external_linear_id: Optional[str] = None
     external_github_issue_id: Optional[str] = None
+    # Free-form retrieval facets (ATLAS-127): planner-populated later
+    # (ATLAS-128). The Phase 5 context renderer matches ADRs and lessons to a
+    # ticket partly by these; no controlled vocabulary in v1.
+    tags: list[str] = Field(default_factory=list)
+    component: Optional[str] = None
     # PM-Engine sync cursor (ATLAS-42): updated_at at the last confirmed
     # definition push to Linear; a push happens only while
     # updated_at > linear_synced_at. Written by the sync loop, never bumped
@@ -467,6 +472,8 @@ CREATE TABLE tickets (
     estimated_effort INTEGER,
     external_linear_id TEXT,
     external_github_issue_id TEXT,
+    tags JSONB NOT NULL DEFAULT '[]',
+    component TEXT,
     linear_synced_at TIMESTAMPTZ,
     last_observed_linear_state_id TEXT,
     status_entered_at TIMESTAMPTZ,

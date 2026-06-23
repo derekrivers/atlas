@@ -113,6 +113,9 @@ DOCUMENTED_FIELDS: dict[type[BaseModel], dict[str, FieldSpec]] = {
         "estimated_effort": (int | None, None),
         "external_linear_id": (str | None, None),
         "external_github_issue_id": (str | None, None),
+        # Free-form retrieval facets; planner-populated later (ATLAS-127/-128).
+        "tags": (list[str], LIST_FACTORY),
+        "component": (str | None, None),
         # PM-Engine sync cursor; written only by the sync loop (ATLAS-42).
         "linear_synced_at": (datetime | None, None),
         # PM-Engine out-of-ownership transition signal (ATLAS-118).

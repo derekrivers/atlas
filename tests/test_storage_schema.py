@@ -93,6 +93,8 @@ DOCUMENTED_COLUMNS: dict[str, dict[str, tuple[bool, str | None]]] = {
         "risk_level": (NN, None),
         "priority": (NN, "0"),
         "relevant_docs": (NN, "'[]'"),
+        "tags": (NN, "'[]'"),
+        "component": (True, None),
         "acceptance_criteria": (NN, "'[]'"),
         "non_goals": (NN, "'[]'"),
         "implementation_notes": (NN, "'[]'"),

@@ -63,6 +63,11 @@ class Ticket(BaseModel):
     estimated_effort: int | None = Field(default=None, ge=-2147483648, le=2147483647)
     external_linear_id: str | None = None
     external_github_issue_id: str | None = None
+    # Free-form retrieval facets (ATLAS-127): planner-populated later
+    # (ATLAS-128). The Phase 5 context renderer matches ADRs and lessons to a
+    # ticket partly by these; no controlled vocabulary in v1.
+    tags: list[str] = Field(default_factory=list)
+    component: str | None = None
     # PM-Engine sync cursor (ATLAS-42): the value of ``updated_at`` at the
     # last confirmed definition push to Linear. A definition is re-pushed
     # only while ``updated_at > linear_synced_at`` (or this is null and the
