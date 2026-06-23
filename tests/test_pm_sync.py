@@ -45,15 +45,15 @@ from uuid import uuid4
 
 import pytest
 from linear_fakes import InMemoryLinearClient
-from test_models_validation import NOW, ticket_kwargs
+from test_models_validation import NOW, dependency_kwargs, ticket_kwargs
 
 from atlas.core.enums import ActorType
-from atlas.core.models import AnomalyType, Ticket
+from atlas.core.models import AnomalyType, Ticket, TicketDependency
 from atlas.core.models.ticket import TicketStatus
 from atlas.linear.client import LinearIssue, WorkflowState
 from atlas.linear.ownership import LinearStatusMap
 from atlas.pm import SyncResult, sync_tick
-from atlas.storage import Database, DebtItemRepo, TicketRepo
+from atlas.storage import Database, DebtItemRepo, TicketDependencyRepo, TicketRepo
 
 # Workflow states the fake exposes and the status map keys off (stable ids).
 STARTED = WorkflowState(id="state-started", name="In Progress", type="started")
@@ -871,3 +871,228 @@ def test_over_threshold_logs_one_row_across_n_ticks_route_idempotent(
     assert client.state_writes == [
         (ticket.external_linear_id, NEEDS_HUMAN.id) for _ in range(5)
     ]
+
+
+# --- stale block (ATLAS-44): structural, report-only ------------------------
+#
+# A ticket marked `blocked` whose structural blockers have all cleared
+# (`blocked(graph, key)` empty) appends ONE STALE_BLOCK per blocked *episode*.
+# The check is structural (no horizon, no clock comparison — `now` only stamps
+# the row); report-only — it NEVER moves a ticket and makes no Linear call.
+# Every stale-block ticket is seeded with no issue and a CLEAN cursor
+# (linear_synced_at == updated_at) so pull/push/promote are all no-ops and only
+# the step-5 stale-block pass acts (blocked IS pushable, so an unsynced one would
+# otherwise be created — the clean cursor freezes it).
+
+
+def add_depends_on(db: Database, *, source: Ticket, target: Ticket) -> None:
+    """Seed a ``source depends_on target`` edge so the projected graph carries a
+    structural blocker (cleared iff ``target`` is done)."""
+
+    TicketDependencyRepo(db).add(
+        TicketDependency(
+            **dependency_kwargs()
+            | {
+                "id": uuid4(),
+                "source_ticket_id": source.id,
+                "target_entity_type": "ticket",
+                "target_entity_id": target.id,
+                "dependency_type": "depends_on",
+            }
+        )
+    )
+
+
+def test_blocked_with_no_structural_blockers_logs_one_stale_block(
+    db: Database,
+) -> None:
+    client = RecordingClient()
+    # Blocked since NOW, no dependency edges: blocked(graph, key) is empty, so the
+    # ticket is stranded in blocked and a STALE_BLOCK is logged.
+    ticket = seed_ticket(
+        db,
+        client,
+        key="ATLAS-240",
+        status=TicketStatus.BLOCKED,
+        status_entered_at=NOW,
+        updated_at=EARLIER,
+        linear_synced_at=EARLIER,
+        with_issue=False,
+    )
+
+    result = run(db, client, now=LATER)
+
+    items = DebtItemRepo(db).list()
+    assert len(items) == 1  # wrong answer: zero (structural clear not detected)
+    (item,) = items
+    assert item.anomaly_type == AnomalyType.STALE_BLOCK
+    assert item.created_by_type == ActorType.SYSTEM  # system-written, not evidence
+    assert item.ticket_id == ticket.id
+    assert item.product_id == ticket.product_id
+    assert item.observed_at == LATER  # the injected tick clock only stamps the row
+    assert result.stale_blocks == 1
+    # Report-only: no ticket-state write of any kind, status still blocked.
+    assert client.state_writes == []
+    pulled = TicketRepo(db).get_by_key("ATLAS-240")
+    assert pulled is not None and pulled.status == TicketStatus.BLOCKED
+
+
+def test_blocked_with_all_blockers_done_logs_one_stale_block(db: Database) -> None:
+    client = RecordingClient()
+    # A depends_on B; B is DONE, so blocked(graph, A) is empty — A is stranded.
+    # This proves the pass evaluates blocked() over the graph, not mere
+    # edge-absence: an edge exists, but its target is satisfied.
+    blocked_ticket = seed_ticket(
+        db,
+        client,
+        key="ATLAS-241",
+        status=TicketStatus.BLOCKED,
+        status_entered_at=NOW,
+        updated_at=EARLIER,
+        linear_synced_at=EARLIER,
+        with_issue=False,
+    )
+    done_target = seed_ticket(
+        db,
+        client,
+        key="ATLAS-242",
+        status=TicketStatus.DONE,
+        updated_at=EARLIER,
+        linear_synced_at=EARLIER,
+        with_issue=False,
+    )
+    add_depends_on(db, source=blocked_ticket, target=done_target)
+
+    result = run(db, client, now=LATER)
+
+    items = DebtItemRepo(db).list()
+    assert len(items) == 1  # wrong answer: zero (edge present but target done)
+    (item,) = items
+    assert item.anomaly_type == AnomalyType.STALE_BLOCK
+    assert item.ticket_id == blocked_ticket.id
+    assert result.stale_blocks == 1
+    assert client.state_writes == []
+
+
+def test_blocked_with_active_structural_blocker_logs_nothing(db: Database) -> None:
+    client = RecordingClient()
+    # A depends_on B; B is PLANNED (not done), so blocked(graph, A) is NON-empty —
+    # A is genuinely blocked, not stranded. The wrong answer logs for a still
+    # structurally blocked ticket.
+    blocked_ticket = seed_ticket(
+        db,
+        client,
+        key="ATLAS-243",
+        status=TicketStatus.BLOCKED,
+        status_entered_at=NOW,
+        updated_at=EARLIER,
+        linear_synced_at=EARLIER,
+        with_issue=False,
+    )
+    planned_target = seed_ticket(
+        db,
+        client,
+        key="ATLAS-244",
+        status=TicketStatus.PLANNED,
+        updated_at=EARLIER,
+        linear_synced_at=EARLIER,
+        with_issue=False,
+    )
+    add_depends_on(db, source=blocked_ticket, target=planned_target)
+
+    result = run(db, client, now=LATER)
+
+    assert (
+        DebtItemRepo(db).list() == []
+    )  # wrong answer: a row for a still-blocked ticket
+    assert result.stale_blocks == 0
+
+
+def test_non_blocked_ticket_logs_no_stale_block(db: Database) -> None:
+    client = RecordingClient()
+    # Planned, no dependencies — blocked(graph, key) would be empty, but the
+    # ticket is not in `blocked`, so the pass must not log. The wrong answer logs
+    # off the empty-blockers condition alone, ignoring the status gate.
+    seed_ticket(
+        db,
+        client,
+        key="ATLAS-245",
+        status=TicketStatus.PLANNED,
+        status_entered_at=NOW,
+        updated_at=EARLIER,
+        linear_synced_at=EARLIER,
+        with_issue=False,
+    )
+
+    result = run(db, client, now=LATER)
+
+    assert DebtItemRepo(db).list() == []  # wrong answer: a row for a non-blocked ticket
+    assert result.stale_blocks == 0
+
+
+def test_null_status_entered_at_is_skipped_not_stale_blocked(db: Database) -> None:
+    client = RecordingClient()
+    # status_entered_at unknown (NULL) — no episode boundary for the dedup. The
+    # pass SKIPS it, never guessing a stale-block, exactly as dwell does.
+    seed_ticket(
+        db,
+        client,
+        key="ATLAS-246",
+        status=TicketStatus.BLOCKED,
+        status_entered_at=None,
+        updated_at=EARLIER,
+        linear_synced_at=EARLIER,
+        with_issue=False,
+    )
+
+    result = run(db, client, now=LATER)
+
+    assert DebtItemRepo(db).list() == []  # wrong answer: a row off a NULL clock
+    assert result.stale_blocks == 0
+
+
+def test_stale_block_logs_exactly_one_row_across_n_ticks(db: Database) -> None:
+    client = RecordingClient()
+    seed_ticket(
+        db,
+        client,
+        key="ATLAS-247",
+        status=TicketStatus.BLOCKED,
+        status_entered_at=NOW,
+        updated_at=EARLIER,
+        linear_synced_at=EARLIER,
+        with_issue=False,
+    )
+
+    # Five ticks, the blocked episode never changing.
+    results = [run(db, client, now=NOW + timedelta(hours=1 + n)) for n in range(5)]
+
+    # The load-bearing dedup: one row for the whole blocked episode, NOT one per
+    # tick. Wrong answer: five rows, which makes recurring(...) lie.
+    assert len(DebtItemRepo(db).list()) == 1
+    assert results[0].stale_blocks == 1
+    assert all(r.stale_blocks == 0 for r in results[1:])
+
+
+def test_stale_block_detect_path_makes_no_linear_call(db: Database) -> None:
+    client = RecordingClient()
+    # AC4: the detect path is report-only — no set_state, and (with a clean cursor
+    # and no issue) no create/update either. Assert every recorded Linear write
+    # list is empty after a tick that logs a stale-block.
+    seed_ticket(
+        db,
+        client,
+        key="ATLAS-248",
+        status=TicketStatus.BLOCKED,
+        status_entered_at=NOW,
+        updated_at=EARLIER,
+        linear_synced_at=EARLIER,
+        with_issue=False,
+    )
+
+    result = run(db, client, now=LATER)
+
+    assert result.stale_blocks == 1  # the stale-block did fire...
+    assert client.creates == []  # ...with no Linear call of any kind
+    assert client.updates == []
+    assert client.state_writes == []

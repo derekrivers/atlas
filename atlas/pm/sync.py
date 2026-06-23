@@ -18,7 +18,7 @@ ticket is created and no Atlas/Linear state is written on the scan path. Step 1'
 "log anomalies otherwise" clause is
 ATLAS-118: an unmapped Linear state appends one ``OUT_OF_OWNERSHIP_TRANSITION``
 ``DebtItem`` per *transition* (see :func:`_pull` and the transition signal
-``Ticket.last_observed_linear_state_id``). Step 5 has two clauses. Dwell-breach
+``Ticket.last_observed_linear_state_id``). Step 5 has three clauses. Dwell-breach
 (ATLAS-119): a ticket sitting in a working state past its horizon appends one
 ``DWELL_BREACH`` ``DebtItem`` per dwell *episode* (see :func:`_detect_dwell`,
 ``DWELL_HORIZONS``, and the episode boundary ``Ticket.status_entered_at``) —
@@ -28,7 +28,12 @@ round trips is routed to ``Needs Human`` via the sanctioned
 :meth:`LinearClient.set_state` and one ``REVIEW_CYCLE`` ``DebtItem`` is appended
 as the deterministic failure-analysis note (see :func:`_detect_review_cycle`).
 This is the ONE anomaly that both logs AND moves a ticket — everywhere else the
-two are separate. The remaining work — the recurring scheduler (ATLAS-50) and the
+two are separate. Stale-block (ATLAS-44): a ticket stranded in ``blocked`` whose
+structural blockers have all cleared (``blocked(graph, key)`` empty) appends one
+``STALE_BLOCK`` ``DebtItem`` per blocked *episode* (see
+:func:`_detect_stale_block`) — report-only like dwell, it surfaces a candidate to
+move but NEVER routes, since the graph sees only structural blockers and the
+operator owns the move. The remaining work — the recurring scheduler (ATLAS-50) and the
 follow-up CONSUMER (ATLAS-122: plan reads the committed inbox, apply moves
 processed stubs) — is deliberately NOT here.
 
@@ -67,9 +72,12 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
 
+import networkx as nx
+
 from atlas.core.enums import ActorType
 from atlas.core.models.debt_item import AnomalyType, DebtItem
 from atlas.core.models.ticket import Ticket, TicketStatus
+from atlas.dependencies.blockers import blocked
 from atlas.dependencies.graph import build_dependency_graph
 from atlas.dependencies.validation import TERMINAL_STATUSES
 from atlas.linear.client import LinearClient, LinearIssue
@@ -176,7 +184,13 @@ class SyncResult:
     the deduped ``REVIEW_CYCLE`` rows appended — one per ``pr_open`` episode.
     ``follow_ups_stubbed`` (ATLAS-45) counts the inbox stubs written this tick —
     one per newly-seen tagged comment, so a tagged comment already stubbed under
-    inbox/ or inbox/processed/ increments it zero, not once per tick."""
+    inbox/ or inbox/processed/ increments it zero, not once per tick.
+    ``stale_blocks`` (ATLAS-44) counts the ``STALE_BLOCK`` rows appended this tick
+    — one per blocked *episode*, exactly like ``dwell_breaches``, so a ticket
+    stranded in ``blocked`` with its structural blockers cleared across N ticks
+    increments it once, not once per tick. Report-only, like ``dwell_breaches``;
+    no route counter accompanies it because the stale-block pass never moves a
+    ticket."""
 
     status_pulled: int = 0
     status_unchanged: int = 0
@@ -190,6 +204,7 @@ class SyncResult:
     dwell_breaches: int = 0
     routed_to_human: int = 0
     review_cycles_logged: int = 0
+    stale_blocks: int = 0
 
 
 def _definition_changed(ticket: Ticket) -> bool:
@@ -293,6 +308,94 @@ def _detect_dwell(
         ticket.status.value,
         ticket.status_entered_at.isoformat(),
         horizon,
+    )
+
+
+def _stale_block_item(ticket: Ticket, now: datetime) -> DebtItem:
+    """Build the ``STALE_BLOCK`` DebtItem for a ticket stranded in ``blocked``
+    whose structural blockers have all cleared.
+
+    System-attributed and append-only (data-model §6.1), exactly like the dwell
+    item: ``product_id``/``ticket_id`` come from the stranded ticket (D3), the
+    type is ``STALE_BLOCK`` (D1), and ``observed_at`` / ``created_at`` are the
+    injected tick clock — used ONLY to stamp the row, never in a detection
+    comparison (the check is structural, not time-based). Report-only — building
+    or recording this never changes ticket state; the engine surfaces the
+    candidate and the operator decides whether to move it (the graph sees only
+    structural blockers, so a non-structural ``blocked`` reason it cannot see is
+    why this never routes). The caller (:func:`_detect_stale_block`) only builds
+    this once ``status_entered_at`` is known non-NULL."""
+
+    entered = ticket.status_entered_at.isoformat() if ticket.status_entered_at else "?"
+    return DebtItem(
+        id=uuid4(),
+        product_id=ticket.product_id,
+        ticket_id=ticket.id,
+        anomaly_type=AnomalyType.STALE_BLOCK,
+        summary=(
+            f"{ticket.key} is marked blocked (since {entered}) but its structural "
+            "blockers have all cleared; candidate to move, status unchanged"
+        ),
+        observed_at=now,
+        created_by_type=ActorType.SYSTEM,
+        created_by_id=CREATED_BY,
+        created_at=now,
+    )
+
+
+def _detect_stale_block(
+    ticket: Ticket,
+    graph: nx.DiGraph[str],
+    debt: DebtItemRepo,
+    result: SyncResult,
+    now: datetime,
+) -> None:
+    """Step 5 (ATLAS-44): append one ``STALE_BLOCK`` per blocked *episode* when
+    ``ticket`` sits in ``blocked`` but its structural blockers have all cleared
+    (``blocked(graph, key)`` is empty). Report-only — like :func:`_detect_dwell`
+    it NEVER writes ticket state and never calls Linear (only ATLAS-120's
+    review-cycling rule moves a ticket).
+
+    This surfaces a ticket that may be ready to move but is stranded in
+    ``blocked``, where :func:`promote_ready` will not touch it (it promotes only
+    ``planned``/``backlog``). It deliberately does NOT route: the dependency graph
+    knows only *structural* blockers, so a ticket may be ``blocked`` for a
+    non-structural reason the graph cannot see — the engine reports the candidate
+    and the operator decides. The inverse (structurally blocked but not marked
+    ``blocked``) is out of scope: :func:`~atlas.dependencies.readiness.is_ready`
+    already refuses to promote it, so it is not stranded.
+
+    Skips, in order: a ticket not in ``blocked`` (the only status this pass
+    considers — ``now`` is never used in a comparison, the check is structural); a
+    NULL ``status_entered_at`` (unknown episode boundary — skipped rather than
+    guessing, exactly as dwell does); a ticket whose structural blockers are still
+    active (``blocked(graph, key).is_blocked`` — the wrong answer logs for a still
+    blocked ticket). Otherwise it logs once per episode: ``status_entered_at`` is
+    the episode boundary, so a row is appended only when none has been logged
+    since the ticket entered ``blocked`` (:meth:`DebtItemRepo.logged_since`). When
+    the status later changes, ``status_entered_at`` advances and a fresh stranded
+    episode can log again.
+
+    ``ticket`` is guaranteed a present ticket node in ``graph`` — both come from
+    the same per-tick :class:`TicketRepo` read — so :func:`blocked` never raises
+    its precondition ``ValueError`` here (the same guarantee :func:`promote_ready`
+    relies on)."""
+
+    if ticket.status is not TicketStatus.BLOCKED:
+        return  # only a ticket marked blocked can be stranded in blocked
+    if ticket.status_entered_at is None:
+        return  # unknown entry time: skip, never a false stale-block
+    if blocked(graph, ticket.key).is_blocked:
+        return  # still structurally blocked; not stranded
+    if debt.logged_since(ticket.id, AnomalyType.STALE_BLOCK, ticket.status_entered_at):
+        return  # this episode already logged one; not one per tick
+    debt.record(_stale_block_item(ticket, now))
+    result.stale_blocks += 1
+    logger.info(
+        "linear-sync: stale block for %s (entered blocked %s, structural blockers "
+        "cleared); DebtItem logged, status unchanged",
+        ticket.key,
+        ticket.status_entered_at.isoformat(),
     )
 
 
@@ -645,7 +748,7 @@ def sync_tick(
     so a tagged comment already stubbed (in inbox/ or inbox/processed/) is written
     once, not once per tick.
 
-    Then step 5: a final pass re-reads the tickets and runs both clauses per
+    Then step 5: a final pass re-reads the tickets and runs three clauses per
     ticket. Dwell-breach (ATLAS-119): append one ``DWELL_BREACH`` DebtItem per
     dwell episode for a ticket sitting in a horizoned working state past its
     horizon (:func:`_detect_dwell`) — report-only. Review-cycling (ATLAS-120):
@@ -655,8 +758,13 @@ def sync_tick(
     Needs-Human target state is resolved ONCE up front (like
     :func:`promote_ready`'s Ready-for-Agent resolution), so a status map missing
     a unique ``needs_human_decision`` state fails loudly even when nothing is
-    cycling. The pass runs after promotion so it sees this tick's pulled statuses
-    and freshly stamped ``status_entered_at``. Returns per-tick counters.
+    cycling. Stale-block (ATLAS-44): append one ``STALE_BLOCK`` DebtItem per
+    blocked episode for a ticket stranded in ``blocked`` whose structural blockers
+    have all cleared (:func:`_detect_stale_block`, reusing the same ``graph``
+    built for promotion above) — report-only, it NEVER moves the ticket. The pass
+    runs after promotion so it sees this tick's pulled statuses and freshly
+    stamped ``status_entered_at``; the graph reflects current Atlas state because
+    promotion writes Linear only. Returns per-tick counters.
 
     ``now`` is the injected tick clock (no hidden ``datetime.now``): it stamps
     the ``observed_at``/``created_at`` of any DebtItem this tick appends and the
@@ -692,4 +800,5 @@ def sync_tick(
     for ticket in tickets.list():
         _detect_dwell(ticket, debt, result, now)
         _detect_review_cycle(ticket, debt, client, needs_human_state_id, result, now)
+        _detect_stale_block(ticket, graph, debt, result, now)
     return result
