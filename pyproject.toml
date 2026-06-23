@@ -96,6 +96,7 @@ layers = [
     "atlas.cli",
     "atlas.planning",
     "atlas.pm",
+    "atlas.context",
     "atlas.dependencies",
     "atlas.storage",
     "atlas.linear",
