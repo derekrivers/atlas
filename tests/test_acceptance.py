@@ -502,10 +502,14 @@ def test_enumeration_pins_real_roadmap_count() -> None:
     # create-on-crash record half, a prerequisite for the ATLAS-50 scheduler) +
     # ATLAS-126 (the historical-cycle-time CONSUMER seed: upgrade build_delivery_report
     # to compute true per-state cycle time from the ATLAS-121 transition log,
-    # replacing the current-dwell proxy ATLAS-47 reports today).
+    # replacing the current-dwell proxy ATLAS-47 reports today) + ATLAS-127/-128
+    # (the ticket tags/component fields: ATLAS-127 lands the free-form
+    # tags/component on the stored Ticket — the storage half — and ATLAS-128
+    # seeds the writer half where the planner emits them; both sequenced ahead of
+    # the Phase 5 retrievers ATLAS-51/-53 that consume the field).
     # Addition couples to the pin, the mirror of the retirement rule. The pin
     # fires on exactly this kind of change.
-    assert len(tickets) == 110
+    assert len(tickets) == 112
     keys = [t.key for t in tickets]
     assert len(keys) == len(set(keys))  # unique
     assert "ATLAS-20" not in keys  # retired lines are not tickets

@@ -273,6 +273,11 @@ Design doc: docs/atlas/context-renderer.md.
 
 ## Epic: Execution Context
 
+ATLAS-127 Ticket tags and component fields: free-form tags/component on the
+         stored Ticket (storage half).
+ATLAS-128 Planner emits ticket tags and component: ProposalTicket gains the
+         fields, the planner produces them, materialisation and validation
+         carry them through (writer half). Depends on ATLAS-127.
 ATLAS-51 ADR retrieval
 ATLAS-52 Documentation retrieval recording doc SHAs
 ATLAS-53 Historical lesson retrieval (status ACTIVE only; tag/component

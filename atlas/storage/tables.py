@@ -161,6 +161,8 @@ class TicketRow(Base):
     estimated_effort: Mapped[int | None] = mapped_column(sa.Integer)
     external_linear_id: Mapped[str | None] = mapped_column(sa.Text)
     external_github_issue_id: Mapped[str | None] = mapped_column(sa.Text)
+    tags: Mapped[list[str]] = mapped_column(JSONB, server_default=_EMPTY_LIST)
+    component: Mapped[str | None] = mapped_column(sa.Text)
     linear_synced_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     last_observed_linear_state_id: Mapped[str | None] = mapped_column(sa.Text)
     status_entered_at: Mapped[datetime | None] = mapped_column(UTCDateTime())

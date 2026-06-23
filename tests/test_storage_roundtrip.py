@@ -129,6 +129,71 @@ def test_generation_stages_server_default_backfills_existing_rows(db: Database) 
     assert stored.generation_stages == []
 
 
+def test_ticket_tags_and_component_round_trip(db: Database) -> None:
+    # ATLAS-127: free-form tags/component persist and read back identical —
+    # tags order preserved (not set-coerced), component a real label (not "").
+    repo = TicketRepo(db)
+    ticket = Ticket(
+        **ticket_kwargs() | {"tags": ["pm", "sync"], "component": "pm-engine"}
+    )
+    repo.add(ticket)
+    stored = repo.get(ticket.id)
+    assert stored is not None
+    assert stored.tags == ["pm", "sync"]
+    assert stored.component == "pm-engine"
+    assert stored == ticket
+
+
+def test_ticket_tags_and_component_defaults(db: Database) -> None:
+    # ATLAS-127: a ticket built without the fields reads back the defaults,
+    # not a null tags or a coerced-empty component.
+    repo = TicketRepo(db)
+    ticket = Ticket(**ticket_kwargs())
+    repo.add(ticket)
+    stored = repo.get(ticket.id)
+    assert stored is not None
+    assert stored.tags == []
+    assert stored.component is None
+
+
+def test_ticket_tags_component_server_default_backfills_existing_rows(
+    db: Database,
+) -> None:
+    # ATLAS-127 migration back-fill: a tickets row written in the pre-0015 shape
+    # (here, inserted without tags/component) is backfilled by the NOT NULL '[]'
+    # server default and the nullable component, reading back as the empty list
+    # and None — existing rows are safe, no data surgery.
+    import sqlalchemy as sa
+
+    from atlas.storage.tables import TicketRow
+
+    kwargs = ticket_kwargs()
+    with db.session() as session, session.begin():
+        session.execute(
+            sa.insert(TicketRow).values(
+                id=kwargs["id"],
+                product_id=kwargs["product_id"],
+                key=kwargs["key"],
+                title=kwargs["title"],
+                objective=kwargs["objective"],
+                context=kwargs["context"],
+                status=kwargs["status"],
+                ticket_type=kwargs["ticket_type"],
+                risk_level=kwargs["risk_level"],
+                priority=kwargs["priority"],
+                source_anchor=kwargs["source_anchor"],
+                created_by_type=kwargs["created_by_type"],
+                created_by_id=kwargs["created_by_id"],
+                created_at=kwargs["created_at"],
+                updated_at=kwargs["updated_at"],
+            )
+        )
+    stored = TicketRepo(db).get(kwargs["id"])
+    assert stored is not None
+    assert stored.tags == []
+    assert stored.component is None
+
+
 def test_get_by_key_for_keyed_aggregates(db: Database) -> None:
     repo = TicketRepo(db)
     ticket = Ticket(**ticket_kwargs())
