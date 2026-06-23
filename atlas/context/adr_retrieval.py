@@ -31,6 +31,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from enum import StrEnum
+from uuid import UUID
 
 import networkx as nx
 
@@ -96,11 +97,13 @@ class ADRMatchSource(StrEnum):
 
 @dataclass(frozen=True)
 class ADRMatch:
-    """One selected ADR. ``key`` is the synthesised repo-wide form
-    (``ADR-0006``); ``shared_tokens`` are the ticket/title tokens that drove
-    a :attr:`ADRMatchSource.TAG` match (empty for a dependency target), in
-    sorted order so the value is deterministic."""
+    """One selected ADR. ``adr_id`` is the stored ADR's UUID — the identity the
+    ContextPack records in ``relevant_adrs``; ``key`` is the synthesised
+    repo-wide form (``ADR-0006``); ``shared_tokens`` are the ticket/title tokens
+    that drove a :attr:`ADRMatchSource.TAG` match (empty for a dependency
+    target), in sorted order so the value is deterministic."""
 
+    adr_id: UUID
     key: str
     number: int
     source: ADRMatchSource
@@ -150,7 +153,12 @@ def select_adrs(
             continue
         dependency_numbers.add(number)
         dependency_matches.append(
-            ADRMatch(target_data["key"], number, ADRMatchSource.DEPENDENCY)
+            ADRMatch(
+                target_data["entity_id"],
+                target_data["key"],
+                number,
+                ADRMatchSource.DEPENDENCY,
+            )
         )
     dependency_matches.sort(key=lambda match: match.number)
 
@@ -171,6 +179,7 @@ def select_adrs(
                 continue
             tag_matches.append(
                 ADRMatch(
+                    adr.id,
                     adr_key(adr.number),
                     adr.number,
                     ADRMatchSource.TAG,

@@ -64,8 +64,8 @@ def test_dependency_targets_rank_first_by_number() -> None:
     result = select_adrs(graph, ticket, [])
 
     assert result == [
-        ADRMatch("ADR-0002", 2, ADRMatchSource.DEPENDENCY),
-        ADRMatch("ADR-0008", 8, ADRMatchSource.DEPENDENCY),
+        ADRMatch(low.id, "ADR-0002", 2, ADRMatchSource.DEPENDENCY),
+        ADRMatch(high.id, "ADR-0008", 8, ADRMatchSource.DEPENDENCY),
     ]
 
 
@@ -80,7 +80,7 @@ def test_any_dependency_type_to_an_adr_is_a_target() -> None:
 
     result = select_adrs(graph, ticket, [])
 
-    assert result == [ADRMatch("ADR-0007", 7, ADRMatchSource.DEPENDENCY)]
+    assert result == [ADRMatch(adr.id, "ADR-0007", 7, ADRMatchSource.DEPENDENCY)]
 
 
 def test_tag_match_on_accepted_adr_title() -> None:
@@ -90,7 +90,9 @@ def test_tag_match_on_accepted_adr_title() -> None:
 
     result = select_adrs(graph, ticket, [adr])
 
-    assert result == [ADRMatch("ADR-0002", 2, ADRMatchSource.TAG, ("postgresql",))]
+    assert result == [
+        ADRMatch(adr.id, "ADR-0002", 2, ADRMatchSource.TAG, ("postgresql",))
+    ]
 
 
 def test_component_contributes_match_tokens() -> None:
@@ -100,7 +102,9 @@ def test_component_contributes_match_tokens() -> None:
 
     result = select_adrs(graph, ticket, [adr])
 
-    assert result == [ADRMatch("ADR-0008", 8, ADRMatchSource.TAG, ("evidence",))]
+    assert result == [
+        ADRMatch(adr.id, "ADR-0008", 8, ADRMatchSource.TAG, ("evidence",))
+    ]
 
 
 def test_only_accepted_adrs_match_on_tags() -> None:
@@ -138,7 +142,7 @@ def test_dependency_target_not_duplicated_by_tag_match() -> None:
 
     result = select_adrs(graph, ticket, [adr])
 
-    assert result == [ADRMatch("ADR-0007", 7, ADRMatchSource.DEPENDENCY)]
+    assert result == [ADRMatch(adr.id, "ADR-0007", 7, ADRMatchSource.DEPENDENCY)]
 
 
 def test_absent_adr_dependency_target_is_skipped() -> None:
@@ -161,8 +165,8 @@ def test_tag_tiebreak_is_total_order_independent_of_input() -> None:
     graph = project_graph([ticket], [], [earlier, later], [])
 
     expected = [
-        ADRMatch("ADR-0002", 2, ADRMatchSource.TAG, ("state",)),
-        ADRMatch("ADR-0008", 8, ADRMatchSource.TAG, ("state",)),
+        ADRMatch(earlier.id, "ADR-0002", 2, ADRMatchSource.TAG, ("state",)),
+        ADRMatch(later.id, "ADR-0008", 8, ADRMatchSource.TAG, ("state",)),
     ]
     # Identical result for either input ordering — the assertion is the exact
     # ordered list, not membership.
