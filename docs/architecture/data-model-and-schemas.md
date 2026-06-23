@@ -924,11 +924,17 @@ Required fields: `key` (string or null), `title`, `description`,
 
 Required fields: `key` (string or null), `epic_ref`, `title`,
 `objective`, `context` (non-empty), `ticket_type`, `risk_level`,
-`priority` (integer), `source_anchor`, `relevant_docs`,
-`acceptance_criteria` (1–7 entries), `non_goals` (≥1),
-`test_requirements` (≥1), `implementation_notes`,
+`priority` (integer), `source_anchor`, `relevant_docs`, `tags`,
+`component` (string or null), `acceptance_criteria` (1–7 entries),
+`non_goals` (≥1), `test_requirements` (≥1), `implementation_notes`,
 `documentation_requirements`, `definition_of_done` (≥1).
 
+- `tags` and `component` are the free-form retrieval facets the planner
+  populates (ATLAS-128); they carry into the stored Ticket's matching
+  ATLAS-127 fields at apply. Like `relevant_docs` and `key`/`epic_ref`,
+  they are required with no default — the planner always emits the keys,
+  with an empty `tags` list and a `null` `component` when nothing fits.
+  No controlled vocabulary in v1.
 - `epic_ref` is an echoed epic key or `new_epic:<n>`, where `<n>` is
   the zero-based position of the referenced epic in this proposal's
   `epics` array. `epic_ref` may be `null` only when `ticket_type` is

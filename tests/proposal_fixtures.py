@@ -42,6 +42,8 @@ def ticket_payload(**overrides: Any) -> dict[str, Any]:
         "priority": 10,
         "source_anchor": "docs/a.md#beta",
         "relevant_docs": [],
+        "tags": ["planning"],
+        "component": "planning",
         "acceptance_criteria": ["It works."],
         "non_goals": ["Not the other thing."],
         "test_requirements": ["Unit tests."],

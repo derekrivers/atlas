@@ -105,6 +105,17 @@
           "title": "Acceptance Criteria",
           "type": "array"
         },
+        "component": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Component"
+        },
         "context": {
           "minLength": 1,
           "title": "Context",
@@ -186,6 +197,13 @@
           "title": "Source Anchor",
           "type": "string"
         },
+        "tags": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Tags",
+          "type": "array"
+        },
         "test_requirements": {
           "items": {
             "type": "string"
@@ -213,6 +231,8 @@
         "priority",
         "source_anchor",
         "relevant_docs",
+        "tags",
+        "component",
         "acceptance_criteria",
         "non_goals",
         "test_requirements",

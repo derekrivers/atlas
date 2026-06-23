@@ -215,6 +215,8 @@ def _materialise(
                 risk_level=ticket_item.risk_level,
                 priority=ticket_item.priority,
                 relevant_docs=ticket_item.relevant_docs,
+                tags=ticket_item.tags,
+                component=ticket_item.component,
                 acceptance_criteria=ticket_item.acceptance_criteria,
                 non_goals=ticket_item.non_goals,
                 implementation_notes=ticket_item.implementation_notes,
