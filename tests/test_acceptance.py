@@ -497,10 +497,12 @@ def test_enumeration_pins_real_roadmap_count() -> None:
     # the ATLAS-45 producer does not build) + ATLAS-123 (the AT-7 pair-metric
     # encoding: exact-anchor floor live, content_coverage reported — realises
     # ATLAS-112's RESOLVED decision, the clause ATLAS-107 reused) + ATLAS-124 (the
-    # content-coverage bar-pin follow-up seed, gated on a second staged capture).
+    # content-coverage bar-pin follow-up seed, gated on a second staged capture)
+    # + ATLAS-125 (the tick-failure record + recorded_since dedup predicate: the
+    # create-on-crash record half, a prerequisite for the ATLAS-50 scheduler).
     # Addition couples to the pin, the mirror of the retirement rule. The pin
     # fires on exactly this kind of change.
-    assert len(tickets) == 108
+    assert len(tickets) == 109
     keys = [t.key for t in tickets]
     assert len(keys) == len(set(keys))  # unique
     assert "ATLAS-20" not in keys  # retired lines are not tickets

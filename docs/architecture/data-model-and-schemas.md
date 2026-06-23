@@ -1179,6 +1179,56 @@ CREATE TABLE debt_items (
 
 ---
 
+## 6.3 Tick Failure
+
+A `TickFailure` is the second operational record the PM Engine appends, a
+sibling of `DebtItem`: a durable, append-only record (ADR-0006 §2) of one
+PM-scheduler tick that crashed, written by the system from deterministic
+observation (`created_by_type = system`), so it carries no trust tier and no
+PENDING cap — it is NOT evidence (ADR-0008). A tick crash is observed at the
+**tick level, not against any one ticket**, so it has no `ticket_id` and no
+FK target — the very reason it is a separate model and cannot be a `DebtItem`
+(whose `ticket_id` is required and FK-backed). It is the record half of
+create-on-crash; the scheduler that catches a crashing tick, records one row,
+and continues is the sole writer (ATLAS-50).
+
+```python
+class TickFailure(BaseModel):
+    id: UUID
+    occurred_at: datetime
+    failure_signature: str
+    detail: str
+    created_by_type: ActorType
+    created_by_id: str
+```
+
+`occurred_at` is when the tick crashed (create-on-crash records at the crash
+instant), and is the field the query-time dedup predicate
+(`TickFailureRepo.recorded_since`) compares against. `failure_signature` is the
+free-form grouping key that predicate dedups on (no enum — a crash has no fixed
+taxonomy); `detail` is the error text. There is no `updated_at` and no `status`:
+the row is never mutated (append-only enforcement lives in `TickFailureRepo`,
+not the model). Dedup is a pure query-time predicate over these rows — never
+stored, never a creation gate; the dedup window (`since`) is supplied by the
+caller (ATLAS-50), not pinned here.
+
+---
+
+## 6.4 PostgreSQL Table
+
+```sql
+CREATE TABLE tick_failures (
+    id UUID PRIMARY KEY,
+    occurred_at TIMESTAMPTZ NOT NULL,
+    failure_signature TEXT NOT NULL,
+    detail TEXT NOT NULL,
+    created_by_type TEXT NOT NULL,
+    created_by_id TEXT NOT NULL
+);
+```
+
+---
+
 # 7. Context Pack JSON Contract
 
 This is the payload Atlas should pass to execution agents.

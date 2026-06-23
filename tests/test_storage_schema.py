@@ -241,6 +241,16 @@ DOCUMENTED_COLUMNS: dict[str, dict[str, tuple[bool, str | None]]] = {
         "created_by_id": (NN, None),
         "created_at": (NN, None),
     },
+    # §6.4 (tick-failure record, ATLAS-125): append-only — no status, no
+    # updated_at. Tick-level: NO ticket_id and NO product_id, so NO FK.
+    "tick_failures": {
+        "id": (NN, None),
+        "occurred_at": (NN, None),
+        "failure_signature": (NN, None),
+        "detail": (NN, None),
+        "created_by_type": (NN, None),
+        "created_by_id": (NN, None),
+    },
 }
 
 # Transcribed FK targets: table -> {column: referred table}. Absence is
@@ -261,6 +271,7 @@ DOCUMENTED_FOREIGN_KEYS: dict[str, dict[str, str]] = {
     "plan_runs": {"product_id": "products"},
     "key_counters": {},
     "debt_items": {"product_id": "products", "ticket_id": "tickets"},
+    "tick_failures": {},
 }
 
 DOCUMENTED_UNIQUES: dict[str, list[list[str]]] = {

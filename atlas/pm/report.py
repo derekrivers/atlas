@@ -42,7 +42,7 @@ from uuid import UUID
 from atlas.core.models.debt_item import AnomalyType, DebtItem
 from atlas.core.models.ticket import Ticket, TicketStatus
 from atlas.dependencies.validation import TERMINAL_STATUSES
-from atlas.storage.repositories import DebtItemRepo, TicketRepo
+from atlas.storage.repositories import DebtItemRepo, TicketRepo, TickFailureRepo
 
 # Default recurrence threshold, mirroring DebtItemRepo.recurring's default and
 # pm-engine-and-linear-sync.md ("three or more rows for the same ticket and
@@ -106,7 +106,8 @@ class DwellBreach:
 
 @dataclass(frozen=True)
 class DeliveryReport:
-    """The five delivery metrics at ``generated_at`` (the injected ``now``)."""
+    """The five delivery metrics at ``generated_at`` (the injected ``now``),
+    plus the PM-scheduler tick-failure count (ATLAS-125)."""
 
     generated_at: datetime
     throughput: list[ThroughputBucket]
@@ -114,6 +115,7 @@ class DeliveryReport:
     ready_queue_depth: int
     anomaly_counts: list[AnomalyCount]
     dwell_breaches: list[DwellBreach]
+    tick_failure_count: int
 
 
 def _hours_between(now: datetime, entered: datetime) -> float:
@@ -244,16 +246,19 @@ def _dwell_breaches(
 def build_delivery_report(
     ticket_repo: TicketRepo,
     debt_repo: DebtItemRepo,
+    tick_failure_repo: TickFailureRepo,
     *,
     now: datetime,
 ) -> DeliveryReport:
-    """Compute the five delivery metrics from stored state (ATLAS-47).
+    """Compute the five delivery metrics plus the tick-failure count from
+    stored state (ATLAS-47; tick failures ATLAS-125).
 
-    A pure builder: it performs read-only ``TicketRepo``/``DebtItemRepo``
-    queries, takes ``now`` explicitly so the current-dwell proxy is
-    deterministic, and returns a :class:`DeliveryReport`. It writes nothing and
-    makes no Linear call. An empty database yields a well-formed, fully zeroed
-    report (empty lists and a zero ready-queue depth), never an error.
+    A pure builder: it performs read-only
+    ``TicketRepo``/``DebtItemRepo``/``TickFailureRepo`` queries, takes ``now``
+    explicitly so the current-dwell proxy is deterministic, and returns a
+    :class:`DeliveryReport`. It writes nothing and makes no Linear call. An
+    empty database yields a well-formed, fully zeroed report (empty lists, a
+    zero ready-queue depth, and a zero tick-failure count), never an error.
     """
     tickets = ticket_repo.list()
     debt_items = debt_repo.list()
@@ -267,6 +272,7 @@ def build_delivery_report(
         ready_queue_depth=ready_depth,
         anomaly_counts=_anomaly_counts(debt_items, debt_repo),
         dwell_breaches=_dwell_breaches(debt_items, tickets, debt_repo),
+        tick_failure_count=len(tick_failure_repo.list()),
     )
 
 
@@ -308,6 +314,7 @@ def report_json(report: DeliveryReport) -> dict[str, object]:
             }
             for breach in report.dwell_breaches
         ],
+        "tick_failure_count": report.tick_failure_count,
     }
 
 
@@ -392,6 +399,13 @@ def render_markdown(report: DeliveryReport) -> str:
             lines.append(f"| {breach.ticket_key} | {breach.count} | {recurring} |")
     else:
         lines.append("No dwell breaches recorded.")
+    lines.append("")
+
+    # 6. Tick failures (ATLAS-125): PM-scheduler crashes recorded by the
+    # create-on-crash path (the writer is ATLAS-50).
+    lines.append("## Tick failures")
+    lines.append("")
+    lines.append(f"{report.tick_failure_count} recorded PM-scheduler tick failure(s).")
     lines.append("")
 
     return "\n".join(lines)

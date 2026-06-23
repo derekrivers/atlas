@@ -1,0 +1,52 @@
+{
+  "$defs": {
+    "ActorType": {
+      "description": "Who or what created a record (data-model §2.2, attribution §1.5).",
+      "enum": [
+        "human",
+        "agent",
+        "system"
+      ],
+      "title": "ActorType",
+      "type": "string"
+    }
+  },
+  "description": "One recorded PM-scheduler tick crash (data-model §6.3).\n\nAppend-only. Unlike ``DebtItem``, there is no ``ticket_id`` and no\n``product_id``: a tick crash is observed at the tick level, not against\nany one ticket, so it carries no FK target — the very reason it is a\nseparate model rather than a ``DebtItem``.\n\n``occurred_at`` is when the tick crashed (create-on-crash records at the\ncrash instant), and is the field the query-time dedup predicate\n(``TickFailureRepo.recorded_since``) compares against. ``failure_signature``\nis the free-form grouping key that predicate dedups on (no enum — a crash\nhas no fixed taxonomy); ``detail`` is the error text. There is no\n``updated_at`` and no ``status``: the row is never mutated.",
+  "properties": {
+    "created_by_id": {
+      "title": "Created By Id",
+      "type": "string"
+    },
+    "created_by_type": {
+      "$ref": "#/$defs/ActorType"
+    },
+    "detail": {
+      "title": "Detail",
+      "type": "string"
+    },
+    "failure_signature": {
+      "title": "Failure Signature",
+      "type": "string"
+    },
+    "id": {
+      "format": "uuid",
+      "title": "Id",
+      "type": "string"
+    },
+    "occurred_at": {
+      "format": "date-time",
+      "title": "Occurred At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "occurred_at",
+    "failure_signature",
+    "detail",
+    "created_by_type",
+    "created_by_id"
+  ],
+  "title": "TickFailure",
+  "type": "object"
+}

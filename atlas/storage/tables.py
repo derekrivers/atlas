@@ -323,6 +323,27 @@ class DebtItemRow(Base):
     created_at: Mapped[datetime] = mapped_column(UTCDateTime())
 
 
+class TickFailureRow(Base):
+    """One recorded PM-scheduler tick crash (ATLAS-125, data-model §6.4).
+
+    Append-only (enforced in TickFailureRepo, not here). Unlike DebtItemRow
+    there is NO ticket_id and NO product_id and so NO foreign key: a tick
+    crash is observed at the tick level, not against any one ticket — the
+    very reason it is a separate model rather than a DebtItem. No status, no
+    updated_at — query-time dedup derives from occurred_at and
+    failure_signature.
+    """
+
+    __tablename__ = "tick_failures"
+
+    id: Mapped[UUID] = mapped_column(sa.Uuid, primary_key=True)
+    occurred_at: Mapped[datetime] = mapped_column(UTCDateTime())
+    failure_signature: Mapped[str] = mapped_column(sa.Text)
+    detail: Mapped[str] = mapped_column(sa.Text)
+    created_by_type: Mapped[str] = mapped_column(sa.Text)
+    created_by_id: Mapped[str] = mapped_column(sa.Text)
+
+
 class KeyCounterRow(Base):
     """Monotonic per-prefix key counter (ATLAS-25, data-model §3.12).
 

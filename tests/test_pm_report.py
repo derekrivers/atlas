@@ -31,11 +31,12 @@ from uuid import UUID, uuid4
 import pytest
 from test_debt_item_model import debt_item_kwargs
 from test_models_validation import ticket_kwargs
+from test_tick_failure_model import tick_failure_kwargs
 
 from atlas.cli import EXIT_OK, main
-from atlas.core.models import AnomalyType, DebtItem, Ticket
-from atlas.pm import build_delivery_report
-from atlas.storage import Database, DebtItemRepo, TicketRepo
+from atlas.core.models import AnomalyType, DebtItem, Ticket, TickFailure
+from atlas.pm import build_delivery_report, render_markdown, report_json
+from atlas.storage import Database, DebtItemRepo, TicketRepo, TickFailureRepo
 
 # A fixed clock for the current-dwell proxy: every duration below is measured
 # against this instant, so min/median/max are deterministic.
@@ -71,6 +72,16 @@ def seed_tickets(db: Database, tickets: list[Ticket]) -> None:
 
 def seed_debt(db: Database, items: list[DebtItem]) -> None:
     repo = DebtItemRepo(db)
+    for item in items:
+        repo.record(item)
+
+
+def make_failure(**overrides: object) -> TickFailure:
+    return TickFailure(**tick_failure_kwargs() | {"id": uuid4()} | overrides)
+
+
+def seed_failures(db: Database, items: list[TickFailure]) -> None:
+    repo = TickFailureRepo(db)
     for item in items:
         repo.record(item)
 
@@ -150,7 +161,9 @@ def test_anomaly_counts_match_stored_rows_and_a_seeded_row_moves_the_count(
         ],
     )
 
-    report = build_delivery_report(TicketRepo(db), DebtItemRepo(db), now=NOW)
+    report = build_delivery_report(
+        TicketRepo(db), DebtItemRepo(db), TickFailureRepo(db), now=NOW
+    )
     counts = {c.anomaly_type: c for c in report.anomaly_counts}
 
     # By-type counts match exactly; the wrong answer miscounts or omits a type.
@@ -170,7 +183,7 @@ def test_anomaly_counts_match_stored_rows_and_a_seeded_row_moves_the_count(
     moved = {
         c.anomaly_type: c
         for c in build_delivery_report(
-            TicketRepo(db), DebtItemRepo(db), now=NOW
+            TicketRepo(db), DebtItemRepo(db), TickFailureRepo(db), now=NOW
         ).anomaly_counts
     }
     assert moved[AnomalyType.REVIEW_CYCLE.value].count == 1
@@ -192,14 +205,14 @@ def test_ready_queue_depth_equals_ready_for_agent_count(db: Database) -> None:
     )
 
     depth = build_delivery_report(
-        TicketRepo(db), DebtItemRepo(db), now=NOW
+        TicketRepo(db), DebtItemRepo(db), TickFailureRepo(db), now=NOW
     ).ready_queue_depth
     # The wrong answer counts non-ready tickets or misses a ready one.
     assert depth == 2
 
     seed_tickets(db, [make_ticket("ATLAS-5", status="ready_for_agent")])
     moved = build_delivery_report(
-        TicketRepo(db), DebtItemRepo(db), now=NOW
+        TicketRepo(db), DebtItemRepo(db), TickFailureRepo(db), now=NOW
     ).ready_queue_depth
     assert moved == 3
 
@@ -244,7 +257,7 @@ def test_throughput_buckets_done_by_iso_week_with_unknown_for_null_entry(
     buckets = {
         b.week: b.done_count
         for b in build_delivery_report(
-            TicketRepo(db), DebtItemRepo(db), now=NOW
+            TicketRepo(db), DebtItemRepo(db), TickFailureRepo(db), now=NOW
         ).throughput
     }
     assert buckets == {"2026-W24": 1, "2026-W25": 2, "unknown": 1}
@@ -281,7 +294,9 @@ def test_cycle_time_is_current_dwell_proxy_excluding_unknown_entry(
         ],
     )
 
-    report = build_delivery_report(TicketRepo(db), DebtItemRepo(db), now=NOW)
+    report = build_delivery_report(
+        TicketRepo(db), DebtItemRepo(db), TickFailureRepo(db), now=NOW
+    )
     stats = {s.status: s for s in report.dwell_per_state}
 
     # Only the non-terminal status appears.
@@ -310,7 +325,9 @@ def test_dwell_breaches_surface_per_ticket_with_recurrence(db: Database) -> None
         + [make_debt(b.id, AnomalyType.DWELL_BREACH) for _ in range(3)],
     )
 
-    report = build_delivery_report(TicketRepo(db), DebtItemRepo(db), now=NOW)
+    report = build_delivery_report(
+        TicketRepo(db), DebtItemRepo(db), TickFailureRepo(db), now=NOW
+    )
     breaches = {breach.ticket_key: breach for breach in report.dwell_breaches}
 
     assert breaches["ATLAS-1"].count == 1
@@ -333,6 +350,8 @@ def test_empty_db_yields_zeroed_report(
     assert payload["dwell_per_state"] == []
     assert payload["ready_queue_depth"] == 0
     assert payload["dwell_breaches"] == []
+    # No tick failures recorded -> zero, not an error (ATLAS-125).
+    assert payload["tick_failure_count"] == 0
     # Every anomaly type is still present, each zero — absence is meaningful.
     assert all(row["count"] == 0 for row in payload["anomaly_counts"])
     assert {row["anomaly_type"] for row in payload["anomaly_counts"]} == {
@@ -353,3 +372,52 @@ def test_empty_db_markdown_is_well_formed(
     assert "No in-flight tickets." in out
     assert "0 ticket(s) in `ready_for_agent`." in out
     assert "No dwell breaches recorded." in out
+    assert "0 recorded PM-scheduler tick failure(s)." in out
+
+
+# --- tick failures: a recorded crash moves the count (ATLAS-125) ------------
+
+
+def test_tick_failure_count_is_total_of_stored_rows(db: Database) -> None:
+    # Zero on an empty DB; each recorded crash moves the count by one,
+    # regardless of signature (the report surfaces a total, not a per-signature
+    # breakdown). Pure reader: no row is written by the report.
+    assert (
+        build_delivery_report(
+            TicketRepo(db), DebtItemRepo(db), TickFailureRepo(db), now=NOW
+        ).tick_failure_count
+        == 0
+    )
+
+    seed_failures(
+        db,
+        [
+            make_failure(failure_signature="LinearTimeoutError@sync_tick.pull"),
+            make_failure(failure_signature="LinearTimeoutError@sync_tick.pull"),
+            make_failure(failure_signature="ValueError@sync_tick.promote"),
+        ],
+    )
+    assert (
+        build_delivery_report(
+            TicketRepo(db), DebtItemRepo(db), TickFailureRepo(db), now=NOW
+        ).tick_failure_count
+        == 3
+    )
+
+
+def test_tick_failure_count_surfaces_in_json_and_markdown(
+    db: Database, capsys: pytest.CaptureFixture[str]
+) -> None:
+    seed_failures(db, [make_failure(), make_failure()])
+
+    code = main(["pm", "report", "--json"], database=db)
+    payload = json.loads(capsys.readouterr().out)
+    assert code == EXIT_OK
+    assert payload["tick_failure_count"] == 2
+
+    report = build_delivery_report(
+        TicketRepo(db), DebtItemRepo(db), TickFailureRepo(db), now=NOW
+    )
+    assert "## Tick failures" in render_markdown(report)
+    assert "2 recorded PM-scheduler tick failure(s)." in render_markdown(report)
+    assert report_json(report)["tick_failure_count"] == 2

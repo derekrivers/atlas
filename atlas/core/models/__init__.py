@@ -16,6 +16,7 @@ from atlas.core.models.evidence import Evidence, EvidenceType
 from atlas.core.models.lesson import Lesson, LessonCategory
 from atlas.core.models.plan_run import PlanRun, PlanRunStatus
 from atlas.core.models.product import Product
+from atlas.core.models.tick_failure import TickFailure
 from atlas.core.models.ticket import Ticket, TicketStatus, TicketType
 
 __all__ = [
@@ -37,6 +38,7 @@ __all__ = [
     "PlanRun",
     "PlanRunStatus",
     "Product",
+    "TickFailure",
     "Ticket",
     "TicketDependency",
     "TicketStatus",
