@@ -136,7 +136,8 @@ review-cycling is ATLAS-120 (a `_detect_review_cycle` pass keyed on
 — the one anomaly that moves a ticket), and stale-block detection is ATLAS-44 (a
 `_detect_stale_block` pass keyed on `blocked(graph, key)` over the same
 dependency graph `promote_ready` consumes; report-only, never moves a ticket).
-The recurring scheduler that calls `sync_tick` on a cadence is ATLAS-50. It
+The recurring scheduler that calls `sync_tick` on a cadence is ATLAS-50
+(`atlas/pm/scheduler.py`, driven by `atlas pm sync`). It
 also owns create-on-crash: when a `sync_tick` raises, the scheduler records one
 durable `TickFailure` (the append-only, system-attributed, tick-level crash
 record — no ticket, so a separate model from `DebtItem`) and continues. That
@@ -144,6 +145,24 @@ record and its query-time dedup predicate (`recorded_since`, deduping by
 `failure_signature` over a caller-supplied window) are ATLAS-125, a prerequisite
 for ATLAS-50; the scheduler is the sole writer, and the count surfaces in the
 delivery report (ATLAS-47).
+
+The realized shape. The scheduler is a plain loop with an interruptible sleep
+between ticks (default interval 60s, `--interval`); `now` is taken fresh per
+tick. `--once` runs exactly one tick and exits, reusing the same single-tick
+body as the loop. Graceful shutdown: SIGTERM/SIGINT set a shutdown flag the loop
+consults only *after* the in-flight tick returns, so a signal finishes the
+current tick and then stops — a tick is never abandoned mid-write (the next tick
+would re-run it anyway, since ticks are idempotent). Create-on-crash dedup is
+windowed by `CRASH_DEDUP_WINDOW` (a module constant, default **1 hour**): a
+persistent crash records at most once per hour per signature, not once per tick,
+via `recorded_since(signature, now - CRASH_DEDUP_WINDOW)`. The
+`failure_signature` is the caught exception's fully-qualified type name, so a
+recurring transient transport error dedups together while the specific message
+is preserved in the record's `detail`. Two distinct bugs sharing one exception
+type collapse to one signature inside the window — an accepted trade-off for a
+dedup key that only bounds row volume. The end-to-end round-trip against real
+Linear (a status change reflected in Atlas within one tick) is operator-run live
+evidence (ADR-0008), not a CI proof.
 
 ## Follow-up ingestion
 

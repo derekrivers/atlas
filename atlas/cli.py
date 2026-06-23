@@ -35,14 +35,28 @@ anomaly counts, and dwell breaches — as markdown, or as structured JSON with
 `--json`. It computes everything from stored tickets and DebtItems
 (`atlas.pm.build_delivery_report`); it makes no Linear call and writes nothing,
 so it runs with no network and no secrets. `datetime.now(UTC)` is read only at
-this boundary and passed into the pure builder. `pm` exit codes: 0 success.
+this boundary and passed into the pure builder.
+
+`pm sync` (ATLAS-50) is the write side: the recurring scheduler that calls
+`sync_tick` on a cadence (default 60s), recording one `TickFailure` on a
+crashing tick and continuing (create-on-crash), with graceful SIGTERM/SIGINT
+shutdown and a `--once` mode. It builds the real injection from the environment
+(`LinearGraphQLClient`, `LinearStatusMap.from_env`, `LINEAR_TEAM_ID`); the loop
+logic lives in `atlas.pm.scheduler` and is CI-tested with a fake client and an
+injected clock, so the end-to-end round-trip against real Linear is the
+operator-run live milestone (ADR-0008). `pm` exit codes: 0 success; 2
+precondition (`sync` only — missing Linear creds, an unset team id, or a
+missing/malformed status map).
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import os
+import signal
 import sys
+import threading
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -68,6 +82,12 @@ from atlas.dependencies import (
     unlocks,
     validate_graph,
 )
+from atlas.linear.client import (
+    TEAM_ID_ENV,
+    LinearGraphQLClient,
+    MissingLinearTokenError,
+)
+from atlas.linear.ownership import LinearStatusMap, LinearStatusMapError
 from atlas.planning.apply import (
     ApplyDecision,
     ApplyError,
@@ -89,7 +109,14 @@ from atlas.planning.pipeline import (
 )
 from atlas.planning.reconciler import DEFAULT_SIMILARITY_THRESHOLD, PlanDiff
 from atlas.planning.staged import StagedProposalGenerator, TemplateStagedGenerator
-from atlas.pm import build_delivery_report, render_markdown, report_json
+from atlas.pm import (
+    DEFAULT_INTERVAL_SECONDS,
+    TickConfig,
+    build_delivery_report,
+    render_markdown,
+    report_json,
+    run_scheduler,
+)
 from atlas.storage import (
     Database,
     DebtItemRepo,
@@ -215,27 +242,48 @@ def _add_deps_parser(subcommands: argparse._SubParsersAction) -> None:  # type: 
 
 
 def _add_pm_parser(subcommands: argparse._SubParsersAction) -> None:  # type: ignore[type-arg]
-    """The `atlas pm` group (ATLAS-47) and its sub-subcommands. Mirrors the
-    `deps` shape: its own nested subparsers (dest="pm_command", required=True),
-    each carrying `--db` and `--json`. `report` is the only one in v1 — a pure
-    reader of the delivery metrics."""
+    """The `atlas pm` group (ATLAS-47, ATLAS-50) and its sub-subcommands. Mirrors
+    the `deps` shape: its own nested subparsers (dest="pm_command", required=True).
+    `report` (the read side) carries `--db` and `--json`; `sync` (the write side,
+    the recurring scheduler) carries the cadence flags instead of `--json`."""
     pm = subcommands.add_parser(
         "pm",
-        help="PM Engine read surface: delivery metrics",
+        help="PM Engine: delivery metrics (report) and the Linear sync loop (sync)",
     )
     pm_sub = pm.add_subparsers(dest="pm_command", required=True)
 
-    def _add(name: str, help_text: str) -> argparse.ArgumentParser:
-        sub: argparse.ArgumentParser = pm_sub.add_parser(name, help=help_text)
-        sub.add_argument("--db", default=None, help="database URL")
-        sub.add_argument(
-            "--json", action="store_true", help="emit machine-readable JSON"
-        )
-        return sub
-
-    _add(
+    report = pm_sub.add_parser(
         "report",
-        "Delivery metrics as markdown (read-only; --json for structured output)",
+        help="Delivery metrics as markdown (read-only; --json for structured output)",
+    )
+    report.add_argument("--db", default=None, help="database URL")
+    report.add_argument(
+        "--json", action="store_true", help="emit machine-readable JSON"
+    )
+
+    # `sync` (ATLAS-50): the recurring scheduler. No `--json` (it is a long-running
+    # loop, not a one-shot read); `--once` runs exactly one tick; `--interval` owns
+    # the cadence; `--inbox-dir` is the follow-up inbox sync_tick writes stubs to.
+    sync = pm_sub.add_parser(
+        "sync",
+        help="Run the recurring Linear sync loop (--once runs a single tick)",
+    )
+    sync.add_argument("--db", default=None, help="database URL")
+    sync.add_argument(
+        "--once",
+        action="store_true",
+        help="run exactly one tick and exit (no cadence)",
+    )
+    sync.add_argument(
+        "--interval",
+        type=float,
+        default=DEFAULT_INTERVAL_SECONDS,
+        help=f"seconds between ticks (default {DEFAULT_INTERVAL_SECONDS})",
+    )
+    sync.add_argument(
+        "--inbox-dir",
+        default="docs/planning/inbox",
+        help="follow-up inbox directory (default docs/planning/inbox)",
     )
 
 
@@ -599,11 +647,83 @@ def _pm_report(resolved_db: Database, *, as_json: bool) -> int:
     return EXIT_OK
 
 
+def _build_tick_config(args: argparse.Namespace, resolved_db: Database) -> TickConfig:
+    """Build the real `sync_tick` injection from config (D3): the live
+    `LinearGraphQLClient` (creds from env), the env-configured `LinearStatusMap`,
+    the team id from `LINEAR_TEAM_ID`, and the inbox dir from `--inbox-dir`. Each
+    boundary fails loud on a missing precondition — `LinearGraphQLClient()` raises
+    `MissingLinearTokenError` without a key, `from_env()` raises
+    `LinearStatusMapError` on a missing/malformed map, and an unset team id raises
+    `MissingLinearTokenError` — so a misconfigured live path exits cleanly (the
+    caller maps these to EXIT_PRECONDITION) rather than crashing mid-loop. Reads
+    the environment only; it makes no network call, so it is testable with fake
+    creds set in the environment."""
+
+    client = LinearGraphQLClient()  # raises MissingLinearTokenError without a key
+    status_map = LinearStatusMap.from_env()  # raises LinearStatusMapError if unset
+    team_id = os.environ.get(TEAM_ID_ENV)
+    if not team_id:
+        raise MissingLinearTokenError(
+            f"{TEAM_ID_ENV} is not set; the scheduler needs the Linear team id to "
+            "create issues"
+        )
+    return TickConfig(
+        tickets=TicketRepo(resolved_db),
+        db=resolved_db,
+        client=client,
+        status_map=status_map,
+        team_id=team_id,
+        inbox_dir=Path(args.inbox_dir),
+    )
+
+
+def _install_shutdown_handlers(shutdown: threading.Event) -> None:
+    """Install graceful-shutdown handlers (GAP 1). SIGTERM/SIGINT set the event;
+    `run_scheduler` consults it only AFTER the in-flight tick returns, so a signal
+    finishes the current tick and then stops — never abandoning a tick mid-write.
+    Installed here, at the CLI entry, NOT in the loop, so the scheduler stays a
+    pure, signal-free, unit-testable function."""
+
+    def _handle(signum: int, frame: object) -> None:
+        shutdown.set()
+
+    signal.signal(signal.SIGTERM, _handle)
+    signal.signal(signal.SIGINT, _handle)
+
+
+def _pm_sync(args: argparse.Namespace, resolved_db: Database) -> int:
+    """Run the recurring sync scheduler (ATLAS-50). Builds the live injection,
+    installs the shutdown handlers, and drives `run_scheduler` (default 60s
+    cadence, or one tick with `--once`). A missing credential / team id / status
+    map is a clean EXIT_PRECONDITION, mirroring `plan`'s missing-key handling;
+    otherwise it loops until a shutdown signal (then stops after the current
+    tick) and returns EXIT_OK."""
+
+    try:
+        config = _build_tick_config(args, resolved_db)
+    except (MissingLinearTokenError, LinearStatusMapError) as error:
+        print(error, file=sys.stderr)
+        return EXIT_PRECONDITION
+
+    shutdown = threading.Event()
+    _install_shutdown_handlers(shutdown)
+    run_scheduler(
+        config,
+        interval=args.interval,
+        once=args.once,
+        shutdown=shutdown,
+    )
+    return EXIT_OK
+
+
 def _pm_command(args: argparse.Namespace, *, database: Database | None) -> int:
-    """Route `atlas pm <subcommand>`. `report` is the only v1 subcommand."""
+    """Route `atlas pm <subcommand>`: `report` (read side, ATLAS-47) and `sync`
+    (the recurring scheduler, ATLAS-50)."""
     resolved_db = database if database is not None else Database(args.db)
     if args.pm_command == "report":
         return _pm_report(resolved_db, as_json=args.json)
+    if args.pm_command == "sync":
+        return _pm_sync(args, resolved_db)
     return EXIT_PRECONDITION  # unreachable: pm subparser is required
 
 

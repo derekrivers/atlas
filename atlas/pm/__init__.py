@@ -7,8 +7,11 @@ ATLAS-43 adds step 3, readiness promotion to ``Ready for Agent``
 (:func:`promote_ready`, the sole writer of that transition). ATLAS-47 adds the
 read side: :func:`build_delivery_report` and its renderers, a pure reader of
 stored tickets and ``DebtItem``s for the ``atlas pm report`` command. The
-follow-up ingestion and the scheduler are later tickets. A layer above
-``atlas.storage``/``atlas.linear``/``atlas.core`` in the import spine.
+follow-up ingestion is a later ticket. ATLAS-50 adds the recurring scheduler:
+:func:`run_scheduler` calls :func:`sync_tick` on a cadence and records one
+``TickFailure`` on a crashing tick (create-on-crash), the sole writer of that
+record. A layer above ``atlas.storage``/``atlas.linear``/``atlas.core`` in the
+import spine.
 """
 
 from atlas.pm.promotion import promote_ready
@@ -22,9 +25,18 @@ from atlas.pm.report import (
     render_markdown,
     report_json,
 )
+from atlas.pm.scheduler import (
+    CRASH_DEDUP_WINDOW,
+    DEFAULT_INTERVAL_SECONDS,
+    TickConfig,
+    run_scheduler,
+    run_tick,
+)
 from atlas.pm.sync import PUSHABLE_STATUSES, SyncResult, sync_tick
 
 __all__ = [
+    "CRASH_DEDUP_WINDOW",
+    "DEFAULT_INTERVAL_SECONDS",
     "PUSHABLE_STATUSES",
     "AnomalyCount",
     "DeliveryReport",
@@ -32,9 +44,12 @@ __all__ = [
     "DwellStat",
     "SyncResult",
     "ThroughputBucket",
+    "TickConfig",
     "build_delivery_report",
     "promote_ready",
     "render_markdown",
     "report_json",
+    "run_scheduler",
+    "run_tick",
     "sync_tick",
 ]
