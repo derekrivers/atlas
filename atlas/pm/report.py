@@ -7,42 +7,55 @@ per state, ready-queue depth, anomaly counts, and dwell breaches — for the
 ``atlas pm report`` CLI to render as markdown or ``--json``.
 
 It makes NO Linear calls and writes NOTHING. Every metric is computed from
-stored ``Ticket``s and ``DebtItem``s via ``TicketRepo``/``DebtItemRepo``
-reads only — never from the per-tick, ephemeral ``SyncResult`` (which is not
-persisted) — so it runs with no network and no secrets.
+stored ``Ticket``s, ``DebtItem``s, and ``TicketStatusTransition``s via
+``TicketRepo``/``DebtItemRepo``/``TicketStatusTransitionRepo`` reads only —
+never from the per-tick, ephemeral ``SyncResult`` (which is not persisted) —
+so it runs with no network and no secrets.
 
 :func:`build_delivery_report` is a pure builder: it takes ``now`` explicitly
 (the CLI boundary supplies ``datetime.now(UTC)``), so every metric is
 deterministic under a fixed clock. :func:`render_markdown` and
 :func:`report_json` are the two presentations the CLI emits.
 
-The cycle-time gap (resolved at the ATLAS-47 gate): the data model carries
-only ``Ticket.status_entered_at`` (entry into the *current* status) and no
-transition history, so historical per-state cycle time is not computable. v1
-reports the computable proxy — current time-in-state for in-flight
-(non-terminal) tickets, aggregated per state — labelled *current dwell per
-state*, NEVER claimed as historical cycle time. A ticket with a null
-``status_entered_at`` (unknown entry) is excluded from the durations and
-counted separately. The true metric needs an append-only transition log the
-model does not yet carry; that schema is deferred to ATLAS-121 and is NOT
-added here.
+Cycle time per state (the gap ATLAS-47 deferred, closed by ATLAS-121/126):
+``apply_linear_status`` now appends a ``TicketStatusTransition`` on every real
+status change, so a durable transition log accumulates and true historical
+cycle time is computable — deterministic timestamp subtraction over recorded
+transitions, no judgement (ADR-0005 satisfied by construction: nothing here
+assigns a value, it measures one). Cycle time is measured over *completed
+episodes* only: for a ticket's ordered transitions ``T1..Tn``, episode ``i``
+(``i`` in ``1..n-1``) is the state ``to_i`` entered at ``t_i`` and exited at
+``t_{i+1}``, its duration ``t_{i+1} - t_i``. Two episodes are deliberately not
+counted — the initial state before ``T1`` has no recorded entry, and the
+current state after ``Tn`` has no recorded exit (the open episode, i.e. the
+current-dwell the retired ATLAS-47 proxy reported). Each completed episode is
+one data point, so a state re-visited N times contributes N episodes; a state
+with no completed episodes simply does not appear.
 
 Layering: this is ``atlas.pm``, above ``atlas.storage``/``atlas.core`` in the
-import spine — it reads ``TicketRepo``/``DebtItemRepo``, so it imports
-downward only and the import-linter stays green.
+import spine — it reads
+``TicketRepo``/``DebtItemRepo``/``TickFailureRepo``/``TicketStatusTransitionRepo``,
+so it imports downward only and the import-linter stays green.
 """
 
 from __future__ import annotations
 
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime
+from itertools import pairwise
 from statistics import median
 from uuid import UUID
 
 from atlas.core.models.debt_item import AnomalyType, DebtItem
 from atlas.core.models.ticket import Ticket, TicketStatus
-from atlas.dependencies.validation import TERMINAL_STATUSES
-from atlas.storage.repositories import DebtItemRepo, TicketRepo, TickFailureRepo
+from atlas.core.models.ticket_status_transition import TicketStatusTransition
+from atlas.storage.repositories import (
+    DebtItemRepo,
+    TicketRepo,
+    TicketStatusTransitionRepo,
+    TickFailureRepo,
+)
 
 # Default recurrence threshold, mirroring DebtItemRepo.recurring's default and
 # pm-engine-and-linear-sync.md ("three or more rows for the same ticket and
@@ -64,23 +77,22 @@ class ThroughputBucket:
 
 
 @dataclass(frozen=True)
-class DwellStat:
-    """The current-dwell proxy for one non-terminal status (ATLAS-47 gap).
+class CycleTimeStat:
+    """Historical cycle time for one status (ATLAS-126), over completed
+    episodes drawn from the ``TicketStatusTransition`` log.
 
-    ``ticket_count`` is every in-flight ticket in this status; the min/median/
-    max hours are computed over only those with a known ``status_entered_at``
-    (``measured_count`` of them). ``unknown_entry_count`` are the rest, carved
-    out of the durations rather than guessed. When nothing is measurable the
-    three hour figures are ``None``. This is *current dwell*, NOT historical
-    cycle time."""
+    ``episode_count`` is how many completed episodes this status accrued across
+    all tickets (a re-visited state contributes one per visit); the min/median/
+    max hours are computed over exactly those episodes. Every completed episode
+    has both a recorded entry and exit by construction, so there is nothing
+    unmeasurable to carve out and the three hour figures are always populated —
+    a status only appears here when it has at least one completed episode."""
 
     status: str
-    ticket_count: int
-    measured_count: int
-    unknown_entry_count: int
-    min_hours: float | None
-    median_hours: float | None
-    max_hours: float | None
+    episode_count: int
+    min_hours: float
+    median_hours: float
+    max_hours: float
 
 
 @dataclass(frozen=True)
@@ -111,16 +123,17 @@ class DeliveryReport:
 
     generated_at: datetime
     throughput: list[ThroughputBucket]
-    dwell_per_state: list[DwellStat]
+    cycle_time_per_state: list[CycleTimeStat]
     ready_queue_depth: int
     anomaly_counts: list[AnomalyCount]
     dwell_breaches: list[DwellBreach]
     tick_failure_count: int
 
 
-def _hours_between(now: datetime, entered: datetime) -> float:
-    """Whole hours (to two decimals) a ticket has dwelt in its current state."""
-    return round((now - entered).total_seconds() / 3600, 2)
+def _hours_between(later: datetime, earlier: datetime) -> float:
+    """Hours (to two decimals) between two instants — the single duration
+    helper, so every time metric measures the same way."""
+    return round((later - earlier).total_seconds() / 3600, 2)
 
 
 def _throughput(tickets: list[Ticket]) -> list[ThroughputBucket]:
@@ -147,37 +160,42 @@ def _throughput(tickets: list[Ticket]) -> list[ThroughputBucket]:
     return [ThroughputBucket(week=week, done_count=counts[week]) for week in ordered]
 
 
-def _dwell_per_state(tickets: list[Ticket], *, now: datetime) -> list[DwellStat]:
-    """The current-dwell proxy: per non-terminal status, the current
-    time-in-state of its in-flight tickets (ATLAS-47 gap resolution).
+def _cycle_time_per_state(
+    transitions: list[TicketStatusTransition],
+) -> list[CycleTimeStat]:
+    """Historical per-state cycle time over completed episodes (ATLAS-126).
 
-    Terminal statuses (``done``/``rejected``) are excluded — they are not
-    in-flight. Tickets with a null ``status_entered_at`` are counted but kept
-    out of the duration aggregates."""
-    by_status: dict[str, list[Ticket]] = {}
-    for ticket in tickets:
-        if ticket.status.value in TERMINAL_STATUSES:
-            continue
-        by_status.setdefault(ticket.status.value, []).append(ticket)
+    ``transitions`` is the whole log, already ordered by ticket then
+    ``occurred_at`` then id (``TicketStatusTransitionRepo.list_all``), so this
+    groups by ticket in memory and walks each ticket's transitions in that
+    order. For a ticket's ``T1..Tn``, episode ``i`` (``i`` in ``1..n-1``) is the
+    state ``to_i`` entered at ``t_i`` and exited at the next transition's
+    ``t_{i+1}``; its duration is ``t_{i+1} - t_i``. The initial state (before
+    ``T1``, no recorded entry) and the current open episode (after ``Tn``, no
+    recorded exit) are NOT counted. Each completed episode is one data point, so
+    a re-visited state accrues one per visit. A status with no completed episodes
+    does not appear."""
+    by_ticket: dict[UUID, list[TicketStatusTransition]] = defaultdict(list)
+    for transition in transitions:
+        by_ticket[transition.ticket_id].append(transition)
 
-    stats: list[DwellStat] = []
-    for status in sorted(by_status):
-        group = by_status[status]
-        durations = [
-            _hours_between(now, ticket.status_entered_at)
-            for ticket in group
-            if ticket.status_entered_at is not None
-        ]
-        unknown = len(group) - len(durations)
+    durations_by_state: dict[str, list[float]] = defaultdict(list)
+    for ticket_transitions in by_ticket.values():
+        for current, following in pairwise(ticket_transitions):
+            durations_by_state[current.to_status].append(
+                _hours_between(following.occurred_at, current.occurred_at)
+            )
+
+    stats: list[CycleTimeStat] = []
+    for status in sorted(durations_by_state):
+        durations = durations_by_state[status]
         stats.append(
-            DwellStat(
+            CycleTimeStat(
                 status=status,
-                ticket_count=len(group),
-                measured_count=len(durations),
-                unknown_entry_count=unknown,
-                min_hours=min(durations) if durations else None,
-                median_hours=round(median(durations), 2) if durations else None,
-                max_hours=max(durations) if durations else None,
+                episode_count=len(durations),
+                min_hours=min(durations),
+                median_hours=round(median(durations), 2),
+                max_hours=max(durations),
             )
         )
     return stats
@@ -247,18 +265,21 @@ def build_delivery_report(
     ticket_repo: TicketRepo,
     debt_repo: DebtItemRepo,
     tick_failure_repo: TickFailureRepo,
+    transition_repo: TicketStatusTransitionRepo,
     *,
     now: datetime,
 ) -> DeliveryReport:
     """Compute the five delivery metrics plus the tick-failure count from
-    stored state (ATLAS-47; tick failures ATLAS-125).
+    stored state (ATLAS-47; tick failures ATLAS-125; historical cycle time
+    ATLAS-126).
 
     A pure builder: it performs read-only
-    ``TicketRepo``/``DebtItemRepo``/``TickFailureRepo`` queries, takes ``now``
-    explicitly so the current-dwell proxy is deterministic, and returns a
-    :class:`DeliveryReport`. It writes nothing and makes no Linear call. An
-    empty database yields a well-formed, fully zeroed report (empty lists, a
-    zero ready-queue depth, and a zero tick-failure count), never an error.
+    ``TicketRepo``/``DebtItemRepo``/``TickFailureRepo``/``TicketStatusTransitionRepo``
+    queries, takes ``now`` explicitly so every metric is deterministic, and
+    returns a :class:`DeliveryReport`. It writes nothing and makes no Linear
+    call. An empty database yields a well-formed, fully zeroed report (empty
+    lists, a zero ready-queue depth, and a zero tick-failure count), never an
+    error.
     """
     tickets = ticket_repo.list()
     debt_items = debt_repo.list()
@@ -268,7 +289,7 @@ def build_delivery_report(
     return DeliveryReport(
         generated_at=now,
         throughput=_throughput(tickets),
-        dwell_per_state=_dwell_per_state(tickets, now=now),
+        cycle_time_per_state=_cycle_time_per_state(transition_repo.list_all()),
         ready_queue_depth=ready_depth,
         anomaly_counts=_anomaly_counts(debt_items, debt_repo),
         dwell_breaches=_dwell_breaches(debt_items, tickets, debt_repo),
@@ -285,17 +306,15 @@ def report_json(report: DeliveryReport) -> dict[str, object]:
             {"week": bucket.week, "done_count": bucket.done_count}
             for bucket in report.throughput
         ],
-        "dwell_per_state": [
+        "cycle_time_per_state": [
             {
                 "status": stat.status,
-                "ticket_count": stat.ticket_count,
-                "measured_count": stat.measured_count,
-                "unknown_entry_count": stat.unknown_entry_count,
+                "episode_count": stat.episode_count,
                 "min_hours": stat.min_hours,
                 "median_hours": stat.median_hours,
                 "max_hours": stat.max_hours,
             }
-            for stat in report.dwell_per_state
+            for stat in report.cycle_time_per_state
         ],
         "ready_queue_depth": report.ready_queue_depth,
         "anomaly_counts": [
@@ -345,30 +364,28 @@ def render_markdown(report: DeliveryReport) -> str:
         lines.append("No tickets are done yet.")
     lines.append("")
 
-    # 2. Cycle time per state — the current-dwell proxy (NOT historical).
-    lines.append("## Current dwell per state")
+    # 2. Cycle time per state — historical, from the transition log (ATLAS-126).
+    lines.append("## Cycle time per state (historical)")
     lines.append("")
     lines.append(
-        "> v1 proxy: current time-in-state for in-flight tickets, **not** "
-        "historical cycle time — the model carries no transition history "
-        "(deferred to ATLAS-121). Tickets with an unknown entry time are "
-        "counted but excluded from the hour figures."
+        "> Historical per-state cycle time over **completed episodes** from the "
+        "`TicketStatusTransition` log (ATLAS-121/126). An episode is a state "
+        "entered and later exited; the initial state before the first recorded "
+        "transition (no recorded entry) and the current open episode after the "
+        "last (no recorded exit) are **not** counted. A state re-visited N times "
+        "contributes N episodes."
     )
     lines.append("")
-    if report.dwell_per_state:
-        lines.append(
-            "| State | Tickets | Measured | Unknown entry | "
-            "Min (h) | Median (h) | Max (h) |"
-        )
-        lines.append("| --- | --- | --- | --- | --- | --- | --- |")
-        for stat in report.dwell_per_state:
+    if report.cycle_time_per_state:
+        lines.append("| State | Episodes | Min (h) | Median (h) | Max (h) |")
+        lines.append("| --- | --- | --- | --- | --- |")
+        for stat in report.cycle_time_per_state:
             lines.append(
-                f"| {stat.status} | {stat.ticket_count} | {stat.measured_count} "
-                f"| {stat.unknown_entry_count} | {_hours(stat.min_hours)} "
+                f"| {stat.status} | {stat.episode_count} | {_hours(stat.min_hours)} "
                 f"| {_hours(stat.median_hours)} | {_hours(stat.max_hours)} |"
             )
     else:
-        lines.append("No in-flight tickets.")
+        lines.append("No completed cycles recorded.")
     lines.append("")
 
     # 3. Ready-queue depth.

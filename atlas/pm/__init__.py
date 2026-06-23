@@ -17,9 +17,9 @@ import spine.
 from atlas.pm.promotion import promote_ready
 from atlas.pm.report import (
     AnomalyCount,
+    CycleTimeStat,
     DeliveryReport,
     DwellBreach,
-    DwellStat,
     ThroughputBucket,
     build_delivery_report,
     render_markdown,
@@ -39,9 +39,9 @@ __all__ = [
     "DEFAULT_INTERVAL_SECONDS",
     "PUSHABLE_STATUSES",
     "AnomalyCount",
+    "CycleTimeStat",
     "DeliveryReport",
     "DwellBreach",
-    "DwellStat",
     "SyncResult",
     "ThroughputBucket",
     "TickConfig",

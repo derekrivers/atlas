@@ -628,6 +628,26 @@ class TicketStatusTransitionRepo(_Repo[TicketStatusTransition]):
             )
             return [self._to_model(row) for row in rows]
 
+    def list_all(self) -> list[TicketStatusTransition]:
+        """Every recorded transition, ordered by ``ticket_id``, then
+        ``occurred_at`` ascending, then id (stable on identical instants).
+
+        The read surface for historical cycle time (ATLAS-126): one batch query
+        the report groups by ticket in memory, rather than N
+        ``list_for_ticket`` calls. The per-ticket order matches
+        ``list_for_ticket`` so an episode walk over either sees the same
+        sequence. Append-only: it reads the rows and mutates nothing.
+        """
+        with self._db.session() as session:
+            rows = session.scalars(
+                sa.select(TicketStatusTransitionRow).order_by(
+                    TicketStatusTransitionRow.ticket_id,
+                    TicketStatusTransitionRow.occurred_at,
+                    TicketStatusTransitionRow.id,
+                )
+            )
+            return [self._to_model(row) for row in rows]
+
 
 class PlanRunRepo(_Repo[PlanRun]):
     """Insert-plus-single-finalisation (ADR-0007, knowledge-core)."""

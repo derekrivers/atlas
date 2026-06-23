@@ -1,7 +1,8 @@
 """ATLAS-121: TicketStatusTransitionRepo enforcement — model<->DB round-trip,
 the append-only surface (no mutation by absence; a re-recorded id raises), the
-list_for_ticket ordering (oldest occurred_at first, scoped per ticket), and that
-a TicketStatusTransition is NOT subject to the evidence trust-tier cap.
+list_for_ticket and list_all ordering (oldest occurred_at first — list_all
+grouped by ticket, the ATLAS-126 batch read), and that a TicketStatusTransition
+is NOT subject to the evidence trust-tier cap.
 
 Falsifiable by introspection where the docs demand absence (no mutating methods)
 and by a named wrong answer where order matters (rows recorded newest-first must
@@ -57,13 +58,16 @@ def test_record_round_trips_model_to_database(db: Database) -> None:
 
 def test_repo_exposes_append_and_query_only() -> None:
     # No update, no delete, no finalize, no set_*: append-only is structural,
-    # by surface absence. record + list_for_ticket are the only domain verbs.
+    # by surface absence. record is the only append verb; list_for_ticket and
+    # list_all (ATLAS-126's batch read for historical cycle time) are read-only
+    # queries.
     assert public_methods(TicketStatusTransitionRepo) == {
         "add",
         "get",
         "list",
         "record",
         "list_for_ticket",
+        "list_all",
     }
 
 
@@ -112,6 +116,36 @@ def test_list_for_ticket_returns_only_that_ticket_oldest_first(db: Database) -> 
 
 def test_list_for_ticket_is_empty_for_unseen_ticket(db: Database) -> None:
     assert TicketStatusTransitionRepo(db).list_for_ticket(uuid4()) == []
+
+
+# --- list_all (batch read, ticket then oldest-first; ATLAS-126) ------------
+
+
+def test_list_all_orders_by_ticket_then_occurred_at(db: Database) -> None:
+    repo = TicketStatusTransitionRepo(db)
+    t1 = uuid4()
+    t2 = uuid4()
+    # Two tickets, each recorded newest-first; list_all must return every row
+    # grouped by ticket and oldest-first within a ticket. The wrong answer
+    # interleaves tickets or lists in insertion order.
+    t1_late = a_transition(ticket_id=t1, occurred_at=datetime(2026, 6, 13, tzinfo=UTC))
+    t1_early = a_transition(ticket_id=t1, occurred_at=datetime(2026, 6, 11, tzinfo=UTC))
+    t2_late = a_transition(ticket_id=t2, occurred_at=datetime(2026, 6, 14, tzinfo=UTC))
+    t2_early = a_transition(ticket_id=t2, occurred_at=datetime(2026, 6, 12, tzinfo=UTC))
+    for item in (t1_late, t1_early, t2_late, t2_early):
+        repo.record(item)
+
+    listed = repo.list_all()
+    by_ticket = {item.id: item.ticket_id for item in listed}
+    # Every row present; per ticket, oldest first.
+    assert {item.id for item in listed} == set(by_ticket)
+    seq = {tid: [i.id for i in listed if i.ticket_id == tid] for tid in (t1, t2)}
+    assert seq[t1] == [t1_early.id, t1_late.id]
+    assert seq[t2] == [t2_early.id, t2_late.id]
+
+
+def test_list_all_is_empty_for_empty_log(db: Database) -> None:
+    assert TicketStatusTransitionRepo(db).list_all() == []
 
 
 # --- no trust-tier cap -----------------------------------------------------
