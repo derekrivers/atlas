@@ -43,6 +43,7 @@ TICKETS_V1_1_0_VERSION = "planner-stage-tickets-v1.1.0"
 TICKETS_V1_2_0_VERSION = "planner-stage-tickets-v1.2.0"
 TICKETS_V1_3_0_VERSION = "planner-stage-tickets-v1.3.0"
 TICKETS_V1_4_0_VERSION = "planner-stage-tickets-v1.4.0"
+TICKETS_V1_5_0_VERSION = "planner-stage-tickets-v1.5.0"
 DEPENDENCIES_VERSION = "planner-stage-dependencies-v1.0.0"
 
 # A retained prior single-call template (no longer the live release since
@@ -532,6 +533,76 @@ def test_tickets_stage_schema_offers_tags_and_component() -> None:
     assert "component" in ticket_schema["properties"]
     assert "tags" in ticket_schema["required"]
     assert "component" in ticket_schema["required"]
+
+
+# --- tickets stage strengthens the ≤7 cap wording (cap emphasis): v1.5.0 live -
+
+
+def tickets_v1_5_0_variables(correction: object = None) -> dict[str, object]:
+    # v1.5.0 declares the same variables as v1.4.0 (the change is rule-5 prose
+    # only — no new variable, same auto-derived schema).
+    return tickets_v1_4_0_variables(correction)
+
+
+def _tickets_rule5(text: str) -> str:
+    # Rule 5 spans from its "5. **Sizing" heading to the rule-6 heading.
+    return text.split("5. **Sizing", 1)[1].split("6. **No dependencies", 1)[0]
+
+
+def test_tickets_v1_5_0_strengthens_acceptance_criteria_cap() -> None:
+    # The intent of this change: rule 5 imports the proven _correction_message
+    # remedy as first-attempt guidance — the cap, the count-before-emit step, and
+    # the SPLIT/TRIM resolution. WRONG ANSWER guard: a v1.5.0 that silently
+    # reverted rule 5 to the terse v1.4.0 wording fails here.
+    text = render_planner_prompt(
+        tickets_v1_5_0_variables(), version=TICKETS_V1_5_0_VERSION
+    ).text
+    rule5 = _tickets_rule5(text)
+    assert "at most 7" in rule5
+    assert "SPLIT" in rule5
+    assert "TRIM" in rule5
+    assert "count" in rule5
+    # The terse v1.4.0 phrasing is gone — the emphasis replaced it, not added to.
+    assert "No ticket may have more than 7 acceptance criteria." not in text
+
+
+def test_tickets_v1_5_0_carries_v1_4_0_content_verbatim() -> None:
+    # Additive-by-replacement: v1.5.0 differs from v1.4.0 ONLY in rule 5. Render
+    # both with identical variables and assert everything around rule 5 is
+    # byte-faithful — this pins the whole variable surface and every other rule
+    # (anchor selection, key, tags/component, the ATLAS-109 correction block).
+    variables = tickets_v1_5_0_variables()
+    v1_4_0 = render_planner_prompt(variables, version=TICKETS_V1_4_0_VERSION).text
+    v1_5_0 = render_planner_prompt(variables, version=TICKETS_V1_5_0_VERSION).text
+    before_4, _, after_4 = v1_4_0.partition("5. **Sizing")
+    before_5, _, after_5 = v1_5_0.partition("5. **Sizing")
+    assert before_5 == before_4
+    # Everything from rule 6 onward is identical; only the rule-5 body differs.
+    assert (
+        after_5.split("6. **No dependencies", 1)[1]
+        == (after_4.split("6. **No dependencies", 1)[1])
+    )
+    # The correction block still renders only on a retry.
+    heading = "Correction — your previous attempt was rejected"
+    assert heading not in v1_5_0
+    message = "cap-emphasis carries the retry block — trim to 7."
+    retry = render_planner_prompt(
+        tickets_v1_5_0_variables(correction=message), version=TICKETS_V1_5_0_VERSION
+    )
+    assert heading in retry.text
+    assert message in retry.text
+
+
+def test_tickets_v1_4_0_is_retained_unchanged() -> None:
+    # The superseded version stays on disk and renderable — historical PlanRuns
+    # reproduce; v1.5.0 is a NEW file, never an in-place edit of v1.4.0.
+    from atlas.planning.renderer import PROMPTS_DIR
+
+    assert (PROMPTS_DIR / f"{TICKETS_V1_4_0_VERSION}.md.j2").is_file()
+    rendered = render_planner_prompt(
+        tickets_v1_4_0_variables(), version=TICKETS_V1_4_0_VERSION
+    )
+    assert rendered.prompt_version == TICKETS_V1_4_0_VERSION
 
 
 @pytest.mark.parametrize(

@@ -70,7 +70,11 @@ STAGE_EPICS_VERSION = "planner-stage-epics-v1.1.0"
 # v1.4.0 (ATLAS-128): instructs the planner to emit the now-required free-form
 # tags/component facets (omitting them is a graze ATLAS-109's retry repairs);
 # v1.3.0's anchor/key/correction content is carried verbatim. v1.3.0 retained.
-STAGE_TICKETS_VERSION = "planner-stage-tickets-v1.4.0"
+# v1.5.0 (cap emphasis): rule 5 imports the proven _correction_message remedy
+# (count-before-emit; SPLIT or TRIM to ≤7; never pad/drop) as first-attempt
+# guidance, to cut the acceptance_criteria>7 graze rate. Bound and retry
+# unchanged. v1.4.0 retained.
+STAGE_TICKETS_VERSION = "planner-stage-tickets-v1.5.0"
 STAGE_DEPENDENCIES_VERSION = "planner-stage-dependencies-v1.0.0"
 
 # ATLAS-109: bounded directed retry on a projection-bound graze. A stage that

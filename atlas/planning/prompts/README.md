@@ -42,9 +42,9 @@ generation stage (planning-large-corpora.md §4/§4.1, ADR-0010):
 
 - `planner-stage-epics-v1.1.0.md.j2` — stage 1, emits the epics-only
   slice (v1.0.0 retained for historical `PlanRun` reproduction);
-- `planner-stage-tickets-v1.4.0.md.j2` — stage 2, emits one epic's
+- `planner-stage-tickets-v1.5.0.md.j2` — stage 2, emits one epic's
   tickets (rendered once per epic); the live staged tickets template
-  (v1.0.0/v1.1.0/v1.2.0/v1.3.0 are retained for historical `PlanRun`
+  (v1.0.0/v1.1.0/v1.2.0/v1.3.0/v1.4.0 are retained for historical `PlanRun`
   reproduction);
 - `planner-stage-dependencies-v1.0.0.md.j2` — stage 3, emits the
   `depends_on` edges.
@@ -177,6 +177,26 @@ nothing fits — never omitted) and `atlas apply` carries them into the stored
 against ADRs (ATLAS-51) and lessons (ATLAS-53). v1.3.0's anchor/key/correction
 content is carried verbatim; the §3.11 bounds are enforced, never relaxed.
 MINOR — v1.3.0 is retained for historical `PlanRun` reproduction.
+
+### Staged tickets cap emphasis (v1.5.0)
+
+`planner-stage-tickets-v1.5.0.md.j2` (`STAGE_TICKETS_VERSION`) supersedes
+v1.4.0 as the live tickets template. Live `--staged` runs intermittently emit
+8+ `acceptance_criteria` per ticket (over the §3.11 ≤7 cap) on ~1/3 of epics;
+ATLAS-109's directed-correction retry repairs each graze on the second call, so
+runs stay correct, but every graze costs an extra stage-2 model call. This is a
+compliance-rate change, not a missing instruction: rule 5 imports the wording
+that demonstrably repairs the graze in `_correction_message` — count the
+`acceptance_criteria` before emitting each ticket, then SPLIT or TRIM to ≤7,
+never padding or dropping — as first-attempt guidance.
+
+The change is rule 5 only; every other v1.4.0 instruction (anchor selection,
+the key/anti-copy instruction, the `tags`/`component` rule, and the ATLAS-109
+`correction`/retry block) is carried verbatim. The ≤7 bound
+(`ProposalTicket.acceptance_criteria max_length=7`), the ATLAS-109 retry,
+`MAX_STAGE_ATTEMPTS`, and `_correction_message` are all unchanged and remain the
+safety net. MINOR — the projection schema, reconciler, and gates are unchanged;
+v1.4.0 is retained for historical `PlanRun` reproduction.
 
 ## Evaluation
 
