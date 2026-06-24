@@ -25,6 +25,11 @@ from atlas.context.lesson_retrieval import (
     LessonMatch,
     select_lessons,
 )
+from atlas.context.pack import (
+    DEFAULT_TOKEN_BUDGET,
+    ContextBudgetExceededError,
+    build_context_pack,
+)
 from atlas.context.related_tickets import (
     DEFAULT_RELATED_CAP,
     RelatedTicket,
@@ -37,14 +42,17 @@ __all__ = [
     "DEFAULT_DOC_CAP",
     "DEFAULT_LESSON_CAP",
     "DEFAULT_RELATED_CAP",
+    "DEFAULT_TOKEN_BUDGET",
     "ADRMatch",
     "ADRMatchSource",
+    "ContextBudgetExceededError",
     "DocContext",
     "DocReference",
     "DocSection",
     "LessonMatch",
     "RelatedTicket",
     "RelatedTicketSource",
+    "build_context_pack",
     "select_adrs",
     "select_doc_sections",
     "select_lessons",
