@@ -20,6 +20,11 @@ from atlas.context.doc_retrieval import (
     DocSection,
     select_doc_sections,
 )
+from atlas.context.lesson_retrieval import (
+    DEFAULT_LESSON_CAP,
+    LessonMatch,
+    select_lessons,
+)
 from atlas.context.related_tickets import (
     DEFAULT_RELATED_CAP,
     RelatedTicket,
@@ -30,15 +35,18 @@ from atlas.context.related_tickets import (
 __all__ = [
     "DEFAULT_ADR_CAP",
     "DEFAULT_DOC_CAP",
+    "DEFAULT_LESSON_CAP",
     "DEFAULT_RELATED_CAP",
     "ADRMatch",
     "ADRMatchSource",
     "DocContext",
     "DocReference",
     "DocSection",
+    "LessonMatch",
     "RelatedTicket",
     "RelatedTicketSource",
     "select_adrs",
     "select_doc_sections",
+    "select_lessons",
     "select_related_tickets",
 ]
