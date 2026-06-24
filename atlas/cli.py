@@ -108,6 +108,13 @@ from atlas.planning.pipeline import (
     format_plan_diff,
     run_plan,
 )
+from atlas.planning.progress import (
+    STAGE_ASSEMBLY,
+    STAGE_DEPENDENCIES,
+    STAGE_EPICS,
+    STAGE_TICKETS,
+    PlanProgress,
+)
 from atlas.planning.reconciler import DEFAULT_SIMILARITY_THRESHOLD, PlanDiff
 from atlas.planning.staged import StagedProposalGenerator, TemplateStagedGenerator
 from atlas.pm import (
@@ -333,6 +340,38 @@ def _apply_command(args: argparse.Namespace, *, database: Database | None) -> in
     return EXIT_PRECONDITION
 
 
+def _format_plan_progress(event: PlanProgress) -> str | None:
+    """Map one staged-generation progress event to its operator-facing line, or
+    None for an unrecognised stage. Pure: the 'X/3' numbering is cosmetic and
+    lives here (not in the event), and a '(retry N)' suffix renders only on a
+    real retry (attempt > 0), never '(retry 0)' on the first try."""
+    if event.stage == STAGE_EPICS:
+        return "Stage 1/3 · epics — generating…"
+    if event.stage == STAGE_TICKETS:
+        retry = ""
+        if event.attempt:
+            reason = f" — {event.reason}" if event.reason else ""
+            retry = f" (retry {event.attempt}{reason})"
+        return (
+            f"Stage 2/3 · tickets — epic {event.index}/{event.total}: "
+            f"{event.detail}{retry}"
+        )
+    if event.stage == STAGE_DEPENDENCIES:
+        return "Stage 3/3 · dependencies — generating…"
+    if event.stage == STAGE_ASSEMBLY:
+        return "Stage 3/3 · assembling proposal…"
+    return None
+
+
+def _render_plan_progress(event: PlanProgress) -> None:
+    """Print one staged-generation progress line to stderr (the CLI owns
+    presentation). Stdout — the §2.4 diff and the persisted-PlanRun line — is
+    untouched, so anything parsing it is unaffected."""
+    line = _format_plan_progress(event)
+    if line is not None:
+        print(line, file=sys.stderr)
+
+
 def _plan_command(
     args: argparse.Namespace,
     *,
@@ -365,6 +404,7 @@ def _plan_command(
             similarity_threshold=args.similarity_threshold,
             now=datetime.now(UTC),
             staged_generator=staged_generator,
+            on_progress=_render_plan_progress,
         )
     except (DirtyInputError, PlanPreconditionError, ModelCallError) as error:
         print(error, file=sys.stderr)

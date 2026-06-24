@@ -41,6 +41,14 @@ from typing import Protocol, TypeVar, runtime_checkable
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from atlas.planning.client import PlannerClient, TruncatedOutputError
+from atlas.planning.progress import (
+    STAGE_ASSEMBLY,
+    STAGE_DEPENDENCIES,
+    STAGE_EPICS,
+    STAGE_TICKETS,
+    PlanProgress,
+    ProgressCallback,
+)
 from atlas.planning.proposal import (
     Proposal,
     ProposalDependency,
@@ -264,6 +272,25 @@ def _correction_message(error: StageProjectionError) -> str:
     )
 
 
+def _graze_summary(error: StageProjectionError) -> str:
+    """A short operator-facing label for a projection graze: the distinct
+    violated field name(s), e.g. 'acceptance_criteria' or 'tags, component'.
+    Derived from the rejected attempt's ValidationError loc paths — the last
+    string element of each loc is the field. Capped so it stays a one-line
+    progress suffix; the full directed correction goes to the model via
+    _correction_message (unchanged)."""
+    fields: list[str] = []
+    for detail in error.validation_error.errors():
+        field = next(
+            (part for part in reversed(detail["loc"]) if isinstance(part, str)),
+            None,
+        )
+        if field is not None and field not in fields:
+            fields.append(field)
+    summary = ", ".join(fields) if fields else "field bound"
+    return summary if len(summary) <= 60 else summary[:57] + "…"
+
+
 def _describe_item(payload: object, loc: Sequence[object]) -> str:
     """Best-effort human label for the offending item, e.g. the ticket title,
     so the correction names what the model wrote rather than only a path."""
@@ -425,7 +452,11 @@ class StagedProposalGenerator(Protocol):
     tests use a fake returning canned outputs (zero live calls in CI)."""
 
     def generate(
-        self, *, client: PlannerClient, context: StageContext
+        self,
+        *,
+        client: PlannerClient,
+        context: StageContext,
+        on_progress: ProgressCallback | None = None,
     ) -> StagedGenerationResult: ...
 
 
@@ -442,11 +473,22 @@ class TemplateStagedGenerator:
     honestly naming the stage (§5.4)."""
 
     def generate(
-        self, *, client: PlannerClient, context: StageContext
+        self,
+        *,
+        client: PlannerClient,
+        context: StageContext,
+        on_progress: ProgressCallback | None = None,
     ) -> StagedGenerationResult:
         records: list[StageRecord] = []
+        # Normalise the optional callback to a non-optional local so every
+        # emission site is unconditional; a None callback is a no-op (D7), so
+        # behaviour is byte-identical when no renderer is injected.
+        emit: ProgressCallback = (
+            on_progress if on_progress is not None else (lambda event: None)
+        )
 
         # Stage 1: epics.
+        emit(PlanProgress(STAGE_EPICS))
         epics_prompt = render_planner_prompt(
             {
                 "product_key": context.product_key,
@@ -502,13 +544,22 @@ class TemplateStagedGenerator:
                 )
 
             tickets_output = self._call_stage_with_retry(
-                client, StageTicketsOutput, stage, records, _render_tickets
+                client,
+                StageTicketsOutput,
+                stage,
+                records,
+                _render_tickets,
+                emit=emit,
+                index=index + 1,
+                total=len(epics_output.epics),
+                detail=epic.title,
             )
             ticket_batches.append(
                 TicketBatch(epic_index=identity, output=tickets_output)
             )
 
         # Stage 3: dependencies, seeded with the assembled new:<n> indices.
+        emit(PlanProgress(STAGE_DEPENDENCIES))
         position = 0
         assembled_tickets = []
         for batch in ticket_batches:
@@ -539,6 +590,7 @@ class TemplateStagedGenerator:
         )
 
         # Assemble — pure; a reference-integrity violation names the stage.
+        emit(PlanProgress(STAGE_ASSEMBLY))
         try:
             proposal = assemble_proposal(
                 epics_output, ticket_batches, dependencies_output
@@ -574,6 +626,11 @@ class TemplateStagedGenerator:
         stage: str,
         records: list[StageRecord],
         render: Callable[[str | None], RenderedPrompt],
+        *,
+        emit: ProgressCallback,
+        index: int,
+        total: int,
+        detail: str,
     ) -> _StageModelT:
         """Render → call → parse a stage, retrying a projection-bound graze
         with a directed correction up to ``MAX_STAGE_ATTEMPTS`` total attempts
@@ -589,6 +646,17 @@ class TemplateStagedGenerator:
         stage and the violation, the cap enforced not relaxed."""
         last_error: StageProjectionError | None = None
         for attempt in range(MAX_STAGE_ATTEMPTS):
+            reason = _graze_summary(last_error) if last_error is not None else None
+            emit(
+                PlanProgress(
+                    STAGE_TICKETS,
+                    index,
+                    total,
+                    detail,
+                    attempt=attempt,
+                    reason=reason,
+                )
+            )
             label = stage if attempt == 0 else f"{stage} (retry {attempt})"
             correction = None if last_error is None else _correction_message(last_error)
             prompt = render(correction)

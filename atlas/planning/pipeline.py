@@ -49,6 +49,7 @@ from atlas.planning.ingestion import (
     collect_inbox_documents,
     collect_input_documents,
 )
+from atlas.planning.progress import ProgressCallback
 from atlas.planning.proposal import Proposal, ProposalError, parse_proposal
 from atlas.planning.reconciler import (
     DEFAULT_SIMILARITY_THRESHOLD,
@@ -206,6 +207,7 @@ def run_plan(
     prompts_dir: Path | None = None,
     staged_generator: StagedProposalGenerator | None = None,
     inbox_dir: Path = DEFAULT_INBOX_DIR,
+    on_progress: ProgressCallback | None = None,
 ) -> PlanResult:
     """Run the full `atlas plan` pipeline once (spec §2.1).
 
@@ -213,6 +215,12 @@ def run_plan(
     supplied (``atlas plan --staged``), generation runs across the three
     bounded staged calls and assembles one §3.11 envelope (ADR-0010); the
     parse → gates → reconcile → PlanRun path downstream is identical.
+
+    ``on_progress`` is an optional staged-generation progress callback
+    (additive observability): the staged path emits one event per stage
+    boundary and per epic through it, and the CLI renders them to stderr. It is
+    a no-op on the single-call path (no events fire) and when ``None``, so the
+    public signature stays back-compatible.
     """
     # Pre-flight: product attribution (clean exit, no PlanRun).
     product = ProductRepo(database).get_by_key(PRODUCT_KEY)
@@ -284,6 +292,7 @@ def run_plan(
             documents=document_payload,
             valid_anchors=valid_anchors,
             prompts_dir=prompts_dir,
+            on_progress=on_progress,
         )
 
     raw_output_hash = _sha256(generated.raw_output)
@@ -422,6 +431,7 @@ def _generate_staged(
     documents: list[dict[str, str]],
     valid_anchors: list[dict[str, str]],
     prompts_dir: Path | None,
+    on_progress: ProgressCallback | None = None,
 ) -> _Generated:
     """The staged generation path (ADR-0010): three bounded calls assembled
     into one §3.11 envelope. raw_output is the assembled JSON (its hash is the
@@ -436,7 +446,9 @@ def _generate_staged(
         valid_anchors=valid_anchors,
     )
     try:
-        result = staged_generator.generate(client=client, context=context)
+        result = staged_generator.generate(
+            client=client, context=context, on_progress=on_progress
+        )
     except StageTruncatedError as error:
         reason = json.dumps(
             {
