@@ -198,7 +198,7 @@ Every row is the actual message and exit code from the commands.
 | `input documents are dirty or untracked: […]; planning runs only against committed state` | plan / apply | 2 | Commit or stash the listed files, then re-run. |
 | `ANTHROPIC_API_KEY is not set; export it to run \`atlas plan\`…` | plan | 2 | `export ANTHROPIC_API_KEY=…` (Prerequisite 4). |
 | `no 'ATLAS' product in the database; bootstrap the product before planning` | plan | 2 | Create the product row (Prerequisite 3). |
-| `model call failed: …` | plan | 2 | Transient (network/timeout/API). Re-run. |
+| `model call failed: …` / `model call failed after 3 attempts: …` | plan | 2 | Transient (network/timeout/API). A mid-stream transport drop is auto-retried (3 attempts, 1s/2s backoff) before this surfaces — the `after 3 attempts` variant means every retry was exhausted. Re-run. |
 | `Plan failed (recorded):` + `{"stage": "truncation", …max_tokens=64000…}` | plan | 1 | The capacity boundary (below). Re-running a single-call plan often succeeds; the durable fix is `atlas plan --staged` (first-run only). |
 | `Plan failed (recorded):` + `{"stage": "parse", …}` | plan | 1 | The model output was not valid JSON. Re-run; if persistent, the prompt/model needs attention. |
 | `Plan failed (recorded):` + `{"stage": "gates", "failures": […]}` | plan | 1 | A validation gate failed. Read the per-failure `gate`/`code`/`reason` — usually an unresolvable `source_anchor` (gate 4), an orphan epic (gate 5), or an oversized ticket (gate 7). |
