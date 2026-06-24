@@ -35,6 +35,7 @@ from uuid import uuid4
 
 import yaml
 
+from atlas.core.anchors import AnchorIndex
 from atlas.core.models import (
     Epic,
     PlanRun,
@@ -45,7 +46,6 @@ from atlas.core.models import (
 from atlas.planning.client import ModelIdentity, PlannerClient, TruncatedOutputError
 from atlas.planning.gates import GateFailure, run_gates
 from atlas.planning.ingestion import (
-    AnchorIndex,
     collect_inbox_documents,
     collect_input_documents,
 )

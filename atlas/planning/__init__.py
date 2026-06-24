@@ -1,18 +1,20 @@
 """Planning engine: plan/apply loop, reconciler, validation gates."""
 
-from atlas.planning.gates import GateFailure, run_gates
-from atlas.planning.ingestion import (
+from atlas.core.anchors import (
     AnchorIndex,
-    DirtyInputError,
     IngestionError,
     MalformedAnchorError,
     ResolvedAnchor,
     SourceDocument,
     UnknownAnchorError,
     UnknownDocumentError,
+    slugify,
+)
+from atlas.planning.gates import GateFailure, run_gates
+from atlas.planning.ingestion import (
+    DirtyInputError,
     collect_inbox_documents,
     collect_input_documents,
-    slugify,
 )
 from atlas.planning.proposal import (
     Proposal,

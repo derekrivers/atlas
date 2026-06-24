@@ -279,7 +279,15 @@ ATLAS-128 Planner emits ticket tags and component: ProposalTicket gains the
          fields, the planner produces them, materialisation and validation
          carry them through (writer half). Depends on ATLAS-127.
 ATLAS-51 ADR retrieval
-ATLAS-52 Documentation retrieval recording doc SHAs
+ATLAS-129 Relocate the anchor/slug primitive (slugify, heading parsing,
+         SourceDocument, ResolvedAnchor, AnchorIndex, and the anchor error
+         hierarchy) from atlas.planning.ingestion to atlas.core.anchors,
+         re-pointing ingestion and all importers; a pure move, no behaviour
+         change. Unblocks the atlas.context retrievers, which sit below
+         atlas.planning in the spine and so cannot import the primitive from
+         its current home. Precursor to ATLAS-52.
+ATLAS-52 Documentation retrieval recording doc SHAs: section-level
+         extraction over the relocated primitive. Depends on ATLAS-129.
 ATLAS-53 Historical lesson retrieval (status ACTIVE only; tag/component
          matching — vector search deferred)
 ATLAS-54 Dependency retrieval
