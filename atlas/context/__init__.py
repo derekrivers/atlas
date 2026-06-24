@@ -13,6 +13,13 @@ from atlas.context.adr_retrieval import (
     ADRMatchSource,
     select_adrs,
 )
+from atlas.context.doc_retrieval import (
+    DEFAULT_DOC_CAP,
+    DocContext,
+    DocReference,
+    DocSection,
+    select_doc_sections,
+)
 from atlas.context.related_tickets import (
     DEFAULT_RELATED_CAP,
     RelatedTicket,
@@ -22,11 +29,16 @@ from atlas.context.related_tickets import (
 
 __all__ = [
     "DEFAULT_ADR_CAP",
+    "DEFAULT_DOC_CAP",
     "DEFAULT_RELATED_CAP",
     "ADRMatch",
     "ADRMatchSource",
+    "DocContext",
+    "DocReference",
+    "DocSection",
     "RelatedTicket",
     "RelatedTicketSource",
     "select_adrs",
+    "select_doc_sections",
     "select_related_tickets",
 ]

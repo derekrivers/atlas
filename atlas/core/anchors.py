@@ -50,6 +50,22 @@ def slugify(heading: str) -> str:
 
 
 @dataclass(frozen=True)
+class Heading:
+    """One Markdown heading parsed from a document (ATLAS-52).
+
+    ``level`` is the ``#`` count (1..6); ``line`` is the 0-based index into
+    ``content.splitlines()`` of the heading line (``_blank_fenced_blocks``
+    preserves the line count, so this indexes the raw content); ``text`` is the
+    heading text; ``slug`` is its deduped §2.3 slug (the same value
+    :class:`AnchorIndex` resolves against)."""
+
+    level: int
+    line: int
+    text: str
+    slug: str
+
+
+@dataclass(frozen=True)
 class SourceDocument:
     """One planner input: content is the blob at ``sha``, always."""
 
@@ -81,21 +97,34 @@ def _blank_fenced_blocks(lines: list[str]) -> list[str]:
     return out
 
 
-def _heading_slugs(content: str) -> dict[str, str]:
-    """slug -> heading text, duplicates suffixed -1, -2 (§2.3)."""
-    slugs: dict[str, str] = {}
+def parse_headings(content: str) -> list[Heading]:
+    """Every Markdown heading in ``content``, in document order (ATLAS-52).
+
+    The single heading parse: the §2.3 fenced-block blanking, heading regex,
+    slug algorithm, and -1/-2 duplicate-suffix logic that :func:`_heading_slugs`
+    and :class:`AnchorIndex` are built on. ``Heading.line`` indexes the raw
+    ``content.splitlines()`` because ``_blank_fenced_blocks`` preserves the line
+    count, so a caller can slice the section body straight out of the raw lines.
+    """
+    headings: list[Heading] = []
     seen: dict[str, int] = {}
-    for line in _blank_fenced_blocks(content.splitlines()):
+    for line_no, line in enumerate(_blank_fenced_blocks(content.splitlines())):
         match = _HEADING_RE.match(line)
         if not match:
             continue
-        heading = match.group(2)
-        base = slugify(heading)
+        level = len(match.group(1))
+        text = match.group(2)
+        base = slugify(text)
         count = seen.get(base, 0)
         seen[base] = count + 1
         slug = base if count == 0 else f"{base}-{count}"
-        slugs[slug] = heading
-    return slugs
+        headings.append(Heading(level=level, line=line_no, text=text, slug=slug))
+    return headings
+
+
+def _heading_slugs(content: str) -> dict[str, str]:
+    """slug -> heading text, duplicates suffixed -1, -2 (§2.3)."""
+    return {h.slug: h.text for h in parse_headings(content)}
 
 
 class AnchorIndex:

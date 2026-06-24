@@ -43,3 +43,60 @@ def test_anchor_error_hierarchy_survives_the_move() -> None:
     assert issubclass(MalformedAnchorError, IngestionError)
     assert issubclass(UnknownDocumentError, IngestionError)
     assert issubclass(UnknownAnchorError, IngestionError)
+
+
+def test_parse_headings_levels_and_line_indices_map_to_raw_content() -> None:
+    """Every level H1..H6 is parsed with the right ``#`` count, and ``line``
+    indexes the raw ``content.splitlines()`` (not the blanked copy)."""
+    from atlas.core.anchors import parse_headings
+
+    content = "\n".join(
+        [
+            "intro",
+            "# h1",
+            "## h2",
+            "### h3",
+            "body",
+            "#### h4",
+            "##### h5",
+            "###### h6",
+        ]
+    )
+    headings = parse_headings(content)
+    raw = content.splitlines()
+
+    assert [h.level for h in headings] == [1, 2, 3, 4, 5, 6]
+    assert [h.text for h in headings] == ["h1", "h2", "h3", "h4", "h5", "h6"]
+    # line maps back to the exact raw line — the load-bearing slice invariant.
+    for h in headings:
+        assert raw[h.line] == "#" * h.level + " " + h.text
+
+
+def test_parse_headings_ignores_a_heading_inside_a_fence() -> None:
+    """A ``## heading`` inside a ``` fence is code, not a heading (§2.3)."""
+    from atlas.core.anchors import parse_headings
+
+    content = "\n".join(
+        [
+            "# real",
+            "```",
+            "## not a heading",
+            "```",
+            "## also real",
+        ]
+    )
+    headings = parse_headings(content)
+
+    assert [h.text for h in headings] == ["real", "also real"]
+    assert "not a heading" not in {h.text for h in headings}
+
+
+def test_parse_headings_dedupes_duplicate_slugs_with_numeric_suffixes() -> None:
+    """Duplicate headings get -1/-2 slugs while keeping their text (§2.3)."""
+    from atlas.core.anchors import parse_headings
+
+    content = "\n".join(["## Setup", "## Setup", "## Setup"])
+    headings = parse_headings(content)
+
+    assert [h.slug for h in headings] == ["setup", "setup-1", "setup-2"]
+    assert [h.text for h in headings] == ["Setup", "Setup", "Setup"]
