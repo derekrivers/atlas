@@ -348,10 +348,13 @@ def _format_plan_progress(event: PlanProgress) -> str | None:
     if event.stage == STAGE_EPICS:
         return "Stage 1/3 · epics — generating…"
     if event.stage == STAGE_TICKETS:
-        suffix = f" (retry {event.attempt})" if event.attempt else ""
+        retry = ""
+        if event.attempt:
+            reason = f" — {event.reason}" if event.reason else ""
+            retry = f" (retry {event.attempt}{reason})"
         return (
             f"Stage 2/3 · tickets — epic {event.index}/{event.total}: "
-            f"{event.detail}{suffix}"
+            f"{event.detail}{retry}"
         )
     if event.stage == STAGE_DEPENDENCIES:
         return "Stage 3/3 · dependencies — generating…"

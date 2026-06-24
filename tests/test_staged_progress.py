@@ -10,6 +10,8 @@ sequenced fake client, so CI makes ZERO live calls.
 
 from __future__ import annotations
 
+import pytest
+from pydantic import ValidationError
 from test_staged_pipeline import (
     SequencedFakeClient,
     _context,
@@ -26,7 +28,12 @@ from atlas.planning.progress import (
     STAGE_TICKETS,
     PlanProgress,
 )
-from atlas.planning.staged import TemplateStagedGenerator
+from atlas.planning.staged import (
+    StageProjectionError,
+    StageTicketsOutput,
+    TemplateStagedGenerator,
+    _graze_summary,
+)
 
 
 def _deps_output() -> str:
@@ -62,6 +69,9 @@ def test_emits_each_stage_boundary_in_order_with_1_based_epic_positions() -> Non
     # Each tickets event's detail is the matching epic title, in emission order.
     ticket_details = [e.detail for e in events if e.stage == STAGE_TICKETS]
     assert ticket_details == ["Planning Engine", "Dependency Engine"]
+    # No-behaviour-change guard: every first-attempt event carries reason=None,
+    # so the rendered first-try lines are byte-identical to before this add-on.
+    assert all(e.reason is None for e in events)
 
 
 # --- 2. a retry emits its own attempt event ----------------------------------
@@ -93,6 +103,33 @@ def test_a_projection_graze_retry_emits_a_second_tickets_event() -> None:
         (e.index, e.total, e.detail) == (1, 1, "Planning Engine")
         for e in tickets_events
     )
+    # The first attempt carries no reason; the retry names the field it repairs
+    # (the over-bound fixture violates only acceptance_criteria). A retry with
+    # reason is None when a graze occurred would be the wrong answer.
+    first, retry = tickets_events
+    assert first.reason is None
+    assert retry.reason is not None
+    assert "acceptance_criteria" in retry.reason
+
+
+# --- 2. _graze_summary is pure and names the violated field ------------------
+
+
+def test_graze_summary_names_the_violated_field() -> None:
+    # The over-bound fixture trips only the ≤7 acceptance_criteria bound; the
+    # summary is exactly that field name — not an empty string, not the verbose
+    # model-facing correction paragraph.
+    over = _over_bound_ticket("Ingestion", "new_epic:0")
+    with pytest.raises(ValidationError) as excinfo:
+        StageTicketsOutput.model_validate({"tickets": [over], "planner_notes": []})
+    error = StageProjectionError(
+        stage="tickets:new_epic:0",
+        records=[],
+        raw_output=_tickets_output(over),
+        message="grazed",
+        validation_error=excinfo.value,
+    )
+    assert _graze_summary(error) == "acceptance_criteria"
 
 
 # --- 3. a None callback is a no-op (guards the back-compat default) -----------
@@ -148,3 +185,30 @@ def test_format_plan_progress_renders_retry_suffix_only_when_retrying() -> None:
     assert first == "Stage 2/3 · tickets — epic 1/2: E"
     assert "(retry" not in first
     assert retry == "Stage 2/3 · tickets — epic 1/2: E (retry 1)"
+
+
+def test_format_plan_progress_renders_the_graze_reason_on_a_retry() -> None:
+    # attempt=1 with a reason names the grazed field in the suffix; attempt=1
+    # without a reason stays a bare (retry 1); attempt=0 never shows a reason.
+    with_reason = _format_plan_progress(
+        PlanProgress(STAGE_TICKETS, 1, 2, "E", attempt=1, reason="acceptance_criteria")
+    )
+    assert with_reason is not None
+    assert "(retry 1" in with_reason
+    assert "acceptance_criteria" in with_reason
+    assert with_reason == (
+        "Stage 2/3 · tickets — epic 1/2: E (retry 1 — acceptance_criteria)"
+    )
+
+    bare = _format_plan_progress(
+        PlanProgress(STAGE_TICKETS, 1, 2, "E", attempt=1, reason=None)
+    )
+    assert bare == "Stage 2/3 · tickets — epic 1/2: E (retry 1)"
+
+    # A reason on the first try must never render a retry suffix (no (retry 0 …)).
+    first = _format_plan_progress(
+        PlanProgress(STAGE_TICKETS, 1, 2, "E", attempt=0, reason="acceptance_criteria")
+    )
+    assert first == "Stage 2/3 · tickets — epic 1/2: E"
+    assert "retry" not in first
+    assert "acceptance_criteria" not in first

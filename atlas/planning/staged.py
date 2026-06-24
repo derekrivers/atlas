@@ -272,6 +272,25 @@ def _correction_message(error: StageProjectionError) -> str:
     )
 
 
+def _graze_summary(error: StageProjectionError) -> str:
+    """A short operator-facing label for a projection graze: the distinct
+    violated field name(s), e.g. 'acceptance_criteria' or 'tags, component'.
+    Derived from the rejected attempt's ValidationError loc paths — the last
+    string element of each loc is the field. Capped so it stays a one-line
+    progress suffix; the full directed correction goes to the model via
+    _correction_message (unchanged)."""
+    fields: list[str] = []
+    for detail in error.validation_error.errors():
+        field = next(
+            (part for part in reversed(detail["loc"]) if isinstance(part, str)),
+            None,
+        )
+        if field is not None and field not in fields:
+            fields.append(field)
+    summary = ", ".join(fields) if fields else "field bound"
+    return summary if len(summary) <= 60 else summary[:57] + "…"
+
+
 def _describe_item(payload: object, loc: Sequence[object]) -> str:
     """Best-effort human label for the offending item, e.g. the ticket title,
     so the correction names what the model wrote rather than only a path."""
@@ -627,7 +646,17 @@ class TemplateStagedGenerator:
         stage and the violation, the cap enforced not relaxed."""
         last_error: StageProjectionError | None = None
         for attempt in range(MAX_STAGE_ATTEMPTS):
-            emit(PlanProgress(STAGE_TICKETS, index, total, detail, attempt=attempt))
+            reason = _graze_summary(last_error) if last_error is not None else None
+            emit(
+                PlanProgress(
+                    STAGE_TICKETS,
+                    index,
+                    total,
+                    detail,
+                    attempt=attempt,
+                    reason=reason,
+                )
+            )
             label = stage if attempt == 0 else f"{stage} (retry {attempt})"
             correction = None if last_error is None else _correction_message(last_error)
             prompt = render(correction)

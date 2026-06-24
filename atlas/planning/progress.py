@@ -37,6 +37,7 @@ class PlanProgress:
     total: int | None = None  # total in the stage (epic count, for tickets)
     detail: str | None = None  # human label, e.g. the epic title
     attempt: int | None = None  # retry attempt; 0/None = first try
+    reason: str | None = None  # on a retry, the prior attempt's grazed field(s)
 
 
 ProgressCallback = Callable[[PlanProgress], None]
