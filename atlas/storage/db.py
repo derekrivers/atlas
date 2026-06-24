@@ -30,15 +30,24 @@ def resolve_url(url: str | None = None) -> str:
     return f"sqlite:///{DEFAULT_SQLITE_PATH}"
 
 
+def ensure_sqlite_parent(url: str) -> None:
+    """Create the parent directory for a file-backed SQLite URL.
+
+    The default database lives at .atlas/atlas.db, whose directory is
+    gitignored and absent on a fresh checkout. Both the engine factory
+    and the Alembic environment call this so neither fails with
+    "unable to open database file".
+    """
+    if url.startswith("sqlite:///") and ":memory:" not in url:
+        Path(url.removeprefix("sqlite:///")).parent.mkdir(parents=True, exist_ok=True)
+
+
 class Database:
     """Owns the engine and hands sessions to the repositories."""
 
     def __init__(self, url: str | None = None) -> None:
         resolved = resolve_url(url)
-        if resolved.startswith("sqlite:///") and ":memory:" not in resolved:
-            Path(resolved.removeprefix("sqlite:///")).parent.mkdir(
-                parents=True, exist_ok=True
-            )
+        ensure_sqlite_parent(resolved)
         self._engine = sa.create_engine(resolved)
         self._sessions = sessionmaker(self._engine)
 
