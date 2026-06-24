@@ -44,9 +44,10 @@ from test_plan_pipeline import (
 )
 
 from atlas.cli import EXIT_OK, EXIT_PRECONDITION, main
+from atlas.core.anchors import AnchorIndex
 from atlas.core.models import Epic, PlanRunStatus, Ticket
 from atlas.planning.client import AnthropicPlannerClient
-from atlas.planning.ingestion import AnchorIndex, collect_input_documents
+from atlas.planning.ingestion import collect_input_documents
 from atlas.planning.pipeline import run_plan
 from atlas.planning.proposal import Proposal
 from atlas.planning.reconciler import Backlog, reconcile
@@ -507,9 +508,14 @@ def test_enumeration_pins_real_roadmap_count() -> None:
     # tags/component on the stored Ticket — the storage half — and ATLAS-128
     # seeds the writer half where the planner emits them; both sequenced ahead of
     # the Phase 5 retrievers ATLAS-51/-53 that consume the field).
+    # + ATLAS-129 (the anchor/slug primitive relocation to atlas.core: a pure
+    # move of slugify/heading-parsing/SourceDocument/ResolvedAnchor/AnchorIndex
+    # and the anchor error hierarchy out of atlas.planning.ingestion so the
+    # atlas.context retrievers — below planning in the spine — can import it;
+    # no new ticket behaviour, the existing suite is the oracle).
     # Addition couples to the pin, the mirror of the retirement rule. The pin
     # fires on exactly this kind of change.
-    assert len(tickets) == 112
+    assert len(tickets) == 113
     keys = [t.key for t in tickets]
     assert len(keys) == len(set(keys))  # unique
     assert "ATLAS-20" not in keys  # retired lines are not tickets

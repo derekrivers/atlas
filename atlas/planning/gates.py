@@ -19,7 +19,7 @@ from dataclasses import dataclass
 
 import networkx as nx
 
-from atlas.planning.ingestion import AnchorIndex, IngestionError
+from atlas.core.anchors import AnchorIndex, IngestionError
 from atlas.planning.proposal import Proposal
 
 

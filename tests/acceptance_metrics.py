@@ -41,8 +41,8 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Protocol
 
+from atlas.core.anchors import slugify
 from atlas.planning import reconciler
-from atlas.planning.ingestion import slugify
 
 ROADMAP_PATH = "docs/atlas/implementation-roadmap.md"
 

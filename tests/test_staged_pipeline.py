@@ -19,9 +19,10 @@ from test_models_validation import epic_kwargs
 from test_plan_pipeline import NOW, fixture_repo, fresh_db, proposal_json
 
 from atlas import cli
+from atlas.core.anchors import AnchorIndex
 from atlas.core.models import Epic, PlanRunStatus
 from atlas.planning.client import TruncatedOutputError
-from atlas.planning.ingestion import AnchorIndex, collect_input_documents
+from atlas.planning.ingestion import collect_input_documents
 from atlas.planning.pipeline import StagedReplanUnsupportedError, run_plan
 from atlas.planning.proposal import parse_proposal
 from atlas.planning.staged import (
