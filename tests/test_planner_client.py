@@ -267,9 +267,7 @@ def test_truncation_is_never_retried(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(time, "sleep", _record_sleep)
     recorder: dict[str, object] = {}
-    _stub_anthropic(
-        monkeypatch, recorder, text='{"cut', stop_reason="max_tokens"
-    )
+    _stub_anthropic(monkeypatch, recorder, text='{"cut', stop_reason="max_tokens")
 
     with pytest.raises(TruncatedOutputError):
         AnthropicPlannerClient(api_key="sk-test").generate("x")
