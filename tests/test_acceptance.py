@@ -27,6 +27,8 @@ from acceptance_metrics import (
     CONTENT_COVERAGE_THRESHOLD,
     anchor_coverage,
     at7_pair_verdict,
+    citation_covered_keys,
+    cited_keys,
     content_coverage,
     enumerate_roadmap_tickets,
     heading_index,
@@ -434,6 +436,45 @@ def test_at7_pair_floor_gates_and_content_is_reported_not_gated() -> None:
 
     # 3. The floor is inclusive: exactly at the floor passes.
     assert at7_pair_verdict(ANCHOR_COVERAGE_FLOOR, 0.0).passed
+
+
+# --- AT-7 key-citation coverage lens (ATLAS-124 diagnostic, additive) --------
+
+
+def test_cited_keys_extracts_cited_keys_and_ignores_non_citations() -> None:
+    # The planner writes the roadmap key it implements into the title,
+    # parenthetically. The lens reads it; a non-ATLAS parenthetical is not a key.
+    assert cited_keys("Stale-block detection (sync_tick step 5, ATLAS-44)") == {
+        "ATLAS-44"
+    }
+    # No key cited -> empty set (not the proposal's own null key).
+    assert cited_keys("PM scheduler with create-on-crash") == set()
+    # Multiple keys in one title -> all of them.
+    assert cited_keys("Split work (ATLAS-119, ATLAS-120)") == {"ATLAS-119", "ATLAS-120"}
+    # A non-ATLAS parenthetical is not a citation.
+    assert cited_keys("Token budget compression ladder (Phase 5, step 2)") == set()
+    # A key not flush against the paren is still found (the wrong answer misses it).
+    assert cited_keys("Ready state detection — see ATLAS-43 for the heading") == {
+        "ATLAS-43"
+    }
+
+
+def test_citation_covered_keys_credits_only_cited_roadmap_keys() -> None:
+    roadmap_keys = {"ATLAS-1", "ATLAS-2"}
+    proposed_titles = ["Foo (ATLAS-1)", "Bar"]
+    # Only ATLAS-1 is cited; ATLAS-2 is uncited and is NOT credited.
+    assert citation_covered_keys(proposed_titles, roadmap_keys) == {"ATLAS-1"}
+    # A cited key outside the roadmap set is never credited (the wrong answer
+    # returns it).
+    assert citation_covered_keys(["Baz (ATLAS-999)"], roadmap_keys) == set()
+
+
+def test_gated_metrics_constants_unchanged() -> None:
+    # The citation lens is additive and diagnostic: it must NOT move the gated
+    # criterion. This guard proves the spec'd floor (§7.2) and content threshold
+    # (§7.1) are exactly as they were.
+    assert ANCHOR_COVERAGE_FLOOR == 0.50
+    assert CONTENT_COVERAGE_THRESHOLD == 0.5
 
 
 # --- AT-7 adjacency classification fix (ATLAS-112 named gap) -----------------

@@ -318,6 +318,32 @@ def content_coverage(
     return ContentCoverageResult(threshold=threshold, matches=tuple(matches))
 
 
+# Roadmap keys are ``ATLAS-<n>`` (§2.3 key convention). The planner writes the
+# key a proposed ticket implements into the title — usually parenthetically,
+# e.g. ``'… (ATLAS-44)'`` — a high-precision identity signal the anchor and
+# content metrics ignore. The key-citation lens (ATLAS-124 diagnostic) reads it.
+_KEY_CITATION_RE = re.compile(r"ATLAS-\d+")
+
+
+def cited_keys(title: str) -> set[str]:
+    """The roadmap keys a proposed ticket title cites. The planner writes the
+    key it implements into the title (usually parenthetically, e.g.
+    '… (ATLAS-44)') — a high-precision identity signal the anchor and content
+    metrics ignore. Parses the TITLE text only (a ProposalTicket's own `key`
+    is null pre-apply)."""
+    return set(_KEY_CITATION_RE.findall(title))
+
+
+def citation_covered_keys(
+    proposed_titles: Iterable[str], roadmap_keys: Iterable[str]
+) -> set[str]:
+    """The subset of roadmap keys cited by some proposed title."""
+    cited: set[str] = set()
+    for title in proposed_titles:
+        cited |= cited_keys(title)
+    return {key for key in roadmap_keys if key in cited}
+
+
 @dataclass(frozen=True)
 class AT7Verdict:
     """The AT-7 pair verdict (ATLAS-112 RESOLVED, spec §7.2). The exact-anchor

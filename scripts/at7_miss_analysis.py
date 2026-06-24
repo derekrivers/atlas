@@ -84,6 +84,7 @@ def main() -> None:
 
     from acceptance_metrics import (
         anchor_coverage,
+        citation_covered_keys,
         content_coverage,
         enumerate_roadmap_tickets,
         heading_index,
@@ -125,6 +126,52 @@ def main() -> None:
         "  exact-anchor is a strict floor; content is document-independent. "
         "The gap between them is the anchoring-convention signal.\n"
     )
+
+    # --- unified coverage lens (ATLAS-124 diagnostic) -----------------------
+    # The two metrics above each ignore a high-precision signal the OTHER cannot
+    # see: the planner writes the roadmap key it implements into the ticket
+    # TITLE ('… (ATLAS-44)'). Union the three covered key-sets — exact-anchor,
+    # content, and citation — to report the TRUE coverage and the genuine
+    # residual gaps. This is reported, never gated (the gate stays exact-anchor
+    # >= floor); whether to adopt it as the bar is ATLAS-124, the operator's call.
+    roadmap_keys = {t.key for t in hand_written}
+    exact_covered_keys = {t.key for t in hand_written if t.anchor in proposed_anchors}
+    content_covered_keys = {m.roadmap_key for m in content.matches if m.covered}
+    citation_covered = citation_covered_keys(
+        [t.title for t in proposal.tickets], roadmap_keys
+    )
+    union = exact_covered_keys | content_covered_keys | citation_covered
+    unified = len(union) / total if total else 1.0
+
+    # Keys each signal covers that NEITHER other signal does — what it uniquely
+    # recovers for the union.
+    exact_unique = exact_covered_keys - content_covered_keys - citation_covered
+    content_unique = content_covered_keys - exact_covered_keys - citation_covered
+    citation_unique = citation_covered - exact_covered_keys - content_covered_keys
+
+    print("=== UNIFIED coverage (exact OR content OR citation) — ATLAS-124 lens ===")
+    print(f"  UNIFIED: {unified:.1%}  ({len(union)}/{total} roadmap keys covered)")
+    print(
+        f"  per-signal unique adds: exact-only {len(exact_unique)}, "
+        f"content-only {len(content_unique)}, citation-only {len(citation_unique)} "
+        f"(citation recovers {len(citation_covered)} keys total)\n"
+    )
+
+    # The TRUE RESIDUAL: roadmap keys covered by NONE of the three signals — the
+    # genuine candidate gaps, the number the bar decision actually needs.
+    residual = sorted(roadmap_keys - union)
+    print(f"=== TRUE RESIDUAL: {len(residual)} roadmap key(s) covered by no signal ===")
+    if residual:
+        residual_tickets = {t.key: t for t in hand_written}
+        for key in residual:
+            ticket = residual_tickets[key]
+            slug = ticket.anchor.split("#", 1)[1] if "#" in ticket.anchor else ""
+            phase = phase_by_slug.get(slug)
+            phase_str = f"P{phase}" if phase is not None else "P?"
+            print(f"  {key:<10} {phase_str:<3} {ticket.title}")
+    else:
+        print("  (none — every roadmap key is covered by at least one signal)")
+    print()
 
     # --- exact-anchor misses, corrected adjacency ---------------------------
     covered = [t for t in hand_written if t.anchor in proposed_anchors]
@@ -180,7 +227,8 @@ def main() -> None:
         is_design_doc_phase48 = phase in PHASE_4_8 and work_present and off_roadmap
         if is_design_doc_phase48:
             design_doc_phase48 += 1
-        miss_rows.append((ticket.key, phase, work_present, best_doc, best_score))
+        cited = ticket.key in citation_covered
+        miss_rows.append((ticket.key, phase, work_present, best_doc, best_score, cited))
 
     predominant = missed and design_doc_phase48 > len(missed) / 2
     verdict = "CONFIRMED" if predominant else "CONTRADICTED"
@@ -196,13 +244,16 @@ def main() -> None:
         f"design-doc-anchored Phase 4-8 work.\n"
     )
     if miss_rows:
-        print("  per-miss detail (key | phase | work-present | best-match doc):")
-        for key, phase, work_present, best_doc, best_score in miss_rows:
+        print(
+            "  per-miss detail (key | phase | work-present | cited? | best-match doc):"
+        )
+        for key, phase, work_present, best_doc, best_score, cited in miss_rows:
             phase_str = f"P{phase}" if phase is not None else "P?"
             doc = (best_doc or "?").replace("docs/atlas/", "")
             print(
                 f"    {key:<10} {phase_str:<3} "
                 f"{'yes' if work_present else 'no ':<3} "
+                f"{'cited' if cited else '-    ':<5} "
                 f"{doc}  (score {best_score:.2f})"
             )
         print()
