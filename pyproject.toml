@@ -13,6 +13,10 @@ dependencies = [
     "sqlalchemy>=2.0",
     "alembic>=1.13",
     "anthropic>=0.40",
+    # Imported directly in atlas/planning/client.py to classify mid-stream
+    # transport drops (httpx.TransportError); arrives transitively via
+    # anthropic, but a direct import warrants a direct declaration.
+    "httpx>=0.23",
 ]
 
 [project.scripts]

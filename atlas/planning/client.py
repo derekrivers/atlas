@@ -129,8 +129,9 @@ class AnthropicPlannerClient:
         # classified at the boundary. anthropic.APIConnectionError covers a
         # SDK-wrapped drop; httpx.TransportError covers the raw mid-stream
         # case (the reported "incomplete chunked read"), which the streaming
-        # helper does not re-wrap. TruncatedOutputError is raised below, after
-        # the retry block, so it is never caught here (ATLAS-101).
+        # helper does not re-wrap. TruncatedOutputError is caught first and
+        # re-raised unchanged (ATLAS-101) — a recorded outcome, not a transient
+        # failure — so the broad handler below can never wrap it.
         retryable: tuple[type[BaseException], ...] = (httpx.TransportError,)
         conn_error = getattr(anthropic, "APIConnectionError", None)
         if conn_error is not None:
