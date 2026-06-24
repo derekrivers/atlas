@@ -6,6 +6,7 @@ inside this package.
 
 from atlas.storage.apply import apply_backlog
 from atlas.storage.db import Database
+from atlas.storage.maintenance import clear_all_data
 from atlas.storage.repositories import (
     ADRRepo,
     AgentRunRepo,
@@ -54,4 +55,5 @@ __all__ = [
     "TicketStatusTransitionRepo",
     "TrustTierError",
     "apply_backlog",
+    "clear_all_data",
 ]

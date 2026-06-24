@@ -86,6 +86,18 @@ ProductRepo(Database()).add(  # Database() uses ATLAS_DATABASE_URL or .atlas/atl
 Run it with `uv run python - <<'PY'` … `PY`, or paste it into `uv run python`. Do
 this after `alembic upgrade head` (the table must exist) and only once.
 
+For a repeatable fresh start — wipe the local DB and re-seed this product in one
+command — use the dev reset script (after `alembic upgrade head`):
+
+```sh
+uv run python scripts/reset_db.py --yes
+```
+
+It empties every table (schema and migration head preserved) and re-seeds the
+`ATLAS` product, leaving the DB plan-ready; pass `--no-seed-product` to wipe
+without re-seeding. This is the one-command path that subsumes the snippet above
+when you just need a clean backlog (e.g. before a first-run-only `--staged` run).
+
 ### 4. `ANTHROPIC_API_KEY`
 
 `atlas plan` calls the model through the Anthropic API and reads
