@@ -16,6 +16,7 @@ persisted.
 from __future__ import annotations
 
 import os
+import time
 from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
 
@@ -28,6 +29,19 @@ from typing import Any, Protocol, runtime_checkable
 MODEL_NAME = "claude-sonnet-4-6"
 TEMPERATURE = 0
 MAX_TOKENS = 64000
+
+# Bounded retry on a TRANSIENT connection failure (a mid-stream socket drop —
+# "peer closed connection without sending complete message body / incomplete
+# chunked read"). The SDK's own retry covers request establishment, not a body
+# drop raised during get_final_message(), so a long streaming generation that
+# the network truncates would otherwise abort the whole call. This bites the
+# staged path hardest: it makes one call per epic (plus epics + dependencies),
+# so the per-call drop probability compounds and a single blip kills the run.
+# Only transient transport errors retry — TruncatedOutputError is a recorded
+# outcome (ATLAS-101) and a bad key / bad request must fail immediately. Named
+# constants, not config (D1): 3 attempts, 1s base, exponential backoff.
+MAX_CALL_ATTEMPTS = 3
+RETRY_BACKOFF_BASE_SECONDS = 1.0
 
 API_KEY_ENV = "ANTHROPIC_API_KEY"
 
@@ -109,22 +123,52 @@ class AnthropicPlannerClient:
 
     def generate(self, prompt: str) -> str:
         import anthropic  # lazy: keeps the SDK out of the import path
+        import httpx  # anthropic's transport; its errors surface mid-stream
 
+        # A transient transport failure is retried; everything else is
+        # classified at the boundary. anthropic.APIConnectionError covers a
+        # SDK-wrapped drop; httpx.TransportError covers the raw mid-stream
+        # case (the reported "incomplete chunked read"), which the streaming
+        # helper does not re-wrap. TruncatedOutputError is raised below, after
+        # the retry block, so it is never caught here (ATLAS-101).
+        retryable: tuple[type[BaseException], ...] = (httpx.TransportError,)
+        conn_error = getattr(anthropic, "APIConnectionError", None)
+        if conn_error is not None:
+            retryable = (conn_error, httpx.TransportError)
+
+        last_error: BaseException | None = None
+        for attempt in range(MAX_CALL_ATTEMPTS):
+            try:
+                return self._stream_once(anthropic, prompt)
+            except TruncatedOutputError:
+                raise  # a recorded outcome (ATLAS-101), never a retry
+            except retryable as error:
+                last_error = error
+                if attempt + 1 < MAX_CALL_ATTEMPTS:
+                    time.sleep(RETRY_BACKOFF_BASE_SECONDS * (2**attempt))
+                    continue
+                raise ModelCallError(
+                    f"model call failed after {MAX_CALL_ATTEMPTS} attempts: {error}"
+                ) from error
+            except Exception as error:  # non-transient SDK error: fail at once
+                raise ModelCallError(f"model call failed: {error}") from error
+        # Unreachable: the loop returns, retries, or raises every iteration.
+        raise ModelCallError(f"model call failed: {last_error}")
+
+    def _stream_once(self, anthropic: Any, prompt: str) -> str:
         # Streaming, not messages.create: the SDK refuses non-streaming
         # requests it estimates will exceed ~10 min, which a 64K max_tokens
         # call can trip — and the final message exposes stop_reason so a
         # token-limit cutoff is detected, not silently returned (ATLAS-101).
-        try:
-            client = anthropic.Anthropic(api_key=self._api_key)
-            with client.messages.stream(
-                model=MODEL_NAME,
-                max_tokens=MAX_TOKENS,
-                temperature=TEMPERATURE,
-                messages=[{"role": "user", "content": prompt}],
-            ) as stream:
-                message = stream.get_final_message()
-        except Exception as error:  # SDK raises a family of errors
-            raise ModelCallError(f"model call failed: {error}") from error
+        # Transport errors propagate raw so generate() can classify/retry them.
+        client = anthropic.Anthropic(api_key=self._api_key)
+        with client.messages.stream(
+            model=MODEL_NAME,
+            max_tokens=MAX_TOKENS,
+            temperature=TEMPERATURE,
+            messages=[{"role": "user", "content": prompt}],
+        ) as stream:
+            message = stream.get_final_message()
         # Assembled identically to the former non-streaming path, so the
         # hash the pipeline takes over this text is byte-identical.
         text = "".join(
