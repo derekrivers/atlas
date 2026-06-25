@@ -766,6 +766,8 @@ class ContextPack(BaseModel):
     test_commands: list[str] = Field(default_factory=list)
     definition_of_done: list[str] = Field(default_factory=list)
     rendered_markdown: str
+    # Ordered compression-ladder rungs that fired while rendering (ATLAS-55).
+    compression_applied: list[str] = Field(default_factory=list)
     input_doc_shas: dict[str, str] = Field(default_factory=dict)  # staleness detection
     # SQL INTEGER range.
     token_estimate: Optional[int] = Field(default=None, ge=-2147483648, le=2147483647)
@@ -791,6 +793,7 @@ CREATE TABLE context_packs (
     test_commands JSONB NOT NULL DEFAULT '[]',
     definition_of_done JSONB NOT NULL DEFAULT '[]',
     rendered_markdown TEXT NOT NULL,
+    compression_applied JSONB NOT NULL DEFAULT '[]',
     input_doc_shas JSONB NOT NULL DEFAULT '{}',
     token_estimate INTEGER,
     created_at TIMESTAMPTZ NOT NULL

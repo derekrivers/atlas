@@ -295,6 +295,9 @@ class ContextPackRow(Base):
         JSONB, server_default=_EMPTY_LIST
     )
     rendered_markdown: Mapped[str] = mapped_column(sa.Text)
+    compression_applied: Mapped[list[str]] = mapped_column(
+        JSONB, server_default=_EMPTY_LIST
+    )
     input_doc_shas: Mapped[dict[str, str]] = mapped_column(
         JSONB, server_default=_EMPTY_DICT
     )

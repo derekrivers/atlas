@@ -200,6 +200,7 @@ DOCUMENTED_COLUMNS: dict[str, dict[str, tuple[bool, str | None]]] = {
         "test_commands": (NN, "'[]'"),
         "definition_of_done": (NN, "'[]'"),
         "rendered_markdown": (NN, None),
+        "compression_applied": (NN, "'[]'"),
         "input_doc_shas": (NN, "'{}'"),
         "token_estimate": (True, None),
         "created_at": (NN, None),
