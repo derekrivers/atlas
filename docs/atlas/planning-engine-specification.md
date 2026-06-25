@@ -269,20 +269,23 @@ Atlas documents:
   model; the key counter is monotonic across archives.
 - **AT-7 Reference corpus.** Against the hand-written implementation
   roadmap, the planner's proposal clears the AT-7 coverage bar defined in
-  §7.1–§7.2 — exact-anchor `anchor_coverage` as a strict floor,
-  `content_coverage` as the bar (the historical "≥90% by anchor match" is
-  now the floor, superseded per §7.2) — the roadmap being the evaluation
-  fixture, per ADR-0007.
+  §7.1–§7.2 — a **pair** of gating floors: exact-anchor `anchor_coverage`
+  `>= ANCHOR_COVERAGE_FLOOR = 0.50` (catastrophe catch) **and** the unified
+  `exact ∪ content` floor `>= UNIFIED_COVERAGE_FLOOR = 0.80`, content measured
+  containment-aware, citation excluded (the historical "≥90% by anchor match"
+  is now the exact-anchor floor, superseded per §7.2) — the roadmap being the
+  evaluation fixture, per ADR-0007.
 
 ## 7.1 AT-7 coverage metric
 
 > **Superseded bar (ATLAS-112, resolved in §7.2).** Every "90%" in this
 > section is the *historical* exact-anchor pass line. The live AT-7 bar is
 > now the **pair** recorded in §7.2: exact-anchor `anchor_coverage` as a
-> strict floor (`ANCHOR_COVERAGE_FLOOR = 0.50`), `content_coverage` as the
-> bar (deferred until pinned). Read every figure below under this note — the
-> 0.90 is retained only to describe how exact-anchor was originally defined,
-> not as a current threshold.
+> strict floor (`ANCHOR_COVERAGE_FLOOR = 0.50`) **and** the unified
+> `exact ∪ content` floor (`UNIFIED_COVERAGE_FLOOR = 0.80`, content
+> containment-aware, citation excluded — pinned by ATLAS-124). Read every
+> figure below under this note — the 0.90 is retained only to describe how
+> exact-anchor was originally defined, not as a current threshold.
 
 AT-7's exact-anchor metric (the single implementation is the acceptance
 suite's `anchor_coverage`, ATLAS-29) is measured as follows:
@@ -302,8 +305,9 @@ suite's `anchor_coverage`, ATLAS-29) is measured as follows:
   tolerance.
 - **Coverage.** `covered ÷ total`. The historical exact-anchor pass line was
   `≥ 0.90`; under the §7.2 resolution that line is now the strict floor
-  (`anchor_coverage >= ANCHOR_COVERAGE_FLOOR = 0.50`), with `content_coverage`
-  the bar. Because matching is at the section heading, covering a section with
+  (`anchor_coverage >= ANCHOR_COVERAGE_FLOOR = 0.50`), with the unified
+  `exact ∪ content` floor (`UNIFIED_COVERAGE_FLOOR = 0.80`, §7.2) the second
+  gate. Because matching is at the section heading, covering a section with
   one proposed ticket covers every hand-written ticket in it: the metric
   measures what fraction of the roadmap's ticket-bearing sections the proposal
   reaches, ticket-weighted.
@@ -311,7 +315,7 @@ suite's `anchor_coverage`, ATLAS-29) is measured as follows:
   correct proposal anchored to an adjacent heading scores as a miss, never
   a false hit — so the reported coverage is a lower bound on true coverage.
   A result below the exact-anchor floor (`anchor_coverage < 0.50`), or below
-  the `content_coverage` bar once it is pinned, is therefore a
+  the unified floor (`exact ∪ content < 0.80`, §7.2), is therefore a
   planner-quality signal to investigate, not something to resolve by loosening
   the matcher.
 
@@ -335,22 +339,37 @@ raise the number (that would be a Goodhart failure).
 
 **Content-coverage metric.** `content_coverage` (a sibling of `anchor_coverage`
 in the acceptance suite) measures work coverage: a hand-written roadmap ticket
-is covered iff *some* proposed ticket's title is similar to the roadmap
-ticket's title at or above a recorded threshold, **independent of which
-document the proposed ticket is anchored to**. It reuses the reconciler's
-Sørensen–Dice primitive (`reconciler.similarity`) — there is exactly one
-similarity implementation in the codebase.
+is covered iff *some* proposed ticket's title clears a recorded threshold on
+**either** of two scores, **independent of which document the proposed ticket is
+anchored to**. Both reuse the reconciler's single tokeniser; there is exactly
+one similarity implementation and one containment implementation in the
+codebase.
 
 - **Comparand.** Title-vs-title (both sides pass an empty objective). The
   roadmap carries a terse title; concatenating the planner's descriptive
   objective onto its side structurally dilutes the coefficient and drives
   genuinely-covered work below threshold. Comparing like with like is a
   measurement-correctness choice, not a score optimisation.
+- **Scores.** The symmetric Sørensen–Dice coefficient (`reconciler.similarity`)
+  **or** the directional containment ratio (`reconciler.containment`, ATLAS-124)
+  — covered iff `max(symmetric, containment) >= threshold`. Containment is
+  `|roadmap_tokens ∩ proposed_tokens| / |roadmap_tokens|`: of the roadmap
+  title's tokens, the fraction present in the proposed title. It recovers the
+  length-asymmetry false negative where a terse roadmap title is a literal
+  subset of a longer proposed title — e.g. "Ticket synchronisation" ⊂ "Ticket
+  synchronisation sync_tick (pull status, push definitions)" scores symmetric
+  Dice 0.44 < 0.50 yet containment 1.0. It is asymmetric and directional, so it
+  credits subset matches regardless of how much extra the proposal says; disjoint
+  token sets give 0.0, so it raises recall only on genuine subsets and never
+  manufactures a cross-ticket false positive. It is a separate function beside
+  `reconciler.similarity`, which is **unchanged** — the reconciler's matching
+  semantics are untouched.
 - **Threshold.** `CONTENT_COVERAGE_THRESHOLD = 0.5` — at least half the
-  combined token mass overlaps. Set for correctness and **recorded**; it is
-  never tuned against the metric, and the reconciler's 0.85 entity-match
-  threshold does not transfer because that compares title+objective pairs for
-  identity, a different question.
+  combined token mass overlaps (or, by containment, half the roadmap title's
+  tokens present). Set for correctness and **recorded**; it is never tuned
+  against the metric, and the reconciler's 0.85 entity-match threshold does not
+  transfer because that compares title+objective pairs for identity, a different
+  question.
 
 **Corrected adjacency analysis.** The offline tool classifies an exact-anchor
 miss as an *adjacent-anchor undercount* only when a planner **ticket** is
@@ -380,32 +399,52 @@ content-coverage spread requires a second saved capture — a free byproduct of
 the next staged run, scored by the same tool — and is not manufactured from a
 single file.
 
-> **Operator decision RESOLVED (ATLAS-112).** The AT-7 bar is a pair:
-> exact-anchor `anchor_coverage` as a strict floor, `content_coverage` as
-> the bar. Content-coverage measures what AT-7 is for — whether the
-> roadmap's work is covered, independent of anchoring convention — and the
-> CONFIRMED finding above shows exact-anchor alone fails work that is
-> present but re-anchored, so it cannot be the sole gate. The exact-anchor
-> floor is kept as a cheap, unambiguous catastrophe catch; both come from
-> the same offline tool. Chosen because it measures the right thing, not
-> because it scores higher.
+> **Operator decision RESOLVED (ATLAS-112), PINNED (ATLAS-124).** The AT-7
+> bar is a pair of gating floors. Content-coverage measures what AT-7 is for
+> — whether the roadmap's work is covered, independent of anchoring
+> convention — and the CONFIRMED finding above shows exact-anchor alone fails
+> work that is present but re-anchored, so it cannot be the sole gate. The
+> exact-anchor floor is kept as a cheap, unambiguous catastrophe catch; both
+> come from the same offline tool. Chosen because it measures the right thing,
+> not because it scores higher.
 >
-> - Exact-anchor floor — `anchor_coverage >= 0.50`, live now. A
->   catastrophe catch set safely below the observed 63.4%/82.6% range; not
->   a precision gate, and not to be tuned upward against the metric.
-> - Content-coverage bar — pinned after a second durably-saved capture.
->   One capture (68.8%) is n=1; a bar is not manufactured from a single
->   file. The next staged run yields the second capture as a free
->   byproduct; the bar is then set a recorded margin below the lower of
->   the two.
+> - Exact-anchor floor — `anchor_coverage >= ANCHOR_COVERAGE_FLOOR = 0.50`,
+>   live now. A catastrophe catch set safely below the observed 63.4%/82.6%
+>   range; not a precision gate, and not to be tuned upward against the metric.
+> - Unified work-coverage floor — `(exact ∪ content) >= UNIFIED_COVERAGE_FLOOR
+>   = 0.80`, content measured **containment-aware** (the D1 fix above), pinned
+>   by ATLAS-124. The gated signal is the union of the exact-anchor and
+>   containment-aware content covered-key sets; **citation is excluded**.
+>
+> **Why citation is excluded from the gate.** Two durably-saved staged captures
+> settled this. The deterministic part of coverage — `exact ∪ content` — was
+> stable across both runs (~87% each). The volatile part was citation, which
+> swung **+12 → +1** unique keys between the two runs on a pure styling whim:
+> whether the planner happened to write `(ATLAS-NN)` into ticket titles. Gating
+> on a signal that moves twelve keys on a formatting choice would import that
+> volatility into the bar, so `citation_covered_keys` stays a **diagnostic
+> lens only** (`scripts/at7_miss_analysis.py`, labelled "diagnostic, not
+> gated") and is never part of the gated union.
+>
+> **Why 0.80.** The two captures put the stable `exact ∪ content` signal at
+> ~87% both runs; the containment-aware fix recovers the length-asymmetry
+> false negatives deterministically (the residual misses were overwhelmingly
+> roadmap titles that are literal subsets of longer proposed titles). 0.80
+> sits below both captures with margin for run-to-run jitter and above a real
+> collapse. Set for correctness and recorded; never tuned against the metric.
+>
+> **Standing residual.** The unified floor is computed over all 113 roadmap
+> keys. ATLAS-46 (roadmap synchronisation) is the documented Phase-4 operator
+> deferral and is expected to remain uncovered; 0.80 has ample margin for that
+> one accepted standing residual, which is not special-cased in code.
 >
 > This supersedes the `anchor_coverage >= 0.90` pass condition in §7.1.
 >
 > The metric is encoded into the acceptance suite by ATLAS-123 (the
 > exact-anchor floor live, `content_coverage` reported-not-gated until
-> pinned); ATLAS-107's staged-path acceptance reuses it. Pinning the
-> `content_coverage` bar — and flipping its leg from reported to gating — is
-> the ATLAS-124 follow-up, gated on the second capture.
+> pinned); ATLAS-107's staged-path acceptance reuses it. ATLAS-124 pins the
+> unified floor and flips content's leg from reported to gating, via the
+> containment-aware `exact ∪ content` union.
 
 ## 8. Non-goals for milestone 1
 
