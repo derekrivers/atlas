@@ -36,6 +36,7 @@ DOCUMENTED_FIELDS: dict[str, tuple[Any, Any]] = {
     "test_commands": (list[str], LIST_FACTORY),
     "definition_of_done": (list[str], LIST_FACTORY),
     "rendered_markdown": (str, REQUIRED),
+    "compression_applied": (list[str], LIST_FACTORY),
     "input_doc_shas": (dict[str, str], DICT_FACTORY),
     "token_estimate": (int | None, None),
     "created_at": (datetime, REQUIRED),

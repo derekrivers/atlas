@@ -21,7 +21,22 @@ from test_models_validation import (
     ticket_kwargs,
 )
 
-from atlas.context import ContextBudgetExceededError, build_context_pack
+from atlas.context import (
+    ContextBudgetExceededError,
+    build_context_pack,
+    select_adrs,
+    select_doc_sections,
+    select_lessons,
+    select_related_tickets,
+)
+from atlas.context.pack import (
+    COMPRESSION_LADDER,
+    RUNG_ADR_CONSEQUENCES_DROPPED,
+    RUNG_DOC_SECTIONS_TO_FIRST_PARA,
+    RUNG_LESSON_BODIES_TO_TITLES,
+    RUNG_RELATED_OBJECTIVES_TO_KEY_TITLE,
+    _render_markdown,
+)
 from atlas.core.anchors import SourceDocument
 from atlas.core.models import (
     ArchitectureDecisionRecord,
@@ -304,3 +319,217 @@ def test_over_budget_raises() -> None:
     assert excinfo.value.ticket_key == ticket.key
     assert excinfo.value.budget == 1
     assert excinfo.value.estimate > 1
+
+
+# --- compression ladder (ATLAS-55) ----------------------------------------
+
+# A heavy filler paragraph: dominant in any section it lands in, so a rung that
+# drops it moves the token estimate by a wide, unambiguous margin.
+_HEAVY = "Filler sentence that adds budget pressure. " * 40
+
+# The heavy anchor doc: a short orienting first paragraph (ORIENT_MARKER), a
+# blank line, a heavy second paragraph (DROP_MARKER), a command code block, and
+# heavy trailing prose — so rung 3 keeps the first paragraph and the command
+# block while dropping the rest.
+_HEAVY_ANCHOR = "\n".join(
+    [
+        "# Atlas",
+        "## Target Section",
+        "ORIENT_MARKER orienting line.",
+        "",
+        f"DROP_MARKER {_HEAVY}",
+        "",
+        "```sh",
+        "atlas context render KEY",
+        "```",
+        "",
+        f"trailing {_HEAVY}",
+        "## Next Section",
+        "next body",
+    ]
+)
+
+
+def heavy_corpus() -> list[SourceDocument]:
+    return [
+        SourceDocument(path="main.md", sha="sha-main", content=_HEAVY_ANCHOR),
+        SourceDocument(path="ref.md", sha="sha-ref", content="# Ref\nref body"),
+    ]
+
+
+def heavy_inputs() -> dict[str, Any]:
+    """Inputs whose every compressible section carries enough content that each
+    ladder rung lowers the estimate by a strictly positive margin: heavy lesson
+    bodies (rung 1), two related tickets with status (rung 2), a heavy doc
+    section (rung 3), and heavy ADR consequences (rung 4)."""
+    ticket = make_ticket()
+    target = make_ticket(id=uuid4(), key="ATLAS-99", title="Target dep", status="done")
+    dependent = make_ticket(
+        id=uuid4(), key="ATLAS-77", title="Dependent work", status="done"
+    )
+    adr = make_adr(
+        5,
+        title="Code calculates, agents interpret",
+        decision="Code computes; agents only interpret.",
+        consequences=[f"CONSEQUENCE_MARKER {_HEAVY}", _HEAVY],
+        alternatives_considered=["Let agents compute."],
+    )
+    lesson = make_lesson(
+        title="LESSON_TITLE_MARKER",
+        problem=f"PROBLEM_MARKER {_HEAVY}",
+        solution=_HEAVY,
+        outcome=_HEAVY,
+        tags=["context"],
+    )
+    graph = project_graph(
+        [ticket, target, dependent],
+        [],
+        [adr],
+        [
+            depends_on(ticket, target.id),
+            depends_on(dependent, ticket.id),
+            depends_on(ticket, adr.id, "adr"),
+        ],
+    )
+    return {
+        "ticket": ticket,
+        "graph": graph,
+        "documents": heavy_corpus(),
+        "accepted_adrs": [adr],
+        "lessons": [lesson],
+    }
+
+
+def cumulative_estimates(inputs: dict[str, Any]) -> list[int]:
+    """The token estimate at each ladder prefix (uncompressed, then after rungs
+    1, 1-2, 1-3, 1-4): the thresholds the builder's loop compares against, so a
+    budget placed in an open interval forces an exact rung prefix."""
+    ticket = inputs["ticket"]
+    graph = inputs["graph"]
+    doc = select_doc_sections(inputs["documents"], ticket)
+    adr_matches = select_adrs(graph, ticket, inputs["accepted_adrs"])
+    related_matches = select_related_tickets(graph, ticket)
+    lesson_matches = select_lessons(inputs["lessons"], ticket)
+    risks = [f"Risk level: {ticket.risk_level.value}"]
+
+    def estimate(applied: frozenset[str]) -> int:
+        md = _render_markdown(
+            ticket=ticket,
+            doc=doc,
+            adr_matches=adr_matches,
+            accepted_adrs=inputs["accepted_adrs"],
+            related_matches=related_matches,
+            graph=graph,
+            lesson_matches=lesson_matches,
+            lessons=inputs["lessons"],
+            constraints=[],
+            risks=risks,
+            applied=applied,
+        )
+        return len(md) // 4
+
+    return [
+        estimate(frozenset(COMPRESSION_LADDER[:i]))
+        for i in range(len(COMPRESSION_LADDER) + 1)
+    ]
+
+
+def test_under_budget_applies_no_compression() -> None:
+    # The wrong answer: firing a rung when already under budget.
+    pack, *_ = build_full()
+    assert pack.compression_applied == []
+
+
+def test_rungs_fire_in_spec_order_and_stop_when_under() -> None:
+    # Each rung lowers the estimate, so a budget in (e[k], e[k-1]) fires exactly
+    # the first k rungs and stops. The wrong answer: applying a later rung after
+    # already under budget, or out of order.
+    inputs = heavy_inputs()
+    e = cumulative_estimates(inputs)
+    assert e[0] > e[1] > e[2] > e[3] > e[4], e
+
+    expected_prefix = [
+        [RUNG_LESSON_BODIES_TO_TITLES],
+        [RUNG_LESSON_BODIES_TO_TITLES, RUNG_RELATED_OBJECTIVES_TO_KEY_TITLE],
+        [
+            RUNG_LESSON_BODIES_TO_TITLES,
+            RUNG_RELATED_OBJECTIVES_TO_KEY_TITLE,
+            RUNG_DOC_SECTIONS_TO_FIRST_PARA,
+        ],
+        list(COMPRESSION_LADDER),
+    ]
+    for k, prefix in enumerate(expected_prefix, start=1):
+        budget = (e[k] + e[k - 1]) // 2
+        pack = build_context_pack(**inputs, budget=budget)
+        assert pack.compression_applied == prefix, (k, budget)
+        # The recorded estimate is the compressed one and is within budget.
+        assert pack.token_estimate == e[k]
+        assert pack.token_estimate <= budget
+
+
+def test_rung_content_is_correct() -> None:
+    inputs = heavy_inputs()
+    e = cumulative_estimates(inputs)
+
+    # Rung 1: lesson bodies gone, titles remain.
+    pack1 = build_context_pack(**inputs, budget=(e[1] + e[0]) // 2)
+    assert pack1.compression_applied == [RUNG_LESSON_BODIES_TO_TITLES]
+    assert "LESSON_TITLE_MARKER" in pack1.rendered_markdown
+    assert "PROBLEM_MARKER" not in pack1.rendered_markdown
+
+    # Rung 2: related objectives/status gone, key+title remain.
+    pack2 = build_context_pack(**inputs, budget=(e[2] + e[1]) // 2)
+    assert pack2.compression_applied[-1] == RUNG_RELATED_OBJECTIVES_TO_KEY_TITLE
+    assert "- ATLAS-99: Target dep" in pack2.rendered_markdown
+    assert "- ATLAS-99: Target dep (done)" not in pack2.rendered_markdown
+
+    # Rung 3: doc section keeps first paragraph + command code block; later prose
+    # is dropped.
+    pack3 = build_context_pack(**inputs, budget=(e[3] + e[2]) // 2)
+    assert pack3.compression_applied[-1] == RUNG_DOC_SECTIONS_TO_FIRST_PARA
+    assert "ORIENT_MARKER" in pack3.rendered_markdown
+    assert "atlas context render KEY" in pack3.rendered_markdown
+    assert "DROP_MARKER" not in pack3.rendered_markdown
+
+    # Rung 4: ADR consequences dropped, decision kept.
+    assert COMPRESSION_LADDER[-1] == RUNG_ADR_CONSEQUENCES_DROPPED
+    pack4 = build_context_pack(**inputs, budget=(e[4] + e[3]) // 2)
+    assert pack4.compression_applied == list(COMPRESSION_LADDER)
+    assert "Code computes; agents only interpret." in pack4.rendered_markdown
+    assert "CONSEQUENCE_MARKER" not in pack4.rendered_markdown
+
+
+def test_still_over_after_full_ladder_raises_having_run_all_four() -> None:
+    # The wrong answer: silent truncation, or returning an over-budget pack. The
+    # estimate carried by the raise is the fully-compressed one, proving the full
+    # ladder ran before the terminal raise.
+    inputs = heavy_inputs()
+    fully_compressed = cumulative_estimates(inputs)[-1]
+    with pytest.raises(ContextBudgetExceededError) as excinfo:
+        build_context_pack(**inputs, budget=1)
+    assert excinfo.value.ticket_key == inputs["ticket"].key
+    assert excinfo.value.estimate == fully_compressed
+
+
+def test_compression_leaves_structured_references_unchanged() -> None:
+    # The wrong answer: compression dropping a referenced entity. Only
+    # rendered_markdown / token_estimate may differ between an uncompressed and a
+    # compressed build of the same inputs.
+    inputs = heavy_inputs()
+    e = cumulative_estimates(inputs)
+    uncompressed = build_context_pack(**inputs, budget=e[0] + 1000)
+    compressed = build_context_pack(**inputs, budget=(e[4] + e[3]) // 2)
+
+    assert uncompressed.compression_applied == []
+    assert compressed.compression_applied == list(COMPRESSION_LADDER)
+
+    assert compressed.relevant_adrs == uncompressed.relevant_adrs
+    assert compressed.related_tickets == uncompressed.related_tickets
+    assert compressed.historical_lessons == uncompressed.historical_lessons
+    assert compressed.relevant_docs == uncompressed.relevant_docs
+    assert compressed.input_doc_shas == uncompressed.input_doc_shas
+    # The two levers that DO move.
+    assert compressed.rendered_markdown != uncompressed.rendered_markdown
+    assert compressed.token_estimate is not None
+    assert uncompressed.token_estimate is not None
+    assert compressed.token_estimate < uncompressed.token_estimate

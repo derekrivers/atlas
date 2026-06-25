@@ -8,6 +8,13 @@
       "title": "Acceptance Criteria",
       "type": "array"
     },
+    "compression_applied": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Compression Applied",
+      "type": "array"
+    },
     "constraints": {
       "items": {
         "type": "string"

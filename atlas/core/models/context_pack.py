@@ -29,6 +29,10 @@ class ContextPack(BaseModel):
     test_commands: list[str] = Field(default_factory=list)
     definition_of_done: list[str] = Field(default_factory=list)
     rendered_markdown: str
+    # The ordered compression-ladder rungs that fired while rendering (ATLAS-55,
+    # context-renderer.md "Token budget and compression ladder"); empty when the
+    # pack was under budget unchanged. Values are the four stable rung ids only.
+    compression_applied: list[str] = Field(default_factory=list)
     input_doc_shas: dict[str, str] = Field(default_factory=dict)  # staleness detection
     # SQL INTEGER range.
     token_estimate: int | None = Field(default=None, ge=-2147483648, le=2147483647)

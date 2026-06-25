@@ -19,14 +19,26 @@ nothing above ``atlas.context`` in the spine (lint-imports confirms no
 The token-budget check is fail-closed: an over-budget pack is a planning smell
 (an oversized ticket), so it RAISES rather than silently truncating
 (context-renderer.md "Token budget and compression ladder"). The four
-compression rungs are ATLAS-55, inserted BEFORE this raise; only the terminal
-raise lives here.
+compression rungs (ATLAS-55) run BEFORE that raise: when the pack is over budget
+the ladder compresses in spec order, re-rendering and re-estimating after each
+rung, and only raises if still over after all four. Which rungs fired is recorded
+on the pack as ``compression_applied`` (D3). Compression is a RENDER concern, not
+a retriever one (D4): the structured reference lists (the UUIDs) are untouched —
+only ``rendered_markdown`` and ``token_estimate`` shrink. The rungs are a
+render-level parameter threaded into ``_render_markdown`` and the section helpers,
+never string surgery on the assembled markdown.
 
-Two field reconciliations are reported as follow-ups, not resolved here:
+One field reconciliation remains a reported follow-up, not resolved here:
 ``constraints``/``risks``/``context`` have no clean Ticket source (constraints
 is always ``[]`` in v1; risks is a derived risk-level line; context folds into
-the Objective render), and the related-ticket one-line objective is not rendered
-because the graph node carries key/title/status but not objective.
+the Objective render).
+
+The related-ticket section's compressed-vs-full contract is now owned by rung 2
+(``related_objectives_to_key_title``): the full form is key+title+status and the
+compressed form is key+title. The one-line objective stays unrendered as a closed
+decision — the ``project_graph`` ticket node carries key/title/status but no
+objective, and ATLAS-31 deliberately excludes free-text bodies, so sourcing it
+would need a graph-node enrichment outside this renderer (ATLAS-56 debt retired).
 """
 
 from __future__ import annotations
@@ -48,6 +60,24 @@ from atlas.core.models.ticket import Ticket
 
 # Default token budget (context-renderer.md: "Default budget: 12,000 tokens").
 DEFAULT_TOKEN_BUDGET = 12000
+
+# The four compression rung identifiers (D1/D3): stable strings, never free-form,
+# the only legal ``ContextPack.compression_applied`` values. Each names the render
+# concession it applies.
+RUNG_LESSON_BODIES_TO_TITLES = "lesson_bodies_to_titles"
+RUNG_RELATED_OBJECTIVES_TO_KEY_TITLE = "related_objectives_to_key_title"
+RUNG_DOC_SECTIONS_TO_FIRST_PARA = "doc_sections_to_first_para"
+RUNG_ADR_CONSEQUENCES_DROPPED = "adr_consequences_dropped"
+
+# The ladder, in spec order (context-renderer.md "Token budget and compression
+# ladder"). Rungs are cumulative: a later rung's render keeps every earlier
+# rung's compression.
+COMPRESSION_LADDER: tuple[str, ...] = (
+    RUNG_LESSON_BODIES_TO_TITLES,
+    RUNG_RELATED_OBJECTIVES_TO_KEY_TITLE,
+    RUNG_DOC_SECTIONS_TO_FIRST_PARA,
+    RUNG_ADR_CONSEQUENCES_DROPPED,
+)
 
 
 class ContextBudgetExceededError(Exception):
@@ -84,9 +114,13 @@ def build_context_pack(
     output onto the pack's structured reference lists, composes the fixed-order
     ``rendered_markdown``, and records ``input_doc_shas``. It performs no I/O.
 
-    Raises :class:`ContextBudgetExceededError` if ``token_estimate`` exceeds
-    ``budget`` (fail-closed; ATLAS-55's compression rungs would run before this
-    raise). Retriever preconditions propagate: ``select_adrs`` /
+    When the rendered pack is over ``budget``, the four-rung compression ladder
+    (``COMPRESSION_LADDER``) runs in spec order, re-rendering and re-estimating
+    after each rung and stopping the moment it is under; the rungs that fired are
+    recorded on ``compression_applied`` (D1/D3). Only if it is still over budget
+    after all four does it raise :class:`ContextBudgetExceededError` (fail-closed
+    — an over-budget pack is an oversized ticket, reported not truncated; D2).
+    Retriever preconditions propagate: ``select_adrs`` /
     ``select_related_tickets`` raise on a missing/non-ticket graph node, and
     ``select_doc_sections`` raises on an unresolvable ``source_anchor``.
     """
@@ -111,21 +145,40 @@ def build_context_pack(
     constraints: list[str] = []
     risks = [f"Risk level: {ticket.risk_level.value}"]
 
-    rendered_markdown = _render_markdown(
-        ticket=ticket,
-        doc=doc,
-        adr_matches=adr_matches,
-        accepted_adrs=accepted_adrs,
-        related_matches=related_matches,
-        graph=graph,
-        lesson_matches=lesson_matches,
-        lessons=lessons,
-        constraints=constraints,
-        risks=risks,
-    )
+    def render(applied: frozenset[str]) -> str:
+        return _render_markdown(
+            ticket=ticket,
+            doc=doc,
+            adr_matches=adr_matches,
+            accepted_adrs=accepted_adrs,
+            related_matches=related_matches,
+            graph=graph,
+            lesson_matches=lesson_matches,
+            lessons=lessons,
+            constraints=constraints,
+            risks=risks,
+            applied=applied,
+        )
 
-    # chars/4: monotonicity, not precision (context-renderer.md).
+    # The compression ladder (D1): render uncompressed, estimate, and while over
+    # budget apply the next rung in spec order, re-render, re-estimate, stopping
+    # the moment it is under. Each rung is cumulative (its render keeps the
+    # earlier rungs). chars/4 is monotonic (D5), so the estimate falls as rungs
+    # fire. ``compression_applied`` is the ordered prefix that fired (empty when
+    # under budget unchanged).
+    compression_applied: list[str] = []
+    rendered_markdown = render(frozenset(compression_applied))
     token_estimate = len(rendered_markdown) // 4
+    for rung in COMPRESSION_LADDER:
+        if token_estimate <= budget:
+            break
+        compression_applied.append(rung)
+        rendered_markdown = render(frozenset(compression_applied))
+        token_estimate = len(rendered_markdown) // 4
+
+    # Still over after the full ladder: a planning smell, raised not truncated
+    # (D2). compression_applied lists all four rungs, so the operator sees the
+    # ladder genuinely ran.
     if token_estimate > budget:
         raise ContextBudgetExceededError(ticket.key, token_estimate, budget)
 
@@ -146,6 +199,7 @@ def build_context_pack(
         test_commands=ticket.test_requirements,
         definition_of_done=ticket.definition_of_done,
         rendered_markdown=rendered_markdown,
+        compression_applied=compression_applied,
         input_doc_shas=input_doc_shas,
         token_estimate=token_estimate,
         created_at=datetime.now(UTC),
@@ -164,6 +218,7 @@ def _render_markdown(
     lessons: list[Lesson],
     constraints: list[str],
     risks: list[str],
+    applied: frozenset[str] = frozenset(),
 ) -> str:
     """Compose ``rendered_markdown`` in the fixed section order, omitting any
     empty section header-and-all (context-renderer.md "Rendered structure").
@@ -171,6 +226,11 @@ def _render_markdown(
     Order: Objective, Constraints, Acceptance Criteria, Non-goals, Relevant Docs,
     ADRs, Related Tickets, Lessons, Risks, Test Commands, Definition of Done.
     Present sections keep this relative order; an empty section is dropped whole.
+
+    ``applied`` is the set of active compression rung ids (D1): each section
+    helper that owns a rung renders compactly when its id is present, so a
+    re-render after a fired rung is terser. An empty ``applied`` is the
+    uncompressed render.
     """
     sections: list[tuple[str, str]] = []
 
@@ -184,10 +244,44 @@ def _render_markdown(
     sections.append(("Constraints", _render_list(constraints)))
     sections.append(("Acceptance Criteria", _render_list(ticket.acceptance_criteria)))
     sections.append(("Non-goals", _render_list(ticket.non_goals)))
-    sections.append(("Relevant Docs", _render_docs(doc)))
-    sections.append(("ADRs", _render_adrs(adr_matches, accepted_adrs)))
-    sections.append(("Related Tickets", _render_related(related_matches, graph)))
-    sections.append(("Lessons", _render_lessons(lesson_matches, lessons)))
+    sections.append(
+        (
+            "Relevant Docs",
+            _render_docs(
+                doc, first_para_only=RUNG_DOC_SECTIONS_TO_FIRST_PARA in applied
+            ),
+        )
+    )
+    sections.append(
+        (
+            "ADRs",
+            _render_adrs(
+                adr_matches,
+                accepted_adrs,
+                drop_consequences=RUNG_ADR_CONSEQUENCES_DROPPED in applied,
+            ),
+        )
+    )
+    sections.append(
+        (
+            "Related Tickets",
+            _render_related(
+                related_matches,
+                graph,
+                key_title_only=RUNG_RELATED_OBJECTIVES_TO_KEY_TITLE in applied,
+            ),
+        )
+    )
+    sections.append(
+        (
+            "Lessons",
+            _render_lessons(
+                lesson_matches,
+                lessons,
+                titles_only=RUNG_LESSON_BODIES_TO_TITLES in applied,
+            ),
+        )
+    )
     sections.append(("Risks", _render_list(risks)))
     sections.append(("Test Commands", _render_list(ticket.test_requirements)))
     sections.append(("Definition of Done", _render_list(ticket.definition_of_done)))
@@ -202,27 +296,86 @@ def _render_list(items: list[str]) -> str:
     return "\n".join(f"- {item}" for item in items)
 
 
-def _render_docs(doc: DocContext) -> str:
+def _render_docs(doc: DocContext, *, first_para_only: bool = False) -> str:
     """The anchored section: parent-heading breadcrumb + heading + verbatim
-    body, then the recorded reference paths."""
+    body, then the recorded reference paths.
+
+    Rung 3 (``doc_sections_to_first_para``): when ``first_para_only`` is set the
+    body is trimmed to its first paragraph plus any command-bearing fenced code
+    blocks (:func:`_compress_doc_body`). The references render unchanged — they
+    are repo-relative paths the doc retriever matched exactly (ATLAS-52 path
+    contract; the upstream planner-emit format is reconciled outside this
+    renderer)."""
     section = doc.section
     parts: list[str] = []
     if section.parent_headings:
         parts.append(" > ".join(section.parent_headings))
     parts.append(f"### {section.heading}")
-    if section.body.strip():
-        parts.append(section.body)
+    body = _compress_doc_body(section.body) if first_para_only else section.body
+    if body.strip():
+        parts.append(body)
     if doc.references:
         ref_lines = "\n".join(f"- {ref.path}" for ref in doc.references)
         parts.append(f"References:\n{ref_lines}")
     return "\n\n".join(parts)
 
 
+def _compress_doc_body(body: str) -> str:
+    """Trim a doc section body to its first paragraph plus any fenced code blocks
+    containing commands (rung 3, context-renderer.md).
+
+    Deterministic single pass: keep the first run of consecutive non-blank prose
+    lines (the orienting paragraph, leading blanks skipped) and drop all prose
+    after it; independently, keep every fenced ```-delimited block whose content
+    has at least one non-blank line (a v1 "contains commands" heuristic — a code
+    block in a doc section is an example/command worth preserving; a finer
+    command classifier is deferred). Lines are kept in their original order."""
+    lines = body.split("\n")
+    kept: list[str] = []
+    in_fence = False
+    fence_buf: list[str] = []
+    first_para_started = False
+    first_para_done = False
+    for line in lines:
+        if line.lstrip().startswith("```"):
+            if not in_fence:
+                in_fence = True
+                fence_buf = [line]
+            else:
+                in_fence = False
+                fence_buf.append(line)
+                if any(content.strip() for content in fence_buf[1:-1]):
+                    kept.extend(fence_buf)
+                fence_buf = []
+            continue
+        if in_fence:
+            fence_buf.append(line)
+            continue
+        if first_para_done:
+            continue
+        if line.strip():
+            first_para_started = True
+            kept.append(line)
+        elif first_para_started:
+            first_para_done = True
+    # An unterminated fence (no closing ```): keep it if it has command content,
+    # so a malformed block is not silently dropped.
+    if in_fence and any(content.strip() for content in fence_buf[1:]):
+        kept.extend(fence_buf)
+    return "\n".join(kept)
+
+
 def _render_adrs(
-    adr_matches: list[ADRMatch], accepted_adrs: list[ArchitectureDecisionRecord]
+    adr_matches: list[ADRMatch],
+    accepted_adrs: list[ArchitectureDecisionRecord],
+    *,
+    drop_consequences: bool = False,
 ) -> str:
     """Per ADRMatch, look up the ADR by ``adr_id`` and render decision +
-    consequences only (rule 2 — context and alternatives omitted)."""
+    consequences only (rule 2 — context and alternatives omitted).
+
+    Rung 4 (``adr_consequences_dropped``): when ``drop_consequences`` is set the
+    consequences are omitted, leaving the decision alone."""
     by_id: dict[UUID, ArchitectureDecisionRecord] = {a.id: a for a in accepted_adrs}
     blocks: list[str] = []
     for match in adr_matches:
@@ -230,7 +383,7 @@ def _render_adrs(
         if adr is None:
             continue
         block = [f"### {match.key}: {adr.title}", adr.decision]
-        if adr.consequences:
+        if adr.consequences and not drop_consequences:
             consequences = "\n".join(f"- {c}" for c in adr.consequences)
             block.append(f"Consequences:\n{consequences}")
         blocks.append("\n\n".join(block))
@@ -238,33 +391,53 @@ def _render_adrs(
 
 
 def _render_related(
-    related_matches: list[RelatedTicket], graph: nx.DiGraph[str]
+    related_matches: list[RelatedTicket],
+    graph: nx.DiGraph[str],
+    *,
+    key_title_only: bool = False,
 ) -> str:
-    """Per RelatedTicket, render key + title + status off the graph node.
+    """Per RelatedTicket, render the related-ticket line off the graph node.
 
-    The one-line objective is NOT rendered — the graph node carries
-    key/title/status but not objective (reported as a follow-up).
-    """
+    Full form is key + title + status; rung 2 (``related_objectives_to_key_title``)
+    sets ``key_title_only`` to drop the status, leaving key + title. The one-line
+    objective is intentionally never rendered (a closed decision, not a follow-up):
+    the graph node carries key/title/status but no objective, and ATLAS-31
+    excludes free-text bodies, so sourcing it would need a graph-node enrichment
+    outside this renderer."""
     lines: list[str] = []
     for match in related_matches:
         node = graph.nodes[match.key]
-        lines.append(f"- {match.key}: {node['title']} ({node['status']})")
+        if key_title_only:
+            lines.append(f"- {match.key}: {node['title']}")
+        else:
+            lines.append(f"- {match.key}: {node['title']} ({node['status']})")
     return "\n".join(lines)
 
 
-def _render_lessons(lesson_matches: list[LessonMatch], lessons: list[Lesson]) -> str:
+def _render_lessons(
+    lesson_matches: list[LessonMatch],
+    lessons: list[Lesson],
+    *,
+    titles_only: bool = False,
+) -> str:
     """Per LessonMatch, look up the lesson by ``lesson_id`` and render its body
-    (title, problem, solution, outcome) per rule 4."""
+    (title, problem, solution, outcome) per rule 4.
+
+    Rung 1 (``lesson_bodies_to_titles``): when ``titles_only`` is set only the
+    ``### {title}`` line is rendered — problem/solution/outcome dropped."""
     by_id: dict[UUID, Lesson] = {lesson.id: lesson for lesson in lessons}
     blocks: list[str] = []
     for match in lesson_matches:
         lesson = by_id.get(match.lesson_id)
         if lesson is None:
             continue
-        blocks.append(
-            f"### {lesson.title}\n\n"
-            f"Problem: {lesson.problem}\n\n"
-            f"Solution: {lesson.solution}\n\n"
-            f"Outcome: {lesson.outcome}"
-        )
+        if titles_only:
+            blocks.append(f"### {lesson.title}")
+        else:
+            blocks.append(
+                f"### {lesson.title}\n\n"
+                f"Problem: {lesson.problem}\n\n"
+                f"Solution: {lesson.solution}\n\n"
+                f"Outcome: {lesson.outcome}"
+            )
     return "\n\n".join(blocks)
