@@ -25,6 +25,7 @@ import pytest
 from acceptance_metrics import (
     ANCHOR_COVERAGE_FLOOR,
     CONTENT_COVERAGE_THRESHOLD,
+    UNIFIED_COVERAGE_FLOOR,
     anchor_coverage,
     at7_pair_verdict,
     citation_covered_keys,
@@ -33,6 +34,7 @@ from acceptance_metrics import (
     enumerate_roadmap_tickets,
     heading_index,
     is_adjacent_anchor,
+    unified_coverage,
 )
 from planner_fakes import FAKE_IDENTITY, FakePlannerClient
 from test_apply import _epic_model_kwargs, _ticket_model_kwargs
@@ -412,30 +414,116 @@ def test_content_coverage_routes_through_reconciler_similarity(
     assert calls  # the metric routed through the reconciler primitive
 
 
-# --- AT-7 pair verdict: floor gates, content reported (ATLAS-112 RESOLVED) ---
+# --- AT-7 containment-aware content coverage (ATLAS-124 D1) ------------------
 
 
-def test_at7_pair_floor_gates_and_content_is_reported_not_gated() -> None:
-    # The pair logic the live leg runs, proved deterministically in CI (the
-    # live leg is skipped here). Floor = ANCHOR_COVERAGE_FLOOR (0.50).
+def test_containment_recovers_the_asymmetric_false_negative() -> None:
+    # The case ATLAS-124 exists for: the roadmap title is a literal subset of a
+    # longer proposed title. Symmetric Sorensen-Dice scores it below threshold
+    # (the proposal's extra tokens dilute the coefficient), but every roadmap
+    # token is present, so containment = 1.0 recovers it deterministically.
+    roadmap = "## Epic: E\n\nATLAS-1 Ticket synchronisation\n"
+    proposed = [
+        _FakeProposedTicket(
+            "Ticket synchronisation sync_tick (pull status, push definitions)"
+        )
+    ]
+    result = content_coverage(proposed, roadmap, path="r.md")
+    match = result.matches[0]
+    # Symmetric alone is a miss; containment carries it over the line.
+    assert match.best_score < CONTENT_COVERAGE_THRESHOLD  # wrong answer: still a miss
+    assert match.best_containment == 1.0
+    assert match.covered
+    assert result.fraction == 1.0
 
-    # 1. Sub-floor anchor_coverage FAILS, regardless of content. The wrong
-    #    answer asserts `below.passed`.
-    below = at7_pair_verdict(0.40, 0.99)
-    assert not below.passed
-    assert "40.00%" in below.message and "FAIL" in below.message  # names the figure
 
-    # 2. A LOW content_coverage does NOT fail while anchor clears the floor:
-    #    content is reported, not gated, until the bar is pinned (ATLAS-124).
-    #    The wrong answer — gating content — would assert `not low_content.passed`
-    #    on this 1% content figure; the pair must let it pass.
-    low_content = at7_pair_verdict(0.634, 0.01)
-    assert low_content.passed
-    assert "1.00%" in low_content.message  # surfaced for the record
-    assert "unpinned" in low_content.message  # and explicitly not a gate
+def test_containment_cannot_create_cross_ticket_false_positive() -> None:
+    # Disjoint token sets: containment is 0.0, so an unrelated proposed ticket
+    # never spuriously covers a roadmap ticket. The wrong answer marks it covered.
+    roadmap = "## Epic: E\n\nATLAS-1 Token budget compression ladder\n"
+    proposed = [_FakeProposedTicket("Linear API client and field ownership")]
+    result = content_coverage(proposed, roadmap, path="r.md")
+    match = result.matches[0]
+    assert match.best_containment == 0.0
+    assert not match.covered
+    assert result.fraction == 0.0
 
-    # 3. The floor is inclusive: exactly at the floor passes.
-    assert at7_pair_verdict(ANCHOR_COVERAGE_FLOOR, 0.0).passed
+
+def test_reconciler_similarity_semantics_unchanged_by_containment() -> None:
+    # ATLAS-124 adds `containment` BESIDE `similarity`; the primitive's symmetric
+    # semantics must be untouched. A known symmetric pair returns the symmetric
+    # coefficient, and containment is a distinct, directional, asymmetric score.
+    from atlas.planning import reconciler
+
+    # {ready, state, detection} vs {ready, state, detection, and, promotion}:
+    # symmetric Dice = 2*3/(3+5) = 0.75; containment (roadmap ⊂ proposed) = 1.0.
+    sym = reconciler.similarity(
+        "Ready state detection", "", "Ready state detection and promotion", ""
+    )
+    assert sym == 0.75  # the symmetric primitive is exactly as before
+    assert (
+        reconciler.containment(
+            "Ready state detection", "Ready state detection and promotion"
+        )
+        == 1.0
+    )
+    # Asymmetry: swapping the arguments changes containment but not similarity.
+    assert (
+        reconciler.similarity(
+            "Ready state detection and promotion", "", "Ready state detection", ""
+        )
+        == sym
+    )
+    assert (
+        reconciler.containment(
+            "Ready state detection and promotion", "Ready state detection"
+        )
+        == 0.6  # 3 of the 5 longer-title tokens appear in the shorter -> 3/5
+    )
+
+
+# --- AT-7 pair verdict: both floors gate, citation excluded (ATLAS-124) ------
+
+
+def test_at7_pair_unified_floor_gates_with_citation_excluded() -> None:
+    # The pair logic the live leg runs, proved deterministically in CI (the live
+    # leg is skipped here). Both floors gate: anchor >= 0.50 AND
+    # exact-or-content >= 0.80. Citation is excluded from the gated union by
+    # construction (it is never a parameter to unified_coverage).
+    total = 10
+    exact = {f"ATLAS-{n}" for n in range(1, 6)}  # 5 keys
+
+    # 1. Sub-floor anchor_coverage FAILS, regardless of a passing union. The
+    #    wrong answer asserts `below.passed`.
+    full_union = unified_coverage(exact, {f"ATLAS-{n}" for n in range(6, 11)}, total)
+    below_anchor = at7_pair_verdict(0.40, 0.90, full_union)
+    assert full_union == 1.0
+    assert not below_anchor.passed
+    assert "40.00%" in below_anchor.message and "FAIL" in below_anchor.message
+
+    # 2. exact-or-content >= 0.80 with anchor clear -> PASS. Content keys here lift
+    #    the union to 0.80 exactly (the floor is inclusive).
+    content = {f"ATLAS-{n}" for n in range(6, 9)}  # 3 more -> union 8/10 = 0.80
+    passing = unified_coverage(exact, content, total)
+    assert passing == UNIFIED_COVERAGE_FLOOR
+    verdict = at7_pair_verdict(0.634, 0.55, passing)
+    assert verdict.passed
+    assert "citation excluded from gate" in verdict.message
+
+    # 3. Drop content below 0.80 and assert the verdict FAILS even though a
+    #    citation set would cover the gap -> proves citation is NOT in the gated
+    #    union. The wrong answer admits the citation keys and passes.
+    thin_content = {"ATLAS-6"}  # union 6/10 = 0.60 < 0.80
+    citation_would_cover = {f"ATLAS-{n}" for n in range(6, 11)}  # would lift to 1.0
+    sub_floor = unified_coverage(exact, thin_content, total)
+    assert sub_floor == 0.60
+    # unified_coverage takes no citation argument; even handed the rescuing set
+    # it cannot enter the gate. Confirm the (exact-or-content) value still fails.
+    assert unified_coverage(exact, thin_content, total) == 0.60
+    failed = at7_pair_verdict(0.634, 0.10, sub_floor)
+    assert not failed.passed
+    # The citation set, were it gated, would have rescued the run; it does not.
+    assert citation_would_cover  # constructed, but never reaches the verdict
 
 
 # --- AT-7 key-citation coverage lens (ATLAS-124 diagnostic, additive) --------
@@ -469,11 +557,13 @@ def test_citation_covered_keys_credits_only_cited_roadmap_keys() -> None:
     assert citation_covered_keys(["Baz (ATLAS-999)"], roadmap_keys) == set()
 
 
-def test_gated_metrics_constants_unchanged() -> None:
-    # The citation lens is additive and diagnostic: it must NOT move the gated
-    # criterion. This guard proves the spec'd floor (§7.2) and content threshold
-    # (§7.1) are exactly as they were.
+def test_gated_metrics_constants_are_the_pinned_floors() -> None:
+    # The gated bar is the pair of floors plus the recorded content threshold;
+    # the citation lens is additive and diagnostic and must NOT move any of them.
+    # This guard pins the spec'd constants (§7.1, §7.2) so a future edit cannot
+    # silently move the bar to chase a score.
     assert ANCHOR_COVERAGE_FLOOR == 0.50
+    assert UNIFIED_COVERAGE_FLOOR == 0.80
     assert CONTENT_COVERAGE_THRESHOLD == 0.5
 
 
@@ -627,15 +717,21 @@ def test_at1_real_proposal_passes_all_gates(live_plan_run: Any) -> None:
 
 @pytest.mark.skipif(not LIVE, reason=_LIVE_REASON)
 def test_at7_real_proposal_covers_roadmap(live_plan_run: Any) -> None:
-    # AT-7 is the pair (ATLAS-112 RESOLVED, §7.2): the exact-anchor floor
-    # gates; content_coverage is computed and surfaced but NOT asserted — its
-    # bar is unpinned until a second durably-saved capture (ATLAS-124). The
-    # gating logic is `at7_pair_verdict`, the same helper the synthetic CI test
-    # proves both ways.
+    # AT-7 is the pair of floors (ATLAS-112 RESOLVED, PINNED by ATLAS-124, §7.2):
+    # the exact-anchor floor AND the unified `exact-or-content` floor both gate,
+    # content measured containment-aware, citation excluded. The gating logic is
+    # `at7_pair_verdict` over `unified_coverage`, the same helpers the synthetic
+    # CI test proves both ways.
     proposal = Proposal.model_validate(live_plan_run.plan_run.proposal)
     roadmap_text = ROADMAP.read_text(encoding="utf-8")
     anchors = {ticket.source_anchor for ticket in proposal.tickets}
+    roadmap_tickets = enumerate_roadmap_tickets(roadmap_text)
     anchor_cov = anchor_coverage(anchors, roadmap_text)
-    content_cov = content_coverage(proposal.tickets, roadmap_text).fraction
-    verdict = at7_pair_verdict(anchor_cov, content_cov)
+    content = content_coverage(proposal.tickets, roadmap_text)
+    exact_covered_keys = {t.key for t in roadmap_tickets if t.anchor in anchors}
+    content_covered_keys = {m.roadmap_key for m in content.matches if m.covered}
+    unified_cov = unified_coverage(
+        exact_covered_keys, content_covered_keys, len(roadmap_tickets)
+    )
+    verdict = at7_pair_verdict(anchor_cov, content.fraction, unified_cov)
     assert verdict.passed, verdict.message

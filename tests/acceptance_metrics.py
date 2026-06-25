@@ -66,6 +66,19 @@ CONTENT_COVERAGE_THRESHOLD = 0.5
 # anchor_coverage >= 0.90 pass line.
 ANCHOR_COVERAGE_FLOOR = 0.50
 
+# Unified work-coverage floor (ATLAS-124, spec §7.2). The AT-7 bar is now a
+# pair: the exact-anchor floor above (catastrophe catch) AND this floor on the
+# stable, deterministic ``exact-or-content`` union — content measured
+# containment-aware (D1), citation EXCLUDED. 0.80 sits below both durably-saved
+# captures (~87% exact-or-content, stable run-to-run) with margin for jitter, and
+# above a real collapse. Citation is excluded because it swung +12 → +1 keys on
+# a pure styling whim (whether the planner wrote ``(ATLAS-NN)`` into titles), so
+# it stays a diagnostic lens only — gating on it would import that volatility.
+# Set for correctness and recorded here and in the spec; never tuned against the
+# metric. ATLAS-46 (roadmap synchronisation, the documented Phase-4 operator
+# deferral) is the one accepted standing residual, with ample margin under 0.80.
+UNIFIED_COVERAGE_FLOOR = 0.80
+
 _TICKET_RE = re.compile(r"^ATLAS-\d+\s+\S")
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.*?)\s*$")
 _FENCE_RE = re.compile(r"^\s*```")
@@ -240,11 +253,19 @@ def anchor_coverage(
 
 @dataclass(frozen=True)
 class ContentMatch:
-    """One roadmap ticket's best work-coverage match in the proposal."""
+    """One roadmap ticket's best work-coverage match in the proposal.
+
+    ``best_score`` stays the symmetric Sorensen-Dice value for continuity;
+    ``best_containment`` (ATLAS-124) records the directional containment ratio.
+    ``covered`` keys off ``max(best_score, best_containment)`` so a roadmap
+    title that is a literal subset of a longer proposed title is credited even
+    when the symmetric coefficient is diluted below threshold by the proposal's
+    extra tokens."""
 
     roadmap_key: str
     roadmap_title: str
     best_score: float
+    best_containment: float
     best_planner_title: str | None
     covered: bool
 
@@ -280,11 +301,13 @@ def content_coverage(
     path: str = ROADMAP_PATH,
 ) -> ContentCoverageResult:
     """Fraction of hand-written tickets whose *work* appears in the proposal,
-    independent of where the proposed ticket is anchored (ATLAS-112). A
-    roadmap ticket is covered iff some proposed ticket's title is similar to
-    the roadmap ticket's title at or above ``threshold``, measured with the
-    reconciler's Sorensen-Dice primitive (the single similarity
-    implementation).
+    independent of where the proposed ticket is anchored (ATLAS-112). A roadmap
+    ticket is covered iff some proposed ticket's title clears ``threshold`` on
+    EITHER of two scores (ATLAS-124): the reconciler's symmetric Sorensen-Dice
+    primitive, OR the directional containment ratio ``reconciler.containment``
+    — covered iff ``max(symmetric, containment) >= threshold``. Both reuse the
+    single tokeniser; there is exactly one similarity implementation and one
+    containment implementation, side by side.
 
     The comparand is title-vs-title, not roadmap-title-vs-planner-title+objective:
     a roadmap ticket carries a terse title, so concatenating the planner's
@@ -292,27 +315,46 @@ def content_coverage(
     (many planner-only tokens), driving genuinely-covered work below threshold —
     which would defeat the metric. Both sides therefore pass an empty objective,
     comparing like with like. This is a comparand choice for measurement
-    correctness; the threshold is not moved to chase the score."""
+    correctness; the threshold is not moved to chase the score.
+
+    Containment is the ATLAS-124 fix for the length-asymmetry false negative:
+    when the roadmap title is a literal subset of a longer proposed title (e.g.
+    "Ticket synchronisation" ⊂ "Ticket synchronisation sync_tick (pull status,
+    push definitions)"), symmetric Dice scores it below threshold even though
+    every roadmap token is present. Containment is directional and asymmetric, so
+    it recovers exactly that case; disjoint token sets give 0.0, so it cannot
+    create a cross-ticket false positive — it only raises recall on genuine
+    subset matches."""
     tickets = enumerate_roadmap_tickets(roadmap_text, path=path)
     proposed = list(proposed_tickets)
     matches: list[ContentMatch] = []
     for ticket in tickets:
         best_score = 0.0
+        best_containment = 0.0
+        best_combined = 0.0
         best_title: str | None = None
         for candidate in proposed:
-            # Call via the module so the routing is observable (and patchable
-            # in tests): there is exactly one similarity implementation.
+            # Call via the module so the routing is observable (and patchable in
+            # tests): there is exactly one similarity and one containment
+            # implementation, both single-sourced in the reconciler.
             score = reconciler.similarity(ticket.title, "", candidate.title, "")
-            if score > best_score:
-                best_score = score
+            contain = reconciler.containment(ticket.title, candidate.title)
+            combined = max(score, contain)
+            # best_title tracks the combined-best candidate so a ticket covered
+            # only by containment still names the title that covered it.
+            if combined > best_combined:
+                best_combined = combined
                 best_title = candidate.title
+            best_score = max(best_score, score)
+            best_containment = max(best_containment, contain)
         matches.append(
             ContentMatch(
                 roadmap_key=ticket.key,
                 roadmap_title=ticket.title,
                 best_score=best_score,
+                best_containment=best_containment,
                 best_planner_title=best_title,
-                covered=best_score >= threshold,
+                covered=best_combined >= threshold,
             )
         )
     return ContentCoverageResult(threshold=threshold, matches=tuple(matches))
@@ -344,17 +386,38 @@ def citation_covered_keys(
     return {key for key in roadmap_keys if key in cited}
 
 
+def unified_coverage(
+    exact_covered_keys: Iterable[str],
+    content_covered_keys: Iterable[str],
+    total: int,
+) -> float:
+    """Fraction of roadmap keys covered by exact-anchor OR containment-aware
+    content (ATLAS-124, spec §7.2) — the gated work-coverage union. Citation is
+    EXCLUDED by construction: it is never a parameter here, so the gated union
+    cannot drift to include the volatile citation signal (which swung +12 → +1
+    keys on a styling whim). ``total`` is the roadmap-ticket count; a
+    non-positive total is vacuously fully covered (1.0)."""
+    if total <= 0:
+        return 1.0  # vacuous: no hand-written tickets to cover
+    union = set(exact_covered_keys) | set(content_covered_keys)
+    return len(union) / total
+
+
 @dataclass(frozen=True)
 class AT7Verdict:
-    """The AT-7 pair verdict (ATLAS-112 RESOLVED, spec §7.2). The exact-anchor
-    floor gates; content-coverage is computed and surfaced but NOT asserted —
-    its bar is unpinned until a second durably-saved capture (ATLAS-124). One
-    helper so the logic the live leg runs is exactly the logic the synthetic
-    CI test proves (the live leg is skipped in CI)."""
+    """The AT-7 pair verdict (ATLAS-112 RESOLVED, pinned by ATLAS-124, spec
+    §7.2). The bar is now a PAIR of floors, both gating: the exact-anchor floor
+    (catastrophe catch) AND the unified ``exact-or-content`` floor (content
+    measured containment-aware, citation excluded). ``content_coverage`` is the
+    standalone content figure, reported for the record. One helper so the logic
+    the live leg runs is exactly the logic the synthetic CI test proves (the
+    live leg is skipped in CI)."""
 
     anchor_coverage: float
     content_coverage: float
+    unified_coverage: float
     floor: float
+    unified_floor: float
     passed: bool
     message: str
 
@@ -362,25 +425,36 @@ class AT7Verdict:
 def at7_pair_verdict(
     anchor_cov: float,
     content_cov: float,
+    unified_cov: float,
     *,
     floor: float = ANCHOR_COVERAGE_FLOOR,
+    unified_floor: float = UNIFIED_COVERAGE_FLOOR,
 ) -> AT7Verdict:
-    """Apply the AT-7 pair: gate on the exact-anchor ``floor`` and surface
-    ``content_cov`` for the record. ``passed`` is solely ``anchor_cov >=
-    floor`` — content-coverage is reported in the message, never gated, until
-    the bar is pinned (ATLAS-124). The message names the floor figure so a
-    failure says exactly which leg fell and by how much."""
-    passed = anchor_cov >= floor
-    relation = ">=" if passed else "<"
+    """Apply the AT-7 pair (ATLAS-124): gate on BOTH the exact-anchor ``floor``
+    and the unified ``exact-or-content`` ``unified_floor``. ``passed`` is true iff
+    NEITHER floor is breached; the standalone ``content_cov`` is reported in the
+    message, never gated on directly. Citation is not an input to the gate — it
+    is excluded by construction in ``unified_coverage`` — so the message records
+    it as excluded. The message names each leg and its relation so a failure says
+    exactly which floor fell and by how much."""
+    anchor_ok = anchor_cov >= floor
+    unified_ok = unified_cov >= unified_floor
+    passed = anchor_ok and unified_ok
+    anchor_rel = ">=" if anchor_ok else "<"
+    unified_rel = ">=" if unified_ok else "<"
     message = (
-        f"AT-7 exact-anchor floor: anchor_coverage {anchor_cov:.2%} "
-        f"{relation} floor {floor:.2%} -> {'PASS' if passed else 'FAIL'}; "
-        f"content_coverage {content_cov:.2%} (reported, bar unpinned per §7.2)"
+        f"AT-7 pair: anchor_coverage {anchor_cov:.2%} {anchor_rel} "
+        f"floor {floor:.2%}; unified exact-or-content {unified_cov:.2%} "
+        f"{unified_rel} floor {unified_floor:.2%}; "
+        f"content_coverage {content_cov:.2%} (reported); "
+        f"citation excluded from gate -> {'PASS' if passed else 'FAIL'}"
     )
     return AT7Verdict(
         anchor_coverage=anchor_cov,
         content_coverage=content_cov,
+        unified_coverage=unified_cov,
         floor=floor,
+        unified_floor=unified_floor,
         passed=passed,
         message=message,
     )

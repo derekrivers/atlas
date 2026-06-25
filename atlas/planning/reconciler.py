@@ -95,6 +95,26 @@ def similarity(title_a: str, objective_a: str, title_b: str, objective_b: str) -
     return 2 * len(tokens_a & tokens_b) / (len(tokens_a) + len(tokens_b))
 
 
+def containment(roadmap_title: str, proposed_title: str) -> float:
+    """Directional containment ratio: the fraction of the FIRST title's tokens
+    that also appear in the SECOND (ATLAS-124). Reuses the single tokeniser
+    (``normalise_tokens``); a separate function that does NOT alter
+    ``similarity`` — the reconciler's matching semantics are untouched.
+
+    Asymmetric by design: it credits "every roadmap token is present in the
+    proposal" regardless of how much *extra* the proposal says, which is exactly
+    the length-asymmetry false negative ``content_coverage`` suffers when a terse
+    roadmap title is a literal subset of a longer proposed title. Disjoint token
+    sets give 0.0, so it can only raise recall on genuine subset matches — it
+    cannot manufacture a cross-ticket false positive. An empty roadmap title
+    (no tokens) returns 0.0, never a vacuous 1.0."""
+    roadmap_tokens = normalise_tokens(roadmap_title)
+    if not roadmap_tokens:
+        return 0.0
+    proposed_tokens = normalise_tokens(proposed_title)
+    return len(roadmap_tokens & proposed_tokens) / len(roadmap_tokens)
+
+
 @dataclass(frozen=True)
 class Backlog:
     """The current backlog, canonical models (loading is ATLAS-26's)."""
