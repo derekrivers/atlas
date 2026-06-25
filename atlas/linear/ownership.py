@@ -51,17 +51,75 @@ class LinearStatusMapError(ValueError):
 #     mapping (Atlas's convention pinned, Linear's inverted 0-4 respected)
 #     exists. Tracked in docs/tech-debt/debt-register.md.
 # Both are *owned but not yet syncable*: present in the ADR-0006 ownership
-# table, absent from the payload, never silently guessed. `description` is
-# the v1 human-readable summary (the ticket objective); richer descriptions
-# / context-pack embedding arrive in Phase 5/8 per the design doc.
+# table, absent from the payload, never silently guessed. `description` is a
+# full-spec markdown render of the ticket (objective + every populated rich
+# field), composed by `render_definition_description` below; context-pack
+# embedding still arrives in Phase 8 per the design doc. This stays a single
+# owned field -- the render widens the *content* of `description`, not the set
+# of keys over the wire.
 OWNED_DEFINITION_FIELDS: tuple[tuple[str, Callable[[Ticket], object]], ...] = (
     ("title", lambda ticket: ticket.title),
-    ("description", lambda ticket: ticket.objective),
+    ("description", lambda ticket: render_definition_description(ticket)),
 )
 
 OWNED_LINEAR_INPUT_KEYS: frozenset[str] = frozenset(
     key for key, _ in OWNED_DEFINITION_FIELDS
 )
+
+
+def _bullets(items: Iterable[str]) -> str:
+    """One ``- `` bullet per item, in stored order (never sorted)."""
+
+    return "\n".join(f"- {item}" for item in items)
+
+
+def render_definition_description(ticket: Ticket) -> str:
+    """Compose the owned ``description`` field: a full-spec markdown render of
+    the ticket's definition (objective + every populated rich field).
+
+    Pure: same ticket -> byte-identical string, no clock, no I/O. Each section
+    is omitted entirely when its source field is empty, so a ticket carrying
+    only an objective renders to exactly that objective string (the render is a
+    superset that degrades to the v1 summary-only behaviour). Sections follow a
+    fixed order and list items render in stored order, so the output is stable
+    across re-renders -- a clean-Linear-diff (cosmetic) property; correctness of
+    re-push is the timestamp cursor's job, not the renderer's.
+
+    Deliberately excludes everything Linear owns or derives and every PM-engine
+    internal (status, priority, the sync cursors, external ids): spec content
+    only crosses Atlas -> Linear here.
+    """
+
+    sections: list[str] = [ticket.objective]
+
+    if ticket.context:
+        sections.append(f"## Context\n\n{ticket.context}")
+
+    list_sections: tuple[tuple[str, list[str]], ...] = (
+        ("Acceptance Criteria", ticket.acceptance_criteria),
+        ("Non-Goals", ticket.non_goals),
+        ("Implementation Notes", ticket.implementation_notes),
+        ("Test Requirements", ticket.test_requirements),
+        ("Documentation Requirements", ticket.documentation_requirements),
+        ("Definition of Done", ticket.definition_of_done),
+    )
+    for header, items in list_sections:
+        if items:
+            sections.append(f"## {header}\n\n{_bullets(items)}")
+
+    meta: list[str] = []
+    if ticket.relevant_docs:
+        meta.append(f"- Relevant Docs: {', '.join(ticket.relevant_docs)}")
+    if ticket.estimated_effort is not None:
+        meta.append(f"- Estimated Effort: {ticket.estimated_effort}")
+    if ticket.component:
+        meta.append(f"- Component: {ticket.component}")
+    if ticket.tags:
+        meta.append(f"- Tags: {', '.join(ticket.tags)}")
+    if meta:
+        sections.append("## Meta\n\n" + "\n".join(meta))
+
+    return "\n\n".join(sections)
 
 
 def definition_payload(ticket: Ticket) -> dict[str, object]:

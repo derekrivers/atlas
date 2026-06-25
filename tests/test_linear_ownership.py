@@ -8,6 +8,7 @@ crossing in either direction.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
@@ -20,6 +21,7 @@ from atlas.linear.ownership import (
     LinearStatusMap,
     LinearStatusMapError,
     definition_payload,
+    render_definition_description,
     status_from_issue,
 )
 
@@ -50,7 +52,11 @@ def test_definition_payload_contains_only_owned_keys() -> None:
     payload = definition_payload(make_ticket(title="T", priority=3, objective="obj"))
     assert set(payload) == OWNED_LINEAR_INPUT_KEYS
     assert {"title", "description"} == OWNED_LINEAR_INPUT_KEYS
-    assert payload == {"title": "T", "description": "obj"}
+    assert payload["title"] == "T"
+    # description is the full-spec render (objective + populated fields), led by
+    # the objective; its detailed shape is pinned by the render tests below.
+    assert isinstance(payload["description"], str)
+    assert payload["description"].startswith("obj")
 
 
 def test_priority_is_owned_but_not_yet_syncable() -> None:
@@ -85,6 +91,133 @@ def test_non_owned_ticket_field_never_appears_in_payload() -> None:
     assert "context" not in payload
     assert "acceptance_criteria" not in payload
     assert "risk_level" not in payload
+
+
+# --- full-spec description render (Atlas -> Linear) -------------------------
+
+
+def _fully_populated_ticket() -> Ticket:
+    return make_ticket(
+        objective="Ship the thing.",
+        context="Because the thing matters.",
+        acceptance_criteria=["AC one", "AC two"],
+        non_goals=["NG one"],
+        implementation_notes=["IN one", "IN two"],
+        test_requirements=["TR one"],
+        documentation_requirements=["DR one"],
+        definition_of_done=["DoD one", "DoD two"],
+        relevant_docs=["docs/a.md", "docs/b.md"],
+        estimated_effort=5,
+        component="planner",
+        tags=["alpha", "beta"],
+    )
+
+
+def test_full_spec_render_has_every_section_in_order() -> None:
+    # All rich fields populated -> each header appears exactly once, every item
+    # renders as a bullet, and the sections follow the fixed D1 order. Wrong
+    # answer: a section out of order, a dropped item, or a header for an empty
+    # field.
+    rendered = render_definition_description(_fully_populated_ticket())
+
+    headers = [
+        "## Context",
+        "## Acceptance Criteria",
+        "## Non-Goals",
+        "## Implementation Notes",
+        "## Test Requirements",
+        "## Documentation Requirements",
+        "## Definition of Done",
+        "## Meta",
+    ]
+    positions = [rendered.index(h) for h in headers]
+    assert positions == sorted(positions)  # fixed order, no reordering
+    for header in headers:
+        assert rendered.count(header) == 1  # each section exactly once
+
+    assert rendered.startswith("Ship the thing.")  # objective leads
+    for item in (
+        "AC one",
+        "AC two",
+        "NG one",
+        "IN one",
+        "IN two",
+        "TR one",
+        "DR one",
+        "DoD one",
+        "DoD two",
+    ):
+        assert f"- {item}" in rendered
+    assert "- Relevant Docs: docs/a.md, docs/b.md" in rendered
+    assert "- Estimated Effort: 5" in rendered
+    assert "- Component: planner" in rendered
+    assert "- Tags: alpha, beta" in rendered
+
+
+def test_empty_fields_collapse_to_just_the_objective() -> None:
+    # A ticket carrying only an objective (all lists empty, no meta) renders to
+    # exactly that objective -- no empty headers, no trailing newline noise.
+    # Wrong answer: emitting '## Acceptance Criteria' with no items.
+    ticket = make_ticket(
+        objective="Just the objective.",
+        context="",
+        acceptance_criteria=[],
+        non_goals=[],
+        implementation_notes=[],
+        test_requirements=[],
+        documentation_requirements=[],
+        definition_of_done=[],
+        relevant_docs=[],
+        estimated_effort=None,
+        component=None,
+        tags=[],
+    )
+    assert render_definition_description(ticket) == "Just the objective."
+
+
+def test_render_is_deterministic_and_preserves_stored_order() -> None:
+    # Same ticket rendered twice -> byte-identical, and list items follow stored
+    # order, not sorted order. Wrong answer: any ordering that depends on set
+    # iteration.
+    ticket = make_ticket(
+        objective="obj",
+        acceptance_criteria=["zebra", "apple", "mango"],
+    )
+    first = render_definition_description(ticket)
+    second = render_definition_description(ticket)
+    assert first == second
+    assert "- zebra\n- apple\n- mango" in first  # stored order, never sorted
+
+
+def test_ownership_boundary_holds_for_a_fully_populated_ticket() -> None:
+    # Enriching the description content must not widen the key set: the two-key
+    # boundary holds even when every rich field is populated. Wrong answer: a
+    # third key leaking into the payload.
+    assert set(OWNED_LINEAR_INPUT_KEYS) == {"title", "description"}
+    payload = definition_payload(_fully_populated_ticket())
+    assert set(payload) == {"title", "description"}
+
+
+def test_render_excludes_status_priority_and_pm_internals() -> None:
+    # The render carries spec content only; Linear owns/derives status and
+    # priority, and the PM-engine cursor/observation fields are internal. None
+    # may appear. Wrong answer: PM cursor/observation fields leaking into Linear.
+    ticket = make_ticket(
+        objective="obj",
+        status=TicketStatus.DONE,
+        priority=10,
+        external_linear_id="lin-abc",
+        external_github_issue_id="gh-123",
+        last_observed_linear_state_id="state-xyz",
+        linear_synced_at=datetime(2026, 6, 25, tzinfo=UTC),
+    )
+    rendered = render_definition_description(ticket)
+    assert "done" not in rendered  # status
+    assert "10" not in rendered  # priority
+    assert "lin-abc" not in rendered  # external_linear_id
+    assert "gh-123" not in rendered  # external_github_issue_id
+    assert "state-xyz" not in rendered  # last_observed_linear_state_id
+    assert "2026" not in rendered  # linear_synced_at
 
 
 # --- status direction: Linear -> Atlas -------------------------------------
