@@ -104,3 +104,30 @@ objective (a small `atlas.dependencies` change, reused everywhere the graph
 renders a ticket), or pass an objective-by-key lookup into `build_context_pack`.
 Prefer the graph-node enrichment — single source, no extra builder parameter.
 Owner: a follow-up on the Phase-5 renderer / dependency graph.
+
+## Phase-4 Leg-1 evidence is promotion write-back, not an external Linear flip (ATLAS-50)
+
+The Phase-4 closure report (§1) records the "status change in Linear reflected in
+Atlas within one sync cycle" milestone as PASS on operator-run live evidence of
+2026-06-25. The evidence exercised was the **promotion round-trip**: Atlas wrote
+`Ready for Agent` to Linear via `promote_ready`, and the next `_pull` read that
+state back within the tick, flipping ATLAS-1 to `ready_for_agent` locally. This
+drives the real `_pull` path end-to-end, but the state it read back was one
+**Atlas itself wrote** — not a status changed by an external actor in Linear. The
+milestone's literal wording ("flip a ticket's Linear status, sync, confirm")
+describes a human-driven external change; the recorded evidence is the
+Atlas→Linear→Atlas direction, morally equivalent for the `_pull` mechanism but
+not the literal scenario.
+
+**Why it's minor:** `_pull` is direction-agnostic — it maps whatever Linear state
+it reads back to a `TicketStatus`, regardless of who wrote that state. The
+promotion write-back and an external flip traverse the identical read-and-map
+code, so the risk the external case behaves differently is low.
+
+**To close:** run the literal leg once — in the live sandbox, move one synced
+issue to a different mapped Linear status by hand (e.g. In Progress), run
+`atlas pm sync --once`, and confirm that ticket's Atlas status reflects the
+externally-set state. Then update the §1 Leg-1 row to cite the external-flip
+evidence and retire this entry. Owner: a follow-up on the Phase-4 live
+verification (`phase-4-live-verification` runbook), ~60 seconds when next on a
+Linear-reachable network.

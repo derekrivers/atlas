@@ -1,6 +1,6 @@
 # Phase 4 Closure Report — PM Engine
 
-Status: **BUILD COMPLETE, PHASE OPEN** as of 2026-06-23. The delivery-
+Status: **CLOSED** as of 2026-06-25 (build complete 2026-06-23). The delivery-
 coordination build is done and CI-evidenced — seventeen PRs (#63–#83), each
 under both evidence tiers (agent completion reports corroborated by
 system-tier CI pinned to head commits, per ADR-0008). The PM Engine pulls
@@ -15,10 +15,13 @@ One scoped ticket was **deliberately deferred** rather than built: ATLAS-46
 (roadmap synchronisation) raises an unanswered `roadmap.mmd` field-ownership
 question and is the only Phase 4 line with no design detail, so it goes to its
 own design pass (§6/§7) — an operator decision on record, not a silent
-omission. The phase is **not yet closed**: its milestone's live half — a real
-Linear status change reflected in Atlas within one cycle — is operator-run
-pending (ADR-0008 system-tier). The status line and the §1 PENDING rows flip to
-CLOSED when that evidence, and the ATLAS-45 `fetch_comments` smoke, are recorded.
+omission. The phase is **closed**: its live milestone evidence is recorded (§1). The
+Linear→Atlas pull was exercised live via the promotion round-trip — Atlas wrote
+`Ready for Agent` to Linear and `_pull` read that state back within the tick,
+flipping ATLAS-1 to `ready_for_agent` — and the ATLAS-45 `fetch_comments` smoke
+(`live_fetch_comments`) was run green against real Linear (2026-06-25). The
+Leg-1 evidence is a promotion write-back, not an external flip; that nuance is
+tracked in `docs/tech-debt/debt-register.md`.
 
 ---
 
@@ -37,12 +40,11 @@ CI-proven; the end-to-end live round-trip is operator-run.
 | The full anomaly stack logs one row per observation, idempotent across ticks | `logged_since` / `recorded_since` dedup over DebtItem and TickFailure (ATLAS-118/119/120/44/125) | **PASS** (deterministic, CI) |
 | Every real status transition is captured durably | `TicketStatusTransition` appended atomically inside the sole status writer (ATLAS-121) | **PASS** (deterministic, CI) |
 | The follow-up loop closes — stubs read as input, retired on apply | `collect_inbox_documents` merged for provenance; apply retires to `processed/` (ATLAS-45/122) | **PASS** (deterministic, CI) |
-| **Status change in Linear reflected in Atlas within one sync cycle** | **operator-run live**: flip a ticket's Linear status, `atlas pm sync --once`, confirm within that one tick (ATLAS-50; ADR-0008 system-tier) | **PENDING** (operator-run live) |
-| `fetch_comments` reads a real tagged comment end-to-end | **operator-run live**: tag a throwaway issue, `live_fetch_comments` leg (ATLAS-45; ADR-0008 system-tier) | **PENDING** (operator-run live) |
+| **Status change in Linear reflected in Atlas within one sync cycle** | **operator-run live, 2026-06-25**: promotion wrote `Ready for Agent` to Linear and `_pull` read it back within the tick, flipping ATLAS-1 to `ready_for_agent` (ATLAS-50; ADR-0008 system-tier; see debt register — promotion write-back, not external flip) | **PASS** (operator-run live) |
+| `fetch_comments` reads a real tagged comment end-to-end | **operator-run live, 2026-06-25**: `live_fetch_comments` leg run green against real Linear (ATLAS-45; ADR-0008 system-tier) | **PASS** (operator-run live) |
 
-Five of seven milestone claims are CI-proven now. The two PENDING rows are the
-phase's live evidence — necessary, not produced by CI, and the gate on the
-status line above.
+All seven milestone claims are now evidenced — five CI-proven, two by recorded
+operator-run live legs (2026-06-25). The live evidence is no longer owed.
 
 ---
 
@@ -132,14 +134,14 @@ spec was sufficient as a spine and was kept current as the authority.
 
 ---
 
-## 6. Why the phase is not closed — the live milestone
+## 6. The live milestone — recorded
 
 Phase 3.5 closed on a deterministic milestone the moment CI was green. Phase 4's
-build is complete, but its milestone is not deterministic: the Linear→Atlas
-status round-trip within one cycle (and the ATLAS-45 `fetch_comments` smoke) are
-system-tier live evidence under ADR-0008, deferred for connectivity and kept as
-explicit owed proof. CI green is necessary but not sufficient. The phase closes —
-this report flips to CLOSED — when that evidence is run and recorded.
+milestone was not deterministic: the Linear→Atlas round-trip within one cycle and
+the ATLAS-45 `fetch_comments` smoke are system-tier live evidence under ADR-0008,
+deferred for connectivity and kept as explicit owed proof. Both were run and
+recorded on 2026-06-25 (§1), so the phase is closed. CI green was necessary but
+not sufficient; the live legs supplied the rest.
 
 The scope question is **resolved, not open**: ATLAS-121 and ATLAS-122 were built
 (the cycle-time-capture and follow-up-consumer halves their producers needed);
