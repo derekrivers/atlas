@@ -36,6 +36,10 @@ from atlas.context.related_tickets import (
     RelatedTicketSource,
     select_related_tickets,
 )
+from atlas.context.validation import (
+    ContextPackValidation,
+    validate_context_pack,
+)
 
 __all__ = [
     "DEFAULT_ADR_CAP",
@@ -46,6 +50,7 @@ __all__ = [
     "ADRMatch",
     "ADRMatchSource",
     "ContextBudgetExceededError",
+    "ContextPackValidation",
     "DocContext",
     "DocReference",
     "DocSection",
@@ -57,4 +62,5 @@ __all__ = [
     "select_doc_sections",
     "select_lessons",
     "select_related_tickets",
+    "validate_context_pack",
 ]
