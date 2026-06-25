@@ -48,6 +48,22 @@ injected clock, so the end-to-end round-trip against real Linear is the
 operator-run live milestone (ADR-0008). `pm` exit codes: 0 success; 2
 precondition (`sync` only — missing Linear creds, an unset team id, or a
 missing/malformed status map).
+
+`context` (ATLAS-58) is the Phase 5 read surface over the pure `atlas.context`
+functions: `render <KEY> [--budget N] [--json]`, `validate <KEY>`, `show <KEY>`.
+A shared loader turns a bare `<KEY>` into the five already-loaded inputs the pure
+builder/validator take — the ticket (`TicketRepo.get_by_key`), the global
+dependency graph (`build_dependency_graph`, the full-backlog projection), the
+input documents re-ingested from HEAD every invocation (`collect_input_documents`,
+so staleness is real), the ACCEPTED ADRs, and the lessons — and the three
+commands are thin wrappers over it. Everything is TRANSIENT: a pack is built
+in-memory and printed; nothing is persisted (no `ContextPackRepo`, no
+`atlas/storage/` writes) — pack persistence is deferred to the PM promotion gate's
+own ticket. `validate` exits non-zero when the pack is invalid so it is scriptable
+as a gate; over-budget, ticket-not-found, a dirty input tree, and an unresolvable
+anchor are each a clean one-line CLI error (`EXIT_PRECONDITION`), never a
+traceback. `context` exit codes: 0 success (and a valid `validate`); 2 precondition
+(any loader/build failure, or an invalid `validate`).
 """
 
 from __future__ import annotations
@@ -61,10 +77,23 @@ import threading
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import NamedTuple
 
 import networkx as nx
 
+from atlas.context import (
+    DEFAULT_TOKEN_BUDGET,
+    ContextBudgetExceededError,
+    ContextPackValidation,
+    build_context_pack,
+    validate_context_pack,
+)
+from atlas.core.anchors import IngestionError, SourceDocument
 from atlas.core.models import PlanRunStatus
+from atlas.core.models.adr import ADRStatus, ArchitectureDecisionRecord
+from atlas.core.models.context_pack import ContextPack
+from atlas.core.models.lesson import Lesson
+from atlas.core.models.ticket import Ticket
 from atlas.dependencies import (
     BlockedResult,
     CriticalPath,
@@ -102,7 +131,7 @@ from atlas.planning.client import (
     PlannerClient,
     PlannerClientError,
 )
-from atlas.planning.ingestion import DirtyInputError
+from atlas.planning.ingestion import DirtyInputError, collect_input_documents
 from atlas.planning.pipeline import (
     PlanPreconditionError,
     format_plan_diff,
@@ -126,9 +155,11 @@ from atlas.pm import (
     run_scheduler,
 )
 from atlas.storage import (
+    ADRRepo,
     Database,
     DebtItemRepo,
     EffortValidationError,
+    LessonRepo,
     TicketNotFoundError,
     TicketRepo,
     TicketStatusTransitionRepo,
@@ -189,6 +220,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_deps_parser(subcommands)
     _add_pm_parser(subcommands)
+    _add_context_parser(subcommands)
     return parser
 
 
@@ -294,6 +326,45 @@ def _add_pm_parser(subcommands: argparse._SubParsersAction) -> None:  # type: ig
         default="docs/planning/inbox",
         help="follow-up inbox directory (default docs/planning/inbox)",
     )
+
+
+def _add_context_parser(subcommands: argparse._SubParsersAction) -> None:  # type: ignore[type-arg]
+    """The `atlas context` group (ATLAS-58) and its three subcommands. Mirrors
+    the `deps`/`pm` shape: its own nested subparsers (dest="context_command",
+    required=True). Every subcommand takes a `KEY` positional plus `--db`,
+    `--repo` (the loader re-ingests documents from HEAD, so it needs the repo
+    root), and `--json`; `render` additionally takes `--budget`."""
+    context = subcommands.add_parser(
+        "context",
+        help="Context Renderer: render/validate/show a ticket's context pack",
+    )
+    context_sub = context.add_subparsers(dest="context_command", required=True)
+
+    def _add(name: str, help_text: str) -> argparse.ArgumentParser:
+        sub: argparse.ArgumentParser = context_sub.add_parser(name, help=help_text)
+        sub.add_argument("key", help="the ticket key")
+        sub.add_argument("--db", default=None, help="database URL")
+        sub.add_argument(
+            "--repo",
+            default=".",
+            help="repository root to ingest documents from (default: current dir)",
+        )
+        sub.add_argument(
+            "--json", action="store_true", help="emit machine-readable JSON"
+        )
+        return sub
+
+    render = _add("render", "Build a ticket's context pack and print its markdown")
+    render.add_argument(
+        "--budget",
+        type=int,
+        default=DEFAULT_TOKEN_BUDGET,
+        help="token budget for the compression ladder "
+        f"(default {DEFAULT_TOKEN_BUDGET})",
+    )
+
+    _add("validate", "Validate a ticket's context pack; non-zero when invalid")
+    _add("show", "Print a human summary of a ticket's context pack")
 
 
 def _make_confirm(assume_yes: bool) -> Callable[[PlanDiff], ApplyDecision]:
@@ -771,6 +842,188 @@ def _pm_command(args: argparse.Namespace, *, database: Database | None) -> int:
     return EXIT_PRECONDITION  # unreachable: pm subparser is required
 
 
+class _ContextNotFoundError(Exception):
+    """A bare ``<KEY>`` that resolves to no stored ticket (D2/D6).
+
+    A clean CLI precondition — the loader raises it instead of returning
+    ``None``, so the command surfaces a one-line message and exits
+    ``EXIT_PRECONDITION`` rather than dereferencing ``None`` into a traceback.
+    """
+
+
+class _ContextInputs(NamedTuple):
+    """The five already-loaded inputs the pure ``atlas.context`` builder and
+    validator take (D2). Loaded once per invocation by ``_load_context_inputs``;
+    the three commands are thin wrappers over this tuple."""
+
+    ticket: Ticket
+    graph: nx.DiGraph[str]
+    documents: list[SourceDocument]
+    accepted_adrs: list[ArchitectureDecisionRecord]
+    lessons: list[Lesson]
+
+
+def _load_context_inputs(key: str, repo_root: Path, db: Database) -> _ContextInputs:
+    """Turn a bare ``<KEY>`` into the five inputs ``build_context_pack`` /
+    ``validate_context_pack`` consume (D2). This is the substance of ATLAS-58;
+    the commands are thin wrappers.
+
+    - ``ticket`` from ``TicketRepo.get_by_key``; a missing key raises
+      ``_ContextNotFoundError`` (never a ``None`` dereference).
+    - ``graph`` is the GLOBAL dependency projection over the full backlog
+      (``build_dependency_graph`` = ``project_graph`` over the four repos); the
+      retrievers select from it.
+    - ``documents`` are re-ingested from HEAD every invocation
+      (``collect_input_documents``), matching the builder's live semantics so
+      staleness is real; a dirty/untracked input set raises ``DirtyInputError``.
+    - ``accepted_adrs`` is ``ADRRepo.list()`` filtered to ACCEPTED.
+    - ``lessons`` is the full ``LessonRepo.list()`` (``select_lessons`` is
+      ACTIVE-only by construction).
+    """
+    ticket = TicketRepo(db).get_by_key(key)
+    if ticket is None:
+        raise _ContextNotFoundError(f"no ticket with key {key!r}")
+    graph = build_dependency_graph(db)
+    documents = collect_input_documents(repo_root)
+    accepted_adrs = [
+        adr for adr in ADRRepo(db).list() if adr.status == ADRStatus.ACCEPTED
+    ]
+    lessons = LessonRepo(db).list()
+    return _ContextInputs(ticket, graph, documents, accepted_adrs, lessons)
+
+
+def _build_pack(inputs: _ContextInputs, *, budget: int) -> ContextPack:
+    """Build the (transient) pack from the loaded inputs. A thin pass-through to
+    the pure builder; its ``ContextBudgetExceededError`` / ``IngestionError``
+    (an unresolvable ``source_anchor``) propagate to ``_context_command``, which
+    maps them to a clean ``EXIT_PRECONDITION`` (D6)."""
+    return build_context_pack(
+        inputs.ticket,
+        graph=inputs.graph,
+        documents=inputs.documents,
+        accepted_adrs=inputs.accepted_adrs,
+        lessons=inputs.lessons,
+        budget=budget,
+    )
+
+
+def _context_render(inputs: _ContextInputs, args: argparse.Namespace) -> int:
+    """`render <KEY> [--budget N] [--json]` (D3): build the pack and print its
+    ``rendered_markdown`` (default) or the full ``ContextPack`` as JSON."""
+    pack = _build_pack(inputs, budget=args.budget)
+    _emit(pack.model_dump(mode="json"), pack.rendered_markdown, as_json=args.json)
+    return EXIT_OK
+
+
+def _validation_text(result: ContextPackValidation) -> str:
+    """The human form of a validation result: the verdict, the anchor-check
+    depth, and one failure per line (D4)."""
+    head = "valid" if result.valid else "INVALID"
+    lines = [f"{head} (anchor_check_depth={result.anchor_check_depth})"]
+    lines.extend(f"  {failure}" for failure in result.failures)
+    return "\n".join(lines)
+
+
+def _context_validate(inputs: _ContextInputs, args: argparse.Namespace) -> int:
+    """`validate <KEY>` (D4): build the pack, run the slug-level validator (the
+    CLI has the ticket), print the result, and exit non-zero when invalid so the
+    command is scriptable as a gate."""
+    pack = _build_pack(inputs, budget=DEFAULT_TOKEN_BUDGET)
+    result = validate_context_pack(
+        pack,
+        documents=inputs.documents,
+        lessons=inputs.lessons,
+        ticket=inputs.ticket,
+    )
+    payload = {
+        "valid": result.valid,
+        "failures": list(result.failures),
+        "anchor_check_depth": result.anchor_check_depth,
+    }
+    _emit(payload, _validation_text(result), as_json=args.json)
+    return EXIT_OK if result.valid else EXIT_PRECONDITION
+
+
+# The renderer's fixed section order (context-renderer.md "Rendered structure").
+# `show` lists the present sections by matching these canonical titles, never by
+# scraping every ``## `` line — a verbatim doc-section body can itself contain
+# ``## `` headings, which must not be mistaken for pack sections.
+_PACK_SECTION_TITLES: tuple[str, ...] = (
+    "Objective",
+    "Constraints",
+    "Acceptance Criteria",
+    "Non-goals",
+    "Relevant Docs",
+    "ADRs",
+    "Related Tickets",
+    "Lessons",
+    "Risks",
+    "Test Commands",
+    "Definition of Done",
+)
+
+
+def _show_summary_text(pack: ContextPack) -> str:
+    """A human summary of the pack — distinct from render's raw markdown (D5):
+    the sections present, list counts, token estimate, which rungs fired, and the
+    recorded-SHA count. Read-style; carries no rendered_markdown body."""
+    headers = {
+        line[3:].strip()
+        for line in pack.rendered_markdown.splitlines()
+        if line.startswith("## ")
+    }
+    sections = [title for title in _PACK_SECTION_TITLES if title in headers]
+    compression = ", ".join(pack.compression_applied) or "none"
+    return "\n".join(
+        [
+            f"Context pack for {pack.title}",
+            f"Sections: {', '.join(sections)}",
+            f"Acceptance criteria: {len(pack.acceptance_criteria)}",
+            f"Relevant docs: {len(pack.relevant_docs)}",
+            f"ADRs: {len(pack.relevant_adrs)}",
+            f"Related tickets: {len(pack.related_tickets)}",
+            f"Lessons: {len(pack.historical_lessons)}",
+            f"Token estimate: {pack.token_estimate}",
+            f"Compression applied: {compression}",
+            f"Input doc SHAs: {len(pack.input_doc_shas)}",
+        ]
+    )
+
+
+def _context_show(inputs: _ContextInputs, args: argparse.Namespace) -> int:
+    """`show <KEY>` (D5): build the pack and print a human summary (not the raw
+    markdown). ``--json`` mirrors render's full dump."""
+    pack = _build_pack(inputs, budget=DEFAULT_TOKEN_BUDGET)
+    _emit(pack.model_dump(mode="json"), _show_summary_text(pack), as_json=args.json)
+    return EXIT_OK
+
+
+def _context_command(args: argparse.Namespace, *, database: Database | None) -> int:
+    """Route `atlas context <subcommand>` (ATLAS-58). Load the five inputs once
+    (D2), then dispatch. Every failure is a clean one-line `EXIT_PRECONDITION`
+    (D6): ticket-not-found and a dirty input tree at load time, an unresolvable
+    anchor or an over-budget pack at build time — never a traceback."""
+    resolved_db = database if database is not None else Database(args.db)
+    repo_root = Path(args.repo).resolve()
+    try:
+        inputs = _load_context_inputs(args.key, repo_root, resolved_db)
+        if args.context_command == "render":
+            return _context_render(inputs, args)
+        if args.context_command == "validate":
+            return _context_validate(inputs, args)
+        if args.context_command == "show":
+            return _context_show(inputs, args)
+    except (
+        _ContextNotFoundError,
+        DirtyInputError,
+        ContextBudgetExceededError,
+        IngestionError,
+    ) as error:
+        print(error, file=sys.stderr)
+        return EXIT_PRECONDITION
+    return EXIT_PRECONDITION  # unreachable: context subparser is required
+
+
 def main(
     argv: list[str] | None = None,
     *,
@@ -796,6 +1049,8 @@ def main(
         return _deps_command(args, database=database)
     if args.command == "pm":
         return _pm_command(args, database=database)
+    if args.command == "context":
+        return _context_command(args, database=database)
     return EXIT_PRECONDITION  # unreachable: subparser is required
 
 
