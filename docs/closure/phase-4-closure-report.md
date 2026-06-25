@@ -159,13 +159,13 @@ the milestone and is cleanly separable.
 
 | Item | Owner / home | Status |
 | --- | --- | --- |
-| AT-7 bar threshold | Phase 3.5 §7 → ATLAS-123 | **Resolved (partial)** — anchor floor 0.50 live; content bar deferred to ATLAS-124 |
+| AT-7 bar threshold | Phase 3.5 §7 → ATLAS-123/124 | **Resolved** — anchor floor 0.50 live; containment-aware content bar pinned as the unified exact∪content floor 0.80 (ATLAS-124, #103, §7.2) |
 | State-transition capture for true cycle time | ATLAS-47 → ATLAS-121 → ATLAS-126 | **Resolved** — capture landed (121) and is consumed as true cycle time (126); the proxy is retired |
 | ATLAS-46 roadmap synchronisation | Phase 4 → its own design pass | **Deferred (operator decision)** — needs a `roadmap.mmd` ⇄ Linear field-ownership ruling first; no design detail yet |
 | ATLAS-126 historical cycle time from the transition log | PM Engine (seeded by ATLAS-121) | **Resolved** — `atlas pm report` now computes true per-state cycle time over completed episodes; the dwell proxy is retired |
 | Planner promotion of inbox stubs | PM Engine (named by ATLAS-122) | **Open, observation** — ingestion + lifecycle landed; whether the planner reliably promotes a stub to a ticket may want a prompt-template refinement, seed only if live runs show it needed |
-| ATLAS-45 live smoke / ATLAS-50 live milestone | Operator (ADR-0008 system-tier) | **Open** — the §1 PENDING rows; the gate on closure |
-| ATLAS-124 content-coverage bar pinning | Planning track | **Open** — needs a second durably-saved staged capture |
+| ATLAS-45 live smoke / ATLAS-50 live milestone | Operator (ADR-0008 system-tier) | **Resolved** — both live legs run and recorded 2026-06-25 (§1 rows now PASS); phase CLOSED. Leg-1 is promotion write-back, tracked in the debt register as a cheap future tightening |
+| ATLAS-124 content-coverage bar pinning | Planning track | **Resolved** — second capture taken; unified exact∪content floor 0.80 pinned, citation excluded as a diagnostic (#103, §7.2) |
 | Atlas → Linear priority mapping | PM Engine; floating since ATLAS-42 | **Open** — needs an Atlas priority convention pinned first (Linear's inverted 0–4 enum) |
 | Transient-transport retry (RemoteProtocolError on long runs) | PM Engine; distinct from ATLAS-109 content retry | **Open, benign** — promote if long-run crashes recur in the TickFailure record |
 
