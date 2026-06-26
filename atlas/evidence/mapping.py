@@ -1,7 +1,7 @@
-"""Pure normalised-CI -> Evidence mapping (ATLAS-63/64), per
-evidence-pipeline.md "Job-name convention" and ADR-0008.
+"""Pure normalised-CI/review -> Evidence mapping (ATLAS-63/64/65), per
+evidence-pipeline.md "Job-name convention"/"Status normalisation" and ADR-0008.
 
-Two pure functions, no I/O:
+Pure functions, no I/O:
 
 * :func:`evidence_type_for_job` is the job-name -> ``EvidenceType`` contract —
   a repo-owned mapping (evidence-pipeline.md) rather than a payload heuristic.
@@ -17,6 +17,10 @@ Two pure functions, no I/O:
   from the check, so ``EvidenceRepo.add`` accepts it. Persistence is the
   separate thin ingest path (:mod:`.ingest`), mirroring the codebase's
   pure-logic / I/O separation.
+* :func:`map_review_to_evidence` builds a system-tier ``PR_REVIEW`` ``Evidence``
+  from a frozen ``NormalisedReview`` (ATLAS-65). A review is always ``PR_REVIEW``
+  -- no job-name lookup -- and the reviewer lives in ``raw_payload``/``summary``,
+  never in ``created_by_id`` (which stays the SYSTEM-tier ``github-actions``).
 """
 
 from __future__ import annotations
@@ -27,7 +31,7 @@ from uuid import UUID, uuid4
 
 from atlas.core.enums import ActorType
 from atlas.core.models.evidence import Evidence, EvidenceType
-from atlas.github import NormalisedCheck
+from atlas.github import NormalisedCheck, NormalisedReview
 
 # Module logger for the unrecognised-job fallback warning (ATLAS-64), mirroring
 # atlas/github/client.py's logger + logger.warning pattern.
@@ -117,6 +121,50 @@ def map_check_to_evidence(
         payload_hash=check.payload_hash,
         source_uri=check.source_uri,
         raw_payload=check.raw_payload,
+        created_by_type=ActorType.SYSTEM,
+        created_by_id=GITHUB_ACTIONS_ACTOR_ID,
+        created_at=now,
+    )
+
+
+def map_review_to_evidence(
+    review: NormalisedReview,
+    *,
+    product_id: UUID,
+    now: datetime,
+) -> Evidence:
+    """Build a system-tier ``PR_REVIEW`` ``Evidence`` from ``review``. PURE: it
+    touches no ``Database`` and persists nothing (that is
+    :func:`atlas.evidence.ingest.ingest_reviews`).
+
+    Unlike :func:`map_check_to_evidence`, there is no job-name -> type lookup: a
+    review is ALWAYS ``PR_REVIEW`` evidence (evidence-pipeline.md "Status
+    normalisation"), so the type is hard-coded. The status is taken VERBATIM
+    from the already-normalised ``review.status`` -- never re-derived from
+    ``raw_payload`` (ATLAS-65 owns the review-state -> ``EvidenceStatus``
+    mapping). The commit-pin triple
+    (``commit_sha``/``external_run_id``/``payload_hash``) is copied straight
+    from the review (the review is only normalised when commit-pinned), so the
+    result satisfies ATLAS-61's system-tier pinning guard.
+
+    Attribution stays SYSTEM/``github-actions`` (D4): the GitHub poller is the
+    ingesting actor for all system-tier evidence. The human reviewer is NOT the
+    ``created_by_id`` -- that would put a human id on a SYSTEM-tier record; the
+    reviewer lives in ``raw_payload`` and the ``summary``. ``product_id`` and
+    ``now`` are explicit for the same reasons as :func:`map_check_to_evidence`.
+    """
+
+    return Evidence(
+        id=uuid4(),
+        product_id=product_id,
+        evidence_type=EvidenceType.PR_REVIEW,
+        status=review.status,  # verbatim from ATLAS-65; never re-derived
+        summary=f"review by {review.reviewer}: {review.status.value}",
+        commit_sha=review.commit_sha,
+        external_run_id=review.external_run_id,
+        payload_hash=review.payload_hash,
+        source_uri=review.source_uri,
+        raw_payload=review.raw_payload,
         created_by_type=ActorType.SYSTEM,
         created_by_id=GITHUB_ACTIONS_ACTOR_ID,
         created_at=now,

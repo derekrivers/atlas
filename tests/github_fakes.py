@@ -24,6 +24,18 @@ def load_fixture(name: str, key: str) -> list[dict[str, Any]]:
     return items
 
 
+def load_array_fixture(name: str) -> list[dict[str, Any]]:
+    """Return a recorded GitHub bare-array fixture (e.g. PR reviews, ATLAS-65).
+
+    The reviews endpoint returns a JSON array, not an envelope, so there is no
+    key to unwrap.
+    """
+    items: list[dict[str, Any]] = json.loads(
+        (FIXTURES / name).read_text(encoding="utf-8")
+    )
+    return items
+
+
 class FakeGitHubClient:
     """A fixture-backed ``GitHubClient``.
 
@@ -37,10 +49,12 @@ class FakeGitHubClient:
         *,
         workflow_runs: list[dict[str, Any]] | None = None,
         check_runs: list[dict[str, Any]] | None = None,
+        pr_reviews: list[dict[str, Any]] | None = None,
     ) -> None:
         self._workflow_runs = list(workflow_runs or [])
         self._check_runs = list(check_runs or [])
-        self.calls: list[tuple[str, str, str, str]] = []
+        self._pr_reviews = list(pr_reviews or [])
+        self.calls: list[tuple[str, str, str, str | int]] = []
 
     def fetch_workflow_runs(
         self, owner: str, repo: str, head_sha: str
@@ -53,3 +67,10 @@ class FakeGitHubClient:
     ) -> list[dict[str, Any]]:
         self.calls.append(("check_runs", owner, repo, head_sha))
         return list(self._check_runs)
+
+    def fetch_pr_reviews(
+        self, owner: str, repo: str, pr_number: int
+    ) -> list[dict[str, Any]]:
+        # Reviews are PR-scoped, so the recorded arg is the PR number, not a SHA.
+        self.calls.append(("pr_reviews", owner, repo, pr_number))
+        return list(self._pr_reviews)

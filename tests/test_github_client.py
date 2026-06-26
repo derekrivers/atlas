@@ -127,6 +127,64 @@ def test_check_runs_uses_commit_endpoint(monkeypatch: pytest.MonkeyPatch) -> Non
     assert f"/repos/o/r/commits/{HEAD_SHA}/check-runs" in captured["url"]
 
 
+# --- PR reviews: the bare-array (result_key=None) path (ATLAS-65) ------------
+
+
+def test_fetch_pr_reviews_returns_bare_array_from_pr_endpoint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The reviews endpoint returns a JSON ARRAY, not an envelope; the
+    # result_key=None path returns the parsed body directly.
+    captured: dict[str, str] = {}
+
+    def _urlopen(request: Any, *a: Any, **k: Any) -> _Response:
+        captured["url"] = request.full_url
+        body = b'[{"id": 1, "state": "APPROVED"}, {"id": 2, "state": "COMMENTED"}]'
+        return _Response(body, _headers(ETag='"v1"'))
+
+    monkeypatch.setattr("atlas.github.client.urllib_request.urlopen", _urlopen)
+    reviews = GitHubRESTClient(token="t").fetch_pr_reviews("o", "r", 11499)
+    assert reviews == [
+        {"id": 1, "state": "APPROVED"},
+        {"id": 2, "state": "COMMENTED"},
+    ]
+    # PR-scoped endpoint (takes a PR number, not a head SHA), per_page still sent.
+    assert "/repos/o/r/pulls/11499/reviews" in captured["url"]
+    assert "per_page=100" in captured["url"]
+
+
+def test_fetch_pr_reviews_304_returns_empty_list(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The ETag/304 path is shared with the envelope endpoints: an unchanged
+    # review list yields [] (no new normalised event), exactly as for checks.
+    state = {"calls": 0}
+
+    def _urlopen(request: Any, *a: Any, **k: Any) -> _Response:
+        state["calls"] += 1
+        if state["calls"] == 1:
+            return _Response(b'[{"id": 1, "state": "APPROVED"}]', _headers(ETag='"e"'))
+        raise _http_error(304, _headers(ETag='"e"'))
+
+    monkeypatch.setattr("atlas.github.client.urllib_request.urlopen", _urlopen)
+    client = GitHubRESTClient(token="t")
+    assert client.fetch_pr_reviews("o", "r", 1) == [{"id": 1, "state": "APPROVED"}]
+    assert client.fetch_pr_reviews("o", "r", 1) == []  # 304: nothing new
+
+
+def test_fetch_pr_reviews_non_array_body_is_api_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # result_key=None expects a list; an object body (e.g. a GitHub error
+    # envelope) is surfaced as a typed error, never silently treated as empty.
+    def _urlopen(request: Any, *a: Any, **k: Any) -> _Response:
+        return _Response(b'{"message": "Not Found"}', _headers())
+
+    monkeypatch.setattr("atlas.github.client.urllib_request.urlopen", _urlopen)
+    with pytest.raises(GitHubAPIError, match="was not a list"):
+        GitHubRESTClient(token="t").fetch_pr_reviews("o", "r", 1)
+
+
 # --- ETag / 304 (criterion 3) -----------------------------------------------
 
 

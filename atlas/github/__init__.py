@@ -2,11 +2,12 @@
 
 The Phase-6 CI-evidence boundary: a ``GitHubClient`` protocol and its REST
 implementation (the pull-first transport of ADR-0008), plus a
-transport-agnostic normaliser that turns raw workflow-run / check-run
-payloads into the frozen ``NormalisedCheck`` webhook-swap shape. A layer
-above ``atlas.core`` only -- it imports no other Atlas layer (the
-import-linter spine forbids ``github -> linear``). Persistence, EvidenceType
-typing, and the tick loop are deliberately elsewhere (ATLAS-63/64, Phase 8).
+transport-agnostic normaliser that turns raw workflow-run / check-run payloads
+into the frozen ``NormalisedCheck`` webhook-swap shape and raw PR-review
+payloads into the ``NormalisedReview`` shape (ATLAS-65). A layer above
+``atlas.core`` only -- it imports no other Atlas layer (the import-linter spine
+forbids ``github -> linear``). Persistence, EvidenceType typing, and the tick
+loop are deliberately elsewhere (ATLAS-63/64/65, Phase 8).
 """
 
 from atlas.github.client import (
@@ -23,8 +24,12 @@ from atlas.github.client import (
 )
 from atlas.github.normaliser import (
     NormalisedCheck,
+    NormalisedReview,
     normalise_check_run,
     normalise_check_runs,
+    normalise_review,
+    normalise_review_state,
+    normalise_reviews,
     normalise_status,
     normalise_workflow_run,
     normalise_workflow_runs,
@@ -43,8 +48,12 @@ __all__ = [
     "GitHubRESTClient",
     "MissingGitHubTokenError",
     "NormalisedCheck",
+    "NormalisedReview",
     "normalise_check_run",
     "normalise_check_runs",
+    "normalise_review",
+    "normalise_review_state",
+    "normalise_reviews",
     "normalise_status",
     "normalise_workflow_run",
     "normalise_workflow_runs",

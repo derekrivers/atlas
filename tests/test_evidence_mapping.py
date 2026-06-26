@@ -24,9 +24,11 @@ from atlas.evidence import (
     GITHUB_ACTIONS_ACTOR_ID,
     evidence_type_for_job,
     ingest_checks,
+    ingest_reviews,
     map_check_to_evidence,
+    map_review_to_evidence,
 )
-from atlas.github import NormalisedCheck
+from atlas.github import NormalisedCheck, NormalisedReview
 from atlas.storage import Database, EvidenceRepo
 
 NOW = datetime(2026, 6, 26, tzinfo=UTC)
@@ -205,3 +207,76 @@ def test_map_check_to_evidence_is_pure() -> None:
     # And it runs to completion with no storage in sight.
     evidence = map_check_to_evidence(_check("test"), product_id=uuid4(), now=NOW)
     assert evidence is not None
+
+
+# --- ATLAS-65: review -> system-tier PR_REVIEW Evidence -----------------------
+
+
+def _review(
+    *,
+    reviewer: str = "octocat",
+    status: EvidenceStatus = EvidenceStatus.PASSED,
+) -> NormalisedReview:
+    """A frozen NormalisedReview with a full commit-pin triple — the shape
+    ATLAS-65's normaliser hands the mapper (always commit-pinned)."""
+    return NormalisedReview(
+        reviewer=reviewer,
+        status=status,
+        external_run_id="review-99",
+        commit_sha="b" * 40,
+        payload_hash="sha256:" + "f" * 64,
+        source_uri="https://github.com/acme/atlas/pull/1#pullrequestreview-99",
+        raw_payload={"id": 99, "user": {"login": reviewer}, "state": "APPROVED"},
+    )
+
+
+def test_review_maps_to_system_tier_pr_review_and_round_trips(db: Database) -> None:
+    # CHANGES_REQUESTED -> the review's status is FAILED; the mapper takes it
+    # VERBATIM and never re-derives from raw_payload (whose state is "APPROVED").
+    review = _review(reviewer="alice", status=EvidenceStatus.FAILED)
+    evidence = map_review_to_evidence(review, product_id=uuid4(), now=NOW)
+
+    assert evidence.evidence_type is EvidenceType.PR_REVIEW
+    assert evidence.created_by_type is ActorType.SYSTEM
+    # the ingesting actor is the poller, NOT the human reviewer (D4).
+    assert evidence.created_by_id == GITHUB_ACTIONS_ACTOR_ID
+    assert evidence.created_by_id != review.reviewer
+    # status verbatim from the NormalisedReview
+    assert evidence.status is EvidenceStatus.FAILED
+    # the commit-pin triple is carried straight from the review
+    assert evidence.commit_sha == review.commit_sha
+    assert evidence.external_run_id == review.external_run_id
+    assert evidence.payload_hash == review.payload_hash
+    assert evidence.created_at == NOW
+    # the reviewer lives in raw_payload and the summary, never in created_by_id
+    assert evidence.raw_payload["user"]["login"] == "alice"
+    assert "alice" in evidence.summary
+    assert "failed" in evidence.summary
+
+    # round-trips through the ATLAS-61 system-tier pinning guard and back
+    repo = EvidenceRepo(db)
+    assert repo.add(evidence) == evidence
+    assert repo.get(evidence.id) == evidence
+
+
+def test_map_review_to_evidence_is_pure() -> None:
+    # No Database/repo parameter: persistence is ingest_reviews' job.
+    params = set(inspect.signature(map_review_to_evidence).parameters)
+    assert "db" not in params
+    assert "repo" not in params
+
+
+def test_ingest_reviews_persists_every_review(db: Database) -> None:
+    repo = EvidenceRepo(db)
+    persisted = ingest_reviews(
+        [
+            _review(reviewer="alice", status=EvidenceStatus.PASSED),
+            _review(reviewer="bob", status=EvidenceStatus.WARNING),
+        ],
+        repo=repo,
+        product_id=uuid4(),
+        now=NOW,
+    )
+    assert {e.evidence_type for e in persisted} == {EvidenceType.PR_REVIEW}
+    assert all(e.created_by_id == GITHUB_ACTIONS_ACTOR_ID for e in persisted)
+    assert len(repo.list()) == 2
