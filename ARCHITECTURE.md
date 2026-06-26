@@ -38,6 +38,7 @@ atlas.planning      # plan/apply pipeline, reconciler, renderer
 atlas.pm            # Phase 4 PM Engine: Linear sync loop (sync_tick)
 atlas.context       # Phase 5 Context Renderer: per-ticket retrieval
 atlas.dependencies  # dependency-graph projection and analyses
+atlas.evidence      # Phase 6 evidence mappers: normalised CI -> Evidence
 atlas.storage       # database, tables, repositories
 atlas.linear        # Phase 4 Linear boundary: client + field ownership
 atlas.github        # Phase 6 GitHub boundary: CI poller + normaliser
