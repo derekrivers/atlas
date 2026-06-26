@@ -1,14 +1,16 @@
-"""ATLAS-63: normalised CI -> Evidence mapping.
+"""ATLAS-63/64: normalised CI -> Evidence mapping.
 
 Falsifiable coverage of the acceptance criteria: the job-name -> EvidenceType
-contract (seeded with ONLY the test prefix today), the pure check -> Evidence
-mapper (status verbatim, the commit-pin triple carried, no DB touched), and the
+contract (test/lint/build/coverage prefixes; unrecognised -> None), the total
+check -> Evidence mapper (status verbatim, the commit-pin triple carried, no DB
+touched, unrecognised jobs fall back to BUILD_RESULT with a warning), and the
 thin ingest path through the ATLAS-61 system-tier pinning guard.
 """
 
 from __future__ import annotations
 
 import inspect
+import logging
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -90,19 +92,27 @@ def test_test_check_maps_to_system_tier_test_result_and_round_trips(
     assert repo.get(evidence.id) == evidence
 
 
-# --- criterion 2: a non-test check maps to None and persists nothing ----------
+# --- criterion 2: unrecognised job falls back to BUILD_RESULT, persists -------
 
 
-def test_non_test_check_maps_to_none_and_persists_nothing(db: Database) -> None:
+def test_unrecognised_check_falls_back_to_build_result_and_persists(
+    db: Database, caplog: pytest.LogCaptureFixture
+) -> None:
+    # "deploy / staging" has no recognised prefix: the mapper must NOT drop it
+    # (the old ATLAS-63 behaviour) but fall back to BUILD_RESULT with a warning.
     repo = EvidenceRepo(db)
-    persisted = ingest_checks(
-        [_check("lint / ruff")], repo=repo, product_id=uuid4(), now=NOW
-    )
-    assert persisted == []
-    assert repo.list() == []
+    with caplog.at_level(logging.WARNING, logger="atlas.evidence.mapping"):
+        persisted = ingest_checks(
+            [_check("deploy / staging")], repo=repo, product_id=uuid4(), now=NOW
+        )
+    assert {e.evidence_type for e in persisted} == {EvidenceType.BUILD_RESULT}
+    assert len(repo.list()) == 1
+    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert len(warnings) == 1
+    assert "deploy / staging" in warnings[0].getMessage()
 
 
-def test_ingest_persists_only_recognised_checks(db: Database) -> None:
+def test_ingest_persists_every_check(db: Database) -> None:
     repo = EvidenceRepo(db)
     persisted = ingest_checks(
         [_check("test"), _check("build / wheel"), _check("Test Suite")],
@@ -110,9 +120,13 @@ def test_ingest_persists_only_recognised_checks(db: Database) -> None:
         product_id=uuid4(),
         now=NOW,
     )
-    # both test rows ingested; the build row skipped (ATLAS-64, not today)
-    assert {e.evidence_type for e in persisted} == {EvidenceType.TEST_RESULT}
-    assert len(repo.list()) == 2
+    # nothing is dropped now: both test rows -> TEST_RESULT, the build row ->
+    # BUILD_RESULT via the table (ATLAS-64).
+    assert {e.evidence_type for e in persisted} == {
+        EvidenceType.TEST_RESULT,
+        EvidenceType.BUILD_RESULT,
+    }
+    assert len(repo.list()) == 3
 
 
 # --- criterion 3: the job-name contract (seeded defect lives here) ------------
@@ -124,14 +138,60 @@ def test_ingest_persists_only_recognised_checks(db: Database) -> None:
         ("test", EvidenceType.TEST_RESULT),
         ("test (3.12)", EvidenceType.TEST_RESULT),
         ("Test Suite", EvidenceType.TEST_RESULT),
-        ("build", None),
-        ("lint", None),
-        ("coverage", None),
+        # ATLAS-64 rows, including matrix/suffixed forms.
+        ("lint", EvidenceType.LINT_RESULT),
+        ("lint (mypy)", EvidenceType.LINT_RESULT),
+        ("build", EvidenceType.BUILD_RESULT),
+        ("build / wheel", EvidenceType.BUILD_RESULT),
+        ("coverage", EvidenceType.COVERAGE_REPORT),
+        # the lookup stays honest about unrecognised prefixes (D2).
         ("deploy", None),
     ],
 )
 def test_evidence_type_for_job(name: str, expected: EvidenceType | None) -> None:
     assert evidence_type_for_job(name) == expected
+
+
+# --- criterion 2 (mapper level): unrecognised -> BUILD_RESULT + one warning ----
+
+
+def test_map_check_to_evidence_unrecognised_falls_back_with_warning(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    check = _check("deploy / staging")
+    with caplog.at_level(logging.WARNING, logger="atlas.evidence.mapping"):
+        evidence = map_check_to_evidence(check, product_id=uuid4(), now=NOW)
+    assert evidence.evidence_type is EvidenceType.BUILD_RESULT
+    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert len(warnings) == 1
+    assert "deploy / staging" in warnings[0].getMessage()
+
+
+# --- criterion 4: a recognised non-test check round-trips, NO warning ---------
+
+
+def test_build_check_round_trips_as_system_tier_build_result(
+    db: Database, caplog: pytest.LogCaptureFixture
+) -> None:
+    check = _check("build / wheel")
+    with caplog.at_level(logging.WARNING, logger="atlas.evidence.mapping"):
+        evidence = map_check_to_evidence(check, product_id=uuid4(), now=NOW)
+
+    assert evidence.evidence_type is EvidenceType.BUILD_RESULT
+    assert evidence.created_by_type is ActorType.SYSTEM
+    assert evidence.created_by_id == GITHUB_ACTIONS_ACTOR_ID
+    # the commit-pin triple is carried, so it satisfies the ATLAS-61 guard
+    assert evidence.commit_sha == check.commit_sha
+    assert evidence.external_run_id == check.external_run_id
+    assert evidence.payload_hash == check.payload_hash
+    # mapped via the table, NOT the fallback: the warning is the only
+    # observable difference since both paths yield BUILD_RESULT.
+    assert [r for r in caplog.records if r.levelno == logging.WARNING] == []
+
+    # round-trips through the ATLAS-61 system-tier pinning guard and back
+    repo = EvidenceRepo(db)
+    assert repo.add(evidence) == evidence
+    assert repo.get(evidence.id) == evidence
 
 
 # --- criterion 4: the mapper is pure (no Database touched) --------------------
