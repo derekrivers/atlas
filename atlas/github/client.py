@@ -9,11 +9,12 @@ environment at construction and never logged or ``repr``'d, and a
 spine forbids ``github -> linear``; ARCHITECTURE.md "Layer spine").
 
 Scope is the CI primitives ADR-0008's pull-first transport needs: fetch the
-workflow runs and check runs for an explicit ``(owner, repo, head_sha)``.
-Normalisation into the webhook-swap shape lives in ``normaliser.py``; PR
-reviews and PR files (and their fetch methods) ship later beside their own
-normalisers (ATLAS-65/66), and the ticket-driven tick loop is Phase 8 -- so
-this client ships no method without a consumer in this ticket (D4).
+workflow runs and check runs for an explicit ``(owner, repo, head_sha)`` and
+the PR reviews for a ``(owner, repo, pr_number)`` (ATLAS-65 -- reviews are
+PR-scoped, and their endpoint returns a bare array, not an envelope).
+Normalisation into the webhook-swap shape lives in ``normaliser.py``; PR files
+(and their fetch method) ship later beside their own normaliser (ATLAS-66),
+and the ticket-driven tick loop is Phase 8.
 
 Rate-limit discipline (ADR-0008): conditional requests with ``If-None-Match``
 using the ETag from the prior response keep polling inside the rate limit; a
@@ -72,10 +73,10 @@ class GitHubAPIError(GitHubClientError):
 
 @runtime_checkable
 class GitHubClient(Protocol):
-    """The atlas-side GitHub boundary: the CI primitives ATLAS-62 needs.
+    """The atlas-side GitHub boundary: the CI + review primitives Phase 6 needs.
 
-    The ticket-driven loop that calls these on a cadence is Phase 8; review
-    and docs fetches ship later beside their own normalisers (ATLAS-65/66).
+    The ticket-driven loop that calls these on a cadence is Phase 8; the PR-file
+    fetch for docs evidence ships later beside its own normaliser (ATLAS-66).
     """
 
     def fetch_workflow_runs(
@@ -88,6 +89,16 @@ class GitHubClient(Protocol):
         self, owner: str, repo: str, head_sha: str
     ) -> list[dict[str, Any]]:
         """Raw check runs for a commit SHA (GitHub -> Atlas)."""
+        ...
+
+    def fetch_pr_reviews(
+        self, owner: str, repo: str, pr_number: int
+    ) -> list[dict[str, Any]]:
+        """Raw PR reviews for a pull request (GitHub -> Atlas).
+
+        Reviews are PR-scoped, so this takes ``pr_number`` (not a head SHA);
+        the endpoint returns a bare JSON array, not an envelope (ATLAS-65).
+        """
         ...
 
 
@@ -133,16 +144,28 @@ class GitHubRESTClient:
         body = self._get(path, {}, result_key="check_runs")
         return body
 
+    def fetch_pr_reviews(
+        self, owner: str, repo: str, pr_number: int
+    ) -> list[dict[str, Any]]:
+        # The reviews endpoint returns a bare JSON array, not an envelope, so
+        # there is no result_key to unwrap (result_key=None; ATLAS-65).
+        path = f"/repos/{owner}/{repo}/pulls/{pr_number}/reviews"
+        body = self._get(path, {}, result_key=None)
+        return body
+
     # --- transport ----------------------------------------------------------
 
     def _get(
-        self, path: str, params: dict[str, str], *, result_key: str
+        self, path: str, params: dict[str, str], *, result_key: str | None
     ) -> list[dict[str, Any]]:
-        """Conditional GET returning the ``result_key`` array.
+        """Conditional GET returning a list of items.
 
-        A 304 (ETag hit) returns ``[]`` -- the unchanged run produces no new
-        normalised event. A secondary-rate-limit response is retried a bounded
-        number of times honouring ``Retry-After``, then raises.
+        With ``result_key`` set, the parsed body is an envelope and the
+        ``result_key`` array is returned; with ``result_key=None`` the parsed
+        body IS the list (the reviews endpoint, ATLAS-65). A 304 (ETag hit)
+        returns ``[]`` -- the unchanged resource produces no new normalised
+        event. A secondary-rate-limit response is retried a bounded number of
+        times honouring ``Retry-After``, then raises.
         """
         query = urllib_parse.urlencode({**params, "per_page": str(PER_PAGE)})
         url = f"{API_ROOT}{path}?{query}"
@@ -186,7 +209,7 @@ class GitHubRESTClient:
         return headers
 
     def _read_page(
-        self, response: Any, result_key: str, url: str
+        self, response: Any, result_key: str | None, url: str
     ) -> list[dict[str, Any]]:
         etag = response.headers.get("ETag")
         if etag is not None:
@@ -199,16 +222,19 @@ class GitHubRESTClient:
             logger.warning(
                 "GitHub %s has more than one page (per_page=%d); only the first "
                 "page was read -- full pagination is a follow-up (ATLAS-62)",
-                result_key,
+                result_key or "reviews",
                 PER_PAGE,
             )
         try:
             body = json.loads(response.read().decode())
         except json.JSONDecodeError as error:
             raise GitHubAPIError(f"GitHub API returned non-JSON: {error}") from error
-        items = body.get(result_key, [])
+        # result_key=None: the body IS the list (bare-array endpoints, e.g. PR
+        # reviews); otherwise unwrap the envelope's result_key array (ATLAS-65).
+        items = body if result_key is None else body.get(result_key, [])
         if not isinstance(items, list):
-            raise GitHubAPIError(f"GitHub API {result_key} was not a list")
+            label = result_key or "response body"
+            raise GitHubAPIError(f"GitHub API {label} was not a list")
         return items
 
     @staticmethod

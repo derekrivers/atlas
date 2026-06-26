@@ -14,17 +14,25 @@ It deliberately does NOT carry an ``EvidenceType`` (that mapping is the
 job-name contract owned by ATLAS-63/64) and never persists anything: it only
 *computes* the dedup key ``(external_run_id, payload_hash)``; the "skip if
 already stored" check belongs to the persisting layer (ADR-0008).
+
+PR reviews (ATLAS-65) ship their own ``NormalisedReview`` shape and state
+table beside the check normaliser: a review is not a check (it carries a
+reviewer, no job name, and always becomes ``PR_REVIEW`` evidence), so it gets
+a distinct frozen shape rather than overloading ``NormalisedCheck``.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
 from atlas.core.enums import EvidenceStatus
+
+logger = logging.getLogger("atlas.github.normaliser")
 
 # GitHub conclusion -> EvidenceStatus, verbatim from evidence-pipeline.md
 # "Status normalisation". A conclusion absent from this table maps to
@@ -142,3 +150,102 @@ def normalise_check_runs(
 ) -> list[NormalisedCheck]:
     """Normalise a list of check-run payloads (empty list -> no events)."""
     return [normalise_check_run(check, head_sha=head_sha) for check in checks]
+
+
+# --- PR reviews (ATLAS-65) --------------------------------------------------
+
+# GitHub review state -> EvidenceStatus, per evidence-pipeline.md "Status
+# normalisation". States arrive UPPERCASE from GitHub. A state absent from this
+# table maps to WARNING (e.g. PENDING, or any future state) -- surfaced, never
+# silently dropped, mirroring ``_CONCLUSION_STATUS``.
+_REVIEW_STATE_STATUS: dict[str, EvidenceStatus] = {
+    "APPROVED": EvidenceStatus.PASSED,
+    "CHANGES_REQUESTED": EvidenceStatus.FAILED,
+    "COMMENTED": EvidenceStatus.WARNING,
+    "DISMISSED": EvidenceStatus.NOT_APPLICABLE,
+}
+
+
+@dataclass(frozen=True)
+class NormalisedReview:
+    """One normalised PR review -- the webhook-swap contract (ADR-0008).
+
+    The review analogue of :class:`NormalisedCheck`, identical whether produced
+    by the poller (ATLAS-65) or a future ``pull_request_review`` webhook. A
+    review is NOT a check: it carries the ``reviewer`` (login), no job ``name``,
+    and no ``EvidenceType`` -- a review always becomes ``PR_REVIEW`` evidence,
+    so there is no type-lookup key to carry (the mapper hard-codes the type).
+    ``commit_sha`` is the review's ``commit_id`` (the exact code state the
+    reviewer attested), so the pin triple satisfies ATLAS-61's system-tier guard.
+    """
+
+    reviewer: str
+    status: EvidenceStatus
+    external_run_id: str
+    commit_sha: str
+    payload_hash: str
+    source_uri: str | None
+    raw_payload: dict[str, Any]
+
+    @property
+    def dedup_key(self) -> tuple[str, str]:
+        """The append-only dedup key (evidence-pipeline.md "Poller").
+
+        Same contract as :attr:`NormalisedCheck.dedup_key`: re-polling an
+        unchanged review yields the same key; an edited review (changed payload)
+        yields a new ``payload_hash`` and so a new key.
+        """
+        return (self.external_run_id, self.payload_hash)
+
+
+def normalise_review_state(state: str) -> EvidenceStatus:
+    """Map a GitHub review ``state`` to an ``EvidenceStatus``.
+
+    ``APPROVED`` -> PASSED, ``CHANGES_REQUESTED`` -> FAILED, ``COMMENTED`` ->
+    WARNING, ``DISMISSED`` -> NOT_APPLICABLE. Any other state (e.g. ``PENDING``)
+    maps to WARNING -- surfaced, never silently dropped, never a crash.
+    """
+    return _REVIEW_STATE_STATUS.get(state, EvidenceStatus.WARNING)
+
+
+def normalise_review(review: Mapping[str, Any]) -> NormalisedReview | None:
+    """Normalise one ``pulls/{n}/reviews`` payload, or ``None`` if unpinnable.
+
+    ``commit_sha`` is the review's own ``commit_id`` -- the exact code state the
+    reviewer attested. A review whose ``commit_id`` is missing or null cannot be
+    commit-pinned, so it cannot be valid system-tier evidence (ATLAS-61): it is
+    SKIPPED (returns ``None``) with a warning rather than coerced into a record
+    with a ``"None"`` pin. Every ``NormalisedReview`` that exists is therefore
+    genuinely commit-pinned.
+    """
+    commit_id = review.get("commit_id")
+    if not commit_id:
+        logger.warning(
+            "PR review %r has no commit_id; skipping (cannot be commit-pinned, "
+            "ATLAS-65)",
+            review.get("id"),
+        )
+        return None
+    return NormalisedReview(
+        reviewer=review["user"]["login"],
+        status=normalise_review_state(review["state"]),
+        external_run_id=str(review["id"]),
+        commit_sha=str(commit_id),
+        payload_hash=payload_hash(review),
+        source_uri=review.get("html_url"),
+        raw_payload=dict(review),
+    )
+
+
+def normalise_reviews(
+    reviews: Sequence[Mapping[str, Any]],
+) -> list[NormalisedReview]:
+    """Normalise a list of review payloads, dropping the unpinnable ones.
+
+    Reviews with no ``commit_id`` are filtered out (each warned by
+    :func:`normalise_review`), so every returned ``NormalisedReview`` is
+    genuinely commit-pinned. A 304/ETag hit feeds the empty list, so it yields
+    no normalised events.
+    """
+    normalised = [normalise_review(review) for review in reviews]
+    return [review for review in normalised if review is not None]

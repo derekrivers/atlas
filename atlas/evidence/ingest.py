@@ -1,11 +1,13 @@
-"""Thin ingest path for normalised CI evidence (ATLAS-63/64).
+"""Thin ingest path for normalised CI / review evidence (ATLAS-63/64/65).
 
-The I/O half of the mapper: persist the mapped checks via the append-only
-``EvidenceRepo``. The mapping itself is pure (:mod:`.mapping`); this function
-only walks the checks and appends each one. The mapper is total since ATLAS-64
-(unrecognised jobs fall back to ``BUILD_RESULT`` with a warning), so every check
-produces a record — nothing is dropped here. The system-tier pinning guard
-(ATLAS-61) runs inside ``EvidenceRepo.add`` — this is its first real producer.
+The I/O half of the mappers: persist the mapped checks/reviews via the
+append-only ``EvidenceRepo``. The mapping itself is pure (:mod:`.mapping`);
+these functions only walk the inputs and append each one. The check mapper is
+total since ATLAS-64 (unrecognised jobs fall back to ``BUILD_RESULT`` with a
+warning) and every ``NormalisedReview`` is already commit-pinned (ATLAS-65), so
+every input produces a record — nothing is dropped here. The system-tier
+pinning guard (ATLAS-61) runs inside ``EvidenceRepo.add`` — this is its first
+real producer.
 
 Dedup (skip a re-polled run already stored, via the normaliser's
 ``(external_run_id, payload_hash)`` key) belongs to the poller/tick loop
@@ -19,8 +21,8 @@ from datetime import datetime
 from uuid import UUID
 
 from atlas.core.models.evidence import Evidence
-from atlas.evidence.mapping import map_check_to_evidence
-from atlas.github import NormalisedCheck
+from atlas.evidence.mapping import map_check_to_evidence, map_review_to_evidence
+from atlas.github import NormalisedCheck, NormalisedReview
 from atlas.storage import EvidenceRepo
 
 
@@ -42,5 +44,29 @@ def ingest_checks(
     persisted: list[Evidence] = []
     for check in checks:
         evidence = map_check_to_evidence(check, product_id=product_id, now=now)
+        persisted.append(repo.add(evidence))
+    return persisted
+
+
+def ingest_reviews(
+    reviews: Iterable[NormalisedReview],
+    *,
+    repo: EvidenceRepo,
+    product_id: UUID,
+    now: datetime,
+) -> list[Evidence]:
+    """Map and persist every review as ``PR_REVIEW`` evidence (ATLAS-65).
+
+    Mirrors :func:`ingest_checks`: each ``NormalisedReview`` becomes a
+    system-tier ``PR_REVIEW`` ``Evidence`` and is appended via the
+    ``EvidenceRepo``. Every ``NormalisedReview`` is already commit-pinned (the
+    normaliser drops the unpinnable ones), so each one produces a record that
+    satisfies the ATLAS-61 guard -- nothing is dropped here. ``now`` and
+    ``product_id`` pass straight through to :func:`map_review_to_evidence`.
+    """
+
+    persisted: list[Evidence] = []
+    for review in reviews:
+        evidence = map_review_to_evidence(review, product_id=product_id, now=now)
         persisted.append(repo.add(evidence))
     return persisted
