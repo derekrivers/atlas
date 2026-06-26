@@ -104,6 +104,44 @@ def test_add_has_no_bypass_parameter() -> None:
     assert list(parameters) == ["self", "model"]
 
 
+# --- system-tier pinning guard (ADR-0008, ATLAS-61) ------------------------
+
+
+@pytest.mark.parametrize("missing", ["commit_sha", "external_run_id", "payload_hash"])
+def test_system_tier_missing_pin_field_rejected(db: Database, missing: str) -> None:
+    # A system-tier record missing ANY of the pinning triple is refused and
+    # nothing is persisted. This is the test that fails if the guard block is
+    # deleted (the model accepts unpinned records; the repository must not).
+    repo = EvidenceRepo(db)
+    record = Evidence(**evidence_kwargs() | {missing: None})
+    with pytest.raises(TrustTierError, match=missing):
+        repo.add(record)
+    assert repo.list() == []
+
+
+def test_system_tier_fully_pinned_round_trips(db: Database) -> None:
+    repo = EvidenceRepo(db)
+    record = Evidence(**evidence_kwargs())  # default is a valid system record
+    assert repo.add(record) == record
+    assert repo.get(record.id) == record
+
+
+def test_human_tier_without_pin_fields_accepted(db: Database) -> None:
+    # The guard is system-tier only: a human-tier record needs no triple.
+    repo = EvidenceRepo(db)
+    record = Evidence(
+        **evidence_kwargs()
+        | {
+            "created_by_type": "human",
+            "commit_sha": None,
+            "external_run_id": None,
+            "payload_hash": None,
+        }
+    )
+    assert repo.add(record) == record
+    assert repo.get(record.id) == record
+
+
 # --- finalise-once (ADR-0007, knowledge-core) -------------------------------
 
 
