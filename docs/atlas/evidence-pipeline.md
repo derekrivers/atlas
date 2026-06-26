@@ -58,8 +58,11 @@ fail verification (Phase 7) — the evidence layer only records.
 
 All poller-created records are `created_by_type: system` with
 `commit_sha` (PR head), `external_run_id`, and `payload_hash` mandatory —
-ingestion rejects records missing any of them. Agent-submitted records
-remain capped at PENDING by the knowledge-core repository rule.
+ingestion rejects records missing any of them. The repository guard is
+blanket on the system tier: `EvidenceRepo.add` rejects *any* system-tier
+record missing any of the three regardless of `evidence_type` — there is no
+CI-evidence-type allowlist. Agent-submitted records remain capped at PENDING
+by the knowledge-core repository rule.
 
 ## Retention
 

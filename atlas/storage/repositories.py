@@ -411,7 +411,12 @@ class ContextPackRepo(_Repo[ContextPack]):
 
 
 class EvidenceRepo(_Repo[Evidence]):
-    """Append-only: add and queries only (ADR-0008)."""
+    """Append-only: add and queries only (ADR-0008).
+
+    Append-only is repository-shape only: there is no update or delete verb
+    (and no DB trigger, CHECK, or revoke) — the guarantee is that this
+    surface exposes no mutating verb, matching DebtItemRepo / TickFailureRepo.
+    """
 
     def __init__(self, db: Database) -> None:
         super().__init__(db, Evidence, EvidenceRow)
@@ -426,6 +431,18 @@ class EvidenceRepo(_Repo[Evidence]):
                 f"got status {model.status.value!r}. Corroboration comes "
                 "from a system-tier record or human approval, not a bypass."
             )
+        if evidence_tier(model.created_by_type) == "system":
+            missing = [
+                name
+                for name in ("commit_sha", "external_run_id", "payload_hash")
+                if getattr(model, name) is None
+            ]
+            if missing:
+                raise TrustTierError(
+                    "system-tier evidence must be commit-pinned (ADR-0008); "
+                    f"missing {missing}. Ingestion rejects records without "
+                    "commit_sha, external_run_id, and payload_hash."
+                )
         return super().add(model)
 
 

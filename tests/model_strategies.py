@@ -205,6 +205,11 @@ STRATEGIES: dict[type[BaseModel], st.SearchStrategy[BaseModel]] = {
         created_at=aware_datetimes,
         updated_at=aware_datetimes,
     ),
+    # System-tier evidence is commit-pinned: EvidenceRepo.add (ADR-0008,
+    # ATLAS-61) refuses a system-tier record missing any of commit_sha /
+    # external_run_id / payload_hash, so those are drawn non-None for SYSTEM
+    # and optional for HUMAN/AGENT — the generator only produces storable
+    # records, exactly as _evidence_actor_status already does for the cap.
     Evidence: _evidence_actor_status.flatmap(
         lambda pair: st.builds(
             Evidence,
@@ -215,9 +220,9 @@ STRATEGIES: dict[type[BaseModel], st.SearchStrategy[BaseModel]] = {
             evidence_type=st.sampled_from(EvidenceType),
             status=st.just(pair[1]),
             summary=texts,
-            commit_sha=optional(texts),
-            external_run_id=optional(texts),
-            payload_hash=optional(texts),
+            commit_sha=texts if pair[0] is ActorType.SYSTEM else optional(texts),
+            external_run_id=texts if pair[0] is ActorType.SYSTEM else optional(texts),
+            payload_hash=texts if pair[0] is ActorType.SYSTEM else optional(texts),
             source_uri=optional(texts),
             raw_payload=json_dicts,
             created_by_type=st.just(pair[0]),

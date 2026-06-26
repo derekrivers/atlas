@@ -57,12 +57,20 @@ DOCUMENTED_TYPES = {
 
 
 def evidence_kwargs() -> dict[str, Any]:
+    # Default is a valid system-tier record: ADR-0008 requires the pinning
+    # triple (commit_sha/external_run_id/payload_hash) for system-tier
+    # evidence, enforced in EvidenceRepo.add (ATLAS-61). Call sites that
+    # build agent/human records override created_by_type; the model-layer
+    # tests assert field shape, not kwargs contents.
     return {
         "id": uuid4(),
         "product_id": uuid4(),
         "evidence_type": "test_result",
         "status": "passed",
         "summary": "pytest: 97 passed",
+        "commit_sha": "a" * 40,
+        "external_run_id": "run-1",
+        "payload_hash": "sha256:" + "0" * 64,
         "created_by_type": "system",
         "created_by_id": "github-actions",
         "created_at": datetime(2026, 6, 12, tzinfo=UTC),
