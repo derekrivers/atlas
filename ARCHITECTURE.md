@@ -40,6 +40,7 @@ atlas.context       # Phase 5 Context Renderer: per-ticket retrieval
 atlas.dependencies  # dependency-graph projection and analyses
 atlas.storage       # database, tables, repositories
 atlas.linear        # Phase 4 Linear boundary: client + field ownership
+atlas.github        # Phase 6 GitHub boundary: CI poller + normaliser
 atlas.core          # models, enums, shared primitives
 ```
 
