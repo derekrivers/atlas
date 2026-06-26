@@ -1,10 +1,11 @@
-"""Thin ingest path for normalised CI evidence (ATLAS-63).
+"""Thin ingest path for normalised CI evidence (ATLAS-63/64).
 
-The I/O half of the mapper: persist the recognised, mapped checks via the
-append-only ``EvidenceRepo``. The mapping itself is pure (:mod:`.mapping`); this
-function only walks the checks, drops the unrecognised ones (mapper -> ``None``),
-and appends the rest. The system-tier pinning guard (ATLAS-61) runs inside
-``EvidenceRepo.add`` — this is its first real producer.
+The I/O half of the mapper: persist the mapped checks via the append-only
+``EvidenceRepo``. The mapping itself is pure (:mod:`.mapping`); this function
+only walks the checks and appends each one. The mapper is total since ATLAS-64
+(unrecognised jobs fall back to ``BUILD_RESULT`` with a warning), so every check
+produces a record — nothing is dropped here. The system-tier pinning guard
+(ATLAS-61) runs inside ``EvidenceRepo.add`` — this is its first real producer.
 
 Dedup (skip a re-polled run already stored, via the normaliser's
 ``(external_run_id, payload_hash)`` key) belongs to the poller/tick loop
@@ -30,18 +31,16 @@ def ingest_checks(
     product_id: UUID,
     now: datetime,
 ) -> list[Evidence]:
-    """Map and persist each recognised check; skip the unrecognised ones.
+    """Map and persist every check, returning the records in input order.
 
-    Returns the persisted records in input order. A check whose job name is
-    unrecognised maps to ``None`` and is skipped — nothing is written for it
-    (the ATLAS-64 ``BUILD_RESULT`` fallback is deliberately not here). ``now``
-    and ``product_id`` are passed straight through to :func:`map_check_to_evidence`.
+    The mapper is total (ATLAS-64): a check whose job name has no recognised
+    prefix falls back to ``BUILD_RESULT`` with a warning rather than being
+    dropped, so every check produces a persisted record. ``now`` and
+    ``product_id`` are passed straight through to :func:`map_check_to_evidence`.
     """
 
     persisted: list[Evidence] = []
     for check in checks:
         evidence = map_check_to_evidence(check, product_id=product_id, now=now)
-        if evidence is None:
-            continue
         persisted.append(repo.add(evidence))
     return persisted
