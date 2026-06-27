@@ -24,11 +24,13 @@ from atlas.evidence import (
     GITHUB_ACTIONS_ACTOR_ID,
     evidence_type_for_job,
     ingest_checks,
+    ingest_docs,
     ingest_reviews,
     map_check_to_evidence,
+    map_docs_to_evidence,
     map_review_to_evidence,
 )
-from atlas.github import NormalisedCheck, NormalisedReview
+from atlas.github import NormalisedCheck, NormalisedDocs, NormalisedReview
 from atlas.storage import Database, EvidenceRepo
 
 NOW = datetime(2026, 6, 26, tzinfo=UTC)
@@ -280,3 +282,72 @@ def test_ingest_reviews_persists_every_review(db: Database) -> None:
     assert {e.evidence_type for e in persisted} == {EvidenceType.PR_REVIEW}
     assert all(e.created_by_id == GITHUB_ACTIONS_ACTOR_ID for e in persisted)
     assert len(repo.list()) == 2
+
+
+# --- ATLAS-66: docs -> system-tier DOCUMENTATION_UPDATE Evidence --------------
+
+
+def _docs(
+    *, paths: tuple[str, ...] = ("docs/guide.md", "docs/index.md")
+) -> NormalisedDocs:
+    """A frozen NormalisedDocs with a full synthesised pin triple — the shape
+    ATLAS-66's normaliser hands the mapper (always PASSED, always pinned)."""
+    return NormalisedDocs(
+        status=EvidenceStatus.PASSED,
+        docs_paths=paths,
+        external_run_id="docs:" + "c" * 40,
+        commit_sha="c" * 40,
+        payload_hash="sha256:" + "d" * 64,
+        source_uri=None,
+        raw_payload={"files": [{"filename": p} for p in paths]},
+    )
+
+
+def test_docs_maps_to_system_tier_documentation_update_and_round_trips(
+    db: Database,
+) -> None:
+    docs = _docs()
+    evidence = map_docs_to_evidence(docs, product_id=uuid4(), now=NOW)
+
+    assert evidence.evidence_type is EvidenceType.DOCUMENTATION_UPDATE
+    assert evidence.created_by_type is ActorType.SYSTEM
+    assert evidence.created_by_id == GITHUB_ACTIONS_ACTOR_ID
+    # status taken verbatim (always PASSED for a docs change)
+    assert evidence.status is EvidenceStatus.PASSED
+    # the synthesised commit-pin triple is carried straight from the docs record
+    assert evidence.commit_sha == docs.commit_sha
+    assert evidence.external_run_id == docs.external_run_id
+    assert evidence.payload_hash == docs.payload_hash
+    assert evidence.created_at == NOW
+    # the summary names the path count
+    assert "2 path(s)" in evidence.summary
+
+    # round-trips through the ATLAS-61 system-tier pinning guard and back: proves
+    # the synthesised docs:<sha> pin satisfies the guard.
+    repo = EvidenceRepo(db)
+    assert repo.add(evidence) == evidence
+    assert repo.get(evidence.id) == evidence
+
+
+def test_map_docs_to_evidence_is_pure() -> None:
+    # No Database/repo parameter: persistence is ingest_docs' job.
+    params = set(inspect.signature(map_docs_to_evidence).parameters)
+    assert "db" not in params
+    assert "repo" not in params
+
+
+def test_ingest_docs_persists_the_one_record(db: Database) -> None:
+    repo = EvidenceRepo(db)
+    persisted = ingest_docs(_docs(), repo=repo, product_id=uuid4(), now=NOW)
+    assert {e.evidence_type for e in persisted} == {EvidenceType.DOCUMENTATION_UPDATE}
+    assert len(persisted) == 1
+    assert len(repo.list()) == 1
+
+
+def test_ingest_docs_none_persists_nothing(db: Database) -> None:
+    # The absence-based guarantee (criterion 2): no docs change -> None ->
+    # nothing persisted. The wrong answer this guards is manufacturing a record.
+    repo = EvidenceRepo(db)
+    persisted = ingest_docs(None, repo=repo, product_id=uuid4(), now=NOW)
+    assert persisted == []
+    assert repo.list() == []

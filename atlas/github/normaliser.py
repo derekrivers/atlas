@@ -249,3 +249,87 @@ def normalise_reviews(
     """
     normalised = [normalise_review(review) for review in reviews]
     return [review for review in normalised if review is not None]
+
+
+# --- documentation evidence (ATLAS-66) --------------------------------------
+
+# The PR-file predicate (D3): a changed file counts as a documentation change
+# when its path is under the ``docs/`` tree. Nothing fancier this ticket -- no
+# extension or sub-tree filtering. Kept as a named constant so the seeded-defect
+# (``"docs/"`` -> ``"doc/"``) and the absence-based guarantee both have one site.
+_DOCS_PREFIX = "docs/"
+
+
+@dataclass(frozen=True)
+class NormalisedDocs:
+    """One normalised per-PR documentation change -- the webhook-swap contract.
+
+    The docs analogue of :class:`NormalisedReview`, identical whether produced by
+    the poller (ATLAS-66) or a future ``pull_request`` webhook. A docs change is
+    NOT a check or a review: it is one record per PR (not per item), it carries
+    the touched ``docs_paths`` rather than a job ``name`` or ``reviewer``, and it
+    is ALWAYS ``EvidenceStatus.PASSED`` -- the presence of a ``docs/`` change is
+    the signal, so there is no status to derive and no ``EvidenceType`` to carry
+    (the mapper hard-codes ``DOCUMENTATION_UPDATE``). ``commit_sha`` is the polled
+    head SHA (the files endpoint omits it), so the synthesised pin triple still
+    satisfies ATLAS-61's system-tier guard.
+    """
+
+    status: EvidenceStatus
+    docs_paths: tuple[str, ...]
+    external_run_id: str
+    commit_sha: str
+    payload_hash: str
+    source_uri: str | None
+    raw_payload: dict[str, Any]
+
+    @property
+    def dedup_key(self) -> tuple[str, str]:
+        """The append-only dedup key (evidence-pipeline.md "Poller").
+
+        Same contract as :attr:`NormalisedCheck.dedup_key`: re-polling the same
+        head SHA's unchanged file list yields the same ``(external_run_id,
+        payload_hash)``; a new commit (new ``docs:<sha>`` id) or an edited file
+        set (new ``payload_hash``) yields a new key.
+        """
+        return (self.external_run_id, self.payload_hash)
+
+
+def normalise_pr_files(
+    files: Sequence[Mapping[str, Any]], *, head_sha: str
+) -> NormalisedDocs | None:
+    """Normalise a PR file list into a per-PR ``NormalisedDocs``, or ``None``.
+
+    Filters the file list to those whose ``filename`` is under ``docs/``. When
+    NONE are, returns ``None`` -- no ``docs/`` change means no record, because
+    the *absence* is the signal (evidence-pipeline.md "Documentation evidence");
+    a record is never manufactured (and never a FAILED one) where there is no
+    documentation change. When some are, builds a single PASSED ``NormalisedDocs``
+    over the ``docs/`` subset:
+
+    * ``docs_paths`` -- the touched ``docs/`` filenames, sorted (deterministic);
+    * ``commit_sha`` -- the polled ``head_sha`` (the files endpoint omits it);
+    * ``external_run_id`` -- the synthesised ``f"docs:{head_sha}"`` (there is no
+      GitHub run id for a file list; this pins the record to the head SHA);
+    * ``payload_hash`` -- the deterministic hash of the ``docs/`` subset only, so
+      an unrelated non-docs file changing does not churn the docs record;
+    * ``source_uri`` -- ``None`` (a file list has no single browser URL);
+    * ``raw_payload`` -- ``{"files": <the docs/ subset>}``.
+    """
+    docs_files = [
+        dict(file)
+        for file in files
+        if str(file.get("filename", "")).startswith(_DOCS_PREFIX)
+    ]
+    if not docs_files:
+        return None
+    subset = {"files": docs_files}
+    return NormalisedDocs(
+        status=EvidenceStatus.PASSED,
+        docs_paths=tuple(sorted(str(file["filename"]) for file in docs_files)),
+        external_run_id=f"docs:{head_sha}",
+        commit_sha=head_sha,
+        payload_hash=payload_hash(subset),
+        source_uri=None,
+        raw_payload=subset,
+    )

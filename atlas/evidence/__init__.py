@@ -7,15 +7,17 @@ id). The pure job-name -> ``EvidenceType`` contract and the pure check/review ->
 ``Evidence`` mappers live in :mod:`.mapping`; the thin persistence paths live in
 :mod:`.ingest`. ATLAS-64 adds the lint/build/coverage rows and the unrecognised
 -> BUILD_RESULT fallback; ATLAS-65 adds the PR-review mapper + ingest (always
-``PR_REVIEW``, no job-name lookup); docs (ATLAS-66) ingestion is a different
-source again.
+``PR_REVIEW``, no job-name lookup); ATLAS-66 adds the documentation mapper +
+ingest (always ``DOCUMENTATION_UPDATE``, one record per PR, ``None`` when no
+``docs/`` path changed).
 """
 
-from atlas.evidence.ingest import ingest_checks, ingest_reviews
+from atlas.evidence.ingest import ingest_checks, ingest_docs, ingest_reviews
 from atlas.evidence.mapping import (
     GITHUB_ACTIONS_ACTOR_ID,
     evidence_type_for_job,
     map_check_to_evidence,
+    map_docs_to_evidence,
     map_review_to_evidence,
 )
 
@@ -23,7 +25,9 @@ __all__ = [
     "GITHUB_ACTIONS_ACTOR_ID",
     "evidence_type_for_job",
     "ingest_checks",
+    "ingest_docs",
     "ingest_reviews",
     "map_check_to_evidence",
+    "map_docs_to_evidence",
     "map_review_to_evidence",
 ]
