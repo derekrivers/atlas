@@ -227,6 +227,97 @@ def test_fetch_pr_files_304_returns_empty_list(
     assert client.fetch_pr_files("o", "r", 1) == []  # 304: nothing new
 
 
+# --- pull request: the single-object (ATLAS-67) path ------------------------
+
+
+def test_fetch_pull_request_returns_object_from_pr_endpoint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The PR endpoint returns a single JSON OBJECT (an envelope, not a bare
+    # array); fetch_pull_request returns the parsed body directly so callers can
+    # read ["head"]["sha"].
+    captured: dict[str, str] = {}
+
+    def _urlopen(request: Any, *a: Any, **k: Any) -> _Response:
+        captured["url"] = request.full_url
+        body = b'{"number": 11499, "head": {"sha": "deadbeef"}}'
+        return _Response(body, _headers(ETag='"v1"'))
+
+    monkeypatch.setattr("atlas.github.client.urllib_request.urlopen", _urlopen)
+    pr = GitHubRESTClient(token="t").fetch_pull_request("o", "r", 11499)
+    assert pr == {"number": 11499, "head": {"sha": "deadbeef"}}
+    assert "/repos/o/r/pulls/11499" in captured["url"]
+
+
+def test_fetch_pull_request_shares_conditional_request_and_raises_on_304(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The object fetch rides the SAME conditional-request core as the arrays: it
+    # caches the ETag and SENDS If-None-Match on the next call (proving the path
+    # is shared, not just refactored). The ONLY divergence is the 304 outcome:
+    # there is no empty-object analogue of [] and no body cache to replay, so a
+    # 304 raises the documented error -- never a KeyError, never a silent {}.
+    seen_if_none_match: list[str | None] = []
+    state = {"calls": 0}
+
+    def _urlopen(request: Any, *a: Any, **k: Any) -> _Response:
+        seen_if_none_match.append(request.get_header("If-none-match"))
+        state["calls"] += 1
+        if state["calls"] == 1:
+            return _Response(b'{"head": {"sha": "abc"}}', _headers(ETag='"obj-etag"'))
+        raise _http_error(304, _headers(ETag='"obj-etag"'))
+
+    monkeypatch.setattr("atlas.github.client.urllib_request.urlopen", _urlopen)
+    client = GitHubRESTClient(token="t")
+
+    first = client.fetch_pull_request("o", "r", 1)
+    assert first == {"head": {"sha": "abc"}}
+
+    with pytest.raises(GitHubAPIError, match="304 with no cached body"):
+        client.fetch_pull_request("o", "r", 1)
+
+    # First request had no conditional header; the second sent the cached ETag —
+    # exactly as the array path does (see the ETag/304 test below).
+    assert seen_if_none_match[0] is None
+    assert seen_if_none_match[1] == '"obj-etag"'
+
+
+def test_fetch_pull_request_rate_limit_is_shared_bounded_backoff(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The object fetch shares the bounded secondary-rate-limit backoff core with
+    # the array endpoints: tried once + retried MAX times honouring Retry-After,
+    # then a typed error (identical to the array path's behaviour).
+    state = {"calls": 0}
+
+    def _urlopen(request: Any, *a: Any, **k: Any) -> _Response:
+        state["calls"] += 1
+        raise _http_error(403, _headers(Retry_After="0", x_ratelimit_remaining="0"))
+
+    sleep, waits = _no_sleep_recorder()
+    monkeypatch.setattr("atlas.github.client.urllib_request.urlopen", _urlopen)
+    client = GitHubRESTClient(token="t", sleep=sleep)
+
+    with pytest.raises(GitHubAPIError, match="rate limit"):
+        client.fetch_pull_request("o", "r", 1)
+
+    assert state["calls"] == MAX_RATE_LIMIT_RETRIES + 1
+    assert len(waits) == MAX_RATE_LIMIT_RETRIES
+
+
+def test_fetch_pull_request_non_object_body_is_api_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The object path expects a dict; a bare array (or any non-object) is a typed
+    # error, never silently treated as an object.
+    def _urlopen(request: Any, *a: Any, **k: Any) -> _Response:
+        return _Response(b'[{"head": {}}]', _headers())
+
+    monkeypatch.setattr("atlas.github.client.urllib_request.urlopen", _urlopen)
+    with pytest.raises(GitHubAPIError, match="was not an object"):
+        GitHubRESTClient(token="t").fetch_pull_request("o", "r", 1)
+
+
 # --- ETag / 304 (criterion 3) -----------------------------------------------
 
 

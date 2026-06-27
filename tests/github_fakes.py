@@ -14,6 +14,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from atlas.github.client import GitHubAPIError
+
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "github"
 
 
@@ -36,6 +38,16 @@ def load_array_fixture(name: str) -> list[dict[str, Any]]:
     return items
 
 
+def load_object_fixture(name: str) -> dict[str, Any]:
+    """Return a recorded GitHub single-object fixture (e.g. a pull request).
+
+    The pull-request endpoint returns a JSON object (an envelope, not a bare
+    array), so the body IS the result -- there is no key to unwrap (ATLAS-67).
+    """
+    body: dict[str, Any] = json.loads((FIXTURES / name).read_text(encoding="utf-8"))
+    return body
+
+
 class FakeGitHubClient:
     """A fixture-backed ``GitHubClient``.
 
@@ -51,11 +63,16 @@ class FakeGitHubClient:
         check_runs: list[dict[str, Any]] | None = None,
         pr_reviews: list[dict[str, Any]] | None = None,
         pr_files: list[dict[str, Any]] | None = None,
+        pull_request: dict[str, Any] | None = None,
     ) -> None:
         self._workflow_runs = list(workflow_runs or [])
         self._check_runs = list(check_runs or [])
         self._pr_reviews = list(pr_reviews or [])
         self._pr_files = list(pr_files or [])
+        # ``None`` (the default) models an unknown PR: fetch_pull_request raises
+        # GitHubAPIError (the 404 path), so the CLI's clean-precondition exit is
+        # exercised. A seeded dict replays as the recorded PR object.
+        self._pull_request = pull_request
         self.calls: list[tuple[str, str, str, str | int]] = []
 
     def fetch_workflow_runs(
@@ -83,3 +100,16 @@ class FakeGitHubClient:
         # PR files are PR-scoped too: the recorded arg is the PR number (ATLAS-66).
         self.calls.append(("pr_files", owner, repo, pr_number))
         return list(self._pr_files)
+
+    def fetch_pull_request(
+        self, owner: str, repo: str, pr_number: int
+    ) -> dict[str, Any]:
+        # PR-scoped single-object fetch (ATLAS-67): records the PR number, and
+        # replays the recorded object. An unseeded (None) PR models a 404 ->
+        # GitHubAPIError, the unknown-PR clean-precondition path.
+        self.calls.append(("pull_request", owner, repo, pr_number))
+        if self._pull_request is None:
+            raise GitHubAPIError(
+                f"GitHub API HTTP 404: pull request {pr_number} not found"
+            )
+        return dict(self._pull_request)

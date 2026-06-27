@@ -64,6 +64,26 @@ as a gate; over-budget, ticket-not-found, a dirty input tree, and an unresolvabl
 anchor are each a clean one-line CLI error (`EXIT_PRECONDITION`), never a
 traceback. `context` exit codes: 0 success (and a valid `validate`); 2 precondition
 (any loader/build failure, or an invalid `validate`).
+
+`evidence` (ATLAS-67) is the Phase 6 surface over the evidence pipeline:
+`pull --pr N --repo OWNER/REPO` (the write side) and `list`/`show` (the read
+side). `pull` resolves the PR head SHA once via `fetch_pull_request`, then
+fetches + normalises + ingests all three sources — CI checks (workflow + check
+runs, pinned to the head SHA), PR reviews (pinned to each review's own commit),
+and a per-PR documentation record (touched `docs/` paths) — through the existing
+`atlas.evidence.ingest_*` paths and the append-only `EvidenceRepo`, whose
+ATLAS-61 guard makes every persisted row commit-pinned system-tier. The
+pipeline-driving helper is `GitHubClient`-Protocol-typed and takes the client as
+a parameter, so tests inject the fake and it runs with no network; production
+builds the live `GitHubRESTClient` (token from `GITHUB_TOKEN`) inside `pull`. A
+single `datetime.now(UTC)` is captured per `pull` and threaded into every
+ingest. `list` filters `EvidenceRepo.list()` by `--commit`/`--type` in Python
+and orders by `(created_at, id)`; `show` prints one record by id. A malformed
+`--repo`, a missing product, a missing token, an unknown PR / transport failure,
+a non-UUID id, and an unknown id are each a clean one-line `EXIT_PRECONDITION`,
+never a traceback; no token is ever printed. `evidence` exit codes: 0 success; 2
+precondition. NOTE: `pull --repo` is the GitHub `OWNER/REPO` slug, not the
+repo-root path that `plan`/`context` `--repo` mean.
 """
 
 from __future__ import annotations
@@ -78,6 +98,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import NamedTuple
+from uuid import UUID
 
 import networkx as nx
 
@@ -92,6 +113,7 @@ from atlas.core.anchors import IngestionError, SourceDocument
 from atlas.core.models import PlanRunStatus
 from atlas.core.models.adr import ADRStatus, ArchitectureDecisionRecord
 from atlas.core.models.context_pack import ContextPack
+from atlas.core.models.evidence import Evidence
 from atlas.core.models.lesson import Lesson
 from atlas.core.models.ticket import Ticket
 from atlas.dependencies import (
@@ -111,6 +133,17 @@ from atlas.dependencies import (
     render_graph_json,
     unlocks,
     validate_graph,
+)
+from atlas.evidence import ingest_checks, ingest_docs, ingest_reviews
+from atlas.github import (
+    GitHubAPIError,
+    GitHubClient,
+    GitHubRESTClient,
+    MissingGitHubTokenError,
+    normalise_check_runs,
+    normalise_pr_files,
+    normalise_reviews,
+    normalise_workflow_runs,
 )
 from atlas.linear.client import (
     TEAM_ID_ENV,
@@ -133,6 +166,7 @@ from atlas.planning.client import (
 )
 from atlas.planning.ingestion import DirtyInputError, collect_input_documents
 from atlas.planning.pipeline import (
+    PRODUCT_KEY,
     PlanPreconditionError,
     format_plan_diff,
     run_plan,
@@ -159,7 +193,9 @@ from atlas.storage import (
     Database,
     DebtItemRepo,
     EffortValidationError,
+    EvidenceRepo,
     LessonRepo,
+    ProductRepo,
     TicketNotFoundError,
     TicketRepo,
     TicketStatusTransitionRepo,
@@ -221,6 +257,7 @@ def build_parser() -> argparse.ArgumentParser:
     _add_deps_parser(subcommands)
     _add_pm_parser(subcommands)
     _add_context_parser(subcommands)
+    _add_evidence_parser(subcommands)
     return parser
 
 
@@ -365,6 +402,59 @@ def _add_context_parser(subcommands: argparse._SubParsersAction) -> None:  # typ
 
     _add("validate", "Validate a ticket's context pack; non-zero when invalid")
     _add("show", "Print a human summary of a ticket's context pack")
+
+
+def _add_evidence_parser(subcommands: argparse._SubParsersAction) -> None:  # type: ignore[type-arg]
+    """The `atlas evidence` group (ATLAS-67) and its three subcommands. Mirrors
+    the `deps`/`pm`/`context` shape: its own nested subparsers
+    (dest="evidence_command", required=True). `pull` drives the live pipeline for
+    one PR (fetch -> normalise -> ingest all three sources); `list`/`show` read
+    the stored rows back. Every subcommand takes `--db` and `--json`.
+
+    NOTE: `pull --repo` is the GitHub `OWNER/REPO` slug (which repository to poll),
+    NOT the repo-root path that `plan`/`context` `--repo` means -- a different
+    surface, a different meaning."""
+    evidence = subcommands.add_parser(
+        "evidence",
+        help="Evidence System: pull CI/review/docs evidence for a PR, list, show",
+    )
+    evidence_sub = evidence.add_subparsers(dest="evidence_command", required=True)
+
+    pull = evidence_sub.add_parser(
+        "pull",
+        help="Fetch + normalise + ingest CI/review/docs evidence for one PR",
+    )
+    pull.add_argument(
+        "--pr", type=int, required=True, help="the pull request number to pull"
+    )
+    pull.add_argument(
+        "--repo",
+        required=True,
+        help="the GitHub repository as OWNER/REPO (not a path)",
+    )
+    pull.add_argument("--db", default=None, help="database URL")
+    pull.add_argument("--json", action="store_true", help="emit machine-readable JSON")
+
+    list_parser = evidence_sub.add_parser(
+        "list", help="List the stored evidence rows (newest-pinned ordering)"
+    )
+    list_parser.add_argument(
+        "--commit", default=None, help="filter to one commit SHA (exact match)"
+    )
+    list_parser.add_argument(
+        "--type",
+        default=None,
+        help="filter to one evidence_type (e.g. test_result, pr_review)",
+    )
+    list_parser.add_argument("--db", default=None, help="database URL")
+    list_parser.add_argument(
+        "--json", action="store_true", help="emit machine-readable JSON"
+    )
+
+    show = evidence_sub.add_parser("show", help="Show one stored evidence record")
+    show.add_argument("evidence_id", help="the evidence id (a UUID)")
+    show.add_argument("--db", default=None, help="database URL")
+    show.add_argument("--json", action="store_true", help="emit machine-readable JSON")
 
 
 def _make_confirm(assume_yes: bool) -> Callable[[PlanDiff], ApplyDecision]:
@@ -1024,6 +1114,247 @@ def _context_command(args: argparse.Namespace, *, database: Database | None) -> 
     return EXIT_PRECONDITION  # unreachable: context subparser is required
 
 
+class _PullResult(NamedTuple):
+    """The per-source records one `evidence pull` persisted (D1). Returned by
+    the Protocol-typed driver so the command can print a per-source count and
+    tests can assert the persisted rows."""
+
+    checks: list[Evidence]
+    reviews: list[Evidence]
+    docs: list[Evidence]
+
+
+def _drive_evidence_pull(
+    client: GitHubClient,
+    owner: str,
+    repo: str,
+    pr_number: int,
+    *,
+    evidence_repo: EvidenceRepo,
+    product_id: UUID,
+    now: datetime,
+) -> _PullResult:
+    """Fetch -> normalise -> ingest all three evidence sources for one PR (D1/D3).
+
+    Protocol-typed in ``client`` (any ``GitHubClient``) so it runs fully offline
+    under the fake -- no network, no concrete client wired in. Resolves the head
+    SHA ONCE from the pull-request object (``["head"]["sha"]``) and threads it
+    into the CI/docs normalisers, while reviews and files are fetched by
+    ``pr_number`` (D3). ``now`` is captured once by the caller (D6) and passed to
+    every ``ingest_*`` so the run's records share a creation time. Persistence is
+    the append-only ``EvidenceRepo``; the ATLAS-61 system-tier pinning guard runs
+    inside its ``add``.
+
+    A 404 (unknown PR) or any transport failure surfaces as ``GitHubAPIError``
+    for the caller to map to a clean precondition -- never a traceback.
+    """
+    pull_request = client.fetch_pull_request(owner, repo, pr_number)
+    head_sha = str(pull_request["head"]["sha"])
+
+    checks = [
+        *normalise_workflow_runs(
+            client.fetch_workflow_runs(owner, repo, head_sha), head_sha=head_sha
+        ),
+        *normalise_check_runs(
+            client.fetch_check_runs(owner, repo, head_sha), head_sha=head_sha
+        ),
+    ]
+    reviews = normalise_reviews(client.fetch_pr_reviews(owner, repo, pr_number))
+    docs = normalise_pr_files(
+        client.fetch_pr_files(owner, repo, pr_number), head_sha=head_sha
+    )
+
+    return _PullResult(
+        checks=ingest_checks(
+            checks, repo=evidence_repo, product_id=product_id, now=now
+        ),
+        reviews=ingest_reviews(
+            reviews, repo=evidence_repo, product_id=product_id, now=now
+        ),
+        docs=ingest_docs(docs, repo=evidence_repo, product_id=product_id, now=now),
+    )
+
+
+def _evidence_pull(
+    args: argparse.Namespace,
+    resolved_db: Database,
+    *,
+    github_client: GitHubClient | None,
+) -> int:
+    """`evidence pull --pr N --repo OWNER/REPO` (D1/D2/D5). Resolve the product,
+    build the LIVE client (unless one is injected for tests), drive the pipeline,
+    and print a per-source count. Every precondition -- a malformed `--repo`, no
+    product, a missing token, an unknown PR / transport failure -- is a clean
+    one-line `EXIT_PRECONDITION`, never a traceback (D7); no secret is printed."""
+    owner, sep, repo = args.repo.partition("/")
+    if not (owner and sep and repo) or "/" in repo:
+        print("--repo must be OWNER/REPO (e.g. acme/atlas).", file=sys.stderr)
+        return EXIT_PRECONDITION
+
+    product = ProductRepo(resolved_db).get_by_key(PRODUCT_KEY)
+    if product is None:
+        print(
+            f"no {PRODUCT_KEY!r} product in the database; bootstrap the product "
+            "before pulling evidence (setup gap).",
+            file=sys.stderr,
+        )
+        return EXIT_PRECONDITION
+
+    client = github_client
+    if client is None:
+        try:
+            client = GitHubRESTClient()  # reads GITHUB_TOKEN at construction
+        except MissingGitHubTokenError as error:
+            print(error, file=sys.stderr)
+            return EXIT_PRECONDITION
+
+    try:
+        result = _drive_evidence_pull(
+            client,
+            owner,
+            repo,
+            args.pr,
+            evidence_repo=EvidenceRepo(resolved_db),
+            product_id=product.id,
+            now=datetime.now(UTC),
+        )
+    except GitHubAPIError as error:
+        print(error, file=sys.stderr)
+        return EXIT_PRECONDITION
+
+    persisted = [*result.checks, *result.reviews, *result.docs]
+    payload = {
+        "checks": len(result.checks),
+        "reviews": len(result.reviews),
+        "docs": len(result.docs),
+        "total": len(persisted),
+        "evidence_ids": [str(record.id) for record in persisted],
+    }
+    text = "\n".join(
+        [
+            f"Pulled evidence for {owner}/{repo} PR #{args.pr}:",
+            f"  checks:  {len(result.checks)}",
+            f"  reviews: {len(result.reviews)}",
+            f"  docs:    {len(result.docs)}",
+            f"  total:   {len(persisted)}",
+        ]
+    )
+    _emit(payload, text, as_json=args.json)
+    return EXIT_OK
+
+
+def _evidence_summary(record: Evidence) -> dict[str, object]:
+    """A concise per-row projection for `evidence list` (D4/D7): the identifying
+    and triage fields, NOT the verbatim ``raw_payload`` (which `show` carries).
+    Keeps a list of many rows readable and its JSON small."""
+    return {
+        "id": str(record.id),
+        "evidence_type": record.evidence_type.value,
+        "status": record.status.value,
+        "commit_sha": record.commit_sha,
+        "summary": record.summary,
+        "created_at": record.created_at.isoformat(),
+    }
+
+
+def _evidence_row_text(record: Evidence) -> str:
+    """One human-readable `evidence list` row: id, type, status, short SHA, summary."""
+    short_sha = (record.commit_sha or "")[:12]
+    return (
+        f"{record.id}  {record.evidence_type.value:<22} "
+        f"{record.status.value:<14} {short_sha:<12}  {record.summary}"
+    )
+
+
+def _evidence_list(args: argparse.Namespace, resolved_db: Database) -> int:
+    """`evidence list [--commit SHA] [--type T]` (D4). Filter ``EvidenceRepo.list()``
+    in Python (no new storage verb this ticket): ``--commit`` matches
+    ``commit_sha`` and ``--type`` matches ``evidence_type`` exactly. Order
+    deterministically by ``(created_at, id)``."""
+    rows = EvidenceRepo(resolved_db).list()
+    if args.commit is not None:
+        rows = [record for record in rows if record.commit_sha == args.commit]
+    if args.type is not None:
+        rows = [record for record in rows if record.evidence_type.value == args.type]
+    rows = sorted(rows, key=lambda record: (record.created_at, str(record.id)))
+
+    payload = [_evidence_summary(record) for record in rows]
+    text = (
+        "\n".join(_evidence_row_text(record) for record in rows)
+        if rows
+        else "No evidence."
+    )
+    _emit(payload, text, as_json=args.json)
+    return EXIT_OK
+
+
+def _evidence_show_text(record: Evidence) -> str:
+    """A human field summary for `evidence show` (D1/D7): the record's identifying
+    and trust fields, one per line. Never prints a token (there is none on an
+    Evidence row); ``raw_payload`` is summarised by size, surfaced verbatim only
+    under ``--json``."""
+    return "\n".join(
+        [
+            f"id:              {record.id}",
+            f"product_id:      {record.product_id}",
+            f"ticket_id:       {record.ticket_id}",
+            f"evidence_type:   {record.evidence_type.value}",
+            f"status:          {record.status.value}",
+            f"summary:         {record.summary}",
+            f"commit_sha:      {record.commit_sha}",
+            f"external_run_id: {record.external_run_id}",
+            f"payload_hash:    {record.payload_hash}",
+            f"source_uri:      {record.source_uri}",
+            f"created_by:      {record.created_by_type.value}:{record.created_by_id}",
+            f"created_at:      {record.created_at.isoformat()}",
+            f"raw_payload:     {len(record.raw_payload)} key(s)",
+        ]
+    )
+
+
+def _evidence_show(args: argparse.Namespace, resolved_db: Database) -> int:
+    """`evidence show EVIDENCE_ID` (D1). A non-UUID id and an unknown id are each
+    a clean ``EXIT_PRECONDITION`` (no traceback); ``--json`` dumps the full
+    record (``raw_payload`` included)."""
+    try:
+        evidence_id = UUID(args.evidence_id)
+    except ValueError:
+        print(f"not a valid evidence id: {args.evidence_id!r}", file=sys.stderr)
+        return EXIT_PRECONDITION
+
+    record = EvidenceRepo(resolved_db).get(evidence_id)
+    if record is None:
+        print(f"no evidence with id {evidence_id}", file=sys.stderr)
+        return EXIT_PRECONDITION
+
+    _emit(
+        record.model_dump(mode="json"),
+        _evidence_show_text(record),
+        as_json=args.json,
+    )
+    return EXIT_OK
+
+
+def _evidence_command(
+    args: argparse.Namespace,
+    *,
+    database: Database | None,
+    github_client: GitHubClient | None,
+) -> int:
+    """Route `atlas evidence <subcommand>` (ATLAS-67): `pull` (write side -- drive
+    the pipeline for one PR) and `list`/`show` (read side). `github_client` is
+    injected by tests; production builds the live `GitHubRESTClient` inside
+    `pull`."""
+    resolved_db = database if database is not None else Database(args.db)
+    if args.evidence_command == "pull":
+        return _evidence_pull(args, resolved_db, github_client=github_client)
+    if args.evidence_command == "list":
+        return _evidence_list(args, resolved_db)
+    if args.evidence_command == "show":
+        return _evidence_show(args, resolved_db)
+    return EXIT_PRECONDITION  # unreachable: evidence subparser is required
+
+
 def main(
     argv: list[str] | None = None,
     *,
@@ -1031,9 +1362,11 @@ def main(
     client: PlannerClient | None = None,
     identity: ModelIdentity | None = None,
     staged_generator: StagedProposalGenerator | None = None,
+    github_client: GitHubClient | None = None,
 ) -> int:
-    """Entry point. ``database``/``client``/``identity``/``staged_generator``
-    are injectable for tests; production builds them from the environment."""
+    """Entry point. ``database``/``client``/``identity``/``staged_generator``/
+    ``github_client`` are injectable for tests; production builds them from the
+    environment."""
     args = build_parser().parse_args(argv)
     if args.command == "plan":
         return _plan_command(
@@ -1051,6 +1384,8 @@ def main(
         return _pm_command(args, database=database)
     if args.command == "context":
         return _context_command(args, database=database)
+    if args.command == "evidence":
+        return _evidence_command(args, database=database, github_client=github_client)
     return EXIT_PRECONDITION  # unreachable: subparser is required
 
 
