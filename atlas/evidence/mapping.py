@@ -21,6 +21,11 @@ Pure functions, no I/O:
   from a frozen ``NormalisedReview`` (ATLAS-65). A review is always ``PR_REVIEW``
   -- no job-name lookup -- and the reviewer lives in ``raw_payload``/``summary``,
   never in ``created_by_id`` (which stays the SYSTEM-tier ``github-actions``).
+* :func:`map_docs_to_evidence` builds a system-tier ``DOCUMENTATION_UPDATE``
+  ``Evidence`` from a frozen ``NormalisedDocs`` (ATLAS-66). Like the review
+  mapper it hard-codes the type (no job-name lookup) and takes the status
+  (always ``PASSED``) verbatim; the no-docs-change case never reaches here (it
+  is ``None`` upstream), so this mapper never produces a FAILED record.
 """
 
 from __future__ import annotations
@@ -31,7 +36,7 @@ from uuid import UUID, uuid4
 
 from atlas.core.enums import ActorType
 from atlas.core.models.evidence import Evidence, EvidenceType
-from atlas.github import NormalisedCheck, NormalisedReview
+from atlas.github import NormalisedCheck, NormalisedDocs, NormalisedReview
 
 # Module logger for the unrecognised-job fallback warning (ATLAS-64), mirroring
 # atlas/github/client.py's logger + logger.warning pattern.
@@ -165,6 +170,50 @@ def map_review_to_evidence(
         payload_hash=review.payload_hash,
         source_uri=review.source_uri,
         raw_payload=review.raw_payload,
+        created_by_type=ActorType.SYSTEM,
+        created_by_id=GITHUB_ACTIONS_ACTOR_ID,
+        created_at=now,
+    )
+
+
+def map_docs_to_evidence(
+    docs: NormalisedDocs,
+    *,
+    product_id: UUID,
+    now: datetime,
+) -> Evidence:
+    """Build a system-tier ``DOCUMENTATION_UPDATE`` ``Evidence`` from ``docs``.
+    PURE: it touches no ``Database`` and persists nothing (that is
+    :func:`atlas.evidence.ingest.ingest_docs`).
+
+    Like :func:`map_review_to_evidence` -- and unlike
+    :func:`map_check_to_evidence` -- there is no job-name -> type lookup: a docs
+    change is ALWAYS ``DOCUMENTATION_UPDATE`` evidence (evidence-pipeline.md
+    "Documentation evidence"), so the type is hard-coded. The status is taken
+    VERBATIM from ``docs.status`` -- always ``PASSED`` here, since the *presence*
+    of a ``docs/`` change is the signal (ATLAS-66 only normalises a docs change
+    when there is one; the no-change case is ``None``, never a FAILED record).
+    The commit-pin triple (``commit_sha``/``external_run_id``/``payload_hash``)
+    is copied straight from ``docs`` -- the synthesised ``docs:<head_sha>`` id and
+    head-SHA pin satisfy ATLAS-61's system-tier guard.
+
+    Attribution stays SYSTEM/``github-actions`` (D4), as for the check and review
+    mappers: the GitHub poller is the ingesting actor for all system-tier
+    evidence. ``product_id`` and ``now`` are explicit for the same reasons as
+    :func:`map_check_to_evidence`.
+    """
+
+    return Evidence(
+        id=uuid4(),
+        product_id=product_id,
+        evidence_type=EvidenceType.DOCUMENTATION_UPDATE,
+        status=docs.status,  # verbatim (PASSED); the presence is the signal
+        summary=f"docs updated: {len(docs.docs_paths)} path(s)",
+        commit_sha=docs.commit_sha,
+        external_run_id=docs.external_run_id,
+        payload_hash=docs.payload_hash,
+        source_uri=docs.source_uri,
+        raw_payload=docs.raw_payload,
         created_by_type=ActorType.SYSTEM,
         created_by_id=GITHUB_ACTIONS_ACTOR_ID,
         created_at=now,

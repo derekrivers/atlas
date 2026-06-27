@@ -101,6 +101,18 @@ class GitHubClient(Protocol):
         """
         ...
 
+    def fetch_pr_files(
+        self, owner: str, repo: str, pr_number: int
+    ) -> list[dict[str, Any]]:
+        """Raw changed-file list for a pull request (GitHub -> Atlas).
+
+        Like reviews, PR files are PR-scoped (takes ``pr_number``) and the
+        endpoint returns a bare JSON array, not an envelope (ATLAS-66). Feeds
+        the documentation-evidence normaliser, which records a touched-``docs/``
+        change as a DOCUMENTATION_UPDATE.
+        """
+        ...
+
 
 class GitHubRESTClient:
     """Concrete ``GitHubClient`` over the GitHub REST API (production).
@@ -150,6 +162,15 @@ class GitHubRESTClient:
         # The reviews endpoint returns a bare JSON array, not an envelope, so
         # there is no result_key to unwrap (result_key=None; ATLAS-65).
         path = f"/repos/{owner}/{repo}/pulls/{pr_number}/reviews"
+        body = self._get(path, {}, result_key=None)
+        return body
+
+    def fetch_pr_files(
+        self, owner: str, repo: str, pr_number: int
+    ) -> list[dict[str, Any]]:
+        # The files endpoint returns a bare JSON array, like reviews, so there
+        # is no result_key to unwrap (result_key=None; ATLAS-66).
+        path = f"/repos/{owner}/{repo}/pulls/{pr_number}/files"
         body = self._get(path, {}, result_key=None)
         return body
 

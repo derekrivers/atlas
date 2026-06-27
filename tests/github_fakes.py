@@ -50,10 +50,12 @@ class FakeGitHubClient:
         workflow_runs: list[dict[str, Any]] | None = None,
         check_runs: list[dict[str, Any]] | None = None,
         pr_reviews: list[dict[str, Any]] | None = None,
+        pr_files: list[dict[str, Any]] | None = None,
     ) -> None:
         self._workflow_runs = list(workflow_runs or [])
         self._check_runs = list(check_runs or [])
         self._pr_reviews = list(pr_reviews or [])
+        self._pr_files = list(pr_files or [])
         self.calls: list[tuple[str, str, str, str | int]] = []
 
     def fetch_workflow_runs(
@@ -74,3 +76,10 @@ class FakeGitHubClient:
         # Reviews are PR-scoped, so the recorded arg is the PR number, not a SHA.
         self.calls.append(("pr_reviews", owner, repo, pr_number))
         return list(self._pr_reviews)
+
+    def fetch_pr_files(
+        self, owner: str, repo: str, pr_number: int
+    ) -> list[dict[str, Any]]:
+        # PR files are PR-scoped too: the recorded arg is the PR number (ATLAS-66).
+        self.calls.append(("pr_files", owner, repo, pr_number))
+        return list(self._pr_files)
