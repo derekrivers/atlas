@@ -101,6 +101,7 @@ from typing import NamedTuple
 from uuid import UUID
 
 import networkx as nx
+from sqlalchemy.exc import OperationalError
 
 from atlas.context import (
     DEFAULT_TOKEN_BUDGET,
@@ -1344,14 +1345,39 @@ def _evidence_command(
     """Route `atlas evidence <subcommand>` (ATLAS-67): `pull` (write side -- drive
     the pipeline for one PR) and `list`/`show` (read side). `github_client` is
     injected by tests; production builds the live `GitHubRESTClient` inside
-    `pull`."""
+    `pull`.
+
+    ATLAS-130: a cold (never-migrated) database raises ``OperationalError: no
+    such table`` from the first repository access — ``ProductRepo.get_by_key``
+    in `pull`, ``EvidenceRepo.list``/``.get`` in `list`/`show` — which without
+    this guard escapes as a raw SQLAlchemy traceback (D7 violation). The catch
+    wraps the WHOLE dispatch deliberately, not just the first DB access: at this
+    stage an ``OperationalError`` anywhere in an evidence command almost always
+    means a schema problem — a fully cold DB, or a partially-migrated one whose
+    ``evidence`` table is still absent at ingest-time ``EvidenceRepo.add`` (the
+    `products`-exists-but-`evidence`-missing case). Wrapping only the probe would
+    leave that write-time ``no such table: evidence`` path an unguarded
+    traceback. A constraint/duplicate failure raises ``IntegrityError`` (a
+    different class), so it is NOT caught here; a rare transient operational
+    fault on a migrated DB is the one mislabel, and it still exits cleanly. The
+    binding is omitted so no raw SQLAlchemy text leaks. The inner
+    ``MissingGitHubTokenError``/``GitHubAPIError`` handlers `return`, so they
+    propagate as values and the outer ``except`` never sees them."""
     resolved_db = database if database is not None else Database(args.db)
-    if args.evidence_command == "pull":
-        return _evidence_pull(args, resolved_db, github_client=github_client)
-    if args.evidence_command == "list":
-        return _evidence_list(args, resolved_db)
-    if args.evidence_command == "show":
-        return _evidence_show(args, resolved_db)
+    try:
+        if args.evidence_command == "pull":
+            return _evidence_pull(args, resolved_db, github_client=github_client)
+        if args.evidence_command == "list":
+            return _evidence_list(args, resolved_db)
+        if args.evidence_command == "show":
+            return _evidence_show(args, resolved_db)
+    except OperationalError:
+        print(
+            "database is not initialised (no such table); run the database "
+            "migrations before using `atlas evidence`.",
+            file=sys.stderr,
+        )
+        return EXIT_PRECONDITION
     return EXIT_PRECONDITION  # unreachable: evidence subparser is required
 
 
