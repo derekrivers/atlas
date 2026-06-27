@@ -1,0 +1,36 @@
+{
+  "url": "https://api.github.com/repos/cli/cli/pulls/11499",
+  "id": 2476543210,
+  "node_id": "PR_kwDODKw3uc6T0aBc",
+  "html_url": "https://github.com/cli/cli/pull/11499",
+  "number": 11499,
+  "state": "open",
+  "title": "Document the release process",
+  "user": {
+    "login": "octocat",
+    "id": 583231
+  },
+  "head": {
+    "label": "octocat:release-docs",
+    "ref": "release-docs",
+    "sha": "1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b",
+    "repo": {
+      "id": 212613561,
+      "name": "cli",
+      "full_name": "cli/cli"
+    }
+  },
+  "base": {
+    "label": "cli:trunk",
+    "ref": "trunk",
+    "sha": "0000000011112222333344445555666677778888",
+    "repo": {
+      "id": 212613561,
+      "name": "cli",
+      "full_name": "cli/cli"
+    }
+  },
+  "merged": false,
+  "mergeable": true,
+  "draft": false
+}

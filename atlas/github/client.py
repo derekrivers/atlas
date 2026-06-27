@@ -35,7 +35,7 @@ import logging
 import os
 import time
 from collections.abc import Callable
-from typing import Any, Protocol, runtime_checkable
+from typing import Any, Protocol, TypeVar, runtime_checkable
 from urllib import error as urllib_error
 from urllib import parse as urllib_parse
 from urllib import request as urllib_request
@@ -57,6 +57,11 @@ _DEFAULT_BACKOFF_SECONDS = 1.0
 _MAX_BACKOFF_SECONDS = 60.0
 
 logger = logging.getLogger("atlas.github.client")
+
+# The result type of one conditional GET, parametrised over the parse strategy
+# (array endpoints -> list, the pull-request endpoint -> dict) so the shared
+# transport core (`_send`) returns the right shape to each caller.
+_T = TypeVar("_T")
 
 
 class GitHubClientError(RuntimeError):
@@ -110,6 +115,19 @@ class GitHubClient(Protocol):
         endpoint returns a bare JSON array, not an envelope (ATLAS-66). Feeds
         the documentation-evidence normaliser, which records a touched-``docs/``
         change as a DOCUMENTATION_UPDATE.
+        """
+        ...
+
+    def fetch_pull_request(
+        self, owner: str, repo: str, pr_number: int
+    ) -> dict[str, Any]:
+        """Raw pull-request object for a PR number (GitHub -> Atlas, ATLAS-67).
+
+        Unlike the list endpoints this returns a single JSON OBJECT (an
+        envelope, not a bare array), so callers read ``["head"]["sha"]`` to
+        resolve the head SHA the CI/docs normalisers pin to. The evidence
+        ``pull`` command needs this because it has a PR number but the
+        workflow-run / check-run / docs normalisers need a head SHA.
         """
         ...
 
@@ -174,6 +192,29 @@ class GitHubRESTClient:
         body = self._get(path, {}, result_key=None)
         return body
 
+    def fetch_pull_request(
+        self, owner: str, repo: str, pr_number: int
+    ) -> dict[str, Any]:
+        # The pull-request endpoint returns a single OBJECT (an envelope, not a
+        # bare array): the body IS the result, so there is no result_key/list to
+        # unwrap. It rides the SAME conditional-request + rate-limit core as the
+        # list endpoints (it sends If-None-Match like they do); only the 304
+        # handler diverges -- there is no empty-object analogue of [] and no body
+        # cache to replay, so a 304 raises rather than returning a footgun {}
+        # (ATLAS-67). A one-shot ``pull`` never re-fetches the same PR object, so
+        # a 304 here is unexpected; the message says so.
+        path = f"/repos/{owner}/{repo}/pulls/{pr_number}"
+        url = f"{API_ROOT}{path}"
+
+        def _on_not_modified() -> dict[str, Any]:
+            raise GitHubAPIError("PR object unexpectedly 304 with no cached body")
+
+        return self._send(
+            url,
+            parse=lambda response: self._read_object(response, url),
+            on_not_modified=_on_not_modified,
+        )
+
     # --- transport ----------------------------------------------------------
 
     def _get(
@@ -186,21 +227,48 @@ class GitHubRESTClient:
         body IS the list (the reviews endpoint, ATLAS-65). A 304 (ETag hit)
         returns ``[]`` -- the unchanged resource produces no new normalised
         event. A secondary-rate-limit response is retried a bounded number of
-        times honouring ``Retry-After``, then raises.
+        times honouring ``Retry-After``, then raises. The conditional-request,
+        backoff, and error handling live in the shared :meth:`_send` core; this
+        wrapper only supplies the URL, the array parse, and the 304 -> ``[]``.
         """
         query = urllib_parse.urlencode({**params, "per_page": str(PER_PAGE)})
         url = f"{API_ROOT}{path}?{query}"
+        return self._send(
+            url,
+            parse=lambda response: self._read_page(response, result_key, url),
+            on_not_modified=lambda: [],
+        )
 
+    def _send(
+        self,
+        url: str,
+        *,
+        parse: Callable[[Any], _T],
+        on_not_modified: Callable[[], _T],
+    ) -> _T:
+        """The shared conditional-GET transport core (ATLAS-67 extraction).
+
+        A pure lift of the loop ``_get`` used to inline: it sends the
+        conditional request (``If-None-Match`` via :meth:`_headers`), parses a
+        200 with ``parse``, returns ``on_not_modified()`` on a 304 (ETag hit),
+        retries a secondary-rate-limit response a bounded number of times
+        honouring ``Retry-After``, and maps every HTTP/transport failure to
+        ``GitHubAPIError``. The only per-caller variation is ``parse`` (array vs
+        object body) and ``on_not_modified`` (array -> ``[]``; the PR object ->
+        raise, since there is no empty-object sentinel and no body cache); the
+        conditional-request and rate-limit behaviour is identical for every
+        endpoint, which the shared-core tests pin.
+        """
         for attempt in range(MAX_RATE_LIMIT_RETRIES + 1):
             request = urllib_request.Request(
                 url, method="GET", headers=self._headers(url)
             )
             try:
                 with urllib_request.urlopen(request) as response:
-                    return self._read_page(response, result_key, url)
+                    return parse(response)
             except urllib_error.HTTPError as error:
                 if error.code == 304:
-                    return []  # ETag hit: nothing changed, no new event
+                    return on_not_modified()  # ETag hit: nothing changed
                 if self._is_rate_limited(error) and attempt < MAX_RATE_LIMIT_RETRIES:
                     self._sleep(self._retry_after_seconds(error))
                     continue
@@ -257,6 +325,27 @@ class GitHubRESTClient:
             label = result_key or "response body"
             raise GitHubAPIError(f"GitHub API {label} was not a list")
         return items
+
+    def _read_object(self, response: Any, url: str) -> dict[str, Any]:
+        """Read one 200 response whose body is a single JSON OBJECT (ATLAS-67).
+
+        The object analogue of :meth:`_read_page`: it caches the ETag the same
+        way (so the next poll can send a conditional request) but the parsed
+        body IS the result -- there is no envelope to unwrap and no list. A body
+        that is not an object (e.g. a bare array or a GitHub error envelope that
+        slipped a non-object through) is surfaced as a typed error, never
+        silently returned. No Link/pagination applies to a single object.
+        """
+        etag = response.headers.get("ETag")
+        if etag is not None:
+            self._etags[url] = etag
+        try:
+            body = json.loads(response.read().decode())
+        except json.JSONDecodeError as error:
+            raise GitHubAPIError(f"GitHub API returned non-JSON: {error}") from error
+        if not isinstance(body, dict):
+            raise GitHubAPIError("GitHub API pull-request response was not an object")
+        return body
 
     @staticmethod
     def _is_rate_limited(error: urllib_error.HTTPError) -> bool:
