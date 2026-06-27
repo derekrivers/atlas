@@ -345,3 +345,76 @@ def test_show_non_uuid_is_clean_precondition(
     captured = capsys.readouterr()
     assert captured.out == ""
     assert "not a valid evidence id" in captured.err
+
+
+# --- cold (uninitialised) database (ATLAS-130) ------------------------------
+#
+# Every fixture above calls db.create_all(); this section is the path none of
+# them exercise -- a Database whose schema was NEVER created. The first repo
+# access raises OperationalError: no such table, which without the
+# _evidence_command guard escapes as a raw SQLAlchemy traceback (D7 violation).
+
+
+@pytest.fixture
+def cold_db(tmp_path: Path) -> Database:
+    """A Database with NO schema created -- deliberately no ``create_all()``."""
+    return Database(f"sqlite:///{tmp_path}/cold.db")
+
+
+def _assert_clean_cold_db_exit(code: int, capsys: pytest.CaptureFixture[str]) -> None:
+    """The shared cold-DB contract: EXIT_PRECONDITION, a one-line message naming
+    the uninitialised database, and NO traceback / raw SQLAlchemy text leaking."""
+    captured = capsys.readouterr()
+    assert code == EXIT_PRECONDITION
+    assert captured.out == ""
+    assert "not initialised" in captured.err
+    assert "run the database migrations" in captured.err
+    # The wrong answer this guards: the raw OperationalError escaping.
+    assert "Traceback" not in captured.err
+    assert "OperationalError" not in captured.err
+    assert "SQL" not in captured.err
+
+
+def test_pull_cold_db_is_clean_precondition(
+    cold_db: Database, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Criterion 1: `pull` against a never-migrated DB exits cleanly. A valid
+    --repo (so the malformed-repo check passes) and an injected fake (so no
+    token is needed) drive it to the first DB access, ``ProductRepo.get_by_key``
+    -> ``no such table: products``."""
+    code = run_pull(cold_db, make_fake())
+    _assert_clean_cold_db_exit(code, capsys)
+
+
+def test_list_cold_db_is_clean_precondition(
+    cold_db: Database, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Criterion 2: `list` against a cold DB (``EvidenceRepo.list`` ->
+    ``no such table: evidence``) exits cleanly."""
+    code = main(["evidence", "list"], database=cold_db)
+    _assert_clean_cold_db_exit(code, capsys)
+
+
+def test_show_cold_db_is_clean_precondition(
+    cold_db: Database, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Criterion 2: `show <id>` against a cold DB (a valid UUID so the parse
+    passes, then ``EvidenceRepo.get`` -> ``no such table: evidence``) exits
+    cleanly."""
+    code = main(["evidence", "show", str(uuid4())], database=cold_db)
+    _assert_clean_cold_db_exit(code, capsys)
+
+
+def test_operational_guard_is_narrow(
+    seeded_db: Database, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Criterion 4: the guard catches OperationalError, not bare Exception. A
+    non-OperationalError raised inside an evidence command is NOT swallowed --
+    it propagates rather than being mislabelled as an uninitialised database."""
+
+    def _boom(self: EvidenceRepo) -> list[object]:
+        raise RuntimeError("not a schema problem")
+
+    monkeypatch.setattr(EvidenceRepo, "list", _boom)
+    with pytest.raises(RuntimeError, match="not a schema problem"):
+        main(["evidence", "list"], database=seeded_db)
