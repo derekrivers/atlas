@@ -19,6 +19,10 @@ from atlas.core.models.product import Product
 from atlas.core.models.tick_failure import TickFailure
 from atlas.core.models.ticket import Ticket, TicketStatus, TicketType
 from atlas.core.models.ticket_status_transition import TicketStatusTransition
+from atlas.core.models.verification_check import (
+    VerificationCheck,
+    VerificationCheckType,
+)
 
 __all__ = [
     "ADRStatus",
@@ -45,4 +49,6 @@ __all__ = [
     "TicketStatus",
     "TicketStatusTransition",
     "TicketType",
+    "VerificationCheck",
+    "VerificationCheckType",
 ]

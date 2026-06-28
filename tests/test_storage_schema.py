@@ -266,6 +266,21 @@ DOCUMENTED_COLUMNS: dict[str, dict[str, tuple[bool, str | None]]] = {
         "created_by_type": (NN, None),
         "created_by_id": (NN, None),
     },
+    # §5.2 (verification-check record, ATLAS-71): NOT evidence — status is an
+    # EvidenceStatus outcome but there is no trust tier and no commit pin.
+    # Append-only — no updated_at; completed_at is nullable. required defaults
+    # TRUE; evidence_ids defaults '[]'. ticket_id is FK-backed and NOT NULL.
+    "verification_checks": {
+        "id": (NN, None),
+        "ticket_id": (NN, None),
+        "check_type": (NN, None),
+        "status": (NN, None),
+        "summary": (NN, None),
+        "required": (NN, "TRUE"),
+        "evidence_ids": (NN, "'[]'"),
+        "created_at": (NN, None),
+        "completed_at": (True, None),
+    },
 }
 
 # Transcribed FK targets: table -> {column: referred table}. Absence is
@@ -288,6 +303,7 @@ DOCUMENTED_FOREIGN_KEYS: dict[str, dict[str, str]] = {
     "debt_items": {"product_id": "products", "ticket_id": "tickets"},
     "tick_failures": {},
     "ticket_status_transitions": {"ticket_id": "tickets"},
+    "verification_checks": {"ticket_id": "tickets"},
 }
 
 DOCUMENTED_UNIQUES: dict[str, list[list[str]]] = {

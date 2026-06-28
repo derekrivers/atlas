@@ -1,0 +1,57 @@
+# Required-check matrix (verification-engine.md "Required-check matrix").
+#
+# Transcribed VERBATIM from the design-doc table. Each ticket_type maps a
+# check_type to one conditional token; a check_type absent from a row is not
+# required for that ticket_type. Tightening the matrix is a doc change, not a
+# code change (the matrix is configuration, per the design doc).
+#
+# Tokens:
+#   required                       always a required check (✓)
+#   if_documentation_requirements  required iff the ticket has
+#                                  documentation_requirements (✓*)
+#   if_risk_high                   present and required iff risk_level is high
+#                                  or critical (risk ≥ high)
+#
+# SECURITY is deliberately NOT a column here. v1 surfaces SECURITY as a
+# non-gating, code-applied cross-cutting rule (required=False) for critical
+# tickets only, with the real evaluator deferred (verification-engine.md). The
+# spike/research row is one combined row, faithful to the table's row label;
+# its documentation cell ("findings") is a plain required check in v1.
+
+feature:
+  tests: required
+  lint: required
+  acceptance_criteria: required
+  documentation: if_documentation_requirements
+  scope: required
+  human_approval: if_risk_high
+
+bug:
+  tests: required
+  lint: required
+  acceptance_criteria: required
+  scope: required
+
+tech_debt:
+  tests: required
+  lint: required
+  acceptance_criteria: required
+  scope: required
+
+infrastructure:
+  tests: required
+  lint: required
+  acceptance_criteria: required
+  documentation: if_documentation_requirements
+  scope: required
+  human_approval: if_risk_high
+
+documentation:
+  lint: required
+  acceptance_criteria: required
+  documentation: required
+
+spike/research:
+  acceptance_criteria: required
+  documentation: required
+  human_approval: required

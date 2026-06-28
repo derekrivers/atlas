@@ -34,6 +34,7 @@ from atlas.core.models import (
     TicketDependency,
     TicketStatusTransition,
     TickFailure,
+    VerificationCheck,
 )
 from atlas.planning.proposal import (
     Proposal,
@@ -60,6 +61,7 @@ CORE_MODELS: tuple[type[BaseModel], ...] = (
     Ticket,
     TicketDependency,
     TicketStatusTransition,
+    VerificationCheck,
 )
 PLANNING_MODELS: tuple[type[BaseModel], ...] = (
     Proposal,
