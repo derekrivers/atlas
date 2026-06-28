@@ -22,8 +22,17 @@ ATLAS-80 inherit). ATLAS-73 adds :func:`evaluate_scope` (scope_check.py) — the
 ``scope`` check: every changed PR file must be in the ticket's declared scope
 (``relevant_docs`` + the ``source_anchor`` path) or carry a human-tier
 waive/fail decision pinned to the same head commit (inheriting ATLAS-72's
-per-decision convention, with a literal path discriminator). The remaining
-completion validators and CLI/reports are later Phase 7 tickets.
+per-decision convention, with a literal path discriminator). ATLAS-76 is the
+composition keystone: :func:`evaluate_human_approval` (human_approval_check.py)
+closes the OP-A gap the resolver left — a blanket human-tier MANUAL_APPROVAL
+pinned to the head commit, ticket-scoped, carrying NEITHER discriminator (its
+absence is what distinguishes it from an acceptance confirmation or a scope
+decision), latest deciding with status pass-through (OP-B) — and
+:func:`evaluate_ticket` (completion.py) resolves a ticket's required checks,
+dispatches each to its evaluator, and composes the per-ticket verdict (PASSED iff
+every required check PASSED; FAILED if any required FAILED; else PENDING;
+non-required checks like the deferred SECURITY do not gate). PR-level aggregation
+and the CLI/reports are later Phase 7 tickets.
 
 Layer position: ``atlas.verification`` sits directly below ``atlas.pm`` and
 above ``atlas.context`` in the import-linter spine. It may import only layers
@@ -47,9 +56,18 @@ from atlas.verification.acceptance_check import (
     acceptance_criterion_hash,
     evaluate_acceptance_criteria,
 )
+from atlas.verification.completion import (
+    CheckOutcome,
+    TicketVerification,
+    evaluate_ticket,
+)
 from atlas.verification.documentation_check import (
     DocumentationEvaluation,
     evaluate_documentation_check,
+)
+from atlas.verification.human_approval_check import (
+    HumanApprovalEvaluation,
+    evaluate_human_approval,
 )
 from atlas.verification.machine_checks import (
     MACHINE_CHECK_EVIDENCE,
@@ -69,14 +87,19 @@ __all__ = [
     "MACHINE_CHECK_TYPES",
     "SCOPE_DECISION_PATH_KEY",
     "AcceptanceEvaluation",
+    "CheckOutcome",
     "DocumentationEvaluation",
+    "HumanApprovalEvaluation",
     "MachineCheckEvaluation",
     "RequiredCheck",
     "ScopeEvaluation",
+    "TicketVerification",
     "acceptance_criterion_hash",
     "evaluate_acceptance_criteria",
     "evaluate_documentation_check",
+    "evaluate_human_approval",
     "evaluate_machine_check",
     "evaluate_scope",
+    "evaluate_ticket",
     "required_checks",
 ]

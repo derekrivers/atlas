@@ -75,12 +75,29 @@ For each required check on ticket T with PR head commit C:
   `needs_human_decision`); it stays PENDING while any out-of-scope file is
   undecided (an undecided file is unresolved, not rejected). A non-human
   MANUAL_APPROVAL carrying a matching path does not decide a file.
-- **human_approval:** a MANUAL_APPROVAL evidence record from the operator.
+- **human_approval:** a blanket human-tier MANUAL_APPROVAL record from the
+  operator, pinned to the head commit C and scoped to the ticket, carrying in
+  `raw_payload` NEITHER `acceptance_criterion_hash` NOR `scope_decision_path` —
+  that double absence is what distinguishes a blanket PR approval from an
+  acceptance-criterion confirmation (which carries the criterion hash) or a
+  scope decision (which carries the literal path). The latest such record by
+  `(created_at, id)` decides, with its `status` passing through: `PASSED` =
+  approved, `FAILED` = the operator rejected the PR (a dispute routing to
+  `needs_human_decision`, mirroring scope's waive/fail). None at C → PENDING (an
+  unapproved PR is unproven, not failing). A non-human MANUAL_APPROVAL carrying
+  neither discriminator does not approve a PR.
 
 ## Verdict and completion
 
-`verify(T)` returns PASSED only when every required check has a PASSED
-evaluation at the current head commit. The PM Engine performs
+`verify(T)` composes the per-check evaluations into one ticket verdict over the
+gating checks (`required=True`): it returns PASSED only when every required
+check has a PASSED evaluation at the current head commit; FAILED if any required
+check is FAILED (fail precedence — a single failing required check sinks the
+ticket); otherwise PENDING (a required check that is PENDING, WARNING, or
+NOT_APPLICABLE is non-passing but not failing). A required check whose type has
+no evaluator wired does not silently pass — it holds the verdict at PENDING.
+Non-required checks (`required=False`, like the deferred SECURITY surface) appear
+in the breakdown but do not gate. The PM Engine performs
 `review_required → done` only on a PASSED verdict
 (`symphony-integration.md#ticket-transitions-one-writer-per-state-edge`).
 A FAILED verdict routes to `changes_requested` (machine-check failures)
