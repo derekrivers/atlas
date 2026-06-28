@@ -11,8 +11,11 @@ ATLAS-71 lands the foundation: the required-check matrix (configuration, in
 which answers "which VerificationCheckTypes does this ticket require?".
 ATLAS-75 adds the first per-check evaluator, :func:`evaluate_machine_check`
 (machine_checks.py) — TESTS/LINT against system-tier evidence pinned to the PR
-head commit. The remaining per-check evaluators, completion validators, and
-CLI/reports are later Phase 7 tickets.
+head commit. ATLAS-74 adds :func:`evaluate_documentation_check`
+(documentation_check.py) — the ``documentation`` check against system-tier
+DOCUMENTATION_UPDATE evidence pinned to the same head commit. The remaining
+per-check evaluators, completion validators, and CLI/reports are later Phase 7
+tickets.
 
 Layer position: ``atlas.verification`` sits directly below ``atlas.pm`` and
 above ``atlas.context`` in the import-linter spine. It may import only layers
@@ -31,6 +34,10 @@ surfaces a SECURITY check only for ``risk_level == critical``, as
 ``required=False`` so it never gates; see verification-engine.md.
 """
 
+from atlas.verification.documentation_check import (
+    DocumentationEvaluation,
+    evaluate_documentation_check,
+)
 from atlas.verification.machine_checks import (
     MACHINE_CHECK_EVIDENCE,
     MACHINE_CHECK_TYPES,
@@ -42,8 +49,10 @@ from atlas.verification.rules import RequiredCheck, required_checks
 __all__ = [
     "MACHINE_CHECK_EVIDENCE",
     "MACHINE_CHECK_TYPES",
+    "DocumentationEvaluation",
     "MachineCheckEvaluation",
     "RequiredCheck",
+    "evaluate_documentation_check",
     "evaluate_machine_check",
     "required_checks",
 ]
