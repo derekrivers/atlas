@@ -18,8 +18,12 @@ DOCUMENTATION_UPDATE evidence pinned to the same head commit. ATLAS-72 adds
 ``acceptance_criteria`` check against human-tier MANUAL_APPROVAL confirmations
 pinned to the same head commit, one per criterion (it also defines
 :func:`acceptance_criterion_hash`, the confirmation convention ATLAS-73 and
-ATLAS-80 inherit). The remaining per-check evaluators, completion validators,
-and CLI/reports are later Phase 7 tickets.
+ATLAS-80 inherit). ATLAS-73 adds :func:`evaluate_scope` (scope_check.py) — the
+``scope`` check: every changed PR file must be in the ticket's declared scope
+(``relevant_docs`` + the ``source_anchor`` path) or carry a human-tier
+waive/fail decision pinned to the same head commit (inheriting ATLAS-72's
+per-decision convention, with a literal path discriminator). The remaining
+completion validators and CLI/reports are later Phase 7 tickets.
 
 Layer position: ``atlas.verification`` sits directly below ``atlas.pm`` and
 above ``atlas.context`` in the import-linter spine. It may import only layers
@@ -54,17 +58,25 @@ from atlas.verification.machine_checks import (
     evaluate_machine_check,
 )
 from atlas.verification.rules import RequiredCheck, required_checks
+from atlas.verification.scope_check import (
+    SCOPE_DECISION_PATH_KEY,
+    ScopeEvaluation,
+    evaluate_scope,
+)
 
 __all__ = [
     "MACHINE_CHECK_EVIDENCE",
     "MACHINE_CHECK_TYPES",
+    "SCOPE_DECISION_PATH_KEY",
     "AcceptanceEvaluation",
     "DocumentationEvaluation",
     "MachineCheckEvaluation",
     "RequiredCheck",
+    "ScopeEvaluation",
     "acceptance_criterion_hash",
     "evaluate_acceptance_criteria",
     "evaluate_documentation_check",
     "evaluate_machine_check",
+    "evaluate_scope",
     "required_checks",
 ]
