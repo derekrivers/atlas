@@ -53,7 +53,7 @@ claim:
 | ATLAS-67 (#115) | The `atlas evidence pull/list/show` CLI. Added `fetch_pull_request` (object, not bare array) to resolve the head SHA; a **pure `_send` transport extraction** sharing ETag/304/backoff between array and object fetches (object-304 raises, array-304 → `[]`, conditional request still shared); offline under `FakeGitHubClient`; every precondition a clean `EXIT_PRECONDITION`. |
 | ATLAS-130 (#116) | Live-discovered: `atlas evidence` tracebacked on a never-migrated database. A shared `except OperationalError` at the dispatch boundary maps it to `EXIT_PRECONDITION` across pull/list/show — narrow catch (`IntegrityError` is a different class, not masked), broad wrap chosen consciously to cover write-time `no such table: evidence`. |
 | ATLAS-69 (#117) | The 64KB retention cap at `EvidenceRepo.add`: oversized `raw_payload` replaced by a self-describing marker (`_truncated`/`_original_bytes`/`_payload_hash`/`_source_uri`); size measured under the hash's canonicalisation; the pin and `payload_hash` untouched; no schema change. |
-| ATLAS-70 (#TBD) | **Satisfied by construction** — the tier rules shipped in ATLAS-61 and the round-trips in ATLAS-63–66; delivered here as a single consolidating milestone anchor test (CI half → system-tier pinned; agent PASSED → rejected, PENDING → stored). No production code. |
+| ATLAS-70 (#118) | **Satisfied by construction** — the tier rules shipped in ATLAS-61 and the round-trips in ATLAS-63–66; delivered here as a single consolidating milestone anchor test (CI half → system-tier pinned; agent PASSED → rejected, PENDING → stored). No production code. |
 
 ---
 
@@ -107,7 +107,7 @@ folded into runbooks, not patched after the fact).
 | **Read-time corroboration / promotion** — system-tier evidence corroborating an agent's PENDING claim (the part of ATLAS-70's *spirit* beyond the storage cap) | Phase 7 — Verification Engine | **Open by design** — the design doc frames corroboration as a verification-time concern ("from a system-tier record or human approval"); it is correctly the next phase, not a Phase-6 gap. |
 | **Job-name typing over-fit** | Phase 7 verification design | **Open** — decide whether verification needs a precise `evidence_type` (then the foreign-repo `BUILD_RESULT` collapse matters and the job-name convention needs widening/config) or only pass/fail-per-commit (then the fallback bucket is fine). Thrice-confirmed on real data (§3). |
 | **Bootstrap command** (`atlas db init` / product seed) | Small follow-up ticket, pre-operator-handoff | **Open** — ATLAS-130 made the cold-DB error clean but added no bootstrap path; `pull` still needs a hand-seeded product. Its own small ticket (orthogonal to retention). |
-| **ATLAS-130 debt entry** | `docs/tech-debt/debt-register.md` | **Open** — the "green gates, broken first use" lesson is captured in the generated debt entry but not yet committed to the register. Place it (this PR or its own commit). |
+| **ATLAS-130 debt entry** | `docs/tech-debt/debt-register.md` | **Done** — committed to the register (RESOLVED #116) with the "green gates, broken first use" lesson and the bootstrap gap carried forward below. |
 
 ---
 

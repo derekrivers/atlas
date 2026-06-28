@@ -131,3 +131,35 @@ externally-set state. Then update the §1 Leg-1 row to cite the external-flip
 evidence and retire this entry. Owner: a follow-up on the Phase-4 live
 verification (`phase-4-live-verification` runbook), ~60 seconds when next on a
 Linear-reachable network.
+
+## `atlas evidence` tracebacked on a cold database (ATLAS-130 — RESOLVED #116)
+
+**Resolved** in ATLAS-130 (#116, merged). Kept here for the lesson, not as an open item.
+
+**What happened:** running `atlas evidence pull` from a clean checkout against a
+never-migrated database, `ProductRepo.get_by_key(PRODUCT_KEY)` executed
+`SELECT ... FROM products` and raised `sqlalchemy.exc.OperationalError: no such
+table: products`. That error was not in the command's `except` set (which caught
+`MissingGitHubTokenError`, `GitHubAPIError`, and a `None` product), so the raw
+traceback escaped — a D7 violation. `list`/`show` shared the exposure via
+`EvidenceRepo.list()`/`.get()` → `no such table: evidence`.
+
+**Why the green suite missed it:** every test fixture calls `db.create_all()`
+before exercising a command, so the empty/unmigrated-database path was never run.
+The bug lived in the gap between the harness (always has a schema) and an
+operator's first run (does not) — the canonical "green gates, broken first use"
+defect, the kind a live run surfaces and a closed-loop suite cannot. It was in
+fact found by the first real run, not by CI.
+
+**Fix (ATLAS-130 / #116):** a shared `except OperationalError` at the
+`_evidence_command` dispatch boundary maps a missing-schema error to a clean
+`EXIT_PRECONDITION` ("database is not initialised … run the database migrations")
+across pull/list/show. The catch is narrow (`IntegrityError` is a different class,
+not masked); the broad wrap was chosen consciously to also cover write-time
+`no such table: evidence` at `EvidenceRepo.add`.
+
+**Carried forward (still open):** the *bootstrap gap* itself — `pull` needs a
+pre-migrated DB and a hand-seeded `ATLAS` product, and no `atlas db init` /
+seed command exists yet. ATLAS-130 made the error clean; it did not add a
+bootstrap path. Tracked as a Phase-6 carry-forward (closure report §4); owner: a
+small follow-up ticket before operator handoff.
