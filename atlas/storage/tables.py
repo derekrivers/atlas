@@ -372,6 +372,33 @@ class TicketStatusTransitionRow(Base):
     created_by_id: Mapped[str] = mapped_column(sa.Text)
 
 
+class VerificationCheckRow(Base):
+    """One Verification Engine evaluation for a ticket (ATLAS-71,
+    data-model §5.2).
+
+    Append-only (enforced in VerificationCheckRepo, not here). NOT
+    evidence: ``status`` is an EvidenceStatus outcome, but there is no
+    trust tier and no commit pin (contrast EvidenceRow) — so no trust-tier
+    cap and no commit-pin guard live on its repo. ``ticket_id`` is FK-backed
+    and NOT NULL (a check is always evaluated against an existing ticket).
+    ``required`` defaults TRUE and ``evidence_ids`` defaults '[]', mirroring
+    the §5.2 SQL block. There is no ``updated_at``; ``completed_at`` is
+    nullable.
+    """
+
+    __tablename__ = "verification_checks"
+
+    id: Mapped[UUID] = mapped_column(sa.Uuid, primary_key=True)
+    ticket_id: Mapped[UUID] = mapped_column(sa.Uuid, sa.ForeignKey("tickets.id"))
+    check_type: Mapped[str] = mapped_column(sa.Text)
+    status: Mapped[str] = mapped_column(sa.Text)
+    summary: Mapped[str] = mapped_column(sa.Text)
+    required: Mapped[bool] = mapped_column(sa.Boolean, server_default=sa.text("TRUE"))
+    evidence_ids: Mapped[list[str]] = mapped_column(JSONB, server_default=_EMPTY_LIST)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime())
+    completed_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+
+
 class KeyCounterRow(Base):
     """Monotonic per-prefix key counter (ATLAS-25, data-model §3.12).
 

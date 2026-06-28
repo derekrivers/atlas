@@ -1,0 +1,94 @@
+{
+  "$defs": {
+    "EvidenceStatus": {
+      "description": "Outcome of an evidence record or verification check (data-model §2.5).",
+      "enum": [
+        "pending",
+        "passed",
+        "failed",
+        "warning",
+        "not_applicable"
+      ],
+      "title": "EvidenceStatus",
+      "type": "string"
+    },
+    "VerificationCheckType": {
+      "description": "Which Verification Engine check a row records (data-model §5.1).\n\nA model-specific enum, defined with its model like EvidenceType — not a\n§2 shared type — and used by VerificationCheck, VerificationCheckRepo,\nand the rule-resolver. Members and values are verbatim from §5.1.",
+      "enum": [
+        "acceptance_criteria",
+        "tests",
+        "lint",
+        "documentation",
+        "scope",
+        "security",
+        "human_approval"
+      ],
+      "title": "VerificationCheckType",
+      "type": "string"
+    }
+  },
+  "description": "One Verification Engine evaluation for a ticket (data-model §5.1).\n\nNOT evidence: ``status`` is an :class:`EvidenceStatus` outcome, but the\nrecord carries no trust tier and no commit pin (contrast Evidence). The\nproof lives elsewhere — ``evidence_ids`` references the Evidence records\nthat justify ``status``. Append-only: there is no ``updated_at``;\n``completed_at`` marks when the evaluation reached a terminal outcome\n(append-only enforcement lives in VerificationCheckRepo, not here).",
+  "properties": {
+    "check_type": {
+      "$ref": "#/$defs/VerificationCheckType"
+    },
+    "completed_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Completed At"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "evidence_ids": {
+      "items": {
+        "format": "uuid",
+        "type": "string"
+      },
+      "title": "Evidence Ids",
+      "type": "array"
+    },
+    "id": {
+      "format": "uuid",
+      "title": "Id",
+      "type": "string"
+    },
+    "required": {
+      "default": true,
+      "title": "Required",
+      "type": "boolean"
+    },
+    "status": {
+      "$ref": "#/$defs/EvidenceStatus"
+    },
+    "summary": {
+      "title": "Summary",
+      "type": "string"
+    },
+    "ticket_id": {
+      "format": "uuid",
+      "title": "Ticket Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "ticket_id",
+    "check_type",
+    "status",
+    "summary",
+    "created_at"
+  ],
+  "title": "VerificationCheck",
+  "type": "object"
+}

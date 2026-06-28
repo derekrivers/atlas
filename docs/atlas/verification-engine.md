@@ -25,10 +25,12 @@ Which `VerificationCheckType`s are required depends on `ticket_type`:
 | documentation  | –     | ✓    | ✓                   | ✓             | –     | –              |
 | spike/research | –     | –    | ✓                   | ✓ (findings)  | –     | ✓              |
 
-`✓*` = required when the ticket has `documentation_requirements`. Security
-checks are added to any ticket whose risk_level is `critical`. The matrix
-is configuration (YAML in repo), not code, so tightening it is a doc
-change.
+`✓*` = required when the ticket has `documentation_requirements`. A SECURITY
+check is surfaced for any ticket whose risk_level is `critical`, but v1
+surfaces it as non-gating (`required=False`, status `not_applicable`) with
+the evaluator deferred — it never blocks completion until a later Phase 7
+ticket implements it. The matrix is configuration (YAML in repo), not code,
+so tightening it is a doc change.
 
 ## Evaluation semantics
 
@@ -73,3 +75,8 @@ VerificationCheck rows; there is no dashboard (Revision 1).
   threshold once a baseline exists.
 - LLM-assisted acceptance-criteria assessment: design when Phase 8 makes
   the operator the bottleneck, not before.
+- SECURITY verification (ATLAS-71 gap): no evaluator exists in v1. The rule
+  resolver surfaces a SECURITY check only for `risk_level == critical`, as
+  `required=False` so it never gates; the real evaluator is a later ticket.
+  When implemented, reconsider moving the risk→security threshold into the
+  matrix YAML so tightening it stays a doc change.

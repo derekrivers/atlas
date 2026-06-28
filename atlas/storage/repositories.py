@@ -46,6 +46,7 @@ from atlas.core.models import (
     TicketStatus,
     TicketStatusTransition,
     TickFailure,
+    VerificationCheck,
 )
 from atlas.core.trust import evidence_tier
 from atlas.storage.db import Database
@@ -65,6 +66,7 @@ from atlas.storage.tables import (
     TicketRow,
     TicketStatusTransitionRow,
     TickFailureRow,
+    VerificationCheckRow,
 )
 
 M = TypeVar("M", bound=BaseModel)
@@ -716,6 +718,23 @@ class TicketStatusTransitionRepo(_Repo[TicketStatusTransition]):
                 )
             )
             return [self._to_model(row) for row in rows]
+
+
+class VerificationCheckRepo(_Repo[VerificationCheck]):
+    """Append-only Verification Engine record (ATLAS-71).
+
+    Mirrors EvidenceRepo's append-only shape: it exposes ``add`` and queries
+    (``get``, ``list``) only — no update, no delete, no bypass — so the
+    record of an evaluation is immutable once written. Unlike EvidenceRepo
+    it applies NO trust-tier cap and NO commit-pin guard: a VerificationCheck
+    is NOT evidence (ADR-0008), so ``add`` is the inherited insert with no
+    status policing. The repo lands unused, exactly as Evidence/EvidenceRepo
+    (ATLAS-14) preceded its writers (ATLAS-63); the per-check evaluators and
+    validators that write rows are later Phase 7 tickets.
+    """
+
+    def __init__(self, db: Database) -> None:
+        super().__init__(db, VerificationCheck, VerificationCheckRow)
 
 
 class PlanRunRepo(_Repo[PlanRun]):
