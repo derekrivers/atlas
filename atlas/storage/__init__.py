@@ -8,6 +8,7 @@ from atlas.storage.apply import apply_backlog
 from atlas.storage.db import Database
 from atlas.storage.maintenance import clear_all_data
 from atlas.storage.repositories import (
+    RAW_PAYLOAD_CAP_BYTES,
     ADRRepo,
     AgentRunRepo,
     ContextPackRepo,
@@ -32,6 +33,7 @@ from atlas.storage.repositories import (
 )
 
 __all__ = [
+    "RAW_PAYLOAD_CAP_BYTES",
     "ADRRepo",
     "AgentRunRepo",
     "ContextPackRepo",
