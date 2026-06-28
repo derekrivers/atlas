@@ -103,6 +103,17 @@ in the breakdown but do not gate. The PM Engine performs
 A FAILED verdict routes to `changes_requested` (machine-check failures)
 or `needs_human_decision` (criteria/scope disputes).
 
+PR completion aggregates one level up: a PR is verified by composing the
+per-ticket verdicts of the tickets it closes — `verify(PR)` is PASSED only when
+every closed ticket is PASSED, FAILED if any closed ticket is FAILED, otherwise
+PENDING; an empty close-set is PENDING (never a vacuous PASS over no tickets).
+This is the same fold rule as the per-ticket verdict, applied to ticket verdicts
+instead of check evaluations. Each closed ticket is evaluated independently at the
+PR head commit (the validator passes each ticket its own identity, so evidence
+scoped to one ticket never satisfies another). Resolving WHICH tickets a PR closes
+(from its body, GitHub) is the CLI's / Phase 8's job, not the validator's — the
+ticket set is an input.
+
 ## Reports
 
 `atlas verify <KEY>` prints the per-check table with evidence IDs and

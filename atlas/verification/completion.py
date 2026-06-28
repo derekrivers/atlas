@@ -42,7 +42,7 @@ exceptions: :func:`evaluate_ticket` NEVER raises, for any input.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from uuid import UUID
 
@@ -313,17 +313,37 @@ def evaluate_ticket(
     )
 
 
+def fold_statuses(statuses: Iterable[EvidenceStatus]) -> EvidenceStatus:
+    """Fold a set of statuses into one verdict (D8/D5; never raises).
+
+    The single source of truth for the verification fold rule — shared by the
+    per-ticket verdict (:func:`_compose_verdict`, over a ticket's gating check
+    statuses) and the PR-level verdict (``evaluate_pr``, over its closed tickets'
+    verdicts; ATLAS-77). The same rule, applied one level apart:
+
+    - any ``FAILED`` -> ``FAILED`` (fail precedence — one failure sinks the whole);
+    - else non-empty and every ``PASSED`` -> ``PASSED`` (only PASSED passes);
+    - else ``PENDING`` (an empty set, or any non-passing/non-failing status in the
+      mix, is unproven — never a vacuous PASS over nothing).
+
+    One fold, not two copies: the ticket and PR verdicts are the same rule, and two
+    independent implementations would drift (the Atlas single-source-of-truth
+    principle).
+    """
+    materialised = list(statuses)
+    if any(s == EvidenceStatus.FAILED for s in materialised):
+        return EvidenceStatus.FAILED
+    if materialised and all(s == EvidenceStatus.PASSED for s in materialised):
+        return EvidenceStatus.PASSED
+    return EvidenceStatus.PENDING
+
+
 def _compose_verdict(outcomes: Sequence[CheckOutcome]) -> EvidenceStatus:
     """Fold the gating outcomes into the ticket verdict (D8; never raises).
 
-    Over the GATING outcomes (``required=True``) only: any FAILED -> FAILED; else
-    every PASSED -> PASSED; else PENDING. With no gating outcomes at all (a
-    defensive case — acceptance is always required) the verdict is PENDING, never
-    a vacuous PASS over an empty set.
+    Over the GATING outcomes (``required=True``) only, via the shared
+    :func:`fold_statuses` rule: any FAILED -> FAILED; else every PASSED -> PASSED;
+    else PENDING. With no gating outcomes at all (a defensive case — acceptance is
+    always required) the verdict is PENDING, never a vacuous PASS over an empty set.
     """
-    gating = [o for o in outcomes if o.required]
-    if any(o.status == EvidenceStatus.FAILED for o in gating):
-        return EvidenceStatus.FAILED
-    if gating and all(o.status == EvidenceStatus.PASSED for o in gating):
-        return EvidenceStatus.PASSED
-    return EvidenceStatus.PENDING
+    return fold_statuses(o.status for o in outcomes if o.required)
