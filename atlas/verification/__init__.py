@@ -13,9 +13,13 @@ ATLAS-75 adds the first per-check evaluator, :func:`evaluate_machine_check`
 (machine_checks.py) — TESTS/LINT against system-tier evidence pinned to the PR
 head commit. ATLAS-74 adds :func:`evaluate_documentation_check`
 (documentation_check.py) — the ``documentation`` check against system-tier
-DOCUMENTATION_UPDATE evidence pinned to the same head commit. The remaining
-per-check evaluators, completion validators, and CLI/reports are later Phase 7
-tickets.
+DOCUMENTATION_UPDATE evidence pinned to the same head commit. ATLAS-72 adds
+:func:`evaluate_acceptance_criteria` (acceptance_check.py) — the
+``acceptance_criteria`` check against human-tier MANUAL_APPROVAL confirmations
+pinned to the same head commit, one per criterion (it also defines
+:func:`acceptance_criterion_hash`, the confirmation convention ATLAS-73 and
+ATLAS-80 inherit). The remaining per-check evaluators, completion validators,
+and CLI/reports are later Phase 7 tickets.
 
 Layer position: ``atlas.verification`` sits directly below ``atlas.pm`` and
 above ``atlas.context`` in the import-linter spine. It may import only layers
@@ -34,6 +38,11 @@ surfaces a SECURITY check only for ``risk_level == critical``, as
 ``required=False`` so it never gates; see verification-engine.md.
 """
 
+from atlas.verification.acceptance_check import (
+    AcceptanceEvaluation,
+    acceptance_criterion_hash,
+    evaluate_acceptance_criteria,
+)
 from atlas.verification.documentation_check import (
     DocumentationEvaluation,
     evaluate_documentation_check,
@@ -49,9 +58,12 @@ from atlas.verification.rules import RequiredCheck, required_checks
 __all__ = [
     "MACHINE_CHECK_EVIDENCE",
     "MACHINE_CHECK_TYPES",
+    "AcceptanceEvaluation",
     "DocumentationEvaluation",
     "MachineCheckEvaluation",
     "RequiredCheck",
+    "acceptance_criterion_hash",
+    "evaluate_acceptance_criteria",
     "evaluate_documentation_check",
     "evaluate_machine_check",
     "required_checks",

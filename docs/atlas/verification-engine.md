@@ -45,8 +45,17 @@ For each required check on ticket T with PR head commit C:
 - **acceptance_criteria (v1, honest):** operator-confirmed.
   `atlas verify <KEY>` presents each criterion as a checklist; the
   operator's confirmations are recorded as human-tier evidence per
-  criterion. LLM-assisted pre-assessment (agent proposes pass/fail with
-  cited diff lines, operator confirms) is a later enhancement, not v1.
+  criterion. Each confirmation is a human-tier MANUAL_APPROVAL record
+  pinned to the head commit C and scoped to the ticket, carrying
+  `raw_payload["acceptance_criterion_hash"]` — the SHA-256 hex digest of
+  the criterion's text after `.strip()` — as the discriminator that
+  identifies which criterion it confirms (a blanket `human_approval`
+  MANUAL_APPROVAL carries no such key and is ignored). The check PASSES
+  only when every criterion is so confirmed at C; rewording a criterion
+  changes its hash, so a stale confirmation no longer matches and
+  re-confirmation is required. LLM-assisted pre-assessment (agent proposes
+  pass/fail with cited diff lines, operator confirms) is a later
+  enhancement, not v1.
 - **scope (v1, heuristic):** the PR file list is compared against the
   union of paths implied by `relevant_docs`, `source_anchor`, and an
   optional `allowed_paths` ticket field; out-of-scope files are presented
