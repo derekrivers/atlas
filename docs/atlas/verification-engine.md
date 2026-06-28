@@ -57,10 +57,24 @@ For each required check on ticket T with PR head commit C:
   pass/fail with cited diff lines, operator confirms) is a later
   enhancement, not v1.
 - **scope (v1, heuristic):** the PR file list is compared against the
-  union of paths implied by `relevant_docs`, `source_anchor`, and an
-  optional `allowed_paths` ticket field; out-of-scope files are presented
-  to the operator for waive/fail. Fully automatic scope verdicts are
-  explicitly out of scope for v1.
+  declared in-scope set — the union of `relevant_docs` and the path part of
+  `source_anchor` (`source_anchor.split("#", 1)[0]`); there is NO
+  `allowed_paths` ticket field in v1 (OP-2), so scope derives from those two
+  alone. Matching is exact normalised path equality; directory/prefix/glob
+  matching is deferred. Out-of-scope files are presented to the operator for
+  waive/fail; fully automatic scope verdicts are explicitly out of scope for
+  v1. An operator decision is a human-tier MANUAL_APPROVAL record pinned to
+  the head commit C and scoped to the ticket, carrying
+  `raw_payload["scope_decision_path"]` — the exact normalised file path it
+  decides — with its `status` carrying the choice: `PASSED` = waive (the
+  out-of-scope file is acceptable), `FAILED` = fail (the file should not be
+  here — a scope dispute). For a file with both, the latest by
+  `(created_at, id)` decides. The check PASSES when every changed file is
+  in scope or every out-of-scope file is waived at C; it FAILS when any
+  out-of-scope file's latest decision is a fail (routing to
+  `needs_human_decision`); it stays PENDING while any out-of-scope file is
+  undecided (an undecided file is unresolved, not rejected). A non-human
+  MANUAL_APPROVAL carrying a matching path does not decide a file.
 - **human_approval:** a MANUAL_APPROVAL evidence record from the operator.
 
 ## Verdict and completion
