@@ -84,6 +84,27 @@ a non-UUID id, and an unknown id are each a clean one-line `EXIT_PRECONDITION`,
 never a traceback; no token is ever printed. `evidence` exit codes: 0 success; 2
 precondition. NOTE: `pull --repo` is the GitHub `OWNER/REPO` slug, not the
 repo-root path that `plan`/`context` `--repo` mean.
+
+`verify` (ATLAS-80) is the Phase 7 entry point that makes the verification engine
+usable: `verify --pr N --repo OWNER/REPO` verifies every ticket the PR closes,
+RECORDS the verdict, and REPORTS it. It mirrors `evidence pull`'s GitHub-client +
+`--repo` + `GITHUB_TOKEN` construction, resolves the head commit C and changed
+files from GitHub, resolves the close-set from the PR (the `(ATLAS-NN)` key in the
+title is the primary source, OP-C/R1; `--tickets` overrides), loads each Ticket
+and the stored evidence, runs the PURE `atlas.verification.evaluate_pr`, PERSISTS
+one append-only VerificationCheck row per check (OP-B; every run appends a fresh
+set, never mutating prior rows), and renders a human or `--json` report. It is
+NON-interactive and writes NO Evidence (OP-A): the interactive
+operator-confirmation capture (writing human-tier acceptance/scope/approval
+evidence pinned to C) is the OP-3 follow-on, so acceptance/scope/human checks
+report PENDING here until it lands — honest and expected, not a bug. EXIT-CODE
+CONTRACT (R2): a produced report is EXIT_OK for ANY verdict (PASSED / PENDING /
+FAILED) — because OP-A makes PENDING the normal state, a verdict-based exit code
+would make `verify` "fail" constantly; only a precondition (malformed `--repo`,
+missing token, unknown PR / transport, a cold database) is EXIT_PRECONDITION,
+never a traceback. A future `--strict` mode (FAILED -> nonzero, for CI gating) is
+a follow-up — do not script `atlas verify && merge` expecting it to block on
+FAILED today. Like `evidence`, `verify --repo` is the GitHub `OWNER/REPO` slug.
 """
 
 from __future__ import annotations
@@ -98,7 +119,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import NamedTuple
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import networkx as nx
 from sqlalchemy.exc import OperationalError
@@ -201,6 +222,14 @@ from atlas.storage import (
     TicketRepo,
     TicketStatusTransitionRepo,
     TickFailureRepo,
+    VerificationCheckRepo,
+)
+from atlas.verification import (
+    CheckOutcome,
+    PRVerification,
+    evaluate_pr,
+    parse_close_set,
+    verification_checks_for,
 )
 
 EXIT_OK = 0
@@ -259,6 +288,7 @@ def build_parser() -> argparse.ArgumentParser:
     _add_pm_parser(subcommands)
     _add_context_parser(subcommands)
     _add_evidence_parser(subcommands)
+    _add_verify_parser(subcommands)
     return parser
 
 
@@ -456,6 +486,51 @@ def _add_evidence_parser(subcommands: argparse._SubParsersAction) -> None:  # ty
     show.add_argument("evidence_id", help="the evidence id (a UUID)")
     show.add_argument("--db", default=None, help="database URL")
     show.add_argument("--json", action="store_true", help="emit machine-readable JSON")
+
+
+def _add_verify_parser(subcommands: argparse._SubParsersAction) -> None:  # type: ignore[type-arg]
+    """The `atlas verify` command (ATLAS-80): verify + record + report for one PR.
+
+    PR-centric — it verifies every ticket the PR closes. Resolves the head commit
+    and changed files from GitHub (mirroring `evidence pull`'s client + `--repo
+    OWNER/REPO` + `GITHUB_TOKEN` construction), runs the pure `evaluate_pr`,
+    PERSISTS one append-only VerificationCheck row per check (OP-B), and renders a
+    human + JSON report. NON-interactive and writes NO Evidence (OP-A): the
+    interactive operator-confirmation capture is the OP-3 follow-on, so
+    acceptance/scope/human checks report PENDING until it lands.
+
+    NOTE: `--repo` is the GitHub `OWNER/REPO` slug (like `evidence pull`), not the
+    repo-root path that `plan`/`context` `--repo` mean.
+
+    EXIT-CODE CONTRACT (R2): a produced report is EXIT_OK for ANY verdict
+    (PASSED / PENDING / FAILED) — because OP-A makes PENDING the normal state, a
+    verdict-based exit code would make `verify` "fail" constantly. Only a
+    precondition (malformed `--repo`, missing token, unknown PR / transport, a
+    cold database) is EXIT_PRECONDITION. A future `--strict` mode (FAILED ->
+    nonzero, for CI gating) is a follow-up; do NOT script `atlas verify && merge`
+    expecting it to block on FAILED today."""
+    verify = subcommands.add_parser(
+        "verify",
+        help="Verify a PR (verify + record + report); EXIT_OK on any verdict",
+    )
+    verify.add_argument(
+        "--pr", type=int, required=True, help="the pull request number to verify"
+    )
+    verify.add_argument(
+        "--repo",
+        required=True,
+        help="the GitHub repository as OWNER/REPO (not a path)",
+    )
+    verify.add_argument(
+        "--tickets",
+        default=None,
+        help="override the close-set: a comma-separated list of ATLAS keys "
+        "(e.g. ATLAS-72,ATLAS-73); without it the keys are parsed from the PR",
+    )
+    verify.add_argument("--db", default=None, help="database URL")
+    verify.add_argument(
+        "--json", action="store_true", help="emit machine-readable JSON"
+    )
 
 
 def _make_confirm(assume_yes: bool) -> Callable[[PlanDiff], ApplyDecision]:
@@ -1381,6 +1456,216 @@ def _evidence_command(
     return EXIT_PRECONDITION  # unreachable: evidence subparser is required
 
 
+def _verify_pr_file_paths(files: list[dict[str, object]]) -> list[str]:
+    """Extract the changed-file paths from a raw `fetch_pr_files` response (D3).
+
+    Reads each entry's ``filename`` defensively (the D5 "never traceback" spirit
+    applies to input extraction, not just the evaluators): an entry without a
+    non-blank ``str`` filename is skipped rather than raising KeyError on odd
+    GitHub data. The order is preserved; the scope evaluator distincts internally.
+    """
+    paths: list[str] = []
+    for entry in files:
+        filename = entry.get("filename")
+        if isinstance(filename, str) and filename.strip():
+            paths.append(filename)
+    return paths
+
+
+def _parse_tickets_flag(raw: str) -> tuple[str, ...]:
+    """Normalise a `--tickets` override to canonical uppercase keys (D1).
+
+    Splits on commas, strips and uppercases each entry, drops blanks, and dedupes
+    order-preserving — so `atlas-72, ATLAS-72 ,ATLAS-73` -> ``("ATLAS-72",
+    "ATLAS-73")``. The same canonical form `parse_close_set` emits, so both feed
+    `get_by_key` identically."""
+    keys: list[str] = []
+    seen: set[str] = set()
+    for part in raw.split(","):
+        key = part.strip().upper()
+        if key and key not in seen:
+            seen.add(key)
+            keys.append(key)
+    return tuple(keys)
+
+
+def _pr_verification_json(pr: PRVerification) -> dict[str, object]:
+    """The serialised PRVerification for `--json` (D4): head_commit, status, and
+    tickets[] with each ticket_id, status, and checks[] {check_type, required,
+    status, evidence_ids, reason}. Deterministic — tickets are already key-ordered
+    and checks in resolver order."""
+    return {
+        "head_commit": pr.head_commit,
+        "status": pr.status.value,
+        "tickets": [
+            {
+                "ticket_id": str(tv.ticket_id),
+                "status": tv.status.value,
+                "checks": [
+                    {
+                        "check_type": outcome.check_type.value,
+                        "required": outcome.required,
+                        "status": outcome.status.value,
+                        "evidence_ids": [str(eid) for eid in outcome.evidence_ids],
+                        "reason": outcome.reason,
+                    }
+                    for outcome in tv.checks
+                ],
+            }
+            for tv in pr.tickets
+        ],
+    }
+
+
+def _verify_check_text(outcome: CheckOutcome) -> str:
+    """One per-check line in the human report (D4): status, type, gating flag,
+    evidence ids, and the evaluator's reason (which already reads e.g. 'awaiting
+    system-tier evidence at C' for a PENDING machine check)."""
+    evidence_ids = ", ".join(str(eid) for eid in outcome.evidence_ids) or "—"
+    gate = "required" if outcome.required else "optional"
+    return (
+        f"    [{outcome.status.value.upper():<14}] "
+        f"{outcome.check_type.value:<20} ({gate})  evidence: {evidence_ids}\n"
+        f"      {outcome.reason}"
+    )
+
+
+def _verify_report_text(
+    pr: PRVerification,
+    key_by_id: dict[UUID, str],
+    *,
+    repo: str,
+    pr_number: int,
+    unknown_keys: list[str],
+) -> str:
+    """The human report (D4): a PR verdict headline at C, then per ticket (by
+    key) its verdict and per-check breakdown, plus the OP-A honesty note and any
+    skipped unknown keys / empty-close-set explanation. Never a traceback (D5)."""
+    lines = [
+        f"Verification for {repo} PR #{pr_number} at {pr.head_commit}",
+        f"PR verdict: {pr.status.value.upper()}",
+    ]
+    if not pr.tickets:
+        lines.append(
+            "  No tickets resolved from this PR (empty close-set); PENDING — "
+            "nothing to verify (a PR is expected to close at least one ATLAS-NN "
+            "ticket; name them with --tickets if the convention was not followed)."
+        )
+    for tv in pr.tickets:
+        key = key_by_id.get(tv.ticket_id, str(tv.ticket_id))
+        lines.append(f"  {key}: {tv.status.value.upper()}")
+        lines.extend(_verify_check_text(outcome) for outcome in tv.checks)
+    if unknown_keys:
+        lines.append(
+            "  Skipped (no such ticket in the database): " + ", ".join(unknown_keys)
+        )
+    lines.append(
+        "  Note (OP-A): acceptance / scope / human_approval report PENDING here "
+        "until the interactive operator-confirmation capture lands (OP-3 "
+        "follow-on) — no operator confirmations exist yet. This is honest and "
+        "expected, not a bug; the machine checks (tests / lint / documentation) "
+        "are evaluated against system-tier evidence at this commit."
+    )
+    return "\n".join(lines)
+
+
+def _verify_command(
+    args: argparse.Namespace,
+    *,
+    database: Database | None,
+    github_client: GitHubClient | None,
+) -> int:
+    """`atlas verify --pr N --repo OWNER/REPO` (ATLAS-80): verify + record + report.
+
+    Mirrors `evidence pull`'s client construction (`--repo OWNER/REPO`, the live
+    `GitHubRESTClient` from `GITHUB_TOKEN` unless one is injected for tests).
+    Resolves the head commit and changed files from GitHub, the close-set from the
+    PR (`--tickets` override else `parse_close_set` over the title/body, OP-C/R1),
+    loads each Ticket and the evidence, runs the pure `evaluate_pr`, PERSISTS one
+    append-only VerificationCheck row per check (OP-B), and renders the report.
+
+    EXIT-CODE CONTRACT (R2): a produced report is EXIT_OK for ANY verdict; only a
+    precondition (malformed `--repo`, missing token, unknown PR / transport, a
+    cold database) is EXIT_PRECONDITION — never a traceback (D5). No secret is
+    printed. A cold (never-migrated) database raises OperationalError from the
+    first repo access; the guard maps it to a clean precondition, mirroring
+    `evidence`'s ATLAS-130 handling (no raw SQLAlchemy text leaks)."""
+    resolved_db = database if database is not None else Database(args.db)
+
+    owner, sep, repo = args.repo.partition("/")
+    if not (owner and sep and repo) or "/" in repo:
+        print("--repo must be OWNER/REPO (e.g. acme/atlas).", file=sys.stderr)
+        return EXIT_PRECONDITION
+
+    client = github_client
+    if client is None:
+        try:
+            client = GitHubRESTClient()  # reads GITHUB_TOKEN at construction
+        except MissingGitHubTokenError as error:
+            print(error, file=sys.stderr)
+            return EXIT_PRECONDITION
+
+    try:
+        pull_request = client.fetch_pull_request(owner, repo, args.pr)
+        head_commit = str(pull_request["head"]["sha"])
+        pr_files = _verify_pr_file_paths(client.fetch_pr_files(owner, repo, args.pr))
+    except GitHubAPIError as error:
+        print(error, file=sys.stderr)
+        return EXIT_PRECONDITION
+
+    close_set: tuple[str, ...]
+    if args.tickets is not None:
+        close_set = _parse_tickets_flag(args.tickets)
+    else:
+        close_set = parse_close_set(pull_request.get("title"), pull_request.get("body"))
+
+    try:
+        ticket_repo = TicketRepo(resolved_db)
+        tickets: list[Ticket] = []
+        key_by_id: dict[UUID, str] = {}
+        unknown_keys: list[str] = []
+        for key in close_set:
+            ticket = ticket_repo.get_by_key(key)
+            if ticket is None:
+                unknown_keys.append(key)
+                continue
+            tickets.append(ticket)
+            key_by_id[ticket.id] = ticket.key
+
+        evidence = EvidenceRepo(resolved_db).list()
+        pr = evaluate_pr(
+            tickets,
+            pr_files=pr_files,
+            head_commit=head_commit,
+            evidence=evidence,
+        )
+
+        # OP-B: persist one append-only VerificationCheck per check. One clock and
+        # the uuid4 factory are injected so the pure mapping is deterministic.
+        rows = verification_checks_for(pr, now=datetime.now(UTC), new_id=uuid4)
+        check_repo = VerificationCheckRepo(resolved_db)
+        for row in rows:
+            check_repo.add(row)
+    except OperationalError:
+        print(
+            "database is not initialised (no such table); run the database "
+            "migrations before using `atlas verify`.",
+            file=sys.stderr,
+        )
+        return EXIT_PRECONDITION
+
+    payload = _pr_verification_json(pr)
+    text = _verify_report_text(
+        pr,
+        key_by_id,
+        repo=f"{owner}/{repo}",
+        pr_number=args.pr,
+        unknown_keys=unknown_keys,
+    )
+    _emit(payload, text, as_json=args.json)
+    return EXIT_OK
+
+
 def main(
     argv: list[str] | None = None,
     *,
@@ -1412,6 +1697,8 @@ def main(
         return _context_command(args, database=database)
     if args.command == "evidence":
         return _evidence_command(args, database=database, github_client=github_client)
+    if args.command == "verify":
+        return _verify_command(args, database=database, github_client=github_client)
     return EXIT_PRECONDITION  # unreachable: subparser is required
 
 

@@ -35,7 +35,16 @@ non-required checks like the deferred SECURITY do not gate). ATLAS-77 adds the
 outer-loop aggregation: :func:`evaluate_pr` (pr_completion.py) folds the per-ticket
 verdicts of the tickets a PR closes into one PR verdict (PASSED iff every closed
 ticket PASSED; FAILED if any FAILED; else PENDING; an empty close-set PENDING) over
-the shared fold rule. The CLI/reports are a later Phase 7 ticket (ATLAS-80).
+the shared fold rule. ATLAS-80 lands the CLI surface (``atlas verify --pr <N>``,
+the impure handler in ``atlas.cli``) and its two pure helpers here (reports.py):
+:func:`parse_close_set` (resolves WHICH tickets a PR closes — the ``(ATLAS-NN)``
+key in the PR title, OP-C) and :func:`verification_checks_for` (maps a
+:class:`PRVerification` into the append-only :class:`VerificationCheck` rows the
+handler persists, OP-B). The verify CLI is verify + record + report only — it is
+NON-interactive and writes NO Evidence; the interactive operator-confirmation
+capture (writing human-tier acceptance/scope/approval evidence pinned to the head
+commit) is the OP-3 follow-on, so acceptance/scope/human checks report PENDING
+until it lands.
 
 Layer position: ``atlas.verification`` sits directly below ``atlas.pm`` and
 above ``atlas.context`` in the import-linter spine. It may import only layers
@@ -79,6 +88,7 @@ from atlas.verification.machine_checks import (
     evaluate_machine_check,
 )
 from atlas.verification.pr_completion import PRVerification, evaluate_pr
+from atlas.verification.reports import parse_close_set, verification_checks_for
 from atlas.verification.rules import RequiredCheck, required_checks
 from atlas.verification.scope_check import (
     SCOPE_DECISION_PATH_KEY,
@@ -107,5 +117,7 @@ __all__ = [
     "evaluate_pr",
     "evaluate_scope",
     "evaluate_ticket",
+    "parse_close_set",
     "required_checks",
+    "verification_checks_for",
 ]

@@ -116,9 +116,27 @@ ticket set is an input.
 
 ## Reports
 
-`atlas verify <KEY>` prints the per-check table with evidence IDs and
-commit pins; `--json` for automation. Verdicts persist as
-VerificationCheck rows; there is no dashboard (Revision 1).
+`atlas verify --pr <N> --repo <OWNER/REPO>` (ATLAS-80) is verify + record +
+report for one PR: it resolves the PR head commit C and changed files from
+GitHub, resolves which tickets the PR closes (the `(ATLAS-NN)` key in the PR
+title is the primary source; `--tickets ATLAS-a,ATLAS-b` overrides), reads the
+stored evidence, runs the pure `evaluate_pr`, and prints the PR/per-ticket
+verdict with the per-check breakdown (check_type, required, status, the
+evaluator's reason, and evidence IDs); `--json` emits the serialised
+PRVerification for automation. Each run PERSISTS the verdict as append-only
+VerificationCheck rows (one per check; a re-run appends a fresh set, never
+mutating prior rows); there is no dashboard (Revision 1). The command is
+NON-interactive and writes NO evidence: the interactive operator-confirmation
+capture — writing the human-tier acceptance/scope/human-approval confirmations
+pinned to C — is a separate follow-on (OP-3), so the acceptance, scope, and
+human_approval checks report PENDING here until it lands (no operator
+confirmations exist yet); this is honest and expected, not a failure. Exit-code
+contract: a produced report is exit 0 for any verdict (PASSED/PENDING/FAILED) —
+because PENDING is the normal state until the OP-3 capture lands, a verdict-based
+exit code would make `verify` fail constantly; only a precondition (a malformed
+`--repo`, a missing token, an unknown PR or transport error, a cold database) is
+a non-zero exit. A future `--strict` mode (FAILED → non-zero, for CI gating) is a
+follow-up — until it exists, `verify` does not block a merge on a FAILED verdict.
 
 ## Open items
 
