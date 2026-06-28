@@ -18,9 +18,10 @@ storage normalises to UTC and returns UTC-aware values.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Generic, TypeVar
+from typing import Any, Generic, TypeVar
 from uuid import UUID, uuid4
 
 import sqlalchemy as sa
@@ -410,6 +411,45 @@ class ContextPackRepo(_Repo[ContextPack]):
         super().__init__(db, ContextPack, ContextPackRow)
 
 
+RAW_PAYLOAD_CAP_BYTES = 64 * 1024
+"""The evidence-pipeline.md "Retention" cap on a stored ``raw_payload``.
+
+Measured as the serialised byte length under the SAME canonicalisation the
+dedup ``payload_hash`` uses (``json.dumps`` sorted-keys, tight separators,
+UTF-8; see ``atlas.github.normaliser.payload_hash``), so "size" is one
+deterministic notion. A payload larger than this is replaced at the write
+boundary by a self-describing marker (``_raw_payload_marker``); the pin triple
+and ``payload_hash`` are never touched. 64KB verbatim from the design doc.
+"""
+
+
+def _serialised_len(payload: dict[str, Any]) -> int:
+    """Byte length of ``payload`` under the dedup-hash canonicalisation.
+
+    The single definition of an evidence payload's "size", matching
+    ``atlas.github.normaliser.payload_hash`` exactly so the retention cap and
+    the hash measure the same bytes.
+    """
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    return len(canonical.encode("utf-8"))
+
+
+def _raw_payload_marker(model: Evidence, original_bytes: int) -> dict[str, Any]:
+    """The self-describing replacement stored in place of an oversized payload.
+
+    Carries the FULL payload's ``payload_hash`` and ``source_uri`` so the row
+    stays auditable and the original is re-fetchable from GitHub (a Phase 10+
+    concern; not this ticket). ``payload_hash`` is the upstream full-payload
+    hash, never recomputed — truncation changes only the stored bytes.
+    """
+    return {
+        "_truncated": True,
+        "_original_bytes": original_bytes,
+        "_payload_hash": model.payload_hash,
+        "_source_uri": model.source_uri,
+    }
+
+
 class EvidenceRepo(_Repo[Evidence]):
     """Append-only: add and queries only (ADR-0008).
 
@@ -443,6 +483,18 @@ class EvidenceRepo(_Repo[Evidence]):
                     f"missing {missing}. Ingestion rejects records without "
                     "commit_sha, external_run_id, and payload_hash."
                 )
+        # Retention cap (evidence-pipeline.md "Retention", ATLAS-69): AFTER the
+        # trust-tier/pin guard (an oversized system-tier record is still pinned,
+        # since the marker leaves the triple intact) and BEFORE super().add().
+        # Larger-than-cap (strict ``>``; exactly at the cap is stored verbatim)
+        # replaces only the stored bytes — payload_hash is never recomputed, so
+        # the pin is untouched. The persisted-and-returned model agree (D6):
+        # super().add returns the same model it stored.
+        size = _serialised_len(model.raw_payload)
+        if size > RAW_PAYLOAD_CAP_BYTES:
+            model = model.model_copy(
+                update={"raw_payload": _raw_payload_marker(model, size)}
+            )
         return super().add(model)
 
 

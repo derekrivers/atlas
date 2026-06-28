@@ -4,9 +4,11 @@ introspection where the docs demand absence (no mutating methods, no
 bypass parameter)."""
 
 import inspect
+import json
+from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from test_evidence_model import evidence_kwargs
@@ -14,6 +16,7 @@ from test_plan_run_model import plan_run_kwargs
 
 from atlas.core.models import Evidence, PlanRun, PlanRunStatus
 from atlas.storage import (
+    RAW_PAYLOAD_CAP_BYTES,
     Database,
     EvidenceRepo,
     NaiveDatetimeError,
@@ -140,6 +143,113 @@ def test_human_tier_without_pin_fields_accepted(db: Database) -> None:
     )
     assert repo.add(record) == record
     assert repo.get(record.id) == record
+
+
+# --- retention cap (ADR-0008, evidence-pipeline.md "Retention", ATLAS-69) ----
+
+
+def _measure(payload: Mapping[str, object]) -> int:
+    """Serialised byte length under the dedup-hash canonicalisation — the same
+    notion of "size" EvidenceRepo.add caps on (mirrors normaliser.payload_hash
+    and the repo's private _serialised_len, so the boundary test drives off the
+    real measurement, never a hardcoded 65536)."""
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    return len(canonical.encode("utf-8"))
+
+
+def _stored(repo: EvidenceRepo, entity_id: UUID) -> Evidence:
+    """The persisted record, asserted present (keeps attribute access off the
+    Optional that get() returns, so the boundary tests stay mypy-clean)."""
+    fetched = repo.get(entity_id)
+    assert fetched is not None
+    return fetched
+
+
+def _payload_measuring(target: int) -> dict[str, object]:
+    """A payload whose canonicalised size is EXACTLY ``target`` bytes.
+
+    Single ASCII string field, so the scaffolding is fixed overhead and each
+    padding char adds exactly one byte; the length is solved by measuring the
+    overhead and padding the remainder. Self-checking: it asserts the realised
+    size, so a change in JSON scaffolding fails loudly here rather than silently
+    testing the wrong boundary."""
+    overhead = _measure({"d": ""})
+    payload: dict[str, object] = {"d": "x" * (target - overhead)}
+    assert _measure(payload) == target  # construction is exact, not approximate
+    return payload
+
+
+def test_under_cap_payload_round_trips_byte_for_byte(db: Database) -> None:
+    # AC1: a payload at/under the cap is stored UNCHANGED through add + get.
+    repo = EvidenceRepo(db)
+    payload = {"runs": [{"name": "pytest", "ok": True}], "n": 97}
+    assert _measure(payload) <= RAW_PAYLOAD_CAP_BYTES
+    record = Evidence(**evidence_kwargs() | {"raw_payload": payload})
+    assert repo.add(record).raw_payload == payload
+    assert _stored(repo, record.id).raw_payload == payload
+
+
+def test_oversized_payload_not_stored_verbatim(db: Database) -> None:
+    # AC2 (seeded-defect guard): an over-cap payload is stored as the marker,
+    # never verbatim and never as invalid/partial JSON. Removing the cap makes
+    # this fail — the oversized payload would round-trip unchanged.
+    repo = EvidenceRepo(db)
+    payload = _payload_measuring(RAW_PAYLOAD_CAP_BYTES + 1)
+    original_bytes = _measure(payload)
+    record = Evidence(**evidence_kwargs() | {"raw_payload": payload})
+    repo.add(record)
+    stored = _stored(repo, record.id).raw_payload
+    assert stored == {
+        "_truncated": True,
+        "_original_bytes": original_bytes,
+        "_payload_hash": record.payload_hash,
+        "_source_uri": record.source_uri,
+    }
+    assert stored != payload
+
+
+def test_payload_hash_unchanged_by_cap(db: Database) -> None:
+    # AC3 (seeded-defect guard): the cap NEVER re-hashes — payload_hash is the
+    # full-payload hash before and after — and an oversized SYSTEM-tier record
+    # still passes the commit-pin guard and persists. Re-hashing the truncated
+    # payload makes this fail.
+    repo = EvidenceRepo(db)
+    payload = _payload_measuring(RAW_PAYLOAD_CAP_BYTES + 4096)
+    record = Evidence(**evidence_kwargs() | {"raw_payload": payload})
+    assert record.created_by_type.value == "system"  # the pinned tier
+    returned = repo.add(record)
+    assert returned.payload_hash == record.payload_hash
+    # The oversized system-tier record was accepted, not rejected by the guard,
+    # and its pin is the unchanged full-payload hash.
+    assert _stored(repo, record.id).payload_hash == record.payload_hash
+
+
+def test_add_return_value_matches_stored_for_truncated(db: Database) -> None:
+    # AC4: add() returns a model whose raw_payload is what get() later returns
+    # (the marker for truncated records) — return and storage agree (D6).
+    repo = EvidenceRepo(db)
+    payload = _payload_measuring(RAW_PAYLOAD_CAP_BYTES + 1)
+    record = Evidence(**evidence_kwargs() | {"raw_payload": payload})
+    returned = repo.add(record)
+    assert returned.raw_payload == _stored(repo, record.id).raw_payload
+    assert returned.raw_payload["_truncated"] is True
+
+
+def test_decision_boundary_at_cap_stored_one_over_truncated(db: Database) -> None:
+    # AC5: the DECISION BOUNDARY, driven off the measured size, with the
+    # operator (">", not ">=") pinned. Exactly at the cap is stored verbatim;
+    # one byte over is truncated. The at-cap assertion catches a ">=" regression.
+    repo = EvidenceRepo(db)
+
+    at_cap = _payload_measuring(RAW_PAYLOAD_CAP_BYTES)
+    at_record = Evidence(**evidence_kwargs() | {"raw_payload": at_cap})
+    assert repo.add(at_record).raw_payload == at_cap  # > cap, not >= cap
+    assert _stored(repo, at_record.id).raw_payload == at_cap
+
+    over_cap = _payload_measuring(RAW_PAYLOAD_CAP_BYTES + 1)
+    over_record = Evidence(**evidence_kwargs() | {"raw_payload": over_cap})
+    assert repo.add(over_record).raw_payload["_truncated"] is True
+    assert _stored(repo, over_record.id).raw_payload != over_cap
 
 
 # --- finalise-once (ADR-0007, knowledge-core) -------------------------------
