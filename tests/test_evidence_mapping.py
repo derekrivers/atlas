@@ -17,8 +17,10 @@ from typing import Any
 from uuid import uuid4
 
 import pytest
+from test_evidence_model import evidence_kwargs
 
 from atlas.core.enums import ActorType, EvidenceStatus
+from atlas.core.models import Evidence
 from atlas.core.models.evidence import EvidenceType
 from atlas.evidence import (
     GITHUB_ACTIONS_ACTOR_ID,
@@ -31,7 +33,7 @@ from atlas.evidence import (
     map_review_to_evidence,
 )
 from atlas.github import NormalisedCheck, NormalisedDocs, NormalisedReview
-from atlas.storage import Database, EvidenceRepo
+from atlas.storage import Database, EvidenceRepo, TrustTierError
 
 NOW = datetime(2026, 6, 26, tzinfo=UTC)
 
@@ -351,3 +353,46 @@ def test_ingest_docs_none_persists_nothing(db: Database) -> None:
     persisted = ingest_docs(None, repo=repo, product_id=uuid4(), now=NOW)
     assert persisted == []
     assert repo.list() == []
+
+
+# --- ATLAS-70 milestone anchor: tier rules end-to-end (ADR-0008) --------------
+
+
+def test_atlas70_milestone_ci_pinned_system_agent_passed_capped(db: Database) -> None:
+    """ATLAS-70 / ADR-0008 milestone, asserted end-to-end in one place. The tier
+    rules already exist — the mappers stamp ingested CI as system-tier (ATLAS-63
+    /64) and EvidenceRepo.add enforces the agent-PENDING cap and the system-tier
+    commit-pin guard (ATLAS-61). This is a regression anchor, not new behaviour:
+    no production code. It pins both halves of the milestone together so neither
+    can silently regress without this failing."""
+    repo = EvidenceRepo(db)
+    product_id = uuid4()
+
+    # (a) A CI check ingested through the REAL map + add path persists as a
+    #     SYSTEM-tier, commit-pinned row — the pipeline pins it, the test does
+    #     not hand-build it. It is in storage because it survived the pin guard.
+    [persisted] = ingest_checks(
+        [_check("test (3.12)")], repo=repo, product_id=product_id, now=NOW
+    )
+    assert persisted.created_by_type is ActorType.SYSTEM
+    assert persisted.commit_sha is not None
+    assert persisted.external_run_id is not None
+    assert persisted.payload_hash is not None
+    assert repo.get(persisted.id) == persisted
+
+    # (b) An agent-authored PASSED record is REJECTED and NOT persisted: the cap
+    #     is enforce-by-rejection, never coercion. PENDING is the agent ceiling.
+    agent_passed = Evidence(
+        **evidence_kwargs() | {"created_by_type": "agent", "status": "passed"}
+    )
+    with pytest.raises(TrustTierError):
+        repo.add(agent_passed)
+    assert agent_passed.id not in {e.id for e in repo.list()}
+
+    # ...and the SAME agent record at PENDING is accepted and stored, so the
+    #    anchor pins "PENDING is the ceiling", not merely "PASSED fails".
+    agent_pending = Evidence(
+        **evidence_kwargs() | {"created_by_type": "agent", "status": "pending"}
+    )
+    assert repo.add(agent_pending) == agent_pending
+    assert agent_pending.id in {e.id for e in repo.list()}
