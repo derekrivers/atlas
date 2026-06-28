@@ -38,7 +38,7 @@ from atlas.verification import (
 )
 from atlas.verification import completion as completion_mod
 from atlas.verification.acceptance_check import ACCEPTANCE_CRITERION_HASH_KEY
-from atlas.verification.completion import _DISPATCH
+from atlas.verification.completion import _DISPATCH, fold_statuses
 
 NOW = datetime(2026, 6, 28, tzinfo=UTC)
 HEAD = "c0ffee0000000000000000000000000000000000"
@@ -467,3 +467,32 @@ def test_never_raises_across_cross_product() -> None:
             # wrong answer: an exception, or a vacuous PASS over unproven checks.
             assert isinstance(result, TicketVerification)
             assert result.status in {ES.PENDING, ES.FAILED, ES.NOT_APPLICABLE}
+
+
+# --- D5: the shared fold rule (fold_statuses) is unit-tested directly. It is the
+# single source of truth for BOTH the per-ticket verdict (_compose_verdict, above)
+# and the PR verdict (ATLAS-77 evaluate_pr) — so its rule is pinned here once.
+def test_fold_statuses_any_failed_yields_failed() -> None:
+    # wrong answer: PENDING — fail precedence dominates any mix.
+    assert fold_statuses([ES.PASSED, ES.FAILED, ES.PASSED]) == ES.FAILED
+    assert fold_statuses([ES.FAILED]) == ES.FAILED
+    assert fold_statuses([ES.PENDING, ES.FAILED]) == ES.FAILED
+
+
+def test_fold_statuses_empty_yields_pending() -> None:
+    # wrong answer: PASSED — an empty set is never a vacuous PASS.
+    assert fold_statuses([]) == ES.PENDING
+
+
+def test_fold_statuses_all_passed_yields_passed() -> None:
+    # wrong answer: PENDING — a non-empty set of only PASSED passes.
+    assert fold_statuses([ES.PASSED]) == ES.PASSED
+    assert fold_statuses([ES.PASSED, ES.PASSED]) == ES.PASSED
+
+
+def test_fold_statuses_non_passing_in_mix_yields_pending() -> None:
+    # wrong answer: PASSED — a PENDING/WARNING/NOT_APPLICABLE is non-passing but not
+    # failing, so it holds the verdict at PENDING (only PASSED passes).
+    assert fold_statuses([ES.PASSED, ES.PENDING]) == ES.PENDING
+    assert fold_statuses([ES.PASSED, ES.WARNING]) == ES.PENDING
+    assert fold_statuses([ES.PASSED, ES.NOT_APPLICABLE]) == ES.PENDING

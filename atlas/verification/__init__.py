@@ -31,8 +31,11 @@ decision), latest deciding with status pass-through (OP-B) — and
 :func:`evaluate_ticket` (completion.py) resolves a ticket's required checks,
 dispatches each to its evaluator, and composes the per-ticket verdict (PASSED iff
 every required check PASSED; FAILED if any required FAILED; else PENDING;
-non-required checks like the deferred SECURITY do not gate). PR-level aggregation
-and the CLI/reports are later Phase 7 tickets.
+non-required checks like the deferred SECURITY do not gate). ATLAS-77 adds the
+outer-loop aggregation: :func:`evaluate_pr` (pr_completion.py) folds the per-ticket
+verdicts of the tickets a PR closes into one PR verdict (PASSED iff every closed
+ticket PASSED; FAILED if any FAILED; else PENDING; an empty close-set PENDING) over
+the shared fold rule. The CLI/reports are a later Phase 7 ticket (ATLAS-80).
 
 Layer position: ``atlas.verification`` sits directly below ``atlas.pm`` and
 above ``atlas.context`` in the import-linter spine. It may import only layers
@@ -75,6 +78,7 @@ from atlas.verification.machine_checks import (
     MachineCheckEvaluation,
     evaluate_machine_check,
 )
+from atlas.verification.pr_completion import PRVerification, evaluate_pr
 from atlas.verification.rules import RequiredCheck, required_checks
 from atlas.verification.scope_check import (
     SCOPE_DECISION_PATH_KEY,
@@ -91,6 +95,7 @@ __all__ = [
     "DocumentationEvaluation",
     "HumanApprovalEvaluation",
     "MachineCheckEvaluation",
+    "PRVerification",
     "RequiredCheck",
     "ScopeEvaluation",
     "TicketVerification",
@@ -99,6 +104,7 @@ __all__ = [
     "evaluate_documentation_check",
     "evaluate_human_approval",
     "evaluate_machine_check",
+    "evaluate_pr",
     "evaluate_scope",
     "evaluate_ticket",
     "required_checks",
