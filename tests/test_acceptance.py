@@ -644,9 +644,14 @@ def test_enumeration_pins_real_roadmap_count() -> None:
     # and the anchor error hierarchy out of atlas.planning.ingestion so the
     # atlas.context retrievers — below planning in the spine — can import it;
     # no new ticket behaviour, the existing suite is the oracle).
+    # + ATLAS-130 (the live-discovered Phase 6 fix: the evidence CLI fails
+    # cleanly on a cold/never-migrated database — a missing-schema
+    # OperationalError maps to EXIT_PRECONDITION across pull/list/show — recorded
+    # under the Phase 6 live-discovered-fixes block per the closure-coverage
+    # sensor, merged #116).
     # Addition couples to the pin, the mirror of the retirement rule. The pin
     # fires on exactly this kind of change.
-    assert len(tickets) == 113
+    assert len(tickets) == 114
     keys = [t.key for t in tickets]
     assert len(keys) == len(set(keys))  # unique
     assert "ATLAS-20" not in keys  # retired lines are not tickets

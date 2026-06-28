@@ -326,6 +326,13 @@ ATLAS-70 Evidence validation (tier rules: agent-created capped at PENDING)
 
 Retired: ATLAS-68 (Evidence dashboard).
 
+Phase 6 live-discovered fixes (found running the evidence CLI against a real
+repository; Phase 6 closure report §3):
+
+ATLAS-130 Evidence CLI fails cleanly on a cold/never-migrated database: a
+         missing-schema OperationalError maps to EXIT_PRECONDITION across
+         pull/list/show instead of tracebacking
+
 Milestone test: a CI run on a fixture PR is ingested as commit-pinned
 system-tier evidence; an agent-submitted PASSED record is stored as
 PENDING.

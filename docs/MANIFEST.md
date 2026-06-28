@@ -136,6 +136,8 @@ Phase closure reports (`docs/closure/`):
   milestone evidence, harness ledger, carry-forwards
 - `docs/closure/phase-5-closure-report.md` — Phase 5 (Context Renderer)
   closure: milestone evidence, harness ledger, carry-forwards
+- `docs/closure/phase-6-closure-report.md` — Phase 6 (Evidence System)
+  closure: milestone evidence, harness ledger, carry-forwards
 
 Stubs awaiting content: `docs/product/`, `docs/tech-debt/`.
 
