@@ -24,6 +24,7 @@ from atlas.core.models import Evidence
 from atlas.core.models.evidence import EvidenceType
 from atlas.evidence import (
     GITHUB_ACTIONS_ACTOR_ID,
+    build_merge_evidence,
     evidence_type_for_job,
     ingest_checks,
     ingest_docs,
@@ -396,3 +397,87 @@ def test_atlas70_milestone_ci_pinned_system_agent_passed_capped(db: Database) ->
     )
     assert repo.add(agent_pending) == agent_pending
     assert agent_pending.id in {e.id for e in repo.list()}
+
+
+# --- ATLAS-134: build_merge_evidence (the merge-record builder) --------------
+
+
+def _merge(
+    merged: object,
+    *,
+    head_commit: str = "f" * 40,
+    extra: dict[str, Any] | None = None,
+) -> Evidence | None:
+    pull_request: dict[str, Any] = {"merged": merged}
+    if extra is not None:
+        pull_request.update(extra)
+    return build_merge_evidence(
+        pull_request,
+        head_commit=head_commit,
+        ticket_id=uuid4(),
+        product_id=uuid4(),
+        evidence_id=uuid4(),
+        now=NOW,
+    )
+
+
+def test_build_merge_evidence_returns_none_for_unmerged_pr() -> None:
+    """AC-3: an unmerged PR -> None (no record). Falsy/absent merged are both None."""
+    assert _merge(False) is None
+    # wrong answer: a record built for an unmerged PR
+    assert (
+        build_merge_evidence(
+            {},  # no "merged" key at all
+            head_commit="f" * 40,
+            ticket_id=uuid4(),
+            product_id=uuid4(),
+            evidence_id=uuid4(),
+            now=NOW,
+        )
+        is None
+    )
+
+
+def test_build_merge_evidence_shapes_a_system_tier_record_for_a_merged_pr() -> None:
+    """AC-3: a merged PR -> a system-tier PR_MERGED record pinned to C, PASSED,
+    with the full pin triple EvidenceRepo.add demands."""
+    head = "f" * 40
+    record = _merge(True, head_commit=head)
+
+    assert record is not None  # wrong answer: None for a merged PR
+    assert record.evidence_type is EvidenceType.PR_MERGED
+    assert record.status is EvidenceStatus.PASSED
+    assert record.created_by_type is ActorType.SYSTEM
+    assert record.created_by_id == GITHUB_ACTIONS_ACTOR_ID
+    assert record.commit_sha == head
+    # pin triple populated so the system-tier guard accepts it (ADR-0008).
+    assert record.external_run_id is not None
+    assert record.payload_hash is not None
+
+
+def test_build_merge_evidence_is_persistable_through_the_system_tier_guard(
+    db: Database,
+) -> None:
+    """AC-3 (round-trip into storage): the built record satisfies EvidenceRepo.add's
+    system-tier commit-pin guard and reads back identically."""
+    record = _merge(True)
+    assert record is not None
+    repo = EvidenceRepo(db)
+    assert repo.add(record) == record
+    assert repo.get(record.id) == record
+
+
+def test_build_merge_evidence_never_raises_on_a_degenerate_dict() -> None:
+    """AC-3: a degenerate pull_request dict never raises -- absence is data."""
+    assert _merge(None) is None  # merged=None -> falsy -> None
+    # a merged truthy value with otherwise-empty payload still builds (only .get
+    # is read), proving no required key beyond "merged" is dereferenced.
+    record = _merge("yes")
+    assert record is not None and record.evidence_type is EvidenceType.PR_MERGED
+
+
+def test_build_merge_evidence_is_pure_no_db_in_signature() -> None:
+    """AC-3: the builder takes no Database -- it is a pure constructor (mirrors the
+    sibling mappers)."""
+    params = set(inspect.signature(build_merge_evidence).parameters)
+    assert "db" not in params and "database" not in params

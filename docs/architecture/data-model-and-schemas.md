@@ -625,6 +625,7 @@ class EvidenceType(str, Enum):
     DEPLOYMENT_RESULT = "deployment_result"
     DOCUMENTATION_UPDATE = "documentation_update"
     MANUAL_APPROVAL = "manual_approval"
+    PR_MERGED = "pr_merged"
 
 class Evidence(BaseModel):
     # Append-only. Trust tiers per ADR-0008: created_by_type system|human

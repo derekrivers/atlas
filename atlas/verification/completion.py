@@ -42,12 +42,19 @@ exceptions: :func:`evaluate_ticket` NEVER raises, for any input.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Collection, Iterable, Sequence
 from dataclasses import dataclass
 from uuid import UUID
 
 from atlas.core.enums import EvidenceStatus
-from atlas.core.models import Evidence, Ticket, VerificationCheck, VerificationCheckType
+from atlas.core.models import (
+    Evidence,
+    EvidenceType,
+    Ticket,
+    VerificationCheck,
+    VerificationCheckType,
+)
+from atlas.core.trust import evidence_tier
 from atlas.verification.acceptance_check import evaluate_acceptance_criteria
 from atlas.verification.documentation_check import evaluate_documentation_check
 from atlas.verification.human_approval_check import evaluate_human_approval
@@ -360,11 +367,7 @@ def ticket_verdict_from_checks(
     Pure and layer-faithful, exactly like its siblings: it reads ``atlas.core`` models
     and resolver output only, persists nothing, and NEVER raises for any input.
     """
-    latest: dict[VerificationCheckType, VerificationCheck] = {}
-    for check in checks:
-        current = latest.get(check.check_type)
-        if current is None or check.created_at > current.created_at:
-            latest[check.check_type] = check
+    latest = _latest_by_type(checks)
     statuses = [
         latest[rc.check_type].status
         if rc.check_type in latest
@@ -373,6 +376,79 @@ def ticket_verdict_from_checks(
         if rc.required
     ]
     return fold_statuses(statuses)
+
+
+def _latest_by_type(
+    checks: Iterable[VerificationCheck],
+) -> dict[VerificationCheckType, VerificationCheck]:
+    """The latest persisted row (greatest ``created_at``) per check type.
+
+    The single source of the "latest row wins" selection shared by
+    :func:`ticket_verdict_from_checks` (which folds their statuses) and
+    :func:`proof_evidence_ids` (which collects their evidence ids) -- one
+    implementation so the verdict and its proof set never disagree about which
+    rows are current.
+    """
+    latest: dict[VerificationCheckType, VerificationCheck] = {}
+    for check in checks:
+        current = latest.get(check.check_type)
+        if current is None or check.created_at > current.created_at:
+            latest[check.check_type] = check
+    return latest
+
+
+def proof_evidence_ids(
+    ticket: Ticket, checks: Iterable[VerificationCheck]
+) -> frozenset[UUID]:
+    """The Evidence ids backing a ticket's verdict (ATLAS-134; never raises).
+
+    The proof set of the verdict :func:`ticket_verdict_from_checks` composes: the
+    ``evidence_ids`` of the LATEST persisted row of each REQUIRED check type (the
+    gating subset, via :func:`_latest_by_type` -- the same rows the verdict folds).
+    A required type with no row, or a non-gating check (the deferred SECURITY
+    surface), contributes nothing.
+
+    The Done gate (``pm.complete_verified``) resolves these ids against the
+    persisted Evidence to read the commit the PASSED verdict is pinned to --
+    ``VerificationCheck`` itself carries no commit, so the commit lives on the
+    proof. Pure: reads ``atlas.core`` models and resolver output only.
+    """
+    latest = _latest_by_type(checks)
+    ids: set[UUID] = set()
+    for rc in required_checks(ticket):
+        if rc.required and rc.check_type in latest:
+            ids.update(latest[rc.check_type].evidence_ids)
+    return frozenset(ids)
+
+
+def merge_confirmed(
+    evidence: Iterable[Evidence], *, commit_shas: Collection[str]
+) -> bool:
+    """Is the PR merged AT the verdict's commit? (ATLAS-134; never raises).
+
+    The pure merge predicate the Done gate adds on top of the PASSED verdict (per
+    the operator's "definition of done is a merged PR" ruling, Option A -- a
+    SEPARATE condition; the verdict still means "acceptable", never PENDING-because-
+    unmerged). True iff some record in ``evidence`` is a system-tier
+    :attr:`EvidenceType.PR_MERGED` whose ``commit_sha`` is one of ``commit_shas``
+    (the commit set the PASSED verdict is proven at, from :func:`proof_evidence_ids`).
+
+    The tier check (``evidence_tier == "system"``, the ADR-0008 idiom via the single
+    home of tier logic) means a non-system merge claim never satisfies the gate. The
+    commit match is the stale-merge guard: a ``PR_MERGED`` at a DIFFERENT commit (a
+    re-push or a second PR) is not in the set, so a stale merge cannot complete a
+    re-pushed head. An empty ``commit_shas`` -> ``False`` (no proven commit to match
+    -- never a vacuous Done). Pure: reads ``atlas.core`` models and ``trust`` only.
+    """
+    targets = set(commit_shas)
+    if not targets:
+        return False
+    return any(
+        e.evidence_type is EvidenceType.PR_MERGED
+        and evidence_tier(e.created_by_type) == "system"
+        and e.commit_sha in targets
+        for e in evidence
+    )
 
 
 def _compose_verdict(outcomes: Sequence[CheckOutcome]) -> EvidenceStatus:

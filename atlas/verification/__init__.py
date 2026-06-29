@@ -92,6 +92,8 @@ from atlas.verification.completion import (
     CheckOutcome,
     TicketVerification,
     evaluate_ticket,
+    merge_confirmed,
+    proof_evidence_ids,
     ticket_verdict_from_checks,
 )
 from atlas.verification.documentation_check import (
@@ -144,9 +146,11 @@ __all__ = [
     "evaluate_pr",
     "evaluate_scope",
     "evaluate_ticket",
+    "merge_confirmed",
     "out_of_scope_paths",
     "parse_close_set",
     "pending_capture",
+    "proof_evidence_ids",
     "required_checks",
     "ticket_verdict_from_checks",
     "verification_checks_for",

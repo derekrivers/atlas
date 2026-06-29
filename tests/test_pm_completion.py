@@ -38,7 +38,7 @@ from __future__ import annotations
 import tempfile
 from datetime import datetime, timedelta
 from pathlib import Path
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from test_models_validation import NOW, ticket_kwargs
@@ -53,18 +53,27 @@ from test_pm_sync import (
     status_map,
 )
 
-from atlas.core.enums import EvidenceStatus
-from atlas.core.models import Ticket, VerificationCheck
+from atlas.core.enums import ActorType, EvidenceStatus
+from atlas.core.models import Evidence, Ticket, VerificationCheck
+from atlas.core.models.evidence import EvidenceType
 from atlas.core.models.ticket import TicketStatus
 from atlas.core.models.verification_check import VerificationCheckType
+from atlas.evidence import build_merge_evidence
 from atlas.linear.client import WorkflowState
 from atlas.linear.ownership import LinearStatusMap, LinearStatusMapError
 from atlas.pm import SyncResult, complete_verified, sync_tick
-from atlas.storage import Database, TicketRepo, VerificationCheckRepo
+from atlas.storage import Database, EvidenceRepo, TicketRepo, VerificationCheckRepo
 from atlas.verification import required_checks
 
 EARLIER = NOW
 LATER = NOW + timedelta(hours=1)
+
+# The PR head commit the verdict's proof and the merge record are pinned to. A
+# system-tier proof Evidence at this commit (referenced by the PASSED check rows)
+# is what the ATLAS-134 gate reads the verdict's commit from; a PR_MERGED at the
+# SAME commit satisfies the merge gate (a different commit is the stale-merge case).
+PROOF_COMMIT = "a" * 40
+OTHER_COMMIT = "b" * 40
 
 # A state mapped to review_required (type "started", per _ACCEPTED_TYPES), so the
 # AC-10 tick's pull reads the issue back as review_required (set-to-same) and the
@@ -142,6 +151,7 @@ def _check(
     status: EvidenceStatus,
     *,
     created_at: datetime = EARLIER,
+    evidence_ids: list[UUID] | None = None,
 ) -> VerificationCheck:
     return VerificationCheck(
         id=uuid4(),
@@ -150,17 +160,69 @@ def _check(
         status=status,
         summary="seeded row",
         required=True,
+        evidence_ids=evidence_ids or [],
         created_at=created_at,
     )
 
 
-def seed_all_passed(db: Database, ticket: Ticket) -> None:
+def _system_evidence(
+    ticket: Ticket,
+    evidence_type: EvidenceType,
+    commit: str,
+    *,
+    created_by_type: ActorType = ActorType.SYSTEM,
+) -> Evidence:
+    """A commit-pinned ticket-scoped Evidence (system-tier by default). The pin
+    triple satisfies EvidenceRepo.add's ADR-0008 guard for system-tier records."""
+    return Evidence(
+        id=uuid4(),
+        product_id=ticket.product_id,
+        ticket_id=ticket.id,
+        evidence_type=evidence_type,
+        status=EvidenceStatus.PASSED,
+        summary="seeded evidence",
+        commit_sha=commit,
+        external_run_id=f"{evidence_type.value}:{commit}",
+        payload_hash="sha256:" + "0" * 64,
+        created_by_type=created_by_type,
+        created_by_id="github-actions",
+        created_at=EARLIER,
+    )
+
+
+def seed_all_passed(
+    db: Database,
+    ticket: Ticket,
+    *,
+    commit: str = PROOF_COMMIT,
+    merged: bool = True,
+    merge_commit: str | None = None,
+) -> None:
     """Persist a latest-PASSED row for every GATING required check type of
-    ``ticket`` (driven off the resolver, so it tracks the matrix)."""
+    ``ticket`` (driven off the resolver, so it tracks the matrix), each referencing
+    a system-tier proof Evidence pinned to ``commit`` -- so the ATLAS-134 gate can
+    read the verdict's commit from its proof. By default also seeds a system-tier
+    ``PR_MERGED`` at ``commit`` so the merge gate is satisfied (the post-ATLAS-134
+    "completable" shape); pass ``merged=False`` for the unmerged case or
+    ``merge_commit`` to place the merge at a different (stale) commit."""
+    ev_repo = EvidenceRepo(db)
+    proof = _system_evidence(ticket, EvidenceType.TEST_RESULT, commit)
+    ev_repo.add(proof)
     repo = VerificationCheckRepo(db)
     for rc in required_checks(ticket):
         if rc.required:
-            repo.add(_check(ticket, rc.check_type, EvidenceStatus.PASSED))
+            repo.add(
+                _check(
+                    ticket,
+                    rc.check_type,
+                    EvidenceStatus.PASSED,
+                    evidence_ids=[proof.id],
+                )
+            )
+    if merged:
+        ev_repo.add(
+            _system_evidence(ticket, EvidenceType.PR_MERGED, merge_commit or commit)
+        )
 
 
 def gating_types(ticket: Ticket) -> list[VerificationCheckType]:
@@ -371,3 +433,108 @@ def test_sync_tick_surfaces_completed_count(db: Database) -> None:
     # Linear-only: Atlas is not written this tick (the pull was set-to-same).
     after = TicketRepo(db).get_by_key("ATLAS-407")
     assert after is not None and after.status == TicketStatus.REVIEW_REQUIRED
+
+
+# === ATLAS-134: merged-PR gate on review_required -> done ====================
+# Done now requires BOTH a PASSED verdict AND a merged PR (operator ruling,
+# Option A). The verdict's meaning is unchanged; the merge is a SEPARATE
+# condition, read from the system-tier PR_MERGED evidence at the verdict commit.
+
+
+def test_passed_and_merged_at_verdict_commit_completes(db: Database) -> None:
+    """ATLAS-134 AC-4: PASSED verdict proven at C + PR_MERGED at C -> Done."""
+    client = RecordingClient()
+    ticket = seed_ticket(
+        db, client, key="ATLAS-410", status=TicketStatus.REVIEW_REQUIRED
+    )
+    seed_all_passed(db, ticket, commit=PROOF_COMMIT, merged=True)
+
+    completed = run_complete(db, client)
+
+    assert completed == 1  # wrong answer: 0 (merge at the verdict commit not honoured)
+    assert client.state_writes == [(ticket.external_linear_id, DONE_STATE.id)]
+
+
+def test_passed_but_unmerged_is_not_completed(db: Database) -> None:
+    """ATLAS-134 AC-5: PASSED verdict, NO PR_MERGED record -> not completed."""
+    client = RecordingClient()
+    ticket = seed_ticket(
+        db, client, key="ATLAS-411", status=TicketStatus.REVIEW_REQUIRED
+    )
+    seed_all_passed(db, ticket, commit=PROOF_COMMIT, merged=False)
+
+    completed = run_complete(db, client)
+
+    # wrong answer: 1 (a missing merge record treated as satisfied)
+    assert completed == 0
+    assert client.state_writes == []
+
+
+def test_merge_at_different_commit_is_not_completed(db: Database) -> None:
+    """ATLAS-134 AC-6 (stale-merge guard): PASSED proven at C, but the only
+    PR_MERGED is at C' != C (a re-push / second PR) -> not completed."""
+    client = RecordingClient()
+    ticket = seed_ticket(
+        db, client, key="ATLAS-412", status=TicketStatus.REVIEW_REQUIRED
+    )
+    seed_all_passed(
+        db, ticket, commit=PROOF_COMMIT, merged=True, merge_commit=OTHER_COMMIT
+    )
+
+    completed = run_complete(db, client)
+
+    # wrong answer: 1 (matching any PR_MERGED regardless of commit completes a
+    # re-pushed head off a stale merge)
+    assert completed == 0
+    assert client.state_writes == []
+
+
+def test_non_system_tier_merge_claim_is_ignored(db: Database) -> None:
+    """ATLAS-134 AC-7: a PR_MERGED that is not system-tier does not satisfy the gate."""
+    client = RecordingClient()
+    ticket = seed_ticket(
+        db, client, key="ATLAS-413", status=TicketStatus.REVIEW_REQUIRED
+    )
+    # PASSED verdict proven at C, but no system-tier merge: only a HUMAN-tier
+    # PR_MERGED at C (human-tier needs no pin and any status is allowed).
+    seed_all_passed(db, ticket, commit=PROOF_COMMIT, merged=False)
+    EvidenceRepo(db).add(
+        _system_evidence(
+            ticket,
+            EvidenceType.PR_MERGED,
+            PROOF_COMMIT,
+            created_by_type=ActorType.HUMAN,
+        )
+    )
+
+    completed = run_complete(db, client)
+
+    assert completed == 0  # wrong answer: 1 (tier check dropped)
+    assert client.state_writes == []
+
+
+def test_builder_record_is_read_by_the_gate_round_trip(db: Database) -> None:
+    """ATLAS-134 AC-8 (writer-reader tie): a merge record built by the PRODUCER
+    (build_merge_evidence) at C, fed with a PASSED verdict proven at C, completes
+    -- proving verify writes exactly what the gate reads."""
+    client = RecordingClient()
+    ticket = seed_ticket(
+        db, client, key="ATLAS-414", status=TicketStatus.REVIEW_REQUIRED
+    )
+    seed_all_passed(db, ticket, commit=PROOF_COMMIT, merged=False)
+    record = build_merge_evidence(
+        {"merged": True},
+        head_commit=PROOF_COMMIT,
+        ticket_id=ticket.id,
+        product_id=ticket.product_id,
+        evidence_id=uuid4(),
+        now=EARLIER,
+    )
+    assert record is not None  # the builder produced a record for a merged PR
+    EvidenceRepo(db).add(record)
+
+    completed = run_complete(db, client)
+
+    # wrong answer: 0 (e.g. the builder pins commit_sha=None -> the gate cannot read it)
+    assert completed == 1
+    assert client.state_writes == [(ticket.external_linear_id, DONE_STATE.id)]
