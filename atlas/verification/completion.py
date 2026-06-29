@@ -47,7 +47,7 @@ from dataclasses import dataclass
 from uuid import UUID
 
 from atlas.core.enums import EvidenceStatus
-from atlas.core.models import Evidence, Ticket, VerificationCheckType
+from atlas.core.models import Evidence, Ticket, VerificationCheck, VerificationCheckType
 from atlas.verification.acceptance_check import evaluate_acceptance_criteria
 from atlas.verification.documentation_check import evaluate_documentation_check
 from atlas.verification.human_approval_check import evaluate_human_approval
@@ -336,6 +336,43 @@ def fold_statuses(statuses: Iterable[EvidenceStatus]) -> EvidenceStatus:
     if materialised and all(s == EvidenceStatus.PASSED for s in materialised):
         return EvidenceStatus.PASSED
     return EvidenceStatus.PENDING
+
+
+def ticket_verdict_from_checks(
+    ticket: Ticket, checks: Iterable[VerificationCheck]
+) -> EvidenceStatus:
+    """Compose a ticket's verdict from PERSISTED VerificationCheck rows (never raises).
+
+    The PM-side consumer's read of the same verdict :func:`evaluate_ticket` computes,
+    but sourced from the append-only rows ``atlas verify`` already persisted rather
+    than by re-running the evaluators — so the PM Engine never couples to evidence or
+    GitHub and never redoes the evaluation work. The two compose the SAME fold one
+    level apart, via the single-source-of-truth :func:`fold_statuses`.
+
+    Resolves ``required_checks(ticket)`` and folds over the GATING subset only
+    (``rc.required`` — the non-gating SECURITY surface never participates). For each
+    required check type it takes the LATEST persisted row (the greatest ``created_at``);
+    a required type with NO row contributes ``PENDING``, so a missing required check
+    holds the verdict and can never produce a false PASS. The resulting statuses fold
+    through :func:`fold_statuses`: any FAILED -> FAILED; else non-empty all-PASSED ->
+    PASSED; else PENDING.
+
+    Pure and layer-faithful, exactly like its siblings: it reads ``atlas.core`` models
+    and resolver output only, persists nothing, and NEVER raises for any input.
+    """
+    latest: dict[VerificationCheckType, VerificationCheck] = {}
+    for check in checks:
+        current = latest.get(check.check_type)
+        if current is None or check.created_at > current.created_at:
+            latest[check.check_type] = check
+    statuses = [
+        latest[rc.check_type].status
+        if rc.check_type in latest
+        else EvidenceStatus.PENDING
+        for rc in required_checks(ticket)
+        if rc.required
+    ]
+    return fold_statuses(statuses)
 
 
 def _compose_verdict(outcomes: Sequence[CheckOutcome]) -> EvidenceStatus:

@@ -86,6 +86,7 @@ from atlas.linear.ownership import (
     definition_payload,
     status_from_issue,
 )
+from atlas.pm.completion import complete_verified
 from atlas.pm.promotion import promote_ready
 from atlas.storage.db import Database
 from atlas.storage.repositories import DebtItemRepo, TicketRepo
@@ -190,7 +191,12 @@ class SyncResult:
     stranded in ``blocked`` with its structural blockers cleared across N ticks
     increments it once, not once per tick. Report-only, like ``dwell_breaches``;
     no route counter accompanies it because the stale-block pass never moves a
-    ticket."""
+    ticket. ``completed`` (ATLAS-131) counts every ``set_state(Done)`` route this
+    tick -- the verified-completion step moves a ``review_required`` ticket whose
+    persisted verdict is PASSED to ``Done``. Like ``promoted`` and
+    ``routed_to_human`` it counts route attempts: the route fires idempotently each
+    tick until the pull reconciles the ticket out of ``review_required``, so a
+    not-yet-reconciled ticket increments it every tick."""
 
     status_pulled: int = 0
     status_unchanged: int = 0
@@ -200,6 +206,7 @@ class SyncResult:
     pushed_updated: int = 0
     push_skipped: int = 0
     promoted: int = 0
+    completed: int = 0
     follow_ups_stubbed: int = 0
     dwell_breaches: int = 0
     routed_to_human: int = 0
@@ -739,6 +746,16 @@ def sync_tick(
     promotion is Linear-only, so the next tick's pull reconciles Atlas (keeping
     the pull the single Atlas-status writer).
 
+    Then step 3b (ATLAS-131): verified completion. Move every ``review_required``
+    ticket whose persisted Verification Engine verdict is PASSED to ``Done`` via the
+    sanctioned :meth:`LinearClient.set_state` (:func:`complete_verified`). The verdict
+    is composed from the append-only ``VerificationCheck`` rows ``atlas verify`` wrote
+    (never by re-running the evaluators), so a required check with no row composes to
+    PENDING and holds the verdict. Its Done target is resolved ONCE up front (like
+    :func:`promote_ready`'s Ready-for-Agent resolution), so a status map missing a
+    unique ``done`` state fails loudly even when nothing is completable; the write is
+    Linear-only, so the next tick's pull reconciles Atlas.
+
     Then step 4 (ATLAS-45): scan each synced, non-terminal ticket's Linear
     comments and write one inbox stub per comment tagged
     ``atlas:proposed-follow-up`` to ``<inbox_dir>/<ticket-key>-<n>.md``
@@ -782,6 +799,14 @@ def sync_tick(
     graph = build_dependency_graph(db)
     result.promoted = promote_ready(
         tickets=tickets, graph=graph, client=client, status_map=status_map
+    )
+    # Step 3b (ATLAS-131): verified completion, immediately after promotion. Move
+    # every review_required ticket whose persisted Verification Engine verdict is
+    # PASSED to Done via the sanctioned set_state. Like promote_ready it resolves
+    # its Done target up front (the load-time guard, fired even when nothing is
+    # completable) and writes Linear only, so the next tick's pull reconciles Atlas.
+    result.completed = complete_verified(
+        tickets=tickets, db=db, client=client, status_map=status_map
     )
     # Step 4 (ATLAS-45): the follow-up comment scan, after promotion and before
     # the step-5 anomaly passes (the loop order). The inbox is read once up front

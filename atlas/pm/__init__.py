@@ -4,7 +4,10 @@ The reconciliation loop above the ATLAS-41 Linear boundary: it mirrors state
 between Atlas and Linear under strict field ownership. ATLAS-42 delivers steps
 1+2 of the ``pm-engine-and-linear-sync.md`` "Sync loop" (:func:`sync_tick`);
 ATLAS-43 adds step 3, readiness promotion to ``Ready for Agent``
-(:func:`promote_ready`, the sole writer of that transition). ATLAS-47 adds the
+(:func:`promote_ready`, the sole writer of that transition). ATLAS-131 adds step
+3b, verified completion: :func:`complete_verified` moves every ``review_required``
+ticket whose persisted Verification Engine verdict is PASSED to ``Done``, through
+the same sanctioned Linear-only ``set_state`` path. ATLAS-47 adds the
 read side: :func:`build_delivery_report` and its renderers, a pure reader of
 stored tickets and ``DebtItem``s for the ``atlas pm report`` command. The
 follow-up ingestion is a later ticket. ATLAS-50 adds the recurring scheduler:
@@ -14,6 +17,7 @@ record. A layer above ``atlas.storage``/``atlas.linear``/``atlas.core`` in the
 import spine.
 """
 
+from atlas.pm.completion import complete_verified
 from atlas.pm.promotion import promote_ready
 from atlas.pm.report import (
     AnomalyCount,
@@ -46,6 +50,7 @@ __all__ = [
     "ThroughputBucket",
     "TickConfig",
     "build_delivery_report",
+    "complete_verified",
     "promote_ready",
     "render_markdown",
     "report_json",

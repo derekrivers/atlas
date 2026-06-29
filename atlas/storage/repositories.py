@@ -736,6 +736,24 @@ class VerificationCheckRepo(_Repo[VerificationCheck]):
     def __init__(self, db: Database) -> None:
         super().__init__(db, VerificationCheck, VerificationCheckRow)
 
+    def list_for_ticket(self, ticket_id: UUID) -> list[VerificationCheck]:
+        """Every recorded check for ``ticket_id``, oldest evaluation first (by
+        ``created_at`` ascending, then by id for a stable order on identical
+        instants) — a focused query, never a load-and-scan of the whole table.
+
+        The PM Engine's completion consumer (ATLAS-131) reads these rows and
+        composes the per-ticket verdict via
+        :func:`atlas.verification.completion.ticket_verdict_from_checks`. Mirrors
+        ``DebtItemRepo.list_for_ticket``: append-only, it reads and mutates nothing.
+        """
+        with self._db.session() as session:
+            rows = session.scalars(
+                sa.select(VerificationCheckRow)
+                .where(VerificationCheckRow.ticket_id == ticket_id)
+                .order_by(VerificationCheckRow.created_at, VerificationCheckRow.id)
+            )
+            return [self._to_model(row) for row in rows]
+
 
 class PlanRunRepo(_Repo[PlanRun]):
     """Insert-plus-single-finalisation (ADR-0007, knowledge-core)."""

@@ -24,7 +24,12 @@ from uuid import UUID, uuid4
 import pytest
 
 from atlas.core.enums import ActorType, EvidenceStatus, RiskLevel
-from atlas.core.models import Evidence, EvidenceType, VerificationCheckType
+from atlas.core.models import (
+    Evidence,
+    EvidenceType,
+    VerificationCheck,
+    VerificationCheckType,
+)
 from atlas.core.models.ticket import Ticket, TicketStatus, TicketType
 from atlas.verification import (
     CheckOutcome,
@@ -35,6 +40,7 @@ from atlas.verification import (
     acceptance_criterion_hash,
     evaluate_ticket,
     required_checks,
+    ticket_verdict_from_checks,
 )
 from atlas.verification import completion as completion_mod
 from atlas.verification.acceptance_check import ACCEPTANCE_CRITERION_HASH_KEY
@@ -496,3 +502,103 @@ def test_fold_statuses_non_passing_in_mix_yields_pending() -> None:
     assert fold_statuses([ES.PASSED, ES.PENDING]) == ES.PENDING
     assert fold_statuses([ES.PASSED, ES.WARNING]) == ES.PENDING
     assert fold_statuses([ES.PASSED, ES.NOT_APPLICABLE]) == ES.PENDING
+
+
+# --- ticket_verdict_from_checks: verdict from PERSISTED rows (ATLAS-131) ----
+#
+# The PM-side consumer reads the same verdict evaluate_ticket computes, but from
+# the append-only VerificationCheck rows atlas verify wrote rather than by
+# re-running the evaluators. Each case names the wrong answer it catches.
+
+VERDICT_EARLIER = NOW
+VERDICT_LATER = NOW + timedelta(hours=1)
+
+
+def _row(
+    check_type: VerificationCheckType,
+    status: EvidenceStatus,
+    *,
+    created_at: datetime = VERDICT_EARLIER,
+    ticket_id: UUID = TICKET,
+) -> VerificationCheck:
+    """One persisted VerificationCheck row for the verdict-from-checks tests."""
+    return VerificationCheck(
+        id=uuid4(),
+        ticket_id=ticket_id,
+        check_type=check_type,
+        status=status,
+        summary="seeded row",
+        required=True,
+        created_at=created_at,
+    )
+
+
+def _passed_rows_for(ticket: Ticket) -> list[VerificationCheck]:
+    """A latest-PASSED row for every GATING required type of ``ticket`` — robust
+    to the matrix (drives off required_checks, not a hard-coded set)."""
+    return [
+        _row(rc.check_type, EvidenceStatus.PASSED)
+        for rc in required_checks(ticket)
+        if rc.required
+    ]
+
+
+def test_verdict_all_required_passed_yields_passed() -> None:
+    ticket = make_ticket()
+    # wrong answer: PENDING — a latest-PASSED row for every required type passes.
+    assert ticket_verdict_from_checks(ticket, _passed_rows_for(ticket)) == ES.PASSED
+
+
+def test_verdict_missing_required_row_holds_pending() -> None:
+    # A required type with NO persisted row must hold the verdict at PENDING — a
+    # missing required check can never produce a false PASS.
+    ticket = make_ticket()
+    rows = _passed_rows_for(ticket)
+    rows.pop()  # drop one required type's only row
+    # wrong answer: PASSED — treating a missing required type as satisfied.
+    assert ticket_verdict_from_checks(ticket, rows) == ES.PENDING
+
+
+def test_verdict_any_required_failed_yields_failed() -> None:
+    ticket = make_ticket()
+    rows = _passed_rows_for(ticket)
+    rows[0] = _row(rows[0].check_type, EvidenceStatus.FAILED)
+    # wrong answer: PENDING/PASSED — one FAILED required check sinks the verdict.
+    assert ticket_verdict_from_checks(ticket, rows) == ES.FAILED
+
+
+def test_verdict_latest_row_per_type_wins() -> None:
+    # AC-4: an older PASSED superseded by a newer FAILED for the SAME required type
+    # composes to FAILED. wrong answer: select the oldest row, yielding PASSED.
+    ticket = make_ticket()
+    rows = _passed_rows_for(ticket)
+    gating_type = rows[0].check_type
+    rows[0] = _row(gating_type, EvidenceStatus.PASSED, created_at=VERDICT_EARLIER)
+    rows.append(_row(gating_type, EvidenceStatus.FAILED, created_at=VERDICT_LATER))
+    assert ticket_verdict_from_checks(ticket, rows) == ES.FAILED
+    # And the reverse order (newer PASSED over older FAILED) passes that type.
+    ticket2 = make_ticket()
+    rows2 = _passed_rows_for(ticket2)
+    g2 = rows2[0].check_type
+    rows2[0] = _row(g2, EvidenceStatus.FAILED, created_at=VERDICT_EARLIER)
+    rows2.append(_row(g2, EvidenceStatus.PASSED, created_at=VERDICT_LATER))
+    assert ticket_verdict_from_checks(ticket2, rows2) == ES.PASSED
+
+
+def test_verdict_ignores_non_gating_security_row() -> None:
+    # The non-gating SECURITY surface (required=False on critical tickets) never
+    # participates in the fold: a FAILED security row does NOT sink an otherwise
+    # all-PASSED verdict. wrong answer: FAILED — folding the non-gating row in.
+    ticket = make_ticket(risk_level=RiskLevel.CRITICAL)
+    rows = _passed_rows_for(ticket)  # gating types only
+    rows.append(_row(VerificationCheckType.SECURITY, EvidenceStatus.FAILED))
+    assert ticket_verdict_from_checks(ticket, rows) == ES.PASSED
+
+
+def test_verdict_never_raises_on_empty_or_unknown_rows() -> None:
+    # Pure and total, like its siblings: no rows at all -> PENDING (required types
+    # all missing), and an unrelated row type is simply ignored.
+    ticket = make_ticket()
+    assert ticket_verdict_from_checks(ticket, []) == ES.PENDING
+    stray = [_row(VerificationCheckType.SECURITY, EvidenceStatus.PASSED)]
+    assert ticket_verdict_from_checks(ticket, stray) == ES.PENDING
