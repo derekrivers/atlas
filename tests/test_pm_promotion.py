@@ -33,7 +33,15 @@ from uuid import uuid4
 import pytest
 from linear_fakes import InMemoryLinearClient
 from test_models_validation import NOW, dependency_kwargs, ticket_kwargs
-from test_pm_sync import READY, STARTED, TEAM_ID, UNSTARTED, RecordingClient, status_map
+from test_pm_sync import (
+    PROJECT_ID,
+    READY,
+    STARTED,
+    TEAM_ID,
+    UNSTARTED,
+    RecordingClient,
+    status_map,
+)
 
 from atlas.core.models import Ticket, TicketDependency
 from atlas.core.models.ticket import TicketStatus
@@ -75,7 +83,9 @@ def seed(
     external_id: str | None = None
     if with_issue:
         issue = client.create_issue(
-            {"title": "Linear Title", "description": "linear"}, team_id=TEAM_ID
+            {"title": "Linear Title", "description": "linear"},
+            team_id=TEAM_ID,
+            project_id=PROJECT_ID,
         )
         external_id = issue.id
         if issue_state is not None:
@@ -109,6 +119,7 @@ def run(db: Database, client: RecordingClient) -> SyncResult:
         client=client,
         status_map=status_map(),
         team_id=TEAM_ID,
+        project_id=PROJECT_ID,
         inbox_dir=Path(tempfile.mkdtemp()),
         now=NOW,
     )
@@ -253,7 +264,9 @@ def test_promotion_round_trips_without_flap_or_repush(db: Database) -> None:
 
 def test_set_state_is_the_only_status_write_path() -> None:
     client = InMemoryLinearClient()
-    issue = client.create_issue({"title": "t", "description": "d"}, team_id="t")
+    issue = client.create_issue(
+        {"title": "t", "description": "d"}, team_id="t", project_id="p"
+    )
 
     # The sanctioned path moves state...
     moved = client.set_state(issue.id, READY.id)
@@ -292,6 +305,7 @@ def test_zero_ready_for_agent_states_raises(db: Database) -> None:
             client=client,
             status_map=no_ready_map,
             team_id=TEAM_ID,
+            project_id=PROJECT_ID,
             inbox_dir=Path(tempfile.mkdtemp()),
             now=NOW,
         )

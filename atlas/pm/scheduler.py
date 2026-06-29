@@ -95,14 +95,16 @@ def _utcnow() -> datetime:
 class TickConfig:
     """The injection a single ``sync_tick`` needs, built once and reused every
     tick. Mirrors ``sync_tick``'s keyword-only signature exactly (``tickets``,
-    ``db``, ``client``, ``status_map``, ``team_id``, ``inbox_dir``); ``now`` is
-    the one thing taken fresh per tick (D1) and so is not held here."""
+    ``db``, ``client``, ``status_map``, ``team_id``, ``project_id``,
+    ``inbox_dir``); ``now`` is the one thing taken fresh per tick (D1) and so is
+    not held here."""
 
     tickets: TicketRepo
     db: Database
     client: LinearClient
     status_map: LinearStatusMap
     team_id: str
+    project_id: str
     inbox_dir: Path
 
 
@@ -168,6 +170,7 @@ def run_tick(config: TickConfig, failures: TickFailureRepo, *, now: datetime) ->
             client=config.client,
             status_map=config.status_map,
             team_id=config.team_id,
+            project_id=config.project_id,
             inbox_dir=config.inbox_dir,
             now=now,
         )

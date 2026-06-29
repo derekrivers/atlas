@@ -37,6 +37,13 @@ from atlas.linear.ownership import OWNED_LINEAR_INPUT_KEYS
 API_URL = "https://api.linear.app/graphql"
 API_KEY_ENV = "LINEAR_API_KEY"
 TEAM_ID_ENV = "LINEAR_TEAM_ID"
+# The Linear project that scopes issue creation (ATLAS-135). This is the
+# project's ``id`` (a UUID), NOT its ``slugId``: Symphony polls issues by
+# ``project.slugId`` (the ``project_slug`` in WORKFLOW.md) and Atlas creates
+# them into ``project.id`` (here) -- two different fields of the SAME Linear
+# project, so an issue created with this id is visible to Symphony's poll. Paste
+# the UUID, never the slug. Sourced at the CLI boundary alongside the team id.
+PROJECT_ID_ENV = "LINEAR_PROJECT_ID"
 
 
 class LinearClientError(RuntimeError):
@@ -101,9 +108,15 @@ class LinearClient(Protocol):
     cadence is ATLAS-42."""
 
     def create_issue(
-        self, definition: Mapping[str, Any], *, team_id: str
+        self, definition: Mapping[str, Any], *, team_id: str, project_id: str
     ) -> LinearIssue:
-        """Create an issue from an owned definition payload (Atlas -> Linear)."""
+        """Create an issue from an owned definition payload (Atlas -> Linear).
+
+        ``project_id`` is a required creation scope, mirroring ``team_id``: every
+        issue lands in the configured Linear project (its ``id``/UUID) so it is
+        visible to Symphony's project-scoped poll (ATLAS-135). Like ``teamId`` it
+        is a creation-scope value, NOT a definition field -- it is added outside
+        ``definition`` and stays out of ``OWNED_LINEAR_INPUT_KEYS``."""
         ...
 
     def update_issue(self, issue_id: str, definition: Mapping[str, Any]) -> LinearIssue:
@@ -257,11 +270,12 @@ class LinearGraphQLClient:
         return data
 
     def create_issue(
-        self, definition: Mapping[str, Any], *, team_id: str
+        self, definition: Mapping[str, Any], *, team_id: str, project_id: str
     ) -> LinearIssue:
         reject_unowned_keys(definition)
         data = self._execute(
-            _CREATE_MUTATION, {"input": {**definition, "teamId": team_id}}
+            _CREATE_MUTATION,
+            {"input": {**definition, "teamId": team_id, "projectId": project_id}},
         )
         return _issue_from_node(data["issueCreate"]["issue"])
 

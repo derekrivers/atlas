@@ -132,12 +132,13 @@ def _stub_urlopen(emulator: _Emulator) -> Any:
 # --- the shared behavioural contract ---------------------------------------
 
 
-def _run_contract(client: LinearClient, *, team_id: str) -> None:
+def _run_contract(client: LinearClient, *, team_id: str, project_id: str) -> None:
     # priority is owned but not yet syncable (deferred like labels, ATLAS-42):
     # it is absent from the allow-list, so the payload carries title +
-    # description only.
+    # description only. ``project_id`` is a required creation scope (ATLAS-135),
+    # mirroring ``team_id``: both clients place every created issue in the project.
     created = client.create_issue(
-        {"title": "Alpha", "description": "d"}, team_id=team_id
+        {"title": "Alpha", "description": "d"}, team_id=team_id, project_id=project_id
     )
     assert created.id
     assert created.title == "Alpha"
@@ -158,7 +159,9 @@ def _run_contract(client: LinearClient, *, team_id: str) -> None:
     # The allow-list is enforced at the client: a non-owned key cannot cross
     # the definition path -- not on create, not on update.
     with pytest.raises(UnownedFieldError):
-        client.create_issue({"title": "x", "stateId": "s"}, team_id=team_id)
+        client.create_issue(
+            {"title": "x", "stateId": "s"}, team_id=team_id, project_id=project_id
+        )
     with pytest.raises(UnownedFieldError):
         client.update_issue(created.id, {"title": "x", "stateId": "s"})
 
@@ -194,7 +197,7 @@ def contract_client(
 
 
 def test_clients_satisfy_the_same_contract(contract_client: LinearClient) -> None:
-    _run_contract(contract_client, team_id="team-1")
+    _run_contract(contract_client, team_id="team-1", project_id="project-1")
 
 
 # A (client, seed) pair so the read-only fetch_comments data path is held to the
@@ -220,7 +223,9 @@ def test_fetch_comments_reads_tagged_and_untagged(
     commentable_client: tuple[LinearClient, Any],
 ) -> None:
     client, seed = commentable_client
-    created = client.create_issue({"title": "C", "description": "d"}, team_id="team-1")
+    created = client.create_issue(
+        {"title": "C", "description": "d"}, team_id="team-1", project_id="project-1"
+    )
     assert client.fetch_comments(created.id) == []  # none yet
 
     seed(created.id, "please atlas:proposed-follow-up split this out", comment_id="c-1")
@@ -249,7 +254,7 @@ def test_auth_header_is_raw_key_without_bearer(
 
     monkeypatch.setattr("atlas.linear.client.urllib_request.urlopen", _urlopen)
     client = LinearGraphQLClient(api_key="sk-raw-key", team_id="team-1")
-    client.create_issue({"title": "x"}, team_id="team-1")
+    client.create_issue({"title": "x"}, team_id="team-1", project_id="project-1")
     assert captured["auth"] == "sk-raw-key"  # personal key, raw
     assert "Bearer" not in (captured["auth"] or "")
 
@@ -264,9 +269,29 @@ def test_create_sends_team_id(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr("atlas.linear.client.urllib_request.urlopen", _urlopen)
     LinearGraphQLClient(api_key="sk", team_id="team-9").create_issue(
-        {"title": "x"}, team_id="team-9"
+        {"title": "x"}, team_id="team-9", project_id="project-9"
     )
     assert captured["body"]["variables"]["input"]["teamId"] == "team-9"
+
+
+def test_create_sends_project_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    # AC-1 (ATLAS-135): create scopes the issue to the configured project, so the
+    # issueCreate input carries projectId alongside teamId. Asserted against the
+    # captured GraphQL variables, exactly as test_create_sends_team_id does.
+    captured: dict[str, Any] = {}
+    emulator = _Emulator()
+
+    def _urlopen(request: Any, *args: Any, **kwargs: Any) -> _Response:
+        captured["body"] = json.loads(request.data.decode())
+        return _Response(emulator.handle(request))
+
+    monkeypatch.setattr("atlas.linear.client.urllib_request.urlopen", _urlopen)
+    LinearGraphQLClient(api_key="sk", team_id="team-9").create_issue(
+        {"title": "x"}, team_id="team-9", project_id="project-9"
+    )
+    input_vars = captured["body"]["variables"]["input"]
+    assert input_vars["projectId"] == "project-9"  # the project scope crossed
+    assert input_vars["teamId"] == "team-9"  # still alongside the team scope
 
 
 def test_graphql_errors_become_linear_api_error(
@@ -309,7 +334,7 @@ def test_reads_key_from_environment(monkeypatch: pytest.MonkeyPatch) -> None:
         return _Response(emulator.handle(request))
 
     monkeypatch.setattr("atlas.linear.client.urllib_request.urlopen", _urlopen)
-    LinearGraphQLClient().create_issue({"title": "x"}, team_id="t")
+    LinearGraphQLClient().create_issue({"title": "x"}, team_id="t", project_id="p")
     assert captured["auth"] == "sk-env-key"
 
 
@@ -333,19 +358,21 @@ _LIVE_READY = (
     os.environ.get("ATLAS_LIVE_TESTS") == "1"
     and bool(os.environ.get("LINEAR_API_KEY"))
     and bool(os.environ.get("LINEAR_TEAM_ID"))
+    and bool(os.environ.get("LINEAR_PROJECT_ID"))
 )
 
 
 @pytest.mark.skipif(
     not _LIVE_READY,
     reason=(
-        "live Linear test; set ATLAS_LIVE_TESTS=1, LINEAR_API_KEY and "
-        "LINEAR_TEAM_ID to run by hand"
+        "live Linear test; set ATLAS_LIVE_TESTS=1, LINEAR_API_KEY, "
+        "LINEAR_TEAM_ID and LINEAR_PROJECT_ID to run by hand"
     ),
 )
 def test_live_smoke() -> None:  # pragma: no cover - operator-run only
     client = LinearGraphQLClient()
     team_id = os.environ["LINEAR_TEAM_ID"]
+    project_id = os.environ["LINEAR_PROJECT_ID"]
     # priority is owned but not yet syncable (ATLAS-42 deferred it like
     # labels, pending an honest Atlas-int -> inverted Linear 0-4 mapping), so
     # the live payload carries title + description only.
@@ -355,6 +382,7 @@ def test_live_smoke() -> None:  # pragma: no cover - operator-run only
             "description": "throwaway issue created by the ATLAS-41 live smoke test",
         },
         team_id=team_id,
+        project_id=project_id,
     )
     try:
         fetched = client.fetch_issue(created.id)
@@ -422,6 +450,7 @@ _LIVE_NEEDS_HUMAN_READY = _LIVE_READY and bool(
 def test_live_review_cycle_route_to_needs_human() -> None:  # pragma: no cover
     client = LinearGraphQLClient()
     team_id = os.environ["LINEAR_TEAM_ID"]
+    project_id = os.environ["LINEAR_PROJECT_ID"]
     needs_human_state_id = os.environ["LINEAR_NEEDS_HUMAN_STATE_ID"]
     created = client.create_issue(
         {
@@ -429,6 +458,7 @@ def test_live_review_cycle_route_to_needs_human() -> None:  # pragma: no cover
             "description": "throwaway issue for the ATLAS-120 live route gate",
         },
         team_id=team_id,
+        project_id=project_id,
     )
     try:
         # The sanctioned move: set_state lands the real Needs-Human state.

@@ -87,6 +87,10 @@ NEEDS_HUMAN = WorkflowState(id="state-needs-human", name="Needs Human", type="st
 # load-time guard), so the shared status map must carry it.
 DONE_STATE = WorkflowState(id="state-done", name="Done", type="completed")
 TEAM_ID = "team-1"
+# The Linear project (id/UUID) issue creation is scoped to (ATLAS-135). Threaded
+# through sync_tick exactly like TEAM_ID; the RecordingClient records it per create
+# so a first-sync push can be asserted to carry it.
+PROJECT_ID = "project-1"
 
 EARLIER = NOW
 LATER = NOW + timedelta(hours=1)
@@ -110,14 +114,18 @@ class RecordingClient(InMemoryLinearClient):
             ]
         )
         self.creates: list[dict[str, Any]] = []
+        # The creation scope (team id, project id) recorded per create, so a test
+        # can assert the configured project crossed Atlas -> Linear (ATLAS-135).
+        self.create_scopes: list[tuple[str, str]] = []
         self.updates: list[tuple[str, dict[str, Any]]] = []
         self.state_writes: list[tuple[str, str]] = []
 
     def create_issue(
-        self, definition: Mapping[str, Any], *, team_id: str
+        self, definition: Mapping[str, Any], *, team_id: str, project_id: str
     ) -> LinearIssue:
         self.creates.append(dict(definition))
-        return super().create_issue(definition, team_id=team_id)
+        self.create_scopes.append((team_id, project_id))
+        return super().create_issue(definition, team_id=team_id, project_id=project_id)
 
     def update_issue(self, issue_id: str, definition: Mapping[str, Any]) -> LinearIssue:
         self.updates.append((issue_id, dict(definition)))
@@ -179,7 +187,9 @@ def seed_ticket(
     external_id: str | None = None
     if with_issue:
         issue = client.create_issue(
-            {"title": "Linear Title", "description": "linear"}, team_id=TEAM_ID
+            {"title": "Linear Title", "description": "linear"},
+            team_id=TEAM_ID,
+            project_id=PROJECT_ID,
         )
         external_id = issue.id
         if issue_state is not None:
@@ -202,6 +212,7 @@ def seed_ticket(
     )
     TicketRepo(db).add(ticket)
     client.creates.clear()
+    client.create_scopes.clear()
     client.updates.clear()
     client.state_writes.clear()
     return ticket
@@ -224,6 +235,7 @@ def run(
         client=client,
         status_map=status_map(),
         team_id=TEAM_ID,
+        project_id=PROJECT_ID,
         inbox_dir=inbox_dir or Path(tempfile.mkdtemp()),
         now=now,
     )
@@ -394,6 +406,26 @@ def test_unsynced_ticket_without_issue_is_created_then_idempotent(db: Database) 
     assert after is not None and after.external_linear_id is not None
     assert second.pushed_created == 0 and second.pushed_updated == 0
     assert len(client.creates) == 1  # created once, never duplicated
+
+
+def test_first_sync_create_carries_the_configured_project(db: Database) -> None:
+    # AC-2 (ATLAS-135): a first-sync _push threads the configured project id all the
+    # way into create_issue, so the created issue is scoped to the Symphony-polled
+    # project. The RecordingClient records (team_id, project_id) per create; the
+    # wrong answer omits the project at _push and the scope's project is empty.
+    client = RecordingClient()
+    seed_ticket(
+        db,
+        client,
+        key="ATLAS-208",
+        status=TicketStatus.PLANNED,
+        with_issue=False,
+    )
+
+    result = run(db, client)
+
+    assert result.pushed_created == 1
+    assert client.create_scopes == [(TEAM_ID, PROJECT_ID)]  # team AND project crossed
 
 
 # --- directionality --------------------------------------------------------

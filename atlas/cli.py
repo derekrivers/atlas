@@ -173,6 +173,7 @@ from atlas.github import (
     normalise_workflow_runs,
 )
 from atlas.linear.client import (
+    PROJECT_ID_ENV,
     TEAM_ID_ENV,
     LinearGraphQLClient,
     MissingLinearTokenError,
@@ -997,14 +998,17 @@ def _pm_report(resolved_db: Database, *, as_json: bool) -> int:
 def _build_tick_config(args: argparse.Namespace, resolved_db: Database) -> TickConfig:
     """Build the real `sync_tick` injection from config (D3): the live
     `LinearGraphQLClient` (creds from env), the env-configured `LinearStatusMap`,
-    the team id from `LINEAR_TEAM_ID`, and the inbox dir from `--inbox-dir`. Each
-    boundary fails loud on a missing precondition — `LinearGraphQLClient()` raises
-    `MissingLinearTokenError` without a key, `from_env()` raises
-    `LinearStatusMapError` on a missing/malformed map, and an unset team id raises
-    `MissingLinearTokenError` — so a misconfigured live path exits cleanly (the
-    caller maps these to EXIT_PRECONDITION) rather than crashing mid-loop. Reads
-    the environment only; it makes no network call, so it is testable with fake
-    creds set in the environment."""
+    the team id from `LINEAR_TEAM_ID`, the project id from `LINEAR_PROJECT_ID`, and
+    the inbox dir from `--inbox-dir`. Each boundary fails loud on a missing
+    precondition — `LinearGraphQLClient()` raises `MissingLinearTokenError` without
+    a key, `from_env()` raises `LinearStatusMapError` on a missing/malformed map,
+    and an unset team id OR project id raises `MissingLinearTokenError` — so a
+    misconfigured live path exits cleanly (the caller maps these to
+    EXIT_PRECONDITION) rather than crashing mid-loop. The project id (ATLAS-135) is
+    the project's UUID, NOT its slug, and scopes issue creation so created issues
+    are visible to Symphony's project-scoped poll. Reads the environment only; it
+    makes no network call, so it is testable with fake creds set in the
+    environment."""
 
     client = LinearGraphQLClient()  # raises MissingLinearTokenError without a key
     status_map = LinearStatusMap.from_env()  # raises LinearStatusMapError if unset
@@ -1014,12 +1018,19 @@ def _build_tick_config(args: argparse.Namespace, resolved_db: Database) -> TickC
             f"{TEAM_ID_ENV} is not set; the scheduler needs the Linear team id to "
             "create issues"
         )
+    project_id = os.environ.get(PROJECT_ID_ENV)
+    if not project_id:
+        raise MissingLinearTokenError(
+            f"{PROJECT_ID_ENV} is not set; the scheduler needs the Linear project "
+            "id (a UUID, not the slug) to create issues Symphony can see"
+        )
     return TickConfig(
         tickets=TicketRepo(resolved_db),
         db=resolved_db,
         client=client,
         status_map=status_map,
         team_id=team_id,
+        project_id=project_id,
         inbox_dir=Path(args.inbox_dir),
     )
 

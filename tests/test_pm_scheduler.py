@@ -46,6 +46,7 @@ from atlas.cli import (
 from atlas.core.enums import ActorType
 from atlas.linear.client import (
     API_KEY_ENV,
+    PROJECT_ID_ENV,
     TEAM_ID_ENV,
     LinearAPIError,
     LinearGraphQLClient,
@@ -139,6 +140,7 @@ def make_config(db: Database, tmp_path: Path) -> TickConfig:
         client=InMemoryLinearClient(),
         status_map=LinearStatusMap({}),
         team_id="team-1",
+        project_id="project-1",
         inbox_dir=tmp_path / "inbox",
     )
 
@@ -344,6 +346,7 @@ def test_injection_passed_into_sync_tick_and_clean_tick_records_nothing(
             "client": config.client,
             "status_map": config.status_map,
             "team_id": config.team_id,
+            "project_id": config.project_id,
             "inbox_dir": config.inbox_dir,
             "now": NOW,
         }
@@ -387,6 +390,7 @@ def _live_env(monkeypatch: pytest.MonkeyPatch) -> None:
     network (client construction and map parsing read env only)."""
     monkeypatch.setenv(API_KEY_ENV, "lin_api_fake")
     monkeypatch.setenv(TEAM_ID_ENV, "team-xyz")
+    monkeypatch.setenv(PROJECT_ID_ENV, "project-xyz")
     monkeypatch.setenv(
         STATE_MAP_ENV,
         # s-done (ATLAS-131): sync_tick resolves state_id_for(DONE) up front every
@@ -408,6 +412,7 @@ def test_build_tick_config_wires_from_env(
     assert config.db is db
     assert isinstance(config.client, LinearGraphQLClient)
     assert config.team_id == "team-xyz"  # from LINEAR_TEAM_ID
+    assert config.project_id == "project-xyz"  # from LINEAR_PROJECT_ID
     assert config.inbox_dir == Path(str(tmp_path))  # from --inbox-dir
     assert config.status_map.status_for("s-ready") is not None  # from_env parsed
 
@@ -428,6 +433,20 @@ def test_sync_missing_team_id_is_clean_precondition(
     monkeypatch.delenv(TEAM_ID_ENV, raising=False)
     code = main(["pm", "sync", "--once"], database=db)
     assert code == EXIT_PRECONDITION
+
+
+def test_sync_missing_project_id_is_clean_precondition(
+    db: Database, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # AC-3 (ATLAS-135): an unset LINEAR_PROJECT_ID fails loud exactly as a missing
+    # team id does -- the scheduler needs the project id to create issues Symphony
+    # can see. Everything else is well-formed, so the project id is the sole gap.
+    monkeypatch.setenv(API_KEY_ENV, "lin_api_fake")
+    monkeypatch.setenv(TEAM_ID_ENV, "team-xyz")
+    monkeypatch.setenv(STATE_MAP_ENV, '{"s-ready": "ready_for_agent"}')
+    monkeypatch.delenv(PROJECT_ID_ENV, raising=False)
+    code = main(["pm", "sync", "--once"], database=db)
+    assert code == EXIT_PRECONDITION  # clean precondition, no traceback
 
 
 def test_sync_once_clean_path_no_network(

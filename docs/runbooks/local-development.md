@@ -115,13 +115,14 @@ practice: a deterministic ticket is complete on CI green, but a ticket that
 mutates or reads real Linear needs operator-run, system-tier evidence that CI
 cannot produce.
 
-The base opt-in is three variables; individual live tests require one or two
+The base opt-in is four variables; individual live tests require one or two
 more pointing at real workspace objects:
 
 ```bash
 export ATLAS_LIVE_TESTS=1
 export LINEAR_API_KEY='lin_api_...'
 export LINEAR_TEAM_ID='...'
+export LINEAR_PROJECT_ID='...'            # the project's id (UUID), not its slug
 # test-specific, for example:
 export LINEAR_FOLLOW_UP_ISSUE_ID='...'      # an issue carrying a tagged comment
 export LINEAR_NEEDS_HUMAN_STATE_ID='...'    # the needs-human workflow state id

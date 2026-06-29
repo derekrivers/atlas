@@ -50,7 +50,7 @@ class InMemoryLinearClient:
         )
 
     def create_issue(
-        self, definition: Mapping[str, Any], *, team_id: str
+        self, definition: Mapping[str, Any], *, team_id: str, project_id: str
     ) -> LinearIssue:
         reject_unowned_keys(definition)
         self._counter += 1
