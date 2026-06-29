@@ -389,7 +389,11 @@ def _live_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(TEAM_ID_ENV, "team-xyz")
     monkeypatch.setenv(
         STATE_MAP_ENV,
-        '{"s-ready": "ready_for_agent", "s-needs": "needs_human_decision"}',
+        # s-done (ATLAS-131): sync_tick resolves state_id_for(DONE) up front every
+        # tick (complete_verified's load-time guard), so a live map must carry a
+        # unique done state alongside ready_for_agent and needs_human_decision.
+        '{"s-ready": "ready_for_agent", "s-needs": "needs_human_decision", '
+        '"s-done": "done"}',
     )
 
 

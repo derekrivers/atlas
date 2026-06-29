@@ -82,6 +82,10 @@ CHANGES_REQUESTED_STATE = WorkflowState(
 # The unique Needs-Human state the review-cycling route (step 5, ATLAS-120) writes
 # into via set_state — the one anomaly that moves a ticket.
 NEEDS_HUMAN = WorkflowState(id="state-needs-human", name="Needs Human", type="started")
+# The unique Done state the verified-completion step (step 3b, ATLAS-131) writes into
+# via set_state. sync_tick resolves state_id_for(DONE) up front every tick (the
+# load-time guard), so the shared status map must carry it.
+DONE_STATE = WorkflowState(id="state-done", name="Done", type="completed")
 TEAM_ID = "team-1"
 
 EARLIER = NOW
@@ -102,6 +106,7 @@ class RecordingClient(InMemoryLinearClient):
                 PR_OPEN_STATE,
                 CHANGES_REQUESTED_STATE,
                 NEEDS_HUMAN,
+                DONE_STATE,
             ]
         )
         self.creates: list[dict[str, Any]] = []
@@ -138,6 +143,9 @@ def status_map() -> LinearStatusMap:
             # state_id_for(NEEDS_HUMAN_DECISION); sync_tick resolves it up front
             # every tick (the load-time guard), so the map must carry it.
             NEEDS_HUMAN.id: TicketStatus.NEEDS_HUMAN_DECISION,
+            # The unique Done state the verified-completion step (ATLAS-131) resolves
+            # via state_id_for(DONE), likewise resolved up front every tick.
+            DONE_STATE.id: TicketStatus.DONE,
         }
     )
 

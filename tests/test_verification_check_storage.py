@@ -79,8 +79,14 @@ def test_list_returns_added_checks(db: Database) -> None:
 
 def test_repo_exposes_add_and_queries_only() -> None:
     # No update, no delete, no finalize, no set_*: append-only is structural,
-    # by surface absence, exactly as EvidenceRepo.
-    assert public_methods(VerificationCheckRepo) == {"add", "get", "list"}
+    # by surface absence, exactly as EvidenceRepo. list_for_ticket (ATLAS-131) is
+    # a read query, not a mutator.
+    assert public_methods(VerificationCheckRepo) == {
+        "add",
+        "get",
+        "list",
+        "list_for_ticket",
+    }
 
 
 def test_no_mutator_methods_exist() -> None:
@@ -148,3 +154,40 @@ def test_created_by_attribution_absent_by_design() -> None:
     # operational record like DebtItem) — no attribution column to round-trip.
     assert "created_by_type" not in VerificationCheck.model_fields
     assert "created_by_id" not in VerificationCheck.model_fields
+
+
+# --- list_for_ticket: focused per-ticket query (ATLAS-131) ------------------
+
+
+def test_list_for_ticket_returns_only_that_tickets_rows(db: Database) -> None:
+    repo = VerificationCheckRepo(db)
+    t1, t2 = uuid4(), uuid4()
+    mine_a = a_check(ticket_id=t1, check_type="tests")
+    mine_b = a_check(ticket_id=t1, check_type="lint")
+    other = a_check(ticket_id=t2, check_type="tests")
+    for check in (mine_a, other, mine_b):
+        repo.add(check)
+    # wrong answer: the other ticket's row leaks in (load-and-scan, no filter).
+    assert {c.id for c in repo.list_for_ticket(t1)} == {mine_a.id, mine_b.id}
+    assert {c.id for c in repo.list_for_ticket(t2)} == {other.id}
+
+
+def test_list_for_ticket_orders_oldest_first(db: Database) -> None:
+    repo = VerificationCheckRepo(db)
+    tid = uuid4()
+    older = a_check(
+        ticket_id=tid, check_type="tests", created_at=datetime(2026, 6, 27, tzinfo=UTC)
+    )
+    newer = a_check(
+        ticket_id=tid, check_type="tests", created_at=datetime(2026, 6, 28, tzinfo=UTC)
+    )
+    repo.add(newer)  # insert out of order
+    repo.add(older)
+    # wrong answer: insertion order — the query orders by created_at ascending.
+    assert [c.id for c in repo.list_for_ticket(tid)] == [older.id, newer.id]
+
+
+def test_list_for_ticket_empty_for_unknown_ticket(db: Database) -> None:
+    repo = VerificationCheckRepo(db)
+    repo.add(a_check(ticket_id=uuid4()))
+    assert repo.list_for_ticket(uuid4()) == []

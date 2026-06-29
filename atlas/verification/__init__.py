@@ -72,6 +72,7 @@ from atlas.verification.completion import (
     CheckOutcome,
     TicketVerification,
     evaluate_ticket,
+    ticket_verdict_from_checks,
 )
 from atlas.verification.documentation_check import (
     DocumentationEvaluation,
@@ -119,5 +120,6 @@ __all__ = [
     "evaluate_ticket",
     "parse_close_set",
     "required_checks",
+    "ticket_verdict_from_checks",
     "verification_checks_for",
 ]
