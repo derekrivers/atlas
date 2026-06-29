@@ -33,7 +33,8 @@
         "pr_review",
         "deployment_result",
         "documentation_update",
-        "manual_approval"
+        "manual_approval",
+        "pr_merged"
       ],
       "title": "EvidenceType",
       "type": "string"

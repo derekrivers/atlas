@@ -31,12 +31,14 @@ Pure functions, no I/O:
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 from datetime import datetime
+from typing import Any
 from uuid import UUID, uuid4
 
-from atlas.core.enums import ActorType
+from atlas.core.enums import ActorType, EvidenceStatus
 from atlas.core.models.evidence import Evidence, EvidenceType
-from atlas.github import NormalisedCheck, NormalisedDocs, NormalisedReview
+from atlas.github import NormalisedCheck, NormalisedDocs, NormalisedReview, payload_hash
 
 # Module logger for the unrecognised-job fallback warning (ATLAS-64), mirroring
 # atlas/github/client.py's logger + logger.warning pattern.
@@ -214,6 +216,62 @@ def map_docs_to_evidence(
         payload_hash=docs.payload_hash,
         source_uri=docs.source_uri,
         raw_payload=docs.raw_payload,
+        created_by_type=ActorType.SYSTEM,
+        created_by_id=GITHUB_ACTIONS_ACTOR_ID,
+        created_at=now,
+    )
+
+
+def build_merge_evidence(
+    pull_request: Mapping[str, Any],
+    *,
+    head_commit: str,
+    ticket_id: UUID,
+    product_id: UUID,
+    evidence_id: UUID,
+    now: datetime,
+) -> Evidence | None:
+    """Build a system-tier ``PR_MERGED`` ``Evidence`` from a raw PR object, or
+    ``None`` when the PR is not merged (ATLAS-134). PURE: it touches no
+    ``Database`` and persists nothing (``atlas verify`` does the I/O).
+
+    The merge is the operator's out-of-band action (the operator merges; Atlas
+    only OBSERVES it), captured here as the system-tier, commit-pinned evidence
+    the Done gate reads. ``atlas verify`` already fetches the PR object, which
+    carries ``merged``; this records that fact as a second condition on
+    ``review_required -> done`` WITHOUT touching the verdict (which still means
+    "is this PR acceptable", never "is it merged").
+
+    Returns ``None`` when ``pull_request.get("merged")`` is falsy/absent (an
+    unmerged PR produces no record), else a system-tier record:
+    ``evidence_type=PR_MERGED``, ``status=PASSED``,
+    ``created_by_type=SYSTEM``/``created_by_id=github-actions`` (the merge is
+    observed by deterministic system logic, never an agent or human), pinned to
+    the PR head ``head_commit`` so a re-push (new head) auto-invalidates a prior
+    merge record at the old commit.
+
+    The full system-tier pin TRIPLE is populated so ``EvidenceRepo.add``'s
+    ADR-0008 guard accepts it: ``commit_sha`` is the head, ``external_run_id`` is
+    the synthesised ``merge:<head_commit>`` id (mirroring the docs mapper's
+    ``docs:<sha>`` idiom), and ``payload_hash`` reuses :func:`atlas.github.
+    payload_hash` (one canonicalisation source) over the PR object. ``product_id``,
+    ``evidence_id``, and ``now`` are injected for the same purity/determinism
+    reasons as the capture builders (ATLAS-132). Never raises on a degenerate
+    ``pull_request`` dict -- ``.get`` guards the only read.
+    """
+
+    if not pull_request.get("merged"):
+        return None
+    return Evidence(
+        id=evidence_id,
+        product_id=product_id,
+        ticket_id=ticket_id,
+        evidence_type=EvidenceType.PR_MERGED,
+        status=EvidenceStatus.PASSED,
+        summary=f"PR merged at {head_commit}",
+        commit_sha=head_commit,
+        external_run_id=f"merge:{head_commit}",
+        payload_hash=payload_hash(pull_request),
         created_by_type=ActorType.SYSTEM,
         created_by_id=GITHUB_ACTIONS_ACTOR_ID,
         created_at=now,

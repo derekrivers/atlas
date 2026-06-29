@@ -42,7 +42,7 @@ DOCUMENTED_FIELDS: dict[str, tuple[Any, Any]] = {
     "created_at": (datetime, REQUIRED),
 }
 
-# data-model §3.7 (nine members)
+# data-model §3.7 (ten members)
 DOCUMENTED_TYPES = {
     "TEST_RESULT": "test_result",
     "BUILD_RESULT": "build_result",
@@ -53,6 +53,7 @@ DOCUMENTED_TYPES = {
     "DEPLOYMENT_RESULT": "deployment_result",
     "DOCUMENTATION_UPDATE": "documentation_update",
     "MANUAL_APPROVAL": "manual_approval",
+    "PR_MERGED": "pr_merged",
 }
 
 

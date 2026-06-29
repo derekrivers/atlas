@@ -156,7 +156,12 @@ from atlas.dependencies import (
     unlocks,
     validate_graph,
 )
-from atlas.evidence import ingest_checks, ingest_docs, ingest_reviews
+from atlas.evidence import (
+    build_merge_evidence,
+    ingest_checks,
+    ingest_docs,
+    ingest_reviews,
+)
 from atlas.github import (
     GitHubAPIError,
     GitHubClient,
@@ -1707,6 +1712,24 @@ def _verify_command(
         check_repo = VerificationCheckRepo(resolved_db)
         for row in rows:
             check_repo.add(row)
+
+        # ATLAS-134: record the merge as system-tier, commit-pinned evidence per
+        # close-set ticket when the PR is merged. The Done gate (pm.complete_verified)
+        # reads this; verify only OBSERVES the operator's out-of-band merge. Append-only
+        # and idempotent: a re-run on a still-merged PR appends an identical-commit
+        # record (harmless). The builder returns None for an unmerged PR -> no record.
+        evidence_repo = EvidenceRepo(resolved_db)
+        for ticket in tickets:
+            merge_record = build_merge_evidence(
+                pull_request,
+                head_commit=head_commit,
+                ticket_id=ticket.id,
+                product_id=ticket.product_id,
+                evidence_id=uuid4(),
+                now=datetime.now(UTC),
+            )
+            if merge_record is not None:
+                evidence_repo.add(merge_record)
     except OperationalError:
         print(
             "database is not initialised (no such table); run the database "

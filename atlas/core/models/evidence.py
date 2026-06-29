@@ -28,6 +28,7 @@ class EvidenceType(StrEnum):
     DEPLOYMENT_RESULT = "deployment_result"
     DOCUMENTATION_UPDATE = "documentation_update"
     MANUAL_APPROVAL = "manual_approval"
+    PR_MERGED = "pr_merged"
 
 
 class Evidence(BaseModel):

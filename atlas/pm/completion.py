@@ -56,8 +56,12 @@ from atlas.core.models.ticket import TicketStatus
 from atlas.linear.client import LinearClient
 from atlas.linear.ownership import LinearStatusMap
 from atlas.storage.db import Database
-from atlas.storage.repositories import TicketRepo, VerificationCheckRepo
-from atlas.verification.completion import ticket_verdict_from_checks
+from atlas.storage.repositories import EvidenceRepo, TicketRepo, VerificationCheckRepo
+from atlas.verification.completion import (
+    merge_confirmed,
+    proof_evidence_ids,
+    ticket_verdict_from_checks,
+)
 
 logger = logging.getLogger("atlas.pm.completion")
 
@@ -80,7 +84,18 @@ def complete_verified(
 
     Eligibility is Atlas-status only (``review_required``); a FAILED or PENDING verdict
     is left untouched (the changes-requested path and the unproven case respectively).
-    A PASSED ticket with no ``external_linear_id`` is skipped with a log (mirrors
+
+    Done requires BOTH a PASSED verdict AND a merged PR (ATLAS-134; the operator's
+    "definition of done is a merged PR" ruling, Option A -- a SEPARATE condition that
+    leaves the verdict's meaning untouched). The merge is read locally from the
+    system-tier ``PR_MERGED`` evidence ``atlas verify`` records (this never calls
+    GitHub): the verdict's commit is resolved from the proof backing the PASSED checks
+    (:func:`proof_evidence_ids`), and :func:`merge_confirmed` requires a system-tier
+    ``PR_MERGED`` at that commit. An unmerged PR, no merge record, or a merge at a
+    different commit (a re-push / second PR) defers completion, exactly as a PENDING
+    verdict does.
+
+    A completable ticket with no ``external_linear_id`` is skipped with a log (mirrors
     :func:`promote_ready`'s skip). Reads storage only and performs no Atlas-side status
     write -- the next pull reconciles Atlas. Idempotent: ``set_state`` to the
     already-set state is a no-op, so a re-run before the pull reconciles re-counts the
@@ -89,13 +104,39 @@ def complete_verified(
 
     done_state_id = status_map.state_id_for(TicketStatus.DONE)
     checks = VerificationCheckRepo(db)
+    # ATLAS-134: the merge gate reads persisted evidence locally (verify is the only
+    # GitHub-touching writer). Load once and index by id so the proof commit can be
+    # resolved from the PASSED checks' evidence_ids without a per-ticket round trip.
+    all_evidence = EvidenceRepo(db).list()
+    evidence_by_id = {e.id: e for e in all_evidence}
     completed = 0
     for ticket in tickets.list():
         if ticket.status is not TicketStatus.REVIEW_REQUIRED:
             continue  # only a ticket awaiting review can be completed by this step
-        verdict = ticket_verdict_from_checks(ticket, checks.list_for_ticket(ticket.id))
+        ticket_checks = checks.list_for_ticket(ticket.id)
+        verdict = ticket_verdict_from_checks(ticket, ticket_checks)
         if verdict is not EvidenceStatus.PASSED:
             continue  # FAILED is the changes-requested path; PENDING waits
+        # ATLAS-134: Done also requires the PR to be MERGED (operator ruling, Option A
+        # -- a separate condition; the verdict still means "acceptable"). The verdict
+        # carries no commit, so its commit is read from its proof: the evidence backing
+        # the PASSED checks. A PR_MERGED at that commit completes; no record, or one at
+        # a different commit (a re-push / second PR), waits -- exactly like a PENDING
+        # verdict does today.
+        proof_ids = proof_evidence_ids(ticket, ticket_checks)
+        commit_shas: set[str] = set()
+        for proof_id in proof_ids:
+            record = evidence_by_id.get(proof_id)
+            if record is not None and record.commit_sha is not None:
+                commit_shas.add(record.commit_sha)
+        ticket_evidence = [e for e in all_evidence if e.ticket_id == ticket.id]
+        if not merge_confirmed(ticket_evidence, commit_shas=commit_shas):
+            logger.info(
+                "linear-sync: %s verified PASSED but its PR is not merged at the "
+                "verdict commit; completion deferred",
+                ticket.key,
+            )
+            continue
         if ticket.external_linear_id is None:
             logger.info(
                 "linear-sync: %s verified PASSED but has no Linear issue; completion "

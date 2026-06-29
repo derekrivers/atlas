@@ -167,11 +167,14 @@ def fake(
     body: str | None = None,
     files: list[str] | None = None,
     with_pr: bool = True,
+    merged: bool = False,
 ) -> FakeGitHubClient:
     names = [IN_SCOPE_DOC, IN_SCOPE_SRC] if files is None else files
     pr_files = [{"filename": f} for f in names]
     pull_request = (
-        {"head": {"sha": HEAD}, "title": title, "body": body} if with_pr else None
+        {"head": {"sha": HEAD}, "title": title, "body": body, "merged": merged}
+        if with_pr
+        else None
     )
     return FakeGitHubClient(pr_files=pr_files, pull_request=pull_request)
 
@@ -365,6 +368,40 @@ def test_second_run_appends_rows_mutating_none(db: Database) -> None:
     # appending) — append-only means the row count doubles.
     assert len(second) == 8
     assert first_ids <= {r.id for r in second}  # every original row still present
+
+
+# --- ATLAS-134: verify records the merge as system-tier evidence ------------
+
+
+def test_merged_pr_records_pr_merged_evidence_per_ticket(db: Database) -> None:
+    """ATLAS-134 AC-1: verify on a merged PR persists exactly one system-tier
+    PR_MERGED Evidence per close-set ticket, pinned to C, PASSED, system-tier."""
+    ticket = make_ticket(key="ATLAS-200")
+    TicketRepo(db).add(ticket)
+    seed_evidence(db, sys_test(), sys_lint())
+
+    assert run_verify(db, fake(merged=True)) == EXIT_OK
+
+    merges = [e for e in EvidenceRepo(db).list() if e.evidence_type == ET.PR_MERGED]
+    # wrong answer: 0 (the builder was never called on the merged PR)
+    assert len(merges) == 1
+    merge = merges[0]
+    assert merge.ticket_id == ticket.id
+    assert merge.commit_sha == HEAD
+    assert merge.status == ES.PASSED
+    assert merge.created_by_type == ActorType.SYSTEM
+
+
+def test_unmerged_pr_records_no_pr_merged_evidence(db: Database) -> None:
+    """ATLAS-134 AC-2: verify on an unmerged PR persists no PR_MERGED evidence."""
+    ticket = make_ticket(key="ATLAS-200")
+    TicketRepo(db).add(ticket)
+    seed_evidence(db, sys_test(), sys_lint())
+
+    assert run_verify(db, fake(merged=False)) == EXIT_OK
+
+    merges = [e for e in EvidenceRepo(db).list() if e.evidence_type == ET.PR_MERGED]
+    assert merges == []  # wrong answer: 1 (a record built for an unmerged PR)
 
 
 # --- precondition exits (R2 contract) ---------------------------------------

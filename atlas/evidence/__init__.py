@@ -15,6 +15,7 @@ ingest (always ``DOCUMENTATION_UPDATE``, one record per PR, ``None`` when no
 from atlas.evidence.ingest import ingest_checks, ingest_docs, ingest_reviews
 from atlas.evidence.mapping import (
     GITHUB_ACTIONS_ACTOR_ID,
+    build_merge_evidence,
     evidence_type_for_job,
     map_check_to_evidence,
     map_docs_to_evidence,
@@ -23,6 +24,7 @@ from atlas.evidence.mapping import (
 
 __all__ = [
     "GITHUB_ACTIONS_ACTOR_ID",
+    "build_merge_evidence",
     "evidence_type_for_job",
     "ingest_checks",
     "ingest_docs",

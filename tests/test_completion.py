@@ -39,6 +39,8 @@ from atlas.verification import (
     TicketVerification,
     acceptance_criterion_hash,
     evaluate_ticket,
+    merge_confirmed,
+    proof_evidence_ids,
     required_checks,
     ticket_verdict_from_checks,
 )
@@ -602,3 +604,119 @@ def test_verdict_never_raises_on_empty_or_unknown_rows() -> None:
     assert ticket_verdict_from_checks(ticket, []) == ES.PENDING
     stray = [_row(VerificationCheckType.SECURITY, EvidenceStatus.PASSED)]
     assert ticket_verdict_from_checks(ticket, stray) == ES.PENDING
+
+
+# === ATLAS-134: the merge-gate pure helpers =================================
+# proof_evidence_ids collects the evidence backing the latest REQUIRED checks
+# (the verdict's proof); merge_confirmed asks whether a system-tier PR_MERGED is
+# pinned to one of those proof commits. Both pure, both never raise.
+
+
+def _row_with(
+    check_type: VerificationCheckType,
+    status: EvidenceStatus,
+    evidence_ids: tuple[UUID, ...],
+    *,
+    required: bool = True,
+    created_at: datetime = VERDICT_EARLIER,
+) -> VerificationCheck:
+    return VerificationCheck(
+        id=uuid4(),
+        ticket_id=TICKET,
+        check_type=check_type,
+        status=status,
+        summary="seeded row",
+        required=required,
+        evidence_ids=list(evidence_ids),
+        created_at=created_at,
+    )
+
+
+def pr_merged(commit: str = HEAD, **kw: Any) -> Evidence:
+    return _evidence(
+        ET.PR_MERGED,
+        status=ES.PASSED,
+        created_by_type=ActorType.SYSTEM,
+        commit_sha=commit,
+        **kw,
+    )
+
+
+# --- proof_evidence_ids -----------------------------------------------------
+
+
+def test_proof_evidence_ids_collects_latest_required_checks_evidence() -> None:
+    ticket = make_ticket()
+    gating = [rc.check_type for rc in required_checks(ticket) if rc.required]
+    ids = {ct: uuid4() for ct in gating}
+    rows = [_row_with(ct, ES.PASSED, (ids[ct],)) for ct in gating]
+
+    proof = proof_evidence_ids(ticket, rows)
+
+    # wrong answer: a subset (a check's ids dropped) or empty (helper not reading ids)
+    assert proof == frozenset(ids.values())
+
+
+def test_proof_evidence_ids_uses_only_the_latest_row_per_type() -> None:
+    ticket = make_ticket()
+    gating = next(rc.check_type for rc in required_checks(ticket) if rc.required)
+    stale, fresh = uuid4(), uuid4()
+    rows = [
+        _row_with(gating, ES.PASSED, (stale,), created_at=VERDICT_EARLIER),
+        _row_with(gating, ES.PASSED, (fresh,), created_at=VERDICT_LATER),
+    ]
+
+    proof = proof_evidence_ids(ticket, rows)
+
+    # the latest row's ids win; the superseded row's ids are excluded.
+    assert fresh in proof
+    assert stale not in proof  # wrong answer: union across all rows ignores latest-wins
+
+
+def test_proof_evidence_ids_excludes_non_required_checks() -> None:
+    ticket = make_ticket()
+    gating = next(rc.check_type for rc in required_checks(ticket) if rc.required)
+    req_id, non_req_id = uuid4(), uuid4()
+    rows = [
+        _row_with(gating, ES.PASSED, (req_id,)),
+        _row_with(VT.SECURITY, ES.NOT_APPLICABLE, (non_req_id,), required=False),
+    ]
+
+    proof = proof_evidence_ids(ticket, rows)
+
+    assert req_id in proof
+    assert non_req_id not in proof  # a non-gating check never contributes proof
+
+
+# --- merge_confirmed --------------------------------------------------------
+
+
+def test_merge_confirmed_true_for_system_pr_merged_at_a_proof_commit() -> None:
+    assert merge_confirmed([pr_merged(HEAD)], commit_shas={HEAD}) is True
+
+
+def test_merge_confirmed_false_for_empty_commit_set() -> None:
+    # no proven commit to match -> never a vacuous Done.
+    assert merge_confirmed([pr_merged(HEAD)], commit_shas=set()) is False
+
+
+def test_merge_confirmed_false_when_no_pr_merged_record() -> None:
+    # a passing machine-check evidence is not a merge record.
+    assert merge_confirmed([sys_test()], commit_shas={HEAD}) is False
+
+
+def test_merge_confirmed_false_for_merge_at_a_different_commit() -> None:
+    # the stale-merge guard: a PR_MERGED at OTHER does not satisfy a verdict at HEAD.
+    assert merge_confirmed([pr_merged(OTHER)], commit_shas={HEAD}) is False
+
+
+def test_merge_confirmed_false_for_non_system_tier_merge_claim() -> None:
+    human_merge = _evidence(
+        ET.PR_MERGED, status=ES.PASSED, created_by_type=ActorType.HUMAN, commit_sha=HEAD
+    )
+    # wrong answer: True (tier check dropped — a non-system merge claim slips through)
+    assert merge_confirmed([human_merge], commit_shas={HEAD}) is False
+
+
+def test_merge_confirmed_never_raises_on_empty_evidence() -> None:
+    assert merge_confirmed([], commit_shas={HEAD}) is False
