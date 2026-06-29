@@ -52,6 +52,18 @@ below it (``atlas.core`` and friends) — never reach up into ``atlas.pm``,
 ``atlas.planning``, or ``atlas.cli``. The resolver imports ``atlas.core``
 only.
 
+ATLAS-132 lands the pure operator-confirmation foundation (OP-3.1, capture.py):
+the single-source ``out_of_scope_paths`` derivation (which ``evaluate_scope`` now
+calls), the three confirmation *builders*
+(:func:`build_acceptance_confirmation`, :func:`build_scope_decision`,
+:func:`build_blanket_approval`) that construct exactly the human-tier
+MANUAL_APPROVAL Evidence those evaluators match — always pinned to the head
+commit — and :func:`pending_capture`, the inverse view reporting what the
+operator still has to decide at ``C``. It is PURE: no I/O, no ``EvidenceRepo``,
+no CLI. The interactive ``atlas confirm`` surface that supplies operator
+identity, the clock, the uuid factory, GitHub resolution, and append-only
+persistence is OP-3.2.
+
 Contract recorded for later tickets (OP-3): a future ``atlas verify`` will
 write its human-tier acceptance/approval outcomes as Evidence records pinned
 to the PR head commit (commit_sha == the verified head). Those later tickets
@@ -67,6 +79,14 @@ from atlas.verification.acceptance_check import (
     AcceptanceEvaluation,
     acceptance_criterion_hash,
     evaluate_acceptance_criteria,
+)
+from atlas.verification.capture import (
+    CriterionPrompt,
+    PendingCapture,
+    build_acceptance_confirmation,
+    build_blanket_approval,
+    build_scope_decision,
+    pending_capture,
 )
 from atlas.verification.completion import (
     CheckOutcome,
@@ -95,6 +115,7 @@ from atlas.verification.scope_check import (
     SCOPE_DECISION_PATH_KEY,
     ScopeEvaluation,
     evaluate_scope,
+    out_of_scope_paths,
 )
 
 __all__ = [
@@ -103,14 +124,19 @@ __all__ = [
     "SCOPE_DECISION_PATH_KEY",
     "AcceptanceEvaluation",
     "CheckOutcome",
+    "CriterionPrompt",
     "DocumentationEvaluation",
     "HumanApprovalEvaluation",
     "MachineCheckEvaluation",
     "PRVerification",
+    "PendingCapture",
     "RequiredCheck",
     "ScopeEvaluation",
     "TicketVerification",
     "acceptance_criterion_hash",
+    "build_acceptance_confirmation",
+    "build_blanket_approval",
+    "build_scope_decision",
     "evaluate_acceptance_criteria",
     "evaluate_documentation_check",
     "evaluate_human_approval",
@@ -118,7 +144,9 @@ __all__ = [
     "evaluate_pr",
     "evaluate_scope",
     "evaluate_ticket",
+    "out_of_scope_paths",
     "parse_close_set",
+    "pending_capture",
     "required_checks",
     "ticket_verdict_from_checks",
     "verification_checks_for",

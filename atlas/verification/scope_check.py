@@ -88,6 +88,30 @@ SCOPE_DECISION_PATH_KEY = "scope_decision_path"
 # path does NOT decide it (agent-tier is capped PENDING regardless, D8).
 
 
+def out_of_scope_paths(
+    pr_files: Sequence[str],
+    *,
+    relevant_docs: Sequence[str],
+    source_anchor: str,
+) -> list[str]:
+    """The distinct, normalised, sorted PR paths NOT in the declared scope (D1).
+
+    The single source of truth for the out-of-scope derivation:
+    :func:`evaluate_scope` calls this, and the OP-3 operator-confirmation capture
+    (``atlas.verification.capture``) calls the SAME function, so the evaluator and
+    the capture can never drift on what "out of scope" means. The in-scope set is
+    ``_in_scope_paths(relevant_docs, source_anchor)`` (every ``relevant_docs`` entry
+    plus the ``source_anchor`` PATH part, each ``.strip()``ed with blanks dropped);
+    ``pr_files`` are normalised the same way (``.strip()``, blanks dropped) and
+    reduced to DISTINCT paths; the result is every distinct normalised PR path not
+    in the in-scope set, sorted (C1: one path, one contribution). Pure and never
+    raises — empty inputs yield ``[]``.
+    """
+    in_scope = _in_scope_paths(relevant_docs, source_anchor)
+    files = {f.strip() for f in pr_files if f.strip()}
+    return sorted(f for f in files if f not in in_scope)
+
+
 @dataclass(frozen=True)
 class ScopeEvaluation:
     """The result of :func:`evaluate_scope` (D4).
@@ -172,9 +196,10 @@ def evaluate_scope(
         evidence: pre-loaded Evidence records to evaluate against (loading is
             the CLI's job; this module never touches storage).
     """
-    in_scope = _in_scope_paths(relevant_docs, source_anchor)
     files = {f.strip() for f in pr_files if f.strip()}
-    out_of_scope = sorted(f for f in files if f not in in_scope)
+    out_of_scope = out_of_scope_paths(
+        pr_files, relevant_docs=relevant_docs, source_anchor=source_anchor
+    )
 
     if not out_of_scope:
         return ScopeEvaluation(
