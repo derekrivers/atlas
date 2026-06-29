@@ -118,7 +118,7 @@ import threading
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import NamedTuple
+from typing import Literal, NamedTuple, Protocol, runtime_checkable
 from uuid import UUID, uuid4
 
 import networkx as nx
@@ -227,8 +227,12 @@ from atlas.storage import (
 from atlas.verification import (
     CheckOutcome,
     PRVerification,
+    build_acceptance_confirmation,
+    build_blanket_approval,
+    build_scope_decision,
     evaluate_pr,
     parse_close_set,
+    pending_capture,
     verification_checks_for,
 )
 
@@ -289,6 +293,7 @@ def build_parser() -> argparse.ArgumentParser:
     _add_context_parser(subcommands)
     _add_evidence_parser(subcommands)
     _add_verify_parser(subcommands)
+    _add_confirm_parser(subcommands)
     return parser
 
 
@@ -531,6 +536,62 @@ def _add_verify_parser(subcommands: argparse._SubParsersAction) -> None:  # type
     verify.add_argument(
         "--json", action="store_true", help="emit machine-readable JSON"
     )
+
+
+def _add_confirm_parser(subcommands: argparse._SubParsersAction) -> None:  # type: ignore[type-arg]
+    """The `atlas confirm` command (ATLAS-133, OP-3.2): interactive capture of the
+    operator's human-tier confirmations for a PR.
+
+    Sibling to `verify`, NOT a flag on it (OP-3.2a): `verify` is contractually
+    read-only / non-interactive / EXIT_OK-on-any-verdict (ATLAS-80); `confirm`
+    WRITES human-tier MANUAL_APPROVAL Evidence and is interactive — a separate
+    contract. It resolves the PR head commit, files, and close-set EXACTLY as
+    `verify` does (the same helpers, verify untouched), then for each ticket walks
+    the operator through every still-pending acceptance criterion, out-of-scope
+    file, and blanket-approval requirement at the head commit ``C`` and persists
+    their decisions as the human-tier Evidence the three human evaluators match.
+
+    It writes RECORDS ONLY (D-5): no verdict, no VerificationCheck rows, no ticket
+    transition — the next `atlas verify` recomputes the verdict from the new
+    Evidence, and the next PM tick (ATLAS-131) moves a now-PASSED ticket. There is
+    NO blanket confirm-all flag (D-4): a blanket confirm defeats the operator gate
+    (ADR-0008), so the operator decides each item, and with neither an injected
+    prompt seam nor a TTY the command refuses rather than auto-confirm.
+
+    NOTE: `--repo` is the GitHub `OWNER/REPO` slug (like `verify` / `evidence
+    pull`), not a repo-root path.
+
+    EXIT-CODE CONTRACT (D-6): a completed session — even one where the operator
+    skips every item — is EXIT_OK. Every setup failure (malformed `--repo`,
+    missing operator identity, missing token, unknown PR / transport, a cold
+    database, no `ATLAS` product, or no TTY without an injected prompt seam) is a
+    clean one-line EXIT_PRECONDITION, never a traceback. No secret is printed."""
+    confirm = subcommands.add_parser(
+        "confirm",
+        help="Interactively capture operator confirmations for a PR (writes "
+        "human-tier evidence; EXIT_OK on a completed session)",
+    )
+    confirm.add_argument(
+        "--pr", type=int, required=True, help="the pull request number to confirm"
+    )
+    confirm.add_argument(
+        "--repo",
+        required=True,
+        help="the GitHub repository as OWNER/REPO (not a path)",
+    )
+    confirm.add_argument(
+        "--tickets",
+        default=None,
+        help="override the close-set: a comma-separated list of ATLAS keys "
+        "(e.g. ATLAS-72,ATLAS-73); without it the keys are parsed from the PR",
+    )
+    confirm.add_argument(
+        "--operator",
+        default=None,
+        help="the operator id recorded on each confirmation; falls back to the "
+        "ATLAS_OPERATOR_ID environment variable (no anonymous human-tier writes)",
+    )
+    confirm.add_argument("--db", default=None, help="database URL")
 
 
 def _make_confirm(assume_yes: bool) -> Callable[[PlanDiff], ApplyDecision]:
@@ -1666,6 +1727,283 @@ def _verify_command(
     return EXIT_OK
 
 
+@runtime_checkable
+class ConfirmPrompts(Protocol):
+    """The interactive seam `atlas confirm` walks the operator through (D-3).
+
+    Three methods, one per pending decision kind, each returning the operator's
+    ruling as DATA the command routes to an OP-3.1 builder — never the record
+    shape itself. Tests inject a scripted fake (no TTY, deterministic); production
+    uses :func:`_make_confirm_prompts`, the stdin default. The seam is the ONLY
+    place a human is consulted, so a no-prompt / no-TTY run can refuse cleanly
+    rather than auto-confirm (D-4)."""
+
+    def acceptance(self, criterion: str) -> bool:
+        """Confirm this acceptance criterion at ``C`` (``True``) or skip it."""
+        ...
+
+    def scope(self, path: str) -> Literal["waive", "fail", "skip"]:
+        """Rule on this out-of-scope file: waive it, fail it, or skip it."""
+        ...
+
+    def approval(self) -> Literal["approve", "reject", "skip"]:
+        """Rule on the blanket PR approval: approve, reject, or skip it."""
+        ...
+
+
+def _make_confirm_prompts() -> ConfirmPrompts:
+    """The stdin :class:`ConfirmPrompts` default (production, D-3).
+
+    Reads the operator's rulings from ``input()`` — the same register as
+    :func:`_make_confirm`. The exact wording is non-contractual: tests inject a
+    scripted seam and never parse this output. Only called once the command has
+    confirmed a TTY exists (D-4), so the prompts never block a headless run."""
+
+    class _StdinConfirmPrompts:
+        def acceptance(self, criterion: str) -> bool:
+            answer = input(f"Confirm acceptance criterion: {criterion}  [y/N] ")
+            return answer.strip().lower() == "y"
+
+        def scope(self, path: str) -> Literal["waive", "fail", "skip"]:
+            answer = (
+                input(f"Out-of-scope file {path}:  [w]aive / [f]ail / [s]kip  ")
+                .strip()
+                .lower()
+            )
+            if answer in ("w", "waive"):
+                return "waive"
+            if answer in ("f", "fail"):
+                return "fail"
+            return "skip"
+
+        def approval(self) -> Literal["approve", "reject", "skip"]:
+            answer = (
+                input("Blanket-approve this PR?  [a]pprove / [r]eject / [s]kip  ")
+                .strip()
+                .lower()
+            )
+            if answer in ("a", "approve"):
+                return "approve"
+            if answer in ("r", "reject"):
+                return "reject"
+            return "skip"
+
+    return _StdinConfirmPrompts()
+
+
+def _confirm_command(
+    args: argparse.Namespace,
+    *,
+    database: Database | None = None,
+    github_client: GitHubClient | None = None,
+    prompts: ConfirmPrompts | None = None,
+    now: datetime | None = None,
+    new_id: Callable[[], UUID] | None = None,
+) -> int:
+    """`atlas confirm --pr N --repo OWNER/REPO` (ATLAS-133, OP-3.2): capture the
+    operator's human-tier confirmations for a PR and persist them as Evidence.
+
+    Resolves the PR head commit ``C``, changed files, and close-set EXACTLY as
+    `_verify_command` does — the same helpers, `verify` untouched (D-1) — so a
+    confirmation pins the same commit `verify` later evaluates against. Per ticket
+    in the close-set it calls OP-3.1's :func:`pending_capture` and, for each still-
+    pending item, prompts the operator (the injected :class:`ConfirmPrompts` seam,
+    else the stdin default) and routes the answer to the matching OP-3.1 builder,
+    persisting the record via :meth:`EvidenceRepo.add`. The CLI owns NO record
+    shape (keys / hashes / tier / commit pin are all the builders'); it only
+    decides which builder an answer calls (D-2).
+
+    RECORDS ONLY (D-5): no `evaluate_pr`, no VerificationCheck rows, no ticket
+    transition. EXIT-CODE CONTRACT (D-6): a completed session (even all-skip) →
+    EXIT_OK; every setup failure → a clean one-line EXIT_PRECONDITION, never a
+    traceback, no secret printed."""
+    resolved_db = database if database is not None else Database(args.db)
+
+    owner, sep, repo = args.repo.partition("/")
+    if not (owner and sep and repo) or "/" in repo:
+        print("--repo must be OWNER/REPO (e.g. acme/atlas).", file=sys.stderr)
+        return EXIT_PRECONDITION
+
+    # Operator identity (OP-3.2c) — resolved BEFORE any I/O so a miss writes
+    # nothing: no anonymous human-tier evidence.
+    operator_id = args.operator or os.environ.get("ATLAS_OPERATOR_ID")
+    if not operator_id:
+        print(
+            "confirm needs an operator id: pass --operator ID or set "
+            "ATLAS_OPERATOR_ID (no anonymous human-tier writes).",
+            file=sys.stderr,
+        )
+        return EXIT_PRECONDITION
+
+    # The prompt seam (D-3/D-4) — also resolved before any I/O. With no injected
+    # seam and no TTY, refuse rather than auto-confirm (a blanket confirm defeats
+    # the operator gate, ADR-0008).
+    if prompts is None:
+        if not sys.stdin.isatty():
+            print(
+                "confirm is interactive and needs a terminal; no TTY is "
+                "available and no prompt seam was injected.",
+                file=sys.stderr,
+            )
+            return EXIT_PRECONDITION
+        prompts = _make_confirm_prompts()
+
+    client = github_client
+    if client is None:
+        try:
+            client = GitHubRESTClient()  # reads GITHUB_TOKEN at construction
+        except MissingGitHubTokenError as error:
+            print(error, file=sys.stderr)
+            return EXIT_PRECONDITION
+
+    try:
+        pull_request = client.fetch_pull_request(owner, repo, args.pr)
+        head_commit = str(pull_request["head"]["sha"])
+        pr_files = _verify_pr_file_paths(client.fetch_pr_files(owner, repo, args.pr))
+    except GitHubAPIError as error:
+        print(error, file=sys.stderr)
+        return EXIT_PRECONDITION
+
+    close_set: tuple[str, ...]
+    if args.tickets is not None:
+        close_set = _parse_tickets_flag(args.tickets)
+    else:
+        close_set = parse_close_set(pull_request.get("title"), pull_request.get("body"))
+
+    clock = now if now is not None else datetime.now(UTC)
+    mint = new_id if new_id is not None else uuid4
+
+    try:
+        product = ProductRepo(resolved_db).get_by_key(PRODUCT_KEY)
+        if product is None:
+            print(
+                f"no {PRODUCT_KEY!r} product in the database; bootstrap the "
+                "product before confirming (setup gap).",
+                file=sys.stderr,
+            )
+            return EXIT_PRECONDITION
+
+        ticket_repo = TicketRepo(resolved_db)
+        evidence_repo = EvidenceRepo(resolved_db)
+        tickets: list[Ticket] = []
+        unknown_keys: list[str] = []
+        for key in close_set:
+            ticket = ticket_repo.get_by_key(key)
+            if ticket is None:
+                unknown_keys.append(key)
+                continue
+            tickets.append(ticket)
+
+        evidence = evidence_repo.list()  # snapshot at C; loaded once (mirrors verify)
+        recorded = 0
+        for ticket in tickets:
+            recorded += _capture_ticket(
+                ticket,
+                prompts=prompts,
+                head_commit=head_commit,
+                pr_files=pr_files,
+                evidence=evidence,
+                product_id=product.id,
+                operator_id=operator_id,
+                evidence_repo=evidence_repo,
+                now=clock,
+                new_id=mint,
+            )
+    except OperationalError:
+        print(
+            "database is not initialised (no such table); run the database "
+            "migrations before using `atlas confirm`.",
+            file=sys.stderr,
+        )
+        return EXIT_PRECONDITION
+
+    print(
+        f"Recorded {recorded} operator confirmation(s) for {owner}/{repo} "
+        f"PR #{args.pr} at {head_commit}."
+    )
+    if unknown_keys:
+        print("  Skipped (no such ticket in the database): " + ", ".join(unknown_keys))
+    return EXIT_OK
+
+
+def _capture_ticket(
+    ticket: Ticket,
+    *,
+    prompts: ConfirmPrompts,
+    head_commit: str,
+    pr_files: list[str],
+    evidence: list[Evidence],
+    product_id: UUID,
+    operator_id: str,
+    evidence_repo: EvidenceRepo,
+    now: datetime,
+    new_id: Callable[[], UUID],
+) -> int:
+    """Prompt the operator for one ticket's pending items and persist the rulings.
+
+    Calls OP-3.1's :func:`pending_capture` (the inverse view of the three human
+    evaluators at ``C``) and, for each returned item, routes the operator's answer
+    to the matching builder (D-2): a confirmed criterion →
+    :func:`build_acceptance_confirmation`; a waived/failed scope file →
+    :func:`build_scope_decision`; an approved/rejected blanket →
+    :func:`build_blanket_approval`. A skip persists nothing. Returns the number of
+    records written so the command can summarise the session."""
+    pending = pending_capture(
+        ticket, head_commit=head_commit, pr_files=pr_files, evidence=evidence
+    )
+    recorded = 0
+
+    for prompt in pending.unconfirmed_criteria:
+        if prompts.acceptance(prompt.criterion):
+            evidence_repo.add(
+                build_acceptance_confirmation(
+                    prompt.criterion,
+                    ticket_id=ticket.id,
+                    head_commit=head_commit,
+                    product_id=product_id,
+                    operator_id=operator_id,
+                    evidence_id=new_id(),
+                    now=now,
+                )
+            )
+            recorded += 1
+
+    for path in pending.undecided_scope_files:
+        scope_decision = prompts.scope(path)
+        if scope_decision in ("waive", "fail"):
+            evidence_repo.add(
+                build_scope_decision(
+                    path,
+                    waive=scope_decision == "waive",
+                    ticket_id=ticket.id,
+                    head_commit=head_commit,
+                    product_id=product_id,
+                    operator_id=operator_id,
+                    evidence_id=new_id(),
+                    now=now,
+                )
+            )
+            recorded += 1
+
+    if pending.human_approval_required_and_missing:
+        approval_decision = prompts.approval()
+        if approval_decision in ("approve", "reject"):
+            evidence_repo.add(
+                build_blanket_approval(
+                    approved=approval_decision == "approve",
+                    ticket_id=ticket.id,
+                    head_commit=head_commit,
+                    product_id=product_id,
+                    operator_id=operator_id,
+                    evidence_id=new_id(),
+                    now=now,
+                )
+            )
+            recorded += 1
+
+    return recorded
+
+
 def main(
     argv: list[str] | None = None,
     *,
@@ -1699,6 +2037,8 @@ def main(
         return _evidence_command(args, database=database, github_client=github_client)
     if args.command == "verify":
         return _verify_command(args, database=database, github_client=github_client)
+    if args.command == "confirm":
+        return _confirm_command(args, database=database, github_client=github_client)
     return EXIT_PRECONDITION  # unreachable: subparser is required
 
 
