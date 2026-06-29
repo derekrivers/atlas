@@ -690,10 +690,17 @@ def _push(
     tickets: TicketRepo,
     client: LinearClient,
     team_id: str,
+    project_id: str,
     result: SyncResult,
 ) -> None:
     """Step 2 (Atlas -> Linear): push the owned definition for a pushable
-    ticket whose cursor says it changed. Push first, then stamp (D5)."""
+    ticket whose cursor says it changed. Push first, then stamp (D5).
+
+    ``project_id`` is the creation scope threaded alongside ``team_id`` (ATLAS-135):
+    a first-sync create places the issue in the configured Linear project so it is
+    visible to Symphony's project-scoped poll. It is used ONLY on the create path
+    (the project is set once, at creation); the ``update_issue`` re-push below never
+    carries it -- a project move is not a definition update."""
 
     if ticket.status not in PUSHABLE_STATUSES or not _definition_changed(ticket):
         result.push_skipped += 1
@@ -703,7 +710,7 @@ def _push(
         # First sync: create the issue and write back the join key. Stamped
         # immediately after the confirmed create to shrink the non-idempotent
         # create-retry window (tracked in docs/tech-debt/debt-register.md).
-        issue = client.create_issue(definition, team_id=team_id)
+        issue = client.create_issue(definition, team_id=team_id, project_id=project_id)
         tickets.mark_definition_pushed(
             ticket.key,
             synced_at=ticket.updated_at,
@@ -727,6 +734,7 @@ def sync_tick(
     client: LinearClient,
     status_map: LinearStatusMap,
     team_id: str,
+    project_id: str,
     inbox_dir: Path,
     now: datetime,
 ) -> SyncResult:
@@ -735,7 +743,9 @@ def sync_tick(
     Per ticket: pull a mapped status (Linear -> Atlas) — logging an
     out-of-ownership ``DebtItem`` (ATLAS-118) on a transition into an unmapped
     state — then push the owned definition (Atlas -> Linear) if the cursor says
-    it changed. Pull precedes push so a status pulled into a frozen state
+    it changed (a first-sync create scopes the new issue to ``team_id`` AND
+    ``project_id``, so it lands in the Symphony-polled Linear project; ATLAS-135).
+    Pull precedes push so a status pulled into a frozen state
     freezes the same tick's push. Each Linear call is bracketed by its own DB
     commit (push-then-stamp), so an interrupted tick is safe to re-run.
 
@@ -795,7 +805,7 @@ def sync_tick(
     debt = DebtItemRepo(db)
     for ticket in tickets.list():
         after_pull = _pull(ticket, tickets, debt, client, status_map, result, now)
-        _push(after_pull, tickets, client, team_id, result)
+        _push(after_pull, tickets, client, team_id, project_id, result)
     graph = build_dependency_graph(db)
     result.promoted = promote_ready(
         tickets=tickets, graph=graph, client=client, status_map=status_map

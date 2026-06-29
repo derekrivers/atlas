@@ -45,6 +45,7 @@ from test_models_validation import NOW, ticket_kwargs
 from test_pm_sync import (
     DONE_STATE,
     NEEDS_HUMAN,
+    PROJECT_ID,
     READY,
     STARTED,
     TEAM_ID,
@@ -121,7 +122,9 @@ def seed_ticket(
     external_id: str | None = None
     if with_issue:
         issue = client.create_issue(
-            {"title": "Linear Title", "description": "linear"}, team_id=TEAM_ID
+            {"title": "Linear Title", "description": "linear"},
+            team_id=TEAM_ID,
+            project_id=PROJECT_ID,
         )
         external_id = issue.id
         if issue_state is not None:
@@ -423,6 +426,7 @@ def test_sync_tick_surfaces_completed_count(db: Database) -> None:
         client=client,
         status_map=tick_status_map(),
         team_id=TEAM_ID,
+        project_id=PROJECT_ID,
         inbox_dir=Path(tempfile.mkdtemp()),
         now=NOW,
     )

@@ -70,9 +70,12 @@ statuses under one Linear type. A missing or empty `LINEAR_STATE_MAP` on the
 live path raises `LinearStatusMapError` rather than silently disabling
 status sync.
 
-**Secrets.** `LINEAR_API_KEY`, `LINEAR_TEAM_ID`, and `LINEAR_STATE_MAP` are
-read only at the client boundary, never logged, never committed (`.env` is
-git-ignored). The deterministic core never touches them; tests inject the
+**Secrets.** `LINEAR_API_KEY`, `LINEAR_TEAM_ID`, `LINEAR_PROJECT_ID`, and
+`LINEAR_STATE_MAP` are read only at the client boundary, never logged, never
+committed (`.env` is git-ignored). `LINEAR_PROJECT_ID` scopes issue creation to
+a Linear project alongside the team, so created issues are visible to Symphony's
+project-scoped poll; it is the project's **id** (a UUID), not its `slugId` (the
+`project_slug` in `WORKFLOW.md`) — two different fields of the same project. The deterministic core never touches them; tests inject the
 client and the status map directly, so CI runs with no network and no
 secrets. An opt-in live smoke test (`ATLAS_LIVE_TESTS=1` plus the token)
 exercises the real workspace and is skipped in default CI.

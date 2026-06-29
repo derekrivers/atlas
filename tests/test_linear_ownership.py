@@ -15,7 +15,12 @@ import pytest
 from test_models_validation import ticket_kwargs
 
 from atlas.core.models.ticket import Ticket, TicketStatus
-from atlas.linear.client import LinearIssue, WorkflowState
+from atlas.linear.client import (
+    LinearIssue,
+    UnownedFieldError,
+    WorkflowState,
+    reject_unowned_keys,
+)
 from atlas.linear.ownership import (
     OWNED_LINEAR_INPUT_KEYS,
     LinearStatusMap,
@@ -76,6 +81,24 @@ def test_status_cannot_cross_atlas_to_linear() -> None:
     assert "stateId" not in payload
     assert "state" not in payload
     assert "status" not in payload
+
+
+def test_project_id_is_not_an_owned_definition_key() -> None:
+    # AC-4 (ATLAS-135): projectId is a CREATION SCOPE, not a definition field. It
+    # must stay out of the owned allow-list and out of every definition payload, so
+    # it can only ever cross via create_issue's scope parameter -- never smuggled
+    # through a definition. Wrong answer: projectId in the owned set or the payload.
+    assert "projectId" not in OWNED_LINEAR_INPUT_KEYS
+    payload = definition_payload(make_ticket(status=TicketStatus.DONE))
+    assert "projectId" not in payload
+
+
+def test_project_id_in_a_definition_is_rejected() -> None:
+    # AC-4 (ATLAS-135): the defence-in-depth allow-list refuses a projectId smuggled
+    # into a definition payload, exactly as it refuses a stateId. The project scope
+    # enters only via create_issue's keyword parameter, never the definition.
+    with pytest.raises(UnownedFieldError):
+        reject_unowned_keys({"title": "x", "projectId": "p"})
 
 
 def test_non_owned_ticket_field_never_appears_in_payload() -> None:

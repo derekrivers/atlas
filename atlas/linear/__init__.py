@@ -10,6 +10,7 @@ loop that drives this boundary on a cadence is ATLAS-42.
 from atlas.linear.client import (
     API_KEY_ENV,
     API_URL,
+    PROJECT_ID_ENV,
     TEAM_ID_ENV,
     LinearAPIError,
     LinearClient,
@@ -37,6 +38,7 @@ __all__ = [
     "API_URL",
     "OWNED_DEFINITION_FIELDS",
     "OWNED_LINEAR_INPUT_KEYS",
+    "PROJECT_ID_ENV",
     "STATE_MAP_ENV",
     "TEAM_ID_ENV",
     "LinearAPIError",
