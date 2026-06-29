@@ -13,6 +13,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+import yaml
 
 from atlas.planning import (
     AnchorIndex,
@@ -234,6 +235,21 @@ def test_collects_exactly_the_input_set_in_order(tmp_path: Path) -> None:
         "docs/atlas/a-plan.md",
         "docs/atlas/b-spec.md",
     ]
+
+
+def test_real_workflow_with_front_matter_ingests_cleanly(tmp_path: Path) -> None:
+    # AC-6 (ATLAS-81): the real WORKFLOW.md now carries a Symphony YAML front
+    # matter. Ingestion reads inputs as text, so it must still load the file
+    # without choking and include it in the §2.1 input set. Seed a fixture repo
+    # with the actual working-tree content so this stays tied to the shipped doc.
+    workflow = (REPO_ROOT / "WORKFLOW.md").read_text(encoding="utf-8")
+    repo = make_repo(tmp_path, {"PRODUCT.md": "# P\n", "WORKFLOW.md": workflow})
+    documents = {doc.path: doc for doc in collect_input_documents(repo)}
+    assert "WORKFLOW.md" in documents
+    assert documents["WORKFLOW.md"].content == workflow
+    # front matter is legible YAML, but ingestion treats the whole file as text
+    front = workflow.split("---\n", 2)[1]
+    assert isinstance(yaml.safe_load(front), dict)
 
 
 def test_collection_is_deterministic(tmp_path: Path) -> None:
