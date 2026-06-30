@@ -87,6 +87,21 @@ class WorkflowState:
 
 
 @dataclass(frozen=True)
+class LinearProject:
+    """The minimal project shape the A2 preflight check needs (ATLAS-136).
+
+    Carries the two identifiers of the SAME Linear project that the
+    integration straddles: ``id`` (the UUID Atlas creates issues into, the
+    ``LINEAR_PROJECT_ID``) and ``slug_id`` (the ``slugId`` Symphony polls by,
+    the ``tracker.project_slug`` in WORKFLOW.md). One ``fetch_project`` read
+    proves the UUID resolves AND lets the preflight assert the two are aligned,
+    so an issue Atlas creates is visible to Symphony's project-scoped poll."""
+
+    id: str
+    slug_id: str
+
+
+@dataclass(frozen=True)
 class LinearComment:
     """One issue comment, the only comment shape that crosses the boundary
     (ATLAS-45). Carries the minimum the follow-up scan needs: the stable ``id``
@@ -140,6 +155,13 @@ class LinearClient(Protocol):
 
     def fetch_workflow_states(self) -> list[WorkflowState]:
         """The workspace's workflow states, for status-map validation (D7)."""
+        ...
+
+    def fetch_project(self, project_id: str) -> LinearProject | None:
+        """Resolve a Linear project by its ``id`` (UUID) for the A2 preflight
+        check (ATLAS-136). Returns the project's ``{id, slug_id}`` or ``None``
+        when the id resolves to no project. Read-only: adds no mutation and
+        leaves ``OWNED_LINEAR_INPUT_KEYS`` untouched."""
         ...
 
     def fetch_comments(self, issue_id: str) -> list[LinearComment]:
@@ -198,6 +220,9 @@ _COMMENTS_QUERY = (
 _STATES_QUERY = (
     "query WorkflowStates { workflowStates(first: 250) { nodes { id name type } } }"
 )
+# The A2 preflight read (ATLAS-136): resolve a project by its UUID to its
+# slugId. A nonexistent id returns `project: null` (mapped to None).
+_PROJECT_QUERY = "query Project($id: String!) { project(id: $id) { id slugId } }"
 _DELETE_MUTATION = (
     "mutation IssueDelete($id: String!) { issueDelete(id: $id) { success } }"
 )
@@ -303,6 +328,16 @@ class LinearGraphQLClient:
             WorkflowState(id=node["id"], name=node["name"], type=node["type"])
             for node in data["workflowStates"]["nodes"]
         ]
+
+    def fetch_project(self, project_id: str) -> LinearProject | None:
+        # Read-only A2 preflight resolve (ATLAS-136): a missing project yields
+        # `project: null`, which maps to None (the preflight reports that as a
+        # failing finding, never a crash).
+        data = self._execute(_PROJECT_QUERY, {"id": project_id})
+        node = data.get("project")
+        if not node:
+            return None
+        return LinearProject(id=node["id"], slug_id=node["slugId"])
 
     def fetch_comments(self, issue_id: str) -> list[LinearComment]:
         # Read-only (ATLAS-45): selects the issue's comment connection and
