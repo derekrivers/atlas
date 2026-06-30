@@ -175,10 +175,12 @@ from atlas.github import (
 from atlas.linear.client import (
     PROJECT_ID_ENV,
     TEAM_ID_ENV,
+    LinearClient,
     LinearGraphQLClient,
     MissingLinearTokenError,
 )
 from atlas.linear.ownership import LinearStatusMap, LinearStatusMapError
+from atlas.linear.preflight import PreflightReport, run_preflight
 from atlas.planning.apply import (
     ApplyDecision,
     ApplyError,
@@ -300,6 +302,7 @@ def build_parser() -> argparse.ArgumentParser:
     _add_evidence_parser(subcommands)
     _add_verify_parser(subcommands)
     _add_confirm_parser(subcommands)
+    _add_preflight_parser(subcommands)
     return parser
 
 
@@ -2038,6 +2041,94 @@ def _capture_ticket(
     return recorded
 
 
+def _add_preflight_parser(subcommands: argparse._SubParsersAction) -> None:  # type: ignore[type-arg]
+    """The `atlas preflight` command (ATLAS-136; F3 + A1 + A2): an
+    operator-invoked, read-only check the operator runs *before* dispatching
+    agents, to catch the silent no-dispatch traps the Phase-8 review surfaced.
+
+    It builds the live Linear client, status map, and project id from the
+    environment exactly as `pm sync` does (`LinearGraphQLClient()`,
+    `LinearStatusMap.from_env()`, `LINEAR_PROJECT_ID`), reads the WORKFLOW.md
+    front matter, and renders the ordered findings.
+
+    EXIT-CODE CONTRACT (two buckets, deliberately NOT `confirm`'s
+    EXIT_OK-on-completion): a SETUP failure (missing `LINEAR_API_KEY`,
+    missing/malformed `LINEAR_STATE_MAP`, or an unset `LINEAR_PROJECT_ID`) is a
+    clean one-line EXIT_PRECONDITION (2); a completed run that produced one or
+    more FAILING findings is EXIT_RECORDED_FAILURE (1); an all-pass run is
+    EXIT_OK (0). The operator must distinguish "I misconfigured the
+    environment" from "Linear isn't set up yet." This command is NOT a gate on
+    `pm sync`/dispatch in this ticket — wiring it as a hard precondition is its
+    own ticket (OP-4)."""
+
+    preflight = subcommands.add_parser(
+        "preflight",
+        help="Operator preflight: check Linear states, status map, and project "
+        "against the WORKFLOW.md contract before dispatch (read-only)",
+    )
+    preflight.add_argument(
+        "--workflow-md",
+        default="WORKFLOW.md",
+        help="path to the Symphony WORKFLOW.md contract (default: WORKFLOW.md)",
+    )
+    preflight.add_argument(
+        "--allow-assignee",
+        action="store_true",
+        help="acknowledge a set LINEAR_ASSIGNEE (otherwise a set assignee is a "
+        "failing finding, as it narrows Symphony's poll)",
+    )
+
+
+def _format_preflight_report(report: PreflightReport) -> str:
+    """Render the findings as a loud, line-per-finding block; the CLI sets the
+    exit code from `report.ok`."""
+
+    lines = ["Atlas preflight:"]
+    for finding in report.findings:
+        mark = "PASS" if finding.ok else "FAIL"
+        lines.append(f"  [{mark}] {finding.check_id}: {finding.message}")
+    summary = (
+        "all checks passed"
+        if report.ok
+        else "one or more checks FAILED — resolve before dispatch"
+    )
+    lines.append(f"=> {summary}")
+    return "\n".join(lines)
+
+
+def _preflight_command(
+    args: argparse.Namespace, *, linear_client: LinearClient | None = None
+) -> int:
+    """Route `atlas preflight` (ATLAS-136). Builds the live injection from env
+    (`linear_client` is injectable for tests), runs `run_preflight`, prints the
+    findings, and returns the two-bucket exit code."""
+
+    try:
+        client = (
+            linear_client if linear_client is not None else LinearGraphQLClient()
+        )  # raises MissingLinearTokenError without a key
+        status_map = LinearStatusMap.from_env()  # raises LinearStatusMapError if unset
+        project_id = os.environ.get(PROJECT_ID_ENV)
+        if not project_id:
+            raise MissingLinearTokenError(
+                f"{PROJECT_ID_ENV} is not set; preflight needs the Linear project "
+                "id (a UUID, not the slug) to resolve the project"
+            )
+    except (MissingLinearTokenError, LinearStatusMapError) as error:
+        print(error, file=sys.stderr)
+        return EXIT_PRECONDITION
+
+    report = run_preflight(
+        workflow_md_path=Path(args.workflow_md),
+        client=client,
+        status_map=status_map,
+        project_id=project_id,
+        allow_assignee=args.allow_assignee,
+    )
+    print(_format_preflight_report(report))
+    return EXIT_OK if report.ok else EXIT_RECORDED_FAILURE
+
+
 def main(
     argv: list[str] | None = None,
     *,
@@ -2046,10 +2137,11 @@ def main(
     identity: ModelIdentity | None = None,
     staged_generator: StagedProposalGenerator | None = None,
     github_client: GitHubClient | None = None,
+    linear_client: LinearClient | None = None,
 ) -> int:
     """Entry point. ``database``/``client``/``identity``/``staged_generator``/
-    ``github_client`` are injectable for tests; production builds them from the
-    environment."""
+    ``github_client``/``linear_client`` are injectable for tests; production
+    builds them from the environment."""
     args = build_parser().parse_args(argv)
     if args.command == "plan":
         return _plan_command(
@@ -2073,6 +2165,8 @@ def main(
         return _verify_command(args, database=database, github_client=github_client)
     if args.command == "confirm":
         return _confirm_command(args, database=database, github_client=github_client)
+    if args.command == "preflight":
+        return _preflight_command(args, linear_client=linear_client)
     return EXIT_PRECONDITION  # unreachable: subparser is required
 
 

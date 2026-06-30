@@ -59,12 +59,18 @@ class _Emulator:
     def __init__(self) -> None:
         self.issues: dict[str, dict[str, Any]] = {}
         self.comments: dict[str, list[dict[str, Any]]] = {}
+        self.projects: dict[str, dict[str, Any]] = {}
         self.counter = 0
         self.comment_counter = 0
         self.states = [
             {"id": "state-unstarted", "name": "Todo", "type": "unstarted"},
             {"id": "state-ready", "name": "Ready for Agent", "type": "unstarted"},
         ]
+
+    def add_project(self, project_id: str, slug_id: str) -> None:
+        """Seed a project so the real client's fetch_project (ATLAS-136) can
+        resolve it, mirroring the in-memory fake's seed_project."""
+        self.projects[project_id] = {"id": project_id, "slugId": slug_id}
 
     def add_comment(
         self, issue_id: str, body: str, *, comment_id: str | None = None
@@ -117,6 +123,10 @@ class _Emulator:
                 return {"data": {"issue": None}}
             nodes = self.comments.get(variables["id"], [])
             return {"data": {"issue": {"comments": {"nodes": nodes}}}}
+        if "project(" in query:
+            # The A2 preflight resolve (ATLAS-136): an unknown id yields
+            # `project: null`, which the client maps to None.
+            return {"data": {"project": self.projects.get(variables["id"])}}
         if "issue(" in query:
             return {"data": {"issue": self.issues.get(variables["id"])}}
         raise AssertionError(f"unhandled query: {query}")
@@ -182,6 +192,10 @@ def _run_contract(client: LinearClient, *, team_id: str, project_id: str) -> Non
     assert client.fetch_comments(created.id) == []
     assert client.fetch_comments("nonexistent") == []
 
+    # fetch_project is read-only (ATLAS-136): an unknown id resolves to None
+    # across both clients (the A2 preflight reports that, never a raise).
+    assert client.fetch_project("nonexistent-project") is None
+
 
 @pytest.fixture(params=["fake", "stub-real"])
 def contract_client(
@@ -237,6 +251,36 @@ def test_fetch_comments_reads_tagged_and_untagged(
     assert "atlas:proposed-follow-up" in comments[0].body
     assert "atlas:proposed-follow-up" not in comments[1].body
     assert all(comment.created_at for comment in comments)  # provenance carried
+
+
+# A (client, seed) pair so the fetch_project resolve path (ATLAS-136) is held to
+# the same contract across the fake and the stubbed real client -- each backs its
+# own project store, and the seeder registers a project in it.
+@pytest.fixture(params=["fake", "stub-real"])
+def projectable_client(
+    request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch
+) -> tuple[LinearClient, Any]:
+    if request.param == "fake":
+        fake = InMemoryLinearClient()
+        return fake, fake.seed_project
+    emulator = _Emulator()
+    monkeypatch.setattr(
+        "atlas.linear.client.urllib_request.urlopen", _stub_urlopen(emulator)
+    )
+    real = LinearGraphQLClient(api_key="sk-test", team_id="team-1")
+    return real, emulator.add_project
+
+
+def test_fetch_project_resolves_id_to_slug(
+    projectable_client: tuple[LinearClient, Any],
+) -> None:
+    client, seed = projectable_client
+    assert client.fetch_project("proj-uuid") is None  # unknown -> None
+    seed("proj-uuid", "atlas-team")
+    project = client.fetch_project("proj-uuid")
+    assert project is not None
+    assert project.id == "proj-uuid"
+    assert project.slug_id == "atlas-team"  # the slug Symphony polls by
 
 
 # --- real-client specifics --------------------------------------------------

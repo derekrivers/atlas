@@ -16,6 +16,7 @@ from typing import Any
 from atlas.linear.client import (
     LinearComment,
     LinearIssue,
+    LinearProject,
     WorkflowState,
     reject_unowned_keys,
 )
@@ -41,6 +42,7 @@ class InMemoryLinearClient:
     def __init__(self, workflow_states: list[WorkflowState] | None = None) -> None:
         self._issues: dict[str, LinearIssue] = {}
         self._comments: dict[str, list[LinearComment]] = {}
+        self._projects: dict[str, LinearProject] = {}
         self._counter = 0
         self._comment_counter = 0
         self._states = (
@@ -84,6 +86,12 @@ class InMemoryLinearClient:
     def fetch_workflow_states(self) -> list[WorkflowState]:
         return list(self._states)
 
+    def fetch_project(self, project_id: str) -> LinearProject | None:
+        """Resolve a seeded project by id (ATLAS-136), mirroring the real
+        client: an id this fake was not told about yields ``None`` (the A2
+        preflight reports that as a failing finding, never a raise)."""
+        return self._projects.get(project_id)
+
     def fetch_comments(self, issue_id: str) -> list[LinearComment]:
         """Read-only comment fetch (ATLAS-45), mirroring the real client: an
         unknown issue (or one with no comments) yields an empty list, never a
@@ -125,6 +133,14 @@ class InMemoryLinearClient:
         )
         self._comments.setdefault(issue_id, []).append(comment)
         return comment
+
+    def seed_project(self, project_id: str, slug_id: str) -> LinearProject:
+        """Register a project so ``fetch_project`` resolves it (ATLAS-136), so
+        the A2 preflight check can assert UUID↔slug alignment. Returns the
+        stored project."""
+        project = LinearProject(id=project_id, slug_id=slug_id)
+        self._projects[project_id] = project
+        return project
 
     def simulate_linear_state(self, issue_id: str, state: WorkflowState) -> None:
         """Simulate a Linear-side status change to ``state`` (distinct from the
