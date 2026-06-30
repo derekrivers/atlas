@@ -181,6 +181,34 @@ def test_ac7_workspace_clones_atlas_with_operator_placeholder() -> None:
     assert front["tracker"]["project_slug"] == "atlas-REPLACE_ME"
 
 
+# --- F2 (ATLAS-136): the agent's inherited environment is narrowed ------------
+#
+# The single per-ticket WORKFLOW.md edit: the codex command must no longer
+# inherit the WHOLE operator environment (which carried every Linear secret into
+# the dispatched agent). AC2.1 reverts-red: restoring `inherit=all` breaks it.
+
+_LINEAR_SECRET_NAMES = ("LINEAR_API_KEY", "LINEAR_STATE_MAP")
+
+
+def test_f2_codex_inherit_is_narrowed_not_all() -> None:
+    front, _ = _split()
+    command = front["codex"]["command"]
+    assert "shell_environment_policy.inherit=all" not in command
+    assert "shell_environment_policy.inherit=core" in command
+
+
+def test_f2_no_linear_secret_in_codex_command() -> None:
+    # With inherit=core the secrets are dropped; this guards against a future
+    # edit re-introducing one via an include_only/set clause on the command.
+    front, _ = _split()
+    command = front["codex"]["command"]
+    for secret in _LINEAR_SECRET_NAMES:
+        assert secret not in command, (
+            f"Linear secret {secret!r} must not be re-introduced into the codex "
+            "command env (include_only/set)"
+        )
+
+
 # --- canonical-contract marker (optional, per the gate addition) --------------
 
 
