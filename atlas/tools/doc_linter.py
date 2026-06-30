@@ -103,7 +103,11 @@ RETIREMENT_RE = re.compile(r"retired", re.IGNORECASE)
 
 MD_LINK_RE = re.compile(r"\[[^\]]*\]\(([^)\s]+)\)")
 
-SKIP_DIRS = {".git", ".venv", "__pycache__", "node_modules", ".claude"}
+# ``.codex`` holds vendored Symphony skill files (e.g. .codex/skills/linear),
+# which follow Symphony's own conventions and are adapted-not-forked (ATLAS-136
+# D7); like ``.claude`` agent tooling they are not Atlas-authored docs and are
+# outside the schema-fence / link discipline this linter enforces.
+SKIP_DIRS = {".git", ".venv", "__pycache__", "node_modules", ".claude", ".codex"}
 
 
 @dataclass(frozen=True)
