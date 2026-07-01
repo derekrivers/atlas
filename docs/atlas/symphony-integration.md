@@ -46,7 +46,7 @@ Symphony sees only Linear states via its `active_states` /
 | changes_requested   | Changes Requested | active (re-dispatchable)   |
 | needs_human_decision| Needs Human       | handoff — neither active nor terminal |
 | done                | Done              | terminal                   |
-| rejected            | Cancelled         | terminal                   |
+| rejected            | Canceled          | terminal                   |
 
 Decisions encoded here:
 
@@ -63,7 +63,7 @@ Decisions encoded here:
   automatically with workspace continuity.
 - Symphony front matter (see Workflow contract):
   `active_states: [Ready for Agent, In Progress, PR Open, Changes Requested]`,
-  `terminal_states: [Done, Cancelled, Canceled, Duplicate]`.
+  `terminal_states: [Done, Canceled, Duplicate]`.
 
 ## Context pack delivery
 
