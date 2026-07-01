@@ -20,7 +20,14 @@ from atlas.cli import main
 from atlas.core.models.ticket import TicketStatus
 from atlas.linear.client import PROJECT_ID_ENV, WorkflowState
 from atlas.linear.ownership import STATE_MAP_ENV, LinearStatusMap
-from atlas.linear.preflight import ASSIGNEE_ENV, Finding, run_preflight
+from atlas.linear.preflight import (
+    ASSIGNEE_ENV,
+    Finding,
+    ModelProbe,
+    PreflightReport,
+    ProbeResult,
+    run_preflight,
+)
 
 PROJECT_ID = "proj-uuid"
 PROJECT_SLUG = "atlas-team"
@@ -52,10 +59,17 @@ _BASELINE_MAP: dict[str, TicketStatus] = {
 }
 
 
-def _workflow_md(tmp_path: Path, *, project_slug: str = PROJECT_SLUG) -> Path:
+def _workflow_md(
+    tmp_path: Path,
+    *,
+    project_slug: str = PROJECT_SLUG,
+    codex_command: str | None = None,
+) -> Path:
     """Write a temp WORKFLOW.md whose front matter mirrors the canonical
-    contract's tracker block (the only part the preflight reads)."""
+    contract's tracker block (the only part C1-C5 read). A ``codex_command``
+    adds a ``codex.command`` line for C6's model-parse."""
     path = tmp_path / "WORKFLOW.md"
+    codex_block = f"codex:\n  command: {codex_command}\n" if codex_command else ""
     path.write_text(
         "---\n"
         "tracker:\n"
@@ -70,6 +84,7 @@ def _workflow_md(tmp_path: Path, *, project_slug: str = PROJECT_SLUG) -> Path:
         "    - Cancelled\n"
         "    - Canceled\n"
         "    - Duplicate\n"
+        f"{codex_block}"
         "---\n"
         "prompt body\n",
         encoding="utf-8",
@@ -96,15 +111,22 @@ def _run(
     status_map: LinearStatusMap | None = None,
     project_slug: str = PROJECT_SLUG,
     allow_assignee: bool = False,
+    check_model: bool = False,
+    model_probe: ModelProbe | None = None,
+    codex_command: str | None = None,
 ) -> tuple[Finding, ...]:
     report = run_preflight(
-        workflow_md_path=_workflow_md(tmp_path, project_slug=project_slug),
+        workflow_md_path=_workflow_md(
+            tmp_path, project_slug=project_slug, codex_command=codex_command
+        ),
         client=client if client is not None else _client(),
         status_map=status_map
         if status_map is not None
         else LinearStatusMap(_BASELINE_MAP),
         project_id=PROJECT_ID,
         allow_assignee=allow_assignee,
+        check_model=check_model,
+        model_probe=model_probe,
     )
     return report.findings
 
@@ -293,3 +315,230 @@ def test_ac3_7_cli_exit_precondition_on_missing_state_map(
         linear_client=_client(),
     )
     assert code == 2  # EXIT_PRECONDITION
+
+
+# --- C6: pinned-model reachability (Smoke A finding T1) -----------------------
+#
+# The probe is injected as a fake (`ModelProbe`), so NO test shells out to
+# codex. The pure scorer decides reject-vs-pass from ProbeResult.output/error
+# (there is no runner-supplied `ok`), which is exactly what makes the echo
+# defence (AC2b) falsifiable here rather than only against a live codex.
+
+# A representative command in the real double-quoted-inside-single-quotes form.
+_CODEX_COMMAND = (
+    "codex --config shell_environment_policy.inherit=core "
+    "--config 'model=\"gpt-5.5\"' --config model_reasoning_effort=xhigh app-server"
+)
+
+
+def _probe(result: ProbeResult) -> ModelProbe:
+    """A fake ModelProbe that always returns ``result`` (ignores the model)."""
+
+    def probe(model: str) -> ProbeResult:
+        return result
+
+    return probe
+
+
+def _never_probe(model: str) -> ProbeResult:
+    """A ModelProbe that must never be called (guards the unparseable branch,
+    which returns before probing)."""
+    raise AssertionError("model probe must not run when the model is unparseable")
+
+
+def _c6(findings: Iterable[Finding]) -> list[Finding]:
+    return [f for f in findings if f.check_id == "C6"]
+
+
+# AC2 — a reachable model (the computed answer present) passes.
+def test_ac2_reachable_model_passes(tmp_path: Path) -> None:
+    findings = _run(
+        tmp_path,
+        check_model=True,
+        codex_command=_CODEX_COMMAND,
+        model_probe=_probe(ProbeResult(output="The result is 42.")),
+    )
+    c6 = _c6(findings)
+    assert len(c6) == 1
+    assert c6[0].ok and not c6[0].skipped  # a valid answer must not score as fail
+
+
+# AC2b — the critical echo defence: a prompt-echo with no computed 42 must NOT
+# pass. Scoring a prompt-echo as reachable would reintroduce ATL-224 (an empty
+# turn that looks clean) into the guard itself.
+def test_ac2b_prompt_echo_does_not_pass(tmp_path: Path) -> None:
+    echo = "Reply with only the result of 6 * 7, and nothing else."
+    assert "42" not in echo  # the whole point: the answer is absent from the echo
+    findings = _run(
+        tmp_path,
+        check_model=True,
+        codex_command=_CODEX_COMMAND,
+        model_probe=_probe(ProbeResult(output=echo)),
+    )
+    c6 = _c6(findings)
+    assert len(c6) == 1
+    assert not c6[0].ok  # NOT reachable
+    assert not c6[0].skipped  # a reject, not a skip
+
+
+# AC3 — a rejected model fails, surfacing the runner's raw error verbatim.
+def test_ac3_rejected_model_fails_verbatim(tmp_path: Path) -> None:
+    raw = (
+        'ERROR: {"detail":"model gpt-5.5 is not supported when using Codex with '
+        'a ChatGPT account"}'
+    )
+    findings = _run(
+        tmp_path,
+        check_model=True,
+        codex_command=_CODEX_COMMAND,
+        model_probe=_probe(ProbeResult(error=raw)),
+    )
+    c6 = _c6(findings)
+    assert len(c6) == 1
+    assert not c6[0].ok and not c6[0].skipped
+    assert raw in c6[0].message  # verbatim, not paraphrased or swallowed
+
+
+# AC3 (precedence) — an error wins even when a coincidental 42 is in the output.
+def test_ac3_error_beats_coincidental_42(tmp_path: Path) -> None:
+    findings = _run(
+        tmp_path,
+        check_model=True,
+        codex_command=_CODEX_COMMAND,
+        model_probe=_probe(ProbeResult(output="42", error="ERROR: rate limited")),
+    )
+    c6 = _c6(findings)
+    assert len(c6) == 1
+    assert not c6[0].ok  # reject decided before the 42 token is scored
+    assert "rate limited" in c6[0].message
+
+
+# AC4 — a missing codex binary is a skip (EXIT_PRECONDITION), not a fail.
+def test_ac4_missing_binary_skips(tmp_path: Path) -> None:
+    findings = _run(
+        tmp_path,
+        check_model=True,
+        codex_command=_CODEX_COMMAND,
+        model_probe=_probe(ProbeResult(binary_missing=True)),
+    )
+    c6 = _c6(findings)
+    assert len(c6) == 1
+    assert c6[0].skipped and c6[0].ok  # skip does not fail the run
+
+
+# AC5 — a timeout is a skip, never "model rejected".
+def test_ac5_timeout_skips(tmp_path: Path) -> None:
+    findings = _run(
+        tmp_path,
+        check_model=True,
+        codex_command=_CODEX_COMMAND,
+        model_probe=_probe(ProbeResult(timed_out=True)),
+    )
+    c6 = _c6(findings)
+    assert len(c6) == 1
+    assert c6[0].skipped and c6[0].ok
+
+
+# AC9 — an unauthenticated codex is a skip with a login-remediation message,
+# never a rejection (the most likely first-run miscategorisation).
+def test_ac9_auth_missing_skips_with_remediation(tmp_path: Path) -> None:
+    findings = _run(
+        tmp_path,
+        check_model=True,
+        codex_command=_CODEX_COMMAND,
+        model_probe=_probe(ProbeResult(auth_missing=True)),
+    )
+    c6 = _c6(findings)
+    assert len(c6) == 1
+    assert c6[0].skipped and c6[0].ok
+    assert "login" in c6[0].message.lower()
+
+
+# AC6 — an unparseable model (no model= clause) is a skip, and the probe is
+# never consulted (the classifier returns before probing).
+def test_ac6_unparseable_model_skips_without_probing(tmp_path: Path) -> None:
+    findings = _run(
+        tmp_path,
+        check_model=True,
+        codex_command="codex --config approval_policy=never app-server",
+        model_probe=_never_probe,
+    )
+    c6 = _c6(findings)
+    assert len(c6) == 1
+    assert c6[0].skipped and c6[0].ok
+    assert "parseable" in c6[0].message.lower()
+
+
+# AC7 — C6 is opt-in: without check_model it does not appear at all.
+def test_ac7_c6_absent_without_flag(tmp_path: Path) -> None:
+    findings = _run(
+        tmp_path,
+        codex_command=_CODEX_COMMAND,
+        model_probe=_probe(ProbeResult(output="42")),
+    )
+    assert _c6(findings) == []
+
+
+# AC8 — a skipped C6 does not fail the report: report.ok stays True, only
+# report.skipped flips (guards the D1 semantics).
+def test_ac8_skip_is_not_a_report_failure(tmp_path: Path) -> None:
+    findings = _run(
+        tmp_path,
+        check_model=True,
+        codex_command=_CODEX_COMMAND,
+        model_probe=_probe(ProbeResult(binary_missing=True)),
+    )
+    report = PreflightReport(findings)
+    assert report.ok is True  # skip is ok=True, so the all-clear holds
+    assert report.skipped is True  # but the skip is surfaced
+
+
+# --- C6 at the CLI: the D2 exit precedence (fail > skip > pass) ----------------
+
+
+def _cli_check_model(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    result: ProbeResult,
+) -> int:
+    _cli_env(monkeypatch)
+    wf = _workflow_md(tmp_path, codex_command=_CODEX_COMMAND)
+    return main(
+        ["preflight", "--workflow-md", str(wf), "--check-model"],
+        linear_client=_client(),
+        model_probe=_probe(result),
+    )
+
+
+def test_ac2_cli_exit_zero_on_reachable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert _cli_check_model(tmp_path, monkeypatch, ProbeResult(output="42")) == 0
+
+
+def test_ac3_cli_exit_recorded_failure_on_reject(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    code = _cli_check_model(tmp_path, monkeypatch, ProbeResult(error="ERROR: nope"))
+    assert code == 1  # EXIT_RECORDED_FAILURE
+
+
+def test_ac4_cli_exit_precondition_on_binary_missing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    code = _cli_check_model(tmp_path, monkeypatch, ProbeResult(binary_missing=True))
+    assert code == 2  # EXIT_PRECONDITION, not EXIT_RECORDED_FAILURE
+
+
+def test_ac5_cli_exit_precondition_on_timeout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    code = _cli_check_model(tmp_path, monkeypatch, ProbeResult(timed_out=True))
+    assert code == 2
+
+
+def test_ac9_cli_exit_precondition_on_auth_missing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    code = _cli_check_model(tmp_path, monkeypatch, ProbeResult(auth_missing=True))
+    assert code == 2

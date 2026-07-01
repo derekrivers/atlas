@@ -21,6 +21,10 @@ from typing import Any
 
 import yaml
 
+# The preflight's own model parser (D6): AC6 pins it against the *live*
+# codex.command so parser and command cannot silently drift apart.
+from atlas.linear.preflight import _parse_model
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 WORKFLOW_PATH = REPO_ROOT / "WORKFLOW.md"
 SYMPHONY_DOC = REPO_ROOT / "docs" / "atlas" / "symphony-integration.md"
@@ -220,3 +224,30 @@ def test_canonical_contract_marker_present() -> None:
     front_text = match.group("front").lower()
     assert "canonical" in front_text
     assert "project_slug" in front_text and "after_create" in front_text
+
+
+# --- Smoke A finding T1: the codex model requirement (C6) ---------------------
+
+_INSTALL_URL = "https://chatgpt.com/codex/install.sh"
+
+
+def test_ac1_codex_model_requirement_documented_in_raw_text() -> None:
+    # The requirement note lives as a YAML `#` comment adjacent to codex.command.
+    # It MUST be asserted against the RAW file, not _split()'s parsed mapping:
+    # yaml.safe_load strips comments, so a parsed-dict assertion would pass
+    # vacuously or never find the note. The version/URL strings below appear
+    # ONLY in the note (not in the command), so they evidence it directly.
+    raw = _read(WORKFLOW_PATH)
+    assert 'model="gpt-5.5"' in raw  # the pinned model is named
+    assert "0.142.5" in raw  # the known-good Codex CLI version
+    assert "0.114.0" in raw  # the snap cap that cannot run the pin
+    assert _INSTALL_URL in raw  # how to obtain a working CLI
+
+
+def test_ac6_pinned_model_parseable_from_live_command() -> None:
+    # The live codex.command's model form must be covered by the preflight
+    # parser, or C6 would silently *skip* against the real contract (parser↔
+    # command drift). Pins the two together.
+    front, _ = _split()
+    command = front["codex"]["command"]
+    assert _parse_model(command) == "gpt-5.5"

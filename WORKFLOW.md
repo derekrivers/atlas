@@ -40,6 +40,19 @@ hooks:
 agent:
   max_concurrent_agents: 1
   max_turns: 20
+# ─────────────────────────────────────────────────────────────────────────
+# Codex model requirement — read before editing `codex.command` below.
+#   The pinned model="gpt-5.5" needs a current Codex CLI: verified working on
+#   0.142.5 (known-good, not a bisected minimum). The snap `codex` package is
+#   capped at 0.114.0 and CANNOT run gpt-5.5 (it fails asking for a newer
+#   Codex), and an npm-global update may land off PATH. Install the official
+#   CLI so it is first on PATH:
+#     curl -fsSL https://chatgpt.com/codex/install.sh | sh
+#   Entitlement also depends on auth mode: some *-codex models are unavailable
+#   on a ChatGPT-account login and require API-key auth.
+#   Verify the pin is reachable before dispatch:  atlas preflight --check-model
+#   Full detail (PATH hazard, install, C6): docs/atlas/bootstrap-guide.md.
+# ─────────────────────────────────────────────────────────────────────────
 codex:
   command: codex --config shell_environment_policy.inherit=core --config 'model="gpt-5.5"' --config model_reasoning_effort=xhigh app-server
   approval_policy: never

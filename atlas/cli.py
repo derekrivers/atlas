@@ -180,7 +180,7 @@ from atlas.linear.client import (
     MissingLinearTokenError,
 )
 from atlas.linear.ownership import LinearStatusMap, LinearStatusMapError
-from atlas.linear.preflight import PreflightReport, run_preflight
+from atlas.linear.preflight import ModelProbe, PreflightReport, run_preflight
 from atlas.planning.apply import (
     ApplyDecision,
     ApplyError,
@@ -2051,15 +2051,17 @@ def _add_preflight_parser(subcommands: argparse._SubParsersAction) -> None:  # t
     `LinearStatusMap.from_env()`, `LINEAR_PROJECT_ID`), reads the WORKFLOW.md
     front matter, and renders the ordered findings.
 
-    EXIT-CODE CONTRACT (two buckets, deliberately NOT `confirm`'s
-    EXIT_OK-on-completion): a SETUP failure (missing `LINEAR_API_KEY`,
-    missing/malformed `LINEAR_STATE_MAP`, or an unset `LINEAR_PROJECT_ID`) is a
-    clean one-line EXIT_PRECONDITION (2); a completed run that produced one or
-    more FAILING findings is EXIT_RECORDED_FAILURE (1); an all-pass run is
-    EXIT_OK (0). The operator must distinguish "I misconfigured the
-    environment" from "Linear isn't set up yet." This command is NOT a gate on
-    `pm sync`/dispatch in this ticket — wiring it as a hard precondition is its
-    own ticket (OP-4)."""
+    EXIT-CODE CONTRACT (deliberately NOT `confirm`'s EXIT_OK-on-completion): a
+    SETUP failure (missing `LINEAR_API_KEY`, missing/malformed
+    `LINEAR_STATE_MAP`, or an unset `LINEAR_PROJECT_ID`) is a clean one-line
+    EXIT_PRECONDITION (2); a completed run that produced one or more FAILING
+    findings is EXIT_RECORDED_FAILURE (1); a run whose only non-pass is a
+    SKIPPED check (C6 could not run — no binary, unauthenticated, timeout, or an
+    unparseable model) is also EXIT_PRECONDITION (2); an all-pass run is EXIT_OK
+    (0). The operator must distinguish "I misconfigured the environment" or "the
+    model check couldn't run" from "Linear isn't set up yet." This command is
+    NOT a gate on `pm sync`/dispatch in this ticket — wiring it as a hard
+    precondition is its own ticket (OP-4)."""
 
     preflight = subcommands.add_parser(
         "preflight",
@@ -2077,6 +2079,21 @@ def _add_preflight_parser(subcommands: argparse._SubParsersAction) -> None:  # t
         help="acknowledge a set LINEAR_ASSIGNEE (otherwise a set assignee is a "
         "failing finding, as it narrows Symphony's poll)",
     )
+    preflight.add_argument(
+        "--check-model",
+        action="store_true",
+        help="also run C6: probe the pinned Codex model for reachability "
+        "(opt-in — makes a live, billable, auth-requiring model call; C1-C5 "
+        "run offline without it)",
+    )
+    preflight.add_argument(
+        "--model-probe-timeout",
+        type=float,
+        default=60.0,
+        metavar="SECONDS",
+        help="timeout for the C6 model probe (default: 60); a timeout is a skip "
+        "(EXIT_PRECONDITION), never a rejection",
+    )
 
 
 def _format_preflight_report(report: PreflightReport) -> str:
@@ -2085,23 +2102,34 @@ def _format_preflight_report(report: PreflightReport) -> str:
 
     lines = ["Atlas preflight:"]
     for finding in report.findings:
-        mark = "PASS" if finding.ok else "FAIL"
+        if finding.skipped:
+            mark = "SKIP"
+        elif finding.ok:
+            mark = "PASS"
+        else:
+            mark = "FAIL"
         lines.append(f"  [{mark}] {finding.check_id}: {finding.message}")
-    summary = (
-        "all checks passed"
-        if report.ok
-        else "one or more checks FAILED — resolve before dispatch"
-    )
+    if not report.ok:
+        summary = "one or more checks FAILED — resolve before dispatch"
+    elif report.skipped:
+        summary = "all runnable checks passed, but a check was SKIPPED (see above)"
+    else:
+        summary = "all checks passed"
     lines.append(f"=> {summary}")
     return "\n".join(lines)
 
 
 def _preflight_command(
-    args: argparse.Namespace, *, linear_client: LinearClient | None = None
+    args: argparse.Namespace,
+    *,
+    linear_client: LinearClient | None = None,
+    model_probe: ModelProbe | None = None,
 ) -> int:
     """Route `atlas preflight` (ATLAS-136). Builds the live injection from env
-    (`linear_client` is injectable for tests), runs `run_preflight`, prints the
-    findings, and returns the two-bucket exit code."""
+    (`linear_client` is injectable for tests), runs `run_preflight` (including
+    the opt-in C6 model probe when `--check-model` is passed), prints the
+    findings, and returns the exit code by the D2 precedence (fail > skip >
+    pass)."""
 
     try:
         client = (
@@ -2124,9 +2152,19 @@ def _preflight_command(
         status_map=status_map,
         project_id=project_id,
         allow_assignee=args.allow_assignee,
+        check_model=args.check_model,
+        model_probe=model_probe,
+        model_probe_timeout=args.model_probe_timeout,
     )
     print(_format_preflight_report(report))
-    return EXIT_OK if report.ok else EXIT_RECORDED_FAILURE
+    # Exit precedence (D2): a failing finding dominates (EXIT_RECORDED_FAILURE);
+    # else a skipped C6 (the model check could not run) is EXIT_PRECONDITION —
+    # consistent with the setup-failure use of that code above; else all-pass.
+    if not report.ok:
+        return EXIT_RECORDED_FAILURE
+    if report.skipped:
+        return EXIT_PRECONDITION
+    return EXIT_OK
 
 
 def main(
@@ -2138,10 +2176,12 @@ def main(
     staged_generator: StagedProposalGenerator | None = None,
     github_client: GitHubClient | None = None,
     linear_client: LinearClient | None = None,
+    model_probe: ModelProbe | None = None,
 ) -> int:
     """Entry point. ``database``/``client``/``identity``/``staged_generator``/
-    ``github_client``/``linear_client`` are injectable for tests; production
-    builds them from the environment."""
+    ``github_client``/``linear_client``/``model_probe`` are injectable for
+    tests; production builds them from the environment (and the C6 model probe
+    shells out to Codex)."""
     args = build_parser().parse_args(argv)
     if args.command == "plan":
         return _plan_command(
@@ -2166,7 +2206,9 @@ def main(
     if args.command == "confirm":
         return _confirm_command(args, database=database, github_client=github_client)
     if args.command == "preflight":
-        return _preflight_command(args, linear_client=linear_client)
+        return _preflight_command(
+            args, linear_client=linear_client, model_probe=model_probe
+        )
     return EXIT_PRECONDITION  # unreachable: subparser is required
 
 
