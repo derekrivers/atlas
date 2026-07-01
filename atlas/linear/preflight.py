@@ -39,7 +39,9 @@ all map errors in one pass is deferred; re-run after each fix.
 from __future__ import annotations
 
 import os
-from collections.abc import Iterable
+import re
+import subprocess
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -74,6 +76,24 @@ _WRITTEN_STATUSES: tuple[TicketStatus, ...] = (
 # an exact-cased Linear state, or the agent stalls silently at handoff.
 _HANDOFF_STATE_NAMES: tuple[str, ...] = ("Review Required", "Needs Human")
 
+# C6 (model reachability). The probe answer must be *computed*, never a token
+# the prompt already contains: a codex banner / prompt-echo / verbose replay in
+# stdout must not be able to fake a pass - only a genuine model response can.
+# So we ask for an arithmetic result the prompt does not state and match on it.
+# (Putting a literal success token in the prompt and grepping for it would
+# reintroduce the exact "empty turn that looks clean" failure C6 exists to
+# catch.) The `ATLAS_PREFLIGHT_OK` brand lives in the finding message, never the
+# probe.
+_PROBE_PROMPT = "Reply with only the result of 6 * 7, and nothing else."
+_PROBE_EXPECTED = "42"
+_MODEL_PROBE_TIMEOUT_DEFAULT = 60.0
+
+# D6: extract the pinned model from `codex.command`, tolerating every authoring
+# form (double-quoted, single-quoted, bare) so a differently-quoted command
+# does not silently never probe. The real command is `--config 'model="gpt-5.5"'`
+# - double-quoted inside single quotes - which the first alternative captures.
+_MODEL_RE = re.compile(r"""model\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s"']+))""")
+
 
 class PreflightError(ValueError):
     """The WORKFLOW.md front matter could not be read or parsed.
@@ -84,13 +104,22 @@ class PreflightError(ValueError):
 
 @dataclass(frozen=True)
 class Finding:
-    """One ordered preflight result: a stable ``check_id``, an ``ok`` flag, and
-    a human-readable ``message``. The CLI renders these and exits non-zero iff
-    any ``ok`` is ``False``."""
+    """One ordered preflight result: a stable ``check_id``, an ``ok`` flag, a
+    ``skipped`` flag, and a human-readable ``message``.
+
+    Three outcomes (C6 is the only check that can be *skipped*; C1-C5 are always
+    a clean pass/fail):
+
+    - **pass** - ``ok=True, skipped=False``
+    - **fail** - ``ok=False, skipped=False`` (drives ``report.ok`` False)
+    - **skip** - ``ok=True, skipped=True`` (the check could not run - e.g. no
+      ``codex`` binary, unauthenticated, timeout; does *not* fail ``report.ok``
+      but is surfaced and flagged, and the CLI maps it to EXIT_PRECONDITION)."""
 
     check_id: str
     ok: bool
     message: str
+    skipped: bool = False
 
 
 @dataclass(frozen=True)
@@ -101,8 +130,14 @@ class PreflightReport:
 
     @property
     def ok(self) -> bool:
-        """True iff every finding passed (the all-clear)."""
+        """True iff every finding passed (the all-clear). A *skip* has
+        ``ok=True``, so a run whose only non-pass is a skip is still ``ok``."""
         return all(finding.ok for finding in self.findings)
+
+    @property
+    def skipped(self) -> bool:
+        """True iff any finding was skipped (a check that could not run)."""
+        return any(finding.skipped for finding in self.findings)
 
 
 def _extract_front_matter(text: str) -> str:
@@ -311,6 +346,178 @@ def _check_assignee(allow_assignee: bool) -> Finding:
     )
 
 
+@dataclass(frozen=True)
+class ProbeResult:
+    """The raw outcome of one model probe, *before* scoring.
+
+    There is deliberately **no** ``ok`` field: reject-vs-pass is decided by the
+    pure classifier in :func:`_check_model` from ``output``/``error``, so the
+    echo defence (a prompt-echo must not score as a pass) is falsifiable in
+    tests with a fake probe - a runner-supplied verdict would let it go
+    untested.
+
+    - ``output`` - the model's stdout (what it actually returned).
+    - ``error`` - a non-empty runner error (nonzero exit / an ``ERROR:`` line /
+      transport), surfaced *verbatim* on reject; ``None`` when the process
+      completed cleanly.
+    - ``timed_out`` / ``binary_missing`` / ``auth_missing`` - the three
+      couldn't-run conditions that each map to a *skip* (EXIT_PRECONDITION)."""
+
+    output: str = ""
+    error: str | None = None
+    timed_out: bool = False
+    binary_missing: bool = False
+    auth_missing: bool = False
+
+
+# A model probe takes the pinned model name and returns a raw ProbeResult. The
+# real runner shells out (D5); tests inject a fake and never touch subprocess.
+ModelProbe = Callable[[str], ProbeResult]
+
+
+def _codex_command(front_matter: dict[str, object]) -> str | None:
+    """The ``codex.command`` string from the front matter, or ``None`` if the
+    ``codex`` block or its ``command`` is missing (-> C6 skips as unparseable)."""
+
+    codex = front_matter.get("codex")
+    codex = codex if isinstance(codex, dict) else {}
+    command = codex.get("command")
+    return command if isinstance(command, str) and command else None
+
+
+def _parse_model(command: str) -> str | None:
+    """Extract the pinned model from a ``codex.command`` string (D6), tolerating
+    double-quoted, single-quoted, and bare forms. ``None`` if no ``model=``
+    clause is present (-> C6 skips rather than hard-failing)."""
+
+    match = _MODEL_RE.search(command)
+    if match is None:
+        return None
+    return next((group for group in match.groups() if group), None)
+
+
+def _real_model_probe(model: str, *, timeout: float) -> ProbeResult:
+    """The default probe (D5): check auth, then invoke the pinned model
+    non-interactively and capture its output. Never raises - every failure mode
+    becomes a :class:`ProbeResult` field. Not unit-tested (tests inject a fake);
+    exercised by the operator's live ``--check-model`` run."""
+
+    # Auth first: an unauthenticated Codex is a couldn't-run *skip* (issue 2),
+    # decided before the billable probe so it is never mis-scored as a rejection.
+    try:
+        auth = subprocess.run(
+            ["codex", "login", "status"],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    except FileNotFoundError:
+        return ProbeResult(binary_missing=True)
+    except subprocess.TimeoutExpired:
+        return ProbeResult(timed_out=True)
+    if auth.returncode != 0:
+        return ProbeResult(auth_missing=True)
+
+    try:
+        proc = subprocess.run(
+            [
+                "codex",
+                "exec",
+                "--skip-git-repo-check",
+                "--config",
+                f'model="{model}"',
+                _PROBE_PROMPT,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    except FileNotFoundError:
+        return ProbeResult(binary_missing=True)
+    except subprocess.TimeoutExpired:
+        return ProbeResult(timed_out=True)
+
+    stdout = proc.stdout or ""
+    combined = (stdout + (proc.stderr or "")).strip()
+    error: str | None = None
+    if proc.returncode != 0 or "ERROR:" in combined:
+        error = combined or f"codex exec exited {proc.returncode}"
+    return ProbeResult(output=stdout, error=error)
+
+
+def _check_model(front_matter: dict[str, object], model_probe: ModelProbe) -> Finding:
+    """C6 (model reachability): probe the pinned model and classify the outcome.
+
+    Classification precedence is **normative** and stops at the first match - an
+    implementer who checked the ``42`` token first would score a timeout or an
+    auth failure as a rejection:
+
+    1. model unparseable from ``codex.command`` -> *skip* (never probed);
+    2. ``binary_missing`` -> *skip*;
+    3. ``auth_missing`` -> *skip* (unauthenticated is couldn't-run, not a
+       rejection - the most likely first-run state);
+    4. ``timed_out`` -> *skip* (transient; must not read as "model rejected");
+    5. **reject** - a non-empty ``error`` (nonzero exit / ``ERROR:`` line), *or*
+       the expected ``42`` absent from ``output``. The reject signal is checked
+       *before* the token, so a response carrying both an error and a
+       coincidental ``42`` scores as reject. The runner's raw text is surfaced
+       verbatim so the operator can tell "upgrade CLI" from "request
+       entitlement" from "wrong model name";
+    6. otherwise (``42`` present, no error) -> **pass** (ATLAS_PREFLIGHT_OK)."""
+
+    command = _codex_command(front_matter)
+    model = _parse_model(command) if command else None
+    if model is None:
+        return Finding(
+            "C6",
+            True,
+            "codex.command has no parseable model=… clause; model reachability "
+            "not verified",
+            skipped=True,
+        )
+
+    result = model_probe(model)
+    if result.binary_missing:
+        return Finding(
+            "C6",
+            True,
+            "codex binary not found; model reachability not verified",
+            skipped=True,
+        )
+    if result.auth_missing:
+        return Finding(
+            "C6",
+            True,
+            "Codex is not authenticated (run `codex login`); model reachability "
+            "not verified",
+            skipped=True,
+        )
+    if result.timed_out:
+        return Finding(
+            "C6",
+            True,
+            "model probe timed out; reachability not verified",
+            skipped=True,
+        )
+    if result.error:
+        return Finding(
+            "C6",
+            False,
+            f"pinned model {model!r} rejected the probe: {result.error}",
+        )
+    if _PROBE_EXPECTED not in result.output:
+        return Finding(
+            "C6",
+            False,
+            f"pinned model {model!r} rejected the probe: {result.output!r}",
+        )
+    return Finding(
+        "C6",
+        True,
+        f"pinned model {model!r} is reachable (ATLAS_PREFLIGHT_OK)",
+    )
+
+
 def run_preflight(
     *,
     workflow_md_path: Path,
@@ -318,13 +525,22 @@ def run_preflight(
     status_map: LinearStatusMap,
     project_id: str,
     allow_assignee: bool,
+    check_model: bool = False,
+    model_probe: ModelProbe | None = None,
+    model_probe_timeout: float = _MODEL_PROBE_TIMEOUT_DEFAULT,
 ) -> PreflightReport:
     """Run the operator preflight and return an ordered :class:`PreflightReport`.
 
     Never raises for a validation outcome (D1): a malformed contract, an
     incoherent map, an ambiguous target, an unresolved project, or a set
-    assignee each become a *finding*. The findings are ordered C1→C5. The CLI
-    wrapper renders them and sets the exit code."""
+    assignee each become a *finding*. The findings are ordered C1→C5, then C6
+    when ``check_model`` is set.
+
+    C6 (D3) is **opt-in** and runs *last*: C1-C5 stay offline and fast, and C6
+    only then makes a live, billable, auth-requiring model call. When
+    ``check_model`` is set and no ``model_probe`` is injected, the real
+    subprocess runner is constructed lazily with ``model_probe_timeout``. The
+    CLI wrapper renders the findings and sets the exit code."""
 
     findings: list[Finding] = []
     try:
@@ -345,5 +561,28 @@ def run_preflight(
     if front_matter is not None:
         findings.append(_check_project(front_matter, client, project_id))
     findings.append(_check_assignee(allow_assignee))
+
+    if check_model:
+        # C6 runs last (D3). With no front matter there is no `codex.command` to
+        # parse, so the probe cannot run -> skip, consistent with _parse_model's
+        # unparseable branch.
+        if front_matter is None:
+            findings.append(
+                Finding(
+                    "C6",
+                    True,
+                    "WORKFLOW.md front matter did not parse; model reachability "
+                    "not verified",
+                    skipped=True,
+                )
+            )
+        elif model_probe is not None:
+            findings.append(_check_model(front_matter, model_probe))
+        else:
+
+            def real_probe(model: str) -> ProbeResult:
+                return _real_model_probe(model, timeout=model_probe_timeout)
+
+            findings.append(_check_model(front_matter, real_probe))
 
     return PreflightReport(findings=tuple(findings))

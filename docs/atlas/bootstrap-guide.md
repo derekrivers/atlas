@@ -348,6 +348,47 @@ No Linear or Symphony automation should be introduced until the local planning C
 Docs → Planning Engine → Dependency Graph → Linear → Context Pack → Symphony → PR → Evidence → Verification → Learning
 ```
 
+### Codex model requirement (preflight C6)
+
+`WORKFLOW.md`'s `codex.command` pins `model="gpt-5.5"`. That pin carries an
+implicit CLI-version and account-entitlement requirement documented nowhere and,
+before `atlas preflight --check-model`, checked nowhere — the failure mode it
+guards against is a model the operator's Codex cannot run, which does **not**
+error loudly: Codex swallows the rejection into a clean-looking empty turn and
+the dispatched agent burns its whole turn budget doing nothing (the ATL-224
+Smoke A failure).
+
+- **CLI version.** `gpt-5.5` requires a current Codex CLI — verified working on
+  **0.142.5** (known-good, not a bisected minimum). The snap `codex` package is
+  **capped at 0.114.0** and cannot run `gpt-5.5` (it fails asking for a newer
+  Codex). Install the official CLI so it takes precedence on `PATH`:
+
+  ```
+  curl -fsSL https://chatgpt.com/codex/install.sh | sh
+  ```
+
+- **PATH hazard.** The official installer places `codex` on `PATH` ahead of
+  snap's. If `PATH` order ever regresses (new machine, CI, a changed profile,
+  an npm-global update that lands elsewhere) the snap 0.114.0 resurfaces and the
+  silent-empty-turn failure returns — which is exactly what C6 catches.
+
+- **Entitlement.** Model availability also depends on auth mode: some `*-codex`
+  models are unavailable on a ChatGPT-account login and require API-key auth.
+
+**Verify before dispatch:**
+
+```
+atlas preflight --check-model
+```
+
+C6 parses the pinned model out of `codex.command`, probes it with a computed
+prompt (so a prompt-echo cannot fake a pass), and reports: **pass** when the
+model answers; **EXIT_RECORDED_FAILURE** with the runner's raw error verbatim
+when the model is present but rejected (upgrade CLI / request entitlement /
+wrong model name); **EXIT_PRECONDITION (skip)** when the check cannot run at all
+(no `codex` binary, unauthenticated, timeout, or an unparseable `codex.command`).
+It is opt-in — plain `atlas preflight` (C1–C5) stays offline and fast.
+
 ---
 
 # 6. Initialise Python Project
