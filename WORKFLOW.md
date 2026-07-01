@@ -17,7 +17,7 @@
 # ─────────────────────────────────────────────────────────────────────────
 tracker:
   kind: linear
-  project_slug: "atlas-REPLACE_ME"
+  project_slug: "26cc58f4bc91"
   required_labels: []
   active_states:
     - Ready for Agent
@@ -26,7 +26,6 @@ tracker:
     - Changes Requested
   terminal_states:
     - Done
-    - Cancelled
     - Canceled
     - Duplicate
 polling:
