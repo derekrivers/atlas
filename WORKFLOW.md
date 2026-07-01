@@ -75,12 +75,13 @@ Continuation context:
   changes require it.
 {% endif %}
 
-## The context pack is your contract
+## The ticket description is your contract
 
-The ticket description below carries an embedded Atlas context pack
-(`ATLAS CONTEXT PACK v1`). Treat its objective, constraints, non-goals, and
-definition of done as binding, and work strictly inside that scope. Never edit
-the ticket description — it carries the pack, and Atlas owns it.
+The ticket description below is your binding contract. If it contains an
+`ATLAS CONTEXT PACK v1` block, treat that pack as authoritative. Otherwise,
+treat the description's definition fields — objective, acceptance criteria,
+non-goals, and definition of done — as binding. Either way, work strictly
+inside that scope, and never edit the ticket description — Atlas owns it.
 
 Ticket description:
 {% if issue.description %}

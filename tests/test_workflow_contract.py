@@ -251,3 +251,63 @@ def test_ac6_pinned_model_parseable_from_live_command() -> None:
     front, _ = _split()
     command = front["codex"]["command"]
     assert _parse_model(command) == "gpt-5.5"
+
+
+# --- Smoke A finding T2: the pack is optional, the description is the contract -
+#
+# The renderer (`render_definition_description`) emits a bare objective + `##`
+# sections with NO `ATLAS CONTEXT PACK v1` marker today — the pack only arrives
+# with ATLAS-82. The prompt must therefore not assert as *fact* that a pack is
+# present; it must degrade: pack-if-present, else the definition fields are the
+# contract. These pin the wording (there is no cheaper handle for a prompt
+# contract than the words themselves).
+
+
+def test_pack_optional_no_unconditional_assertion() -> None:
+    # AC1: the unconditional "a pack is embedded" claim is gone. The full
+    # assertion — not just a fragment — must be absent, so restoring the old
+    # wording reverts this red.
+    _, body = _split()
+    assert "carries an embedded" not in body
+    assert "carries an embedded Atlas context pack" not in body
+
+
+def test_pack_optional_fallback_present() -> None:
+    # AC2: the conditional fallback is spelled out — pack-if-present, else the
+    # description's definition fields are binding. Vaguely-conditional prose
+    # that never names the definition-fields fallback must not satisfy this.
+    # The marker phrase spans a line wrap in the (verbatim) prompt text, so
+    # collapse whitespace before searching — the words, not the wrapping, are
+    # the contract.
+    _, body = _split()
+    flowed = " ".join(body.split())
+    assert "If it contains an `ATLAS CONTEXT PACK v1`" in flowed
+    assert "Otherwise" in flowed
+    assert "definition fields" in flowed
+
+
+def test_empty_description_blocker_unchanged() -> None:
+    # AC3: the adjacent empty-description blocker branch is untouched. Pinned
+    # verbatim so an edit that nudges the neighbouring Jinja block goes red.
+    _, body = _split()
+    blocker = (
+        "{% else %}\n"
+        "No description provided — treat this as a blocker (see Hard limits).\n"
+        "{% endif %}"
+    )
+    assert blocker in body
+
+
+def test_pack_reword_scope_confined_to_body() -> None:
+    # AC4: the reword stayed in the prompt body — the front matter parses
+    # unchanged. States and the codex.command model pin are identical to base,
+    # so a reword that drifted into config/routing would break here.
+    front, _ = _split()
+    assert front["tracker"]["active_states"] == [
+        "Ready for Agent",
+        "In Progress",
+        "PR Open",
+        "Changes Requested",
+    ]
+    assert front["tracker"]["terminal_states"] == ["Done", "Canceled", "Duplicate"]
+    assert _parse_model(front["codex"]["command"]) == "gpt-5.5"
