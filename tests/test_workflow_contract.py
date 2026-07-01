@@ -102,9 +102,9 @@ def test_ac1_terminal_states_match_the_doc() -> None:
     _, table_terminal = _doc_table_states()
     terminal = front["tracker"]["terminal_states"]
     assert terminal == _doc_list("terminal_states")
-    assert terminal == ["Done", "Cancelled", "Canceled", "Duplicate"]
-    # the table's terminal rows are a subset (Canceled/Duplicate are Linear
-    # spellings the table does not enumerate but the front matter must accept)
+    assert terminal == ["Done", "Canceled", "Duplicate"]
+    # the table's terminal rows are a subset (Duplicate is a Linear spelling the
+    # table does not enumerate but the front matter must accept)
     assert table_terminal <= set(terminal)
 
 
@@ -173,12 +173,14 @@ def test_ac5_pack_injection_and_handoff_routing() -> None:
 # --- AC-7: workspace targets Atlas, not Symphony ------------------------------
 
 
-def test_ac7_workspace_clones_atlas_with_operator_placeholder() -> None:
+def test_ac7_workspace_clones_atlas_with_operator_slug() -> None:
     front, _ = _split()
     after_create = front["hooks"]["after_create"]
     assert "derekrivers/atlas" in after_create
     assert "openai/symphony" not in after_create
-    assert front["tracker"]["project_slug"] == "atlas-REPLACE_ME"
+    # project_slug is the operator's per-product knob; the placeholder has been
+    # filled with the operator's real Linear project slug.
+    assert front["tracker"]["project_slug"] == "26cc58f4bc91"
 
 
 # --- F2 (ATLAS-136): the agent's inherited environment is narrowed ------------
