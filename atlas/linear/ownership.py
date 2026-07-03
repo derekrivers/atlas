@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from collections.abc import Callable, Iterable, Mapping
 from typing import TYPE_CHECKING
 
@@ -58,7 +59,7 @@ class LinearStatusMapError(ValueError):
 # owned field -- the render widens the *content* of `description`, not the set
 # of keys over the wire.
 OWNED_DEFINITION_FIELDS: tuple[tuple[str, Callable[[Ticket], object]], ...] = (
-    ("title", lambda ticket: ticket.title),
+    ("title", lambda ticket: render_definition_title(ticket)),
     ("description", lambda ticket: render_definition_description(ticket)),
 )
 
@@ -71,6 +72,41 @@ def _bullets(items: Iterable[str]) -> str:
     """One ``- `` bullet per item, in stored order (never sorted)."""
 
     return "\n".join(f"- {item}" for item in items)
+
+
+# One canonical ``ATLAS-<digits>: `` prefix, anchored at the start of the stored
+# title. Matched only to STRIP a leading key before re-prefixing with the ticket's
+# own key, so a re-push (or a defensively pre-prefixed store title) never
+# accumulates or smuggles a second key. Case per the canonical uppercase key
+# grammar (``reports.py``'s ``ATLAS-(\d+)``); a bare ``#126`` carries no prefix.
+_LEADING_KEY_PREFIX_RE = re.compile(r"^ATLAS-\d+: ")
+
+
+def render_definition_title(ticket: Ticket) -> str:
+    """Compose the owned ``title`` field: the Atlas store key embedded ahead of
+    the bare ticket title as ``ATLAS-<n>: <title>`` (ATLAS-143).
+
+    Pure: same ticket -> byte-identical string, no clock, no I/O. This widens the
+    *content* of the already-owned ``title`` field (exactly as
+    :func:`render_definition_description` widened ``description``); no new key
+    crosses the Atlas -> Linear boundary. The embedded key is what the dispatched
+    agent copies into its PR title, so verification's ``parse_close_set`` resolves
+    the PR to *this* Atlas ticket rather than to whatever ticket happens to hold
+    Linear's homonymous identifier (debt-register "Linear identifier / Atlas key
+    homonym").
+
+    Idempotent under re-push (D-6): a single leading ``ATLAS-<n>: `` prefix on the
+    stored title is stripped before this ticket's key is applied, so re-rendering
+    an already-prefixed title yields a single-prefix result -- never
+    ``ATLAS-77: ATLAS-77: Widget``. The strip is a leading-key *replacement* (D-6a),
+    not just a same-key guard: a foreign leading key (``ATLAS-9999: Widget`` stored
+    under key ``ATLAS-77``) is replaced, so the rendered title fed to
+    ``reports.parse_close_set`` resolves to exactly ``(ticket.key,)`` and never a
+    superset -- closing the homonym seam this ticket exists to close.
+    """
+
+    bare = _LEADING_KEY_PREFIX_RE.sub("", ticket.title, count=1)
+    return f"{ticket.key}: {bare}"
 
 
 def render_definition_description(ticket: Ticket) -> str:

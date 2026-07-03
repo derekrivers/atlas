@@ -164,7 +164,17 @@ seed command exists yet. ATLAS-130 made the error clean; it did not add a
 bootstrap path. Tracked as a Phase-6 carry-forward (closure report §4); owner: a
 small follow-up ticket before operator handoff.
 
-Linear identifier / Atlas key homonym: two counters, one namespace (post-rename)
+Linear identifier / Atlas key homonym: two counters, one namespace (post-rename) — RESOLVED ATLAS-143
+
+**Resolved** in ATLAS-143. Kept here for the lesson, not as an open item.
+The pushed Linear title now embeds the Atlas store key (`ATLAS-<n>: <title>`,
+`render_definition_title` in `atlas/linear/ownership.py`), and the WORKFLOW.md
+PR-title instruction references that embedded prefix instead of
+`{{ issue.identifier }}` — so the key the agent copies into its PR title is the
+Atlas key by construction, and `parse_close_set` attributes the PR to the right
+object. The `_KEY` matcher and the rejected `external_linear_id` join were left
+untouched (the fix is upstream, in what the title contains). The seam below is
+the historical description of the defect.
 
 The WORKFLOW.md prompt instructs the agent to title its PR with
 {{ issue.identifier }} — Linear's per-team identifier, minted by
@@ -184,14 +194,14 @@ hand-created Linear tickets with no Atlas-store counterpart, so there is
 nothing to misattribute; the seam only bites when Atlas manages real work
 end-to-end.
 
-To close (BLOCKS the Atlas-loop smoke / Done-gate proof): embed the Atlas
-key in the pushed Linear title at sync (ATLAS-<n>: <title> in
-definition_payload), change the WORKFLOW.md PR-title instruction to
-reference that embedded key instead of {{ issue.identifier }}, and update
-the workflow contract tests both sides. Rejected alternative: resolving
-Linear identifiers through the external_linear_id join at verification
-time — it introduces a second key grammar and breaks the gate-is-the-mapper
-invariant. Owner: precondition ticket for the Atlas-loop smoke.
+How it was closed (ATLAS-143): the Atlas key is embedded in the pushed
+Linear title at sync (ATLAS-<n>: <title>, composed by
+render_definition_title and carried by definition_payload's owned title
+field), the WORKFLOW.md PR-title instruction now references that embedded
+key instead of {{ issue.identifier }}, and the workflow contract tests were
+updated on both sides. Rejected alternative (NOT taken): resolving Linear
+identifiers through the external_linear_id join at verification time — it
+introduces a second key grammar and breaks the gate-is-the-mapper invariant.
 
 PR #137–#139 / #141 title backfill: keyless until real referents exist
 

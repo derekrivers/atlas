@@ -27,8 +27,10 @@ from atlas.linear.ownership import (
     LinearStatusMapError,
     definition_payload,
     render_definition_description,
+    render_definition_title,
     status_from_issue,
 )
+from atlas.verification.reports import parse_close_set
 
 
 def make_ticket(**overrides: object) -> Ticket:
@@ -54,10 +56,14 @@ def issue(
 
 
 def test_definition_payload_contains_only_owned_keys() -> None:
-    payload = definition_payload(make_ticket(title="T", priority=3, objective="obj"))
+    payload = definition_payload(
+        make_ticket(key="ATLAS-12", title="T", priority=3, objective="obj")
+    )
     assert set(payload) == OWNED_LINEAR_INPUT_KEYS
     assert {"title", "description"} == OWNED_LINEAR_INPUT_KEYS
-    assert payload["title"] == "T"
+    # the owned `title` now embeds the Atlas key (ATLAS-143); its byte-exact shape
+    # and idempotence are pinned by the title-embedding tests below.
+    assert payload["title"] == "ATLAS-12: T"
     # description is the full-spec render (objective + populated fields), led by
     # the objective; its detailed shape is pinned by the render tests below.
     assert isinstance(payload["description"], str)
@@ -241,6 +247,59 @@ def test_render_excludes_status_priority_and_pm_internals() -> None:
     assert "gh-123" not in rendered  # external_github_issue_id
     assert "state-xyz" not in rendered  # last_observed_linear_state_id
     assert "2026" not in rendered  # linear_synced_at
+
+
+# --- title key embedding (Atlas -> Linear); ATLAS-143 ----------------------
+#
+# The pushed Linear title embeds the Atlas store key ahead of the bare title,
+# so the key the dispatched agent copies into its PR title is the Atlas key by
+# construction -- closing the Linear-identifier / Atlas-key homonym seam
+# (debt-register). The key crosses in the already-owned `title` field; no new
+# key crosses the boundary.
+
+
+def test_title_embeds_the_atlas_key_byte_exact() -> None:
+    # AC-1: key ATLAS-77 + title "Widget" -> exactly "ATLAS-77: Widget" in the
+    # pushed payload. Byte-exact equality, not a substring check. Wrong answer:
+    # a bare "Widget" (the pre-ATLAS-143 behaviour) or any other separator.
+    payload = definition_payload(make_ticket(key="ATLAS-77", title="Widget"))
+    assert payload["title"] == "ATLAS-77: Widget"
+
+
+def test_embedded_key_round_trips_through_the_real_parser() -> None:
+    # AC-2: the rendered title, used verbatim as a PR title, resolves through the
+    # REAL verification parser (not a re-implemented regex) to exactly the ticket's
+    # own key -- never a superset. This is the whole point of the seam fix: the PR
+    # is attributed to THIS Atlas ticket. Wrong answer: a key other than ATLAS-77.
+    title = render_definition_title(make_ticket(key="ATLAS-77", title="Widget"))
+    assert parse_close_set(title, None) == ("ATLAS-77",)
+
+
+def test_render_title_is_idempotent_no_double_or_foreign_prefix() -> None:
+    # AC-3 / D-6 / D-6a: a leading `ATLAS-<n>: ` prefix on the stored title is a
+    # REPLACEMENT, not an accumulation. Re-rendering an already-prefixed title (the
+    # clean-diff re-push case) yields a single-prefix result; a FOREIGN leading key
+    # is replaced by this ticket's key, so the round-trip stays exactly (key,).
+    same_key = make_ticket(key="ATLAS-77", title="ATLAS-77: Widget")
+    rendered_same = render_definition_title(same_key)
+    assert rendered_same == "ATLAS-77: Widget"
+    # named wrong answer: the double-prefixed string must NOT be produced.
+    assert rendered_same != "ATLAS-77: ATLAS-77: Widget"
+
+    foreign_key = make_ticket(key="ATLAS-77", title="ATLAS-9999: Widget")
+    rendered_foreign = render_definition_title(foreign_key)
+    assert rendered_foreign == "ATLAS-77: Widget"
+    # named wrong answer: a smuggled foreign key must NOT survive into the title.
+    assert rendered_foreign != "ATLAS-77: ATLAS-9999: Widget"
+
+    # the invariant both guards protect: for either stored title the rendered PR
+    # title resolves to exactly this ticket's key through the real parser.
+    for ticket in (same_key, foreign_key):
+        assert parse_close_set(render_definition_title(ticket), None) == ("ATLAS-77",)
+
+    # purity: rendering a bare title twice is byte-identical (no clock, no I/O).
+    bare = make_ticket(key="ATLAS-77", title="Widget")
+    assert render_definition_title(bare) == render_definition_title(bare)
 
 
 # --- status direction: Linear -> Atlas -------------------------------------
