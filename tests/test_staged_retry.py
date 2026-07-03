@@ -194,8 +194,8 @@ def test_correction_is_absent_on_first_attempt_and_directed_on_retry() -> None:
     assert "do NOT drop" in retry_tickets_prompt
 
 
-# --- the live staged tickets version is v1.5.0 (cap emphasis) ----------------
+# --- the live staged tickets version is v1.6.0 (re-plan seeding) -------------
 
 
-def test_orchestrator_uses_tickets_v1_5_0() -> None:
-    assert STAGE_TICKETS_VERSION == "planner-stage-tickets-v1.5.0"
+def test_orchestrator_uses_tickets_v1_6_0() -> None:
+    assert STAGE_TICKETS_VERSION == "planner-stage-tickets-v1.6.0"

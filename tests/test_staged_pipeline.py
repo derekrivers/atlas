@@ -11,20 +11,32 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from typing import Any
+from uuid import uuid4
 
 import pytest
+import yaml
 from planner_fakes import FAKE_IDENTITY
-from test_models_validation import epic_kwargs
-from test_plan_pipeline import NOW, fixture_repo, fresh_db, proposal_json
+from test_models_validation import epic_kwargs, ticket_kwargs
+from test_plan_pipeline import (
+    NOW,
+    PRODUCT_MD,
+    fixture_repo,
+    fresh_db,
+    make_repo,
+    proposal_json,
+)
 
+import atlas.planning.pipeline as pipeline_module
 from atlas import cli
 from atlas.core.anchors import AnchorIndex
-from atlas.core.models import Epic, PlanRunStatus
+from atlas.core.models import Epic, PlanRunStatus, Ticket
 from atlas.planning.client import TruncatedOutputError
 from atlas.planning.ingestion import collect_input_documents
 from atlas.planning.pipeline import StagedReplanUnsupportedError, run_plan
 from atlas.planning.proposal import parse_proposal
+from atlas.planning.seed import render_backlog_yaml
 from atlas.planning.staged import (
     STAGE_DEPENDENCIES_VERSION,
     STAGE_EPICS_VERSION,
@@ -33,7 +45,7 @@ from atlas.planning.staged import (
     StageEpicsOutput,
     TemplateStagedGenerator,
 )
-from atlas.storage import EpicRepo, PlanRunRepo
+from atlas.storage import EpicRepo, PlanRunRepo, TicketRepo
 
 ANCHOR_EPIC = "docs/atlas/plan.md#planning"
 ANCHOR_TICKET = "docs/atlas/plan.md#backlog"
@@ -444,12 +456,323 @@ def test_run_plan_staged_path_records_protocol_violation(tmp_path: Any) -> None:
     assert "out of range" in reason["error"]
 
 
-def test_run_plan_staged_refuses_a_nonempty_backlog(tmp_path: Any) -> None:
+# --- re-plan seeding (ATLAS-144): a non-empty backlog seeds and re-plans ------
+
+NEW_TICKET_TITLE = "New work"
+NEW_TICKET_ANCHOR = "docs/atlas/plan.md#new-work"
+
+# A doc with a distinct heading per fixture item, so every epic/ticket anchors
+# to its own resolvable section (gate 4) and the reconciler cannot cross-match a
+# dropped ticket to the new one by shared anchor/title — the AC-6 probe needs
+# each identity to be genuinely distinct.
+REPLAN_PLAN_MD = (
+    "# Planning\n\n"
+    "## Epic one\n\nEpic one.\n\n"
+    "## Epic two\n\nEpic two.\n\n"
+    "## Ticket one\n\nTicket one.\n\n"
+    "## Ticket two\n\nTicket two.\n\n"
+    "## Ticket three\n\nTicket three.\n\n"
+    "## Ticket four\n\nTicket four.\n\n"
+    "## New work\n\nNew work.\n"
+)
+
+
+def replan_repo(tmp_path: Any) -> Any:
+    return make_repo(
+        tmp_path, {"PRODUCT.md": PRODUCT_MD, "docs/atlas/plan.md": REPLAN_PLAN_MD}
+    )
+
+
+def seed_backlog(database: Any) -> tuple[list[Epic], list[Ticket]]:
+    """A non-empty fixture store for ``replan_repo``: 2 epics / 4 tickets, real
+    keys, every ticket attached to an epic, none frozen, each anchored to its
+    own distinct heading (so a restated proposal passes gate 4 and identities do
+    not collide). Returns them for the caller's assertions."""
+    epics = []
+    for key, title, slug in (
+        ("ATLAS-E1", "Epic one", "epic-one"),
+        ("ATLAS-E2", "Epic two", "epic-two"),
+    ):
+        epic = Epic(
+            **epic_kwargs()
+            | {
+                "id": uuid4(),
+                "key": key,
+                "title": title,
+                "source_anchor": f"docs/atlas/plan.md#{slug}",
+            }
+        )
+        EpicRepo(database).add(epic)
+        epics.append(epic)
+    tickets = []
+    for key, title, slug, epic in (
+        ("ATLAS-1", "Ticket one", "ticket-one", epics[0]),
+        ("ATLAS-2", "Ticket two", "ticket-two", epics[0]),
+        ("ATLAS-3", "Ticket three", "ticket-three", epics[1]),
+        ("ATLAS-4", "Ticket four", "ticket-four", epics[1]),
+    ):
+        ticket = Ticket(
+            **ticket_kwargs()
+            | {
+                "id": uuid4(),
+                "key": key,
+                "title": title,
+                "epic_id": epic.id,
+                "status": "backlog",
+                "source_anchor": f"docs/atlas/plan.md#{slug}",
+            }
+        )
+        TicketRepo(database).add(ticket)
+        tickets.append(ticket)
+    return epics, tickets
+
+
+class SeedFollowingClient:
+    """A faithful compliant-model fake: it READS the ``<current_backlog>`` seed
+    the environment rendered into each stage prompt and re-emits exactly those
+    items under their echoed keys and anchors (plus one brand-new ticket on the
+    first tickets stage). Because its output is a function of the RENDERED seed,
+    mutating the seed renderer propagates all the way to the assembled proposal
+    — which is what makes the AC-6 drop-a-ticket probe a genuine data-loss
+    test, not a tautology. Records every prompt (CI never calls live)."""
+
+    def __init__(self) -> None:
+        self.prompts: list[str] = []
+        self._tickets_calls = 0
+
+    def generate(self, prompt: str) -> str:
+        self.prompts.append(prompt)
+        if "stage 1 of 3" in prompt:
+            return self._epics(prompt)
+        if "stage 2 of 3" in prompt:
+            return self._tickets(prompt)
+        return json.dumps({"dependencies": [], "planner_notes": []})
+
+    @staticmethod
+    def _seed(prompt: str) -> dict[str, Any]:
+        match = re.search(r"<current_backlog>\n(.*?)\n</current_backlog>", prompt, re.S)
+        return yaml.safe_load(match.group(1)) if match else {}
+
+    def _epics(self, prompt: str) -> str:
+        seed = self._seed(prompt)
+        epics = [
+            _epic(entry["title"])
+            | {"key": entry["key"], "source_anchor": entry["source_anchor"]}
+            for entry in seed.get("epics", [])
+        ]
+        return json.dumps({"epics": epics, "planner_notes": []})
+
+    def _tickets(self, prompt: str) -> str:
+        self._tickets_calls += 1
+        match = re.search(r'<target_epic index="([^"]+)">', prompt)
+        assert match is not None
+        epic_index = match.group(1)
+        seed = self._seed(prompt)
+        tickets = [
+            _ticket(entry["title"], epic_index)
+            | {"key": entry["key"], "source_anchor": entry["source_anchor"]}
+            for entry in seed.get("tickets", [])
+        ]
+        if self._tickets_calls == 1:  # one brand-new ticket, keyless
+            tickets.append(
+                _ticket(NEW_TICKET_TITLE, epic_index)
+                | {"source_anchor": NEW_TICKET_ANCHOR}
+            )
+        return json.dumps({"tickets": tickets, "planner_notes": []})
+
+
+def _archived(diff: Any, kind: str) -> set[str]:
+    return {
+        entry.identity
+        for entry in diff.entries
+        if entry.entry_type == "PROPOSE_ARCHIVE" and entry.kind == kind
+    }
+
+
+def _added_tickets(diff: Any) -> list[Any]:
+    return [
+        entry
+        for entry in diff.entries
+        if entry.entry_type == "ADD" and entry.kind == "ticket"
+    ]
+
+
+def test_seeded_replan_no_archive_of_restated_tickets(tmp_path: Any) -> None:
+    # AC-1: a seeded non-empty backlog re-plans to ONE full-state proposal in
+    # which every pre-existing item is restated under its real key and the new
+    # ticket carries no key; reconcile archives NOTHING restated and yields
+    # exactly one CREATE. Byte-level assertions on the diff and proposal, not
+    # counts alone.
+    repo = replan_repo(tmp_path)
+    database = fresh_db(tmp_path)
+    seed_backlog(database)
+    client = SeedFollowingClient()
+
+    result = run_plan(
+        repo_root=repo,
+        database=database,
+        client=client,
+        identity=FAKE_IDENTITY,
+        now=NOW,
+        staged_generator=TemplateStagedGenerator(),
+    )
+
+    assert result.status is PlanRunStatus.PROPOSED
+    assert result.diff is not None
+    # No existing epic or ticket is archived — the seed made the model restate
+    # them all. (This is the exact assertion AC-6 drives red.)
+    assert _archived(result.diff, "ticket") == set()
+    assert _archived(result.diff, "epic") == set()
+    # Exactly one CREATE, and it is the new ticket (keyless, new:<n> identity).
+    adds = _added_tickets(result.diff)
+    assert len(adds) == 1
+    assert adds[0].title == NEW_TICKET_TITLE
+    assert adds[0].identity.startswith("new:")
+    # The assembled proposal restates every existing key and carries exactly one
+    # keyless ticket.
+    proposal_tickets = result.plan_run.proposal["tickets"]
+    keys = [t["key"] for t in proposal_tickets]
+    assert {"ATLAS-1", "ATLAS-2", "ATLAS-3", "ATLAS-4"} <= set(keys)
+    assert keys.count(None) == 1
+    # Four staged calls (epics, two ticket batches, dependencies).
+    assert len(client.prompts) == 4
+
+
+def test_seeded_replan_records_seeded_versions_and_differs_from_first_run(
+    tmp_path: Any,
+) -> None:
+    # AC-5 (amended): a seeded run pins the bumped seeded template versions, and
+    # its epics-stage prompt_hash differs from a first run's over the same
+    # corpus — the seed is load-bearing in provenance, so seeded and first runs
+    # are distinguishable without a new PlanRun field.
+    repo = fixture_repo(tmp_path)
+    seeded_db = fresh_db(tmp_path / "seeded")
+    seed_backlog(seeded_db)
+    seeded = run_plan(
+        repo_root=repo,
+        database=seeded_db,
+        client=SeedFollowingClient(),
+        identity=FAKE_IDENTITY,
+        now=NOW,
+        staged_generator=TemplateStagedGenerator(),
+    )
+    first = run_plan(
+        repo_root=repo,
+        database=fresh_db(tmp_path / "first"),
+        client=SequencedFakeClient(worked_example_stage_outputs()),
+        identity=FAKE_IDENTITY,
+        now=NOW,
+        staged_generator=TemplateStagedGenerator(),
+    )
+
+    assert STAGE_EPICS_VERSION in seeded.plan_run.prompt_version
+    assert STAGE_TICKETS_VERSION in seeded.plan_run.prompt_version
+    # Same epics template version on both runs …
+    seeded_epics = seeded.plan_run.generation_stages[0]
+    first_epics = first.plan_run.generation_stages[0]
+    assert seeded_epics["prompt_version"] == first_epics["prompt_version"]
+    # … but the seed makes the rendered prompt (hence the prompt_hash) differ.
+    assert seeded_epics["prompt_hash"] != first_epics["prompt_hash"]
+
+
+def test_seeded_first_run_renders_empty_seed_and_same_envelope(tmp_path: Any) -> None:
+    # AC-3: an empty backlog renders empty seed lists (the templates' first-run
+    # branch, no <current_backlog>), and the assembled envelope for the same
+    # fake emissions is identical to the standalone generator's output.
     repo = fixture_repo(tmp_path)
     database = fresh_db(tmp_path)
-    EpicRepo(database).add(Epic(**epic_kwargs() | {"key": "ATLAS-E1"}))
     client = SequencedFakeClient(worked_example_stage_outputs())
-    with pytest.raises(StagedReplanUnsupportedError, match="first-run only"):
+    result = run_plan(
+        repo_root=repo,
+        database=database,
+        client=client,
+        identity=FAKE_IDENTITY,
+        now=NOW,
+        staged_generator=TemplateStagedGenerator(),
+    )
+    assert result.status is PlanRunStatus.PROPOSED
+    # Empty seed: the epics stage rendered the first-run branch.
+    assert "<current_backlog>" not in client.prompts[0]
+    assert "This is the first planning run" in client.prompts[0]
+    # The envelope matches the standalone generator over the same emissions.
+    documents = collect_input_documents(repo)
+    payload = [
+        {"path": doc.path, "sha": doc.sha, "content": doc.content} for doc in documents
+    ]
+    valid_anchors = AnchorIndex.build(documents).anchor_choices()
+    standalone = (
+        TemplateStagedGenerator()
+        .generate(
+            client=SequencedFakeClient(worked_example_stage_outputs()),
+            context=StageContext(
+                product_key="ATLAS", documents=payload, valid_anchors=valid_anchors
+            ),
+        )
+        .assembled_json
+    )
+    assert result.plan_run.proposal == parse_proposal(standalone).model_dump(
+        mode="json"
+    )
+
+
+def test_ac6_dropping_a_seeded_ticket_surfaces_a_propose_archive(
+    tmp_path: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # AC-6, red-first (a genuine mutation, never `assert False`): drop ATLAS-1
+    # from the stage-2 seed renderer. The seed-following model then never
+    # restates it, so it is omitted from the full-state proposal and the
+    # reconciler proposes to ARCHIVE it — the exact data-loss shape seeding
+    # prevents. This makes AC-1's `_archived(..., "ticket") == set()` assertion
+    # (test_seeded_replan_no_archive_of_restated_tickets) FAIL.
+    repo = replan_repo(tmp_path)
+    database = fresh_db(tmp_path)
+    seed_backlog(database)
+
+    def dropping_render(**kwargs: Any) -> str | None:
+        if kwargs.get("projection") == "tickets":
+            kwargs["tickets"] = [t for t in kwargs["tickets"] if t.key != "ATLAS-1"]
+        return render_backlog_yaml(**kwargs)
+
+    monkeypatch.setattr(pipeline_module, "render_backlog_yaml", dropping_render)
+
+    result = run_plan(
+        repo_root=repo,
+        database=database,
+        client=SeedFollowingClient(),
+        identity=FAKE_IDENTITY,
+        now=NOW,
+        staged_generator=TemplateStagedGenerator(),
+    )
+
+    assert result.diff is not None
+    # The dropped ticket is now proposed for archive — AC-1's no-archive
+    # assertion would fail here, proving the seed is load-bearing.
+    assert "ATLAS-1" in _archived(result.diff, "ticket")
+
+
+def test_run_plan_staged_refuses_an_epic_less_ticket(tmp_path: Any) -> None:
+    # AC-4 / A-3(ii): the one shape staged seeding cannot express is an
+    # epic-less ticket (no per-epic batch). The pipeline refuses BEFORE
+    # generation (repurposed StagedReplanUnsupportedError) rather than omit it —
+    # a wrong-answer assertion that it is NEVER silently archived, because the
+    # generator is never even called.
+    repo = fixture_repo(tmp_path)
+    database = fresh_db(tmp_path)
+    EpicRepo(database).add(Epic(**epic_kwargs() | {"id": uuid4(), "key": "ATLAS-E1"}))
+    TicketRepo(database).add(
+        Ticket(
+            **ticket_kwargs()
+            | {
+                "id": uuid4(),
+                "key": "ATLAS-9",
+                "epic_id": None,
+                "ticket_type": "tech_debt",
+                "status": "backlog",
+            }
+        )
+    )
+    client = SeedFollowingClient()
+    with pytest.raises(StagedReplanUnsupportedError, match="ATLAS-9"):
         run_plan(
             repo_root=repo,
             database=database,
@@ -458,7 +781,7 @@ def test_run_plan_staged_refuses_a_nonempty_backlog(tmp_path: Any) -> None:
             now=NOW,
             staged_generator=TemplateStagedGenerator(),
         )
-    # Clean exit: the staged generator was never called, and no PlanRun exists.
+    # Clean exit: no generation, no PlanRun — the ticket is never archived.
     assert client.prompts == []
     assert PlanRunRepo(database).list() == []
 

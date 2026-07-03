@@ -34,7 +34,7 @@ import hashlib
 import json
 import re
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol, TypeVar, runtime_checkable
 
@@ -62,7 +62,12 @@ from atlas.planning.renderer import RenderedPrompt, render_planner_prompt
 # single-call planner-v* templates; selected by explicit version=.
 # v1.1.0 (ATLAS-111): the epic's source_anchor is selected from the supplied
 # valid-anchor list, not constructed from a slug rule. v1.0.0 retained.
-STAGE_EPICS_VERSION = "planner-stage-epics-v1.1.0"
+# v1.2.0 (ATLAS-144): adds the current_backlog_yaml variable so a staged
+# re-plan seeds stage 1 with the existing epics (key + title + source_anchor);
+# the model echoes their keys and emits the FULL desired epic set. v1.1.0's
+# anchor-selection content is carried verbatim; None on a first run renders the
+# empty-backlog branch. v1.1.0 retained.
+STAGE_EPICS_VERSION = "planner-stage-epics-v1.2.0"
 # v1.2.0 (ATLAS-110): example key "key": null + anti-copy instruction (gate 6).
 # v1.3.0 (ATLAS-111): source_anchor selected from the supplied valid-anchor list,
 # not constructed from a slug rule (a live run failed gate 4 guessing slugs);
@@ -74,7 +79,14 @@ STAGE_EPICS_VERSION = "planner-stage-epics-v1.1.0"
 # (count-before-emit; SPLIT or TRIM to ≤7; never pad/drop) as first-attempt
 # guidance, to cut the acceptance_criteria>7 graze rate. Bound and retry
 # unchanged. v1.4.0 retained.
-STAGE_TICKETS_VERSION = "planner-stage-tickets-v1.5.0"
+# v1.6.0 (ATLAS-144): adds the current_backlog_yaml variable so a staged
+# re-plan seeds each per-epic tickets stage with that epic's existing tickets
+# (key + title + source_anchor + status); the model echoes their keys and
+# emits the FULL desired set, so the assembled proposal stays full-state and
+# the reconciler archives nothing it should keep. All of v1.5.0 is carried
+# verbatim; None on a first run renders the empty-backlog branch. v1.5.0
+# retained.
+STAGE_TICKETS_VERSION = "planner-stage-tickets-v1.6.0"
 STAGE_DEPENDENCIES_VERSION = "planner-stage-dependencies-v1.0.0"
 
 # ATLAS-109: bounded directed retry on a projection-bound graze. A stage that
@@ -432,10 +444,18 @@ class StagedGenerationResult:
 
 @dataclass(frozen=True)
 class StageContext:
-    """Everything the staged generator needs, built by the pipeline. The
-    current-backlog seeding payload is deliberately absent: the ATLAS-103
-    templates declare no backlog variable, so the staged path is first-run
-    only — the pipeline refuses a staged re-plan rather than seed badly.
+    """Everything the staged generator needs, built by the pipeline.
+
+    Re-plan seeding (ATLAS-144): the current backlog is rendered by the
+    environment (``planning.seed.render_backlog_yaml``) into two seeds the
+    seeded templates (epics v1.2.0, tickets v1.6.0) restate —
+    ``current_epics_seed`` for stage 1 (the existing epics), and
+    ``current_tickets_seed_by_epic`` keyed by epic identity for stage 2 (each
+    epic's existing tickets). Both default to first-run empties (``None`` / an
+    empty map), so a first run renders the templates' empty-backlog branch and
+    behaviour is unchanged (D-3). The model REFERENCES existing keys and never
+    mints identity (ADR-0007); the reconciler remains the sole authority on
+    create/update/archive (D-2).
 
     ``valid_anchors`` (ATLAS-111) is the resolvable ``{anchor, heading}`` list
     the epics and tickets stages SELECT their ``source_anchor`` from — derived
@@ -448,6 +468,8 @@ class StageContext:
     documents: Sequence[Mapping[str, str]]
     prompts_dir: Path | None = None
     valid_anchors: Sequence[Mapping[str, str]] = ()
+    current_epics_seed: str | None = None
+    current_tickets_seed_by_epic: Mapping[str, str | None] = field(default_factory=dict)
 
 
 @runtime_checkable
@@ -498,6 +520,7 @@ class TemplateStagedGenerator:
                 "product_key": context.product_key,
                 "documents": context.documents,
                 "valid_anchors": context.valid_anchors,
+                "current_backlog_yaml": context.current_epics_seed,
                 "stage_output_schema": _projection_schema(StageEpicsOutput),
             },
             version=STAGE_EPICS_VERSION,
@@ -523,16 +546,24 @@ class TemplateStagedGenerator:
             identity = epic.key if epic.key is not None else f"new_epic:{index}"
             stage = f"tickets:{identity}"
 
+            # This epic's existing tickets (ATLAS-144): its echoed-key identity
+            # maps to the seed the pipeline rendered from the store; a NEW epic
+            # (identity ``new_epic:<n>``) has no seed, so the stage renders the
+            # empty-backlog branch.
+            epic_tickets_seed = context.current_tickets_seed_by_epic.get(identity)
+
             def _render_tickets(
                 correction: str | None,
                 epic: ProposalEpic = epic,
                 identity: str = identity,
+                epic_tickets_seed: str | None = epic_tickets_seed,
             ) -> RenderedPrompt:
                 return render_planner_prompt(
                     {
                         "product_key": context.product_key,
                         "documents": context.documents,
                         "valid_anchors": context.valid_anchors,
+                        "current_backlog_yaml": epic_tickets_seed,
                         "epic": {
                             "title": epic.title,
                             "objective": epic.objective,
