@@ -375,25 +375,20 @@ ATLAS-81 WORKFLOW.md and tracker configuration per
          symphony-integration.md#workflow-contract and #state-mapping
 ATLAS-82 Context pack embedding in Linear descriptions, with size
          fallback (#context-pack-delivery)
-ATLAS-83 Ready-state sync: PM Engine as sole writer into Ready for Agent
-         (#ticket-transitions-one-writer-per-state-edge)
 ATLAS-84 PR ingestion and AgentRun reconstruction from observation
          (#retry-and-failure-seam)
 ATLAS-85 Handoff-state handling: Review Required / Needs Human stop work
          without workspace cleanup (#state-mapping)
 ATLAS-86 Ticket-level failure analysis: cycle and dwell detection,
          split proposals, DRAFT lessons (#retry-and-failure-seam)
-ATLAS-87 Follow-up comment ingestion (atlas:proposed-follow-up) into plan
-         proposals (#workflow-contract)
 ATLAS-88 Agent metrics (CLI report)
 ATLAS-90 End-to-end delivery automation test (#boundary)
 
-Retired: ATLAS-89 (Agent dashboard). Intra-ticket retry orchestration is
-Symphony's responsibility, not an Atlas ticket (#retry-and-failure-seam).
-
-Milestone test: a ready, context-rich fixture ticket flows
-pack → Symphony → PR → evidence → verification without manual steps other
-than the defined human gates.
+Retired: ATLAS-89 (Agent dashboard); ATLAS-83 (subsumed — PM Engine
+sole-writer promotion shipped as atlas/pm/promotion.py, ATLAS-34/42);
+and ATLAS-87 (subsumed — follow-up producer ATLAS-45 + consumer ATLAS-122).
+Intra-ticket retry orchestration is Symphony's responsibility, not an
+Atlas ticket (#retry-and-failure-seam).
 
 ---
 

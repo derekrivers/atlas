@@ -651,7 +651,11 @@ def test_enumeration_pins_real_roadmap_count() -> None:
     # sensor, merged #116).
     # Addition couples to the pin, the mirror of the retirement rule. The pin
     # fires on exactly this kind of change.
-    assert len(tickets) == 114
+    # - ATLAS-143 retires ATLAS-83 (subsumed by the sole-writer promotion in
+    #   atlas/pm/promotion.py, ATLAS-34/42) and ATLAS-87 (subsumed by the
+    #   follow-up producer ATLAS-45 + consumer ATLAS-122) into the Phase-8
+    #   Retired line, so both drop their standalone ticket lines: 114 -> 112.
+    assert len(tickets) == 112
     keys = [t.key for t in tickets]
     assert len(keys) == len(set(keys))  # unique
     assert "ATLAS-20" not in keys  # retired lines are not tickets

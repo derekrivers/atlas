@@ -298,6 +298,38 @@ def test_empty_description_blocker_unchanged() -> None:
     assert blocker in body
 
 
+# --- ATLAS-143: the PR-title instruction sources the embedded Atlas key --------
+#
+# The `In Progress` routing bullet must tell the agent to take the PR-title key
+# from the `ATLAS-<n>` prefix embedded at the start of the issue title (which the
+# sync now writes), NOT from Linear's `{{ issue.identifier }}` — the homonym seam
+# this ticket closes. Scoped to that bullet so the retained line-1 display
+# reference to `{{ issue.identifier }}` does not false-pass.
+
+
+def test_pr_title_instruction_uses_embedded_atlas_key_not_identifier() -> None:
+    _, body = _split()
+    flowed = " ".join(body.split())
+    start = flowed.index("`In Progress` — implement against the pack")
+    end = flowed.index("`PR Open` — keep the PR healthy")
+    bullet = flowed[start:end]
+    # the PR-title source is no longer Linear's identifier ...
+    assert "{{ issue.identifier }}" not in bullet
+    # ... it is the Atlas key embedded at the start of the title.
+    assert "ATLAS-<n>" in bullet
+    assert "prefix before the first `:`" in bullet
+
+
+def test_issue_identifier_survives_only_as_display_prose() -> None:
+    # AC-4: `{{ issue.identifier }}` may remain for display/logging (the opening
+    # "working a single Linear ticket, `{{ issue.identifier }}`" line) but nowhere
+    # as the PR-title source. Exactly one occurrence remains, and it is display.
+    _, body = _split()
+    assert body.count("{{ issue.identifier }}") == 1
+    flowed = " ".join(body.split())
+    assert "working a single Linear ticket, `{{ issue.identifier }}`" in flowed
+
+
 def test_pack_reword_scope_confined_to_body() -> None:
     # AC4: the reword stayed in the prompt body — the front matter parses
     # unchanged. States and the codex.command model pin are identical to base,

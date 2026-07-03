@@ -97,8 +97,9 @@ Route by the current state:
 - `Ready for Agent` — your entry point. Move the ticket to `In Progress`,
   branch from `origin/main`, and begin the work the pack defines.
 - `In Progress` — implement against the pack. When you have changes, open a PR
-  whose title references the ticket key `{{ issue.identifier }}`, then move the
-  ticket to `PR Open`.
+  whose title carries the Atlas ticket key embedded at the start of this issue's
+  title — the `ATLAS-<n>` prefix before the first `:` — then move the ticket to
+  `PR Open`.
 - `PR Open` — keep the PR healthy. Once CI is green on the head commit, move the
   ticket to `Review Required` and stop. That is your handoff.
 - `Changes Requested` — review feedback has arrived. Resume in the same
