@@ -163,3 +163,51 @@ pre-migrated DB and a hand-seeded `ATLAS` product, and no `atlas db init` /
 seed command exists yet. ATLAS-130 made the error clean; it did not add a
 bootstrap path. Tracked as a Phase-6 carry-forward (closure report §4); owner: a
 small follow-up ticket before operator handoff.
+
+Linear identifier / Atlas key homonym: two counters, one namespace (post-rename)
+
+The WORKFLOW.md prompt instructs the agent to title its PR with
+{{ issue.identifier }} — Linear's per-team identifier, minted by
+Linear's own counter. The Atlas key never crosses into Linear: the pushed
+issue title is ticket.title bare (OWNED_DEFINITION_FIELDS) and
+render_definition_description deliberately excludes external ids. Since the
+team-key rename, both counters emit ATLAS-<digits> into one visual
+namespace. Pre-rename this failed loudly (ATL-<n> bounced off the mapper's
+ATLAS-(\d+)); post-rename it fails silently: a PR titled with Linear's
+ATLAS-<n> passes the lint-pr-title gate, resolves in parse_close_set,
+and verification then attributes it to whatever Atlas ticket happens to hold
+that number in the store — a different ticket, or none. The gate green-lights
+provenance pointing at the wrong object.
+
+Why it is deferred safely for now: the current smoke scope uses
+hand-created Linear tickets with no Atlas-store counterpart, so there is
+nothing to misattribute; the seam only bites when Atlas manages real work
+end-to-end.
+
+To close (BLOCKS the Atlas-loop smoke / Done-gate proof): embed the Atlas
+key in the pushed Linear title at sync (ATLAS-<n>: <title> in
+definition_payload), change the WORKFLOW.md PR-title instruction to
+reference that embedded key instead of {{ issue.identifier }}, and update
+the workflow contract tests both sides. Rejected alternative: resolving
+Linear identifiers through the external_linear_id join at verification
+time — it introduces a second key grammar and breaks the gate-is-the-mapper
+invariant. Owner: precondition ticket for the Atlas-loop smoke.
+
+PR #137–#139 / #141 title backfill: keyless until real referents exist
+
+PRs #137–#139 merged with no key or the (ATLAS-NN) placeholder; #141
+carries a pre-rename ATL- identifier. The backfill (editing PR titles on
+GitHub — metadata only, no history rewrite) was prepared but is deferred: the
+Linear tickets those PRs pointed at were test-only and have been deleted, so
+any key written into the titles today has no referent — inventing referents
+would be worse than the hole. The merged lint-pr-title gate already
+prevents any NEW keyless PR from landing, so the debt is bounded to these
+four.
+
+To close: once real tickets exist through the pipeline (proposal → apply
+mints keys → pm sync), create retroactive tickets for the four PRs' work,
+then run the prepared backfill prompt
+(agent-prompt-pr-title-backfill.md) with the minted keys in its OP slots,
+and verify each title through scripts/check_pr_title.py (exit 0). Owner:
+alongside the identifier-seam ticket, before the Atlas-loop smoke's
+provenance assertions are trusted.
