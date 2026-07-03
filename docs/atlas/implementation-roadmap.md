@@ -390,6 +390,10 @@ and ATLAS-87 (subsumed — follow-up producer ATLAS-45 + consumer ATLAS-122).
 Intra-ticket retry orchestration is Symphony's responsibility, not an
 Atlas ticket (#retry-and-failure-seam).
 
+Milestone test: a ready, context-rich fixture ticket flows
+pack → Symphony → PR → evidence → verification without manual steps other
+than the defined human gates.
+
 ---
 
 # Phase 9 — Learning System
