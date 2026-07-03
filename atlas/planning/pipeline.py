@@ -33,15 +33,11 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-import yaml
-
 from atlas.core.anchors import AnchorIndex
 from atlas.core.models import (
-    Epic,
     PlanRun,
     PlanRunStatus,
     Ticket,
-    TicketDependency,
 )
 from atlas.planning.client import ModelIdentity, PlannerClient, TruncatedOutputError
 from atlas.planning.gates import GateFailure, run_gates
@@ -59,6 +55,7 @@ from atlas.planning.reconciler import (
     reconcile,
 )
 from atlas.planning.renderer import RenderedPrompt, render_planner_prompt
+from atlas.planning.seed import render_backlog_yaml
 from atlas.planning.staged import (
     StageContext,
     StagedGenerationError,
@@ -102,12 +99,16 @@ class NoInputDocumentsError(PlanPreconditionError):
 
 
 class StagedReplanUnsupportedError(PlanPreconditionError):
-    """The staged path was selected against a non-empty backlog. The
-    ATLAS-103 templates carry no current-backlog seeding, so a staged
-    re-plan would emit a partial-state proposal that archives everything it
-    omits. Refuse honestly (clean exit, no PlanRun) rather than seed badly:
-    staged generation is first-run only until re-plan seeding lands
-    (ADR-0010; the capability is preserved via echoed keys)."""
+    """The staged path was handed a backlog it cannot seed as full-state
+    (ATLAS-144). Staged generation batches stage 2 per epic, so an epic-less
+    ticket (``epic_id is None`` — a ``tech_debt`` ticket) has no batch to be
+    re-stated in: seeding it is not expressible in the current stage grammar.
+    Rather than silently omit it — which the reconciler would read as
+    ``PROPOSE_ARCHIVE``, the exact data loss re-plan seeding exists to prevent —
+    the pipeline refuses honestly (clean exit, no PlanRun) before generation.
+    Epic-attached tickets seed and re-plan normally; only the epic-less case
+    refuses. Seeding epic-less tickets is a named follow-up (an unassigned
+    stage-2 batch), not this ticket."""
 
 
 @dataclass(frozen=True)
@@ -157,25 +158,6 @@ def _stage_payload(records: Sequence[StageRecord]) -> list[dict[str, str]]:
         }
         for record in records
     ]
-
-
-def _backlog_yaml(
-    epics: list[Epic], tickets: list[Ticket], dependencies: list[TicketDependency]
-) -> str | None:
-    """A YAML view of the current backlog for the prompt; None when the
-    backlog is empty (first run). Prompt-only — not a planning render."""
-    if not (epics or tickets or dependencies):
-        return None
-    sections = []
-    for plural, entries in (
-        ("epics", epics),
-        ("tickets", tickets),
-        ("dependencies", dependencies),
-    ):
-        if entries:
-            payload = {plural: [entry.model_dump(mode="json") for entry in entries]}
-            sections.append(yaml.safe_dump(payload, sort_keys=False))
-    return "\n".join(sections)
 
 
 def _next_key_hint(database: Database) -> str:
@@ -272,18 +254,43 @@ def run_plan(
             product_key=product.key,
             documents=document_payload,
             valid_anchors=valid_anchors,
-            backlog_yaml=_backlog_yaml(epics, tickets, dependencies),
+            backlog_yaml=render_backlog_yaml(
+                epics=epics,
+                tickets=tickets,
+                dependencies=dependencies,
+                projection="full",
+            ),
             frozen=frozen,
             next_key_hint=_next_key_hint(database),
             prompts_dir=prompts_dir,
         )
     else:
-        if epics or tickets or dependencies:
+        # Re-plan seeding (ATLAS-144): the staged templates now carry the
+        # current backlog, so a non-empty store re-plans. The one shape the
+        # per-epic stage grammar cannot seed is an epic-less ticket — refuse
+        # before generation rather than omit it (== PROPOSE_ARCHIVE, D-3).
+        epic_keys_by_id = {epic.id: epic.key for epic in epics}
+        epicless = [
+            ticket.key
+            for ticket in tickets
+            if ticket.epic_id is None or ticket.epic_id not in epic_keys_by_id
+        ]
+        if epicless:
             raise StagedReplanUnsupportedError(
-                "the staged path is first-run only (ADR-0010): the current "
-                "backlog is non-empty, and the staged templates carry no "
-                "re-emission seeding, so a staged proposal would archive "
-                "every omitted item; re-run without --staged"
+                "the staged path cannot seed epic-less ticket(s) "
+                f"{sorted(epicless)} (no epic to batch under): stage 2 batches "
+                "per epic, so there is no batch to re-state them in, and omitting "
+                "them would archive them. Re-plan without --staged, or attach "
+                "them to an epic (an unassigned stage-2 batch is a tracked "
+                "follow-up)."
+            )
+        # The guard above proved every ticket has a resolvable epic_id, so the
+        # lookup is total (the assert makes that legible to the type checker).
+        seed_tickets_by_epic: dict[str, list[Ticket]] = {}
+        for ticket in tickets:
+            assert ticket.epic_id is not None
+            seed_tickets_by_epic.setdefault(epic_keys_by_id[ticket.epic_id], []).append(
+                ticket
             )
         generated = _generate_staged(
             staged_generator,
@@ -291,6 +298,11 @@ def run_plan(
             product_key=product.key,
             documents=document_payload,
             valid_anchors=valid_anchors,
+            current_epics_seed=render_backlog_yaml(epics=epics, projection="epics"),
+            current_tickets_seed_by_epic={
+                key: render_backlog_yaml(tickets=epic_tickets, projection="tickets")
+                for key, epic_tickets in seed_tickets_by_epic.items()
+            },
             prompts_dir=prompts_dir,
             on_progress=on_progress,
         )
@@ -430,6 +442,8 @@ def _generate_staged(
     product_key: str,
     documents: list[dict[str, str]],
     valid_anchors: list[dict[str, str]],
+    current_epics_seed: str | None,
+    current_tickets_seed_by_epic: dict[str, str | None],
     prompts_dir: Path | None,
     on_progress: ProgressCallback | None = None,
 ) -> _Generated:
@@ -438,12 +452,17 @@ def _generate_staged(
     provenance link, §5.3); prompt_version/prompt_hash are composites over the
     per-stage records. A per-stage truncation or protocol break is a recorded
     failure naming the stage (§5.4). ``valid_anchors`` (ATLAS-111) is the
-    select-from list the epics and tickets stages render."""
+    select-from list the epics and tickets stages render. The two seed
+    arguments (ATLAS-144) carry the current backlog the epics and per-epic
+    tickets stages restate; both are ``None``/empty on a first run, so the
+    seeded templates render their empty-backlog branch (first-run parity)."""
     context = StageContext(
         product_key=product_key,
         documents=documents,
         prompts_dir=prompts_dir,
         valid_anchors=valid_anchors,
+        current_epics_seed=current_epics_seed,
+        current_tickets_seed_by_epic=current_tickets_seed_by_epic,
     )
     try:
         result = staged_generator.generate(

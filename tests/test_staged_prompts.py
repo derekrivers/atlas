@@ -38,12 +38,14 @@ VariablesFactory = Callable[[], dict[str, object]]
 
 EPICS_VERSION = "planner-stage-epics-v1.0.0"
 EPICS_V1_1_0_VERSION = "planner-stage-epics-v1.1.0"
+EPICS_V1_2_0_VERSION = "planner-stage-epics-v1.2.0"
 TICKETS_VERSION = "planner-stage-tickets-v1.0.0"
 TICKETS_V1_1_0_VERSION = "planner-stage-tickets-v1.1.0"
 TICKETS_V1_2_0_VERSION = "planner-stage-tickets-v1.2.0"
 TICKETS_V1_3_0_VERSION = "planner-stage-tickets-v1.3.0"
 TICKETS_V1_4_0_VERSION = "planner-stage-tickets-v1.4.0"
 TICKETS_V1_5_0_VERSION = "planner-stage-tickets-v1.5.0"
+TICKETS_V1_6_0_VERSION = "planner-stage-tickets-v1.6.0"
 DEPENDENCIES_VERSION = "planner-stage-dependencies-v1.0.0"
 
 # A retained prior single-call template (no longer the live release since
@@ -603,6 +605,161 @@ def test_tickets_v1_4_0_is_retained_unchanged() -> None:
         tickets_v1_4_0_variables(), version=TICKETS_V1_4_0_VERSION
     )
     assert rendered.prompt_version == TICKETS_V1_4_0_VERSION
+
+
+# --- re-plan seeding (ATLAS-144): epics v1.2.0 + tickets v1.6.0 --------------
+
+SEED_EPICS_YAML = (
+    "epics:\n- key: ATLAS-E1\n  title: Planning Engine\n  source_anchor: docs/a.md#a\n"
+)
+SEED_TICKETS_YAML = (
+    "tickets:\n- key: ATLAS-1\n  title: Build plan CLI\n"
+    "  source_anchor: docs/a.md#a\n  status: backlog\n"
+)
+
+
+def epics_v1_2_0_variables(current_backlog_yaml: object = None) -> dict[str, object]:
+    return epics_v1_1_0_variables() | {"current_backlog_yaml": current_backlog_yaml}
+
+
+def tickets_v1_6_0_variables(
+    correction: object = None, current_backlog_yaml: object = None
+) -> dict[str, object]:
+    return tickets_v1_5_0_variables(correction) | {
+        "current_backlog_yaml": current_backlog_yaml
+    }
+
+
+def test_epics_v1_1_0_is_retained_unchanged() -> None:
+    # v1.1.0 stays on disk and renderable — historical PlanRuns reproduce; v1.2.0
+    # is a NEW file, never an in-place edit of v1.1.0.
+    from atlas.planning.renderer import PROMPTS_DIR
+
+    assert (PROMPTS_DIR / f"{EPICS_V1_1_0_VERSION}.md.j2").is_file()
+    rendered = render_planner_prompt(
+        epics_v1_1_0_variables(), version=EPICS_V1_1_0_VERSION
+    )
+    assert rendered.prompt_version == EPICS_V1_1_0_VERSION
+
+
+def test_epics_v1_2_0_declares_current_backlog_yaml() -> None:
+    # v1.1.0 does not declare current_backlog_yaml; v1.2.0 does (and requires it).
+    with pytest.raises(UndeclaredVariableError, match="current_backlog_yaml"):
+        render_planner_prompt(epics_v1_2_0_variables(), version=EPICS_V1_1_0_VERSION)
+    with pytest.raises(MissingVariableError, match="current_backlog_yaml"):
+        render_planner_prompt(epics_v1_1_0_variables(), version=EPICS_V1_2_0_VERSION)
+
+
+def test_epics_v1_2_0_seed_block_renders_only_when_populated() -> None:
+    heading = "## Current backlog"
+    first = render_planner_prompt(
+        epics_v1_2_0_variables(current_backlog_yaml=None), version=EPICS_V1_2_0_VERSION
+    ).text
+    # The heading is always present; the seed BLOCK is not, on a first run.
+    assert heading in first
+    assert "<current_backlog>" not in first
+    assert "This is the first planning run" in first
+    seeded = render_planner_prompt(
+        epics_v1_2_0_variables(current_backlog_yaml=SEED_EPICS_YAML),
+        version=EPICS_V1_2_0_VERSION,
+    ).text
+    assert "<current_backlog>" in seeded
+    assert SEED_EPICS_YAML in seeded
+    assert "echoed VERBATIM" in " ".join(seeded.split())
+
+
+def test_epics_v1_2_0_carries_v1_1_0_content_verbatim() -> None:
+    # Additive over v1.1.0: anchor-selection content survives unchanged.
+    text = render_planner_prompt(
+        epics_v1_2_0_variables(), version=EPICS_V1_2_0_VERSION
+    ).text
+    flat = " ".join(text.split())
+    assert "## Valid source anchors" in text
+    assert "Do NOT construct, slugify, or guess an anchor" in flat
+    assert "The environment owns identity — you never mint it." in text
+    assert "<one of the Valid source anchors above, copied verbatim>" in text
+
+
+def test_tickets_v1_5_0_is_retained_unchanged() -> None:
+    from atlas.planning.renderer import PROMPTS_DIR
+
+    assert (PROMPTS_DIR / f"{TICKETS_V1_5_0_VERSION}.md.j2").is_file()
+    rendered = render_planner_prompt(
+        tickets_v1_5_0_variables(), version=TICKETS_V1_5_0_VERSION
+    )
+    assert rendered.prompt_version == TICKETS_V1_5_0_VERSION
+
+
+def test_tickets_v1_6_0_declares_current_backlog_yaml() -> None:
+    with pytest.raises(UndeclaredVariableError, match="current_backlog_yaml"):
+        render_planner_prompt(
+            tickets_v1_6_0_variables(), version=TICKETS_V1_5_0_VERSION
+        )
+    with pytest.raises(MissingVariableError, match="current_backlog_yaml"):
+        render_planner_prompt(
+            tickets_v1_5_0_variables(), version=TICKETS_V1_6_0_VERSION
+        )
+
+
+def test_tickets_v1_6_0_seed_block_renders_only_when_populated() -> None:
+    heading = "## Current backlog for this epic"
+    first = render_planner_prompt(
+        tickets_v1_6_0_variables(current_backlog_yaml=None),
+        version=TICKETS_V1_6_0_VERSION,
+    ).text
+    assert heading in first
+    assert "<current_backlog>" not in first
+    assert "This epic has no existing tickets" in first
+    seeded = render_planner_prompt(
+        tickets_v1_6_0_variables(current_backlog_yaml=SEED_TICKETS_YAML),
+        version=TICKETS_V1_6_0_VERSION,
+    ).text
+    assert "<current_backlog>" in seeded
+    assert SEED_TICKETS_YAML in seeded
+
+
+def test_tickets_v1_6_0_carries_v1_5_0_content_verbatim() -> None:
+    # Additive over v1.5.0: the cap-emphasis rule 5, tags/component rule, and the
+    # ATLAS-109 correction block all survive unchanged.
+    first = render_planner_prompt(
+        tickets_v1_6_0_variables(correction=None), version=TICKETS_V1_6_0_VERSION
+    )
+    flat = " ".join(first.text.split())
+    assert "at most 7 `acceptance_criteria`, a hard cap" in first.text
+    assert "`tags` and `component` are required" in flat
+    assert "No ticket may have more than 7 acceptance criteria." not in first.text
+    heading = "Correction — your previous attempt was rejected"
+    assert heading not in first.text
+    message = "ATLAS-144 carries the retry block — trim to 7."
+    retry = render_planner_prompt(
+        tickets_v1_6_0_variables(correction=message), version=TICKETS_V1_6_0_VERSION
+    )
+    assert heading in retry.text
+    assert message in retry.text
+
+
+# --- AC-4: the unseeded re-plan path is impossible by construction -----------
+
+
+def test_selected_staged_versions_are_the_seeded_ones() -> None:
+    # The generator selects the seeded versions; a regression to an unseeded
+    # version would be caught here (and by the render-refusal below).
+    from atlas.planning.staged import STAGE_EPICS_VERSION, STAGE_TICKETS_VERSION
+
+    assert STAGE_EPICS_VERSION == EPICS_V1_2_0_VERSION
+    assert STAGE_TICKETS_VERSION == TICKETS_V1_6_0_VERSION
+
+
+def test_selected_staged_templates_refuse_to_render_without_the_seed() -> None:
+    # Wrong-answer assertion (AC-4): the seeded templates the generator selects
+    # DECLARE current_backlog_yaml, so the fail-closed renderer refuses to render
+    # them without it — an unseeded re-plan cannot silently generate.
+    from atlas.planning.staged import STAGE_EPICS_VERSION, STAGE_TICKETS_VERSION
+
+    with pytest.raises(MissingVariableError, match="current_backlog_yaml"):
+        render_planner_prompt(epics_v1_1_0_variables(), version=STAGE_EPICS_VERSION)
+    with pytest.raises(MissingVariableError, match="current_backlog_yaml"):
+        render_planner_prompt(tickets_v1_5_0_variables(), version=STAGE_TICKETS_VERSION)
 
 
 @pytest.mark.parametrize(

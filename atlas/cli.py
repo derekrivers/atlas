@@ -279,7 +279,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--staged",
         action="store_true",
         help="generate across the three staged calls and assemble one "
-        "proposal (ADR-0010); first-run only — refuses a non-empty backlog",
+        "proposal (ADR-0010); seeds a non-empty backlog to re-plan it "
+        "(ATLAS-144)",
     )
     apply = subcommands.add_parser(
         "apply",

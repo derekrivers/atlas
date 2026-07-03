@@ -144,6 +144,46 @@ gate-checked — the parser bounds-checks `new:<n>`/`new_epic:<n>`, gate 5 resol
 every `epic_ref`, gate 3 resolves every dependency target — the same checks a
 single-call proposal faces.
 
+### 4.2 Re-plan seeding (ATLAS-144)
+
+§4/§4.1 assemble a full-state proposal from stages that generate *from the
+documents alone* — correct for a first run against an empty backlog. Re-planning
+a **non-empty** backlog needs one more thing: each bounded stage must re-emit the
+existing items it is responsible for, under their real keys, or the reconciler
+reads every omission as `PROPOSE_ARCHIVE` (§1). Seeding supplies exactly that,
+without touching the assembly, the parser, the gates, or the reconciler.
+
+The environment renders the current backlog (the database, ADR-0006) into a
+per-stage `current_backlog_yaml` seed — the same variable and grammar the
+single-call template already uses — projected to what each stage restates:
+
+- **Stage 1 (epics)** is seeded with the existing epics (key + title +
+  `source_anchor`). The model echoes each still-justified epic's real key and
+  emits the complete desired epic set; a new epic still carries `"key": null`.
+- **Stage 2 (tickets, per epic)** is seeded, for the epic it is generating, with
+  that epic's existing tickets (key + title + `source_anchor` + status). The
+  model echoes their keys and emits the epic's complete desired ticket set.
+- **Stage 3 (dependencies)** is unchanged: it is already seeded with the full
+  assembled ticket index (§4.1), so existing edges resolve through the
+  reconciler's key/`new:<n>` matching exactly as today.
+
+The model only ever **references** existing keys — it never mints or renumbers
+them (ADR-0007); the environment still owns every `new_epic:<n>`/`new:<n>` index.
+The seed is rendered in the one `core.keys.natural_key` order, so the same store
+renders a byte-identical seed and the determinism boundary (§6) is unmoved:
+seeding adds *input* the model restates, not a second merge path (the rejected
+approach B, §3). A first run renders an empty seed and behaves exactly as before.
+
+The seeded run is distinguishable in provenance without a new `PlanRun` field:
+the stages record the bumped seeded prompt versions
+(`planner-stage-epics-v1.2.0`, `planner-stage-tickets-v1.6.0`) and their
+`prompt_hash` covers the rendered seed, so a re-plan's `generation_stages` differ
+from a first run's for the same corpus. The one shape the per-epic stage grammar
+cannot express is an **epic-less ticket** (`epic_id is None`): there is no batch
+to re-state it in, so the environment refuses the staged re-plan before
+generation rather than omit — and archive — it (an unassigned stage-2 batch is a
+tracked follow-up).
+
 ## 5. Effects
 
 ### 5.1 The §3.11 proposal contract — preserved

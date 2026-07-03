@@ -22,10 +22,11 @@ produces a proposal at ~95–97% of the model's single-call output ceiling. A fu
 `atlas plan` run takes **~15 minutes** and **may truncate** — recorded honestly as
 a failed run with a specific truncation reason (it is *not* a corruption or a bug
 in your setup). This is a known boundary; its resolution — staged generation — is
-now runnable for a first run via `atlas plan --staged` (see [The capacity
-boundary](#the-capacity-boundary) and `docs/atlas/planning-large-corpora.md`). For
-a single-call run that truncates, re-running often succeeds, because natural length
-variation tips the corpus over the edge.
+runnable via `atlas plan --staged`, for both a first run and a re-plan of an
+existing backlog (see [The capacity boundary](#the-capacity-boundary) and
+`docs/atlas/planning-large-corpora.md`). For a single-call run that truncates,
+re-running often succeeds, because natural length variation tips the corpus over
+the edge.
 
 ## Prerequisites
 
@@ -96,7 +97,7 @@ uv run python scripts/reset_db.py --yes
 It empties every table (schema and migration head preserved) and re-seeds the
 `ATLAS` product, leaving the DB plan-ready; pass `--no-seed-product` to wipe
 without re-seeding. This is the one-command path that subsumes the snippet above
-when you just need a clean backlog (e.g. before a first-run-only `--staged` run).
+when you just need a clean backlog (e.g. before a first-run `--staged` run).
 
 ### 4. `ANTHROPIC_API_KEY`
 
@@ -129,7 +130,7 @@ uv run atlas plan
 #          --db URL                    database URL (overrides ATLAS_DATABASE_URL)
 #          --repo PATH                 repository root (default: current directory)
 #          --staged                    multi-call staged generation (ADR-0010;
-#                                       first-run only — see below)
+#                                       seeds a non-empty backlog to re-plan it)
 ```
 
 The command runs the full proposer pipeline: **ingest** the committed documents →
@@ -153,7 +154,7 @@ before/after) — then `PlanRun <id> persisted at status proposed.`
 
 `atlas plan` never writes `docs/planning/`.
 
-### Staged generation (`--staged`, first-run only)
+### Staged generation (`--staged`)
 
 `--staged` generates the proposal across three bounded model calls — epics, then
 tickets one call per epic, then dependencies — and the environment assembles the
@@ -164,11 +165,19 @@ sits well inside the 64K ceiling. The downstream diff, exit codes, and provenanc
 are identical to a single-call run; a stage that still truncates is recorded as a
 `failed` run whose reason names the stage.
 
-**First-run only for now.** The staged templates do not yet carry current-backlog
-seeding, so a staged re-plan against a non-empty backlog would archive everything
-it omits. `--staged` therefore refuses a non-empty backlog with a clean-exit
-precondition (exit `2`) rather than seed badly — use it for the initial plan of an
-empty backlog. Re-plan seeding is a tracked follow-up.
+**Re-plan seeding (ATLAS-144).** `--staged` works for both a first run and a
+re-plan of a non-empty backlog. On a re-plan the environment renders the current
+backlog from the database into each stage — the existing epics into the epics
+stage, and each epic's existing tickets into that epic's tickets stage (in
+natural-key order) — so the model re-emits the full desired backlog, echoing the
+real `ATLAS-<n>` keys of unchanged work. The result is still one full-state §3.11
+proposal, so the reconciler diffs it exactly as a single-call re-plan: unchanged
+items stay put, and nothing is archived merely because a stage was bounded. The
+one shape staged generation cannot yet seed is an **epic-less ticket** (a
+`tech_debt` ticket with no epic): stage 2 batches per epic, so `--staged` refuses
+a backlog containing one with a clean-exit precondition (exit `2`) rather than
+omit — and thereby archive — it. Attach such tickets to an epic, or re-plan them
+without `--staged`; an unassigned stage-2 batch is a tracked follow-up.
 
 ## Reviewing the diff and running `atlas apply`
 
@@ -211,7 +220,8 @@ Every row is the actual message and exit code from the commands.
 | `ANTHROPIC_API_KEY is not set; export it to run \`atlas plan\`…` | plan | 2 | `export ANTHROPIC_API_KEY=…` (Prerequisite 4). |
 | `no 'ATLAS' product in the database; bootstrap the product before planning` | plan | 2 | Create the product row (Prerequisite 3). |
 | `model call failed: …` / `model call failed after 3 attempts: …` | plan | 2 | Transient (network/timeout/API). A mid-stream transport drop is auto-retried (3 attempts, 1s/2s backoff) before this surfaces — the `after 3 attempts` variant means every retry was exhausted. Re-run. |
-| `Plan failed (recorded):` + `{"stage": "truncation", …max_tokens=64000…}` | plan | 1 | The capacity boundary (below). Re-running a single-call plan often succeeds; the durable fix is `atlas plan --staged` (first-run only). |
+| `Plan failed (recorded):` + `{"stage": "truncation", …max_tokens=64000…}` | plan | 1 | The capacity boundary (below). Re-running a single-call plan often succeeds; the durable fix is `atlas plan --staged` (first run or re-plan). |
+| `the staged path cannot seed epic-less ticket(s) […]` | plan (`--staged`) | 2 | The backlog has a `tech_debt` ticket with no epic; staged generation batches per epic and cannot seed it. Attach it to an epic, or re-plan without `--staged`. |
 | `Plan failed (recorded):` + `{"stage": "parse", …}` | plan | 1 | The model output was not valid JSON. Re-run; if persistent, the prompt/model needs attention. |
 | `Plan failed (recorded):` + `{"stage": "gates", "failures": […]}` | plan | 1 | A validation gate failed. Read the per-failure `gate`/`code`/`reason` — usually an unresolvable `source_anchor` (gate 4), an orphan epic (gate 5), or an oversized ticket (gate 7). |
 | `no proposed PlanRun to apply; run \`atlas plan\` first` | apply | 2 | Run `atlas plan` first (the last run failed or none exists). |
@@ -250,10 +260,10 @@ The resolution is staged generation: generate the proposal in bounded stages
 (epics → tickets → dependencies) and assemble one complete full-state proposal
 before reconciliation, so the reconciler and the proposal contract are unchanged.
 See `docs/atlas/planning-large-corpora.md` and ADR-0010; the implementation is
-tracked as ATLAS-103..107. The staged path is runnable now via
-[`atlas plan --staged`](#staged-generation---staged-first-run-only) for a first
-run against an empty backlog (re-plan seeding is a tracked follow-up). For a
-single-call run that truncates, re-running will usually succeed.
+tracked as ATLAS-103..107, with re-plan seeding added by ATLAS-144. The staged
+path is runnable via [`atlas plan --staged`](#staged-generation---staged) for both
+a first run and a re-plan of a non-empty backlog. For a single-call run that
+truncates, re-running will usually succeed.
 
 ## See also
 
