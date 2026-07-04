@@ -121,17 +121,17 @@ db = Database(os.environ.get('SMOKE_DB_URL') or None)
 print(len(TicketRepo(db).list()))
 " 2>/dev/null)" || die "could not read the backlog count from the store"
 echo; echo "== backlog posture: $BACKLOG_N ticket(s) in the store =="
-if [ "$BACKLOG_N" = "0" ]; then
-  echo "== atlas plan --staged (empty backlog: the ADR-0010 staged path) =="
-  uv run atlas plan --staged --repo . "${DB_FLAG[@]}" \
-    || die "staged plan failed — see output above (the committed stub is still in place)"
+# Post-ATLAS-144: --staged supports re-planning a non-empty store (seeded
+# re-plan). Staged is now the default on BOTH postures; single-call remains
+# an explicit override only.
+if [ "${SMOKE_ALLOW_SINGLE_CALL:-0}" = "1" ]; then
+  echo "== atlas plan (single-call, OPERATOR-OVERRIDDEN at the 64K truncation cliff) =="
+  uv run atlas plan --repo . "${DB_FLAG[@]}" \
+    || die "single-call plan failed — if the error names the 64K truncation, that is the ADR-0010 boundary; re-run or drop the override and use staged"
 else
-  if [ "${SMOKE_ALLOW_SINGLE_CALL:-0}" = "1" ]; then
-    echo "== atlas plan (single-call, OPERATOR-OVERRIDDEN at the truncation cliff) =="
-    uv run atlas plan --repo . "${DB_FLAG[@]}" \
-      || die "single-call plan failed — if the error names the 64K truncation, that is the ADR-0010 boundary: re-run to re-flip, or rule on the re-plan seeding ticket"
-  else
-    die "backlog is non-empty ($BACKLOG_N tickets): single-call plan is a coin flip at the 64K ceiling and staged re-plan is refused until re-plan seeding lands. Either run the smoke against a FRESH store (recommended; --db to a new URL), or set SMOKE_ALLOW_SINGLE_CALL=1 to accept the flip."
+  echo "== atlas plan --staged ($BACKLOG_N ticket(s): seeded re-plan per ATLAS-144; empty store = first run) =="
+  if ! uv run atlas plan --staged --repo . "${DB_FLAG[@]}"; then
+    die "staged plan failed — see output above. If it refused naming EPIC-LESS ticket keys, that is the ATLAS-144 A-3 guard: those tickets have no per-epic batch to be restated in. Options: attach them to an epic, or rule the unassigned-batch follow-up (candidate ATLAS-145). The committed stub survives either way."
   fi
 fi
 

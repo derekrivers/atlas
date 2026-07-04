@@ -374,9 +374,18 @@ def check_planning_renders(root: Path) -> list[Finding]:
     planning = root / PLANNING_DIR
     if not planning.is_dir():
         return []
+    # docs/planning/inbox/ is a *separate* committed input source, not an
+    # atlas apply render: the follow-up producer is its machine writer and the
+    # operator commits it (ADR-0007 carve-out, ATLAS-45/122; see
+    # pm-engine-and-linear-sync.md and planning-engine-specification.md §"the
+    # committed follow-up inbox"). Inbox stubs carry no render header by design,
+    # so the render-header rule does not apply to them or to inbox/processed/.
+    inbox = planning / "inbox"
     findings = []
     for path in sorted(planning.rglob("*")):
         if not path.is_file() or path.name == ".gitkeep":
+            continue
+        if path == inbox or inbox in path.parents:
             continue
         head = "\n".join(path.read_text(encoding="utf-8").splitlines()[:10]).lower()
         if "plan_run_id" not in head or "atlas apply" not in head:
