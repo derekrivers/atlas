@@ -89,6 +89,50 @@ on the same fail-closed contract (an uncommitted stub is a typed dirty
 error), and an empty inbox is a no-op. The producer/consumer mechanism is
 owned by pm-engine-and-linear-sync.md "Follow-up ingestion".
 
+**Deterministic promotion.** Beyond provenance, each committed inbox stub
+is promoted to exactly one proposed `ADD` ticket by pure code — no model
+call, no prompt (ADR-0005: the environment never infers a quantitative
+value or makes a semantic judgement). Promotion runs after the model's
+proposal is parsed and before the validation gates, so a promoted ticket
+is validated and reconciled exactly like a model-emitted one and takes a
+monotonic key at apply like any other `ADD`. Same stub + same backlog
+yields a byte-identical injected ticket.
+
+The stub declares its ticket in a **YAML front-matter block** at the top
+of the file. The block carries the semantic fields — `title`, `objective`,
+`context`, `ticket_type`, `epic_ref`, and the non-empty `acceptance_criteria`
+(≤ 7), `non_goals`, `test_requirements`, `definition_of_done` lists. The
+promoter supplies only mechanical defaults: `source_anchor` defaults to the
+stub's own heading anchor (the stub is in the indexed input set, so this
+resolves at gate 4), `relevant_docs` to `[<stub path>]`, and `tags` /
+`component` / `implementation_notes` / `documentation_requirements` to their
+empty forms. `priority` and `risk_level` are taken from the front-matter if
+present, else the single pinned constants `priority = 50` and
+`risk_level = low` — a fixed mechanical write, never an inferred per-stub
+value. `epic_ref` names the epic the ticket belongs to; when it is an
+existing backlog epic key that the parsed proposal omitted (or emitted
+keyless), the epic is re-stated verbatim from the backlog into the proposal
+so the promotion is self-contained rather than dependent on the model
+re-emitting the epic with its key. An `epic_ref` naming an epic that is in
+neither the proposal nor the backlog is a typed failure, not a silent drop.
+
+Promotion is **fail-closed**: a committed stub whose front-matter block is
+missing or invalid — or whose fields violate the ticket contract — raises a
+typed error at plan time (the same fail-closed posture as an uncommitted
+stub), naming the stub path and the offending field. A committed stub is
+never silently skipped and a malformed ticket is never emitted.
+
+This imposes a **forward coupling**: once promotion is live, *every*
+committed inbox stub MUST carry a valid front-matter block or planning fails
+closed. Today's follow-up producer (pm-engine-and-linear-sync.md, ATLAS-45)
+writes machine stubs with **no** front-matter; committing one of those would
+be a hard, typed stop. The producer follow-on therefore MUST emit the
+front-matter contract above before machine-written stubs can be committed.
+Dedup and retirement are unchanged: a promoted stub is retired to
+`inbox/processed/` on apply (§2.2) and `processed/` is excluded from the
+inbox read, so a promoted, applied stub is never re-read and never yields a
+second `ADD`.
+
 ### 2.2 `atlas apply`
 
 1. Load the most recent `PlanRun` with `status: proposed`.
