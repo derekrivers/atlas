@@ -222,8 +222,22 @@ def test_at5_input_doc_shas_equal_ingested_head_shas(tmp_path: Path) -> None:
 
 # --- follow-up inbox as a separate plan input source (ATLAS-122) ------------
 
+# A committed inbox stub now carries the front-matter promotion contract
+# (ATLAS-146): every committed stub must, or planning fails closed. epic_ref
+# targets the model's new_epic:0 so the fixture repos need no seeded backlog.
 INBOX_STUB = (
-    "<!-- atlas-source-comment-id: c-1 -->\n# Follow-up from ATLAS-9\n\n"
+    "---\n"
+    'title: "Follow-up from ATLAS-9"\n'
+    'objective: "Investigate the retry seam."\n'
+    'context: "Follow-up raised during ATLAS-9 delivery."\n'
+    'ticket_type: "feature"\n'
+    'epic_ref: "new_epic:0"\n'
+    'acceptance_criteria:\n  - "The retry seam is investigated."\n'
+    'non_goals:\n  - "No production behaviour change in this ticket."\n'
+    'test_requirements:\n  - "A test exercises the seam."\n'
+    'definition_of_done:\n  - "Findings are recorded."\n'
+    "---\n"
+    "# Follow-up from ATLAS-9\n\n"
     "Investigate the retry seam.\n"
 )
 INBOX_PATH = "docs/planning/inbox/ATLAS-9-1.md"
@@ -391,3 +405,67 @@ def test_recorded_failure_is_not_loaded_as_proposed(tmp_path: Path) -> None:
     run(repo, database, FakePlannerClient("garbage"))
     # apply (ATLAS-27) loads the latest proposed; a failed run is invisible.
     assert PlanRunRepo(database).latest_proposed() is None
+
+
+# --- deterministic inbox-stub promotion (ATLAS-146) -------------------------
+
+
+def _promoted(database: Database) -> list[dict[str, Any]]:
+    """Tickets in the latest stored proposal whose title is the fixture stub's."""
+    stored = PlanRunRepo(database).list()[0]
+    return [
+        t for t in stored.proposal["tickets"] if t["title"] == "Follow-up from ATLAS-9"
+    ]
+
+
+def test_ac1_committed_stub_is_promoted_to_an_add(tmp_path: Path) -> None:
+    # A committed front-matter stub yields exactly one ADD ticket (key None) in
+    # the proposal, anchored to its declared epic. Red: no injection → 0 found.
+    repo = fixture_repo_with_inbox(tmp_path)
+    database = fresh_db(tmp_path)
+    run(repo, database, FakePlannerClient(proposal_json()))
+
+    promoted = _promoted(database)
+    assert len(promoted) == 1
+    assert promoted[0]["key"] is None
+    assert promoted[0]["epic_ref"] == "new_epic:0"
+    assert promoted[0]["source_anchor"] == f"{INBOX_PATH}#follow-up-from-atlas-9"
+
+
+def test_ac4_a_stub_already_under_processed_is_not_repromoted(tmp_path: Path) -> None:
+    # Dedup by lifecycle: collect_inbox_documents excludes processed/, so a
+    # retired stub is never re-read → no duplicate ADD. Red: promotion reads
+    # processed/ → the stub is promoted again.
+    repo = make_repo(
+        tmp_path,
+        {
+            "PRODUCT.md": PRODUCT_MD,
+            "docs/atlas/plan.md": PLAN_MD,
+            "docs/planning/inbox/processed/ATLAS-9-1.md": INBOX_STUB,
+        },
+    )
+    database = fresh_db(tmp_path)
+    run(repo, database, FakePlannerClient(proposal_json()))
+
+    assert _promoted(database) == []
+
+
+def test_ac6_promotion_adds_no_model_call(tmp_path: Path) -> None:
+    # Promotion is pure code: it injects the ADD without a second generation.
+    # Red: routing promotion through the model would bump the call count.
+    class CountingClient(FakePlannerClient):
+        def __init__(self, canned: str) -> None:
+            super().__init__(canned)
+            self.calls = 0
+
+        def generate(self, prompt: str) -> str:
+            self.calls += 1
+            return super().generate(prompt)
+
+    repo = fixture_repo_with_inbox(tmp_path)
+    database = fresh_db(tmp_path)
+    client = CountingClient(proposal_json())
+    run(repo, database, client)
+
+    assert client.calls == 1  # one generation, none for promotion
+    assert len(_promoted(database)) == 1

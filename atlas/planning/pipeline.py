@@ -46,6 +46,7 @@ from atlas.planning.ingestion import (
     collect_input_documents,
 )
 from atlas.planning.progress import ProgressCallback
+from atlas.planning.promotion import promote_inbox_stubs
 from atlas.planning.proposal import Proposal, ProposalError, parse_proposal
 from atlas.planning.reconciler import (
     DEFAULT_SIMILARITY_THRESHOLD,
@@ -332,6 +333,14 @@ def run_plan(
     except ProposalError as error:
         reason = json.dumps({"stage": "parse", "error": str(error)})
         return _record_failed(database, provenance, now, reason)
+
+    # Deterministic inbox-stub promotion (ATLAS-146): inject one ADD ticket per
+    # committed inbox stub into the parsed proposal before the gates run, so a
+    # promoted ticket is validated and reconciled exactly like a model-emitted
+    # one. Pure code, no model call. A committed stub with missing/invalid
+    # front-matter is a fail-closed StubPromotionError at plan time (like
+    # DirtyInputError), never a silent skip.
+    proposal = promote_inbox_stubs(proposal, inbox_documents, backlog, anchor_index)
 
     # Gates 2-7: a recorded failure carrying the full GateFailure list.
     failures = run_gates(

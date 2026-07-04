@@ -621,3 +621,29 @@ def test_unconfirmable_leaves_inbox_untouched(tmp_path: Path) -> None:
     assert result.outcome == "unconfirmed"
     assert (inbox / "ATLAS-9-1.md").exists()
     assert not (inbox / "processed").exists()
+
+
+# --- deterministic inbox-stub promotion: apply materialises it (ATLAS-146) ---
+
+
+def test_ac2_apply_materialises_the_promoted_ticket(tmp_path: Path) -> None:
+    # AC-2: the promoted ADD becomes a stored ticket with a monotonic key under
+    # its epic, and the stub is retired. Red: no promotion → the fixture ticket
+    # is never stored (the title lookup finds nothing).
+    repo, database = plan_then_with_inbox(tmp_path)
+
+    result = apply(repo, database, planning_dir(tmp_path))
+    assert result.outcome == "applied"
+
+    tickets = TicketRepo(database).list()
+    promoted = [t for t in tickets if t.title == "Follow-up from ATLAS-9"]
+    assert len(promoted) == 1
+    ticket = promoted[0]
+    assert ticket.key is not None and ticket.key.startswith("ATLAS-")
+    # Anchored to the epic the model proposed at new_epic:0.
+    epics = EpicRepo(database).list()
+    assert ticket.epic_id == epics[0].id
+    # The consumed stub is retired by the existing lifecycle (unchanged).
+    inbox = repo / "docs" / "planning" / "inbox"
+    assert not (inbox / "ATLAS-9-1.md").exists()
+    assert (inbox / "processed" / "ATLAS-9-1.md").exists()
