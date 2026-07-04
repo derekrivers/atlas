@@ -13,7 +13,16 @@ from pathlib import Path
 
 import pytest
 from planner_fakes import FAKE_IDENTITY, FakePlannerClient, RaisingPlannerClient
-from test_plan_pipeline import fixture_repo, fresh_db, proposal_json
+from test_apply import _epic_model_kwargs, _seed_counter, _ticket_model_kwargs
+from test_plan_pipeline import (
+    NOW,
+    _epic,
+    _ticket,
+    fixture_repo,
+    fixture_repo_with_inbox,
+    fresh_db,
+    proposal_json,
+)
 
 from atlas.cli import (
     EXIT_OK,
@@ -21,7 +30,9 @@ from atlas.cli import (
     EXIT_RECORDED_FAILURE,
     main,
 )
-from atlas.storage import PlanRunRepo
+from atlas.core.models import Epic, Ticket
+from atlas.planning.pipeline import run_plan
+from atlas.storage import EpicRepo, PlanRunRepo, ProductRepo, TicketRepo
 
 
 def plan_argv(repo: Path) -> list[str]:
@@ -117,6 +128,63 @@ def test_apply_yes_proceeds(tmp_path: Path) -> None:
     code = main(["apply", "--repo", str(repo), "--yes"], database=database)
     assert code == EXIT_OK
     assert (repo / "docs" / "planning" / "tickets.yaml").exists()
+
+
+def test_apply_add_only_threads_and_reports_skips(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # ATLAS-109: `atlas apply --add-only --yes` applies the fixture ADD, skips
+    # MODIFY + PROPOSE_ARCHIVE, leaves the backlog intact, and surfaces the D-3
+    # skip banner at the confirmation gate.
+    repo = fixture_repo_with_inbox(tmp_path)
+    database = fresh_db(tmp_path)
+    product = ProductRepo(database).get_by_key("ATLAS")
+    assert product is not None
+    epic = Epic(**_epic_model_kwargs(product.id, key="ATLAS-E1"))
+    EpicRepo(database).add(epic)
+    modify_me = Ticket(**_ticket_model_kwargs(product.id, epic.id, key="ATLAS-1"))
+    archive_me = Ticket(
+        **(
+            _ticket_model_kwargs(product.id, epic.id, key="ATLAS-2")
+            | {"title": "Legacy thing", "source_anchor": "docs/atlas/plan.md#legacy"}
+        )
+    )
+    TicketRepo(database).add(modify_me)
+    TicketRepo(database).add(archive_me)
+    _seed_counter(database, tickets=2, epics=1)
+    original_title = modify_me.title
+    proposal = proposal_json(
+        epics=[
+            _epic(
+                title="Follow-up epic",
+                objective="home for the stub.",
+                source_anchor="docs/atlas/plan.md#backlog",
+            ),
+            _epic(key="ATLAS-E1"),
+        ],
+        tickets=[_ticket(key="ATLAS-1", epic_ref="ATLAS-E1", title="Restated")],
+    )
+    run_plan(
+        repo_root=repo,
+        database=database,
+        client=FakePlannerClient(proposal),
+        identity=FAKE_IDENTITY,
+        now=NOW,
+    )
+
+    code = main(
+        ["apply", "--repo", str(repo), "--yes", "--add-only"], database=database
+    )
+
+    assert code == EXIT_OK
+    out = capsys.readouterr().out
+    # D-3: the gate names what add-only declined.
+    assert "Add-only: skipping 1 MODIFY and 1 PROPOSE_ARCHIVE" in out
+    tickets = {t.key: t for t in TicketRepo(database).list()}
+    # Fixture ADD minted; existing MODIFY/ARCHIVE tickets intact (not applied).
+    assert any(t.title == "Follow-up from ATLAS-9" for t in tickets.values())
+    assert tickets["ATLAS-1"].title == original_title
+    assert "ATLAS-2" in tickets
 
 
 def test_apply_without_tty_or_yes_refuses(

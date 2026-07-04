@@ -18,6 +18,15 @@ items are excluded from the renders; a diff containing MODIFY or CONFLICT
 entries is refused (MODIFY is a follow-up; CONFLICT is AT-4 — a diff
 touching a frozen ticket is not applied).
 
+Add-only (ATLAS-109, opt-in via ``add_only``, default OFF): applies ADD
+entries only. MODIFY entries are skipped rather than refused, and
+PROPOSE_ARCHIVE entries are skipped rather than removed — so the render set
+keeps the full current backlog plus the new ADDs, with no removals (a
+partial re-plan must never archive real tickets). CONFLICT still refuses
+(AT-4, flag or no flag). With the flag absent every path above is
+byte-for-byte unchanged. The skipped MODIFY/PROPOSE_ARCHIVE entries are
+reported on ``ApplyResult`` so the operator sees what add-only declined.
+
 Graph validation (ATLAS-40): before the commit seam, apply projects the
 post-apply backlog and runs validate_graph; a typed GraphValidationError
 refuses the apply with nothing written (DB rolled back implicitly — it has
@@ -65,6 +74,7 @@ from atlas.planning.reconciler import (
     MODIFY,
     PROPOSE_ARCHIVE,
     Backlog,
+    DiffEntry,
     PlanDiff,
     reconcile,
 )
@@ -121,6 +131,25 @@ class ApplyResult:
     outcome: str  # "applied" | "rejected" | "unconfirmed"
     plan_run: PlanRun
     diff: PlanDiff
+    # Add-only (ATLAS-109, D-3): the result names what add-only declined so a
+    # backlog-diverging re-plan is loud, never silent. Empty on the default
+    # path — MODIFY there refuses before a result is built, so a non-add-only
+    # result never carries skips.
+    add_only: bool = False
+
+    @property
+    def skipped_modify(self) -> tuple[DiffEntry, ...]:
+        """MODIFY entries add-only skipped (not applied); () unless add-only."""
+        if not self.add_only:
+            return ()
+        return tuple(e for e in self.diff.entries if e.entry_type == MODIFY)
+
+    @property
+    def skipped_archive(self) -> tuple[DiffEntry, ...]:
+        """PROPOSE_ARCHIVE entries add-only skipped (not removed)."""
+        if not self.add_only:
+            return ()
+        return tuple(e for e in self.diff.entries if e.entry_type == PROPOSE_ARCHIVE)
 
 
 def _planning_dir(repo_root: Path, planning_dir: Path | None) -> Path:
@@ -298,9 +327,16 @@ def run_apply(
     confirm: Callable[[PlanDiff], ApplyDecision],
     planning_dir: Path | None = None,
     inbox_dir: Path = DEFAULT_INBOX_DIR,
+    add_only: bool = False,
 ) -> ApplyResult:
     """Run the §2.2 apply sequence once. ``confirm`` receives the diff and
-    returns the operator's decision; no write happens before CONFIRMED."""
+    returns the operator's decision; no write happens before CONFIRMED.
+
+    ``add_only`` (ATLAS-109, opt-in, default OFF) applies ADD entries only:
+    MODIFY entries are skipped instead of refused, PROPOSE_ARCHIVE entries are
+    skipped instead of removed (the render set keeps the full backlog), and
+    CONFLICT still refuses. With the flag absent this is byte-for-byte the
+    default apply, MODIFY refusal included."""
     target_dir = _planning_dir(repo_root, planning_dir)
     _recover_pending_renders(target_dir, database)
 
@@ -343,7 +379,9 @@ def run_apply(
     )
 
     # Refuse diffs this ticket does not apply (operator ruling, AT-4).
-    if any(entry.entry_type == MODIFY for entry in diff.entries):
+    # Add-only skips MODIFY (D-2) rather than refusing it; the CONFLICT refusal
+    # below stays unconditional either way (AT-4).
+    if not add_only and any(entry.entry_type == MODIFY for entry in diff.entries):
         raise UnsupportedDiffError(
             "the diff contains MODIFY entries; MODIFY application is a "
             "follow-up (ATLAS-27 applies ADD/PROPOSE_ARCHIVE; CONFLICT is "
@@ -385,8 +423,10 @@ def run_apply(
     )
 
     # Full render set = current backlog minus archived, plus the new items.
-    archived_epics = _archived_keys(diff, "epic")
-    archived_tickets = _archived_keys(diff, "ticket")
+    # Add-only skips PROPOSE_ARCHIVE (D-2): the archived sets are empty, so no
+    # existing ticket is removed — a partial re-plan never archives real work.
+    archived_epics = set() if add_only else _archived_keys(diff, "epic")
+    archived_tickets = set() if add_only else _archived_keys(diff, "ticket")
     render_epics = [
         epic for epic in current_epics if epic.key not in archived_epics
     ] + new_epics
@@ -450,4 +490,4 @@ def run_apply(
     assert applied is not None
     # Retire the inbox stubs that fed this plan, post-commit (ATLAS-122).
     _retire_inbox_stubs(repo_root, inbox_dir, plan_run)
-    return ApplyResult("applied", applied, diff)
+    return ApplyResult("applied", applied, diff, add_only=add_only)

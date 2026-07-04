@@ -9,6 +9,7 @@ pipeline (so the proposal is persisted exactly as production does).
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -39,6 +40,7 @@ from atlas.core.yaml_io import parse_document
 from atlas.dependencies import DanglingTargetError, GraphValidationFailed
 from atlas.planning.apply import (
     ApplyDecision,
+    ApplyResult,
     ConflictRefusalError,
     NoProposedPlanError,
     StalePlanError,
@@ -87,13 +89,20 @@ def plan_then(tmp_path: Path, proposal: str | None = None) -> tuple[Path, Databa
     return repo, database
 
 
-def apply(repo: Path, database: Database, pdir: Path, confirm=confirmed):  # type: ignore[no-untyped-def]
+def apply(
+    repo: Path,
+    database: Database,
+    pdir: Path,
+    confirm: Callable[[Any], ApplyDecision] = confirmed,
+    add_only: bool = False,
+) -> ApplyResult:
     return run_apply(
         repo_root=repo,
         database=database,
         now=APPLY_NOW,
         confirm=confirm,
         planning_dir=pdir,
+        add_only=add_only,
     )
 
 
@@ -647,3 +656,320 @@ def test_ac2_apply_materialises_the_promoted_ticket(tmp_path: Path) -> None:
     inbox = repo / "docs" / "planning" / "inbox"
     assert not (inbox / "ATLAS-9-1.md").exists()
     assert (inbox / "processed" / "ATLAS-9-1.md").exists()
+
+
+# --- ATLAS-109: add-only apply (skip MODIFY / PROPOSE_ARCHIVE) ---------------
+
+
+def _seed_counter(database: Database, *, tickets: int = 0, epics: int = 0) -> None:
+    """Advance the key counter to match a directly-seeded backlog, so a new ADD
+    mints the next free key instead of colliding with a seeded one."""
+    with database.session() as session:
+        if tickets:
+            KeyCounterRepo(database).reserve(session, "ATLAS", tickets)
+        if epics:
+            KeyCounterRepo(database).reserve(session, "ATLAS-E", epics)
+        session.commit()
+
+
+def test_ac1_add_only_applies_add_and_skips_modify(tmp_path: Path) -> None:
+    # AC-1: a MODIFY + ADD diff under add_only raises no UnsupportedDiffError,
+    # materialises the ADD, and leaves the existing ticket byte-unchanged.
+    # Red (pre-bypass): the MODIFY refusal raises before anything applies.
+    repo = fixture_repo(tmp_path)
+    database = fresh_db(tmp_path)
+    product = ProductRepo(database).get_by_key("ATLAS")
+    assert product is not None
+    epic = Epic(**_epic_model_kwargs(product.id, key="ATLAS-E1"))
+    EpicRepo(database).add(epic)
+    existing = Ticket(**_ticket_model_kwargs(product.id, epic.id, key="ATLAS-1"))
+    TicketRepo(database).add(existing)
+    _seed_counter(database, tickets=1, epics=1)
+    original_title = existing.title
+    proposal = {
+        "epics": [_epic(key="ATLAS-E1")],
+        "tickets": [
+            _ticket(key="ATLAS-1", epic_ref="ATLAS-E1", title="Restated"),  # MODIFY
+            _ticket(
+                epic_ref="ATLAS-E1",
+                title="Brand new capability",
+                objective="new work.",
+                source_anchor="docs/atlas/plan.md#new",
+            ),  # ADD
+        ],
+        "dependencies": [],
+        "planner_notes": [],
+    }
+    _add_proposed_plan_run(database, repo, product.id, proposal)
+
+    result = apply(repo, database, planning_dir(tmp_path), add_only=True)
+
+    assert result.outcome == "applied"
+    tickets = {t.key: t for t in TicketRepo(database).list()}
+    # The ADD minted at the next counter key.
+    assert "ATLAS-2" in tickets
+    assert tickets["ATLAS-2"].title == "Brand new capability"
+    # The MODIFY was skipped: the existing ticket is byte-unchanged.
+    assert tickets["ATLAS-1"].title == original_title
+
+
+def test_ac2_add_only_skips_propose_archive(tmp_path: Path) -> None:
+    # AC-2: an existing ticket the proposal omits (PROPOSE_ARCHIVE) survives in
+    # BOTH the store and the render after an add-only apply — no removals.
+    # Red: default apply drops the omitted ticket from the render set.
+    repo = fixture_repo(tmp_path)
+    database = fresh_db(tmp_path)
+    product = ProductRepo(database).get_by_key("ATLAS")
+    assert product is not None
+    epic = Epic(**_epic_model_kwargs(product.id, key="ATLAS-E1"))
+    EpicRepo(database).add(epic)
+    keep = Ticket(**_ticket_model_kwargs(product.id, epic.id, key="ATLAS-1"))
+    omitted = Ticket(
+        **(
+            _ticket_model_kwargs(product.id, epic.id, key="ATLAS-2")
+            | {"title": "Legacy thing", "source_anchor": "docs/atlas/plan.md#legacy"}
+        )
+    )
+    TicketRepo(database).add(keep)
+    TicketRepo(database).add(omitted)
+    _seed_counter(database, tickets=2, epics=1)
+    proposal = {
+        "epics": [_epic(key="ATLAS-E1")],
+        "tickets": [
+            _ticket(key="ATLAS-1", epic_ref="ATLAS-E1"),  # echoed unchanged
+            _ticket(
+                epic_ref="ATLAS-E1",
+                title="Brand new capability",
+                objective="new work.",
+                source_anchor="docs/atlas/plan.md#new",
+            ),  # ADD
+        ],  # ATLAS-2 omitted -> PROPOSE_ARCHIVE
+        "dependencies": [],
+        "planner_notes": [],
+    }
+    _add_proposed_plan_run(database, repo, product.id, proposal)
+    pdir = planning_dir(tmp_path)
+
+    result = apply(repo, database, pdir, add_only=True)
+
+    assert result.outcome == "applied"
+    # Present in the store...
+    assert "ATLAS-2" in {t.key for t in TicketRepo(database).list()}
+    # ...and in the render (add-only removes nothing).
+    rendered = parse_document(Ticket, (pdir / "tickets.yaml").read_text(), "tickets")
+    assert "ATLAS-2" in {t.key for t in rendered}
+
+
+def test_ac3_add_only_still_refuses_conflict(tmp_path: Path) -> None:
+    # AC-3: a CONFLICT entry refuses even under add_only (AT-4).
+    # Red: seed `assert 1 == 2` in the CONFLICT branch and watch it bite.
+    repo = fixture_repo(tmp_path)
+    database = fresh_db(tmp_path)
+    product = ProductRepo(database).get_by_key("ATLAS")
+    assert product is not None
+    epic = Epic(**_epic_model_kwargs(product.id, key="ATLAS-E1"))
+    EpicRepo(database).add(epic)
+    frozen = Ticket(
+        **(
+            _ticket_model_kwargs(product.id, epic.id, key="ATLAS-1")
+            | {"status": "in_progress"}
+        )
+    )
+    TicketRepo(database).add(frozen)
+    proposal = {
+        "epics": [_epic(key="ATLAS-E1")],
+        "tickets": [_ticket(key="ATLAS-1", epic_ref="ATLAS-E1", title="Renamed")],
+        "dependencies": [],
+        "planner_notes": [],
+    }
+    _add_proposed_plan_run(database, repo, product.id, proposal)
+
+    with pytest.raises(ConflictRefusalError, match="ATLAS-1"):
+        apply(repo, database, planning_dir(tmp_path), add_only=True)
+
+
+def test_ac4_default_path_still_refuses_modify(tmp_path: Path) -> None:
+    # AC-4: with add_only=False (the default) a MODIFY diff still refuses.
+    # The default apply contract does not move.
+    repo = fixture_repo(tmp_path)
+    database = fresh_db(tmp_path)
+    product = ProductRepo(database).get_by_key("ATLAS")
+    assert product is not None
+    epic = Epic(**_epic_model_kwargs(product.id, key="ATLAS-E1"))
+    EpicRepo(database).add(epic)
+    TicketRepo(database).add(
+        Ticket(**_ticket_model_kwargs(product.id, epic.id, key="ATLAS-1"))
+    )
+    proposal = {
+        "epics": [_epic(key="ATLAS-E1")],
+        "tickets": [_ticket(key="ATLAS-1", epic_ref="ATLAS-E1", title="Renamed")],
+        "dependencies": [],
+        "planner_notes": [],
+    }
+    _add_proposed_plan_run(database, repo, product.id, proposal)
+
+    with pytest.raises(UnsupportedDiffError):
+        apply(repo, database, planning_dir(tmp_path), add_only=False)
+
+
+def test_ac5_add_only_reports_skips(tmp_path: Path) -> None:
+    # AC-5: the apply result names the skipped MODIFY and PROPOSE_ARCHIVE
+    # entries. Red: the skip properties are absent (AttributeError) before D-3.
+    repo = fixture_repo(tmp_path)
+    database = fresh_db(tmp_path)
+    product = ProductRepo(database).get_by_key("ATLAS")
+    assert product is not None
+    epic = Epic(**_epic_model_kwargs(product.id, key="ATLAS-E1"))
+    EpicRepo(database).add(epic)
+    TicketRepo(database).add(
+        Ticket(**_ticket_model_kwargs(product.id, epic.id, key="ATLAS-1"))
+    )
+    TicketRepo(database).add(
+        Ticket(
+            **(
+                _ticket_model_kwargs(product.id, epic.id, key="ATLAS-2")
+                | {
+                    "title": "Legacy thing",
+                    "source_anchor": "docs/atlas/plan.md#legacy",
+                }
+            )
+        )
+    )
+    _seed_counter(database, tickets=2, epics=1)
+    proposal = {
+        "epics": [_epic(key="ATLAS-E1")],
+        "tickets": [
+            _ticket(key="ATLAS-1", epic_ref="ATLAS-E1", title="Restated"),  # MODIFY
+            _ticket(
+                epic_ref="ATLAS-E1",
+                title="Brand new capability",
+                objective="new work.",
+                source_anchor="docs/atlas/plan.md#new",
+            ),  # ADD
+        ],  # ATLAS-2 omitted -> PROPOSE_ARCHIVE
+        "dependencies": [],
+        "planner_notes": [],
+    }
+    _add_proposed_plan_run(database, repo, product.id, proposal)
+
+    result = apply(repo, database, planning_dir(tmp_path), add_only=True)
+
+    assert result.outcome == "applied"
+    assert {e.identity for e in result.skipped_modify} == {"ATLAS-1"}
+    assert {e.identity for e in result.skipped_archive} == {"ATLAS-2"}
+
+
+def test_ac6_add_only_preserves_the_human_gate(tmp_path: Path) -> None:
+    # AC-6: add-only still calls confirm; a REJECTED decision persists nothing.
+    # Red: seed `assert 1 == 2` on the "nothing persisted" checks.
+    repo = fixture_repo(tmp_path)
+    database = fresh_db(tmp_path)
+    product = ProductRepo(database).get_by_key("ATLAS")
+    assert product is not None
+    epic = Epic(**_epic_model_kwargs(product.id, key="ATLAS-E1"))
+    EpicRepo(database).add(epic)
+    TicketRepo(database).add(
+        Ticket(**_ticket_model_kwargs(product.id, epic.id, key="ATLAS-1"))
+    )
+    _seed_counter(database, tickets=1, epics=1)
+    proposal = {
+        "epics": [_epic(key="ATLAS-E1")],
+        "tickets": [
+            _ticket(key="ATLAS-1", epic_ref="ATLAS-E1", title="Restated"),  # MODIFY
+            _ticket(
+                epic_ref="ATLAS-E1",
+                title="Brand new capability",
+                objective="new work.",
+                source_anchor="docs/atlas/plan.md#new",
+            ),  # ADD
+        ],
+        "dependencies": [],
+        "planner_notes": [],
+    }
+    _add_proposed_plan_run(database, repo, product.id, proposal)
+    confirm_calls = 0
+
+    def spy(diff: object) -> ApplyDecision:
+        nonlocal confirm_calls
+        confirm_calls += 1
+        return ApplyDecision.REJECTED
+
+    pdir = planning_dir(tmp_path)
+    result = apply(repo, database, pdir, confirm=spy, add_only=True)
+
+    assert confirm_calls == 1  # the gate was consulted
+    assert result.outcome == "rejected"
+    # No ADD minted, no renders: nothing persisted before CONFIRMED.
+    assert {t.key for t in TicketRepo(database).list()} == {"ATLAS-1"}
+    assert not pdir.exists() or not list(pdir.iterdir())
+
+
+def test_ac7_smoke_unblock_partial_replan_add_only(tmp_path: Path) -> None:
+    # AC-7 (integration, Smoke B Phase 1): a re-plan of a populated store with a
+    # promoted inbox stub yields M MODIFY + A PROPOSE_ARCHIVE + one fixture ADD.
+    # --add-only mints exactly the fixture ADD (next counter key), retires its
+    # inbox stub, and leaves the M+A existing tickets intact in store and render.
+    # Red: without the MODIFY bypass, apply refuses and the fixture never mints.
+    repo = fixture_repo_with_inbox(tmp_path)
+    database = fresh_db(tmp_path)
+    product = ProductRepo(database).get_by_key("ATLAS")
+    assert product is not None
+    epic = Epic(**_epic_model_kwargs(product.id, key="ATLAS-E1"))
+    EpicRepo(database).add(epic)
+    modify_me = Ticket(**_ticket_model_kwargs(product.id, epic.id, key="ATLAS-1"))
+    archive_me = Ticket(
+        **(
+            _ticket_model_kwargs(product.id, epic.id, key="ATLAS-2")
+            | {"title": "Legacy thing", "source_anchor": "docs/atlas/plan.md#legacy"}
+        )
+    )
+    TicketRepo(database).add(modify_me)
+    TicketRepo(database).add(archive_me)
+    _seed_counter(database, tickets=2, epics=1)
+    original_title = modify_me.title
+    # A new epic at new_epic:0 (the stub's home), the existing epic echoed, and
+    # ATLAS-1 restated (MODIFY); ATLAS-2 omitted (PROPOSE_ARCHIVE). The pipeline
+    # appends the committed inbox stub as the fixture ADD (epic_ref new_epic:0).
+    proposal = proposal_json(
+        epics=[
+            _epic(
+                title="Follow-up epic",
+                objective="home for the stub.",
+                source_anchor="docs/atlas/plan.md#backlog",
+            ),
+            _epic(key="ATLAS-E1"),
+        ],
+        tickets=[_ticket(key="ATLAS-1", epic_ref="ATLAS-E1", title="Restated")],
+    )
+    run_plan(
+        repo_root=repo,
+        database=database,
+        client=FakePlannerClient(proposal),
+        identity=FAKE_IDENTITY,
+        now=NOW,
+    )
+    pdir = planning_dir(tmp_path)
+
+    result = apply(repo, database, pdir, add_only=True)
+
+    assert result.outcome == "applied"
+    tickets = {t.key: t for t in TicketRepo(database).list()}
+    # Exactly the fixture ADD minted, at the next counter key.
+    promoted = [t for t in tickets.values() if t.title == "Follow-up from ATLAS-9"]
+    assert len(promoted) == 1
+    assert promoted[0].key == "ATLAS-3"
+    # The M+A existing tickets are intact (skipped, not applied/archived).
+    assert tickets["ATLAS-1"].title == original_title
+    assert "ATLAS-2" in tickets
+    rendered = {
+        t.key
+        for t in parse_document(Ticket, (pdir / "tickets.yaml").read_text(), "tickets")
+    }
+    assert {"ATLAS-1", "ATLAS-2", "ATLAS-3"} <= rendered
+    # The consumed inbox stub is retired.
+    inbox = repo / "docs" / "planning" / "inbox"
+    assert not (inbox / "ATLAS-9-1.md").exists()
+    assert (inbox / "processed" / "ATLAS-9-1.md").exists()
+    # Skips reported (D-3): exactly the one MODIFY and the one PROPOSE_ARCHIVE.
+    assert {e.identity for e in result.skipped_modify} == {"ATLAS-1"}
+    assert {e.identity for e in result.skipped_archive} == {"ATLAS-2"}

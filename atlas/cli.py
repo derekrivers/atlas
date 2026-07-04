@@ -291,6 +291,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="pre-confirm the apply (non-interactive); without it apply prompts",
     )
+    apply.add_argument(
+        "--add-only",
+        action="store_true",
+        help="apply ADD entries only; skip MODIFY and PROPOSE_ARCHIVE entries "
+        "(CONFLICT still refuses). Leaves the existing backlog untouched.",
+    )
     apply.add_argument("--db", default=None, help="database URL")
     apply.add_argument(
         "--repo",
@@ -604,13 +610,27 @@ def _add_confirm_parser(subcommands: argparse._SubParsersAction) -> None:  # typ
     confirm.add_argument("--db", default=None, help="database URL")
 
 
-def _make_confirm(assume_yes: bool) -> Callable[[PlanDiff], ApplyDecision]:
+def _make_confirm(
+    assume_yes: bool, add_only: bool = False
+) -> Callable[[PlanDiff], ApplyDecision]:
     """Confirmation policy (operator ruling): --yes pre-confirms; otherwise
     an interactive y/N prompt; with neither a TTY nor --yes, refuse rather
-    than assume consent."""
+    than assume consent.
+
+    In add-only mode (ATLAS-109, D-3) the gate additionally surfaces which
+    entries add-only will decline, so the operator sees a backlog-diverging
+    re-plan before confirming — the skip is never silent."""
 
     def confirm(diff: PlanDiff) -> ApplyDecision:
         print(format_plan_diff(diff))
+        if add_only:
+            counts = diff.counts
+            print(
+                f"Add-only: skipping {counts['MODIFY']} MODIFY and "
+                f"{counts['PROPOSE_ARCHIVE']} PROPOSE_ARCHIVE entr"
+                f"{'y' if counts['MODIFY'] + counts['PROPOSE_ARCHIVE'] == 1 else 'ies'}"
+                "; the existing backlog is left untouched."
+            )
         if assume_yes:
             return ApplyDecision.CONFIRMED
         if not sys.stdin.isatty():
@@ -632,7 +652,8 @@ def _apply_command(args: argparse.Namespace, *, database: Database | None) -> in
             repo_root=Path(args.repo).resolve(),
             database=resolved_db,
             now=datetime.now(UTC),
-            confirm=_make_confirm(args.yes),
+            confirm=_make_confirm(args.yes, args.add_only),
+            add_only=args.add_only,
         )
     except (DirtyInputError, ApplyError) as error:
         print(error, file=sys.stderr)
