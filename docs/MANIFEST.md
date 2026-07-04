@@ -116,6 +116,9 @@ Runbooks (`docs/runbooks/`):
 - `docs/runbooks/review-doctrine.md` — review contract for gate
   presentations and completion reports (gate and close checklists,
   verdict forms, reviewer conduct)
+- `docs/runbooks/reviewer-session.md` — how a reviewer session runs end
+  to end (the *how*; companion to review-doctrine.md, which defines the
+  *what*)
 - `docs/runbooks/running-atlas-plan.md` — operator runbook for the
   plan/apply workflow: prerequisites, the commands and their exit
   codes, every failure mode, the capacity boundary, and provenance
