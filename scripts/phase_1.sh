@@ -145,11 +145,16 @@ uv run atlas apply --add-only --repo . "${DB_FLAG[@]}"
 case $? in
   0) echo "Applied." ;;
   1) die "operator rejected the plan at the gate — PlanRun rejected; nothing minted" ;;
-  *) die "apply refused (precondition). A CONFLICT now refuses ONLY on an identity
-or similarity ambiguity — a duplicate echoed key, or the fixture ADD ambiguously
-matching an existing ticket (>=0.85). Frozen-source conflicts from re-stated DONE
-tickets are skipped, not refused. Inspect the named conflict: it is a real
-matching ambiguity, not the DONE-backlog wall." ;;
+  *) die "apply refused (precondition, exit 2) — the PlanRun stays 'proposed' and
+the fixture stub stays in docs/planning/inbox/ (nothing minted, nothing retired);
+re-run after resolving. Two precondition families fire here:
+  1. identity/similarity CONFLICT — a duplicate echoed key, or the fixture ADD
+     ambiguously matching an existing ticket (>=0.85). Frozen-source conflicts
+     from re-stated DONE tickets are skipped, not refused; a fired conflict is a
+     real matching ambiguity, not the DONE-backlog wall.
+  2. graph validation failure — the projected post-apply graph is invalid (e.g.
+     a dependency cycle). Read the 'graph validation failed:' violations printed
+     above." ;;
 esac
 
 # --- extract the minted key(s) --------------------------------------------------

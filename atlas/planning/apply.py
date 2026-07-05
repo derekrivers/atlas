@@ -107,6 +107,23 @@ DEFAULT_INBOX_DIR = Path("docs/planning/inbox")
 _PROCESSED_SUBDIR = "processed"
 
 
+def is_existing_dependency_add(entry: DiffEntry) -> bool:
+    """A dependency ADD whose identity has BOTH endpoints as real keys — an
+    existing↔existing edge (ATLAS-111, D-1).
+
+    In add-only such an edge rewires the existing graph and its readiness
+    computation, which "touch nothing existing" must forbid, so it is skipped.
+    An endpoint of the form ``new:<idx>`` is a genuinely new ADD ticket, so the
+    edge is fixture-incident (it wires the fixture into the graph — its job) and
+    still applies. The test reads the RAW identity endpoints: the reconciler has
+    already rewritten matched refs to real keys via ``resolve_ticket_ref``
+    (reconciler.py:570), so no matching is re-derived here."""
+    if entry.kind != "dependency" or entry.entry_type != ADD:
+        return False
+    source_ref, _, target_ref = entry.identity.partition(" -> ")
+    return not (source_ref.startswith("new:") or target_ref.startswith("new:"))
+
+
 class ApplyError(RuntimeError):
     """Base for clean-exit apply refusals (no writes)."""
 
@@ -173,6 +190,18 @@ class ApplyResult:
             if e.entry_type == CONFLICT and e.would_have_been is not None
         )
 
+    @property
+    def skipped_dependency(self) -> tuple[DiffEntry, ...]:
+        """Existing↔existing dependency ADDs add-only skipped (ATLAS-111,
+        D-1/D-2): a dependency ADD whose identity has both endpoints as real
+        keys — it would rewire the existing graph. () unless add-only. A
+        fixture-incident edge (a ``new:<idx>`` endpoint) materialises, so it
+        never appears here. Same discriminator as ``_materialise``'s scope,
+        via ``is_existing_dependency_add`` — loud, never silent (D-2)."""
+        if not self.add_only:
+            return ()
+        return tuple(e for e in self.diff.entries if is_existing_dependency_add(e))
+
 
 def _planning_dir(repo_root: Path, planning_dir: Path | None) -> Path:
     return planning_dir if planning_dir is not None else repo_root / "docs" / "planning"
@@ -213,8 +242,15 @@ def _materialise(
     current_epics: list[Epic],
     current_tickets: list[Ticket],
     now: datetime,
+    add_only: bool = False,
 ) -> tuple[list[Epic], list[Ticket], list[TicketDependency]]:
-    """Build the new (ADD) entities with assigned keys and resolved refs."""
+    """Build the new (ADD) entities with assigned keys and resolved refs.
+
+    In add-only (ATLAS-111, D-1) an existing↔existing dependency ADD is excluded
+    from ``new_dependencies``: it is neither materialised nor rendered
+    (``render_deps`` picks the scope up for free), so a hallucinated edge between
+    two existing tickets never rewires the existing graph. Fixture-incident edges
+    (a ``new:<idx>`` endpoint) still materialise."""
     epic_id_by_key = {epic.key: epic.id for epic in current_epics}
     ticket_id_by_key = {ticket.key: ticket.id for ticket in current_tickets}
 
@@ -286,6 +322,8 @@ def _materialise(
     new_dependencies: list[TicketDependency] = []
     for entry in diff.entries:
         if entry.kind == "dependency" and entry.entry_type == ADD:
+            if add_only and is_existing_dependency_add(entry):
+                continue  # existing↔existing edge: add-only must not rewire (D-1)
             source_ref, _, target_ref = entry.identity.partition(" -> ")
             new_dependencies.append(
                 TicketDependency(
@@ -459,6 +497,7 @@ def run_apply(
         current_epics=current_epics,
         current_tickets=current_tickets,
         now=now,
+        add_only=add_only,
     )
 
     # Full render set = current backlog minus archived, plus the new items.

@@ -1301,3 +1301,235 @@ def test_atlas110_ac7_smoke_unblock_replan_over_done_backlog(
         for t in parse_document(Ticket, (pdir / "tickets.yaml").read_text(), "tickets")
     }
     assert {"ATLAS-1", "ATLAS-2", "ATLAS-3"} <= rendered
+
+
+# --- ATLAS-111: add-only scopes dependency ADDs by endpoint -------------------
+
+
+def _seed_two_existing_tickets(
+    database: Database, product_id: object, epic_id: object
+) -> tuple[Ticket, Ticket]:
+    """ATLAS-1 and ATLAS-2, both PLANNED (non-frozen): a hallucinated edge
+    between them is an existing↔existing dependency, not a frozen-source
+    CONFLICT (ATLAS-110's case) and not a fixture-incident edge."""
+    one = Ticket(**_ticket_model_kwargs(product_id, epic_id, key="ATLAS-1"))
+    two = Ticket(
+        **(
+            _ticket_model_kwargs(product_id, epic_id, key="ATLAS-2")
+            | {"title": "Second existing", "source_anchor": "docs/atlas/plan.md#two"}
+        )
+    )
+    TicketRepo(database).add(one)
+    TicketRepo(database).add(two)
+    return one, two
+
+
+_NEW_ADD_TICKET = {
+    "epic_ref": "ATLAS-E1",
+    "title": "Brand new capability",
+    "objective": "new work.",
+    "source_anchor": "docs/atlas/plan.md#new",
+}
+
+
+def test_ac1_add_only_skips_existing_to_existing_dependency_add(
+    tmp_path: Path,
+) -> None:
+    # AC-1 (the silent-mutation hole): a proposal hallucinates an ACYCLIC edge
+    # between two existing non-frozen tickets, alongside one ADD ticket. add-only
+    # mints the ticket but must NOT persist or render the edge — it would rewire
+    # the existing graph. The acyclic case is the whole point: validate_graph
+    # never fires, so pre-ATLAS-111 the edge applied SILENTLY.
+    repo = fixture_repo(tmp_path)
+    database = fresh_db(tmp_path)
+    product = ProductRepo(database).get_by_key("ATLAS")
+    assert product is not None
+    epic = Epic(**_epic_model_kwargs(product.id, key="ATLAS-E1"))
+    EpicRepo(database).add(epic)
+    _seed_two_existing_tickets(database, product.id, epic.id)
+    _seed_counter(database, tickets=2, epics=1)
+    proposal = {
+        "epics": [_epic(key="ATLAS-E1")],
+        "tickets": [_ticket(**_NEW_ADD_TICKET)],  # ADD -> new:0
+        "dependencies": [
+            {
+                "source": "ATLAS-1",
+                "target": "ATLAS-2",  # acyclic existing↔existing edge
+                "dependency_type": "depends_on",
+                "reason": "Hallucinated ordering.",
+            }
+        ],
+        "planner_notes": [],
+    }
+    _add_proposed_plan_run(database, repo, product.id, proposal)
+
+    pdir = planning_dir(tmp_path)
+    result = apply(repo, database, pdir, add_only=True)
+
+    assert result.outcome == "applied"
+    # The ADD ticket minted at the next counter key...
+    tickets = {t.key: t for t in TicketRepo(database).list()}
+    assert tickets["ATLAS-3"].title == "Brand new capability"
+    # ...but the existing↔existing edge is neither persisted nor rendered.
+    assert TicketDependencyRepo(database).list() == []
+    rendered_deps = parse_document(
+        TicketDependency, (pdir / "dependencies.yaml").read_text(), "dependencies"
+    )
+    assert rendered_deps == []
+    # AC-5: the skipped edge is reported on the result.
+    assert {e.identity for e in result.skipped_dependency} == {"ATLAS-1 -> ATLAS-2"}
+
+
+@pytest.mark.parametrize(
+    ("edge_source", "edge_target"),
+    [("new:0", "ATLAS-1"), ("ATLAS-1", "new:0")],
+)
+def test_ac2_add_only_applies_fixture_incident_dependency(
+    tmp_path: Path, edge_source: str, edge_target: str
+) -> None:
+    # AC-2: an edge with a new:<idx> endpoint wires the fixture into the graph —
+    # that IS the dep-ADD's job — so add-only still materialises it, with the
+    # correct endpoint ids resolved. Non-vacuity: over-scoping the skip to ALL
+    # dep ADDs drops this edge and this test goes red (shown in review).
+    repo = fixture_repo(tmp_path)
+    database = fresh_db(tmp_path)
+    product = ProductRepo(database).get_by_key("ATLAS")
+    assert product is not None
+    epic = Epic(**_epic_model_kwargs(product.id, key="ATLAS-E1"))
+    EpicRepo(database).add(epic)
+    existing = Ticket(**_ticket_model_kwargs(product.id, epic.id, key="ATLAS-1"))
+    TicketRepo(database).add(existing)
+    _seed_counter(database, tickets=1, epics=1)
+    proposal = {
+        "epics": [_epic(key="ATLAS-E1")],
+        "tickets": [_ticket(**_NEW_ADD_TICKET)],  # ADD -> new:0 -> ATLAS-2
+        "dependencies": [
+            {
+                "source": edge_source,
+                "target": edge_target,
+                "dependency_type": "depends_on",
+                "reason": "Fixture wired into the graph.",
+            }
+        ],
+        "planner_notes": [],
+    }
+    _add_proposed_plan_run(database, repo, product.id, proposal)
+
+    result = apply(repo, database, planning_dir(tmp_path), add_only=True)
+
+    assert result.outcome == "applied"
+    new_ticket = {t.key: t for t in TicketRepo(database).list()}["ATLAS-2"]
+    deps = TicketDependencyRepo(database).list()
+    assert len(deps) == 1
+    edge = deps[0]
+    # new:0 -> the minted ticket id; ATLAS-1 -> the existing ticket id.
+    expected_source = new_ticket.id if edge_source == "new:0" else existing.id
+    expected_target = new_ticket.id if edge_target == "new:0" else existing.id
+    assert edge.source_ticket_id == expected_source
+    assert edge.target_entity_id == expected_target
+    # A fixture-incident edge is applied, so it is never a reported skip.
+    assert result.skipped_dependency == ()
+
+
+def test_ac3_add_only_skips_hallucinated_cycle_among_existing(
+    tmp_path: Path,
+) -> None:
+    # AC-3 (the live incident, pinned): a re-plan hallucinates the cycle shape
+    # ATLAS-24 -> ATLAS-23 -> ATLAS-22 -> ATLAS-24 among existing tickets, plus
+    # one ADD. Pre-ATLAS-111 add-only applied all three as ADDs and validate_graph
+    # refused (GraphValidationFailed). Post: all three are existing↔existing and
+    # skipped, so apply succeeds, mints the ticket, persists none of the cycle
+    # edges, and the projected graph validates. Family precedent for the graph
+    # refusal path is test_apply_refuses_invalid_graph_and_writes_nothing (a
+    # dangling-node case); this fixture builds its own cycle from scratch.
+    repo = fixture_repo(tmp_path)
+    database = fresh_db(tmp_path)
+    product = ProductRepo(database).get_by_key("ATLAS")
+    assert product is not None
+    epic = Epic(**_epic_model_kwargs(product.id, key="ATLAS-E1"))
+    EpicRepo(database).add(epic)
+    for n in (22, 23, 24):
+        TicketRepo(database).add(
+            Ticket(
+                **(
+                    _ticket_model_kwargs(product.id, epic.id, key=f"ATLAS-{n}")
+                    | {
+                        "title": f"Existing {n}",
+                        "source_anchor": f"docs/atlas/plan.md#t{n}",
+                    }
+                )
+            )
+        )
+    _seed_counter(database, tickets=24, epics=1)
+    cycle = [
+        ("ATLAS-24", "ATLAS-23"),
+        ("ATLAS-23", "ATLAS-22"),
+        ("ATLAS-22", "ATLAS-24"),
+    ]
+    proposal = {
+        "epics": [_epic(key="ATLAS-E1")],
+        "tickets": [_ticket(**_NEW_ADD_TICKET)],
+        "dependencies": [
+            {
+                "source": s,
+                "target": t,
+                "dependency_type": "depends_on",
+                "reason": "Hallucinated cycle edge.",
+            }
+            for s, t in cycle
+        ],
+        "planner_notes": [],
+    }
+    _add_proposed_plan_run(database, repo, product.id, proposal)
+
+    # Does not raise (pre-ATLAS-111 this raised GraphValidationFailed).
+    result = apply(repo, database, planning_dir(tmp_path), add_only=True)
+
+    assert result.outcome == "applied"
+    tickets = {t.key: t for t in TicketRepo(database).list()}
+    assert tickets["ATLAS-25"].title == "Brand new capability"
+    # None of the cycle edges persisted; the projected graph is valid.
+    assert TicketDependencyRepo(database).list() == []
+    assert {e.identity for e in result.skipped_dependency} == {
+        "ATLAS-24 -> ATLAS-23",
+        "ATLAS-23 -> ATLAS-22",
+        "ATLAS-22 -> ATLAS-24",
+    }
+
+
+def test_ac4_default_mode_refuses_modify_before_dependency_handling(
+    tmp_path: Path,
+) -> None:
+    # AC-4: default (non-add-only) apply is byte-for-byte unchanged. A MODIFY
+    # still raises UnsupportedDiffError BEFORE any dependency handling, so the
+    # new endpoint scoping (add-only-only) never runs on the default path, and
+    # nothing is written or persisted.
+    repo = fixture_repo(tmp_path)
+    database = fresh_db(tmp_path)
+    product = ProductRepo(database).get_by_key("ATLAS")
+    assert product is not None
+    epic = Epic(**_epic_model_kwargs(product.id, key="ATLAS-E1"))
+    EpicRepo(database).add(epic)
+    _seed_two_existing_tickets(database, product.id, epic.id)
+    _seed_counter(database, tickets=2, epics=1)
+    proposal = {
+        "epics": [_epic(key="ATLAS-E1")],
+        "tickets": [
+            _ticket(key="ATLAS-1", epic_ref="ATLAS-E1", title="Restated"),  # MODIFY
+        ],
+        "dependencies": [
+            {
+                "source": "ATLAS-1",
+                "target": "ATLAS-2",
+                "dependency_type": "depends_on",
+                "reason": "An edge that must never be reached.",
+            }
+        ],
+        "planner_notes": [],
+    }
+    _add_proposed_plan_run(database, repo, product.id, proposal)
+
+    with pytest.raises(UnsupportedDiffError):
+        apply(repo, database, planning_dir(tmp_path), add_only=False)
+    assert TicketDependencyRepo(database).list() == []
+    assert not planning_dir(tmp_path).exists()
