@@ -625,10 +625,17 @@ def _make_confirm(
         print(format_plan_diff(diff))
         if add_only:
             counts = diff.counts
+            # At this point (post the run_apply refusal check) any surviving
+            # CONFLICT is frozen-source: hard identity/tie conflicts have
+            # already refused, so counts["CONFLICT"] is the skipped-conflict
+            # count (ATLAS-110, D-3).
+            frozen_conflicts = counts["CONFLICT"]
+            total = counts["MODIFY"] + counts["PROPOSE_ARCHIVE"] + frozen_conflicts
             print(
-                f"Add-only: skipping {counts['MODIFY']} MODIFY and "
-                f"{counts['PROPOSE_ARCHIVE']} PROPOSE_ARCHIVE entr"
-                f"{'y' if counts['MODIFY'] + counts['PROPOSE_ARCHIVE'] == 1 else 'ies'}"
+                f"Add-only: skipping {counts['MODIFY']} MODIFY, "
+                f"{counts['PROPOSE_ARCHIVE']} PROPOSE_ARCHIVE, and "
+                f"{frozen_conflicts} frozen-source CONFLICT "
+                f"entr{'y' if total == 1 else 'ies'}"
                 "; the existing backlog is left untouched."
             )
         if assume_yes:
