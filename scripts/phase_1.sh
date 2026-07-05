@@ -136,12 +136,20 @@ else
 fi
 
 # --- apply: HUMAN GATE #1 (interactive; exit 0 applied / 1 rejected / 2 refusal)
-echo; echo "== atlas apply — human gate #1: review the diff, answer y/N =="
-uv run atlas apply --repo . "${DB_FLAG[@]}"
+echo; echo "== atlas apply --add-only — human gate #1: review the diff, answer y/N =="
+# --add-only (ATLAS-109/110): skip MODIFY + PROPOSE_ARCHIVE from the re-plan and
+# skip frozen-source CONFLICTs (a re-stated DONE/frozen ticket the planner
+# drifted); mint only the promoted fixture ADD. A CONFLICT now refuses ONLY on an
+# identity/similarity ambiguity — inspect it if it fires (see Edit 2).
+uv run atlas apply --add-only --repo . "${DB_FLAG[@]}"
 case $? in
   0) echo "Applied." ;;
   1) die "operator rejected the plan at the gate — PlanRun rejected; nothing minted" ;;
-  *) die "apply refused (precondition) — see output above" ;;
+  *) die "apply refused (precondition). A CONFLICT now refuses ONLY on an identity
+or similarity ambiguity — a duplicate echoed key, or the fixture ADD ambiguously
+matching an existing ticket (>=0.85). Frozen-source conflicts from re-stated DONE
+tickets are skipped, not refused. Inspect the named conflict: it is a real
+matching ambiguity, not the DONE-backlog wall." ;;
 esac
 
 # --- extract the minted key(s) --------------------------------------------------

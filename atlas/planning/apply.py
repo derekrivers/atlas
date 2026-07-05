@@ -22,10 +22,17 @@ Add-only (ATLAS-109, opt-in via ``add_only``, default OFF): applies ADD
 entries only. MODIFY entries are skipped rather than refused, and
 PROPOSE_ARCHIVE entries are skipped rather than removed — so the render set
 keeps the full current backlog plus the new ADDs, with no removals (a
-partial re-plan must never archive real tickets). CONFLICT still refuses
-(AT-4, flag or no flag). With the flag absent every path above is
-byte-for-byte unchanged. The skipped MODIFY/PROPOSE_ARCHIVE entries are
-reported on ``ApplyResult`` so the operator sees what add-only declined.
+partial re-plan must never archive real tickets).
+
+CONFLICT is partitioned by ``would_have_been`` (ATLAS-110): a frozen-source
+conflict (would_have_been set — a MODIFY/PROPOSE_ARCHIVE on a frozen entity)
+is skipped in add-only, exactly like the MODIFY/ARCHIVE it stands in for; a
+hard conflict (would_have_been is None — a duplicate echoed key or a
+similarity tie) still refuses in every mode, add-only or not, because it can
+implicate an ADD's identity. Without the flag, *any* CONFLICT still refuses
+(AT-4) and every path above is byte-for-byte unchanged. The skipped
+MODIFY/PROPOSE_ARCHIVE and frozen-source CONFLICT entries are reported on
+``ApplyResult`` so the operator sees what add-only declined.
 
 Graph validation (ATLAS-40): before the commit seam, apply projects the
 post-apply backlog and runs validate_graph; a typed GraphValidationError
@@ -150,6 +157,21 @@ class ApplyResult:
         if not self.add_only:
             return ()
         return tuple(e for e in self.diff.entries if e.entry_type == PROPOSE_ARCHIVE)
+
+    @property
+    def skipped_conflict(self) -> tuple[DiffEntry, ...]:
+        """Frozen-source CONFLICTs add-only skipped (ATLAS-110, D-3): CONFLICT
+        entries carrying ``would_have_been`` (a MODIFY/PROPOSE_ARCHIVE on a
+        frozen entity add-only leaves untouched). () unless add-only. A hard
+        (identity/tie) conflict refuses before a result is built, so an
+        add-only result only ever carries frozen-source ones."""
+        if not self.add_only:
+            return ()
+        return tuple(
+            e
+            for e in self.diff.entries
+            if e.entry_type == CONFLICT and e.would_have_been is not None
+        )
 
 
 def _planning_dir(repo_root: Path, planning_dir: Path | None) -> Path:
@@ -334,9 +356,10 @@ def run_apply(
 
     ``add_only`` (ATLAS-109, opt-in, default OFF) applies ADD entries only:
     MODIFY entries are skipped instead of refused, PROPOSE_ARCHIVE entries are
-    skipped instead of removed (the render set keeps the full backlog), and
-    CONFLICT still refuses. With the flag absent this is byte-for-byte the
-    default apply, MODIFY refusal included."""
+    skipped instead of removed (the render set keeps the full backlog),
+    frozen-source CONFLICTs are skipped (ATLAS-110, D-1), and identity/tie
+    CONFLICTs still refuse. With the flag absent this is byte-for-byte the
+    default apply, MODIFY and CONFLICT refusal included."""
     target_dir = _planning_dir(repo_root, planning_dir)
     _recover_pending_renders(target_dir, database)
 
@@ -387,9 +410,25 @@ def run_apply(
             "follow-up (ATLAS-27 applies ADD/PROPOSE_ARCHIVE; CONFLICT is "
             "refused). Re-plan or await the MODIFY-apply ticket."
         )
+    # Partition CONFLICTs by would_have_been (ATLAS-110, D-1). A frozen-source
+    # conflict (would_have_been is not None) is a MODIFY/PROPOSE_ARCHIVE on a
+    # frozen entity add-only would never apply anyway — skip it in add-only. A
+    # hard conflict (would_have_been is None) is a duplicate echoed key or a
+    # similarity tie: a genuine identity ambiguity that can implicate an ADD, so
+    # it refuses in every mode. Default mode refuses on any conflict (D-4).
     conflicts = [entry for entry in diff.entries if entry.entry_type == CONFLICT]
-    if conflicts:
-        names = ", ".join(sorted(entry.identity for entry in conflicts))
+    hard_conflicts = [entry for entry in conflicts if entry.would_have_been is None]
+    refused = hard_conflicts if add_only else conflicts
+    if refused:
+        names = ", ".join(sorted(entry.identity for entry in refused))
+        if add_only:
+            raise ConflictRefusalError(
+                f"the diff has an identity/similarity CONFLICT ({names}): a "
+                "duplicate echoed key, or a proposal item ambiguously matching "
+                "an existing ticket. Add-only refuses these — they can "
+                "implicate an ADD's identity; frozen-source conflicts from "
+                "re-stated frozen tickets are skipped, not refused (D-1)."
+            )
         raise ConflictRefusalError(
             f"the diff touches frozen ticket(s) ({names}); apply refuses a "
             "diff with CONFLICT entries (AT-4)"

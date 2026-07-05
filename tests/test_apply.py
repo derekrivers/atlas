@@ -761,24 +761,28 @@ def test_ac2_add_only_skips_propose_archive(tmp_path: Path) -> None:
 
 
 def test_ac3_add_only_still_refuses_conflict(tmp_path: Path) -> None:
-    # AC-3: a CONFLICT entry refuses even under add_only (AT-4).
-    # Red: seed `assert 1 == 2` in the CONFLICT branch and watch it bite.
+    # ATLAS-110 repoint (ruling b): this test formerly pinned the now-inverted
+    # ATLAS-109 contract (a frozen-source MODIFY CONFLICT refuses under
+    # add-only). ATLAS-110 skips those; the surviving add-only refusal is an
+    # *identity* CONFLICT — here a duplicate echoed key (would_have_been is
+    # None). Two proposal tickets both echo ATLAS-1 -> one identity CONFLICT.
     repo = fixture_repo(tmp_path)
     database = fresh_db(tmp_path)
     product = ProductRepo(database).get_by_key("ATLAS")
     assert product is not None
     epic = Epic(**_epic_model_kwargs(product.id, key="ATLAS-E1"))
     EpicRepo(database).add(epic)
-    frozen = Ticket(
-        **(
-            _ticket_model_kwargs(product.id, epic.id, key="ATLAS-1")
-            | {"status": "in_progress"}
-        )
+    # A non-frozen (planned) ticket, so the CONFLICT is purely identity, not
+    # frozen-source: only the duplicate-echoed-key ambiguity refuses.
+    TicketRepo(database).add(
+        Ticket(**_ticket_model_kwargs(product.id, epic.id, key="ATLAS-1"))
     )
-    TicketRepo(database).add(frozen)
     proposal = {
         "epics": [_epic(key="ATLAS-E1")],
-        "tickets": [_ticket(key="ATLAS-1", epic_ref="ATLAS-E1", title="Renamed")],
+        "tickets": [
+            _ticket(key="ATLAS-1", epic_ref="ATLAS-E1", title="Claimant one"),
+            _ticket(key="ATLAS-1", epic_ref="ATLAS-E1", title="Claimant two"),
+        ],
         "dependencies": [],
         "planner_notes": [],
     }
@@ -973,3 +977,327 @@ def test_ac7_smoke_unblock_partial_replan_add_only(tmp_path: Path) -> None:
     # Skips reported (D-3): exactly the one MODIFY and the one PROPOSE_ARCHIVE.
     assert {e.identity for e in result.skipped_modify} == {"ATLAS-1"}
     assert {e.identity for e in result.skipped_archive} == {"ATLAS-2"}
+
+
+# --- ATLAS-110: add-only skips frozen-source CONFLICTs ----------------------
+#
+# The discriminator is DiffEntry.would_have_been: a frozen-source
+# MODIFY/PROPOSE_ARCHIVE conflict carries it (add-only skips — the frozen
+# entity is never touched anyway); a duplicate-echoed-key or similarity-tie
+# conflict leaves it None (an identity ambiguity that can implicate an ADD, so
+# it refuses in every mode). Default (non-add-only) behaviour is unchanged: any
+# CONFLICT still refuses.
+
+
+def test_atlas110_ac1_add_only_skips_frozen_modify_conflict(tmp_path: Path) -> None:
+    # AC-1: a frozen-source MODIFY CONFLICT (would_have_been=MODIFY) + an ADD,
+    # under add_only, applies the ADD, does NOT raise, and leaves the frozen
+    # ticket byte-unchanged. Red on pre-ATLAS-110 code: ConflictRefusalError.
+    repo = fixture_repo(tmp_path)
+    database = fresh_db(tmp_path)
+    product = ProductRepo(database).get_by_key("ATLAS")
+    assert product is not None
+    epic = Epic(**_epic_model_kwargs(product.id, key="ATLAS-E1"))
+    EpicRepo(database).add(epic)
+    frozen = Ticket(
+        **(
+            _ticket_model_kwargs(product.id, epic.id, key="ATLAS-1")
+            | {"status": "in_progress"}
+        )
+    )
+    TicketRepo(database).add(frozen)
+    _seed_counter(database, tickets=1, epics=1)
+    original_title = frozen.title
+    proposal = {
+        "epics": [_epic(key="ATLAS-E1")],
+        "tickets": [
+            # Restating a frozen ticket with a changed title -> frozen-source
+            # MODIFY CONFLICT (would_have_been=MODIFY).
+            _ticket(key="ATLAS-1", epic_ref="ATLAS-E1", title="Restated frozen"),
+            # A genuinely new ticket -> ADD.
+            _ticket(
+                epic_ref="ATLAS-E1",
+                title="Brand new capability",
+                objective="new work.",
+                source_anchor="docs/atlas/plan.md#new",
+            ),
+        ],
+        "dependencies": [],
+        "planner_notes": [],
+    }
+    _add_proposed_plan_run(database, repo, product.id, proposal)
+    pdir = planning_dir(tmp_path)
+
+    result = apply(repo, database, pdir, add_only=True)
+
+    assert result.outcome == "applied"
+    tickets = {t.key: t for t in TicketRepo(database).list()}
+    # The frozen ticket is byte-unchanged: title, status, and updated_at intact.
+    assert tickets["ATLAS-1"].title == original_title
+    assert tickets["ATLAS-1"].status.value == "in_progress"
+    assert tickets["ATLAS-1"].updated_at == frozen.updated_at
+    # The ADD minted at the next counter key.
+    assert "ATLAS-2" in tickets
+    # The render keeps the frozen ticket with its original title.
+    rendered = {
+        t.key: t
+        for t in parse_document(Ticket, (pdir / "tickets.yaml").read_text(), "tickets")
+    }
+    assert rendered["ATLAS-1"].title == original_title
+    # The skipped frozen-source conflict is reported (D-3).
+    assert {e.identity for e in result.skipped_conflict} == {"ATLAS-1"}
+
+
+def test_atlas110_ac2_add_only_skips_frozen_archive_conflict(tmp_path: Path) -> None:
+    # AC-2: a frozen-source PROPOSE_ARCHIVE CONFLICT (would_have_been=
+    # PROPOSE_ARCHIVE) + an ADD, under add_only, mints the ADD and the frozen
+    # ticket survives store + render (skipped, never archived).
+    repo = fixture_repo(tmp_path)
+    database = fresh_db(tmp_path)
+    product = ProductRepo(database).get_by_key("ATLAS")
+    assert product is not None
+    epic = Epic(**_epic_model_kwargs(product.id, key="ATLAS-E1"))
+    EpicRepo(database).add(epic)
+    frozen = Ticket(
+        **(
+            _ticket_model_kwargs(product.id, epic.id, key="ATLAS-1")
+            | {"status": "in_progress"}
+        )
+    )
+    TicketRepo(database).add(frozen)
+    _seed_counter(database, tickets=1, epics=1)
+    original_title = frozen.title
+    # ATLAS-1 omitted from the proposal; frozen -> PROPOSE_ARCHIVE CONFLICT.
+    proposal = {
+        "epics": [_epic(key="ATLAS-E1")],
+        "tickets": [
+            _ticket(
+                epic_ref="ATLAS-E1",
+                title="Brand new capability",
+                objective="new work.",
+                source_anchor="docs/atlas/plan.md#new",
+            ),
+        ],
+        "dependencies": [],
+        "planner_notes": [],
+    }
+    _add_proposed_plan_run(database, repo, product.id, proposal)
+    pdir = planning_dir(tmp_path)
+
+    result = apply(repo, database, pdir, add_only=True)
+
+    assert result.outcome == "applied"
+    tickets = {t.key: t for t in TicketRepo(database).list()}
+    # The frozen ticket survived: still present, unchanged, not archived.
+    assert tickets["ATLAS-1"].title == original_title
+    assert tickets["ATLAS-1"].status.value == "in_progress"
+    assert "ATLAS-2" in tickets
+    rendered = {
+        t.key
+        for t in parse_document(Ticket, (pdir / "tickets.yaml").read_text(), "tickets")
+    }
+    assert {"ATLAS-1", "ATLAS-2"} <= rendered
+    assert {e.identity for e in result.skipped_conflict} == {"ATLAS-1"}
+
+
+def test_atlas110_ac4_add_only_refuses_similarity_tie_conflict(
+    tmp_path: Path,
+) -> None:
+    # AC-4: a similarity-tie CONFLICT (would_have_been is None) refuses under
+    # add_only. Two twin existing tickets + one key-less proposal item that ties
+    # both at the same score -> an ambiguous match on the proposal item.
+    repo = fixture_repo(tmp_path)
+    database = fresh_db(tmp_path)
+    product = ProductRepo(database).get_by_key("ATLAS")
+    assert product is not None
+    epic = Epic(**_epic_model_kwargs(product.id, key="ATLAS-E1"))
+    EpicRepo(database).add(epic)
+    twin_a = Ticket(
+        **(
+            _ticket_model_kwargs(product.id, epic.id, key="ATLAS-1")
+            | {
+                "title": "Identical twin ticket",
+                "objective": "Same words exactly.",
+                "source_anchor": "docs/atlas/plan.md#a",
+            }
+        )
+    )
+    twin_b = Ticket(
+        **(
+            _ticket_model_kwargs(product.id, epic.id, key="ATLAS-2")
+            | {
+                "title": "Identical twin ticket",
+                "objective": "Same words exactly.",
+                "source_anchor": "docs/atlas/plan.md#b",
+            }
+        )
+    )
+    TicketRepo(database).add(twin_a)
+    TicketRepo(database).add(twin_b)
+    # A key-less proposal item, same content, third distinct anchor (so neither
+    # key nor anchor matches and it falls through to the similarity tie).
+    proposal = {
+        "epics": [_epic(key="ATLAS-E1")],
+        "tickets": [
+            _ticket(
+                epic_ref="ATLAS-E1",
+                title="Identical twin ticket",
+                objective="Same words exactly.",
+                source_anchor="docs/atlas/plan.md#c",
+            ),
+        ],
+        "dependencies": [],
+        "planner_notes": [],
+    }
+    _add_proposed_plan_run(database, repo, product.id, proposal)
+
+    with pytest.raises(ConflictRefusalError):
+        apply(repo, database, planning_dir(tmp_path), add_only=True)
+
+
+def test_atlas110_ac5_default_path_refuses_both_conflict_partitions(
+    tmp_path: Path,
+) -> None:
+    # AC-5 (A-2): with add_only=False the partition is provably inert — BOTH a
+    # frozen-source CONFLICT and an identity CONFLICT still refuse, exactly as
+    # today. Red-first pins the default contract against any partition drift.
+
+    # (a) frozen-source MODIFY CONFLICT under the default path -> refuses.
+    (tmp_path / "a").mkdir()
+    (tmp_path / "b").mkdir()
+    repo_a = fixture_repo(tmp_path / "a")
+    database_a = fresh_db(tmp_path / "a")
+    product_a = ProductRepo(database_a).get_by_key("ATLAS")
+    assert product_a is not None
+    epic_a = Epic(**_epic_model_kwargs(product_a.id, key="ATLAS-E1"))
+    EpicRepo(database_a).add(epic_a)
+    TicketRepo(database_a).add(
+        Ticket(
+            **(
+                _ticket_model_kwargs(product_a.id, epic_a.id, key="ATLAS-1")
+                | {"status": "in_progress"}
+            )
+        )
+    )
+    proposal_a = {
+        "epics": [_epic(key="ATLAS-E1")],
+        "tickets": [_ticket(key="ATLAS-1", epic_ref="ATLAS-E1", title="Renamed")],
+        "dependencies": [],
+        "planner_notes": [],
+    }
+    _add_proposed_plan_run(database_a, repo_a, product_a.id, proposal_a)
+    with pytest.raises(ConflictRefusalError, match="ATLAS-1"):
+        apply(repo_a, database_a, planning_dir(tmp_path / "a"), add_only=False)
+
+    # (b) identity CONFLICT (duplicate echoed key) under the default path.
+    repo_b = fixture_repo(tmp_path / "b")
+    database_b = fresh_db(tmp_path / "b")
+    product_b = ProductRepo(database_b).get_by_key("ATLAS")
+    assert product_b is not None
+    epic_b = Epic(**_epic_model_kwargs(product_b.id, key="ATLAS-E1"))
+    EpicRepo(database_b).add(epic_b)
+    TicketRepo(database_b).add(
+        Ticket(**_ticket_model_kwargs(product_b.id, epic_b.id, key="ATLAS-1"))
+    )
+    proposal_b = {
+        "epics": [_epic(key="ATLAS-E1")],
+        "tickets": [
+            _ticket(key="ATLAS-1", epic_ref="ATLAS-E1", title="Claimant one"),
+            _ticket(key="ATLAS-1", epic_ref="ATLAS-E1", title="Claimant two"),
+        ],
+        "dependencies": [],
+        "planner_notes": [],
+    }
+    _add_proposed_plan_run(database_b, repo_b, product_b.id, proposal_b)
+    with pytest.raises(ConflictRefusalError, match="ATLAS-1"):
+        apply(repo_b, database_b, planning_dir(tmp_path / "b"), add_only=False)
+
+
+def test_atlas110_ac6_default_result_has_no_skipped_conflict(
+    tmp_path: Path,
+) -> None:
+    # AC-6 companion: the skipped_conflict view is empty off the add-only path
+    # (a non-add-only result never carries skips). The populated case is AC-1.
+    repo, database = plan_then(tmp_path)
+    result = apply(repo, database, planning_dir(tmp_path))
+    assert result.outcome == "applied"
+    assert result.skipped_conflict == ()
+
+
+def test_atlas110_ac7_smoke_unblock_replan_over_done_backlog(
+    tmp_path: Path,
+) -> None:
+    # AC-7 (integration, Smoke B Phase 1 unblock): a re-plan over a DONE-heavy
+    # backlog drifts frozen tickets (a restated DONE ticket -> frozen MODIFY
+    # CONFLICT; an omitted DONE ticket -> frozen PROPOSE_ARCHIVE CONFLICT) and
+    # carries one fixture ADD. --add-only mints exactly the fixture at the next
+    # counter key, skips every frozen-source conflict, and leaves all frozen
+    # tickets intact in store and render. Red on pre-ATLAS-110 code: apply
+    # refuses on the CONFLICT wall and the fixture never mints.
+    repo = fixture_repo(tmp_path)
+    database = fresh_db(tmp_path)
+    product = ProductRepo(database).get_by_key("ATLAS")
+    assert product is not None
+    epic = Epic(**_epic_model_kwargs(product.id, key="ATLAS-E1"))
+    EpicRepo(database).add(epic)
+    drifted_done = Ticket(
+        **(
+            _ticket_model_kwargs(product.id, epic.id, key="ATLAS-1")
+            | {"status": "done", "title": "Shipped work"}
+        )
+    )
+    omitted_done = Ticket(
+        **(
+            _ticket_model_kwargs(product.id, epic.id, key="ATLAS-2")
+            | {
+                "status": "done",
+                "title": "Also shipped",
+                "source_anchor": "docs/atlas/plan.md#shipped",
+            }
+        )
+    )
+    TicketRepo(database).add(drifted_done)
+    TicketRepo(database).add(omitted_done)
+    _seed_counter(database, tickets=2, epics=1)
+    title_1, title_2 = drifted_done.title, omitted_done.title
+    proposal = {
+        "epics": [_epic(key="ATLAS-E1")],
+        "tickets": [
+            # ATLAS-1 restated with drift -> frozen MODIFY CONFLICT.
+            _ticket(key="ATLAS-1", epic_ref="ATLAS-E1", title="Shipped work (drift)"),
+            # The fixture the smoke wants minted -> ADD.
+            _ticket(
+                epic_ref="ATLAS-E1",
+                title="Delivery-loop smoke marker",
+                objective="the fixture.",
+                source_anchor="docs/atlas/plan.md#fixture",
+            ),
+            # ATLAS-2 omitted -> frozen PROPOSE_ARCHIVE CONFLICT.
+        ],
+        "dependencies": [],
+        "planner_notes": [],
+    }
+    _add_proposed_plan_run(database, repo, product.id, proposal)
+    pdir = planning_dir(tmp_path)
+
+    result = apply(repo, database, pdir, add_only=True)
+
+    assert result.outcome == "applied"
+    tickets = {t.key: t for t in TicketRepo(database).list()}
+    # Exactly the fixture minted, at the next counter key.
+    fixture = [t for t in tickets.values() if t.title == "Delivery-loop smoke marker"]
+    assert len(fixture) == 1
+    assert fixture[0].key == "ATLAS-3"
+    # Both frozen DONE tickets are intact — untouched by the skipped conflicts.
+    assert tickets["ATLAS-1"].title == title_1
+    assert tickets["ATLAS-1"].status.value == "done"
+    assert tickets["ATLAS-2"].title == title_2
+    assert tickets["ATLAS-2"].status.value == "done"
+    # Every frozen-source conflict is skipped and reported.
+    assert {e.identity for e in result.skipped_conflict} == {"ATLAS-1", "ATLAS-2"}
+    # The render carries all three (two frozen survivors + the fixture).
+    rendered = {
+        t.key
+        for t in parse_document(Ticket, (pdir / "tickets.yaml").read_text(), "tickets")
+    }
+    assert {"ATLAS-1", "ATLAS-2", "ATLAS-3"} <= rendered
