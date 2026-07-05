@@ -1,0 +1,171 @@
+# Render written only by `atlas apply` (ADR-0006/0007); do not hand-edit.
+# plan_run_id: fd168d7b-665e-4c75-98b2-7e168a5bc7c8
+# prompt_version: staged[planner-stage-epics-v1.2.0+planner-stage-tickets-v1.6.0+planner-stage-dependencies-v1.0.0]
+# ticket_key_high_water: 109
+# epic_key_high_water: 11
+epics:
+- id: aa0a9535-cf03-4a01-a6d3-313520606d0d
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  key: ATLAS-E1
+  title: Bootstrap Repository
+  description: Establish the repository structure, Python project setup, CI pipeline, and documentation linter that form the mechanical foundation for all subsequent Atlas development. This epic covers Phase 0 of the implementation roadmap.
+  objective: Create a working repository with CI green, a passing doc linter, and all root control documents in place, so that every subsequent phase builds on a consistent, internally-consistent foundation.
+  status: planned
+  priority: 100
+  risk_level: medium
+  source_anchor: docs/atlas/implementation-roadmap.md#epic-bootstrap-repository
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+  updated_at: '2026-07-04T18:05:38.538342Z'
+  completed_at: null
+- id: 29e04b28-877b-4112-9706-73423855c3d8
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  key: ATLAS-E2
+  title: Knowledge Core
+  description: Define and implement the canonical Pydantic models, enums, storage layer (SQLAlchemy/Alembic), and YAML serialisation that serve as the single contract for all Atlas entities. Models are the source of truth; every later phase imports from this layer and never redefines a type.
+  objective: Deliver a fully tested, round-trippable set of models and a SQLite-backed storage layer so that every subsequent phase has a stable, schema-validated foundation to build on.
+  status: planned
+  priority: 90
+  risk_level: high
+  source_anchor: docs/atlas/implementation-roadmap.md#epic-knowledge-core
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+  updated_at: '2026-07-04T18:05:38.538342Z'
+  completed_at: null
+- id: 5bd967eb-98c0-42a6-bec3-042a34145078
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  key: ATLAS-E3
+  title: Generative Planning with Deterministic Reconciliation
+  description: 'Implement the atlas plan / atlas apply loop: LLM-based proposal generation (including staged multi-call generation for large corpora per ADR-0010), deterministic reconciliation, validation gates, key authority, PlanRun provenance, and the acceptance test suite AT-1..AT-7. This is Milestone 1.'
+  objective: Deliver a working plan/apply loop that generates a dependency-aware backlog from Atlas documents, reconciles it deterministically against the current backlog, and passes all AT-1..AT-7 acceptance tests in CI.
+  status: planned
+  priority: 80
+  risk_level: high
+  source_anchor: docs/atlas/implementation-roadmap.md#epic-generative-planning-with-deterministic-reconciliation
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+  updated_at: '2026-07-04T18:05:38.538342Z'
+  completed_at: null
+- id: 81b3d50c-06dc-42fb-8cac-c67f53541f91
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  key: ATLAS-E4
+  title: Dependency Graph
+  description: Build the NetworkX-based dependency graph projected from relational storage, including readiness detection, critical path analysis, blocker detection, graph validation (acyclicity, dangling targets), effort population, and the dependency CLI. Implements Phase 3.
+  objective: Provide a correct, validated dependency graph with readiness, critical-path, and blocker analyses so the PM Engine and operators can determine what work is ready, what is blocked, and what is on the critical path.
+  status: planned
+  priority: 70
+  risk_level: medium
+  source_anchor: docs/atlas/implementation-roadmap.md#epic-dependency-graph
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+  updated_at: '2026-07-04T18:05:38.538342Z'
+  completed_at: null
+- id: 9e0a7ff0-b3da-4504-8e3c-d090a253f343
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  key: ATLAS-E5
+  title: Layer Spine
+  description: Consolidate duplicated natural-key helpers, break the dependencies→planning import inversion, and install import-linter enforcement of the canonical layer spine so that architectural fitness is mechanically verified on every PR. Implements Phase 3.5.
+  objective: Ensure the atlas package layering contract is enforced by import-linter in CI and pre-commit, with no inverted edges, so architectural regressions are caught automatically rather than discovered in review.
+  status: planned
+  priority: 65
+  risk_level: medium
+  source_anchor: docs/atlas/implementation-roadmap.md#epic-layer-spine
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+  updated_at: '2026-07-04T18:05:38.538342Z'
+  completed_at: null
+- id: e0d47d14-bbd1-4d5d-96bc-f9e7adfeb3cf
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  key: ATLAS-E6
+  title: Delivery Coordination
+  description: 'Implement the PM Engine: Linear integration with ADR-0006 field ownership, the sync loop (pull status, push definitions, promote ready tickets, scan follow-up comments, detect anomalies and dwell breaches), delivery metrics, and the recurring scheduler. Implements Phase 4.'
+  objective: Deliver a working sync loop that reflects Linear status changes in Atlas within one tick, pushes definition changes to Linear, promotes dependency-ready tickets to Ready for Agent, and surfaces delivery anomalies and metrics via CLI.
+  status: planned
+  priority: 60
+  risk_level: high
+  source_anchor: docs/atlas/implementation-roadmap.md#epic-delivery-coordination
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+  updated_at: '2026-07-04T18:05:38.538342Z'
+  completed_at: null
+- id: 9f6a68c3-3279-45aa-ab8c-462b43007dbd
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  key: ATLAS-E7
+  title: Execution Context
+  description: 'Implement the Context Renderer: section-level doc retrieval, ADR retrieval, related-ticket and lesson retrieval, token budgeting and compression, context pack generation with input_doc_shas, staleness detection, and the context CLI and validation. Implements Phase 5.'
+  objective: Produce a deterministic, budget-bounded context pack for any ready ticket that contains every required section, only ACTIVE lessons, and a token estimate, so execution agents receive the minimum high-value context needed to complete their work.
+  status: planned
+  priority: 50
+  risk_level: medium
+  source_anchor: docs/atlas/implementation-roadmap.md#epic-execution-context
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+  updated_at: '2026-07-04T18:05:38.538342Z'
+  completed_at: null
+- id: 01499978-f6b2-4cd9-9924-4056720e5a2d
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  key: ATLAS-E8
+  title: Evidence-Driven Delivery
+  description: 'Implement the Evidence Pipeline: trust-tiered evidence schema with append-only semantics, GitHub Checks/Workflow-Runs polling client, CI job-name-driven evidence typing, status normalisation, PR review and documentation evidence ingestion, and the evidence CLI. Implements Phase 6 per ADR-0008.'
+  objective: Ingest CI-sourced system-tier evidence pinned to commit SHAs so that the Verification Engine has authoritative, auditable evidence records and agent-submitted claims are correctly capped at PENDING.
+  status: planned
+  priority: 40
+  risk_level: high
+  source_anchor: docs/atlas/implementation-roadmap.md#epic-evidence-driven-delivery
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+  updated_at: '2026-07-04T18:05:38.538342Z'
+  completed_at: null
+- id: f64bcf20-dbdf-4d8e-98b3-d615de1bc6a4
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  key: ATLAS-E9
+  title: Completion Validation
+  description: 'Implement the Verification Engine: required-check matrix by ticket_type, per-check evaluators (tests/lint/build/coverage, documentation, acceptance criteria, scope, human approval), verdict composition, PR-level aggregation, and the verification CLI with append-only VerificationCheck records. Implements Phase 7.'
+  objective: Enforce the 'no evidence = no completion' rule by evaluating all required checks against system-tier evidence at the PR head commit and producing a PASSED verdict only when every required check is satisfied.
+  status: planned
+  priority: 30
+  risk_level: high
+  source_anchor: docs/atlas/implementation-roadmap.md#epic-completion-validation
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+  updated_at: '2026-07-04T18:05:38.538342Z'
+  completed_at: null
+- id: 4d034c8b-0752-4089-8ff9-2fd43f51c6f4
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  key: ATLAS-E10
+  title: Autonomous Delivery
+  description: 'Integrate Symphony as the execution layer: WORKFLOW.md and tracker configuration, context pack embedding in Linear descriptions, PR ingestion and AgentRun reconstruction, handoff-state handling, ticket-level failure analysis, agent metrics, and the end-to-end delivery automation test. Implements Phase 8.'
+  objective: Enable a ready, context-rich ticket to flow from context pack through Symphony dispatch to PR, evidence, and verification without manual steps beyond the defined human gates.
+  status: planned
+  priority: 20
+  risk_level: high
+  source_anchor: docs/atlas/implementation-roadmap.md#epic-autonomous-delivery
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+  updated_at: '2026-07-04T18:05:38.538342Z'
+  completed_at: null
+- id: 5a486514-1761-45a8-8094-9a0e8282c3d4
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  key: ATLAS-E11
+  title: Organisational Learning
+  description: 'Implement the Learning System: lesson extraction on ticket completion and failure events, operator promotion workflow with DRAFT/ACTIVE/ARCHIVED lifecycle, retrieval interplay with the Context Renderer (ACTIVE only), pattern detection, playbook generation, delivery analytics, and the code-quality debt register (gated on the first sensor). Implements Phase 9 per ADR-0009.'
+  objective: Capture delivery outcomes as operator-gated lessons that compound organisational knowledge over time, ensuring agent-authored lessons enter context packs only after operator promotion and that recurring failure patterns surface as actionable signals.
+  status: planned
+  priority: 10
+  risk_level: medium
+  source_anchor: docs/atlas/implementation-roadmap.md#epic-organisational-learning
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+  updated_at: '2026-07-04T18:05:38.538342Z'
+  completed_at: null

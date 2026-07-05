@@ -1,0 +1,1761 @@
+# Render written only by `atlas apply` (ADR-0006/0007); do not hand-edit.
+# plan_run_id: fd168d7b-665e-4c75-98b2-7e168a5bc7c8
+# prompt_version: staged[planner-stage-epics-v1.2.0+planner-stage-tickets-v1.6.0+planner-stage-dependencies-v1.0.0]
+# ticket_key_high_water: 109
+# epic_key_high_water: 11
+dependencies:
+- id: 1d4aafed-6d6a-4f61-97d9-5af5c9a4f88e
+  source_ticket_id: 06325eba-2b26-4118-bb92-fab6f4eeaed7
+  target_entity_type: ticket
+  target_entity_id: 6f589650-96c7-49c9-ae07-69b15590950d
+  dependency_type: depends_on
+  reason: VerificationCheck persistence records the results of PR-level verification.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 85a219df-57c0-4934-9dd2-42b776595b14
+  source_ticket_id: 06325eba-2b26-4118-bb92-fab6f4eeaed7
+  target_entity_type: ticket
+  target_entity_id: 89fa3c5f-d6f4-403f-9e2b-afab68906cd1
+  dependency_type: depends_on
+  reason: VerificationCheck persistence uses repository classes for append-only storage.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 878d86b2-17a4-469e-98cb-1edd31bfdb05
+  source_ticket_id: 0caa98d1-84ef-4ed5-bcc7-e4ee07f15817
+  target_entity_type: ticket
+  target_entity_id: 4c2979aa-5add-400e-a638-cccd2f6d8e4e
+  dependency_type: depends_on
+  reason: Continuous learning scheduler runs lesson extraction on a cadence; the PM scheduler pattern must exist.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 1317dc27-176f-4d7a-9643-bf3f331106ce
+  source_ticket_id: 0caa98d1-84ef-4ed5-bcc7-e4ee07f15817
+  target_entity_type: ticket
+  target_entity_id: 6a07b007-2b3a-43df-ade7-88e8b8cc1b90
+  dependency_type: depends_on
+  reason: Continuous learning scheduler drives lesson extraction; extraction must exist first.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: c7858447-299e-42bb-a881-481e9f537fd9
+  source_ticket_id: 0f73f53b-ba39-45d3-bee6-a0c3599b4df7
+  target_entity_type: ticket
+  target_entity_id: 37f3f8e8-e44a-4148-95dc-4a4c07906ec2
+  dependency_type: depends_on
+  reason: Delivery metrics CLI computes cycle time from TicketStatusTransition log.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 70abbc21-2244-4ec9-b21e-e6b899d73694
+  source_ticket_id: 0f73f53b-ba39-45d3-bee6-a0c3599b4df7
+  target_entity_type: ticket
+  target_entity_id: ee47cedd-443c-4d9c-ae7a-b5737f51548a
+  dependency_type: depends_on
+  reason: Delivery metrics CLI reads DebtItem anomaly counts; the DebtItem model must exist.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: c82dcbf1-418d-4dca-926e-51bd78fca672
+  source_ticket_id: 0f73f53b-ba39-45d3-bee6-a0c3599b4df7
+  target_entity_type: ticket
+  target_entity_id: f553dff8-69a2-47d5-b7ba-1b33d862b7b0
+  dependency_type: depends_on
+  reason: Delivery metrics CLI surfaces dwell breaches; dwell-breach logging must exist.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 8014fe9a-8cd7-4c81-826e-67bf564d28a7
+  source_ticket_id: 0feb206a-5ead-4d1e-b1a1-27edfe306f84
+  target_entity_type: ticket
+  target_entity_id: 41aedae3-c6e0-46b7-8a37-cdb280ad55ee
+  dependency_type: depends_on
+  reason: Build, lint, and coverage evidence mapping normalises CI output; the poller must exist.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 94d2d997-a3fe-4659-9507-1e8437b30b92
+  source_ticket_id: 1528fb73-63ce-4590-a91d-90c19bd8a859
+  target_entity_type: ticket
+  target_entity_id: 3e851afc-e19c-441d-a30e-121fc21f794a
+  dependency_type: depends_on
+  reason: Playbook generation is driven by pattern detection over ACTIVE lessons.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 72935884-0531-4bc3-a73a-ca4b5b5e0506
+  source_ticket_id: 1528fb73-63ce-4590-a91d-90c19bd8a859
+  target_entity_type: ticket
+  target_entity_id: 880da2b6-7dea-420f-b291-cb29a358afdf
+  dependency_type: depends_on
+  reason: Playbook generation uses ACTIVE lessons; promotion CLI must exist to produce them.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 978df359-e193-4af5-acbe-65dc418ffd0b
+  source_ticket_id: 19a1f28a-5aa8-4d99-9a0a-3283fa202beb
+  target_entity_type: ticket
+  target_entity_id: 59f863ac-3af6-457b-b1f6-a71421cf13e3
+  dependency_type: depends_on
+  reason: Dependency CLI exposes graph subcommand; graph visualisation must exist.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: abf850eb-24f5-4f02-a27d-426eecd0a25c
+  source_ticket_id: 19a1f28a-5aa8-4d99-9a0a-3283fa202beb
+  target_entity_type: ticket
+  target_entity_id: bd9c16df-9719-4ecd-8024-84d621127542
+  dependency_type: depends_on
+  reason: Dependency CLI exposes effort subcommand; estimated effort population must exist.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 72da3090-a63b-419a-afb6-de6e29cd9d03
+  source_ticket_id: 19a1f28a-5aa8-4d99-9a0a-3283fa202beb
+  target_entity_type: ticket
+  target_entity_id: c183cfc5-0033-4f68-b399-5ddc15ed5159
+  dependency_type: depends_on
+  reason: Dependency CLI exposes blocked subcommand; blocker detection must exist.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: acb9c439-8807-4359-a68e-567f8fc1ca33
+  source_ticket_id: 19a1f28a-5aa8-4d99-9a0a-3283fa202beb
+  target_entity_type: ticket
+  target_entity_id: eca263f4-c4e9-4de3-8abf-0b8dc7a83ef6
+  dependency_type: depends_on
+  reason: Dependency CLI exposes readiness subcommand; readiness detection must exist.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 641771f8-3290-462a-b6bb-6fe9637f6260
+  source_ticket_id: 19a1f28a-5aa8-4d99-9a0a-3283fa202beb
+  target_entity_type: ticket
+  target_entity_id: f98c5ecf-33b1-48bb-9638-d7caa2ee93df
+  dependency_type: depends_on
+  reason: Dependency CLI exposes critical-path subcommand; critical path analysis must exist.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 27a7132c-1d99-4206-91b5-c4a718524eaa
+  source_ticket_id: 1cfd4705-edb4-4f0e-9fdd-d5a978b42a51
+  target_entity_type: ticket
+  target_entity_id: 41aedae3-c6e0-46b7-8a37-cdb280ad55ee
+  dependency_type: depends_on
+  reason: PR ingestion and AgentRun reconstruction uses the GitHub polling client.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 749d32e2-862e-434f-b86f-55d4b231137c
+  source_ticket_id: 1cfd4705-edb4-4f0e-9fdd-d5a978b42a51
+  target_entity_type: ticket
+  target_entity_id: cb8c52e2-ba7b-49b0-b4d2-1e7289c0fbc9
+  dependency_type: depends_on
+  reason: AgentRun reconstruction produces AgentRun model instances.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: de601d41-b6cd-42b0-ac56-e7774486dcca
+  source_ticket_id: 20b98fd1-08aa-473a-b72c-a14ce6052718
+  target_entity_type: ticket
+  target_entity_id: b3ce446e-f373-432b-8d7a-774526220422
+  dependency_type: depends_on
+  reason: TickFailure model requires the storage layer to persist tick-failure records.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 199f8e47-8d94-4eee-8f93-f9e022fd9713
+  source_ticket_id: 24b6546f-15f7-4f03-a888-073958cd295a
+  target_entity_type: ticket
+  target_entity_id: 89fa3c5f-d6f4-403f-9e2b-afab68906cd1
+  dependency_type: depends_on
+  reason: ADR retrieval for context packs reads ADR records from storage via repositories.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 68e50d6b-7135-43bb-b66b-12545c3c8620
+  source_ticket_id: 24b6546f-15f7-4f03-a888-073958cd295a
+  target_entity_type: ticket
+  target_entity_id: df18c89e-5a18-4333-9e7b-c1975db85a1d
+  dependency_type: depends_on
+  reason: ADR retrieval uses the anchor primitive relocated to atlas.core.anchors.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: a3f621ee-786b-4ff5-98aa-3e4ee934c9ae
+  source_ticket_id: 280b2444-8f3f-48c6-844b-47d2b6386aad
+  target_entity_type: ticket
+  target_entity_id: 48cc28f8-14c2-4d18-816f-e1bed806db05
+  dependency_type: depends_on
+  reason: Roadmap-coverage sensor is an architecture-fitness check that should run after the layer spine is enforced.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 465fdcf8-0cd9-4165-96ad-3ee6a9dfbbfc
+  source_ticket_id: 280b2444-8f3f-48c6-844b-47d2b6386aad
+  target_entity_type: ticket
+  target_entity_id: a6184394-931b-4dd1-8507-56758aa2878b
+  dependency_type: depends_on
+  reason: Roadmap-coverage sensor checks that tickets referenced in closure reports appear in the roadmap; acceptance tests must exist to produce closure reports.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 074ff30a-8b94-4a5f-bae5-54933f37c893
+  source_ticket_id: 2813ff5f-f150-4c10-b555-f35d125872da
+  target_entity_type: ticket
+  target_entity_id: 41aedae3-c6e0-46b7-8a37-cdb280ad55ee
+  dependency_type: depends_on
+  reason: Test evidence mapping normalises CI job output into Evidence records; the poller must exist.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 08efb5b0-19d5-48bf-b75a-70b19822553c
+  source_ticket_id: 2890dad3-e9e7-45b8-8b96-0cec651b618a
+  target_entity_type: ticket
+  target_entity_id: d69d3e87-97ed-43e3-a229-1f5e8654e87f
+  dependency_type: depends_on
+  reason: Context CLI render/validate/show commands require context pack generation to exist.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 9c45a602-5f2d-42d9-8507-11d38d174a6e
+  source_ticket_id: 29a22a05-6039-4654-adaf-acaa92deed23
+  target_entity_type: ticket
+  target_entity_id: 658ec1e9-4804-46e4-97e2-ede7263c794b
+  dependency_type: depends_on
+  reason: CI pipeline requires the Python project to be initialised with test and lint tooling.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 38bcf44c-3920-4c6a-a231-ba9f3db431ab
+  source_ticket_id: 2bb53466-8804-4308-ba88-5c44182201ba
+  target_entity_type: ticket
+  target_entity_id: 77f7d110-0268-4eca-a3dd-ff7f631f2732
+  dependency_type: depends_on
+  reason: Documentation retrieval uses the heading-anchor index built by document ingestion.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 2a214720-33cf-4bac-ab8a-a3840a6422ef
+  source_ticket_id: 2bb53466-8804-4308-ba88-5c44182201ba
+  target_entity_type: ticket
+  target_entity_id: df18c89e-5a18-4333-9e7b-c1975db85a1d
+  dependency_type: depends_on
+  reason: Documentation retrieval uses the relocated anchor/slug primitive for section-level extraction.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 380246a4-a75a-40e9-b938-558ff3019b9c
+  source_ticket_id: 2d867a2a-092f-49d4-ab9e-c7d283b882b6
+  target_entity_type: ticket
+  target_entity_id: f31af522-c92f-4571-be60-0d2fb336be3a
+  dependency_type: depends_on
+  reason: Graph validation (acyclicity, dangling targets) operates on the built graph.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: fabd6c76-e825-4ac9-afbf-cdb4b9e1c2f0
+  source_ticket_id: 2ed09947-aa07-40ba-8aca-72358525625d
+  target_entity_type: ticket
+  target_entity_id: fa7784c7-38de-47ad-908a-10c7d91bf8b9
+  dependency_type: depends_on
+  reason: Per-stage truncation handling and batch sizing are part of the multi-call orchestration.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: e925a6d0-10ed-4bee-82a7-fe87dcbdb903
+  source_ticket_id: 3589d7cd-38b5-472b-a872-52824ffb63c7
+  target_entity_type: ticket
+  target_entity_id: 3f869839-1b38-4f86-987e-618d7eda1600
+  dependency_type: depends_on
+  reason: End-to-end test requires the full verification engine to be in place.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 7f61ba6f-f6cb-4764-8723-919c33dcd25f
+  source_ticket_id: 3589d7cd-38b5-472b-a872-52824ffb63c7
+  target_entity_type: ticket
+  target_entity_id: 5900fdc8-a35d-466e-9620-d0a924559f6d
+  dependency_type: depends_on
+  reason: End-to-end delivery automation test requires context pack embedding to be in place.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 5b976ee4-1afd-4a55-991c-0210b8eb8d6f
+  source_ticket_id: 3589d7cd-38b5-472b-a872-52824ffb63c7
+  target_entity_type: ticket
+  target_entity_id: 79c815cc-6d0a-414c-8090-ea8f0d57ec57
+  dependency_type: depends_on
+  reason: End-to-end test exercises handoff-state handling.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 73ee77bf-b12d-4c49-ad66-909d8a10d8cc
+  source_ticket_id: 367b6939-e6ed-4350-a71d-8358ba94b9c6
+  target_entity_type: ticket
+  target_entity_id: 0f73f53b-ba39-45d3-bee6-a0c3599b4df7
+  dependency_type: depends_on
+  reason: Agent metrics report extends the delivery metrics report with agent-specific data.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 1cf7eb29-af13-4519-952b-8bbbdeb82a43
+  source_ticket_id: 367b6939-e6ed-4350-a71d-8358ba94b9c6
+  target_entity_type: ticket
+  target_entity_id: 1cfd4705-edb4-4f0e-9fdd-d5a978b42a51
+  dependency_type: depends_on
+  reason: Agent metrics CLI report reads AgentRun records produced by PR ingestion.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 75a58f1c-bd63-478b-ae34-f6beec388877
+  source_ticket_id: 36dece7d-d533-42ae-85ec-ef1cf940aa40
+  target_entity_type: ticket
+  target_entity_id: d3656909-ccf7-44a3-b3e6-87e3e3b6f939
+  dependency_type: depends_on
+  reason: Out-of-ownership transition logging is woven into sync_tick's pull step.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 5c1fdce9-0d5d-4aa9-bab6-705866758c10
+  source_ticket_id: 36dece7d-d533-42ae-85ec-ef1cf940aa40
+  target_entity_type: ticket
+  target_entity_id: ee47cedd-443c-4d9c-ae7a-b5737f51548a
+  dependency_type: depends_on
+  reason: Out-of-ownership logging appends DebtItem rows; the DebtItem model must exist first.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 987756ec-2f7d-4849-b7f1-90b2c0fd6de9
+  source_ticket_id: 37f3f8e8-e44a-4148-95dc-4a4c07906ec2
+  target_entity_type: ticket
+  target_entity_id: a1c3ddc9-f538-4957-b761-92772f7db918
+  dependency_type: depends_on
+  reason: TicketStatusTransition references the Ticket model.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: c9f560ae-e32c-4597-b1be-bebfbb614ae9
+  source_ticket_id: 37f3f8e8-e44a-4148-95dc-4a4c07906ec2
+  target_entity_type: ticket
+  target_entity_id: b3ce446e-f373-432b-8d7a-774526220422
+  dependency_type: depends_on
+  reason: TicketStatusTransition model requires the storage layer to persist transition records.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 89944ecd-999f-42af-88eb-a7bbb5773d7f
+  source_ticket_id: 3b58101e-ed0e-4791-9f14-de655926c028
+  target_entity_type: ticket
+  target_entity_id: 80b57238-345d-4be3-82c2-df5532807a95
+  dependency_type: depends_on
+  reason: Round-trip tests include YAML serialisation verification.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 9610aa0f-3c42-413c-b84d-fa74a9a49451
+  source_ticket_id: 3b58101e-ed0e-4791-9f14-de655926c028
+  target_entity_type: ticket
+  target_entity_id: 89fa3c5f-d6f4-403f-9e2b-afab68906cd1
+  dependency_type: depends_on
+  reason: Round-trip tests require repository classes and storage layer to be implemented.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 0762ff75-43cc-499b-bd8d-76287cb87d04
+  source_ticket_id: 3bb50cff-bd56-4f2c-bc98-162badd9a75e
+  target_entity_type: ticket
+  target_entity_id: 2ed09947-aa07-40ba-8aca-72358525625d
+  dependency_type: depends_on
+  reason: Staged path acceptance tests require per-stage truncation and batch sizing to be implemented.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 1f8b8b5a-1390-4f32-a617-680da645c648
+  source_ticket_id: 3bb50cff-bd56-4f2c-bc98-162badd9a75e
+  target_entity_type: ticket
+  target_entity_id: a6184394-931b-4dd1-8507-56758aa2878b
+  dependency_type: depends_on
+  reason: Staged generation acceptance coverage extends the base AT-1/AT-7 suite.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 6d37bbbc-06f1-41c9-835b-059603b53162
+  source_ticket_id: 3e851afc-e19c-441d-a30e-121fc21f794a
+  target_entity_type: ticket
+  target_entity_id: 6a07b007-2b3a-43df-ade7-88e8b8cc1b90
+  dependency_type: depends_on
+  reason: Failure and success pattern detection operates over accumulated lessons produced by extraction.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 1b11308a-d123-4bb7-8731-211cc4be1296
+  source_ticket_id: 3e851afc-e19c-441d-a30e-121fc21f794a
+  target_entity_type: ticket
+  target_entity_id: 880da2b6-7dea-420f-b291-cb29a358afdf
+  dependency_type: depends_on
+  reason: Pattern detection distinguishes ACTIVE from ARCHIVED lessons; promotion lifecycle must exist.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 885a02bc-3bab-4506-8d13-02041a21fd7c
+  source_ticket_id: 3f869839-1b38-4f86-987e-618d7eda1600
+  target_entity_type: ticket
+  target_entity_id: 76fc520e-6fc9-40e7-9d7d-e9a5d5592362
+  dependency_type: depends_on
+  reason: Phase 7 milestone test exercises the full verification CLI and evidence pipeline.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: beca1d84-489e-4a6a-9543-0430c7d01ec4
+  source_ticket_id: 3f869839-1b38-4f86-987e-618d7eda1600
+  target_entity_type: ticket
+  target_entity_id: df894067-392a-4cea-a7f7-05990608238a
+  dependency_type: depends_on
+  reason: Milestone test requires evidence to be ingested via the evidence CLI before verification runs.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 2e8c34e8-73fd-4a24-a26e-99c7fef7c054
+  source_ticket_id: 416acf30-0fc0-426c-b96f-ea58fff5e5f2
+  target_entity_type: ticket
+  target_entity_id: 29a22a05-6039-4654-adaf-acaa92deed23
+  dependency_type: depends_on
+  reason: Doc linter must run in CI; CI pipeline must exist before wiring the linter into it.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 1176a303-573c-4b9a-8245-f1c41b6215aa
+  source_ticket_id: 41aedae3-c6e0-46b7-8a37-cdb280ad55ee
+  target_entity_type: ticket
+  target_entity_id: cf50f86e-0d36-4cf5-b645-8f6cd917d2eb
+  dependency_type: depends_on
+  reason: GitHub polling client ingests evidence records; the evidence schema must exist first.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 20190292-09e4-4eb2-b573-7188e71e821f
+  source_ticket_id: 43414250-17a7-45f9-89b6-9f6907c7f9df
+  target_entity_type: ticket
+  target_entity_id: 62fd0716-25b3-4c23-beca-359dadcb16a7
+  dependency_type: depends_on
+  reason: WORKFLOW.md and tracker configuration require canonical documents to be landed first.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 1d608c07-b931-4830-a6ec-8f5f3619c7f3
+  source_ticket_id: 43414250-17a7-45f9-89b6-9f6907c7f9df
+  target_entity_type: ticket
+  target_entity_id: 8041f947-c1c0-4e38-9743-7dfac32a637d
+  dependency_type: depends_on
+  reason: Symphony dispatch requires the PM Engine ready-state promotion to be in place.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: f77820bc-986a-4cf2-aaf7-1f4bd1418af5
+  source_ticket_id: 45510344-4b06-4987-aa01-e18a06ca04b4
+  target_entity_type: ticket
+  target_entity_id: cf50f86e-0d36-4cf5-b645-8f6cd917d2eb
+  dependency_type: depends_on
+  reason: Evidence tier and pinning enforcement is the EvidenceRepo guard; the evidence schema with trust fields must exist.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 173036c6-7a86-4ac4-b079-dee81d8f8b2b
+  source_ticket_id: 4727b4b3-f130-454a-9edf-6b882a762b15
+  target_entity_type: ticket
+  target_entity_id: 41aedae3-c6e0-46b7-8a37-cdb280ad55ee
+  dependency_type: depends_on
+  reason: Documentation evidence ingestion uses the polling client infrastructure.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 1ff5a901-5e2a-470e-8ea7-034953c0e412
+  source_ticket_id: 48b03206-1ed2-49a3-be6d-83c7ae0b55ef
+  target_entity_type: ticket
+  target_entity_id: a1c3ddc9-f538-4957-b761-92772f7db918
+  dependency_type: depends_on
+  reason: Verification rules reference Ticket model fields (ticket_type, risk_level) to determine required checks.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: a42fdba4-b6c8-4012-9e31-482864bf8d50
+  source_ticket_id: 48b03206-1ed2-49a3-be6d-83c7ae0b55ef
+  target_entity_type: ticket
+  target_entity_id: cf50f86e-0d36-4cf5-b645-8f6cd917d2eb
+  dependency_type: depends_on
+  reason: Verification rules and required-check matrix evaluate evidence records; the evidence schema must exist.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: a39a713a-49cc-4292-ae8d-4dd61d98eeff
+  source_ticket_id: 48cc28f8-14c2-4d18-816f-e1bed806db05
+  target_entity_type: ticket
+  target_entity_id: 29a22a05-6039-4654-adaf-acaa92deed23
+  dependency_type: depends_on
+  reason: import-linter runs in CI; CI pipeline must exist to wire it in.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 56773174-5477-4373-ad1f-fa1b94cd2075
+  source_ticket_id: 48cc28f8-14c2-4d18-816f-e1bed806db05
+  target_entity_type: ticket
+  target_entity_id: b4ff5128-a75c-4083-966f-c974c7f450a0
+  dependency_type: depends_on
+  reason: import-linter contract enforces the layer spine; the cycle must be broken first so the contract does not immediately fail.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 0f18261b-c425-4be9-875e-f8e60e0f9aca
+  source_ticket_id: 4c2979aa-5add-400e-a638-cccd2f6d8e4e
+  target_entity_type: ticket
+  target_entity_id: 20b98fd1-08aa-473a-b72c-a14ce6052718
+  dependency_type: depends_on
+  reason: PM scheduler records TickFailure on crash; the TickFailure model must exist first.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: f688c753-9a83-40aa-a30e-9c0409a0feaf
+  source_ticket_id: 4c2979aa-5add-400e-a638-cccd2f6d8e4e
+  target_entity_type: ticket
+  target_entity_id: d3656909-ccf7-44a3-b3e6-87e3e3b6f939
+  dependency_type: depends_on
+  reason: PM scheduler calls sync_tick on a cadence; sync_tick must exist first.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: ea43d704-a615-4d34-832f-64ea73df90da
+  source_ticket_id: 54d08796-33c1-43bd-a968-4282ada3d78c
+  target_entity_type: ticket
+  target_entity_id: 48b03206-1ed2-49a3-be6d-83c7ae0b55ef
+  dependency_type: depends_on
+  reason: Scope check evaluator implements a rule from the required-check matrix.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 15faf0e9-28bc-4a60-9800-ba7f7b21f222
+  source_ticket_id: 5900fdc8-a35d-466e-9620-d0a924559f6d
+  target_entity_type: ticket
+  target_entity_id: b5a18843-9af6-4df0-aed9-7a8454c88d01
+  dependency_type: depends_on
+  reason: Context pack embedding is written via the Linear integration boundary.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 3c8e8ec7-af49-4007-937c-45311518a320
+  source_ticket_id: 5900fdc8-a35d-466e-9620-d0a924559f6d
+  target_entity_type: ticket
+  target_entity_id: d69d3e87-97ed-43e3-a229-1f5e8654e87f
+  dependency_type: depends_on
+  reason: Context pack embedding in Linear descriptions requires context pack generation to exist.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 81e12046-1476-4509-8454-b2ee807dd7eb
+  source_ticket_id: 59f863ac-3af6-457b-b1f6-a71421cf13e3
+  target_entity_type: ticket
+  target_entity_id: c183cfc5-0033-4f68-b399-5ddc15ed5159
+  dependency_type: depends_on
+  reason: Graph visualisation overlays blocker state; blocker detection must exist first.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 653b1a3c-a58f-4621-b306-389e5dc450f8
+  source_ticket_id: 59f863ac-3af6-457b-b1f6-a71421cf13e3
+  target_entity_type: ticket
+  target_entity_id: f98c5ecf-33b1-48bb-9638-d7caa2ee93df
+  dependency_type: depends_on
+  reason: Graph visualisation overlays critical path state; critical path analysis must exist first.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 25109db8-52d5-49e3-964c-2179b9cdde21
+  source_ticket_id: 5e210d54-be6d-46c2-981d-60504a865454
+  target_entity_type: ticket
+  target_entity_id: a1c3ddc9-f538-4957-b761-92772f7db918
+  dependency_type: depends_on
+  reason: Tags and component fields extend the Ticket Pydantic model.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 62aa8a8b-3d30-4925-95fe-e04406740c75
+  source_ticket_id: 5e210d54-be6d-46c2-981d-60504a865454
+  target_entity_type: ticket
+  target_entity_id: b3ce446e-f373-432b-8d7a-774526220422
+  dependency_type: depends_on
+  reason: Ticket tags and component fields storage requires the storage layer and ORM tables.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 6af19869-e142-4e6c-a0aa-390031b54047
+  source_ticket_id: 5ecb0d9c-76f9-470f-a761-ad5c5977559d
+  target_entity_type: ticket
+  target_entity_id: 8b5da8c0-11ce-4613-b973-9d757d6d918e
+  dependency_type: depends_on
+  reason: atlas plan CLI orchestrates the reconciler to produce and print the diff.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 8148cc4a-4c44-4917-a970-ebced4d8511e
+  source_ticket_id: 5ecb0d9c-76f9-470f-a761-ad5c5977559d
+  target_entity_type: ticket
+  target_entity_id: eacc2ace-4ca8-4917-a4be-7dc606e91fca
+  dependency_type: depends_on
+  reason: atlas plan requires key authority to be in place for the apply path it feeds.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: e5814d47-f6be-4421-a71f-d2c193ed55bb
+  source_ticket_id: 5f76c215-dddb-4073-b4b7-223fa2d8d971
+  target_entity_type: ticket
+  target_entity_id: 0feb206a-5ead-4d1e-b1a1-27edfe306f84
+  dependency_type: depends_on
+  reason: Lint and build evaluators read evidence records produced by the build/lint mapper.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 1b4c8ff5-42e4-47fe-8662-909cccae4355
+  source_ticket_id: 5f76c215-dddb-4073-b4b7-223fa2d8d971
+  target_entity_type: ticket
+  target_entity_id: 2813ff5f-f150-4c10-b555-f35d125872da
+  dependency_type: depends_on
+  reason: Test evidence evaluator reads test evidence records produced by the test evidence mapper.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 545e4313-3275-4f5f-b959-628a7a6e1fa6
+  source_ticket_id: 5f76c215-dddb-4073-b4b7-223fa2d8d971
+  target_entity_type: ticket
+  target_entity_id: 48b03206-1ed2-49a3-be6d-83c7ae0b55ef
+  dependency_type: depends_on
+  reason: Test, lint, build, and coverage check evaluators implement rules from the required-check matrix.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: c6e98b23-4036-43f5-8b0c-3641663e5a3b
+  source_ticket_id: 615db218-f458-4b5f-bbf5-fd3f650b78c8
+  target_entity_type: ticket
+  target_entity_id: 880da2b6-7dea-420f-b291-cb29a358afdf
+  dependency_type: depends_on
+  reason: Lesson retrieval integration requires promoted ACTIVE lessons to exist; promotion CLI must exist first.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 9d095b08-28ef-47ad-ab63-8a03667dca0b
+  source_ticket_id: 615db218-f458-4b5f-bbf5-fd3f650b78c8
+  target_entity_type: ticket
+  target_entity_id: c41c0a43-364c-41d9-a6d3-fccac2b82b1c
+  dependency_type: depends_on
+  reason: Lesson retrieval integration wires the historical lesson retrieval into the Context Renderer.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: edeca958-212f-4288-b5fd-c0f0446772f3
+  source_ticket_id: 62fd0716-25b3-4c23-beca-359dadcb16a7
+  target_entity_type: ticket
+  target_entity_id: 9580f968-be68-43c8-8f93-d90f76198f0b
+  dependency_type: depends_on
+  reason: Landing canonical ADRs and updating root control documents should follow drift repair so the linter passes cleanly.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 0075fd2d-4116-48c1-85df-9d2c193f8833
+  source_ticket_id: 6537ed61-70c6-4618-972f-fefd19f91ca8
+  target_entity_type: ticket
+  target_entity_id: 658ec1e9-4804-46e4-97e2-ede7263c794b
+  dependency_type: depends_on
+  reason: Shared types and enums require the Python project infrastructure to be in place.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 7214b252-fd3d-42c4-a417-360d2f4d5727
+  source_ticket_id: 658ec1e9-4804-46e4-97e2-ede7263c794b
+  target_entity_type: ticket
+  target_entity_id: 06701bee-33ed-44e6-b735-52dfd7c5edc8
+  dependency_type: depends_on
+  reason: Python project setup requires the repository skeleton to exist first.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 689b659c-44f7-4d44-8c21-1f7fcd02588f
+  source_ticket_id: 6a07b007-2b3a-43df-ade7-88e8b8cc1b90
+  target_entity_type: ticket
+  target_entity_id: c2cab140-540b-46d5-9c66-e1cff9cb8fc3
+  dependency_type: depends_on
+  reason: Lesson extraction on completion uses verification verdicts to identify notable deliveries.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 0855c0d5-0e75-4aee-86eb-d7ca2c9deecb
+  source_ticket_id: 6a07b007-2b3a-43df-ade7-88e8b8cc1b90
+  target_entity_type: ticket
+  target_entity_id: c44b693f-c29f-4234-adff-57393cefd7b6
+  dependency_type: depends_on
+  reason: Lesson extraction fires on ticket completion and failure events detected by failure analysis.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 356072db-9fd4-44c1-bb66-6bc0cea4e5f2
+  source_ticket_id: 6a07b007-2b3a-43df-ade7-88e8b8cc1b90
+  target_entity_type: ticket
+  target_entity_id: dad2b9f8-1a7b-4d59-95f8-4ce6e0b6fa4e
+  dependency_type: depends_on
+  reason: Lesson extraction creates Lesson records with DRAFT status; the Lesson model must exist.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 4b0d9810-7e38-4eeb-8b78-37ccd1b2c730
+  source_ticket_id: 6af1cf1e-8279-42bc-8991-a023c7c52925
+  target_entity_type: ticket
+  target_entity_id: 19a1f28a-5aa8-4d99-9a0a-3283fa202beb
+  dependency_type: depends_on
+  reason: Dependency engine milestone tests exercise the full CLI and all analyses.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: fc5dc126-6d32-4770-b78b-eeab947505b8
+  source_ticket_id: 6f589650-96c7-49c9-ae07-69b15590950d
+  target_entity_type: ticket
+  target_entity_id: c2cab140-540b-46d5-9c66-e1cff9cb8fc3
+  dependency_type: depends_on
+  reason: PR-level verification aggregates ticket-level verdicts; ticket verdict composition must exist first.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 050db5b4-ba96-42d9-bb4a-67b945f24bdf
+  source_ticket_id: 714d316c-0414-45ab-9aa1-f6a7e7c3a641
+  target_entity_type: ticket
+  target_entity_id: a6184394-931b-4dd1-8507-56758aa2878b
+  dependency_type: depends_on
+  reason: AT-7 exact-anchor floor encoding extends the base acceptance test suite.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: abc40467-ab89-4a06-b180-3e456120b92d
+  source_ticket_id: 76fc520e-6fc9-40e7-9d7d-e9a5d5592362
+  target_entity_type: ticket
+  target_entity_id: 06325eba-2b26-4118-bb92-fab6f4eeaed7
+  dependency_type: depends_on
+  reason: Verification CLI persists VerificationCheck records on each run.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: d64187c4-ed5e-4f6c-9405-f4f08968f83a
+  source_ticket_id: 76fc520e-6fc9-40e7-9d7d-e9a5d5592362
+  target_entity_type: ticket
+  target_entity_id: 6f589650-96c7-49c9-ae07-69b15590950d
+  dependency_type: depends_on
+  reason: Verification CLI atlas verify command runs PR-level verification aggregation.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 4f431fd6-348c-45e3-9421-13283c551d1a
+  source_ticket_id: 77f7d110-0268-4eca-a3dd-ff7f631f2732
+  target_entity_type: ticket
+  target_entity_id: 62fd0716-25b3-4c23-beca-359dadcb16a7
+  dependency_type: depends_on
+  reason: Document ingestion indexes canonical documents; those documents must be landed first.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 9059acb6-1774-4e1d-9434-c55e2102b014
+  source_ticket_id: 77f7d110-0268-4eca-a3dd-ff7f631f2732
+  target_entity_type: ticket
+  target_entity_id: 89fa3c5f-d6f4-403f-9e2b-afab68906cd1
+  dependency_type: depends_on
+  reason: Document ingestion records git blob SHAs into storage via repository classes.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 6aaa20e0-7c51-4d5f-980b-d1f5645fc77f
+  source_ticket_id: 7814b4f1-3ee1-45fb-b7ec-447c0cc478e6
+  target_entity_type: ticket
+  target_entity_id: b3b6c3ac-a583-43bf-a129-50611ada5da9
+  dependency_type: depends_on
+  reason: Follow-up consumer (atlas plan reads inbox, atlas apply retires stubs) requires the producer to write stubs first.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 2d8dff09-b3b1-42d5-9f6b-f4e138bed5f1
+  source_ticket_id: 7814b4f1-3ee1-45fb-b7ec-447c0cc478e6
+  target_entity_type: ticket
+  target_entity_id: efa14ba6-fd67-48c5-8e25-4099c417cd9d
+  dependency_type: depends_on
+  reason: Follow-up consumer wires into atlas apply to retire processed stubs.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 138c1f81-04a0-48f2-84ef-9472a3de71eb
+  source_ticket_id: 79c815cc-6d0a-414c-8090-ea8f0d57ec57
+  target_entity_type: ticket
+  target_entity_id: 43414250-17a7-45f9-89b6-9f6907c7f9df
+  dependency_type: depends_on
+  reason: Handoff-state handling requires the Symphony workflow contract to be configured.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 9495adf8-5033-4579-8509-d7a07bebedef
+  source_ticket_id: 79c815cc-6d0a-414c-8090-ea8f0d57ec57
+  target_entity_type: ticket
+  target_entity_id: d3656909-ccf7-44a3-b3e6-87e3e3b6f939
+  dependency_type: depends_on
+  reason: Handoff-state handling interacts with the sync loop to preserve workspace state.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: ddd90b9b-55a7-43d8-b0de-b8ded77d75a1
+  source_ticket_id: 7e3f7111-f5db-43af-8fce-89ef40ff4d04
+  target_entity_type: ticket
+  target_entity_id: d3656909-ccf7-44a3-b3e6-87e3e3b6f939
+  dependency_type: depends_on
+  reason: Review-cycling detection is woven into sync_tick's step-5 pass.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: a6308f24-1da8-4cd0-95c6-97e265b697b5
+  source_ticket_id: 7e3f7111-f5db-43af-8fce-89ef40ff4d04
+  target_entity_type: ticket
+  target_entity_id: ee47cedd-443c-4d9c-ae7a-b5737f51548a
+  dependency_type: depends_on
+  reason: Review-cycling detection appends REVIEW_CYCLE DebtItem rows; the DebtItem model must exist first.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 786299a0-be39-445b-9cb6-5871d4242778
+  source_ticket_id: 8041f947-c1c0-4e38-9743-7dfac32a637d
+  target_entity_type: ticket
+  target_entity_id: d3656909-ccf7-44a3-b3e6-87e3e3b6f939
+  dependency_type: depends_on
+  reason: Ready-state promotion is step 3 of sync_tick; the sync loop must exist first.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 65dc1aaa-0524-4d3f-af93-619d2f79e212
+  source_ticket_id: 8041f947-c1c0-4e38-9743-7dfac32a637d
+  target_entity_type: ticket
+  target_entity_id: eca263f4-c4e9-4de3-8abf-0b8dc7a83ef6
+  dependency_type: depends_on
+  reason: Ready-state promotion is the sole writer into Ready for Agent, driven by the readiness predicate.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 7136e9c2-71e1-44ef-a1df-4406403bf40c
+  source_ticket_id: 80b57238-345d-4be3-82c2-df5532807a95
+  target_entity_type: ticket
+  target_entity_id: a1c3ddc9-f538-4957-b761-92772f7db918
+  dependency_type: depends_on
+  reason: YAML serialisation layer operates on the Pydantic models for planning renders.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 40987bb6-9fba-48e4-8034-145c4a1cc015
+  source_ticket_id: 80b70ce3-af00-4b79-9d1b-21d4c11f1438
+  target_entity_type: ticket
+  target_entity_id: 0f73f53b-ba39-45d3-bee6-a0c3599b4df7
+  dependency_type: depends_on
+  reason: Delivery analytics report extends delivery metrics with lesson-based analytics.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 56094b97-49b7-4d32-84c2-e363586980c2
+  source_ticket_id: 80b70ce3-af00-4b79-9d1b-21d4c11f1438
+  target_entity_type: ticket
+  target_entity_id: 6a07b007-2b3a-43df-ade7-88e8b8cc1b90
+  dependency_type: depends_on
+  reason: Delivery analytics report reads lesson records produced by extraction.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 717e3177-065c-409b-a073-a6b97eccf714
+  source_ticket_id: 86051f46-754b-40f9-8856-4c2dbec18ed8
+  target_entity_type: ticket
+  target_entity_id: 77f7d110-0268-4eca-a3dd-ff7f631f2732
+  dependency_type: depends_on
+  reason: Prompt renderer uses the heading-anchor index built by document ingestion.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 94fdc003-8449-4d8c-b653-1866cd9adffc
+  source_ticket_id: 872accf2-47f6-4e5d-b482-1301cbc248e6
+  target_entity_type: ticket
+  target_entity_id: 86051f46-754b-40f9-8856-4c2dbec18ed8
+  dependency_type: depends_on
+  reason: Proposal parsing receives output from the prompt renderer pipeline.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 4d648cec-bcee-4a6c-a96b-58a90f2189bc
+  source_ticket_id: 872accf2-47f6-4e5d-b482-1301cbc248e6
+  target_entity_type: ticket
+  target_entity_id: a29df0b2-5728-4d7f-b63d-d03240485574
+  dependency_type: depends_on
+  reason: Proposal parsing uses JSON Schema generated from Pydantic models for gate 1 validation.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 579ed6a5-3c1d-461e-b58a-df183bf61d37
+  source_ticket_id: 880da2b6-7dea-420f-b291-cb29a358afdf
+  target_entity_type: ticket
+  target_entity_id: 6a07b007-2b3a-43df-ade7-88e8b8cc1b90
+  dependency_type: depends_on
+  reason: Lesson promotion CLI operates on DRAFT lessons created by extraction.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 5fa4bc97-0fb5-40df-b47b-d3c980667e16
+  source_ticket_id: 89fa3c5f-d6f4-403f-9e2b-afab68906cd1
+  target_entity_type: ticket
+  target_entity_id: b3ce446e-f373-432b-8d7a-774526220422
+  dependency_type: depends_on
+  reason: Repository classes operate on the ORM tables and migrations that must exist first.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: b6d47bb2-0048-4177-84db-dfa163b46a54
+  source_ticket_id: 8b5da8c0-11ce-4613-b973-9d757d6d918e
+  target_entity_type: ticket
+  target_entity_id: 872accf2-47f6-4e5d-b482-1301cbc248e6
+  dependency_type: depends_on
+  reason: Reconciler operates on validated proposals; parsing and validation gates must exist first.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: df3f7a95-d395-4c8e-a97c-36ba9339e103
+  source_ticket_id: 8b5da8c0-11ce-4613-b973-9d757d6d918e
+  target_entity_type: ticket
+  target_entity_id: 89fa3c5f-d6f4-403f-9e2b-afab68906cd1
+  dependency_type: depends_on
+  reason: Reconciler reads the current backlog from storage via repository classes.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 0ea1615b-769c-42e0-92ec-e2cb184b3762
+  source_ticket_id: 8e18d44c-aa63-4692-ab1f-67082b61c77a
+  target_entity_type: ticket
+  target_entity_id: 48b03206-1ed2-49a3-be6d-83c7ae0b55ef
+  dependency_type: depends_on
+  reason: Acceptance criteria check evaluator implements a rule from the required-check matrix.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: c636d5e0-bee4-4636-97a9-a71751ae6c15
+  source_ticket_id: 9580f968-be68-43c8-8f93-d90f76198f0b
+  target_entity_type: ticket
+  target_entity_id: 416acf30-0fc0-426c-b96f-ea58fff5e5f2
+  dependency_type: depends_on
+  reason: Documentation drift can only be repaired after the linter identifies it.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 03b10656-3170-40de-921f-8488c52f208d
+  source_ticket_id: a09beb34-7521-455d-820c-a0278dc147e3
+  target_entity_type: ticket
+  target_entity_id: 3e851afc-e19c-441d-a30e-121fc21f794a
+  dependency_type: depends_on
+  reason: Code-quality debt register is consumed by Phase 9 debt-pattern detection; pattern detection must exist to consume it.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 81cc2384-ba15-4fe0-9415-2ddb49656544
+  source_ticket_id: a09beb34-7521-455d-820c-a0278dc147e3
+  target_entity_type: ticket
+  target_entity_id: 48cc28f8-14c2-4d18-816f-e1bed806db05
+  dependency_type: depends_on
+  reason: Code-quality debt register is gated on the first debt-recording sensor; import-linter (the first architecture-fitness sensor) must exist, though it gates rather than records.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 8c84698e-81b2-4d19-86b9-85f4f28f5791
+  source_ticket_id: a09beb34-7521-455d-820c-a0278dc147e3
+  target_entity_type: ticket
+  target_entity_id: b3ce446e-f373-432b-8d7a-774526220422
+  dependency_type: depends_on
+  reason: Code-quality debt register requires a new storage table distinct from debt_items.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 6d1a6cd4-9d4a-4127-a695-2c6f7608429b
+  source_ticket_id: a1c3ddc9-f538-4957-b761-92772f7db918
+  target_entity_type: ticket
+  target_entity_id: 6537ed61-70c6-4618-972f-fefd19f91ca8
+  dependency_type: depends_on
+  reason: Pydantic models depend on the shared enums and types they reference.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 790f197b-37aa-49ea-82ed-5c1df824976e
+  source_ticket_id: a29df0b2-5728-4d7f-b63d-d03240485574
+  target_entity_type: ticket
+  target_entity_id: 416acf30-0fc0-426c-b96f-ea58fff5e5f2
+  dependency_type: depends_on
+  reason: Doc linter v2 schema validation extends the doc linter; v1 must exist first.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: c868a724-ba40-4f07-ad44-c3000fc044c7
+  source_ticket_id: a29df0b2-5728-4d7f-b63d-d03240485574
+  target_entity_type: ticket
+  target_entity_id: cb8c52e2-ba7b-49b0-b4d2-1e7289c0fbc9
+  dependency_type: depends_on
+  reason: JSON Schema generation requires all Pydantic models to be defined first.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: f81d7500-9b34-4d59-b981-1965808a97be
+  source_ticket_id: a6184394-931b-4dd1-8507-56758aa2878b
+  target_entity_type: ticket
+  target_entity_id: efa14ba6-fd67-48c5-8e25-4099c417cd9d
+  dependency_type: depends_on
+  reason: Acceptance tests AT-1 through AT-7 require the full plan/apply loop to be implemented.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: fa7d371e-043d-4718-a243-4b4fafb9d0ab
+  source_ticket_id: a6184394-931b-4dd1-8507-56758aa2878b
+  target_entity_type: ticket
+  target_entity_id: f47b316d-3138-4393-a924-f43067a8c5e0
+  dependency_type: depends_on
+  reason: AT-5 provenance test requires PlanRun persistence to be in place.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: a5e29199-ad31-4867-9a24-9097328f939d
+  source_ticket_id: a754e9ab-fb8b-4bae-af60-dbabcc07de56
+  target_entity_type: ticket
+  target_entity_id: 89fa3c5f-d6f4-403f-9e2b-afab68906cd1
+  dependency_type: depends_on
+  reason: Dependency retrieval for context packs reads TicketDependency rows from storage.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: fdceeca1-1ee8-4b7c-8e1f-2b81159144f2
+  source_ticket_id: a754e9ab-fb8b-4bae-af60-dbabcc07de56
+  target_entity_type: ticket
+  target_entity_id: f31af522-c92f-4571-be60-0d2fb336be3a
+  dependency_type: depends_on
+  reason: Dependency retrieval uses the graph build to resolve dependency relationships.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 2e8d6200-b663-419c-abf9-aa146f25b563
+  source_ticket_id: b3b6c3ac-a583-43bf-a129-50611ada5da9
+  target_entity_type: ticket
+  target_entity_id: d3656909-ccf7-44a3-b3e6-87e3e3b6f939
+  dependency_type: depends_on
+  reason: Follow-up comment scanning is step 4 of sync_tick; the sync loop must exist first.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 0b1045ee-e029-4cf4-b129-3f7ddece0b1a
+  source_ticket_id: b3ce446e-f373-432b-8d7a-774526220422
+  target_entity_type: ticket
+  target_entity_id: a1c3ddc9-f538-4957-b761-92772f7db918
+  dependency_type: depends_on
+  reason: Storage ORM tables are derived from the Pydantic model definitions.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: e2efd677-6050-4e0a-9c44-4b4ae7400297
+  source_ticket_id: b3ce446e-f373-432b-8d7a-774526220422
+  target_entity_type: ticket
+  target_entity_id: cb8c52e2-ba7b-49b0-b4d2-1e7289c0fbc9
+  dependency_type: depends_on
+  reason: PlanRun and AgentRun tables require those models to be defined.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: d9f07900-35d7-4b66-a5d2-853a35bd6728
+  source_ticket_id: b3ce446e-f373-432b-8d7a-774526220422
+  target_entity_type: ticket
+  target_entity_id: dad2b9f8-1a7b-4d59-95f8-4ce6e0b6fa4e
+  dependency_type: depends_on
+  reason: Lesson table requires the Lesson model to be defined.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 094f652d-83db-434d-af49-ea55da1d40b9
+  source_ticket_id: b3ce446e-f373-432b-8d7a-774526220422
+  target_entity_type: ticket
+  target_entity_id: f87ad18d-e8cc-41fb-a451-41b55f67545c
+  dependency_type: depends_on
+  reason: Evidence table requires the Evidence model to be defined.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 21d40279-0714-4450-bb03-8838ade02840
+  source_ticket_id: b48007e2-8170-4a80-8f62-2db2ef626f36
+  target_entity_type: ticket
+  target_entity_id: 24b6546f-15f7-4f03-a888-073958cd295a
+  dependency_type: depends_on
+  reason: Token budget and compression ladder operates on retrieved content; ADR retrieval must exist.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 8620b4b6-b891-4ae9-91ee-d5d3306a6ca7
+  source_ticket_id: b48007e2-8170-4a80-8f62-2db2ef626f36
+  target_entity_type: ticket
+  target_entity_id: 2bb53466-8804-4308-ba88-5c44182201ba
+  dependency_type: depends_on
+  reason: Token budget compression applies to retrieved doc sections.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 04446fa3-4fb4-4551-bdac-5752920431f3
+  source_ticket_id: b48007e2-8170-4a80-8f62-2db2ef626f36
+  target_entity_type: ticket
+  target_entity_id: a754e9ab-fb8b-4bae-af60-dbabcc07de56
+  dependency_type: depends_on
+  reason: Token budget compression applies to retrieved dependency information.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: b9b53eaa-85a8-4359-a928-7e5fabb10344
+  source_ticket_id: b48007e2-8170-4a80-8f62-2db2ef626f36
+  target_entity_type: ticket
+  target_entity_id: c41c0a43-364c-41d9-a6d3-fccac2b82b1c
+  dependency_type: depends_on
+  reason: Token budget compression applies to retrieved lessons.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: d88fc874-7636-4626-9114-1e94d00df0cb
+  source_ticket_id: b4afaf6e-4771-46d8-b37b-419da3505d09
+  target_entity_type: ticket
+  target_entity_id: 48b03206-1ed2-49a3-be6d-83c7ae0b55ef
+  dependency_type: depends_on
+  reason: Human approval check evaluator implements a rule from the required-check matrix.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 78cd7270-4701-4035-9969-7300e8a38058
+  source_ticket_id: b4ff5128-a75c-4083-966f-c974c7f450a0
+  target_entity_type: ticket
+  target_entity_id: 8b5da8c0-11ce-4613-b973-9d757d6d918e
+  dependency_type: depends_on
+  reason: Consolidating the natural-key sort primitive requires the reconciler (which uses it) to exist so the cycle can be identified and broken.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: a4cb6b88-4b24-475e-8329-34ffcff4091d
+  source_ticket_id: b4ff5128-a75c-4083-966f-c974c7f450a0
+  target_entity_type: ticket
+  target_entity_id: f31af522-c92f-4571-be60-0d2fb336be3a
+  dependency_type: depends_on
+  reason: The dependencies→planning import cycle involves the graph build; both sides must exist before the cycle can be broken.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 2e7f28eb-6f84-488c-b9fe-231c0edd4054
+  source_ticket_id: b5a18843-9af6-4df0-aed9-7a8454c88d01
+  target_entity_type: ticket
+  target_entity_id: 62fd0716-25b3-4c23-beca-359dadcb16a7
+  dependency_type: depends_on
+  reason: Linear integration implements ADR-0006 field ownership; that ADR must be landed as a canonical document first.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 9e9c5fcf-4e0e-4f50-81f1-b6c97ca19ee3
+  source_ticket_id: b5a18843-9af6-4df0-aed9-7a8454c88d01
+  target_entity_type: ticket
+  target_entity_id: 89fa3c5f-d6f4-403f-9e2b-afab68906cd1
+  dependency_type: depends_on
+  reason: Linear integration requires repository classes to read and write ticket definitions and status.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: ad73baac-6440-42fa-be55-13829b362824
+  source_ticket_id: bb319d89-ee32-40cc-9b20-2d2280aa93a7
+  target_entity_type: ticket
+  target_entity_id: 2813ff5f-f150-4c10-b555-f35d125872da
+  dependency_type: depends_on
+  reason: Evidence validation tests agent-tier PENDING cap against the evidence mappers.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 5468ecf1-4a42-4f94-8782-17c6b8822b15
+  source_ticket_id: bb319d89-ee32-40cc-9b20-2d2280aa93a7
+  target_entity_type: ticket
+  target_entity_id: 45510344-4b06-4987-aa01-e18a06ca04b4
+  dependency_type: depends_on
+  reason: Evidence validation tests the tier enforcement guard; the guard must exist first.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: e3a29465-7a49-4b39-8fd1-448e0d0fd24d
+  source_ticket_id: bbd26ed6-e2c1-48f9-b507-b2817427f719
+  target_entity_type: ticket
+  target_entity_id: 4727b4b3-f130-454a-9edf-6b882a762b15
+  dependency_type: depends_on
+  reason: Documentation check evaluator reads documentation evidence records.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: cdb1104c-f3b8-433a-818e-3ac4fb0c1988
+  source_ticket_id: bbd26ed6-e2c1-48f9-b507-b2817427f719
+  target_entity_type: ticket
+  target_entity_id: 48b03206-1ed2-49a3-be6d-83c7ae0b55ef
+  dependency_type: depends_on
+  reason: Documentation check evaluator implements a rule from the required-check matrix.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 22897daf-95d5-496f-be6c-2d758f27cf1c
+  source_ticket_id: bd9c16df-9719-4ecd-8024-84d621127542
+  target_entity_type: ticket
+  target_entity_id: f31af522-c92f-4571-be60-0d2fb336be3a
+  dependency_type: depends_on
+  reason: Estimated effort population writes to the Ticket model via the repository; the graph build must exist to consume it.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 3157c299-7741-42d1-ae60-d369e73ba6b2
+  source_ticket_id: c058ef40-e318-44b1-b524-d630b5d6966b
+  target_entity_type: ticket
+  target_entity_id: f47b316d-3138-4393-a924-f43067a8c5e0
+  dependency_type: depends_on
+  reason: Multi-call provenance extends PlanRun persistence; single-call persistence must exist first.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 7fd03381-4a03-4635-b4ab-0c1aeed5eaaf
+  source_ticket_id: c058ef40-e318-44b1-b524-d630b5d6966b
+  target_entity_type: ticket
+  target_entity_id: fa7784c7-38de-47ad-908a-10c7d91bf8b9
+  dependency_type: depends_on
+  reason: PlanRun multi-call provenance records generation_stages produced by the orchestration.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 964d55fb-8c7a-4bb9-b303-01f3e7152e1c
+  source_ticket_id: c183cfc5-0033-4f68-b399-5ddc15ed5159
+  target_entity_type: ticket
+  target_entity_id: eca263f4-c4e9-4de3-8abf-0b8dc7a83ef6
+  dependency_type: depends_on
+  reason: Blocker detection uses the readiness predicate to identify what blocks tickets.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 51d3f1ac-39ab-4e5c-a8e7-e9fed9230a4b
+  source_ticket_id: c2cab140-540b-46d5-9c66-e1cff9cb8fc3
+  target_entity_type: ticket
+  target_entity_id: 54d08796-33c1-43bd-a968-4282ada3d78c
+  dependency_type: depends_on
+  reason: Ticket-level verdict composition includes the scope check evaluator.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: f5e349fc-70d3-4de9-9ce3-9c8162810daa
+  source_ticket_id: c2cab140-540b-46d5-9c66-e1cff9cb8fc3
+  target_entity_type: ticket
+  target_entity_id: 5f76c215-dddb-4073-b4b7-223fa2d8d971
+  dependency_type: depends_on
+  reason: Ticket-level verdict composition aggregates all check evaluators including tests/lint/build.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 69f19787-2873-48c8-8a48-2b9bf101c857
+  source_ticket_id: c2cab140-540b-46d5-9c66-e1cff9cb8fc3
+  target_entity_type: ticket
+  target_entity_id: 8e18d44c-aa63-4692-ab1f-67082b61c77a
+  dependency_type: depends_on
+  reason: Ticket-level verdict composition includes the acceptance criteria check evaluator.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 87fe4aca-2a56-43d7-8d69-e2f3a3ec9b0a
+  source_ticket_id: c2cab140-540b-46d5-9c66-e1cff9cb8fc3
+  target_entity_type: ticket
+  target_entity_id: b4afaf6e-4771-46d8-b37b-419da3505d09
+  dependency_type: depends_on
+  reason: Ticket-level verdict composition includes the human approval check evaluator.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: e543ffcf-686f-44bd-be20-df1e308bdd1c
+  source_ticket_id: c2cab140-540b-46d5-9c66-e1cff9cb8fc3
+  target_entity_type: ticket
+  target_entity_id: bbd26ed6-e2c1-48f9-b507-b2817427f719
+  dependency_type: depends_on
+  reason: Ticket-level verdict composition includes the documentation check evaluator.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: f9e1ae41-68d4-4b39-8093-b6fb9f4c2a8f
+  source_ticket_id: c41c0a43-364c-41d9-a6d3-fccac2b82b1c
+  target_entity_type: ticket
+  target_entity_id: 5e210d54-be6d-46c2-981d-60504a865454
+  dependency_type: depends_on
+  reason: Lesson retrieval matches by tag/component; ticket tags and component fields must exist.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 0899f492-768c-47eb-a568-d7c40a0d2d74
+  source_ticket_id: c41c0a43-364c-41d9-a6d3-fccac2b82b1c
+  target_entity_type: ticket
+  target_entity_id: 89fa3c5f-d6f4-403f-9e2b-afab68906cd1
+  dependency_type: depends_on
+  reason: Historical lesson retrieval reads Lesson records from storage via repositories.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 816e23fc-32d6-4809-90d6-090b905ee5ca
+  source_ticket_id: c44b693f-c29f-4234-adff-57393cefd7b6
+  target_entity_type: ticket
+  target_entity_id: 1cfd4705-edb4-4f0e-9fdd-d5a978b42a51
+  dependency_type: depends_on
+  reason: Ticket-level failure analysis uses AgentRun records reconstructed from PR observation.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 3a09cba0-87e3-4208-ad85-24d9ece2ce05
+  source_ticket_id: c44b693f-c29f-4234-adff-57393cefd7b6
+  target_entity_type: ticket
+  target_entity_id: 7e3f7111-f5db-43af-8fce-89ef40ff4d04
+  dependency_type: depends_on
+  reason: Failure analysis includes cycle detection which builds on review-cycling detection.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: e04c739d-0d3b-4bdb-8b66-3f2e0795dd22
+  source_ticket_id: c44b693f-c29f-4234-adff-57393cefd7b6
+  target_entity_type: ticket
+  target_entity_id: f553dff8-69a2-47d5-b7ba-1b33d862b7b0
+  dependency_type: depends_on
+  reason: Failure analysis includes dwell detection which builds on dwell-breach logging.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 6124e8a9-462d-4f9c-9e3f-6841330b2678
+  source_ticket_id: cb343250-4af6-486e-a7a2-539acc0de58a
+  target_entity_type: ticket
+  target_entity_id: 0f73f53b-ba39-45d3-bee6-a0c3599b4df7
+  dependency_type: depends_on
+  reason: Historical cycle time upgrade replaces the proxy in the delivery report; the report must exist first.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 609e5abc-db0f-488d-8bc5-c4df7d550f29
+  source_ticket_id: cb343250-4af6-486e-a7a2-539acc0de58a
+  target_entity_type: ticket
+  target_entity_id: 37f3f8e8-e44a-4148-95dc-4a4c07906ec2
+  dependency_type: depends_on
+  reason: Historical cycle time is computed from the TicketStatusTransition log.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 168aefa6-f941-45ae-8d7d-3bd92614821f
+  source_ticket_id: cb8c52e2-ba7b-49b0-b4d2-1e7289c0fbc9
+  target_entity_type: ticket
+  target_entity_id: a1c3ddc9-f538-4957-b761-92772f7db918
+  dependency_type: depends_on
+  reason: PlanRun, ContextPack, and AgentRun models reference Epic, Ticket, and other core models.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 828a9ec4-1913-4685-80d6-a433c1c08187
+  source_ticket_id: cb8c52e2-ba7b-49b0-b4d2-1e7289c0fbc9
+  target_entity_type: ticket
+  target_entity_id: dad2b9f8-1a7b-4d59-95f8-4ce6e0b6fa4e
+  dependency_type: depends_on
+  reason: ContextPack references Lesson model for lesson inclusion.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 687edd70-aa98-473b-ac38-7d20e65471fa
+  source_ticket_id: cb8c52e2-ba7b-49b0-b4d2-1e7289c0fbc9
+  target_entity_type: ticket
+  target_entity_id: f87ad18d-e8cc-41fb-a451-41b55f67545c
+  dependency_type: depends_on
+  reason: AgentRun references Evidence model for evidence attribution.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: c0b59545-1770-428c-8f96-80077ad7cbcc
+  source_ticket_id: ccd88654-7653-44af-abcd-9feb69571c38
+  target_entity_type: ticket
+  target_entity_id: d69d3e87-97ed-43e3-a229-1f5e8654e87f
+  dependency_type: depends_on
+  reason: Context pack validation checks the generated pack for required fields, token estimate, and anchor resolution.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 6edecb2c-d5b3-4389-8b13-a07add3a16fe
+  source_ticket_id: ccd88654-7653-44af-abcd-9feb69571c38
+  target_entity_type: ticket
+  target_entity_id: dad2b9f8-1a7b-4d59-95f8-4ce6e0b6fa4e
+  dependency_type: depends_on
+  reason: Context pack validation enforces DRAFT lesson exclusion; the Lesson model with status must exist.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: d5942471-6296-406c-a9f9-2199d4283443
+  source_ticket_id: cf50f86e-0d36-4cf5-b645-8f6cd917d2eb
+  target_entity_type: ticket
+  target_entity_id: 89fa3c5f-d6f4-403f-9e2b-afab68906cd1
+  dependency_type: depends_on
+  reason: Evidence append-only enforcement is implemented in the EvidenceRepo; repositories must exist.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: a703f1f0-e8c6-46f3-a040-b75b309b1cea
+  source_ticket_id: cf50f86e-0d36-4cf5-b645-8f6cd917d2eb
+  target_entity_type: ticket
+  target_entity_id: f87ad18d-e8cc-41fb-a451-41b55f67545c
+  dependency_type: depends_on
+  reason: Evidence schema with trust fields extends the Evidence model; the base model must exist.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 9cbdf1a4-9c65-4854-a421-3a412962c36f
+  source_ticket_id: d3656909-ccf7-44a3-b3e6-87e3e3b6f939
+  target_entity_type: ticket
+  target_entity_id: b5a18843-9af6-4df0-aed9-7a8454c88d01
+  dependency_type: depends_on
+  reason: Ticket synchronisation sync_tick requires the Linear integration boundary to be established.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 05d3e30c-72e8-4bf4-8e9b-ed4027218a0f
+  source_ticket_id: d3656909-ccf7-44a3-b3e6-87e3e3b6f939
+  target_entity_type: ticket
+  target_entity_id: eca263f4-c4e9-4de3-8abf-0b8dc7a83ef6
+  dependency_type: depends_on
+  reason: sync_tick runs the readiness predicate; readiness detection must exist.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 939439cd-121b-47f3-8220-5523fcce33d1
+  source_ticket_id: d37c78b8-fc73-463e-af2c-9c39b825100c
+  target_entity_type: ticket
+  target_entity_id: efa14ba6-fd67-48c5-8e25-4099c417cd9d
+  dependency_type: depends_on
+  reason: The runbook documents the plan/apply loop; the loop must be implemented before it can be documented accurately.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 79ef6924-3bbf-4541-a628-b976364ab8e4
+  source_ticket_id: d69d3e87-97ed-43e3-a229-1f5e8654e87f
+  target_entity_type: ticket
+  target_entity_id: b48007e2-8170-4a80-8f62-2db2ef626f36
+  dependency_type: depends_on
+  reason: Context pack generation assembles all retrieved content under the token budget.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: b8958764-5c18-49f5-9b88-d149e12a823d
+  source_ticket_id: d69d3e87-97ed-43e3-a229-1f5e8654e87f
+  target_entity_type: ticket
+  target_entity_id: cb8c52e2-ba7b-49b0-b4d2-1e7289c0fbc9
+  dependency_type: depends_on
+  reason: Context pack generation produces a ContextPack model instance.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 3a866637-176e-400f-a041-3809c6bf44d0
+  source_ticket_id: dad2b9f8-1a7b-4d59-95f8-4ce6e0b6fa4e
+  target_entity_type: ticket
+  target_entity_id: 6537ed61-70c6-4618-972f-fefd19f91ca8
+  dependency_type: depends_on
+  reason: Lesson model uses shared enums (EntityStatus) for its status lifecycle.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 8d957db2-6af6-409f-aaac-275b60df304c
+  source_ticket_id: db9988c0-0ced-4e0f-b749-7a2230281cd1
+  target_entity_type: ticket
+  target_entity_id: 41aedae3-c6e0-46b7-8a37-cdb280ad55ee
+  dependency_type: depends_on
+  reason: PR review evidence ingestion uses the polling client infrastructure.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: f60f7e4d-941f-4fa1-8eb7-6b8b4c1b8b76
+  source_ticket_id: df18c89e-5a18-4333-9e7b-c1975db85a1d
+  target_entity_type: ticket
+  target_entity_id: 77f7d110-0268-4eca-a3dd-ff7f631f2732
+  dependency_type: depends_on
+  reason: Relocating the anchor/slug primitive requires the ingestion module that currently owns it to exist.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 12d2e24e-e3ae-4404-9b42-6427766bdd70
+  source_ticket_id: df894067-392a-4cea-a7f7-05990608238a
+  target_entity_type: ticket
+  target_entity_id: 0feb206a-5ead-4d1e-b1a1-27edfe306f84
+  dependency_type: depends_on
+  reason: Evidence CLI pull command triggers build/lint/coverage evidence ingestion.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 01d1aec3-3568-40c1-8b2e-34844f49130b
+  source_ticket_id: df894067-392a-4cea-a7f7-05990608238a
+  target_entity_type: ticket
+  target_entity_id: 2813ff5f-f150-4c10-b555-f35d125872da
+  dependency_type: depends_on
+  reason: Evidence CLI pull command triggers evidence ingestion via the mappers.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 95466e33-2197-4e1f-acfd-bdce6a068b2f
+  source_ticket_id: df894067-392a-4cea-a7f7-05990608238a
+  target_entity_type: ticket
+  target_entity_id: 4727b4b3-f130-454a-9edf-6b882a762b15
+  dependency_type: depends_on
+  reason: Evidence CLI pull command triggers documentation evidence ingestion.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: b23752b0-f0f7-47fc-ac78-2253cd861fc4
+  source_ticket_id: df894067-392a-4cea-a7f7-05990608238a
+  target_entity_type: ticket
+  target_entity_id: db9988c0-0ced-4e0f-b749-7a2230281cd1
+  dependency_type: depends_on
+  reason: Evidence CLI pull command triggers PR review evidence ingestion.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 98d97aa9-2c46-4cd2-813f-52faf22be39d
+  source_ticket_id: df894067-392a-4cea-a7f7-05990608238a
+  target_entity_type: ticket
+  target_entity_id: f5e00650-d298-4017-9cf9-fa5b8a1bc663
+  dependency_type: depends_on
+  reason: Evidence CLI operates on evidence records subject to the retention policy.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 89d8cccf-b046-4ecf-89b6-4268dc48b9eb
+  source_ticket_id: e1f347c6-440a-4690-ba8a-1adf08ae7660
+  target_entity_type: ticket
+  target_entity_id: df894067-392a-4cea-a7f7-05990608238a
+  dependency_type: depends_on
+  reason: Evidence CLI cold-database precondition handling is a fix on top of the existing Evidence CLI.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-05T15:45:26.092273Z'
+- id: f70c42e9-d640-46f2-bd56-3c40a1add1a4
+  source_ticket_id: e2a0d8c1-34ae-4ba8-b661-27c0ccc35062
+  target_entity_type: ticket
+  target_entity_id: 86051f46-754b-40f9-8856-4c2dbec18ed8
+  dependency_type: depends_on
+  reason: Staged prompt templates extend the versioned prompt renderer infrastructure.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 2a6ed11f-6564-415f-a693-e6fa79628dd2
+  source_ticket_id: e355e702-5fc3-4d3b-8135-136c34b394bf
+  target_entity_type: ticket
+  target_entity_id: 5e210d54-be6d-46c2-981d-60504a865454
+  dependency_type: depends_on
+  reason: Planner emitting tags and component fields requires the storage layer to accept them.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: e9a7ce21-bba0-47c8-ac25-77a7074e1af7
+  source_ticket_id: e355e702-5fc3-4d3b-8135-136c34b394bf
+  target_entity_type: ticket
+  target_entity_id: 872accf2-47f6-4e5d-b482-1301cbc248e6
+  dependency_type: depends_on
+  reason: ProposalTicket must gain the new fields; proposal parsing and validation must be updated.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 9569321b-9382-4906-9bb4-c2195cb506e0
+  source_ticket_id: e47830b0-ebb5-4d5d-81c9-00d2ff412209
+  target_entity_type: ticket
+  target_entity_id: 615db218-f458-4b5f-bbf5-fd3f650b78c8
+  dependency_type: depends_on
+  reason: Organisational memory search queries ACTIVE lessons; retrieval integration must exist.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: b7c6099d-3cc5-4a49-9133-21218855027b
+  source_ticket_id: eacc2ace-4ca8-4917-a4be-7dc606e91fca
+  target_entity_type: ticket
+  target_entity_id: b3ce446e-f373-432b-8d7a-774526220422
+  dependency_type: depends_on
+  reason: Key authority requires the key_counters table in storage to persist the monotonic counter.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: d333b9dc-5a5f-4e7d-9e22-bcb9c784e581
+  source_ticket_id: eca263f4-c4e9-4de3-8abf-0b8dc7a83ef6
+  target_entity_type: ticket
+  target_entity_id: 2d867a2a-092f-49d4-ab9e-c7d283b882b6
+  dependency_type: depends_on
+  reason: Readiness detection requires graph validation to have run first (dangling targets make tickets not-ready).
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 4af82ab8-e20f-451b-a2af-33de3cbf6498
+  source_ticket_id: ee47cedd-443c-4d9c-ae7a-b5737f51548a
+  target_entity_type: ticket
+  target_entity_id: b3ce446e-f373-432b-8d7a-774526220422
+  dependency_type: depends_on
+  reason: DebtItem requires a storage table; the storage layer must exist.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 95ed8917-5945-43be-8b63-2965006ed0b3
+  source_ticket_id: ee47cedd-443c-4d9c-ae7a-b5737f51548a
+  target_entity_type: ticket
+  target_entity_id: d3656909-ccf7-44a3-b3e6-87e3e3b6f939
+  dependency_type: depends_on
+  reason: DebtItem delivery-anomaly model is written by the sync loop; sync_tick must exist first.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: b7cc2ccf-f016-42ea-b131-663d9cca3a6f
+  source_ticket_id: ee56971e-19d5-43a9-8540-5e13d62a7bcf
+  target_entity_type: ticket
+  target_entity_id: c183cfc5-0033-4f68-b399-5ddc15ed5159
+  dependency_type: depends_on
+  reason: Stale-block detection uses the blocker analysis from the dependency engine.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 0d44764a-0a73-4c4e-b0ba-230cccd02b9a
+  source_ticket_id: ee56971e-19d5-43a9-8540-5e13d62a7bcf
+  target_entity_type: ticket
+  target_entity_id: d3656909-ccf7-44a3-b3e6-87e3e3b6f939
+  dependency_type: depends_on
+  reason: Blocked state detection is step 5 of sync_tick; the sync loop must exist first.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: d70890da-6489-40ef-8b34-d0592b8bfbd5
+  source_ticket_id: efa14ba6-fd67-48c5-8e25-4099c417cd9d
+  target_entity_type: ticket
+  target_entity_id: 5ecb0d9c-76f9-470f-a761-ad5c5977559d
+  dependency_type: depends_on
+  reason: atlas apply consumes the diff produced by atlas plan and requires it to exist first.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 6251aeae-2cfc-4b66-9ae7-ee661ec6f0f1
+  source_ticket_id: efa14ba6-fd67-48c5-8e25-4099c417cd9d
+  target_entity_type: ticket
+  target_entity_id: 80b57238-345d-4be3-82c2-df5532807a95
+  dependency_type: depends_on
+  reason: atlas apply writes planning renders using the YAML serialisation layer.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 83d1b0f3-d1bb-4762-99b2-e367210c1ea5
+  source_ticket_id: efa14ba6-fd67-48c5-8e25-4099c417cd9d
+  target_entity_type: ticket
+  target_entity_id: eacc2ace-4ca8-4917-a4be-7dc606e91fca
+  dependency_type: depends_on
+  reason: atlas apply assigns keys via the key authority on approval.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: f47598cb-49b3-4317-b2a7-60e2f0afccff
+  source_ticket_id: f31af522-c92f-4571-be60-0d2fb336be3a
+  target_entity_type: ticket
+  target_entity_id: 89fa3c5f-d6f4-403f-9e2b-afab68906cd1
+  dependency_type: depends_on
+  reason: Graph schema and build reads tickets, epics, ADRs, and dependency rows from storage via repositories.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: e6788ec6-bf39-4546-9125-c492c35a6c2c
+  source_ticket_id: f31af522-c92f-4571-be60-0d2fb336be3a
+  target_entity_type: ticket
+  target_entity_id: a1c3ddc9-f538-4957-b761-92772f7db918
+  dependency_type: depends_on
+  reason: Graph nodes carry typed payloads derived from the Ticket, Epic, and ADR Pydantic models.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 84c6199f-dc06-4b95-94d0-23890ff276cc
+  source_ticket_id: f47b316d-3138-4393-a924-f43067a8c5e0
+  target_entity_type: ticket
+  target_entity_id: 89fa3c5f-d6f4-403f-9e2b-afab68906cd1
+  dependency_type: depends_on
+  reason: PlanRun persistence uses repository classes to store provenance records.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: f440e0db-07ce-4d9d-a596-5596450a5844
+  source_ticket_id: f47b316d-3138-4393-a924-f43067a8c5e0
+  target_entity_type: ticket
+  target_entity_id: efa14ba6-fd67-48c5-8e25-4099c417cd9d
+  dependency_type: depends_on
+  reason: PlanRun persistence is finalised by atlas apply; apply must exist first.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 4a08b309-eba5-4747-b7ff-e121eaeb9496
+  source_ticket_id: f553dff8-69a2-47d5-b7ba-1b33d862b7b0
+  target_entity_type: ticket
+  target_entity_id: d3656909-ccf7-44a3-b3e6-87e3e3b6f939
+  dependency_type: depends_on
+  reason: Dwell-breach logging is woven into sync_tick's step-5 pass.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 95a04141-a493-40d1-8e15-56605d99aaf7
+  source_ticket_id: f553dff8-69a2-47d5-b7ba-1b33d862b7b0
+  target_entity_type: ticket
+  target_entity_id: ee47cedd-443c-4d9c-ae7a-b5737f51548a
+  dependency_type: depends_on
+  reason: Dwell-breach logging appends DWELL_BREACH DebtItem rows; the DebtItem model must exist first.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: f3f7ccd1-5176-4416-8425-fe641255c79d
+  source_ticket_id: f5e00650-d298-4017-9cf9-fa5b8a1bc663
+  target_entity_type: ticket
+  target_entity_id: cf50f86e-0d36-4cf5-b645-8f6cd917d2eb
+  dependency_type: depends_on
+  reason: Evidence retention policy caps raw_payload size; the evidence schema must exist.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 0709f50a-5198-421d-8f5e-64b44d697d26
+  source_ticket_id: f87ad18d-e8cc-41fb-a451-41b55f67545c
+  target_entity_type: ticket
+  target_entity_id: 6537ed61-70c6-4618-972f-fefd19f91ca8
+  dependency_type: depends_on
+  reason: Evidence model uses shared enums (EvidenceStatus, ActorType) and trust-tier derivation.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 94c97117-e699-4b45-902b-d50758056ed6
+  source_ticket_id: f98c5ecf-33b1-48bb-9638-d7caa2ee93df
+  target_entity_type: ticket
+  target_entity_id: 2d867a2a-092f-49d4-ab9e-c7d283b882b6
+  dependency_type: depends_on
+  reason: Critical path analysis requires a validated acyclic graph.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 149bde1d-5359-4302-adb8-8e0cbc86b8f5
+  source_ticket_id: f98c5ecf-33b1-48bb-9638-d7caa2ee93df
+  target_entity_type: ticket
+  target_entity_id: bd9c16df-9719-4ecd-8024-84d621127542
+  dependency_type: depends_on
+  reason: Critical path analysis is weighted by estimated_effort which must be populatable first.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 79beba98-db40-443e-9736-6b17526f76d6
+  source_ticket_id: fa7784c7-38de-47ad-908a-10c7d91bf8b9
+  target_entity_type: ticket
+  target_entity_id: 872accf2-47f6-4e5d-b482-1301cbc248e6
+  dependency_type: depends_on
+  reason: Multi-call orchestration assembles output that feeds the existing proposal parser and gates.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
+- id: 2475df4c-8d8b-493d-9c8d-bebf02045200
+  source_ticket_id: fa7784c7-38de-47ad-908a-10c7d91bf8b9
+  target_entity_type: ticket
+  target_entity_id: e2a0d8c1-34ae-4ba8-b661-27c0ccc35062
+  dependency_type: depends_on
+  reason: Multi-call orchestration drives the staged prompt templates in sequence.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-04T18:05:38.538342Z'
