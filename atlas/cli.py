@@ -184,6 +184,7 @@ from atlas.linear.preflight import ModelProbe, PreflightReport, run_preflight
 from atlas.planning.apply import (
     ApplyDecision,
     ApplyError,
+    is_existing_dependency_add,
     run_apply,
 )
 from atlas.planning.client import (
@@ -630,11 +631,24 @@ def _make_confirm(
             # already refused, so counts["CONFLICT"] is the skipped-conflict
             # count (ATLAS-110, D-3).
             frozen_conflicts = counts["CONFLICT"]
-            total = counts["MODIFY"] + counts["PROPOSE_ARCHIVE"] + frozen_conflicts
+            # ATLAS-111 (D-2): existing↔existing dependency ADDs add-only will
+            # scope out. Computed from the diff via the same discriminator the
+            # ApplyResult.skipped_dependency property uses (no ApplyResult exists
+            # at the gate yet) — same value by construction.
+            skipped_deps = sum(
+                1 for entry in diff.entries if is_existing_dependency_add(entry)
+            )
+            total = (
+                counts["MODIFY"]
+                + counts["PROPOSE_ARCHIVE"]
+                + frozen_conflicts
+                + skipped_deps
+            )
             print(
                 f"Add-only: skipping {counts['MODIFY']} MODIFY, "
-                f"{counts['PROPOSE_ARCHIVE']} PROPOSE_ARCHIVE, and "
-                f"{frozen_conflicts} frozen-source CONFLICT "
+                f"{counts['PROPOSE_ARCHIVE']} PROPOSE_ARCHIVE, "
+                f"{frozen_conflicts} frozen-source CONFLICT, and "
+                f"{skipped_deps} existing-to-existing dependency "
                 f"entr{'y' if total == 1 else 'ies'}"
                 "; the existing backlog is left untouched."
             )
@@ -664,6 +678,15 @@ def _apply_command(args: argparse.Namespace, *, database: Database | None) -> in
         )
     except (DirtyInputError, ApplyError) as error:
         print(error, file=sys.stderr)
+        return EXIT_PRECONDITION
+    except GraphValidationFailed as error:
+        # ATLAS-111 (F-2): a projected-graph refusal (e.g. a dependency cycle) is
+        # a precondition failure, not a recorded rejection — apply.py's
+        # validate_graph runs before the commit seam, so the DB and docs are
+        # untouched. Mirror _deps_validate: print the typed violations and return
+        # EXIT_PRECONDITION, never a raw traceback with Python exit 1 (which
+        # collides with EXIT_RECORDED_FAILURE, the rejection code).
+        _print_violations(error)
         return EXIT_PRECONDITION
 
     if result.outcome == "applied":
