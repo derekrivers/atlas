@@ -1,0 +1,339 @@
+%% Render written only by `atlas apply` (ADR-0006/0007); do not hand-edit.
+%% plan_run_id: 58d7b8a2-a648-4351-890b-8d48de2a71c3
+%% prompt_version: staged[planner-stage-epics-v1.2.0+planner-stage-tickets-v1.6.0+planner-stage-dependencies-v1.0.0]
+%% ticket_key_high_water: 110
+%% epic_key_high_water: 11
+graph TD
+  subgraph ATLAS-E1["Bootstrap Repository"]
+    ATLAS-1["ATLAS-1 Create repository skeleton per bootstrap guide"]
+    ATLAS-2["ATLAS-2 Initialise Python project with uv, pytest, ruff, mypy, and pre-commit"]
+    ATLAS-3["ATLAS-3 Add CI pipeline: tests, lint, and type-check on every PR"]
+    ATLAS-4["ATLAS-4 Implement doc linter v1: ADR model validation, MANIFEST cross-links, legacy name ban, and planning-file guard"]
+    ATLAS-5["ATLAS-5 Repair documentation drift surfaced by the doc linter"]
+    ATLAS-6["ATLAS-6 Land ADR-0006 through ADR-0009 and the Planning Engine Specification as canonical documents; update root control documents"]
+    ATLAS-109["ATLAS-109 Add a delivery-loop marker to the README"]
+    ATLAS-110["ATLAS-110 Document the delivery loop under docs/"]
+  end
+  subgraph ATLAS-E2["Knowledge Core"]
+    ATLAS-7["ATLAS-7 Shared types and enums"]
+    ATLAS-8["ATLAS-8 Product, ADR, Epic, Ticket, and TicketDependency Pydantic models"]
+    ATLAS-9["ATLAS-9 Lesson model with DRAFT default and status lifecycle"]
+    ATLAS-10["ATLAS-10 Evidence model with trust fields and append-only semantics"]
+    ATLAS-11["ATLAS-11 PlanRun, ContextPack, and AgentRun models"]
+    ATLAS-12["ATLAS-12 JSON Schema generation from Pydantic models and doc-linter v2 schema validation"]
+    ATLAS-13["ATLAS-13 YAML serialisation layer for docs/planning renders"]
+    ATLAS-14["ATLAS-14 Storage layer: SQLAlchemy ORM tables and Alembic migrations"]
+    ATLAS-15["ATLAS-15 Repository classes for all entities with append-only enforcement"]
+    ATLAS-16["ATLAS-16 Model and storage round-trip tests including dangling dependency detection"]
+  end
+  subgraph ATLAS-E3["Generative Planning with Deterministic Reconciliation"]
+    ATLAS-17["ATLAS-17 Document ingestion and heading-anchor index with git blob SHAs"]
+    ATLAS-18["ATLAS-18 Versioned planner prompt renderer with Jinja2 and prompt-hash recording"]
+    ATLAS-19["ATLAS-19 Proposal parsing and validation gates 1–7"]
+    ATLAS-20["ATLAS-20 Deterministic reconciler: key/anchor/similarity matching and diff generation"]
+    ATLAS-21["ATLAS-21 Key authority: monotonic key counter and assignment on apply only"]
+    ATLAS-22["ATLAS-22 `atlas plan` CLI command: propose and print diff, never write renders"]
+    ATLAS-23["ATLAS-23 `atlas apply` CLI command: diff review, confirmation, render writes, and PlanRun finalisation"]
+    ATLAS-24["ATLAS-24 PlanRun persistence and provenance recording"]
+    ATLAS-25["ATLAS-25 Staged planner prompt templates for multi-call generation (epics, tickets-per-epic, dependencies)"]
+    ATLAS-26["ATLAS-26 Multi-call generation orchestration: environment-owned index assembly into one full-state proposal"]
+    ATLAS-27["ATLAS-27 PlanRun multi-call provenance: generation_stages field, migration, and schema regen"]
+    ATLAS-28["ATLAS-28 Per-stage truncation handling and batch sizing for staged generation"]
+    ATLAS-29["ATLAS-29 Acceptance test suite AT-1 through AT-7 against the seeded Atlas documents"]
+    ATLAS-30["ATLAS-30 AT-7 exact-anchor floor and content-coverage metric encoding (ATLAS-123)"]
+    ATLAS-31["ATLAS-31 Acceptance test coverage for staged generation path (AT-1/AT-7 staged, AT-2 multi-call stability)"]
+    ATLAS-32["ATLAS-32 Runbook: docs/runbooks/running-atlas-plan.md"]
+  end
+  subgraph ATLAS-E4["Dependency Graph"]
+    ATLAS-33["ATLAS-33 Graph schema and build from storage"]
+    ATLAS-34["ATLAS-34 Estimated effort population for tickets"]
+    ATLAS-35["ATLAS-35 Graph validation: acyclicity and dangling-target detection"]
+    ATLAS-36["ATLAS-36 Readiness detection"]
+    ATLAS-37["ATLAS-37 Critical path analysis"]
+    ATLAS-38["ATLAS-38 Blocker detection"]
+    ATLAS-39["ATLAS-39 Graph visualisation (Mermaid advisory view)"]
+    ATLAS-40["ATLAS-40 Dependency CLI"]
+    ATLAS-41["ATLAS-41 Dependency engine milestone test suite"]
+  end
+  subgraph ATLAS-E5["Layer Spine"]
+    ATLAS-42["ATLAS-42 Consolidate natural-key sort primitive and break dependencies→planning import cycle"]
+    ATLAS-43["ATLAS-43 Install import-linter layers contract enforcing the atlas layer spine"]
+    ATLAS-44["ATLAS-44 Roadmap-coverage sensor: every ticket referenced in a closure report must appear in the implementation roadmap"]
+  end
+  subgraph ATLAS-E6["Delivery Coordination"]
+    ATLAS-45["ATLAS-45 Linear integration with ADR-0006 field ownership boundary"]
+    ATLAS-46["ATLAS-46 Ticket synchronisation sync_tick (pull status, push definitions)"]
+    ATLAS-47["ATLAS-47 Ready-state promotion: sole writer into Ready for Agent"]
+    ATLAS-48["ATLAS-48 Blocked state detection and stale-block anomaly logging"]
+    ATLAS-49["ATLAS-49 Follow-up comment scanning: producer writing inbox stubs"]
+    ATLAS-50["ATLAS-50 Delivery-anomaly model: DebtItem and recurrence predicate"]
+    ATLAS-51["ATLAS-51 Out-of-ownership transition logging (ATLAS-118)"]
+    ATLAS-52["ATLAS-52 Dwell-breach logging (ATLAS-119)"]
+    ATLAS-53["ATLAS-53 Review-cycling detection and Needs Human routing (ATLAS-120)"]
+    ATLAS-54["ATLAS-54 State-transition history model (TicketStatusTransition)"]
+    ATLAS-55["ATLAS-55 Tick-failure record model (TickFailure) and recorded_since predicate"]
+    ATLAS-56["ATLAS-56 PM scheduler: recurring sync_tick loop with create-on-crash"]
+    ATLAS-57["ATLAS-57 Delivery metrics CLI report (atlas pm report)"]
+    ATLAS-58["ATLAS-58 Historical cycle time upgrade: compute from TicketStatusTransition log"]
+    ATLAS-59["ATLAS-59 Follow-up consumer: atlas plan reads inbox, atlas apply retires stubs"]
+  end
+  subgraph ATLAS-E7["Execution Context"]
+    ATLAS-60["ATLAS-60 Ticket tags and component fields: storage layer"]
+    ATLAS-61["ATLAS-61 Planner emits ticket tags and component fields"]
+    ATLAS-62["ATLAS-62 Relocate anchor/slug primitive to atlas.core.anchors"]
+    ATLAS-63["ATLAS-63 ADR retrieval for context packs"]
+    ATLAS-64["ATLAS-64 Documentation retrieval with section-level extraction and doc SHAs"]
+    ATLAS-65["ATLAS-65 Historical lesson retrieval (ACTIVE only, tag/component matching)"]
+    ATLAS-66["ATLAS-66 Dependency retrieval for context packs"]
+    ATLAS-67["ATLAS-67 Token budget and compression ladder"]
+    ATLAS-68["ATLAS-68 Context pack generation with input_doc_shas and staleness detection"]
+    ATLAS-69["ATLAS-69 Context CLI: render, validate, and show commands"]
+    ATLAS-70["ATLAS-70 Context pack validation: required fields, token estimate, anchor resolution, DRAFT exclusion"]
+  end
+  subgraph ATLAS-E8["Evidence-Driven Delivery"]
+    ATLAS-71["ATLAS-71 Evidence schema with trust fields and append-only enforcement"]
+    ATLAS-72["ATLAS-72 GitHub Checks/Workflow-Runs polling client"]
+    ATLAS-73["ATLAS-73 Test evidence mapping (CI job-name-driven evidence typing)"]
+    ATLAS-74["ATLAS-74 Build, lint, and coverage evidence mapping"]
+    ATLAS-75["ATLAS-75 PR review evidence ingestion"]
+    ATLAS-76["ATLAS-76 Documentation evidence ingestion"]
+    ATLAS-77["ATLAS-77 Evidence tier and pinning enforcement (EvidenceRepo guard)"]
+    ATLAS-78["ATLAS-78 Evidence retention policy (raw_payload size cap)"]
+    ATLAS-79["ATLAS-79 Evidence validation (agent-tier PENDING cap and tier rule tests)"]
+    ATLAS-80["ATLAS-80 Evidence CLI (pull, list, show)"]
+    ATLAS-108["ATLAS-108 Evidence CLI cold-database precondition handling (ATLAS-130)"]
+  end
+  subgraph ATLAS-E9["Completion Validation"]
+    ATLAS-81["ATLAS-81 Verification rules and required-check matrix"]
+    ATLAS-82["ATLAS-82 Tests, lint, build, and coverage check evaluators"]
+    ATLAS-83["ATLAS-83 Documentation check evaluator"]
+    ATLAS-84["ATLAS-84 Acceptance criteria check evaluator (operator confirmation)"]
+    ATLAS-85["ATLAS-85 Scope check evaluator (heuristic, operator waive/fail)"]
+    ATLAS-86["ATLAS-86 Human approval check evaluator"]
+    ATLAS-87["ATLAS-87 Ticket-level verdict composition"]
+    ATLAS-88["ATLAS-88 PR-level verification aggregation"]
+    ATLAS-89["ATLAS-89 VerificationCheck persistence (append-only records)"]
+    ATLAS-90["ATLAS-90 Verification CLI: atlas verify command"]
+    ATLAS-91["ATLAS-91 Phase 7 milestone test: no system-tier evidence blocks completion"]
+  end
+  subgraph ATLAS-E10["Autonomous Delivery"]
+    ATLAS-92["ATLAS-92 WORKFLOW.md and tracker configuration for Symphony dispatch"]
+    ATLAS-93["ATLAS-93 Context pack embedding in Linear issue descriptions"]
+    ATLAS-94["ATLAS-94 PR ingestion and AgentRun reconstruction from observation"]
+    ATLAS-95["ATLAS-95 Handoff-state handling: Review Required and Needs Human stop work without workspace cleanup"]
+    ATLAS-96["ATLAS-96 Ticket-level failure analysis: cycle and dwell detection with DRAFT lesson creation"]
+    ATLAS-97["ATLAS-97 Agent metrics CLI report"]
+    ATLAS-98["ATLAS-98 End-to-end delivery automation test"]
+  end
+  subgraph ATLAS-E11["Organisational Learning"]
+    ATLAS-99["ATLAS-99 Lesson extraction on ticket completion and failure events"]
+    ATLAS-100["ATLAS-100 Lesson promotion CLI with DRAFT/ACTIVE/ARCHIVED lifecycle"]
+    ATLAS-101["ATLAS-101 Lesson retrieval integration with Context Renderer (ACTIVE only)"]
+    ATLAS-102["ATLAS-102 Failure and success pattern detection over accumulated lessons"]
+    ATLAS-103["ATLAS-103 Playbook generation from ACTIVE lessons under a tag"]
+    ATLAS-104["ATLAS-104 Delivery analytics report (`atlas lessons report`)"]
+    ATLAS-105["ATLAS-105 Organisational memory search (`atlas lessons search`)"]
+    ATLAS-106["ATLAS-106 Continuous learning scheduler (`atlas lessons schedule`)"]
+    ATLAS-107["ATLAS-107 Code-quality debt register entity (ATLAS-117, gated on first sensor)"]
+  end
+  ATLAS-2 --> ATLAS-1
+  ATLAS-3 --> ATLAS-2
+  ATLAS-4 --> ATLAS-3
+  ATLAS-5 --> ATLAS-4
+  ATLAS-6 --> ATLAS-5
+  ATLAS-7 --> ATLAS-2
+  ATLAS-8 --> ATLAS-7
+  ATLAS-9 --> ATLAS-7
+  ATLAS-10 --> ATLAS-7
+  ATLAS-11 --> ATLAS-8
+  ATLAS-11 --> ATLAS-9
+  ATLAS-11 --> ATLAS-10
+  ATLAS-12 --> ATLAS-4
+  ATLAS-12 --> ATLAS-11
+  ATLAS-13 --> ATLAS-8
+  ATLAS-14 --> ATLAS-8
+  ATLAS-14 --> ATLAS-9
+  ATLAS-14 --> ATLAS-10
+  ATLAS-14 --> ATLAS-11
+  ATLAS-15 --> ATLAS-14
+  ATLAS-16 --> ATLAS-13
+  ATLAS-16 --> ATLAS-15
+  ATLAS-17 --> ATLAS-6
+  ATLAS-17 --> ATLAS-15
+  ATLAS-18 --> ATLAS-17
+  ATLAS-19 --> ATLAS-12
+  ATLAS-19 --> ATLAS-18
+  ATLAS-20 --> ATLAS-15
+  ATLAS-20 --> ATLAS-19
+  ATLAS-21 --> ATLAS-14
+  ATLAS-22 --> ATLAS-20
+  ATLAS-22 --> ATLAS-21
+  ATLAS-23 --> ATLAS-13
+  ATLAS-23 --> ATLAS-21
+  ATLAS-23 --> ATLAS-22
+  ATLAS-24 --> ATLAS-15
+  ATLAS-24 --> ATLAS-23
+  ATLAS-25 --> ATLAS-18
+  ATLAS-26 --> ATLAS-19
+  ATLAS-26 --> ATLAS-25
+  ATLAS-27 --> ATLAS-24
+  ATLAS-27 --> ATLAS-26
+  ATLAS-28 --> ATLAS-26
+  ATLAS-29 --> ATLAS-23
+  ATLAS-29 --> ATLAS-24
+  ATLAS-30 --> ATLAS-29
+  ATLAS-31 --> ATLAS-28
+  ATLAS-31 --> ATLAS-29
+  ATLAS-32 --> ATLAS-23
+  ATLAS-33 --> ATLAS-8
+  ATLAS-33 --> ATLAS-15
+  ATLAS-34 --> ATLAS-33
+  ATLAS-35 --> ATLAS-33
+  ATLAS-36 --> ATLAS-35
+  ATLAS-37 --> ATLAS-34
+  ATLAS-37 --> ATLAS-35
+  ATLAS-38 --> ATLAS-36
+  ATLAS-39 --> ATLAS-37
+  ATLAS-39 --> ATLAS-38
+  ATLAS-40 --> ATLAS-34
+  ATLAS-40 --> ATLAS-36
+  ATLAS-40 --> ATLAS-37
+  ATLAS-40 --> ATLAS-38
+  ATLAS-40 --> ATLAS-39
+  ATLAS-41 --> ATLAS-40
+  ATLAS-42 --> ATLAS-20
+  ATLAS-42 --> ATLAS-33
+  ATLAS-43 --> ATLAS-3
+  ATLAS-43 --> ATLAS-42
+  ATLAS-44 --> ATLAS-29
+  ATLAS-44 --> ATLAS-43
+  ATLAS-45 --> ATLAS-6
+  ATLAS-45 --> ATLAS-15
+  ATLAS-46 --> ATLAS-36
+  ATLAS-46 --> ATLAS-45
+  ATLAS-47 --> ATLAS-36
+  ATLAS-47 --> ATLAS-46
+  ATLAS-48 --> ATLAS-38
+  ATLAS-48 --> ATLAS-46
+  ATLAS-49 --> ATLAS-46
+  ATLAS-50 --> ATLAS-14
+  ATLAS-50 --> ATLAS-46
+  ATLAS-51 --> ATLAS-46
+  ATLAS-51 --> ATLAS-50
+  ATLAS-52 --> ATLAS-46
+  ATLAS-52 --> ATLAS-50
+  ATLAS-53 --> ATLAS-46
+  ATLAS-53 --> ATLAS-50
+  ATLAS-54 --> ATLAS-8
+  ATLAS-54 --> ATLAS-14
+  ATLAS-55 --> ATLAS-14
+  ATLAS-56 --> ATLAS-46
+  ATLAS-56 --> ATLAS-55
+  ATLAS-57 --> ATLAS-50
+  ATLAS-57 --> ATLAS-52
+  ATLAS-57 --> ATLAS-54
+  ATLAS-58 --> ATLAS-54
+  ATLAS-58 --> ATLAS-57
+  ATLAS-59 --> ATLAS-23
+  ATLAS-59 --> ATLAS-49
+  ATLAS-60 --> ATLAS-8
+  ATLAS-60 --> ATLAS-14
+  ATLAS-61 --> ATLAS-19
+  ATLAS-61 --> ATLAS-60
+  ATLAS-62 --> ATLAS-17
+  ATLAS-63 --> ATLAS-15
+  ATLAS-63 --> ATLAS-62
+  ATLAS-64 --> ATLAS-17
+  ATLAS-64 --> ATLAS-62
+  ATLAS-65 --> ATLAS-15
+  ATLAS-65 --> ATLAS-60
+  ATLAS-66 --> ATLAS-15
+  ATLAS-66 --> ATLAS-33
+  ATLAS-67 --> ATLAS-63
+  ATLAS-67 --> ATLAS-64
+  ATLAS-67 --> ATLAS-65
+  ATLAS-67 --> ATLAS-66
+  ATLAS-68 --> ATLAS-11
+  ATLAS-68 --> ATLAS-67
+  ATLAS-69 --> ATLAS-68
+  ATLAS-70 --> ATLAS-9
+  ATLAS-70 --> ATLAS-68
+  ATLAS-71 --> ATLAS-10
+  ATLAS-71 --> ATLAS-15
+  ATLAS-72 --> ATLAS-71
+  ATLAS-73 --> ATLAS-72
+  ATLAS-74 --> ATLAS-72
+  ATLAS-75 --> ATLAS-72
+  ATLAS-76 --> ATLAS-72
+  ATLAS-77 --> ATLAS-71
+  ATLAS-78 --> ATLAS-71
+  ATLAS-79 --> ATLAS-73
+  ATLAS-79 --> ATLAS-77
+  ATLAS-80 --> ATLAS-73
+  ATLAS-80 --> ATLAS-74
+  ATLAS-80 --> ATLAS-75
+  ATLAS-80 --> ATLAS-76
+  ATLAS-80 --> ATLAS-78
+  ATLAS-81 --> ATLAS-8
+  ATLAS-81 --> ATLAS-71
+  ATLAS-82 --> ATLAS-73
+  ATLAS-82 --> ATLAS-74
+  ATLAS-82 --> ATLAS-81
+  ATLAS-83 --> ATLAS-76
+  ATLAS-83 --> ATLAS-81
+  ATLAS-84 --> ATLAS-81
+  ATLAS-85 --> ATLAS-81
+  ATLAS-86 --> ATLAS-81
+  ATLAS-87 --> ATLAS-82
+  ATLAS-87 --> ATLAS-83
+  ATLAS-87 --> ATLAS-84
+  ATLAS-87 --> ATLAS-85
+  ATLAS-87 --> ATLAS-86
+  ATLAS-88 --> ATLAS-87
+  ATLAS-89 --> ATLAS-15
+  ATLAS-89 --> ATLAS-88
+  ATLAS-90 --> ATLAS-88
+  ATLAS-90 --> ATLAS-89
+  ATLAS-91 --> ATLAS-80
+  ATLAS-91 --> ATLAS-90
+  ATLAS-92 --> ATLAS-6
+  ATLAS-92 --> ATLAS-47
+  ATLAS-93 --> ATLAS-45
+  ATLAS-93 --> ATLAS-68
+  ATLAS-94 --> ATLAS-11
+  ATLAS-94 --> ATLAS-72
+  ATLAS-95 --> ATLAS-46
+  ATLAS-95 --> ATLAS-92
+  ATLAS-96 --> ATLAS-52
+  ATLAS-96 --> ATLAS-53
+  ATLAS-96 --> ATLAS-94
+  ATLAS-97 --> ATLAS-57
+  ATLAS-97 --> ATLAS-94
+  ATLAS-98 --> ATLAS-91
+  ATLAS-98 --> ATLAS-93
+  ATLAS-98 --> ATLAS-95
+  ATLAS-99 --> ATLAS-9
+  ATLAS-99 --> ATLAS-87
+  ATLAS-99 --> ATLAS-96
+  ATLAS-100 --> ATLAS-99
+  ATLAS-101 --> ATLAS-65
+  ATLAS-101 --> ATLAS-100
+  ATLAS-102 --> ATLAS-99
+  ATLAS-102 --> ATLAS-100
+  ATLAS-103 --> ATLAS-100
+  ATLAS-103 --> ATLAS-102
+  ATLAS-104 --> ATLAS-57
+  ATLAS-104 --> ATLAS-99
+  ATLAS-105 --> ATLAS-101
+  ATLAS-106 --> ATLAS-56
+  ATLAS-106 --> ATLAS-99
+  ATLAS-107 --> ATLAS-14
+  ATLAS-107 --> ATLAS-43
+  ATLAS-107 --> ATLAS-102
+  ATLAS-108 --> ATLAS-80
+  classDef needs_human_decision stroke-width:1px;
+  classDef planned stroke-width:1px;
+  classDef ready_for_agent stroke-width:1px;
+  class ATLAS-2,ATLAS-3,ATLAS-4,ATLAS-5,ATLAS-6,ATLAS-7,ATLAS-8,ATLAS-9,ATLAS-10,ATLAS-11,ATLAS-12,ATLAS-13,ATLAS-14,ATLAS-15,ATLAS-16,ATLAS-17,ATLAS-18,ATLAS-19,ATLAS-20,ATLAS-21,ATLAS-22,ATLAS-23,ATLAS-24,ATLAS-25,ATLAS-26,ATLAS-27,ATLAS-28,ATLAS-29,ATLAS-30,ATLAS-31,ATLAS-32,ATLAS-33,ATLAS-34,ATLAS-35,ATLAS-36,ATLAS-37,ATLAS-38,ATLAS-39,ATLAS-40,ATLAS-41,ATLAS-42,ATLAS-43,ATLAS-44,ATLAS-45,ATLAS-46,ATLAS-47,ATLAS-48,ATLAS-49,ATLAS-50,ATLAS-51,ATLAS-52,ATLAS-53,ATLAS-54,ATLAS-55,ATLAS-56,ATLAS-57,ATLAS-58,ATLAS-59,ATLAS-60,ATLAS-61,ATLAS-62,ATLAS-63,ATLAS-64,ATLAS-65,ATLAS-66,ATLAS-67,ATLAS-68,ATLAS-69,ATLAS-70,ATLAS-71,ATLAS-72,ATLAS-73,ATLAS-74,ATLAS-75,ATLAS-76,ATLAS-77,ATLAS-78,ATLAS-79,ATLAS-80,ATLAS-81,ATLAS-82,ATLAS-83,ATLAS-84,ATLAS-85,ATLAS-86,ATLAS-87,ATLAS-88,ATLAS-89,ATLAS-90,ATLAS-91,ATLAS-92,ATLAS-93,ATLAS-94,ATLAS-95,ATLAS-96,ATLAS-97,ATLAS-98,ATLAS-99,ATLAS-100,ATLAS-101,ATLAS-102,ATLAS-103,ATLAS-104,ATLAS-105,ATLAS-106,ATLAS-107,ATLAS-108 needs_human_decision;
+  class ATLAS-110 planned;
+  class ATLAS-1,ATLAS-109 ready_for_agent;

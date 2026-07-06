@@ -129,6 +129,10 @@ Runbooks (`docs/runbooks/`):
 
 Phase closure reports (`docs/closure/`):
 
+- `docs/closure/phase-1-closure-report.md` — Phase 1 (Knowledge Core)
+  closure: milestone evidence, harness ledger, carry-forwards
+- `docs/closure/phase-2-closure-report.md` — Phase 2 (Planning Engine)
+  closure: milestone evidence, harness ledger, carry-forwards
 - `docs/closure/phase-2.5-closure-report.md` — Phase 2.5 (out-of-band
   hardening) closure: milestone evidence, harness ledger, carry-forwards
 - `docs/closure/phase-3-closure-report.md` — Phase 3 (Dependency Engine)
@@ -141,6 +145,12 @@ Phase closure reports (`docs/closure/`):
   closure: milestone evidence, harness ledger, carry-forwards
 - `docs/closure/phase-6-closure-report.md` — Phase 6 (Evidence System)
   closure: milestone evidence, harness ledger, carry-forwards
+- `docs/closure/phase-7-closure-report.md` — Phase 7 (Verification Engine)
+  closure: milestone evidence, harness ledger, carry-forwards
+- `docs/closure/smoke-b-closure-report.md` — Smoke B (Phase 8 milestone,
+  base case) closure: milestone evidence, harness ledger, carry-forwards
+- `docs/closure/smoke-b-closeout.md` — Smoke B Phase 7 machine capture
+  (evidence appendix to the closure report)
 
 Stubs awaiting content: `docs/product/`, `docs/tech-debt/`.
 

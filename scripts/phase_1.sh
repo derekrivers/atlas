@@ -19,7 +19,7 @@ set -u
 DB_FLAG=()
 DB_URL=""
 STUB_SRC=""
-STUB_PATH="docs/planning/inbox/smoke-b-fixture.md"
+STUB_PATH="docs/planning/inbox/smoke-b-fixture-v2.md"
 
 while [ $# -gt 0 ]; do
   case "$1" in
