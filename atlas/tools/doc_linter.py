@@ -18,6 +18,15 @@ Checks, per the implementation roadmap and ADR-0006/0007:
   infixes, and ``roadmap.html``. Lines that explicitly mark retirement
   (containing "retired") are allowed: the roadmap's "Retired:" lines are
   the documented mechanism for recording retirements, not live use.
+  Two carve-outs cover the operator-authored inbox-stub namespace, which
+  is distinct from retired canonical-doc generations (the ATLAS_V2 era):
+  filenames under ``docs/planning/inbox/processed/`` are exempt from the
+  name check (same terminal-record semantics as the docs/archive/ skip),
+  and legacy-name matches inside a backticked path under
+  ``docs/planning/inbox/`` (any depth) are exempt from the reference
+  check so run records can name inbox stubs verbatim. Both carve-outs are
+  span-scoped: any legacy reference outside those inbox backticks, and any
+  ``-v[123].md`` filename outside processed/, still fires.
 - LINK: relative ``.md`` link targets in active docs must resolve to
   existing files. ``#fragment`` validation is deferred to the
   heading-anchor index (ATLAS-21), which owns the slug algorithm.
@@ -65,6 +74,11 @@ MANIFEST_PATH = "docs/MANIFEST.md"
 DECISIONS_DIR = "docs/decisions"
 PLANNING_DIR = "docs/planning"
 ARCHIVE_DIR = "docs/archive"
+# The committed follow-up inbox (ADR-0007 carve-out): operator-authored stub
+# names live in a different namespace from retired canonical-doc generations,
+# so the legacy-NAME check exempts them (D-1/D-2). Every other check still runs.
+INBOX_DIR = f"{PLANNING_DIR}/inbox"
+PROCESSED_INBOX_DIR = f"{INBOX_DIR}/processed"
 
 # Directories whose *.md files must all be listed in the MANIFEST.
 CANONICAL_DIRS = (
@@ -313,6 +327,20 @@ def check_manifest(root: Path) -> list[Finding]:
     return findings
 
 
+def _inbox_path_spans(line: str) -> list[tuple[int, int]]:
+    """Character spans of backticked paths under docs/planning/inbox/ (D-2).
+
+    Inbox stub filenames are operator-authored run inputs; a run record must be
+    able to name them verbatim. The exemption is span-scoped: only the interior
+    of such a backtick is exempt, so a non-inbox legacy reference elsewhere on
+    the same line still fires."""
+    spans = []
+    for match in BACKTICK_RE.finditer(line):
+        if match.group(1).startswith(f"{INBOX_DIR}/"):
+            spans.append((match.start(1), match.end(1)))
+    return spans
+
+
 def check_legacy_names(root: Path) -> list[Finding]:
     findings = []
     for path in sorted(root.rglob("*")):
@@ -321,6 +349,10 @@ def check_legacy_names(root: Path) -> list[Finding]:
         rel = _rel(root, path)
         parts = set(Path(rel).parts)
         if parts & SKIP_DIRS or rel.startswith(f"{ARCHIVE_DIR}/"):
+            continue
+        # D-1: operator-authored stub names in the terminal inbox are a
+        # different namespace from retired canonical-doc generations.
+        if rel.startswith(f"{PROCESSED_INBOX_DIR}/"):
             continue
         for pattern in LEGACY_RES:
             if pattern.search(path.name):
@@ -333,9 +365,16 @@ def check_legacy_names(root: Path) -> list[Finding]:
         for lineno, line in enumerate(lines, start=1):
             if RETIREMENT_RE.search(line):
                 continue  # documented retirement records are not live use
+            exempt_spans = _inbox_path_spans(line)
             for pattern in LEGACY_RES:
-                match = pattern.search(line)
-                if match:
+                for match in pattern.finditer(line):
+                    # D-2: a match inside a backticked inbox path is exempt;
+                    # keep scanning for a non-exempt match on the same line.
+                    if any(
+                        start <= match.start() and match.end() <= end
+                        for start, end in exempt_spans
+                    ):
+                        continue
                     findings.append(
                         Finding(
                             rel,
@@ -344,6 +383,7 @@ def check_legacy_names(root: Path) -> list[Finding]:
                             f"legacy document name referenced: {match.group(0)}",
                         )
                     )
+                    break
     return findings
 
 

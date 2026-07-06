@@ -182,6 +182,74 @@ def test_retirement_record_line_is_allowed(tmp_path: Path) -> None:
     assert not codes(lint_repo(tmp_path)) & {"LEG001", "LEG002"}
 
 
+def test_processed_inbox_iteration_suffix_filename_is_exempt(tmp_path: Path) -> None:
+    # D-1: an operator-authored stub name in the terminal inbox is a different
+    # namespace from retired canonical-doc generations; the name check exempts
+    # docs/planning/inbox/processed/ only.
+    build_good_repo(tmp_path)
+    write(
+        tmp_path,
+        "docs/planning/inbox/processed/smoke-b-fixture-v2.md",
+        "# Smoke B fixture stub\n",
+    )
+    assert "LEG001" not in codes(lint_repo(tmp_path))
+
+
+def test_backticked_inbox_path_reference_is_exempt(tmp_path: Path) -> None:
+    # D-2: a run record must be able to name an inbox stub verbatim.
+    build_good_repo(tmp_path)
+    write(
+        tmp_path,
+        "docs/atlas/sample-plan.md",
+        "# Sample plan\n\n"
+        "Stub `docs/planning/inbox/smoke-b-fixture-v2.md` moved to processed/.\n",
+    )
+    assert "LEG002" not in codes(lint_repo(tmp_path))
+
+
+def test_v2_filename_outside_processed_inbox_still_fails(tmp_path: Path) -> None:
+    # NEGATIVE: the same filename one directory up (inbox/, not processed/) is
+    # not exempt — proving the D-1 carve-out is narrow.
+    build_good_repo(tmp_path)
+    write(
+        tmp_path,
+        "docs/planning/inbox/smoke-b-fixture-v2.md",
+        "# Smoke B fixture stub\n",
+    )
+    assert "LEG001" in codes(lint_repo(tmp_path))
+
+
+def test_non_inbox_backticked_v2_reference_still_fails(tmp_path: Path) -> None:
+    # NEGATIVE: a backticked -v2.md path that is not under the inbox still fires.
+    build_good_repo(tmp_path)
+    write(
+        tmp_path,
+        "docs/atlas/sample-plan.md",
+        "# Sample plan\n\nSee `docs/atlas/old-spec-v2.md` for the old spec.\n",
+    )
+    assert "LEG002" in codes(lint_repo(tmp_path))
+
+
+def test_leg002_exemption_is_span_scoped_not_line_scoped(tmp_path: Path) -> None:
+    # A-2 NEGATIVE: one line with two backticked spans — an exempt inbox path
+    # and a non-inbox -v2.md reference. The non-inbox match must still fire,
+    # proving the exemption is scoped to the inbox backtick's span, not the line.
+    build_good_repo(tmp_path)
+    write(
+        tmp_path,
+        "docs/atlas/sample-plan.md",
+        "# Sample plan\n\n"
+        "Stub `docs/planning/inbox/smoke-b-fixture-v2.md` supersedes "
+        "`docs/atlas/old-spec-v2.md`.\n",
+    )
+    findings = lint_repo(tmp_path)
+    leg002 = [f for f in findings if f.code == "LEG002"]
+    # Exactly one: the non-inbox reference fires, the inbox one is exempt. A
+    # line-scoped exemption would suppress both and yield zero.
+    assert len(leg002) == 1, leg002
+    assert leg002[0].path == "docs/atlas/sample-plan.md"
+
+
 def test_broken_relative_md_link_fails(tmp_path: Path) -> None:
     build_good_repo(tmp_path)
     write(
