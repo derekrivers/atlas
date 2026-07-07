@@ -303,3 +303,8 @@ Rules of the variant:
 - Roadmap keys are illustrative seeds until `atlas apply` exists; once
   the planner is live, paste the rendered ticket (objective, acceptance
   criteria, context pack) in place of the hand-filled sections above.
+- Hand-dispatched work never claims a forward key. Either mint first
+  (inbox stub -> `atlas apply` -> use the assigned key) or label the PR
+  with the non-key meta convention (`ATLAS-00xM`). A number used ahead of
+  the counter becomes a permanent namespace smear; the ATLAS-111..146
+  burn (debt register: "Key-namespace burn") is the cost of the last one.

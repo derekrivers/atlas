@@ -221,3 +221,39 @@ then run the prepared backfill prompt
 and verify each title through scripts/check_pr_title.py (exit 0). Owner:
 alongside the identifier-seam ticket, before the Atlas-loop smoke's
 provenance assertions are trusted.
+
+## Key-namespace burn: ATLAS-111..146 reserved-and-discarded (OP-3a)
+
+Delivered out-of-band work (roadmap entries, PR titles #129–#148, code
+docstrings, migration names 0011/0012/0014, tech-debt files) used the
+hand-maintained identifier sequence ATLAS-111..146 before any store mint —
+the same OP-5(b) smear the Smoke B closure documented at 108–110, which
+would otherwise recur at every future `atlas apply` until the counter
+cleared 146.
+
+**Correction (2026-07-07, operator: derekrivers):** the ticket counter was
+advanced from 110 to 146 via the sanctioned `KeyCounterRepo.reserve`
+(monotonic, no-reuse — a discarded reservation is structurally an archived
+key, AT-6). No ticket rows were created; no schema changed. The next real
+mint is **ATLAS-147**.
+
+Consequences, accepted:
+
+- ATLAS-111..146 are permanently non-store identifiers. Their work's
+  provenance remains doc-anchored (roadmap + PR titles + closure reports),
+  not store-queryable — the same standing 101–110 already had.
+- Linear's NATIVE issue numbers are an independent counter in the same
+  prefix and will still collide numerically forever; the embedded-title key
+  (ATLAS-143 label) remains the sole authority at that seam. Native numbers
+  never enter the store. F-8 rule restated: the counter is the only key
+  authority; every other ATLAS-<n> is a different namespace.
+- The committed render header (`ticket_key_high_water: 110`) reflects the
+  last apply and self-corrects at the next one; renders are never
+  hand-edited (ADR-0007).
+
+**To close the pattern (not just the instance):** hand-dispatched work must
+stop claiming forward keys. Either mint first (inbox stub → `atlas apply`
+→ use the assigned key), or label the PR with an explicitly non-key tag
+(the ATLAS-00xM meta-commit convention already models this). The runbook
+rule lives in `docs/runbooks/agent-ticket-prompt.md` (landed in the same
+change as this entry).
