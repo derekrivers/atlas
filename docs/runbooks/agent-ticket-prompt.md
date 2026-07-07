@@ -300,6 +300,13 @@ Rules of the variant:
   consistent — never silently absorb the edit, and never silently
   exclude it and leave the pin to fail. (Origin: ATLAS-112's roadmap
   line and the 92→93 enumeration pin.)
+- Branch from a fresh `origin/main`, never local `HEAD`: `git fetch`
+  first, and before every push `git log origin/main..HEAD` must show only
+  this ticket's commits (and `git diff --stat origin/main..HEAD` only its
+  files). A stray local commit riding the branch silently expands the diff
+  past the approved scope and can land unrelated hazards. (Origin: PR #155,
+  where an unpushed local commit re-added an active-inbox stub — a
+  duplicate-mint hazard — and reopened the PR.)
 - Roadmap keys are illustrative seeds until `atlas apply` exists; once
   the planner is live, paste the rendered ticket (objective, acceptance
   criteria, context pack) in place of the hand-filled sections above.
