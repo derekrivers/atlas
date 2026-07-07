@@ -393,10 +393,13 @@ Atlas ticket (#retry-and-failure-seam).
 Phase 8 live-discovered fixes (found running the Smoke B milestone against the
 real store; Smoke B closure report §5):
 
-Key ATLAS-143 (a store-real key, not a Phase 8 seed number) was delivered live
-via PR #144: it embeds the Atlas key in the pushed Linear title so the render
-round-trips byte-exact, closing the identifier homonym seam between the tracker
-title and the store key. It carries no standalone seed line — the retirements
+The title-embedding fix (label ATLAS-143 — an out-of-band dispatch label,
+never a store mint: the key counter had not reached 111 when PR #144
+merged, and the 111..146 label range was later reserved-and-discarded;
+see the debt register entry "Key-namespace burn") was delivered live: it
+embeds the Atlas key in the pushed Linear title so the render round-trips
+byte-exact, closing the identifier homonym seam between the tracker title
+and the store key. It carries no standalone seed line — the retirements
 above already net the roadmap count.
 
 Milestone test: a ready, context-rich fixture ticket flows
