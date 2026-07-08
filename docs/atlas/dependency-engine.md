@@ -175,9 +175,13 @@ Run on every graph build and on every dependency mutation:
 - Acyclicity (cycle reported with the full cycle path).
 - No self-edges; no duplicate edges (same source, target, type).
 - No dangling polymorphic targets.
-- No `depends_on` from a terminal-status ticket to a non-terminal one
-  (completed work cannot newly depend on pending work — indicates a data
-  error).
+- No `depends_on` from a `done` ticket to a non-terminal one (completed
+  work cannot newly depend on pending work — indicates a data error).
+  `rejected` sources are exempt: rejection is a normal end for work whose
+  prerequisites are unfinished, and rejected tickets are frozen to
+  planning, so treating their historical edges as violations would make
+  one rejection block every future apply with no sanctioned repair
+  (observed live, 2026-07-08).
 
 Any failure is a typed error; `atlas apply` and the PM Engine refuse to
 proceed on an invalid graph.
