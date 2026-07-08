@@ -1,13 +1,21 @@
-"""PM-Engine ticket synchronisation (ATLAS-42, extended by ATLAS-45/-118/-119/-120).
+"""PM-Engine ticket synchronisation (ATLAS-42, extended by
+ATLAS-45/-118/-119/-120/-148).
 
 One idempotent sync pass (:func:`sync_tick`) wiring the ATLAS-41 boundary
 primitives into steps 1-5 of the ``pm-engine-and-linear-sync.md`` "Sync loop":
 pull status Linear -> Atlas, push owned definitions Atlas -> Linear, promote
 dependency-ready tickets to ``Ready for Agent`` (:mod:`atlas.pm.promotion`),
 scan tagged comments into inbox proposal stubs, and *nothing else crossing*.
-Step 4 (ATLAS-45) is the follow-up scan: per synced ticket, read its Linear
-comments (the read-only :meth:`LinearClient.fetch_comments`) and write one inbox
-stub per comment tagged ``atlas:proposed-follow-up`` to
+Step 1's read is BATCHED (ATLAS-148): one paginated, project-scoped
+:meth:`LinearClient.fetch_project_issues` call replaces the per-ticket
+``fetch_issue`` loop, and issues join to tickets by ``external_linear_id``
+ONLY — never title, never identifier — so one tick costs ``ceil(n / 250)``
+pull requests instead of one per ticket. Step 4 (ATLAS-45, scoped by
+ATLAS-148) is the follow-up scan: per synced ticket in an
+``ACTIVE_COMMENT_SCAN_STATUSES`` state (the documented active-state set —
+parked ``needs_human_decision`` and terminal statuses are not scanned), read
+its Linear comments (the read-only :meth:`LinearClient.fetch_comments`) and
+write one inbox stub per comment tagged ``atlas:proposed-follow-up`` to
 ``docs/planning/inbox/<ticket-key>-<n>.md`` (see :func:`_scan_follow_ups`). It is
 the PRODUCER only -- it surfaces follow-ups as working-tree stubs and stops;
 the operator commits the inbox, and the consumer side (``atlas plan`` reading the
@@ -67,6 +75,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -126,6 +135,23 @@ REVIEW_CYCLE_THRESHOLD = 3
 # a ticket here always has a non-NULL episode boundary for the log dedup.
 CYCLING_STATES: frozenset[TicketStatus] = frozenset(
     {TicketStatus.CHANGES_REQUESTED, TicketStatus.PR_OPEN}
+)
+
+# The statuses whose tickets step 4 comment-scans (ATLAS-148; the documented
+# active-state set in pm-engine-and-linear-sync.md "Sync loop"). These are the
+# states in which an agent is or was just working the ticket, so a tagged
+# follow-up comment can appear; everything else — pre-dispatch work no agent
+# has touched (backlog/planned/blocked), a parked ``needs_human_decision``
+# awaiting the operator, and terminal statuses — is excluded, which is what
+# makes the tick's comment-scan budget O(active) instead of O(board).
+ACTIVE_COMMENT_SCAN_STATUSES: frozenset[TicketStatus] = frozenset(
+    {
+        TicketStatus.READY_FOR_AGENT,
+        TicketStatus.IN_PROGRESS,
+        TicketStatus.PR_OPEN,
+        TicketStatus.REVIEW_REQUIRED,
+        TicketStatus.CHANGES_REQUESTED,
+    }
 )
 
 logger = logging.getLogger("atlas.pm.sync")
@@ -577,18 +603,21 @@ def _scan_follow_ups(
     follow-ups enter the backlog solely through plan/apply (ADR-0007), and the
     consumer side is ATLAS-122.
 
-    Skips, in order: a ticket with no Linear join (nothing to read) and a terminal
-    ticket (closed work is not polled — mirroring :func:`_pull`). Then per comment:
-    skip an untagged body and a comment id already stubbed (the dedup; the wrong
-    answer re-stubs it every tick). A newly-seen tagged comment is written at the
-    next free index for the ticket key, and ``seen_ids``/``max_index`` are advanced
-    so a second tagged comment this same tick lands at the next index without a
-    re-read."""
+    Skips, in order: a ticket with no Linear join (nothing to read) and a ticket
+    outside ``ACTIVE_COMMENT_SCAN_STATUSES`` (ATLAS-148) — only a ticket an agent
+    is or was just working can grow a tagged follow-up, so pre-dispatch work, a
+    parked ``needs_human_decision``, and terminal statuses are not scanned (this
+    is what keeps the tick's comment-scan cost O(active), not O(board)). Then per
+    comment: skip an untagged body and a comment id already stubbed (the dedup;
+    the wrong answer re-stubs it every tick). A newly-seen tagged comment is
+    written at the next free index for the ticket key, and
+    ``seen_ids``/``max_index`` are advanced so a second tagged comment this same
+    tick lands at the next index without a re-read."""
 
     if ticket.external_linear_id is None:
         return  # not joined to a Linear issue; no comments to scan
-    if ticket.status.value in TERMINAL_STATUSES:
-        return  # terminal work is closed; do not poll it (mirrors _pull)
+    if ticket.status not in ACTIVE_COMMENT_SCAN_STATUSES:
+        return  # not in an agent-active state; no follow-up can appear (ATLAS-148)
     for comment in client.fetch_comments(ticket.external_linear_id):
         if FOLLOW_UP_TAG not in comment.body:
             continue  # not a proposed follow-up
@@ -612,7 +641,7 @@ def _pull(
     ticket: Ticket,
     tickets: TicketRepo,
     debt: DebtItemRepo,
-    client: LinearClient,
+    issues_by_id: Mapping[str, LinearIssue],
     status_map: LinearStatusMap,
     result: SyncResult,
     now: datetime,
@@ -621,17 +650,26 @@ def _pull(
     ticket, and (ATLAS-118) log an out-of-ownership anomaly when the observed
     Linear state is unmapped. Returns the possibly-updated ticket so the push
     step sees the post-pull status (a status pulled into a frozen state freezes
-    the push)."""
+    the push).
+
+    ``issues_by_id`` is the tick's ONE batched, project-scoped pull
+    (:meth:`LinearClient.fetch_project_issues`, ATLAS-148), keyed by issue id —
+    this function makes no Linear call of its own. The join is by
+    ``external_linear_id`` ONLY (never title or identifier): a ticket whose id
+    is absent from the map — issue deleted, or moved out of the configured
+    project and so out of the poll scope — takes the issue-missing path and is
+    left unchanged."""
 
     if ticket.external_linear_id is None:
         return ticket  # not yet joined to a Linear issue; nothing to pull
     if ticket.status.value in TERMINAL_STATUSES:
         return ticket  # terminal work is closed; do not poll it
-    issue = client.fetch_issue(ticket.external_linear_id)
+    issue = issues_by_id.get(ticket.external_linear_id)
     if issue is None:
-        # The join target is gone. That is a distinct anomaly (not an
-        # out-of-ownership *transition*) and out of ATLAS-118's narrowed scope;
-        # here we only avoid crashing and leave status unchanged.
+        # The join target is gone (or left the project's poll scope). That is a
+        # distinct anomaly (not an out-of-ownership *transition*) and out of
+        # ATLAS-118's narrowed scope; here we only avoid crashing and leave
+        # status unchanged.
         logger.warning(
             "linear-sync: issue %s for %s not found; status left unchanged",
             ticket.external_linear_id,
@@ -740,14 +778,23 @@ def sync_tick(
 ) -> SyncResult:
     """Run one idempotent sync pass over every ticket (steps 1-5).
 
-    Per ticket: pull a mapped status (Linear -> Atlas) — logging an
-    out-of-ownership ``DebtItem`` (ATLAS-118) on a transition into an unmapped
-    state — then push the owned definition (Atlas -> Linear) if the cursor says
-    it changed (a first-sync create scopes the new issue to ``team_id`` AND
-    ``project_id``, so it lands in the Symphony-polled Linear project; ATLAS-135).
-    Pull precedes push so a status pulled into a frozen state
-    freezes the same tick's push. Each Linear call is bracketed by its own DB
-    commit (push-then-stamp), so an interrupted tick is safe to re-run.
+    Step 1's read is BATCHED (ATLAS-148): one paginated, project-scoped
+    :meth:`LinearClient.fetch_project_issues` call up front (``ceil(n / 250)``
+    requests for an n-issue project; skipped entirely when no joined,
+    non-terminal ticket exists, so an empty board still makes zero pull
+    requests) replaces the per-ticket ``fetch_issue`` loop, and the returned
+    issues are joined to tickets by ``external_linear_id`` ONLY. Per ticket:
+    pull a mapped status (Linear -> Atlas) from the pre-fetched map — logging
+    an out-of-ownership ``DebtItem``
+    (ATLAS-118) on a transition into an unmapped state — then push the owned
+    definition (Atlas -> Linear) if the cursor says it changed (a first-sync
+    create scopes the new issue to ``team_id`` AND ``project_id``, so it lands
+    in the Symphony-polled Linear project; ATLAS-135). Pull precedes push so a
+    status pulled into a frozen state freezes the same tick's push. Each Linear
+    write is bracketed by its own DB commit (push-then-stamp), so an
+    interrupted tick is safe to re-run. An issue the push just created is not
+    in this tick's pre-fetched map, which changes nothing: its ticket had no
+    join key when step 1 ran, so it was never pulled in the same tick anyway.
 
     Then step 3 (ATLAS-43): project the dependency graph and promote every
     dependency-ready ticket to ``Ready for Agent`` via the sanctioned
@@ -766,11 +813,13 @@ def sync_tick(
     unique ``done`` state fails loudly even when nothing is completable; the write is
     Linear-only, so the next tick's pull reconciles Atlas.
 
-    Then step 4 (ATLAS-45): scan each synced, non-terminal ticket's Linear
-    comments and write one inbox stub per comment tagged
-    ``atlas:proposed-follow-up`` to ``<inbox_dir>/<ticket-key>-<n>.md``
-    (:func:`_scan_follow_ups`). PRODUCER only — it surfaces follow-ups as
-    working-tree stubs (the ONE sanctioned ``docs/planning/`` write, atomic;
+    Then step 4 (ATLAS-45, scoped by ATLAS-148): scan each synced ticket in an
+    ``ACTIVE_COMMENT_SCAN_STATUSES`` state — the documented active-state set;
+    parked ``needs_human_decision`` and terminal statuses are excluded — and
+    write one inbox stub per comment tagged ``atlas:proposed-follow-up`` to
+    ``<inbox_dir>/<ticket-key>-<n>.md`` (:func:`_scan_follow_ups`). PRODUCER
+    only — it surfaces follow-ups as working-tree stubs (the ONE sanctioned
+    ``docs/planning/`` write, atomic;
     ADR-0007), creating no ticket and writing no Atlas/Linear state; the operator
     commits the inbox and the consumer side is ATLAS-122. The inbox is read once
     up front (:func:`_inbox_state`) for the dedup key set and the per-ticket index,
@@ -803,8 +852,24 @@ def sync_tick(
 
     result = SyncResult()
     debt = DebtItemRepo(db)
-    for ticket in tickets.list():
-        after_pull = _pull(ticket, tickets, debt, client, status_map, result, now)
+    # Step 1's one batched read (ATLAS-148): every issue in the configured
+    # project, keyed by id — the join key. Tickets join by external_linear_id
+    # ONLY; title and identifier are never consulted. Fetched lazily: a board
+    # with nothing pullable (no joined, non-terminal ticket) makes ZERO pull
+    # requests, exactly as the per-ticket loop it replaced did.
+    pull_board = tickets.list()
+    needs_pull = any(
+        ticket.external_linear_id is not None
+        and ticket.status.value not in TERMINAL_STATUSES
+        for ticket in pull_board
+    )
+    issues_by_id: dict[str, LinearIssue] = (
+        {issue.id: issue for issue in client.fetch_project_issues(project_id)}
+        if needs_pull
+        else {}
+    )
+    for ticket in pull_board:
+        after_pull = _pull(ticket, tickets, debt, issues_by_id, status_map, result, now)
         _push(after_pull, tickets, client, team_id, project_id, result)
     graph = build_dependency_graph(db)
     result.promoted = promote_ready(

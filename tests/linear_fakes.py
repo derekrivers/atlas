@@ -83,7 +83,18 @@ class InMemoryLinearClient:
     def fetch_issue(self, issue_id: str) -> LinearIssue | None:
         return self._issues.get(issue_id)
 
-    def fetch_workflow_states(self) -> list[WorkflowState]:
+    def fetch_project_issues(self, project_id: str) -> list[LinearIssue]:
+        """The batched pull (ATLAS-148), mirroring the real client's paginated
+        project-scoped query. The fake models a single project (creation's
+        ``project_id`` is not tracked), so every stored issue is 'in' the
+        project and one invocation is one logical request — a 110-issue board
+        fits the real client's single 250-page anyway."""
+        return list(self._issues.values())
+
+    def fetch_workflow_states(self, team_id: str) -> list[WorkflowState]:
+        """Team-scoped (ATLAS-148), mirroring the real client. The fake models
+        a single team, so ``team_id`` selects nothing; it exists for signature
+        parity with the protocol."""
         return list(self._states)
 
     def fetch_project(self, project_id: str) -> LinearProject | None:

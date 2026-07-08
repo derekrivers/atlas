@@ -315,3 +315,22 @@ moment autonomous dispatch is wanted. Surgical option now on the table:
 operator-attested `done` for the handful of self-evidently delivered
 infrastructure tickets that future work depends on (e.g. ATLAS-45/46 —
 the deliverable is the running system), leaving the bulk ruling intact.
+
+## updatedAt-since incremental sync deferred (OP-9 follow-up, ATLAS-148)
+
+ATLAS-148 made the tick's pull one batched, project-scoped query
+(`ceil(n / 250)` requests) and scoped the comment scan to the active-state
+set, which fits the 2,500/hour budget at the default cadence with two
+orders of magnitude of headroom. The next refinement — filtering the pull
+by `updatedAt` since the last tick (Linear's `issues(filter: {updatedAt:
+{gt: ...}})`) so an idle board costs near-zero — was named in the OP-9
+stub as a non-goal and is deliberately not started: it needs a persisted
+per-tick cursor (new state, new failure modes around missed windows and
+clock skew) for a saving the budget no longer requires.
+
+**To close:** adopt only if the request budget tightens again (bigger
+board, faster cadence, or more engines sharing the key): add a persisted
+high-water `updatedAt` cursor with a full-pull fallback on any gap, and
+prove the miss-window behaviour with a fake-clock test. Owner: a future
+inbox stub against the PM Engine epic (queued behind need; none while the
+post-148 arithmetic holds — that evidence is the ATLAS-148 bound test).

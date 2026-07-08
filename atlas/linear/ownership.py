@@ -31,7 +31,8 @@ STATE_MAP_ENV = "LINEAR_STATE_MAP"
 
 class LinearStatusMapError(ValueError):
     """The configured Linear status map is missing, malformed, or
-    contradicts the workspace's workflow states (ATLAS-41 D7/D8/D9)."""
+    contradicts the team's workflow states (ATLAS-41 D7/D8/D9; team-scoped
+    since ATLAS-148)."""
 
 
 # --- Definition direction: Atlas -> Linear ---------------------------------
@@ -245,7 +246,8 @@ class LinearStatusMap:
         return cls(mapping)
 
     def validate_against_states(self, states: Iterable[WorkflowState]) -> None:
-        """Load-time validation against the workspace's workflow states (D7).
+        """Load-time validation against the team's workflow states (D7; the
+        caller fetches them team-scoped since ATLAS-148).
 
         Confirms each configured id still exists (stale-map guard: rotated
         UUIDs fail loudly instead of silently dropping) and that its type is
@@ -259,7 +261,7 @@ class LinearStatusMap:
             if state is None:
                 raise LinearStatusMapError(
                     f"{STATE_MAP_ENV} maps state id {state_id!r} which does not "
-                    "exist in the workspace's workflow states (stale map?)"
+                    "exist in the team's workflow states (stale map?)"
                 )
             accepted = _ACCEPTED_TYPES[status]
             if state.type not in accepted:

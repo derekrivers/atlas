@@ -2188,6 +2188,12 @@ def _preflight_command(
             linear_client if linear_client is not None else LinearGraphQLClient()
         )  # raises MissingLinearTokenError without a key
         status_map = LinearStatusMap.from_env()  # raises LinearStatusMapError if unset
+        team_id = os.environ.get(TEAM_ID_ENV)
+        if not team_id:
+            raise MissingLinearTokenError(
+                f"{TEAM_ID_ENV} is not set; preflight needs the Linear team id to "
+                "fetch the team's workflow states (team-scoped, ATLAS-148)"
+            )
         project_id = os.environ.get(PROJECT_ID_ENV)
         if not project_id:
             raise MissingLinearTokenError(
@@ -2202,6 +2208,7 @@ def _preflight_command(
         workflow_md_path=Path(args.workflow_md),
         client=client,
         status_map=status_map,
+        team_id=team_id,
         project_id=project_id,
         allow_assignee=args.allow_assignee,
         check_model=args.check_model,
