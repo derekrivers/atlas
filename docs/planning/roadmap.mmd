@@ -1,7 +1,7 @@
 %% Render written only by `atlas apply` (ADR-0006/0007); do not hand-edit.
-%% plan_run_id: 58d7b8a2-a648-4351-890b-8d48de2a71c3
+%% plan_run_id: 0f8c9eba-eaf3-4abd-bbcf-50fd7a7db6ed
 %% prompt_version: staged[planner-stage-epics-v1.2.0+planner-stage-tickets-v1.6.0+planner-stage-dependencies-v1.0.0]
-%% ticket_key_high_water: 110
+%% ticket_key_high_water: 150
 %% epic_key_high_water: 11
 graph TD
   subgraph ATLAS-E1["Bootstrap Repository"]
@@ -76,6 +76,10 @@ graph TD
     ATLAS-57["ATLAS-57 Delivery metrics CLI report (atlas pm report)"]
     ATLAS-58["ATLAS-58 Historical cycle time upgrade: compute from TicketStatusTransition log"]
     ATLAS-59["ATLAS-59 Follow-up consumer: atlas plan reads inbox, atlas apply retires stubs"]
+    ATLAS-147["ATLAS-147 Linear client hardening: error-body capture, timeout, rate-limit backoff"]
+    ATLAS-148["ATLAS-148 Sync request budget: batched pull, scoped comment scan, team-scoped states"]
+    ATLAS-149["ATLAS-149 Linear client hardening: error-body capture, timeout, rate-limit backoff"]
+    ATLAS-150["ATLAS-150 Sync request budget: batched pull, scoped comment scan, team-scoped states"]
   end
   subgraph ATLAS-E7["Execution Context"]
     ATLAS-60["ATLAS-60 Ticket tags and component fields: storage layer"]
@@ -331,9 +335,14 @@ graph TD
   ATLAS-107 --> ATLAS-43
   ATLAS-107 --> ATLAS-102
   ATLAS-108 --> ATLAS-80
+  ATLAS-147 --> ATLAS-45
+  ATLAS-148 --> ATLAS-46
+  ATLAS-148 --> ATLAS-147
+  classDef done stroke-width:1px;
   classDef needs_human_decision stroke-width:1px;
   classDef planned stroke-width:1px;
-  classDef ready_for_agent stroke-width:1px;
-  class ATLAS-2,ATLAS-3,ATLAS-4,ATLAS-5,ATLAS-6,ATLAS-7,ATLAS-8,ATLAS-9,ATLAS-10,ATLAS-11,ATLAS-12,ATLAS-13,ATLAS-14,ATLAS-15,ATLAS-16,ATLAS-17,ATLAS-18,ATLAS-19,ATLAS-20,ATLAS-21,ATLAS-22,ATLAS-23,ATLAS-24,ATLAS-25,ATLAS-26,ATLAS-27,ATLAS-28,ATLAS-29,ATLAS-30,ATLAS-31,ATLAS-32,ATLAS-33,ATLAS-34,ATLAS-35,ATLAS-36,ATLAS-37,ATLAS-38,ATLAS-39,ATLAS-40,ATLAS-41,ATLAS-42,ATLAS-43,ATLAS-44,ATLAS-45,ATLAS-46,ATLAS-47,ATLAS-48,ATLAS-49,ATLAS-50,ATLAS-51,ATLAS-52,ATLAS-53,ATLAS-54,ATLAS-55,ATLAS-56,ATLAS-57,ATLAS-58,ATLAS-59,ATLAS-60,ATLAS-61,ATLAS-62,ATLAS-63,ATLAS-64,ATLAS-65,ATLAS-66,ATLAS-67,ATLAS-68,ATLAS-69,ATLAS-70,ATLAS-71,ATLAS-72,ATLAS-73,ATLAS-74,ATLAS-75,ATLAS-76,ATLAS-77,ATLAS-78,ATLAS-79,ATLAS-80,ATLAS-81,ATLAS-82,ATLAS-83,ATLAS-84,ATLAS-85,ATLAS-86,ATLAS-87,ATLAS-88,ATLAS-89,ATLAS-90,ATLAS-91,ATLAS-92,ATLAS-93,ATLAS-94,ATLAS-95,ATLAS-96,ATLAS-97,ATLAS-98,ATLAS-99,ATLAS-100,ATLAS-101,ATLAS-102,ATLAS-103,ATLAS-104,ATLAS-105,ATLAS-106,ATLAS-107,ATLAS-108 needs_human_decision;
-  class ATLAS-110 planned;
-  class ATLAS-1,ATLAS-109 ready_for_agent;
+  classDef rejected stroke-width:1px;
+  class ATLAS-110 done;
+  class ATLAS-1,ATLAS-2,ATLAS-3,ATLAS-4,ATLAS-5,ATLAS-6,ATLAS-7,ATLAS-8,ATLAS-9,ATLAS-10,ATLAS-11,ATLAS-12,ATLAS-13,ATLAS-14,ATLAS-15,ATLAS-16,ATLAS-17,ATLAS-18,ATLAS-19,ATLAS-20,ATLAS-21,ATLAS-22,ATLAS-23,ATLAS-24,ATLAS-25,ATLAS-26,ATLAS-27,ATLAS-28,ATLAS-29,ATLAS-30,ATLAS-31,ATLAS-32,ATLAS-33,ATLAS-34,ATLAS-35,ATLAS-36,ATLAS-37,ATLAS-38,ATLAS-39,ATLAS-40,ATLAS-41,ATLAS-42,ATLAS-43,ATLAS-44,ATLAS-45,ATLAS-46,ATLAS-47,ATLAS-48,ATLAS-49,ATLAS-50,ATLAS-51,ATLAS-52,ATLAS-53,ATLAS-54,ATLAS-55,ATLAS-56,ATLAS-57,ATLAS-58,ATLAS-59,ATLAS-60,ATLAS-61,ATLAS-62,ATLAS-63,ATLAS-64,ATLAS-65,ATLAS-66,ATLAS-67,ATLAS-68,ATLAS-69,ATLAS-70,ATLAS-71,ATLAS-72,ATLAS-73,ATLAS-74,ATLAS-75,ATLAS-76,ATLAS-77,ATLAS-78,ATLAS-79,ATLAS-80,ATLAS-81,ATLAS-82,ATLAS-83,ATLAS-84,ATLAS-85,ATLAS-86,ATLAS-87,ATLAS-88,ATLAS-89,ATLAS-90,ATLAS-91,ATLAS-92,ATLAS-93,ATLAS-94,ATLAS-95,ATLAS-96,ATLAS-97,ATLAS-98,ATLAS-99,ATLAS-100,ATLAS-101,ATLAS-102,ATLAS-103,ATLAS-104,ATLAS-105,ATLAS-106,ATLAS-107 needs_human_decision;
+  class ATLAS-147,ATLAS-148,ATLAS-149,ATLAS-150 planned;
+  class ATLAS-108,ATLAS-109 rejected;
