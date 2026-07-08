@@ -136,6 +136,14 @@ v2 per OP-9(a).
 | Docs-mapper scope question: should root README count as documentation? | future spec discussion, on its merits | Open (unscheduled) |
 | ATLAS-82 / 84 / 85 / 86 / 88 / 90 | Phase 8 remainder; Smoke B is ATLAS-90's base case | Open |
 
+Addendum (2026-07-07): the two rows above marked Closed for store
+ATLAS-108 and fixture v1/ATLAS-109 recorded the Linear-side act; the
+store-side pull had not yet reconciled (LINEAR_STATE_MAP lacked the
+Canceled state). Both reconciled to `rejected` on 2026-07-07 after the
+map gained `84207146-…: rejected`, via the sanctioned pull. Lesson,
+absorbed into review-doctrine practice: a closure row asserting store
+state is agent-tier until the store is read.
+
 ## 5. The run record
 
 - **Fixture v2:** store key **ATLAS-110** "Document the delivery loop under

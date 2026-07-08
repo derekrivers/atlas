@@ -307,6 +307,12 @@ Rules of the variant:
   past the approved scope and can land unrelated hazards. (Origin: PR #155,
   where an unpushed local commit re-added an active-inbox stub — a
   duplicate-mint hazard — and reopened the PR.)
+- A mid-execution scope addition is a NEW GATE, even when the operator
+  directs it. Flagging the tension and then complying folds an
+  unratified amendment into an approved diff — flag-and-comply is the
+  named failure; flag-and-route (a separate gated change) is the rule.
+  (Origin: PR #156, where operator-directed script additions rode an
+  approved one-bullet diff and reopened the PR.)
 - Roadmap keys are illustrative seeds until `atlas apply` exists; once
   the planner is live, paste the rendered ticket (objective, acceptance
   criteria, context pack) in place of the hand-filled sections above.
