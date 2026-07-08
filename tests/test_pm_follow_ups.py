@@ -1,11 +1,14 @@
-"""Follow-up comment scan -> inbox stub (step 4, ATLAS-45).
+"""Follow-up comment scan -> inbox stub (step 4, ATLAS-45; scoped by ATLAS-148).
 
-The PRODUCER half of follow-up ingestion: per synced, non-terminal ticket, the
-sync loop reads the issue's Linear comments (read-only ``fetch_comments``) and
-writes one inbox stub per comment tagged ``atlas:proposed-follow-up`` to
-``<inbox_dir>/<ticket-key>-<n>.md``. These tests are entirely fake-fed (the
-``RecordingClient`` over the in-memory Linear, comments seeded with
-``seed_comment``) — no network, no secrets. They map to the acceptance criteria:
+The PRODUCER half of follow-up ingestion: per synced ticket in an
+``ACTIVE_COMMENT_SCAN_STATUSES`` state (ATLAS-148 — the documented active-state
+set; pre-dispatch, parked ``needs_human_decision``, and terminal tickets are
+not scanned), the sync loop reads the issue's Linear comments (read-only
+``fetch_comments``) and writes one inbox stub per comment tagged
+``atlas:proposed-follow-up`` to ``<inbox_dir>/<ticket-key>-<n>.md``. These
+tests are entirely fake-fed (the ``RecordingClient`` over the in-memory
+Linear, comments seeded with ``seed_comment``) — no network, no secrets. They
+map to the acceptance criteria:
 
 * AC1 — a tagged comment yields exactly one stub carrying the title, the verbatim
   body, the source reference, and the comment id; an untagged comment yields none
@@ -18,6 +21,16 @@ writes one inbox stub per comment tagged ``atlas:proposed-follow-up`` to
 * AC3 — the scan creates no ticket and writes no Atlas/Linear state, and nothing
   is written under the planning root outside ``inbox/``
   (:func:`test_scan_writes_no_ticket_or_linear_state_and_only_under_inbox`).
+* ATLAS-148 scope — a parked ``needs_human_decision`` ticket is NOT
+  comment-scanned (:func:`test_parked_needs_human_ticket_is_not_comment_scanned`)
+  while an ``in_progress`` ticket still is
+  (:func:`test_in_progress_ticket_is_still_comment_scanned`), and every member
+  of the documented active-state set is scanned
+  (:func:`test_every_active_state_is_comment_scanned`).
+
+The scanned tickets here are seeded ``in_progress`` with a matching Linear
+state (ATLAS-148: ``planned`` is pre-dispatch — no agent has worked it, so it
+is no longer scanned), keeping steps 1-3 no-ops so the scan is what's proven.
 """
 
 from __future__ import annotations
@@ -26,10 +39,18 @@ from pathlib import Path
 
 import pytest
 from test_models_validation import NOW
-from test_pm_sync import RecordingClient, run, seed_ticket
+from test_pm_sync import (
+    EARLIER,
+    NEEDS_HUMAN,
+    STARTED,
+    UNMAPPED,
+    RecordingClient,
+    run,
+    seed_ticket,
+)
 
 from atlas.core.models.ticket import TicketStatus
-from atlas.pm.sync import FOLLOW_UP_TAG
+from atlas.pm.sync import ACTIVE_COMMENT_SCAN_STATUSES, FOLLOW_UP_TAG
 from atlas.storage import Database, TicketRepo
 
 TAGGED_BODY = f"Split the retry path into its own ticket. {FOLLOW_UP_TAG}"
@@ -59,7 +80,13 @@ def test_tagged_comment_yields_one_stub_untagged_yields_none(
     db: Database, tmp_path: Path
 ) -> None:
     client = RecordingClient()
-    ticket = seed_ticket(db, client, key="ATLAS-200", status=TicketStatus.PLANNED)
+    ticket = seed_ticket(
+        db,
+        client,
+        key="ATLAS-200",
+        status=TicketStatus.IN_PROGRESS,
+        issue_state=STARTED,
+    )
     assert ticket.external_linear_id is not None
     comment = client.seed_comment(ticket.external_linear_id, TAGGED_BODY)
     client.seed_comment(ticket.external_linear_id, UNTAGGED_BODY)  # not a follow-up
@@ -83,7 +110,13 @@ def test_tagged_comment_yields_one_stub_untagged_yields_none(
 
 def test_untagged_only_writes_nothing(db: Database, tmp_path: Path) -> None:
     client = RecordingClient()
-    ticket = seed_ticket(db, client, key="ATLAS-201", status=TicketStatus.PLANNED)
+    ticket = seed_ticket(
+        db,
+        client,
+        key="ATLAS-201",
+        status=TicketStatus.IN_PROGRESS,
+        issue_state=STARTED,
+    )
     assert ticket.external_linear_id is not None
     client.seed_comment(ticket.external_linear_id, UNTAGGED_BODY)
     inbox = _inbox(tmp_path)
@@ -101,7 +134,13 @@ def test_dedup_across_ticks_and_second_comment_gets_next_index(
     db: Database, tmp_path: Path
 ) -> None:
     client = RecordingClient()
-    ticket = seed_ticket(db, client, key="ATLAS-200", status=TicketStatus.PLANNED)
+    ticket = seed_ticket(
+        db,
+        client,
+        key="ATLAS-200",
+        status=TicketStatus.IN_PROGRESS,
+        issue_state=STARTED,
+    )
     assert ticket.external_linear_id is not None
     client.seed_comment(ticket.external_linear_id, TAGGED_BODY)
     inbox = _inbox(tmp_path)
@@ -129,7 +168,13 @@ def test_index_is_monotonic_across_processed_and_processed_dedups(
     # next index must skip past it (monotonic), and its comment id must still be
     # recognised as stubbed (the processed-dir dedup).
     client = RecordingClient()
-    ticket = seed_ticket(db, client, key="ATLAS-200", status=TicketStatus.PLANNED)
+    ticket = seed_ticket(
+        db,
+        client,
+        key="ATLAS-200",
+        status=TicketStatus.IN_PROGRESS,
+        issue_state=STARTED,
+    )
     assert ticket.external_linear_id is not None
     processed_comment = client.seed_comment(
         ticket.external_linear_id, TAGGED_BODY, comment_id="comment-processed"
@@ -162,15 +207,17 @@ def test_scan_writes_no_ticket_or_linear_state_and_only_under_inbox(
     db: Database, tmp_path: Path
 ) -> None:
     client = RecordingClient()
-    # Already synced (linear_synced_at == updated_at) and in a state that maps to
-    # its own status, so steps 1-3 are no-ops this tick and the scan is the only
-    # thing acting — isolating the scan path. No acceptance criteria, so it is not
-    # promotion-ready either.
+    # In progress with the matching Linear state (ATLAS-148: only an
+    # active-state ticket is scanned), so the pull is a no-op; in_progress is
+    # frozen, so no push; no acceptance criteria, so it is not promotion-ready;
+    # a NULL status_entered_at, so dwell is skipped. Steps 1-3 and 5 are
+    # no-ops this tick and the scan is the only thing acting.
     ticket = seed_ticket(
         db,
         client,
         key="ATLAS-200",
-        status=TicketStatus.PLANNED,
+        status=TicketStatus.IN_PROGRESS,
+        issue_state=STARTED,
         linear_synced_at=NOW,
     )
     assert ticket.external_linear_id is not None
@@ -226,3 +273,86 @@ def test_unjoined_ticket_is_not_scanned(db: Database, tmp_path: Path) -> None:
 
     assert result.follow_ups_stubbed == 0
     assert _stub_files(inbox) == []
+
+
+# --- ATLAS-148: the documented active-state scan scope ------------------------
+#
+# Step 4 runs only for tickets in ACTIVE_COMMENT_SCAN_STATUSES. The proofs
+# assert on client.comment_scans (who was fetched), not just on stubs: the
+# point of the scope is the REQUEST budget, so a skipped ticket must cost zero
+# fetch_comments calls (the wrong answer scans it and merely finds no tag).
+
+
+def test_parked_needs_human_ticket_is_not_comment_scanned(
+    db: Database, tmp_path: Path
+) -> None:
+    client = RecordingClient()
+    # Parked awaiting the operator, Linear state agreeing (pull is a no-op).
+    ticket = seed_ticket(
+        db,
+        client,
+        key="ATLAS-204",
+        status=TicketStatus.NEEDS_HUMAN_DECISION,
+        issue_state=NEEDS_HUMAN,
+    )
+    assert ticket.external_linear_id is not None
+    client.seed_comment(ticket.external_linear_id, TAGGED_BODY)
+    inbox = _inbox(tmp_path)
+
+    result = run(db, client, inbox_dir=inbox)
+
+    assert client.comment_scans == []  # never fetched: zero requests, not zero hits
+    assert result.follow_ups_stubbed == 0
+    assert _stub_files(inbox) == []
+
+
+def test_in_progress_ticket_is_still_comment_scanned(
+    db: Database, tmp_path: Path
+) -> None:
+    # The negative beside the parked proof: scoping must not overshoot — an
+    # agent-active ticket is still scanned and its tagged comment stubbed.
+    client = RecordingClient()
+    ticket = seed_ticket(
+        db,
+        client,
+        key="ATLAS-205",
+        status=TicketStatus.IN_PROGRESS,
+        issue_state=STARTED,
+    )
+    assert ticket.external_linear_id is not None
+    client.seed_comment(ticket.external_linear_id, TAGGED_BODY)
+    inbox = _inbox(tmp_path)
+
+    result = run(db, client, inbox_dir=inbox)
+
+    assert client.comment_scans == [ticket.external_linear_id]
+    assert result.follow_ups_stubbed == 1
+    assert [p.name for p in _stub_files(inbox)] == ["ATLAS-205-1.md"]
+
+
+@pytest.mark.parametrize("status", sorted(ACTIVE_COMMENT_SCAN_STATUSES))
+def test_every_active_state_is_comment_scanned(
+    status: TicketStatus, db: Database, tmp_path: Path
+) -> None:
+    # Every member of the documented set is scanned. The issue sits in an
+    # UNMAPPED state so the pull leaves each seeded status exactly in place
+    # (one anomaly row, irrelevant here), and the stamped cursor
+    # (linear_synced_at == updated_at) suppresses the push for the pushable
+    # member (ready_for_agent) — isolating the scan.
+    client = RecordingClient()
+    ticket = seed_ticket(
+        db,
+        client,
+        key="ATLAS-206",
+        status=status,
+        issue_state=UNMAPPED,
+        linear_synced_at=EARLIER,
+    )
+    assert ticket.external_linear_id is not None
+    client.seed_comment(ticket.external_linear_id, TAGGED_BODY)
+    inbox = _inbox(tmp_path)
+
+    result = run(db, client, inbox_dir=inbox)
+
+    assert client.comment_scans == [ticket.external_linear_id]
+    assert result.follow_ups_stubbed == 1

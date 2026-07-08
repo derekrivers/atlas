@@ -4,7 +4,9 @@ A read-only check the operator runs *before* dispatching agents, to catch the
 silent no-dispatch traps the Phase-8 spec-conformance review surfaced: a Linear
 workflow-state name that drifted from the WORKFLOW.md contract (so Symphony's
 case-sensitive poll quietly matches nothing), a status map that no longer
-coheres with the workspace's states, an ambiguous transition target, a project
+coheres with the team's states (team-scoped since ATLAS-148 — a foreign team's
+same-named state can no longer satisfy a check), an ambiguous transition
+target, a project
 slug still on its placeholder or misaligned with ``LINEAR_PROJECT_ID``, and an
 accidentally-set ``LINEAR_ASSIGNEE`` that narrows the poll.
 
@@ -523,6 +525,7 @@ def run_preflight(
     workflow_md_path: Path,
     client: LinearClient,
     status_map: LinearStatusMap,
+    team_id: str,
     project_id: str,
     allow_assignee: bool,
     check_model: bool = False,
@@ -552,7 +555,9 @@ def run_preflight(
         findings.append(Finding("workflow-md", False, str(error)))
         front_matter = None
 
-    states = client.fetch_workflow_states()
+    # Team-scoped (ATLAS-148): only the configured team's states, so a foreign
+    # team's same-named state can neither satisfy C1 nor collide in C2.
+    states = client.fetch_workflow_states(team_id)
 
     if front_matter is not None:
         findings.extend(_check_state_names(front_matter, states))

@@ -18,7 +18,7 @@ from linear_fakes import InMemoryLinearClient
 
 from atlas.cli import main
 from atlas.core.models.ticket import TicketStatus
-from atlas.linear.client import PROJECT_ID_ENV, WorkflowState
+from atlas.linear.client import PROJECT_ID_ENV, TEAM_ID_ENV, WorkflowState
 from atlas.linear.ownership import STATE_MAP_ENV, LinearStatusMap
 from atlas.linear.preflight import (
     ASSIGNEE_ENV,
@@ -31,6 +31,9 @@ from atlas.linear.preflight import (
 
 PROJECT_ID = "proj-uuid"
 PROJECT_SLUG = "atlas-team"
+# The team id run_preflight passes to the team-scoped states fetch (ATLAS-148).
+# The in-memory fake models one team, so the value only proves the threading.
+TEAM_ID = "team-1"
 
 # A complete, coherent baseline: every contract name (active and terminal lists
 # plus the two handoff names) exists as an exact-cased state, with a type the
@@ -123,6 +126,7 @@ def _run(
         status_map=status_map
         if status_map is not None
         else LinearStatusMap(_BASELINE_MAP),
+        team_id=TEAM_ID,
         project_id=PROJECT_ID,
         allow_assignee=allow_assignee,
         check_model=check_model,
@@ -271,10 +275,12 @@ def test_ac3_8b_case_drifted_handoff_state_fails(tmp_path: Path) -> None:
 
 
 def _cli_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Set the env the preflight CLI reads (status map + project id). The client
-    is injected, so no API key is needed."""
+    """Set the env the preflight CLI reads (status map + team id + project id).
+    The client is injected, so no API key is needed. The team id is required
+    since ATLAS-148: the states fetch is team-scoped."""
     state_map = {sid: status.value for sid, status in _BASELINE_MAP.items()}
     monkeypatch.setenv(STATE_MAP_ENV, json.dumps(state_map))
+    monkeypatch.setenv(TEAM_ID_ENV, TEAM_ID)
     monkeypatch.setenv(PROJECT_ID_ENV, PROJECT_ID)
     monkeypatch.delenv(ASSIGNEE_ENV, raising=False)
 

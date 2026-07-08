@@ -33,9 +33,15 @@ boundary only; the reconcile loop that drives it on a cadence is ATLAS-42.
 
 **Client.** `LinearClient` (`atlas/linear/client.py`) is the atlas-side
 protocol: `create_issue`/`update_issue` (definitions, Atlas → Linear),
-`fetch_issue` and `fetch_workflow_states` (status direction and validation).
-It returns a `LinearIssue` DTO (`id`, `title`, `state_id`, `state_name`,
-`state_type`). The real `LinearGraphQLClient` talks request/response GraphQL
+`fetch_project_issues` (the batched, paginated, project-scoped pull that
+feeds step 1; ATLAS-148), `fetch_issue` (single-issue reads outside the
+tick), and `fetch_workflow_states` (validation) — the last **team-scoped**
+(`team(id:) { states }`, taking the team id the tick already requires;
+ATLAS-148) because the workspace-wide form returned foreign teams' states
+with colliding names (two `Canceled`, two `Done`, two `Duplicate` observed
+live). It returns a `LinearIssue` DTO (`id`, `title`, `state_id`,
+`state_name`, `state_type`, plus `identifier` on the batched pull —
+diagnostics only, never a join key). The real `LinearGraphQLClient` talks request/response GraphQL
 at `https://api.linear.app/graphql` (stdlib transport, no webhooks —
 ADR-0008); `InMemoryLinearClient` is the contract-tested fake.
 
@@ -63,12 +69,56 @@ status_map)` reads only the state id and returns the mapped status or `None`;
 an unmapped id is dropped, not guessed (ATLAS-42 counts and logs it; ATLAS-118
 surfaces it as an anomaly).
 The Linear state `type` is used only as load-time validation
-(`validate_against_states`): it confirms each configured id still exists in
-the workspace (stale-map guard — rotated UUIDs fail loudly) and rejects a
+(`validate_against_states`): it confirms each configured id still exists on
+the team's board (team-scoped since ATLAS-148; stale-map guard — rotated
+UUIDs fail loudly, and a foreign team's same-named state can no longer
+satisfy the check) and rejects a
 type-contradictory mapping, while permissively allowing several Atlas
 statuses under one Linear type. A missing or empty `LINEAR_STATE_MAP` on the
 live path raises `LinearStatusMapError` rather than silently disabling
 status sync.
+
+### State-map completeness (ATLAS-148)
+
+Every workflow state visible in the workspace is accounted for below —
+**mapped** (it appears in `LINEAR_STATE_MAP` with the Atlas status shown)
+or **intentionally unmapped** (with its rationale). Nothing is silently
+unmapped: an id observed outside this table is a genuine anomaly
+(ATLAS-118), not a latent decision. State ids below were resolved by the
+operator running the team-scoped `fetch_workflow_states` query this
+change introduced (one read-only request, 2026-07-08) — the workspace
+carries two same-named `Duplicate` states (one per team), so only a
+team-scoped read disambiguates them; the workspace-wide listing that
+preceded it could not.
+
+Atlas team states (nine; Linear `type` in parentheses):
+
+| Linear state | State id (UUID) | Maps to | Rationale |
+| ------------ | --------------- | ------- | --------- |
+| Ready for Agent (unstarted) | `df1ebd92-7c41-4585-a15b-29b9e73f840f` | `ready_for_agent` | the step-3 promotion target; the PM Engine's one sanctioned outbound state write resolves to exactly this state |
+| In Progress (started) | `381b59b4-7ffe-4247-9cd8-6a11585203ea` | `in_progress` | an agent is actively working the ticket; dwell-horizoned |
+| PR Open (started) | `1ea72cdb-5f02-473f-8439-028e40d904f0` | `pr_open` | a PR is up; review-cycling counts arrivals into this state |
+| Review Required (started) | `cf16f7da-6193-4dbf-b8fd-fa75dc9a16d7` | `review_required` | awaiting verification; step 3b's verified completion consumes it |
+| Changes Requested (started) | `a3bba9c2-716e-47a6-b1ce-dcff4183c425` | `changes_requested` | rework requested; the other half of the review cycle |
+| Needs Human (backlog) | `311a3a97-c409-4cce-96ab-0a3bfc2a5541` | `needs_human_decision` | parked for the operator; the review-cycling route target |
+| Done (completed) | `ca6f5cee-5796-4102-bab7-24f08732549d` | `done` | delivered; terminal |
+| Canceled (canceled) | `84207146-0b47-4821-a7e9-331abe38e77a` | `rejected` | closed undelivered; terminal |
+| Duplicate (duplicate) | `cd8e7c95-8a25-48ad-b0ef-19e00f000e70` | `rejected` (operator adds post-merge) | a duplicate is work that closed undelivered under this key; the duplicate-of reason lives in Linear natively, not in a new Atlas status |
+
+The operator adds the `Duplicate` entry to `LINEAR_STATE_MAP` from the
+UUID documented above after this change merges — the change itself edits
+no environment configuration. Known gap, flagged for follow-up rather
+than folded into this change: `validate_against_states`' accepted-types
+table admits only `cancelled` for `rejected`, while the live board
+reports type `canceled` (US spelling) for the Canceled state and type
+`duplicate` for the Duplicate state — so preflight C2 will fail on the
+`rejected` mappings until the accepted-types row learns both live
+spellings. The sync tick itself does not run that validation and is
+unaffected.
+
+Sibling team states (grouped): the workspace's second team carries nine
+workflow states, all intentionally unmapped — foreign team; its issues
+never sync to Atlas.
 
 **Secrets.** `LINEAR_API_KEY`, `LINEAR_TEAM_ID`, `LINEAR_PROJECT_ID`, and
 `LINEAR_STATE_MAP` are read only at the client boundary, never logged, never
@@ -84,9 +134,24 @@ exercises the real workspace and is skipped in default CI.
 
 Pull-based, consistent with ADR-0008 (no webhooks before hosting):
 
-1. Every tick (default 60s): fetch Linear states for all tickets with an
-   `external_linear_id` in a non-terminal Atlas status; apply state
-   changes that follow the ownership table; log anomalies otherwise.
+1. Every tick (default 60s): fetch every issue in the configured Linear
+   project in **one batched, paginated, project-scoped query**
+   (`LinearClient.fetch_project_issues`, `project(id:).issues` at a page
+   size of 250 — Linear's maximum, so a board within 250 issues pulls in
+   one request and a larger one costs `ceil(n / 250)`; ATLAS-148 — the
+   project scope matches Symphony's poll, `LINEAR_PROJECT_ID`). Join the
+   returned issues to tickets with an `external_linear_id` in a
+   non-terminal Atlas status **by `external_linear_id` only — never by
+   title, never by identifier** (both are carried for diagnostics only);
+   a joined ticket whose issue is absent from the pull (deleted, or moved
+   out of the project and so out of the poll scope) is left unchanged
+   with a warning, exactly as the retired per-ticket fetch treated a
+   missing issue. The fetch is skipped entirely when no joined
+   non-terminal ticket exists, so an empty board costs zero pull
+   requests. Apply state changes that follow the ownership table; log
+   anomalies otherwise. (The pre-148 shape fetched each ticket's issue
+   individually — ~110 requests per tick on a 110-ticket board, which is
+   what starved the 2,500/hour budget at the default cadence.)
 2. Push definition updates (title/priority/labels/description) for
    tickets whose Atlas `updated_at` is newer, only while the ticket is in
    a pre-dispatch status or `Ready for Agent`.
@@ -118,7 +183,29 @@ Pull-based, consistent with ADR-0008 (no webhooks before hosting):
    load-bearing when Symphony consumes this state (Phase 8). Promoting without
    a pack in Phase 4–7 is harmless — nothing dispatches off `Ready for Agent`
    until Phase 8.
-4. Scan recent issue comments for the `atlas:proposed-follow-up` tag.
+4. Scan issue comments for the `atlas:proposed-follow-up` tag — but only
+   for tickets in the **active-state set** `{ready_for_agent, in_progress,
+   pr_open, review_required, changes_requested}` (ATLAS-148; one
+   `fetch_comments` request per member, so the scan costs O(active), not
+   O(board) — the pre-148 shape scanned every non-terminal ticket, ~108
+   more requests per tick). Per included state: `ready_for_agent` is
+   scanned because a dispatched agent may comment the moment it picks the
+   ticket up, before the state flips. `in_progress` is scanned because it
+   is where an agent actively works and files most follow-up proposals.
+   `pr_open` is scanned because review discussion on a fresh PR is where
+   split-this-out follow-ups surface. `review_required` is scanned because
+   the reviewing agent or operator tags follow-ups while assessing the
+   work. `changes_requested` is scanned because rework discussion
+   routinely spawns deferred-scope proposals. Excluded: `backlog`,
+   `planned`, and `blocked` are pre-dispatch — no agent has touched the
+   ticket, so no agent comment can exist; a parked `needs_human_decision`
+   is awaiting the operator, who admits follow-ups through the inbox gate
+   directly rather than by tagging comments at the engine; terminal
+   statuses are closed work and are not polled at all. A late follow-up
+   tagged after a ticket leaves the active set is picked up if the ticket
+   ever re-enters it (the comment-id dedup makes re-scanning safe), or
+   admitted by the operator by hand — an accepted trade-off for the
+   request budget.
 5. Run anomaly and dwell checks (below).
 
 Ticks are idempotent; a missed tick costs latency only. The scheduler is a

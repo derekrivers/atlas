@@ -67,6 +67,9 @@ class _Emulator:
         self.projects: dict[str, dict[str, Any]] = {}
         self.counter = 0
         self.comment_counter = 0
+        # Flip to False to emulate a project id that resolves to `project:
+        # null` for the batched pull (ATLAS-148).
+        self.project_issues_available = True
         self.states = [
             {"id": "state-unstarted", "name": "Todo", "type": "unstarted"},
             {"id": "state-ready", "name": "Ready for Agent", "type": "unstarted"},
@@ -117,8 +120,37 @@ class _Emulator:
                 state = next(s for s in self.states if s["id"] == variables["stateId"])
                 issue["state"] = dict(state)
             return {"data": {"issueUpdate": {"success": True, "issue": issue}}}
-        if "workflowStates" in query:
-            return {"data": {"workflowStates": {"nodes": self.states}}}
+        if "TeamWorkflowStates" in query:
+            # Team-scoped (ATLAS-148): the document queries team(id:).states;
+            # an unknown team yields `team: null` (mapped to an empty list).
+            if variables["teamId"] != "team-1":
+                return {"data": {"team": None}}
+            return {"data": {"team": {"states": {"nodes": self.states}}}}
+        if "ProjectIssues" in query:
+            # The batched pull (ATLAS-148): every stored issue, honestly
+            # paginated by $first/$after (the cursor is a stringified offset)
+            # so the real client's pagination loop is exercised. Handled
+            # BEFORE the bare project query below (its document contains
+            # `project(` too). `project_issues_available = False` emulates an
+            # unresolvable project (`project: null`).
+            if not self.project_issues_available:
+                return {"data": {"project": None}}
+            nodes = list(self.issues.values())
+            start = 0 if variables.get("after") is None else int(variables["after"])
+            end = start + variables["first"]
+            return {
+                "data": {
+                    "project": {
+                        "issues": {
+                            "nodes": nodes[start:end],
+                            "pageInfo": {
+                                "hasNextPage": end < len(nodes),
+                                "endCursor": str(end),
+                            },
+                        }
+                    }
+                }
+            }
         if "comments" in query:
             # The read-only comment fetch (ATLAS-45). Its document selects
             # `issue(id) { comments { nodes } }`, so it contains `issue(` too --
@@ -180,9 +212,16 @@ def _run_contract(client: LinearClient, *, team_id: str, project_id: str) -> Non
     with pytest.raises(UnownedFieldError):
         client.update_issue(created.id, {"title": "x", "stateId": "s"})
 
-    states = client.fetch_workflow_states()
+    # Team-scoped since ATLAS-148: the states query takes the team id the
+    # tick already requires.
+    states = client.fetch_workflow_states(team_id)
     assert states
     assert all(isinstance(state, WorkflowState) for state in states)
+
+    # The batched pull (ATLAS-148): one project-scoped read returns the
+    # created issue without a per-issue fetch.
+    project_issues = client.fetch_project_issues(project_id)
+    assert created.id in {issue.id for issue in project_issues}
 
     # set_state is the ONE sanctioned Atlas -> Linear state write (ATLAS-43):
     # a bare state id moves the issue, distinct from the definition path above.
@@ -409,7 +448,7 @@ def test_execute_passes_module_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
         return _Response(emulator.handle(request))
 
     monkeypatch.setattr("atlas.linear.client.urllib_request.urlopen", _urlopen)
-    LinearGraphQLClient(api_key="sk", team_id="t").fetch_workflow_states()
+    LinearGraphQLClient(api_key="sk", team_id="t").fetch_workflow_states("team-1")
     assert captured["timeout"] == LINEAR_HTTP_TIMEOUT_SECONDS
 
     # Source scan: no bare urlopen(request) remains anywhere in atlas/linear/ —
@@ -418,6 +457,127 @@ def test_execute_passes_module_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
     for path in sorted((REPO_ROOT / "atlas" / "linear").glob("*.py")):
         squeezed = "".join(path.read_text(encoding="utf-8").split())
         assert "urlopen(request)" not in squeezed, f"bare urlopen in {path.name}"
+
+
+# --- ATLAS-148: team-scoped states + batched, paginated project pull ---------
+
+
+def _capturing_urlopen(emulator: _Emulator, sent: list[dict[str, Any]]) -> Any:
+    """A stub ``urlopen`` that records each request's decoded GraphQL payload
+    (query + variables) before handing it to the emulator, so query-SHAPE
+    assertions read what actually crossed the wire."""
+
+    def _urlopen(request: Any, *args: Any, **kwargs: Any) -> _Response:
+        sent.append(json.loads(request.data.decode()))
+        return _Response(emulator.handle(request))
+
+    return _urlopen
+
+
+def test_fetch_workflow_states_query_is_team_scoped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # ATLAS-148 AC-3, the query shape: the document queries team(id:).states —
+    # NOT the workspace-wide workflowStates the pre-148 client sent, which
+    # returned foreign teams' same-named states — and the team id crosses as
+    # the $teamId variable.
+    emulator = _Emulator()
+    sent: list[dict[str, Any]] = []
+    monkeypatch.setattr(
+        "atlas.linear.client.urllib_request.urlopen",
+        _capturing_urlopen(emulator, sent),
+    )
+    client = LinearGraphQLClient(api_key="sk", team_id="team-1")
+
+    states = client.fetch_workflow_states("team-1")
+
+    assert len(sent) == 1
+    assert "team(id: $teamId)" in sent[0]["query"]
+    assert "workflowStates(" not in sent[0]["query"]  # the workspace-wide form
+    assert sent[0]["variables"] == {"teamId": "team-1"}
+    assert [s.id for s in states] == [s["id"] for s in emulator.states]
+
+    # An unknown team resolves to `team: null` -> an empty list, never a crash.
+    assert client.fetch_workflow_states("team-elsewhere") == []
+
+
+def test_fetch_project_issues_query_shape_and_single_page(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # ATLAS-148 AC-1, the query shape: one project-scoped, cursor-paginated
+    # document carrying id/identifier/title/state per issue; a board within one
+    # page costs exactly ONE request.
+    emulator = _Emulator()
+    sent: list[dict[str, Any]] = []
+    monkeypatch.setattr(
+        "atlas.linear.client.urllib_request.urlopen",
+        _capturing_urlopen(emulator, sent),
+    )
+    client = LinearGraphQLClient(api_key="sk", team_id="team-1")
+    created = client.create_issue(
+        {"title": "One", "description": "d"}, team_id="team-1", project_id="proj-1"
+    )
+    sent.clear()
+
+    issues = client.fetch_project_issues("proj-1")
+
+    assert len(sent) == 1  # within one page: exactly one request
+    query = sent[0]["query"]
+    assert "project(id: $id)" in query
+    assert "issues(first: $first, after: $after)" in query
+    for field in ("identifier", "id", "title", "state"):
+        assert field in query
+    assert "pageInfo { hasNextPage endCursor }" in query
+    assert sent[0]["variables"]["id"] == "proj-1"
+    assert [issue.id for issue in issues] == [created.id]
+
+
+def test_fetch_project_issues_paginates_until_exhausted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Pagination honesty: 5 issues at a page size of 2 cost ceil(5/2) = 3
+    # requests, chained by the endCursor, and return every issue exactly once
+    # in order. (Live, the page size is 250, so a 110-ticket board is 1 page.)
+    emulator = _Emulator()
+    sent: list[dict[str, Any]] = []
+    monkeypatch.setattr(
+        "atlas.linear.client.urllib_request.urlopen",
+        _capturing_urlopen(emulator, sent),
+    )
+    monkeypatch.setattr("atlas.linear.client.LINEAR_ISSUES_PAGE_SIZE", 2)
+    client = LinearGraphQLClient(api_key="sk", team_id="team-1")
+    created_ids = [
+        client.create_issue(
+            {"title": f"Issue {n}", "description": "d"},
+            team_id="team-1",
+            project_id="proj-1",
+        ).id
+        for n in range(5)
+    ]
+    sent.clear()
+
+    issues = client.fetch_project_issues("proj-1")
+
+    assert [issue.id for issue in issues] == created_ids  # all, once, in order
+    assert len(sent) == 3  # ceil(5 / 2)
+    assert sent[0]["variables"]["after"] is None  # first page from the start
+    assert sent[1]["variables"]["after"] == "2"  # then cursor-chained
+    assert sent[2]["variables"]["after"] == "4"
+
+
+def test_fetch_project_issues_missing_project_yields_empty(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # `project: null` (bad id, or the project was deleted) maps to an empty
+    # list: the sync loop then treats every joined ticket as issue-missing and
+    # leaves statuses unchanged — never a crash.
+    emulator = _Emulator()
+    monkeypatch.setattr(
+        "atlas.linear.client.urllib_request.urlopen", _stub_urlopen(emulator)
+    )
+    emulator.project_issues_available = False
+    client = LinearGraphQLClient(api_key="sk", team_id="team-1")
+    assert client.fetch_project_issues("no-such-project") == []
 
 
 def test_transport_400_ratelimited_raises_typed_error(
@@ -579,7 +739,7 @@ def test_live_smoke() -> None:  # pragma: no cover - operator-run only
         fetched = client.fetch_issue(created.id)
         assert fetched is not None
         assert fetched.id == created.id
-        states = client.fetch_workflow_states()
+        states = client.fetch_workflow_states(team_id)
         assert states
     finally:
         client.delete_issue(created.id)

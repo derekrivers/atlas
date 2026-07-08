@@ -50,7 +50,7 @@ from test_models_validation import NOW, dependency_kwargs, ticket_kwargs
 from atlas.core.enums import ActorType
 from atlas.core.models import AnomalyType, Ticket, TicketDependency
 from atlas.core.models.ticket import TicketStatus
-from atlas.linear.client import LinearIssue, WorkflowState
+from atlas.linear.client import LinearComment, LinearIssue, WorkflowState
 from atlas.linear.ownership import LinearStatusMap
 from atlas.pm import SyncResult, sync_tick
 from atlas.pm.sync import CREATED_BY
@@ -119,6 +119,14 @@ class RecordingClient(InMemoryLinearClient):
         self.create_scopes: list[tuple[str, str]] = []
         self.updates: list[tuple[str, dict[str, Any]]] = []
         self.state_writes: list[tuple[str, str]] = []
+        # The issue ids fetch_comments was called for (ATLAS-148): the comment
+        # scan is request-budgeted, so tests assert WHO was scanned, not just
+        # what got stubbed — a skipped ticket must cost zero requests.
+        self.comment_scans: list[str] = []
+
+    def fetch_comments(self, issue_id: str) -> list[LinearComment]:
+        self.comment_scans.append(issue_id)
+        return super().fetch_comments(issue_id)
 
     def create_issue(
         self, definition: Mapping[str, Any], *, team_id: str, project_id: str
@@ -179,15 +187,18 @@ def seed_ticket(
     priority: int = 10,
     with_issue: bool = True,
     issue_state: WorkflowState | None = None,
+    issue_title: str = "Linear Title",
 ) -> Ticket:
     """Insert a ticket, optionally joined to a fake Linear issue in
-    ``issue_state``. Recorder lists are cleared after seeding so only the
-    tick's own writes are observed."""
+    ``issue_state`` titled ``issue_title`` (defaults deliberately differ from
+    the ticket's title: the pull joins by external_linear_id ONLY, never by
+    title — ATLAS-148 pins that with a swapped-titles fixture). Recorder lists
+    are cleared after seeding so only the tick's own writes are observed."""
 
     external_id: str | None = None
     if with_issue:
         issue = client.create_issue(
-            {"title": "Linear Title", "description": "linear"},
+            {"title": issue_title, "description": "linear"},
             team_id=TEAM_ID,
             project_id=PROJECT_ID,
         )
@@ -215,6 +226,7 @@ def seed_ticket(
     client.create_scopes.clear()
     client.updates.clear()
     client.state_writes.clear()
+    client.comment_scans.clear()
     return ticket
 
 
@@ -1290,3 +1302,206 @@ def test_stale_block_detect_path_makes_no_linear_call(db: Database) -> None:
     assert client.creates == []  # ...with no Linear call of any kind
     assert client.updates == []
     assert client.state_writes == []
+
+
+# --- ATLAS-148: the request-budget milestone and the join-by-id proof ---------
+#
+# The bound test is the milestone anchor: a no-op tick over a 110-ticket board
+# stays within a pinned client-call budget. It is falsifiable by construction —
+# re-adding ONE per-ticket fetch anywhere in the tick (the seeded-defect form)
+# adds ~100 calls and blows the bound unmissably.
+
+# The pinned per-tick budget for the 110-ticket no-op board below. Arithmetic:
+# 1 batched project-issues pull (110 issues <= one 250-page) + 10 comment scans
+# (exactly the tickets in ACTIVE_COMMENT_SCAN_STATUSES) = 11 calls; pinned at
+# 12 to leave one call of headroom for a future fixed-cost (per-tick, never
+# per-ticket) query. The pre-148 shape was ~215 calls for the same board.
+REQUEST_BUDGET = 12
+
+
+class CountingClient(RecordingClient):
+    """A ``RecordingClient`` that also counts EVERY protocol call by method
+    name, so the budget test pins total requests, not just writes."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.calls: dict[str, int] = {}
+
+    def _count(self, method: str) -> None:
+        self.calls[method] = self.calls.get(method, 0) + 1
+
+    def create_issue(self, definition: Mapping[str, Any], **kwargs: Any) -> LinearIssue:
+        self._count("create_issue")
+        return super().create_issue(definition, **kwargs)
+
+    def update_issue(self, issue_id: str, definition: Mapping[str, Any]) -> LinearIssue:
+        self._count("update_issue")
+        return super().update_issue(issue_id, definition)
+
+    def set_state(self, issue_id: str, state_id: str) -> LinearIssue:
+        self._count("set_state")
+        return super().set_state(issue_id, state_id)
+
+    def fetch_issue(self, issue_id: str) -> LinearIssue | None:
+        self._count("fetch_issue")
+        return super().fetch_issue(issue_id)
+
+    def fetch_project_issues(self, project_id: str) -> list[LinearIssue]:
+        self._count("fetch_project_issues")
+        return super().fetch_project_issues(project_id)
+
+    def fetch_workflow_states(self, team_id: str) -> list[WorkflowState]:
+        self._count("fetch_workflow_states")
+        return super().fetch_workflow_states(team_id)
+
+    def fetch_comments(self, issue_id: str) -> list[LinearComment]:
+        self._count("fetch_comments")
+        return super().fetch_comments(issue_id)
+
+    def total_calls(self) -> int:
+        return sum(self.calls.values())
+
+
+def _seed_110_ticket_board(db: Database, client: CountingClient) -> None:
+    """The 110-ticket board of the request-bound milestone (D-5), every ticket
+    joined to a Linear issue whose state maps back to the ticket's own status
+    (so the pull changes nothing):
+
+    * 90 ``planned`` — no acceptance criteria, so none is promotion-ready;
+    * 5 parked ``needs_human_decision`` — excluded from the comment scan;
+    * 5 terminal ``done`` — neither pulled nor scanned;
+    * 10 across the five ACTIVE_COMMENT_SCAN_STATUSES (2 each) — the ONLY
+      comment-scanned tickets. review_required has no mapped state in this
+      suite's map, so those two issues sit in UNMAPPED (the pull observes and
+      leaves them, which is itself a no-op for the budget).
+
+    NO-OP MEANS THE PUSH IS CURRENT TOO: every ticket is seeded with
+    ``linear_synced_at == updated_at``, so ZERO definition pushes run and the
+    1 + 10 = 11-call arithmetic below is complete. A future push-path change
+    that starts pushing on an untouched board breaks the bound loudly instead
+    of silently widening the budget (gate amendment A-4).
+    """
+
+    spec: list[tuple[TicketStatus, WorkflowState]] = []
+    spec += [(TicketStatus.PLANNED, UNSTARTED)] * 90
+    spec += [(TicketStatus.NEEDS_HUMAN_DECISION, NEEDS_HUMAN)] * 5
+    spec += [(TicketStatus.DONE, DONE_STATE)] * 5
+    spec += [
+        (TicketStatus.READY_FOR_AGENT, READY),
+        (TicketStatus.READY_FOR_AGENT, READY),
+        (TicketStatus.IN_PROGRESS, STARTED),
+        (TicketStatus.IN_PROGRESS, STARTED),
+        (TicketStatus.PR_OPEN, PR_OPEN_STATE),
+        (TicketStatus.PR_OPEN, PR_OPEN_STATE),
+        (TicketStatus.REVIEW_REQUIRED, UNMAPPED),
+        (TicketStatus.REVIEW_REQUIRED, UNMAPPED),
+        (TicketStatus.CHANGES_REQUESTED, CHANGES_REQUESTED_STATE),
+        (TicketStatus.CHANGES_REQUESTED, CHANGES_REQUESTED_STATE),
+    ]
+    assert len(spec) == 110
+    for index, (status, issue_state) in enumerate(spec):
+        seed_ticket(
+            db,
+            client,
+            key=f"ATLAS-{300 + index}",
+            status=status,
+            issue_state=issue_state,
+            linear_synced_at=EARLIER,  # cursor current: no push (A-4)
+        )
+
+
+def test_noop_tick_over_110_ticket_board_stays_within_request_budget(
+    db: Database,
+) -> None:
+    # THE MILESTONE ANCHOR (ATLAS-148 AC-1). Seeded-defect form: re-adding a
+    # per-ticket fetch (e.g. one client.fetch_issue per non-terminal ticket in
+    # the pull) adds ~100 calls and MUST break this bound.
+    client = CountingClient()
+    _seed_110_ticket_board(db, client)
+    client.calls.clear()  # count the tick only, not the seeding
+
+    run(db, client)
+
+    assert client.total_calls() <= REQUEST_BUDGET, client.calls
+    # The arithmetic behind the pin, itemised: one batched pull, one comment
+    # scan per active-state ticket, and NOTHING per-ticket anywhere else.
+    assert client.calls["fetch_project_issues"] == 1
+    assert client.calls["fetch_comments"] == 10
+    assert client.calls.get("fetch_issue", 0) == 0  # the pre-148 loop is gone
+    assert client.calls.get("update_issue", 0) == 0  # cursors current: no push
+    assert client.calls.get("create_issue", 0) == 0
+
+
+def test_second_noop_tick_costs_the_same_budget(db: Database) -> None:
+    # Idempotency in request terms: the budget holds tick after tick — nothing
+    # accumulates (the wrong answer: a second tick re-pushes or re-scans wider).
+    client = CountingClient()
+    _seed_110_ticket_board(db, client)
+    run(db, client)
+    client.calls.clear()
+
+    run(db, client)
+
+    assert client.total_calls() <= REQUEST_BUDGET, client.calls
+
+
+def test_pull_joins_by_external_linear_id_never_title(db: Database) -> None:
+    # ATLAS-148 AC-1 join proof, swapped-titles fixture: ATLAS-500's issue is
+    # titled with ATLAS-501's Atlas title and vice versa. Moving ATLAS-500's
+    # issue (by id) to STARTED must pull ATLAS-500 — and only it — to
+    # in_progress. A title-keyed join would move ATLAS-501 instead (its Atlas
+    # title matches the moved issue's title); an identifier-keyed join has
+    # nothing to key on (the fake mints none).
+    client = RecordingClient()
+    first = seed_ticket(
+        db,
+        client,
+        key="ATLAS-500",
+        status=TicketStatus.PLANNED,
+        title="Alpha work",
+        issue_title="Beta work",  # deliberately the OTHER ticket's title
+        linear_synced_at=EARLIER,
+    )
+    seed_ticket(
+        db,
+        client,
+        key="ATLAS-501",
+        status=TicketStatus.PLANNED,
+        title="Beta work",
+        issue_title="Alpha work",
+        linear_synced_at=EARLIER,
+    )
+    assert first.external_linear_id is not None
+    client.simulate_linear_state(first.external_linear_id, STARTED)
+
+    result = run(db, client)
+
+    assert result.status_pulled == 1
+    statuses = {t.key: t.status for t in TicketRepo(db).list()}
+    assert statuses["ATLAS-500"] == TicketStatus.IN_PROGRESS  # joined by id
+    assert statuses["ATLAS-501"] == TicketStatus.PLANNED  # title ignored
+
+
+def test_missing_issue_in_project_pull_leaves_status_unchanged(
+    db: Database,
+) -> None:
+    # A joined ticket whose issue is absent from the batched project pull
+    # (deleted, or moved out of the project's poll scope) takes the
+    # issue-missing path: status unchanged, no crash — same contract as the
+    # pre-148 per-ticket fetch returning None.
+    client = RecordingClient()
+    ticket = seed_ticket(
+        db,
+        client,
+        key="ATLAS-502",
+        status=TicketStatus.IN_PROGRESS,
+        linear_synced_at=EARLIER,
+    )
+    assert ticket.external_linear_id is not None
+    del client._issues[ticket.external_linear_id]  # gone from the project
+
+    result = run(db, client)
+
+    assert result.status_pulled == 0
+    statuses = {t.key: t.status for t in TicketRepo(db).list()}
+    assert statuses["ATLAS-502"] == TicketStatus.IN_PROGRESS

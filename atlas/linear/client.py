@@ -53,6 +53,10 @@ LINEAR_HTTP_TIMEOUT_SECONDS = 30.0
 # comfortably), bounded so a pathological response cannot bloat the TickFailure
 # ``detail`` column.
 LINEAR_ERROR_BODY_MAX_LEN = 1000
+# Page size for the batched project-issues pull (ATLAS-148): Linear's maximum,
+# matching the repo's existing ``first: 250`` convention, so a 110-ticket board
+# pulls in one request and pagination only engages past 250 issues.
+LINEAR_ISSUES_PAGE_SIZE = 250
 
 
 class LinearClientError(RuntimeError):
@@ -98,6 +102,10 @@ class LinearIssue:
 
     ``state_type`` is carried for the status-map's load-time validation
     (ownership.py ``validate_against_states``, D7); it is never a lookup key.
+    ``identifier`` (the human-facing ``ATL-42`` handle) is carried for
+    diagnostics by the batched pull (ATLAS-148) and is never a join key —
+    tickets join to issues by ``external_linear_id``/``id`` ONLY; it defaults
+    to ``None`` because the single-issue selections do not fetch it.
     """
 
     id: str
@@ -105,6 +113,7 @@ class LinearIssue:
     state_id: str | None
     state_name: str | None
     state_type: str | None
+    identifier: str | None = None
 
 
 @dataclass(frozen=True)
@@ -181,8 +190,23 @@ class LinearClient(Protocol):
         """Fetch one issue for the status direction; ``None`` if absent."""
         ...
 
-    def fetch_workflow_states(self) -> list[WorkflowState]:
-        """The workspace's workflow states, for status-map validation (D7)."""
+    def fetch_project_issues(self, project_id: str) -> list[LinearIssue]:
+        """Fetch every issue in the configured Linear project, paginated
+        internally (ATLAS-148) — the batched pull that replaces step 1's
+        per-ticket ``fetch_issue`` loop, costing ``ceil(n / 250)`` requests
+        instead of one per ticket. Project-scoped (``LINEAR_PROJECT_ID``) to
+        match Symphony's poll scope. Read-only; callers join the returned
+        issues to tickets by ``external_linear_id`` ONLY (never title or
+        identifier)."""
+        ...
+
+    def fetch_workflow_states(self, team_id: str) -> list[WorkflowState]:
+        """The given team's workflow states, for status-map validation (D7).
+
+        Team-scoped (ATLAS-148): the workspace-wide form returned foreign
+        teams' states with colliding names (two ``Canceled``, two ``Done``,
+        two ``Duplicate`` observed live), so the query takes the team id the
+        tick already requires and returns only that team's board."""
         ...
 
     def fetch_project(self, project_id: str) -> LinearProject | None:
@@ -243,10 +267,22 @@ _COMMENTS_QUERY = (
     "query IssueComments($id: String!) { "
     f"issue(id: $id) {{ comments(first: 250) {{ nodes {{ {_COMMENT_FIELDS} }} }} }} }}"
 )
-# `first: 250` covers any realistic workspace; paginating beyond it is an
-# ATLAS-42 concern, not the boundary's.
+# The batched pull (ATLAS-148): every issue in the configured project, one
+# page of `LINEAR_ISSUES_PAGE_SIZE` per request, cursor-paginated until
+# `hasNextPage` is false. Selects `identifier` (diagnostics only) alongside
+# the shared issue fragment; the join key is always the issue `id`.
+_PROJECT_ISSUES_QUERY = (
+    "query ProjectIssues($id: String!, $first: Int!, $after: String) { "
+    "project(id: $id) { issues(first: $first, after: $after) { "
+    f"nodes {{ identifier {_ISSUE_FIELDS} }} "
+    "pageInfo { hasNextPage endCursor } } } }"
+)
+# Team-scoped (ATLAS-148): the workspace-wide `workflowStates(first: 250)`
+# form returned foreign teams' states with colliding names. `first: 250`
+# covers any realistic team board.
 _STATES_QUERY = (
-    "query WorkflowStates { workflowStates(first: 250) { nodes { id name type } } }"
+    "query TeamWorkflowStates($teamId: String!) { "
+    "team(id: $teamId) { states(first: 250) { nodes { id name type } } } }"
 )
 # The A2 preflight read (ATLAS-136): resolve a project by its UUID to its
 # slugId. A nonexistent id returns `project: null` (mapped to None).
@@ -307,6 +343,10 @@ def _issue_from_node(node: Mapping[str, Any]) -> LinearIssue:
         state_id=state["id"] if state else None,
         state_name=state["name"] if state else None,
         state_type=state["type"] if state else None,
+        # Only the batched project-issues selection fetches `identifier`
+        # (ATLAS-148, diagnostics only); the single-issue selections leave it
+        # None via the DTO default.
+        identifier=node.get("identifier"),
     )
 
 
@@ -416,11 +456,39 @@ class LinearGraphQLClient:
         node = data.get("issue")
         return _issue_from_node(node) if node else None
 
-    def fetch_workflow_states(self) -> list[WorkflowState]:
-        data = self._execute(_STATES_QUERY, {})
+    def fetch_project_issues(self, project_id: str) -> list[LinearIssue]:
+        # The batched pull (ATLAS-148): cursor-paginate the project's issue
+        # connection until hasNextPage is false — ceil(n / page size) requests
+        # for an n-issue project. A missing project yields `project: null`,
+        # mapped to an empty list (the sync loop then sees every joined ticket
+        # as issue-missing and leaves statuses unchanged, never a crash).
+        issues: list[LinearIssue] = []
+        after: str | None = None
+        while True:
+            data = self._execute(
+                _PROJECT_ISSUES_QUERY,
+                {"id": project_id, "first": LINEAR_ISSUES_PAGE_SIZE, "after": after},
+            )
+            project = data.get("project")
+            if not project:
+                return []
+            connection = project["issues"]
+            issues.extend(_issue_from_node(node) for node in connection["nodes"])
+            page_info = connection["pageInfo"]
+            if not page_info["hasNextPage"]:
+                return issues
+            after = page_info["endCursor"]
+
+    def fetch_workflow_states(self, team_id: str) -> list[WorkflowState]:
+        # Team-scoped (ATLAS-148): only the given team's states, so same-named
+        # states on foreign teams can no longer collide with the map's targets.
+        data = self._execute(_STATES_QUERY, {"teamId": team_id})
+        team = data.get("team")
+        if not team:
+            return []
         return [
             WorkflowState(id=node["id"], name=node["name"], type=node["type"])
-            for node in data["workflowStates"]["nodes"]
+            for node in team["states"]["nodes"]
         ]
 
     def fetch_project(self, project_id: str) -> LinearProject | None:
