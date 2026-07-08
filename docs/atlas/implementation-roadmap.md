@@ -402,6 +402,14 @@ byte-exact, closing the identifier homonym seam between the tracker title
 and the store key. It carries no standalone seed line — the retirements
 above already net the roadmap count.
 
+The Linear client hardening (key ATLAS-147, a real store mint from the OP-8
+inbox stub) closed the smoke's `_execute` no-timeout carry-forward: HTTP
+error bodies now cross into `LinearAPIError` messages (truncated), every
+Linear call carries an explicit timeout, and a RATELIMITED rejection raises
+a typed error the scheduler backs off on until the parsed reset. Minted by
+plan/apply from the operator inbox, not a Phase-8 seed — it carries no
+counted seed line here.
+
 Milestone test: a ready, context-rich fixture ticket flows
 pack → Symphony → PR → evidence → verification without manual steps other
 than the defined human gates.

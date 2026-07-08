@@ -163,7 +163,16 @@ via `recorded_since(signature, now - CRASH_DEDUP_WINDOW)`. The
 recurring transient transport error dedups together while the specific message
 is preserved in the record's `detail`. Two distinct bugs sharing one exception
 type collapse to one signature inside the window — an accepted trade-off for a
-dedup key that only bounds row volume. The end-to-end round-trip against real
+dedup key that only bounds row volume. Every Linear HTTP call carries an
+explicit transport timeout (`LINEAR_HTTP_TIMEOUT_SECONDS`, 30s), so a hung
+request fails its tick instead of hanging the loop (ATLAS-147). A tick crashed
+by Linear's rate limit (the typed `LinearRateLimitError`, detected from the
+GraphQL errors' `RATELIMITED` code on both the transport-400 and
+200-with-errors paths) stretches the next wait to the parsed reset — floored at
+the base interval, capped at `RATE_LIMIT_MAX_BACKOFF_SECONDS` (1 hour), the
+full cap when no reset parses — through the same interruptible sleep, instead
+of retry-starving the request budget at the base cadence (ATLAS-147). The
+end-to-end round-trip against real
 Linear (a status change reflected in Atlas within one tick) is operator-run live
 evidence (ADR-0008), not a CI proof.
 

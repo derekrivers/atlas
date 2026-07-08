@@ -50,6 +50,7 @@ from atlas.linear.client import (
     TEAM_ID_ENV,
     LinearAPIError,
     LinearGraphQLClient,
+    LinearRateLimitError,
 )
 from atlas.linear.ownership import STATE_MAP_ENV, LinearStatusMap
 from atlas.pm import SyncResult
@@ -57,6 +58,7 @@ from atlas.pm.scheduler import (
     CRASH_DEDUP_WINDOW,
     CREATED_BY,
     DEFAULT_INTERVAL_SECONDS,
+    RATE_LIMIT_MAX_BACKOFF_SECONDS,
     TickConfig,
     _signature,
     run_scheduler,
@@ -324,6 +326,99 @@ def test_pre_set_shutdown_stops_after_one_tick_with_default_sleep(
     run_scheduler(config, interval=60, now=FakeClock(), shutdown=shutdown)
 
     assert len(spy.calls) == 1
+
+
+# --- ATLAS-147: rate-limit backoff -------------------------------------------
+
+
+def test_rate_limited_tick_backs_off_until_reset(
+    db: Database, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Seeded-defect form: the pre-147 scheduler slept the BASE interval after a
+    # rate-limited tick (retry-starving the budget) — that behaviour makes the
+    # first-interval assertion below fail. The backoff goes through the same
+    # interruptible sleep, so shutdown still wakes it (FakeSleep's True return
+    # is exactly that wake).
+    spy = SpyTick(
+        behaviours=[LinearRateLimitError("limited", reset_after_seconds=900.0)]
+    )
+    spy_sync_tick(monkeypatch, spy)
+    config = make_config(db, tmp_path)
+    sleep = FakeSleep(stop_after=2)
+
+    run_scheduler(config, interval=60, now=FakeClock(), sleep=sleep)
+
+    assert len(spy.calls) == 2  # the loop survived the rate-limited tick
+    # A base-interval (60s) first sleep after the rate limit MUST fail here.
+    assert sleep.intervals[0] == 900.0  # the parsed reset, not the cadence
+    assert sleep.intervals[1] == 60  # the clean tick resumed the base cadence
+    # The rate-limited crash records under its own subclass signature.
+    rows = TickFailureRepo(db).list()
+    assert [row.failure_signature for row in rows] == [
+        "atlas.linear.client.LinearRateLimitError"
+    ]
+
+
+def test_reset_below_interval_floors_at_base_interval(
+    db: Database, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Ratified A-4: the backoff FLOORS at the base interval — a reset shorter
+    # than one cadence never ticks early.
+    spy = SpyTick(behaviours=[LinearRateLimitError("limited", reset_after_seconds=1.0)])
+    spy_sync_tick(monkeypatch, spy)
+    config = make_config(db, tmp_path)
+    sleep = FakeSleep(stop_after=1)
+
+    run_scheduler(config, interval=60, now=FakeClock(), sleep=sleep)
+
+    assert sleep.intervals == [60]  # floored at the cadence, never below
+
+
+def test_backoff_capped_by_pinned_maximum(
+    db: Database, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A reset beyond the pinned ceiling waits the ceiling, not the reset.
+    spy = SpyTick(
+        behaviours=[LinearRateLimitError("limited", reset_after_seconds=7200.0)]
+    )
+    spy_sync_tick(monkeypatch, spy)
+    config = make_config(db, tmp_path)
+    sleep = FakeSleep(stop_after=1)
+
+    run_scheduler(config, interval=60, now=FakeClock(), sleep=sleep)
+
+    assert sleep.intervals == [RATE_LIMIT_MAX_BACKOFF_SECONDS]
+
+
+def test_missing_reset_backs_off_at_cap(
+    db: Database, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # No parsable reset (reset_after_seconds=None): back off at the full cap
+    # rather than guessing short and burning the budget again.
+    spy = SpyTick(behaviours=[LinearRateLimitError("limited")])
+    spy_sync_tick(monkeypatch, spy)
+    config = make_config(db, tmp_path)
+    sleep = FakeSleep(stop_after=1)
+
+    run_scheduler(config, interval=60, now=FakeClock(), sleep=sleep)
+
+    assert sleep.intervals == [RATE_LIMIT_MAX_BACKOFF_SECONDS]
+
+
+def test_non_rate_limit_crash_keeps_base_interval(
+    db: Database, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Negative: any other crash keeps the base cadence — the backoff never
+    # over-claims beyond the typed rate-limit error (a plain LinearAPIError
+    # included).
+    spy = SpyTick(behaviours=[RuntimeError("boom"), LinearAPIError("transport")])
+    spy_sync_tick(monkeypatch, spy)
+    config = make_config(db, tmp_path)
+    sleep = FakeSleep(stop_after=2)
+
+    run_scheduler(config, interval=60, now=FakeClock(), sleep=sleep)
+
+    assert sleep.intervals == [60, 60]  # base cadence throughout
 
 
 # --- AC4: the injection is built from config --------------------------------

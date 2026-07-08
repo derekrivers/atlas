@@ -126,7 +126,7 @@ v2 per OP-9(a).
 | L-6 `atlas verify` stale "Note (OP-A)" boilerplate | small code ticket | Open |
 | L-7 `phase_1.sh` expected-ADD-count gate assist (F-4) | instrumentation-cleanup ticket | Open (operator call — the gate may be guard enough) |
 | Promotion anchor durability (F-7) | its own design-pass ticket; **must precede ATLAS-82** | Open |
-| `LinearGraphQLClient._execute` no timeout | its own ticket (pre-existing finding; phase ceilings mitigate) | Open |
+| `LinearGraphQLClient._execute` no timeout | its own ticket (pre-existing finding; phase ceilings mitigate) | Closed — OP-8 / ATLAS-147 |
 | OP-11 account-level GitHub connector removal + probe dispatch | operator (Codex account) | Open — before the next dispatch session |
 | ATLAS-1 stale-status reconciliation (parked in Needs Human — durable, honest) | operator decision; likely a status-history pass over bootstrap-era tickets | Open |
 | Store ATLAS-108 (spurious duplicate) | resolved — Canceled → `rejected`, terminal | Closed |
