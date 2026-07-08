@@ -5,7 +5,10 @@ The daemon half of the Phase 4 PM Engine: a plain loop that calls
 crashing tick by recording one durable ``TickFailure`` (ATLAS-125) and
 continuing. It WRAPS the tick — it never reimplements or alters the
 pull/push/promote/scan/detect logic; the only behaviour it adds is the cadence,
-the create-on-crash record, and graceful shutdown.
+the create-on-crash record, graceful shutdown, and the rate-limit backoff
+(ATLAS-147: a tick crashed by ``LinearRateLimitError`` stretches the next wait
+to the parsed reset, floored at the interval and capped at
+``RATE_LIMIT_MAX_BACKOFF_SECONDS``, instead of retry-starving the budget).
 
 The scheduler is the SOLE writer of ``TickFailure`` (pm-engine-and-linear-sync.md
 "Sync loop"): it calls :meth:`TickFailureRepo.record` /
@@ -56,7 +59,7 @@ from uuid import uuid4
 
 from atlas.core.enums import ActorType
 from atlas.core.models.tick_failure import TickFailure
-from atlas.linear.client import LinearClient
+from atlas.linear.client import LinearClient, LinearRateLimitError
 from atlas.linear.ownership import LinearStatusMap
 from atlas.pm.sync import sync_tick
 from atlas.storage.db import Database
@@ -68,6 +71,15 @@ logger = logging.getLogger("atlas.pm.scheduler")
 # (default 60s)"). The loop owns the cadence; the operator may override it with
 # ``--interval``.
 DEFAULT_INTERVAL_SECONDS = 60
+
+# Rate-limit backoff ceiling (ATLAS-147). When a tick crashes on Linear's rate
+# limit, the loop's next wait is the parsed reset window, floored at the base
+# interval (a reset shorter than one cadence never ticks early) and capped
+# here; a missing/unparsable reset backs off at the full cap. A module
+# constant, deliberately NOT a CLI flag — the ceiling is policy, like the
+# dedup window below. Matches Linear's observed 1-hour window (2026-07-07:
+# duration 3600000ms).
+RATE_LIMIT_MAX_BACKOFF_SECONDS = 3600.0
 
 # Create-on-crash dedup window (D2). A persistent crash records at most once per
 # hour per signature, not once per tick: ``run_tick`` records a ``TickFailure``
@@ -153,15 +165,19 @@ def _record_crash(failures: TickFailureRepo, exc: Exception, now: datetime) -> b
     return True
 
 
-def run_tick(config: TickConfig, failures: TickFailureRepo, *, now: datetime) -> bool:
+def run_tick(
+    config: TickConfig, failures: TickFailureRepo, *, now: datetime
+) -> Exception | None:
     """Run exactly one sync tick. The single-tick body shared by ``--once`` and
     the loop.
 
     Calls :func:`sync_tick` with the exact keyword injection from ``config`` and
     the per-tick ``now``. On ANY exception it records one ``TickFailure`` (deduped
     per :func:`_record_crash`) and returns — a crashing tick NEVER escapes, so the
-    loop is resilient by construction (AC1). Returns True on a clean tick, False
-    when the tick crashed (and the crash was recorded or deduped)."""
+    loop is resilient by construction (AC1). Returns ``None`` on a clean tick, the
+    caught exception when the tick crashed (recorded or deduped) — so the loop can
+    stretch its next wait on a :class:`LinearRateLimitError` (ATLAS-147) without
+    the crash ever escaping."""
 
     try:
         sync_tick(
@@ -176,8 +192,8 @@ def run_tick(config: TickConfig, failures: TickFailureRepo, *, now: datetime) ->
         )
     except Exception as exc:  # create-on-crash: a tick crash never kills the loop
         _record_crash(failures, exc, now)
-        return False
-    return True
+        return exc
+    return None
 
 
 def run_scheduler(
@@ -203,7 +219,14 @@ def run_scheduler(
     fake sleep, no real time and no signals.
 
     ``--once`` (``once=True``) runs exactly one tick and returns, ignoring the
-    cadence entirely (AC3)."""
+    cadence entirely (AC3).
+
+    Rate-limit backoff (ATLAS-147): when the tick crashed on a
+    :class:`LinearRateLimitError`, the next wait stretches to the parsed reset —
+    floored at ``interval`` (a reset shorter than one cadence never ticks early)
+    and capped at :data:`RATE_LIMIT_MAX_BACKOFF_SECONDS`; a missing reset backs
+    off at the full cap. The wait goes through the SAME interruptible sleep, so
+    shutdown still wakes it; any other crash keeps the base cadence."""
 
     shutdown = shutdown if shutdown is not None else threading.Event()
     interruptible_sleep = sleep if sleep is not None else shutdown.wait
@@ -214,7 +237,7 @@ def run_scheduler(
         "single tick (--once)" if once else f"interval {interval}s",
     )
     while True:
-        run_tick(config, failures, now=now())
+        crash = run_tick(config, failures, now=now())
         if once:
             return
         if shutdown.is_set():
@@ -222,7 +245,23 @@ def run_scheduler(
             # after the in-flight tick, never mid-write.
             logger.info("pm-scheduler: shutdown signalled; stopping after this tick")
             return
-        if interruptible_sleep(interval):
+        wait = interval
+        if isinstance(crash, LinearRateLimitError):
+            reset = crash.reset_after_seconds
+            wait = (
+                RATE_LIMIT_MAX_BACKOFF_SECONDS
+                if reset is None
+                else min(max(reset, interval), RATE_LIMIT_MAX_BACKOFF_SECONDS)
+            )
+            logger.warning(
+                "pm-scheduler: tick was rate-limited by Linear; backing off %ss "
+                "(reset %s, interval %ss, cap %ss)",
+                wait,
+                "unknown" if reset is None else f"{reset}s",
+                interval,
+                RATE_LIMIT_MAX_BACKOFF_SECONDS,
+            )
+        if interruptible_sleep(wait):
             # Woken early by the shutdown signal: stop without another tick.
             logger.info("pm-scheduler: shutdown signalled during sleep; stopping")
             return

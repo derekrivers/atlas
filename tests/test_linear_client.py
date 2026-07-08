@@ -13,6 +13,8 @@ Two-tier strategy (ATLAS-41 D10-D12):
 
 from __future__ import annotations
 
+import email.message
+import io
 import json
 import os
 from pathlib import Path
@@ -23,9 +25,12 @@ import pytest
 from linear_fakes import InMemoryLinearClient
 
 from atlas.linear.client import (
+    LINEAR_ERROR_BODY_MAX_LEN,
+    LINEAR_HTTP_TIMEOUT_SECONDS,
     LinearAPIError,
     LinearClient,
     LinearGraphQLClient,
+    LinearRateLimitError,
     MissingLinearTokenError,
     UnownedFieldError,
     WorkflowState,
@@ -336,6 +341,148 @@ def test_create_sends_project_id(monkeypatch: pytest.MonkeyPatch) -> None:
     input_vars = captured["body"]["variables"]["input"]
     assert input_vars["projectId"] == "project-9"  # the project scope crossed
     assert input_vars["teamId"] == "team-9"  # still alongside the team scope
+
+
+# --- ATLAS-147: error-body capture, timeout, rate-limit detection ------------
+
+# The VERBATIM transport-400 body of the 2026-07-07 rate-limit incident (the
+# crash-loop that pinned the request budget at zero): the RATELIMITED detail
+# lives ONLY here, never in the status line, and the reset is
+# extensions.meta.rateLimitResult.duration in MILLISECONDS. Kept byte-for-byte
+# so the parse is proven against what Linear actually sent.
+_RATE_LIMIT_INCIDENT_BODY = b'{"errors":[{"message":"Rate limit exceeded. Only 2500 requests are allowed per 1 hour. For more information see our developer docs at: https://linear.app/developers/rate-limiting","extensions":{"type":"ratelimited","code":"RATELIMITED","statusCode":429,"userError":true,"userPresentableMessage":"Rate limit exceeded. Only 2500 requests are allowed per 1 hour. For more information see our developer docs at: https://linear.app/developers/rate-limiting.","meta":{"rateLimitResult":{"allowed":false,"requested":1,"remaining":0,"duration":3600000,"limit":2500}},"http":{"headers":{},"status":400}}}]}'  # noqa: E501
+
+
+def _http_error(code: int, body: bytes) -> urllib_error.HTTPError:
+    """A fake ``urllib`` HTTPError whose ``read()`` yields ``body``, mirroring
+    what a real non-2xx response hands the client."""
+
+    return urllib_error.HTTPError(
+        "https://api.linear.app/graphql",
+        code,
+        "Bad Request",
+        email.message.Message(),
+        io.BytesIO(body),
+    )
+
+
+def _raising_urlopen(monkeypatch: pytest.MonkeyPatch, code: int, body: bytes) -> None:
+    def _urlopen(request: Any, *args: Any, **kwargs: Any) -> _Response:
+        raise _http_error(code, body)
+
+    monkeypatch.setattr("atlas.linear.client.urllib_request.urlopen", _urlopen)
+
+
+def test_http_error_message_carries_status_and_body(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Pre-147 wrong answer: HTTPError fell into the URLError catch and the body
+    # was discarded, leaving only an opaque "HTTP Error 400" — undiagnosable.
+    _raising_urlopen(monkeypatch, 500, b'{"errors":[{"message":"upstream broke"}]}')
+    client = LinearGraphQLClient(api_key="sk", team_id="t")
+    with pytest.raises(LinearAPIError, match="HTTP 500") as excinfo:
+        client.fetch_issue("i")
+    assert "upstream broke" in str(excinfo.value)  # the body crossed into the message
+    assert not isinstance(excinfo.value, LinearRateLimitError)
+
+
+def test_http_error_body_truncated_to_pinned_max(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A pathological body is carried only up to the pinned max, so an error
+    # message (and the TickFailure detail derived from it) stays bounded.
+    _raising_urlopen(monkeypatch, 502, b"x" * (LINEAR_ERROR_BODY_MAX_LEN + 500))
+    client = LinearGraphQLClient(api_key="sk", team_id="t")
+    with pytest.raises(LinearAPIError, match="HTTP 502") as excinfo:
+        client.fetch_issue("i")
+    message = str(excinfo.value)
+    assert "x" * LINEAR_ERROR_BODY_MAX_LEN in message
+    assert "x" * (LINEAR_ERROR_BODY_MAX_LEN + 1) not in message
+
+
+def test_execute_passes_module_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, Any] = {}
+    emulator = _Emulator()
+
+    def _urlopen(request: Any, *args: Any, **kwargs: Any) -> _Response:
+        captured["timeout"] = kwargs.get("timeout")
+        return _Response(emulator.handle(request))
+
+    monkeypatch.setattr("atlas.linear.client.urllib_request.urlopen", _urlopen)
+    LinearGraphQLClient(api_key="sk", team_id="t").fetch_workflow_states()
+    assert captured["timeout"] == LINEAR_HTTP_TIMEOUT_SECONDS
+
+    # Source scan: no bare urlopen(request) remains anywhere in atlas/linear/ —
+    # every call site passes the module timeout (whitespace-squeezed so a
+    # reformatted multi-line call cannot dodge the scan).
+    for path in sorted((REPO_ROOT / "atlas" / "linear").glob("*.py")):
+        squeezed = "".join(path.read_text(encoding="utf-8").split())
+        assert "urlopen(request)" not in squeezed, f"bare urlopen in {path.name}"
+
+
+def test_transport_400_ratelimited_raises_typed_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The incident shape: a transport HTTP 400 whose body carries the
+    # RATELIMITED errors list. Pre-147 wrong answer: an opaque LinearAPIError
+    # with no body, so the scheduler retried at the base cadence and burned the
+    # budget flat.
+    _raising_urlopen(monkeypatch, 400, _RATE_LIMIT_INCIDENT_BODY)
+    client = LinearGraphQLClient(api_key="sk", team_id="t")
+    with pytest.raises(LinearRateLimitError, match="HTTP 400") as excinfo:
+        client.fetch_issue("i")
+    # duration is milliseconds (3600000 observed) -> seconds.
+    assert excinfo.value.reset_after_seconds == 3600.0
+    assert "RATELIMITED" in str(excinfo.value)  # the body crossed into the message
+
+
+def test_200_with_ratelimited_errors_raises_typed_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The same detector on the 200-with-errors envelope path.
+    payload = {
+        "errors": [
+            {
+                "message": "Rate limit exceeded",
+                "extensions": {
+                    "code": "RATELIMITED",
+                    "meta": {"rateLimitResult": {"duration": 120000}},
+                },
+            }
+        ]
+    }
+
+    def _urlopen(request: Any, *args: Any, **kwargs: Any) -> _Response:
+        return _Response(payload)
+
+    monkeypatch.setattr("atlas.linear.client.urllib_request.urlopen", _urlopen)
+    client = LinearGraphQLClient(api_key="sk", team_id="t")
+    with pytest.raises(LinearRateLimitError) as excinfo:
+        client.fetch_issue("i")
+    assert excinfo.value.reset_after_seconds == 120.0
+
+    # An absent/unparsable reset yields None (the scheduler then backs off at
+    # its full cap) — never a parse crash.
+    payload = {"errors": [{"message": "x", "extensions": {"code": "RATELIMITED"}}]}
+    with pytest.raises(LinearRateLimitError) as excinfo:
+        client.fetch_issue("i")
+    assert excinfo.value.reset_after_seconds is None
+
+
+def test_non_ratelimit_400_is_plain_api_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Negative: a 400 whose errors are NOT rate-limit stays a plain
+    # LinearAPIError — the typed error never over-claims.
+    body = (
+        b'{"errors":[{"message":"Argument Validation Error",'
+        b'"extensions":{"code":"INVALID_INPUT"}}]}'
+    )
+    _raising_urlopen(monkeypatch, 400, body)
+    client = LinearGraphQLClient(api_key="sk", team_id="t")
+    with pytest.raises(LinearAPIError, match="HTTP 400") as excinfo:
+        client.fetch_issue("i")
+    assert not isinstance(excinfo.value, LinearRateLimitError)
 
 
 def test_graphql_errors_become_linear_api_error(

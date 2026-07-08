@@ -44,6 +44,15 @@ TEAM_ID_ENV = "LINEAR_TEAM_ID"
 # project, so an issue created with this id is visible to Symphony's poll. Paste
 # the UUID, never the slug. Sourced at the CLI boundary alongside the team id.
 PROJECT_ID_ENV = "LINEAR_PROJECT_ID"
+# Transport timeout for every Linear HTTP call (ATLAS-147). A module constant
+# (policy, not per-run configuration): a hung request fails the tick instead of
+# hanging the scheduler loop forever, and the next idempotent tick retries.
+LINEAR_HTTP_TIMEOUT_SECONDS = 30.0
+# Pinned truncation for an HTTP error body carried into a LinearAPIError
+# message (ATLAS-147): enough to diagnose (the 2026-07-07 RATELIMITED body fits
+# comfortably), bounded so a pathological response cannot bloat the TickFailure
+# ``detail`` column.
+LINEAR_ERROR_BODY_MAX_LEN = 1000
 
 
 class LinearClientError(RuntimeError):
@@ -56,6 +65,25 @@ class MissingLinearTokenError(LinearClientError):
 
 class LinearAPIError(LinearClientError):
     """A Linear GraphQL request failed (transport, HTTP, or GraphQL errors)."""
+
+
+class LinearRateLimitError(LinearAPIError):
+    """Linear rejected the request as rate-limited (ATLAS-147).
+
+    Raised whenever a GraphQL errors list carries ``extensions.code ==
+    "RATELIMITED"`` -- Linear delivers that rejection BOTH as a transport
+    HTTP 400 whose body holds the errors list (the 2026-07-07 incident shape)
+    and, in principle, as a 200 whose envelope carries the same list; one
+    detector covers both paths. ``reset_after_seconds`` is parsed from
+    ``extensions.meta.rateLimitResult.duration`` (milliseconds; observed
+    3600000) and is ``None`` when absent or unparsable -- the scheduler then
+    backs off at its full cap rather than guessing."""
+
+    def __init__(
+        self, message: str, *, reset_after_seconds: float | None = None
+    ) -> None:
+        super().__init__(message)
+        self.reset_after_seconds = reset_after_seconds
 
 
 class UnownedFieldError(ValueError):
@@ -228,6 +256,49 @@ _DELETE_MUTATION = (
 )
 
 
+def _rate_limit_reset_seconds(extensions: Mapping[str, Any]) -> float | None:
+    """The reset window from a RATELIMITED error's extensions, in seconds.
+
+    The field is ``extensions.meta.rateLimitResult.duration``, in MILLISECONDS
+    (observed value 3600000 in the 2026-07-07 capture); there is no ``resetAt``
+    field, so none is looked for. Absent or unparsable yields ``None`` (the
+    scheduler backs off at its full cap)."""
+
+    meta = extensions.get("meta")
+    if not isinstance(meta, Mapping):
+        return None
+    result = meta.get("rateLimitResult")
+    if not isinstance(result, Mapping):
+        return None
+    duration_ms = result.get("duration")
+    if isinstance(duration_ms, bool) or not isinstance(duration_ms, int | float):
+        return None
+    return float(duration_ms) / 1000.0
+
+
+def _raise_if_rate_limited(errors: Any, message: str) -> None:
+    """The ONE rate-limit detector (ATLAS-147), applied to every GraphQL errors
+    list regardless of the transport that carried it: a transport-400 whose
+    body parses as JSON errors, and a 200-with-errors envelope. Raises the
+    typed :class:`LinearRateLimitError` when any error carries
+    ``extensions.code == "RATELIMITED"``; otherwise returns and the caller
+    raises its plain :class:`LinearAPIError`."""
+
+    if not isinstance(errors, list):
+        return
+    for error in errors:
+        if not isinstance(error, Mapping):
+            continue
+        extensions = error.get("extensions")
+        if not isinstance(extensions, Mapping):
+            continue
+        if extensions.get("code") != "RATELIMITED":
+            continue
+        raise LinearRateLimitError(
+            message, reset_after_seconds=_rate_limit_reset_seconds(extensions)
+        )
+
+
 def _issue_from_node(node: Mapping[str, Any]) -> LinearIssue:
     state = node.get("state")
     return LinearIssue(
@@ -281,14 +352,37 @@ class LinearGraphQLClient:
             },
         )
         try:
-            with urllib_request.urlopen(request) as response:
+            with urllib_request.urlopen(
+                request, timeout=LINEAR_HTTP_TIMEOUT_SECONDS
+            ) as response:
                 body = json.loads(response.read().decode())
+        except urllib_error.HTTPError as error:
+            # HTTPError IS-A URLError, so it must be caught first. Read the
+            # body once: Linear returns rate-limit rejections as transport
+            # HTTP 400 with the RATELIMITED detail ONLY in the body (the
+            # 2026-07-07 incident crash-looped for an hour on the opaque
+            # status alone). Detection parses the full body; the message
+            # carries it truncated to the pinned max.
+            detail = error.read().decode(errors="replace")
+            message = (
+                f"Linear API request failed: HTTP {error.code}: "
+                f"{detail[:LINEAR_ERROR_BODY_MAX_LEN]}"
+            )
+            try:
+                parsed = json.loads(detail)
+            except json.JSONDecodeError:
+                parsed = None
+            if isinstance(parsed, dict):
+                _raise_if_rate_limited(parsed.get("errors"), message)
+            raise LinearAPIError(message) from error
         except (urllib_error.URLError, OSError) as error:
             raise LinearAPIError(f"Linear API request failed: {error}") from error
         except json.JSONDecodeError as error:
             raise LinearAPIError(f"Linear API returned non-JSON: {error}") from error
         if body.get("errors"):
-            raise LinearAPIError(f"Linear GraphQL errors: {body['errors']}")
+            message = f"Linear GraphQL errors: {body['errors']}"
+            _raise_if_rate_limited(body["errors"], message)
+            raise LinearAPIError(message)
         data = body.get("data")
         if not isinstance(data, dict):
             raise LinearAPIError("Linear GraphQL response had no data")

@@ -10,6 +10,8 @@ loop that drives this boundary on a cadence is ATLAS-42.
 from atlas.linear.client import (
     API_KEY_ENV,
     API_URL,
+    LINEAR_ERROR_BODY_MAX_LEN,
+    LINEAR_HTTP_TIMEOUT_SECONDS,
     PROJECT_ID_ENV,
     TEAM_ID_ENV,
     LinearAPIError,
@@ -18,6 +20,7 @@ from atlas.linear.client import (
     LinearComment,
     LinearGraphQLClient,
     LinearIssue,
+    LinearRateLimitError,
     MissingLinearTokenError,
     UnownedFieldError,
     WorkflowState,
@@ -36,6 +39,8 @@ from atlas.linear.ownership import (
 __all__ = [
     "API_KEY_ENV",
     "API_URL",
+    "LINEAR_ERROR_BODY_MAX_LEN",
+    "LINEAR_HTTP_TIMEOUT_SECONDS",
     "OWNED_DEFINITION_FIELDS",
     "OWNED_LINEAR_INPUT_KEYS",
     "PROJECT_ID_ENV",
@@ -47,6 +52,7 @@ __all__ = [
     "LinearComment",
     "LinearGraphQLClient",
     "LinearIssue",
+    "LinearRateLimitError",
     "LinearStatusMap",
     "LinearStatusMapError",
     "MissingLinearTokenError",
