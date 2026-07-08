@@ -264,3 +264,54 @@ change as this entry).
 
 terminal-dependency fix shipped unminted — the defect blocked the apply
 path that assigns keys; bootstrap exception, not precedent.
+
+## Duplicate mints: ATLAS-149/150 rejected same day (F-4, second instance)
+
+PlanRun 0f8c9eba (2026-07-08) minted ATLAS-149/150 as exact-title
+duplicates of ATLAS-147/148: the planner re-emitted the committed inbox
+stubs alongside their deterministic promotion. The duplicates carried no
+dependency edges, so the diff's dependency section could not surface
+them — only the ticket ADD lines could, and the confirm gate was taken
+on the reviewer's "safe by construction" advice instead of the eyeball
+check the gate exists for. Contributing cause owned by the reviewer;
+the operator's gate discipline was talked past, not skipped.
+
+Disposition: board issues marked Canceled 2026-07-08; pulled to
+`rejected`, terminal. Two burned keys, on the record.
+
+To close the pattern: promotion-vs-model dedup keyed on source_anchor at
+reconciliation (a promotion-injected ticket and a model-emitted ticket
+citing the same stub anchor are the same work). Two live reproductions
+in hand (this and the declined 2026-07-08 double-emission). Note for the
+fix's acceptance criteria: edgeless duplicates are invisible in the
+dependency section — the dedup must act at ticket identity, not edges.
+Owner: queued inbox stub (next planner batch).
+
+## Meta-label ATLAS-004M doubly assigned
+
+ATLAS-004M was used by PR #155 (key-namespace burn record) and reused by
+PR #158 (terminal-dependency fix), which by sequence position should
+have been ATLAS-007M and is hereby so designated. The meta counter
+resumes at the next unused number (verify against merged PR titles
+before each use — this entry exists because that verification was
+skipped once). To close the pattern: extend the lint-pr-title check to
+reject a reused ATLAS-00xM label against merged history — small code
+change, queued for a future inbox stub; eyes are demonstrably not
+enough.
+
+## Finding: the parked backlog blocks autonomous promotion (2026-07-08)
+
+Two facts compose: (1) definition-push creates Linear issues in the
+Needs Human state, so every pushed ticket is born parked — the
+107-ticket park is a birth default, not a decision; (2) the readiness
+predicate requires depends_on targets to be strictly `done`
+(readiness.py, DEPENDENCY_NOT_DONE). Therefore no ticket depending on
+the existing backlog can autonomously promote to Ready for Agent while
+the park stands — observed live when ATLAS-147/148 pulled back as
+needs_human_decision and could never promote (deps ATLAS-45/46, both
+parked). Hand-dispatch is unaffected; Symphony-driven autonomous
+dispatch is gated on the OP-3b ruling, which acquires a deadline the
+moment autonomous dispatch is wanted. Surgical option now on the table:
+operator-attested `done` for the handful of self-evidently delivered
+infrastructure tickets that future work depends on (e.g. ATLAS-45/46 —
+the deliverable is the running system), leaving the bulk ruling intact.

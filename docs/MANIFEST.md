@@ -152,7 +152,10 @@ Phase closure reports (`docs/closure/`):
 - `docs/closure/smoke-b-closeout.md` — Smoke B Phase 7 machine capture
   (evidence appendix to the closure report)
 
-Stubs awaiting content: `docs/product/`, `docs/tech-debt/`.
+Stubs awaiting content: `docs/product/`. `docs/tech-debt/` holds the
+debt register (`docs/tech-debt/debt-register.md`), a hand-maintained,
+append-oriented record of findings, corrections, and pattern-closure
+pointers.
 
 ## Phase readiness rule
 
