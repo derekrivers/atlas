@@ -1,7 +1,7 @@
 # Render written only by `atlas apply` (ADR-0006/0007); do not hand-edit.
-# plan_run_id: 58d7b8a2-a648-4351-890b-8d48de2a71c3
+# plan_run_id: 0f8c9eba-eaf3-4abd-bbcf-50fd7a7db6ed
 # prompt_version: staged[planner-stage-epics-v1.2.0+planner-stage-tickets-v1.6.0+planner-stage-dependencies-v1.0.0]
-# ticket_key_high_water: 110
+# ticket_key_high_water: 150
 # epic_key_high_water: 11
 dependencies:
 - id: 1d4aafed-6d6a-4f61-97d9-5af5c9a4f88e
@@ -472,6 +472,15 @@ dependencies:
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-07-04T18:05:38.538342Z'
+- id: d2edc1c6-10a7-46c2-9fe8-084eb4c4df61
+  source_ticket_id: 4896698f-2d0f-45da-a529-63c94f665bd1
+  target_entity_type: ticket
+  target_entity_id: b5a18843-9af6-4df0-aed9-7a8454c88d01
+  dependency_type: depends_on
+  reason: Linear client hardening improves the client established by the Linear integration ticket.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-08T20:30:03.926245Z'
 - id: 1ff5a901-5e2a-470e-8ea7-034953c0e412
   source_ticket_id: 48b03206-1ed2-49a3-be6d-83c7ae0b55ef
   target_entity_type: ticket
@@ -1624,6 +1633,24 @@ dependencies:
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-07-04T18:05:38.538342Z'
+- id: 24ccff0b-0d9f-42fa-8356-491fb945eede
+  source_ticket_id: ee77d2c1-f35d-4422-886e-b62456595ab6
+  target_entity_type: ticket
+  target_entity_id: 4896698f-2d0f-45da-a529-63c94f665bd1
+  dependency_type: depends_on
+  reason: Sync request budget assumes client hardening (error body, timeout) has landed.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-08T20:30:03.926245Z'
+- id: 33b2c7cb-3074-4556-b3ea-d583b21e6e6f
+  source_ticket_id: ee77d2c1-f35d-4422-886e-b62456595ab6
+  target_entity_type: ticket
+  target_entity_id: d3656909-ccf7-44a3-b3e6-87e3e3b6f939
+  dependency_type: depends_on
+  reason: Sync request budget optimises the sync_tick loop established by ticket synchronisation.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-08T20:30:03.926245Z'
 - id: d70890da-6489-40ef-8b34-d0592b8bfbd5
   source_ticket_id: efa14ba6-fd67-48c5-8e25-4099c417cd9d
   target_entity_type: ticket
