@@ -1533,3 +1533,81 @@ def test_ac4_default_mode_refuses_modify_before_dependency_handling(
         apply(repo, database, planning_dir(tmp_path), add_only=False)
     assert TicketDependencyRepo(database).list() == []
     assert not planning_dir(tmp_path).exists()
+
+
+# --- terminal-dependency rule scoped to done: the 2026-07-08 apply block ------
+
+
+def test_rejected_source_edge_does_not_block_add_only_apply(tmp_path: Path) -> None:
+    # The line that actually bit (2026-07-08, PlanRun bede6227): a store-shaped
+    # backlog holding a rejected ticket with a pre-existing outgoing edge to a
+    # non-terminal one (ATLAS-108 rejected -> ATLAS-80 needs_human_decision),
+    # plus an add-only diff of two new tickets. Pre-fix, validate_graph treated
+    # the historical edge as a TerminalDependencyError and the apply that would
+    # mint the new keys refused permanently — the rejected source is frozen, so
+    # no sanctioned repair existed. Post-fix the edge is valid history: the
+    # apply validates and mints both ADDs.
+    repo = fixture_repo(tmp_path)
+    database = fresh_db(tmp_path)
+    product = ProductRepo(database).get_by_key("ATLAS")
+    assert product is not None
+    epic = Epic(**_epic_model_kwargs(product.id, key="ATLAS-E1"))
+    EpicRepo(database).add(epic)
+    rejected_source = Ticket(
+        **(
+            _ticket_model_kwargs(product.id, epic.id, key="ATLAS-1")
+            | {"status": "rejected", "title": "Rejected with an outgoing edge"}
+        )
+    )
+    pending_target = Ticket(
+        **(
+            _ticket_model_kwargs(product.id, epic.id, key="ATLAS-2")
+            | {
+                "status": "needs_human_decision",
+                "title": "Pending target",
+                "source_anchor": "docs/atlas/plan.md#two",
+            }
+        )
+    )
+    TicketRepo(database).add(rejected_source)
+    TicketRepo(database).add(pending_target)
+    TicketDependencyRepo(database).add(
+        TicketDependency(
+            id=uuid4(),
+            source_ticket_id=rejected_source.id,
+            target_entity_type="ticket",
+            target_entity_id=pending_target.id,
+            dependency_type="depends_on",  # type: ignore[arg-type]
+            reason="Pre-existing edge; the source was later rejected.",
+            created_by_type="agent",  # type: ignore[arg-type]
+            created_by_id="planner",
+            created_at=NOW,
+        )
+    )
+    _seed_counter(database, tickets=2, epics=1)
+    proposal = {
+        "epics": [_epic(key="ATLAS-E1")],
+        "tickets": [
+            _ticket(**_NEW_ADD_TICKET),  # ADD -> new:0
+            _ticket(
+                epic_ref="ATLAS-E1",
+                title="Second new capability",
+                objective="more new work.",
+                source_anchor="docs/atlas/plan.md#new-2",
+            ),  # ADD -> new:1
+        ],
+        "dependencies": [],
+        "planner_notes": [],
+    }
+    _add_proposed_plan_run(database, repo, product.id, proposal)
+
+    result = apply(repo, database, planning_dir(tmp_path), add_only=True)
+
+    assert result.outcome == "applied"
+    tickets = {t.key: t for t in TicketRepo(database).list()}
+    assert tickets["ATLAS-3"].title == "Brand new capability"
+    assert tickets["ATLAS-4"].title == "Second new capability"
+    # The historical edge is untouched — valid history, not debris.
+    edges = TicketDependencyRepo(database).list()
+    assert len(edges) == 1
+    assert edges[0].source_ticket_id == rejected_source.id

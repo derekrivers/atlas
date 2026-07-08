@@ -122,18 +122,18 @@ def test_terminal_to_non_terminal_raises() -> None:
     assert terminal.target_status == "planned"
 
 
-def test_rejected_counts_as_terminal() -> None:
-    # The terminal set comes from the enum (DONE and REJECTED), not a
-    # hard-coded "done" — rejected->planned must also raise.
+def test_rejected_source_is_exempt() -> None:
+    # The incident shape (2026-07-08: ATLAS-108 rejected -> ATLAS-80
+    # needs_human_decision failed PlanRun bede6227's apply): rejection is a
+    # normal end for work whose prerequisites are unfinished, and rejected
+    # tickets are frozen to planning, so their historical edges are valid
+    # history, not violations. Only `done` sources are policed.
     rejected = make_ticket("ATLAS-1", status="rejected")
-    planned = make_ticket("ATLAS-2", status="planned")
+    pending = make_ticket("ATLAS-2", status="needs_human_decision")
     graph = project_graph(
-        [rejected, planned], [], [], [depends_on(rejected, planned.id)]
+        [rejected, pending], [], [], [depends_on(rejected, pending.id)]
     )
-
-    with pytest.raises(GraphValidationFailed) as caught:
-        validate_graph(graph)
-    assert _only(caught.value, TerminalDependencyError).source_status == "rejected"
+    validate_graph(graph)  # no raise
 
 
 def test_terminal_to_terminal_is_allowed() -> None:
@@ -141,6 +141,24 @@ def test_terminal_to_terminal_is_allowed() -> None:
     a = make_ticket("ATLAS-1", status="done")
     b = make_ticket("ATLAS-2", status="done")
     graph = project_graph([a, b], [], [], [depends_on(a, b.id)])
+    validate_graph(graph)  # no raise
+
+
+def test_rejected_to_done_is_allowed() -> None:
+    # Boundary: a rejected source with a done target was already clean under
+    # the old formulation (terminal target satisfies) and stays clean.
+    rejected = make_ticket("ATLAS-1", status="rejected")
+    done = make_ticket("ATLAS-2", status="done")
+    graph = project_graph([rejected, done], [], [], [depends_on(rejected, done.id)])
+    validate_graph(graph)  # no raise
+
+
+def test_done_to_rejected_is_allowed() -> None:
+    # Boundary: the target side is unchanged — a terminal (rejected) target
+    # satisfies a done source; the question is only which sources are policed.
+    done = make_ticket("ATLAS-1", status="done")
+    rejected = make_ticket("ATLAS-2", status="rejected")
+    graph = project_graph([done, rejected], [], [], [depends_on(done, rejected.id)])
     validate_graph(graph)  # no raise
 
 

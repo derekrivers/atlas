@@ -21,7 +21,8 @@ Four rules, scoped exactly as the spec frames them:
   ``MultiDiGraph`` future ATLAS-31 documented.
 - No dangling targets — raises on the ``present=False`` nodes ATLAS-31
   represents.
-- No ``depends_on`` from a terminal-status ticket to a non-terminal one.
+- No ``depends_on`` from a ``done`` ticket to a non-terminal one
+  (``rejected`` sources are exempt — see ``_terminal_dependencies``).
 
 ``validate_graph`` COLLECTS every violation and raises one
 ``GraphValidationFailed`` aggregate (not raise-on-first), so an operator
@@ -141,8 +142,16 @@ def _cycles(graph: nx.DiGraph[str]) -> list[CycleError]:
 def _terminal_dependencies(
     graph: nx.DiGraph[str],
 ) -> list[TerminalDependencyError]:
-    """A terminal ticket must not ``depends_on`` a non-terminal ticket:
-    completed work cannot newly depend on pending work (a data error)."""
+    """A ``done`` ticket must not ``depends_on`` a non-terminal ticket:
+    completed work cannot newly depend on pending work (a data error).
+
+    ``rejected`` sources are exempt (dependency-engine.md "Validation
+    rules"): rejection is a normal end for work whose prerequisites are
+    unfinished, and rejected tickets are frozen to planning, so treating
+    their historical edges as violations would make one rejection block
+    every future apply with no sanctioned repair (observed live,
+    2026-07-08). The target side still uses ``TERMINAL_STATUSES``: any
+    terminal target satisfies; only which sources are policed narrowed."""
     violations: list[TerminalDependencyError] = []
     for source, target, dep_type in graph.edges(data="dependency_type"):
         if dep_type != _DEPENDS_ON:
@@ -158,7 +167,7 @@ def _terminal_dependencies(
         source_status = source_data.get("status")
         target_status = target_data.get("status")
         if (
-            source_status in TERMINAL_STATUSES
+            source_status == TicketStatus.DONE.value
             and target_status not in TERMINAL_STATUSES
         ):
             violations.append(

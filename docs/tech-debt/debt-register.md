@@ -260,3 +260,7 @@ stop claiming forward keys. Either mint first (inbox stub → `atlas apply`
 (the ATLAS-00xM meta-commit convention already models this). The runbook
 rule lives in `docs/runbooks/agent-ticket-prompt.md` (landed in the same
 change as this entry).
+## Terminal-dependency fix shipped unminted (2026-07-08, ATLAS-004M)
+
+terminal-dependency fix shipped unminted — the defect blocked the apply
+path that assigns keys; bootstrap exception, not precedent.
