@@ -242,11 +242,14 @@ Consequences, accepted:
 - ATLAS-111..146 are permanently non-store identifiers. Their work's
   provenance remains doc-anchored (roadmap + PR titles + closure reports),
   not store-queryable — the same standing 101–110 already had.
-- Linear's NATIVE issue numbers are an independent counter in the same
-  prefix and will still collide numerically forever; the embedded-title key
-  (ATLAS-143 label) remains the sole authority at that seam. Native numbers
-  never enter the store. F-8 rule restated: the counter is the only key
-  authority; every other ATLAS-<n> is a different namespace.
+- Linear-native identifiers use the TEAM key prefix (`ATL-<n>` for team
+  Atlas-Dev-Test, observed live 2026-07-07: ATL-227..336), a different
+  namespace from store keys — numeric collision with `ATLAS-<n>` cannot
+  occur. The original entry claimed a shared prefix; that claim was
+  reviewer-authored inference, disproven by probe. The embedded-title key
+  remains the sole authority at the tracker seam; native numbers never
+  enter the store. F-8 rule restated: the counter is the only key
+  authority; every other identifier is a different namespace.
 - The committed render header (`ticket_key_high_water: 110`) reflects the
   last apply and self-corrects at the next one; renders are never
   hand-edited (ADR-0007).
