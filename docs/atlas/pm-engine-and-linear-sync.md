@@ -85,22 +85,36 @@ Every workflow state visible in the workspace is accounted for below —
 or **intentionally unmapped** (with its rationale). Nothing is silently
 unmapped: an id observed outside this table is a genuine anomaly
 (ATLAS-118), not a latent decision. State ids below were resolved by the
-team-scoped `fetch_workflow_states` query this change introduced — the
-workspace carries two same-named `Duplicate` states (one per team), so
-only a team-scoped read disambiguates them; the workspace-wide listing
-that preceded it could not.
+operator running the team-scoped `fetch_workflow_states` query this
+change introduced (one read-only request, 2026-07-08) — the workspace
+carries two same-named `Duplicate` states (one per team), so only a
+team-scoped read disambiguates them; the workspace-wide listing that
+preceded it could not.
 
-Atlas team states:
+Atlas team states (nine; Linear `type` in parentheses):
 
-| Linear state | State id (UUID) | Disposition | Rationale |
-| ------------ | --------------- | ----------- | --------- |
-| PENDING-OPERATOR-QUERY | — | mapped | — |
+| Linear state | State id (UUID) | Maps to | Rationale |
+| ------------ | --------------- | ------- | --------- |
+| Ready for Agent (unstarted) | `df1ebd92-7c41-4585-a15b-29b9e73f840f` | `ready_for_agent` | the step-3 promotion target; the PM Engine's one sanctioned outbound state write resolves to exactly this state |
+| In Progress (started) | `381b59b4-7ffe-4247-9cd8-6a11585203ea` | `in_progress` | an agent is actively working the ticket; dwell-horizoned |
+| PR Open (started) | `1ea72cdb-5f02-473f-8439-028e40d904f0` | `pr_open` | a PR is up; review-cycling counts arrivals into this state |
+| Review Required (started) | `cf16f7da-6193-4dbf-b8fd-fa75dc9a16d7` | `review_required` | awaiting verification; step 3b's verified completion consumes it |
+| Changes Requested (started) | `a3bba9c2-716e-47a6-b1ce-dcff4183c425` | `changes_requested` | rework requested; the other half of the review cycle |
+| Needs Human (backlog) | `311a3a97-c409-4cce-96ab-0a3bfc2a5541` | `needs_human_decision` | parked for the operator; the review-cycling route target |
+| Done (completed) | `ca6f5cee-5796-4102-bab7-24f08732549d` | `done` | delivered; terminal |
+| Canceled (canceled) | `84207146-0b47-4821-a7e9-331abe38e77a` | `rejected` | closed undelivered; terminal |
+| Duplicate (duplicate) | `cd8e7c95-8a25-48ad-b0ef-19e00f000e70` | `rejected` (operator adds post-merge) | a duplicate is work that closed undelivered under this key; the duplicate-of reason lives in Linear natively, not in a new Atlas status |
 
-The `Duplicate` state maps to `rejected`: a duplicate is work that closed
-undelivered under this key; the duplicate-of reason lives in Linear
-natively, not in a new Atlas status. The operator adds this entry to
-`LINEAR_STATE_MAP` from the UUID documented above after this change
-merges — the change itself edits no environment configuration.
+The operator adds the `Duplicate` entry to `LINEAR_STATE_MAP` from the
+UUID documented above after this change merges — the change itself edits
+no environment configuration. Known gap, flagged for follow-up rather
+than folded into this change: `validate_against_states`' accepted-types
+table admits only `cancelled` for `rejected`, while the live board
+reports type `canceled` (US spelling) for the Canceled state and type
+`duplicate` for the Duplicate state — so preflight C2 will fail on the
+`rejected` mappings until the accepted-types row learns both live
+spellings. The sync tick itself does not run that validation and is
+unaffected.
 
 Sibling team states (grouped): the workspace's second team carries nine
 workflow states, all intentionally unmapped — foreign team; its issues
