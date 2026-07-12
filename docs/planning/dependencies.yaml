@@ -1,7 +1,7 @@
 # Render written only by `atlas apply` (ADR-0006/0007); do not hand-edit.
-# plan_run_id: 0f8c9eba-eaf3-4abd-bbcf-50fd7a7db6ed
+# plan_run_id: e09e1ae6-5502-4c9b-800a-d25ae089734b
 # prompt_version: staged[planner-stage-epics-v1.2.0+planner-stage-tickets-v1.6.0+planner-stage-dependencies-v1.0.0]
-# ticket_key_high_water: 150
+# ticket_key_high_water: 158
 # epic_key_high_water: 11
 dependencies:
 - id: 1d4aafed-6d6a-4f61-97d9-5af5c9a4f88e
@@ -544,6 +544,24 @@ dependencies:
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-07-04T18:05:38.538342Z'
+- id: da8daa1c-7333-479f-9889-3a920475c473
+  source_ticket_id: 587ab736-54d9-43b3-b57f-a445471aa58e
+  target_entity_type: ticket
+  target_entity_id: 5ecb0d9c-76f9-470f-a761-ad5c5977559d
+  dependency_type: depends_on
+  reason: Stubs-only plan mode is a new flag on `atlas plan` and requires the plan command to exist.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-11T20:50:12.516279Z'
+- id: f86e8ff5-f0a6-4c29-b75f-ac44be32fdbf
+  source_ticket_id: 587ab736-54d9-43b3-b57f-a445471aa58e
+  target_entity_type: ticket
+  target_entity_id: 8b5da8c0-11ce-4613-b973-9d757d6d918e
+  dependency_type: depends_on
+  reason: Stubs-only mode flows through the reconciler.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-11T20:50:12.516279Z'
 - id: 15faf0e9-28bc-4a60-9800-ba7f7b21f222
   source_ticket_id: 5900fdc8-a35d-466e-9620-d0a924559f6d
   target_entity_type: ticket
@@ -814,6 +832,24 @@ dependencies:
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-07-04T18:05:38.538342Z'
+- id: 672236f4-3163-4a46-b824-0002b48f539e
+  source_ticket_id: 7b00b04a-f20b-4123-b1bc-17c8d35b28ac
+  target_entity_type: ticket
+  target_entity_id: 8b5da8c0-11ce-4613-b973-9d757d6d918e
+  dependency_type: depends_on
+  reason: Dedup logic is a modification to the deterministic reconciler.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-11T20:50:12.516279Z'
+- id: b0b627c8-990f-47c8-ad62-4992cebc4d9e
+  source_ticket_id: 7b00b04a-f20b-4123-b1bc-17c8d35b28ac
+  target_entity_type: ticket
+  target_entity_id: fa7784c7-38de-47ad-908a-10c7d91bf8b9
+  dependency_type: depends_on
+  reason: Promotion dedup operates within the reconciler that multi-call orchestration feeds.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-11T20:50:12.516279Z'
 - id: ddd90b9b-55a7-43d8-b0de-b8ded77d75a1
   source_ticket_id: 7e3f7111-f5db-43af-8fce-89ef40ff4d04
   target_entity_type: ticket
@@ -877,6 +913,15 @@ dependencies:
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-07-04T18:05:38.538342Z'
+- id: cd75a1e0-8fcb-4648-9918-aa63d604f18b
+  source_ticket_id: 84018dcb-6beb-46eb-b74e-8fde2a7778c3
+  target_entity_type: ticket
+  target_entity_id: efa14ba6-fd67-48c5-8e25-4099c417cd9d
+  dependency_type: depends_on
+  reason: Retire-on-reject scope fix modifies the apply command's stub retirement behaviour.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-11T20:50:12.516279Z'
 - id: 717e3177-065c-409b-a073-a6b97eccf714
   source_ticket_id: 86051f46-754b-40f9-8856-4c2dbec18ed8
   target_entity_type: ticket
@@ -1417,6 +1462,15 @@ dependencies:
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-07-04T18:05:38.538342Z'
+- id: 6ed61d7f-e970-4976-9d27-9f008731f49c
+  source_ticket_id: d08bf83f-afdb-4c98-a082-bc92286c4f39
+  target_entity_type: ticket
+  target_entity_id: b5a18843-9af6-4df0-aed9-7a8454c88d01
+  dependency_type: depends_on
+  reason: Accepted-types spelling fix is a change to validate_against_states in the Linear boundary.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-11T20:50:12.516279Z'
 - id: 9cbdf1a4-9c65-4854-a421-3a412962c36f
   source_ticket_id: d3656909-ccf7-44a3-b3e6-87e3e3b6f939
   target_entity_type: ticket

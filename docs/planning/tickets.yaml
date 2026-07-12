@@ -1,7 +1,7 @@
 # Render written only by `atlas apply` (ADR-0006/0007); do not hand-edit.
-# plan_run_id: 0f8c9eba-eaf3-4abd-bbcf-50fd7a7db6ed
+# plan_run_id: e09e1ae6-5502-4c9b-800a-d25ae089734b
 # prompt_version: staged[planner-stage-epics-v1.2.0+planner-stage-tickets-v1.6.0+planner-stage-dependencies-v1.0.0]
-# ticket_key_high_water: 150
+# ticket_key_high_water: 158
 # epic_key_high_water: 11
 tickets:
 - id: 06701bee-33ed-44e6-b735-52dfd7c5edc8
@@ -6653,7 +6653,7 @@ tickets:
   title: 'Linear client hardening: error-body capture, timeout, rate-limit backoff'
   objective: Make LinearGraphQLClient failures diagnosable and rate-limited ticks back off until the window resets instead of retry-starving the budget.
   context: 'Inbox stub OP-8. The 2026-07-07 incident: the PM scheduler crash-looped for over an hour on an opaque HTTP 400. Linear returns rate-limit rejections as transport HTTP 400 with the RATELIMITED detail only in the discarded body. Each naive-interval retry burned ~110 requests before failing, pinning the budget at zero indefinitely. Two pre-existing debt-register findings land here: _execute uses urlopen with no timeout, and the error body is swallowed.'
-  status: planned
+  status: needs_human_decision
   ticket_type: tech_debt
   risk_level: high
   priority: 95
@@ -6685,7 +6685,7 @@ tickets:
   - Full gate sweep green.
   - Debt-register findings updated to closed in the same change.
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: cfb36f1a-63cd-4aa3-9fec-fa8c1d99e810
   external_github_issue_id: null
   tags:
   - pm-engine
@@ -6693,9 +6693,9 @@ tickets:
   - hardening
   - rate-limit
   component: atlas.linear
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-07-08T20:30:03.926245Z'
+  last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
+  status_entered_at: '2026-07-08T21:26:29.298635Z'
   review_cycle_count: 0
   source_anchor: docs/planning/inbox/inbox-stub-op8-linear-client-hardening.md#linear-client-hardening-op-8
   created_by_type: agent
@@ -6710,7 +6710,7 @@ tickets:
   title: 'Sync request budget: batched pull, scoped comment scan, team-scoped states'
   objective: Make one sync tick over a 110-ticket board cost single-digit Linear requests instead of ~218, making the default cadence legitimate within the 2500/hour budget.
   context: 'Inbox stub OP-9. Step 1 fetches every non-terminal ticket''s issue individually (~110 requests) and step 4 comment-scans every non-terminal ticket (~108 more), so the 60-second default cadence attempts ~13,000 requests/hour against a 2,500 budget. Separately, fetch_workflow_states queries workspace-wide, returning foreign teams'' states with colliding names. This is a design change: pm-engine-and-linear-sync.md must be updated in the same change.'
-  status: planned
+  status: needs_human_decision
   ticket_type: feature
   risk_level: high
   priority: 85
@@ -6746,7 +6746,7 @@ tickets:
   - pm-engine-and-linear-sync.md updated in the same change (doc linter green).
   - Follow-up note filed for updatedAt-since incremental sync.
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: 1c5eb575-1c3b-4da5-9e82-60a19b7b3f79
   external_github_issue_id: null
   tags:
   - pm-engine
@@ -6754,9 +6754,9 @@ tickets:
   - rate-limit
   - performance
   component: atlas.linear
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-07-08T20:30:03.926245Z'
+  last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
+  status_entered_at: '2026-07-08T21:26:29.298635Z'
   review_cycle_count: 0
   source_anchor: docs/planning/inbox/inbox-stub-op9-sync-request-budget.md#sync-request-budget-op-9
   created_by_type: agent
@@ -6771,7 +6771,7 @@ tickets:
   title: 'Linear client hardening: error-body capture, timeout, rate-limit backoff'
   objective: LinearGraphQLClient failures are diagnosable from their own message and a rate-limited tick backs off until the window resets instead of retry-starving the budget.
   context: '2026-07-07 incident: the pm scheduler crash-looped for over an hour on an opaque ''HTTP Error 400: Bad Request''. Three live probes were needed to learn what one preserved response body would have said on tick one: Linear returns rate-limit rejections (2500 req/h personal keys) as transport HTTP 400 with the RATELIMITED/429 detail only in the discarded body. Each naive-interval retry then burned ~110 requests before failing, pinning the budget at zero indefinitely. Two pre-existing debt-register findings land here too: _execute uses urlopen with no timeout, and the error body is swallowed.'
-  status: planned
+  status: rejected
   ticket_type: tech_debt
   risk_level: low
   priority: 50
@@ -6795,13 +6795,13 @@ tickets:
   definition_of_done:
   - All acceptance criteria evidenced by named tests; full gate sweep green; the debt-register 'no timeout' finding updated to closed-by-this-ticket in the same change (deletion over annotation for its 'to close' clause).
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: 4ba1dbce-4982-4369-9233-380191c319f7
   external_github_issue_id: null
   tags: []
   component: null
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-07-08T20:30:03.926245Z'
+  last_observed_linear_state_id: 84207146-0b47-4821-a7e9-331abe38e77a
+  status_entered_at: '2026-07-08T21:26:29.298635Z'
   review_cycle_count: 0
   source_anchor: docs/planning/inbox/inbox-stub-op8-linear-client-hardening.md#linear-client-hardening-op-8
   created_by_type: agent
@@ -6816,7 +6816,7 @@ tickets:
   title: 'Sync request budget: batched pull, scoped comment scan, team-scoped states'
   objective: One sync tick over a 110-ticket board costs single-digit Linear requests instead of ~218, making the default cadence legitimate within the 2500/hour budget.
   context: '2026-07-07 incident arithmetic: step 1 fetches every non-terminal ticket''s issue individually (~110 requests) and step 4 comment-scans every non-terminal ticket (~108 more), so the 60-second default cadence attempts ~13,000 requests/hour against a 2,500 budget — the scheduler starves itself by design, not by accident. Separately, fetch_workflow_states queries workspace-wide (workflowStates(first: 250)), returning foreign teams'' states with colliding names (two Canceled, two Done observed live), which made the state-map fix a guessing game until a per-issue probe resolved the team. This is a design change: pm-engine-and-linear-sync.md owns the sync loop contract and must land updated in the same change.'
-  status: planned
+  status: rejected
   ticket_type: feature
   risk_level: low
   priority: 50
@@ -6840,6 +6840,268 @@ tickets:
   definition_of_done:
   - All acceptance criteria evidenced by named tests; full gate sweep green; pm-engine-and-linear-sync.md updated in the same change (doc linter green); a follow-up note filed for updatedAt-since incremental sync with an owner or a drop rationale.
   estimated_effort: null
+  external_linear_id: c89e0354-98cb-41b9-9f55-429a2c1dcd8f
+  external_github_issue_id: null
+  tags: []
+  component: null
+  linear_synced_at: '2026-07-08T20:30:03.926245Z'
+  last_observed_linear_state_id: 84207146-0b47-4821-a7e9-331abe38e77a
+  status_entered_at: '2026-07-08T21:26:29.298635Z'
+  review_cycle_count: 0
+  source_anchor: docs/planning/inbox/inbox-stub-op9-sync-request-budget.md#sync-request-budget-op-9
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-08T20:30:03.926245Z'
+  updated_at: '2026-07-08T20:30:03.926245Z'
+  completed_at: null
+- id: 7b00b04a-f20b-4123-b1bc-17c8d35b28ac
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 5bd967eb-98c0-42a6-bec3-042a34145078
+  key: ATLAS-151
+  title: 'Promotion dedup: collapse model re-emission of committed inbox stubs (F-4)'
+  objective: During reconciliation, collapse a model-emitted proposal ticket whose source_anchor matches a promotion-injected ticket's anchor into the promotion ticket, so one stub always yields exactly one ticket ADD regardless of what the model re-emits.
+  context: 'Two live reproductions confirmed the root cause: promote_inbox_stubs injects a ticket per stub while the model, seeing the stubs in its corpus, independently emits tickets for the same work; the reconciler treats them as distinct ADDs. The 2026-07-08 double-emission (E6/E8 pairs) and the applied duplicate mints ATLAS-149/150 (exact-title copies of 147/148, cancelled same day) are the named fixtures. The stub''s source_anchor is the identity key. Dependency edges the model attached to its duplicate must be re-pointed to the surviving promotion ticket. This is a bug fix in the reconciler.'
+  status: planned
+  ticket_type: bug
+  risk_level: medium
+  priority: 70
+  relevant_docs:
+  - docs/atlas/planning-engine-specification.md
+  - docs/planning/inbox/inbox-stub-f4-promotion-dedup.md
+  acceptance_criteria:
+  - During reconciliation, a model-emitted proposal ticket whose source_anchor matches a promotion-injected ticket's anchor is collapsed into the promotion ticket (deterministic content wins); the diff records one line noting the collapse and which model ticket was absorbed.
+  - 'Seeded regression (the 149/150 shape): a fixture with two committed stubs and a model proposal re-emitting both yields a diff with exactly two ticket ADDs; pre-fix this fixture yields four.'
+  - 'The edgeless case is covered: re-emitted duplicates in the fixture carry no dependency edges and are still collapsed.'
+  - 'Negative: model tickets citing distinct anchors (or no stub anchor) are not collapsed.'
+  - Dependency edges the model attached to its duplicate are re-pointed to the surviving promotion ticket, deduplicated against existing edges.
+  non_goals:
+  - No dedup of model-vs-model duplicates with no stub anchor (title-similarity heuristics).
+  - No change to promotion content derivation or add-only semantics.
+  - No change to the inbox producer (ATLAS-45) or consumer (ATLAS-122).
+  implementation_notes:
+  - 'The collapse runs after promotion injection and before the three-pass matching: scan the model-emitted tickets for any whose source_anchor matches a promotion-injected ticket''s anchor; remove the model ticket from the proposal and re-point its edges.'
+  - The planning spec's reconciliation section must document the collapse rule in the same change.
+  - Use assert 1 == 2 (ruff B011) in test stubs as the inbox stub specifies.
+  test_requirements:
+  - Reconciler-level unit tests with fixture proposals (no planner calls, ATLAS_LIVE_TESTS=0).
+  - The two reproduction shapes (E6/E8 double-emission and 149/150 exact-title copies) are the named fixtures.
+  - 'Test the edgeless case explicitly: duplicates with no dependency edges are still collapsed.'
+  documentation_requirements:
+  - Update the reconciliation section of planning-engine-specification.md §4 to document the collapse rule and its rationale.
+  definition_of_done:
+  - All acceptance criteria evidenced by named tests.
+  - Full CI gate sweep green.
+  - The planning spec's reconciliation section documents the collapse rule.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - planning
+  - reconciler
+  - inbox
+  - dedup
+  component: atlas.planning
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  source_anchor: docs/planning/inbox/inbox-stub-f4-promotion-dedup.md#promotion-dedup-f-4
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-11T20:50:12.516279Z'
+  updated_at: '2026-07-11T20:50:12.516279Z'
+  completed_at: null
+- id: 84018dcb-6beb-46eb-b74e-8fde2a7778c3
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 5bd967eb-98c0-42a6-bec3-042a34145078
+  key: ATLAS-152
+  title: 'Retire-on-reject scope: a rejected apply must not retire hand-authored inbox stubs'
+  objective: Narrow the inbox stub retirement trigger so that a rejected apply leaves the inbox exactly as it found it; only an applied run retires the stubs that fed it.
+  context: 'ATLAS-122 (D2) retires inbox stubs to processed/ on both the applied and the rejected outcome. The 2026-07-08 double-emission created a second decline reason: a diff declined for duplicate ADDs whose stub content is still wanted. Under the current scope, that decline retires every hand-authored stub that fed the run, forcing a manual restore before the re-roll. A reject is a verdict on the diff, not on the stubs: an operator who genuinely declines a stub''s content deletes the stub (a git-visible act) rather than having apply infer it. This is a bug fix in atlas apply''s retirement logic.'
+  status: planned
+  ticket_type: bug
+  risk_level: medium
+  priority: 70
+  relevant_docs:
+  - docs/atlas/planning-engine-specification.md
+  - docs/planning/inbox/inbox-stub-retire-on-reject-scope.md
+  acceptance_criteria:
+  - 'A rejected apply run moves no inbox stub: fixture with committed stubs, confirm callback returning REJECTED — every stub is still at its original inbox/ path afterwards.'
+  - 'The applied outcome is byte-identical to today: stubs retire to processed/ exactly as ATLAS-122 specified, idempotence preserved (missing source or existing target is a skip, not an error).'
+  - The rejected PlanRun itself is otherwise unchanged (status, provenance, renders untouched) — the fix narrows the retirement trigger only.
+  - The planning spec's apply-lifecycle text and the _retire_inbox_stubs docstring both state the new rule and its rationale in the same change.
+  non_goals:
+  - No change to applied-path retirement, the processed/ namespace, or idempotence semantics.
+  - No un-retire tooling or recovery path for past runs.
+  - No new stub lifecycle states.
+  implementation_notes:
+  - 'The fix is a one-line condition change in _retire_inbox_stubs: call it only when the PlanRun outcome is applied, not rejected.'
+  - The planning spec's §2.2 apply-lifecycle section must document the narrowed rule in the same change.
+  test_requirements:
+  - Apply-level unit tests over tmp-path repo fixtures with a scripted confirm callback (no planner calls, ATLAS_LIVE_TESTS=0).
+  - The rejected-outcome fixture is the named regression test.
+  - Test that the applied-outcome fixture still retires stubs to processed/ (no regression).
+  documentation_requirements:
+  - Update planning-engine-specification.md §2.2 to state that stub retirement occurs only on the applied outcome, with the rationale (reject judges the diff, deleting a stub judges its content).
+  definition_of_done:
+  - All acceptance criteria evidenced by named tests.
+  - Full CI gate sweep green.
+  - The planning spec's apply section documents the narrowed retirement rule.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - planning
+  - apply
+  - inbox
+  - retirement
+  component: atlas.planning
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  source_anchor: docs/planning/inbox/inbox-stub-retire-on-reject-scope.md#retire-on-reject-scope
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-11T20:50:12.516279Z'
+  updated_at: '2026-07-11T20:50:12.516279Z'
+  completed_at: null
+- id: 587ab736-54d9-43b3-b57f-a445471aa58e
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 5bd967eb-98c0-42a6-bec3-042a34145078
+  key: ATLAS-153
+  title: 'Stubs-only plan mode: mint committed inbox stubs without a model call'
+  objective: Implement atlas plan --stubs-only, which produces an apply-ready PlanRun from committed inbox stubs alone — zero model calls, zero generation cost, no double-emission surface.
+  context: 'Minting hand-authored stubs today requires a full planner draw whose only planning contribution is to echo the backlog so promotion can inject the stubs — every such run costs a full generation and re-exposes the F-4 double-emission surface. A stubs-only mode skips generation entirely: the proposal is the verbatim keyed backlog echo plus the promoted stubs, flowing through the ordinary gates → reconcile → PlanRun path. Deterministic by construction (ADR-0005: pure code, no model). Complements the F-4 reconciler dedup rather than replacing it.'
+  status: planned
+  ticket_type: feature
+  risk_level: medium
+  priority: 60
+  relevant_docs:
+  - docs/atlas/planning-engine-specification.md
+  - docs/planning/inbox/inbox-stub-stubs-only-plan-mode.md
+  acceptance_criteria:
+  - atlas plan --stubs-only with N committed stubs yields a PlanRun whose diff is exactly N ticket ADDs (plus no-op epic re-statements); proven by a pipeline-level test whose model client is a fake asserting zero generation calls.
+  - An empty inbox under --stubs-only is a clean-exit precondition failure with a message naming the empty inbox, never an empty-diff PlanRun.
+  - 'PlanRun provenance records the mode: a stubs-only run is distinguishable from a generative run in the stored record (e.g. a generation_mode field or a zero-stage generation_stages list).'
+  - '--stubs-only and --staged are mutually exclusive: passing both is an argparse error, exercised by a CLI test.'
+  - With the flag absent, the generative path is byte-identical to today (existing pipeline tests pass unmodified).
+  - atlas apply consumes a stubs-only PlanRun unchanged, including the stub retirement lifecycle.
+  non_goals:
+  - No dedup logic — the promotion-dedup ticket (F-4) owns reconciler-level collapse.
+  - No prompt or staged-generation changes; the generative path is untouched.
+  - No stub subset selection or interactive stub picking.
+  implementation_notes:
+  - 'The stubs-only proposal is constructed by pure code: take the current backlog (keyed items re-stated verbatim) plus the promoted stubs as ADD items; no model call.'
+  - The generation_mode field (or equivalent) on PlanRun distinguishes stubs-only from generative runs; this may reuse the generation_stages field from ATLAS-27 (a zero-stage list is the stubs-only marker).
+  - Update running-atlas-plan.md (ATLAS-32) to document the mode, its provenance marker, and the cost rationale.
+  test_requirements:
+  - Pipeline-level test with a fake model client asserting zero calls and N committed stubs → N ticket ADDs.
+  - CLI test confirming --stubs-only and --staged together produce an argparse error.
+  - 'Test the empty-inbox precondition failure: --stubs-only with no committed stubs → clean exit with named message.'
+  documentation_requirements:
+  - Update running-atlas-plan.md and planning-engine-specification.md §2.1 to document the --stubs-only flag, its precondition, and its provenance marker.
+  definition_of_done:
+  - All acceptance criteria evidenced by named tests.
+  - Full CI gate sweep green.
+  - running-atlas-plan.md and the planning spec document the mode in the same change.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - planning
+  - cli
+  - inbox
+  - stubs-only
+  component: atlas.planning
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  source_anchor: docs/planning/inbox/inbox-stub-stubs-only-plan-mode.md#stubs-only-plan-mode
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-11T20:50:12.516279Z'
+  updated_at: '2026-07-11T20:50:12.516279Z'
+  completed_at: null
+- id: d08bf83f-afdb-4c98-a082-bc92286c4f39
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: e0d47d14-bbd1-4d5d-96bc-f9e7adfeb3cf
+  key: ATLAS-154
+  title: 'Accepted-types spelling: admit canceled and duplicate Linear state types for rejected'
+  objective: Fix validate_against_states so preflight C2 passes on the rejected mappings by admitting the live board's canceled and duplicate Linear state types alongside the existing cancelled.
+  context: 'Known gap flagged by ATLAS-148: _ACCEPTED_TYPES admits only ''cancelled'' for rejected, while the live board reports type ''canceled'' (US spelling) for the Canceled state and type ''duplicate'' for the Duplicate state. Preflight C2 fails on the rejected mappings the moment the operator adds the documented Duplicate entry to LINEAR_STATE_MAP. The sync tick itself does not run this validation and is unaffected. This is the inbox stub from docs/planning/inbox/inbox-stub-accepted-types-spelling.md.'
+  status: planned
+  ticket_type: bug
+  risk_level: low
+  priority: 50
+  relevant_docs:
+  - docs/atlas/pm-engine-and-linear-sync.md
+  - docs/planning/inbox/inbox-stub-accepted-types-spelling.md
+  acceptance_criteria:
+  - _ACCEPTED_TYPES for rejected admits {'cancelled', 'canceled', 'duplicate'}; a unit test proves validate_against_states passes a state map containing the documented Canceled (type canceled) and Duplicate (type duplicate) entries.
+  - 'The contradiction filter still rejects: a completed-type state mapped to rejected and a started-type state mapped to rejected both still raise LinearStatusMapError (negative tests).'
+  - No other row of the accepted-types table changes; existing ownership tests pass unmodified.
+  - The 'Known gap, flagged for follow-up' paragraph in pm-engine-and-linear-sync.md is resolved in the same change.
+  non_goals:
+  - No LINEAR_STATE_MAP value changes and no board edits — the operator adds the Duplicate env entry out of band.
+  - No general spelling normalisation layer; the fix is the one table row the live board contradicts.
+  implementation_notes:
+  - The fix is a one-line set literal change in _ACCEPTED_TYPES for the rejected key.
+  test_requirements:
+  - Unit tests over validate_against_states with fixture workflow-state payloads (no live calls, ATLAS_LIVE_TESTS=0).
+  - 'Negative tests: completed-type and started-type states mapped to rejected still raise LinearStatusMapError.'
+  documentation_requirements:
+  - pm-engine-and-linear-sync.md 'Known gap' paragraph updated to reflect the admitted spellings.
+  definition_of_done:
+  - All acceptance criteria evidenced by named tests; full gate sweep green; pm-engine-and-linear-sync.md gap paragraph updated.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - pm-engine
+  - linear-sync
+  - preflight
+  - bug
+  component: atlas.linear
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  source_anchor: docs/planning/inbox/inbox-stub-accepted-types-spelling.md#accepted-types-spelling
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-11T20:50:12.516279Z'
+  updated_at: '2026-07-11T20:50:12.516279Z'
+  completed_at: null
+- id: 33d1cbba-a14d-4ed3-beb5-0efaa64bfad2
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: e0d47d14-bbd1-4d5d-96bc-f9e7adfeb3cf
+  key: ATLAS-155
+  title: 'Accepted-types spelling: admit the live canceled and duplicate state types for rejected'
+  objective: 'Preflight C2 passes on the rejected mappings: validate_against_states accepts the live board''s canceled and duplicate Linear state types for TicketStatus.REJECTED.'
+  context: 'Known gap flagged for follow-up (not folded in) by ATLAS-148: _ACCEPTED_TYPES admits only ''cancelled'' for rejected, while the live board reports type ''canceled'' (US spelling) for the Canceled state and type ''duplicate'' for the Duplicate state — pm-engine-and-linear-sync.md documents both under the state-map completeness table. The sync tick does not run this validation and is unaffected, but preflight C2 fails on the rejected mappings the moment the operator adds the documented Duplicate entry (cd8e7c95-8a25-48ad-b0ef-19e00f000e70) to LINEAR_STATE_MAP — which the apply-and-cancel disposition for duplicate mints depends on to pull board Duplicates to rejected with full semantic honesty.'
+  status: planned
+  ticket_type: bug
+  risk_level: low
+  priority: 50
+  relevant_docs:
+  - docs/planning/inbox/inbox-stub-accepted-types-spelling.md
+  acceptance_criteria:
+  - _ACCEPTED_TYPES for rejected admits {'cancelled', 'canceled', 'duplicate'}; a unit test proves validate_against_states passes a state map containing the documented Canceled (type canceled) and Duplicate (type duplicate) entries.
+  - 'The contradiction filter still rejects: a completed-type state mapped to rejected, and a started-type state mapped to rejected, both still raise LinearStatusMapError (negative tests).'
+  - No other row of the accepted-types table changes; existing ownership tests pass unmodified.
+  - The 'Known gap, flagged for follow-up' paragraph in pm-engine-and-linear-sync.md is resolved in the same change (the doc describes the admitted spellings, not the gap).
+  non_goals:
+  - No LINEAR_STATE_MAP value changes and no board edits — the operator adds the Duplicate env entry out of band, as documented.
+  - No general spelling normalisation layer; the fix is the one table row the live board contradicts.
+  implementation_notes: []
+  test_requirements:
+  - Unit tests over validate_against_states with fixture workflow-state payloads (no live calls, ATLAS_LIVE_TESTS=0).
+  documentation_requirements: []
+  definition_of_done:
+  - All acceptance criteria evidenced by named tests; full gate sweep green; pm-engine-and-linear-sync.md's gap paragraph updated in the same change (doc linter green).
+  estimated_effort: null
   external_linear_id: null
   external_github_issue_id: null
   tags: []
@@ -6848,9 +7110,140 @@ tickets:
   last_observed_linear_state_id: null
   status_entered_at: null
   review_cycle_count: 0
-  source_anchor: docs/planning/inbox/inbox-stub-op9-sync-request-budget.md#sync-request-budget-op-9
+  source_anchor: docs/planning/inbox/inbox-stub-accepted-types-spelling.md#accepted-types-spelling
   created_by_type: agent
   created_by_id: planner
-  created_at: '2026-07-08T20:30:03.926245Z'
-  updated_at: '2026-07-08T20:30:03.926245Z'
+  created_at: '2026-07-11T20:50:12.516279Z'
+  updated_at: '2026-07-11T20:50:12.516279Z'
+  completed_at: null
+- id: d5ff304a-ce25-4bde-9a72-961377634a8d
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 5bd967eb-98c0-42a6-bec3-042a34145078
+  key: ATLAS-156
+  title: 'Promotion dedup: collapse model re-emission of committed inbox stubs (F-4)'
+  objective: A planner draw that re-emits a committed inbox stub alongside its deterministic promotion produces exactly one ticket ADD, not two.
+  context: 'Two live reproductions: the declined 2026-07-08 double-emission (E6/E8 pairs) and the applied duplicate mints ATLAS-149/150 (exact-title copies of 147/148, cancelled same day — debt register: ''Duplicate mints''). Root cause: promote_inbox_stubs injects a ticket per stub while the model, which sees the stubs in its corpus, may independently emit tickets for the same work; the reconciler treats them as distinct ADDs. Critical finding baked in: the 149/150 duplicates carried no dependency edges, so the diff''s dependency section could not surface them — dedup must act at ticket identity, not edges. The stub''s source_anchor is the identity key: a promotion-injected ticket and a model-emitted ticket citing the same stub anchor are the same work.'
+  status: planned
+  ticket_type: bug
+  risk_level: low
+  priority: 50
+  relevant_docs:
+  - docs/planning/inbox/inbox-stub-f4-promotion-dedup.md
+  acceptance_criteria:
+  - During reconciliation, a model-emitted proposal ticket whose source_anchor matches a promotion-injected ticket's anchor is collapsed into the promotion ticket (deterministic content wins over generated); the diff records one line noting the collapse and which model ticket was absorbed.
+  - 'Seeded regression (the 149/150 shape): a fixture with two committed stubs and a model proposal re-emitting both yields a diff with exactly two ticket ADDs; pre-fix this fixture yields four.'
+  - 'The edgeless case is covered explicitly: the re-emitted duplicates in the fixture carry no dependency edges and are still collapsed.'
+  - 'Negative: model tickets citing distinct anchors (or no stub anchor) are not collapsed.'
+  - Dependency edges the model attached to its duplicate are re-pointed to the surviving promotion ticket, deduplicated against existing edges.
+  non_goals:
+  - Dedup of model-vs-model duplicates with no stub anchor (title-similarity heuristics) — out of scope.
+  - Any change to promotion content derivation or to add-only semantics.
+  implementation_notes: []
+  test_requirements:
+  - Reconciler-level unit tests with fixture proposals (no planner calls, ATLAS_LIVE_TESTS=0); seeds use `assert 1 == 2` (ruff B011); the two-reproduction shapes above are the named fixtures.
+  documentation_requirements: []
+  definition_of_done:
+  - All acceptance criteria evidenced by named tests; full gate sweep green; the reconciliation section of the planning spec documents the collapse rule in the same change.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags: []
+  component: null
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  source_anchor: docs/planning/inbox/inbox-stub-f4-promotion-dedup.md#promotion-dedup-f-4
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-11T20:50:12.516279Z'
+  updated_at: '2026-07-11T20:50:12.516279Z'
+  completed_at: null
+- id: a3caf6f0-e5be-4495-b8ad-b1d45a5e8be3
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 5bd967eb-98c0-42a6-bec3-042a34145078
+  key: ATLAS-157
+  title: 'Retire-on-reject scope: a rejected apply must not retire hand-authored inbox stubs'
+  objective: A rejected apply leaves the inbox exactly as it found it; only an applied run retires the stubs that fed it.
+  context: 'ATLAS-122 (D2) retires inbox stubs to processed/ on BOTH the applied and the rejected outcome — ''both mean considered'' — designed when a decline meant the follow-up''s content was declined. The 2026-07-08 double-emission created the other decline reason: a diff declined for duplicate ADDs whose stub content is still wanted. Under the current scope that decline retires every hand-authored stub that fed the run, forcing a manual restore before the re-roll (the restore dance observed 2026-07-08, and re-observed as a hazard on PR #155''s stray-commit incident). A reject is a verdict on the diff, not on the stubs: an operator who genuinely declines a stub''s content deletes the stub — a git-visible act — rather than having apply infer it. Interacts with the promotion-dedup fix (F-4): apply-and-cancel is the standing disposition for duplicate mints precisely because a decline currently costs both a re-roll and the restore dance; this ticket removes the second cost.'
+  status: planned
+  ticket_type: bug
+  risk_level: low
+  priority: 50
+  relevant_docs:
+  - docs/planning/inbox/inbox-stub-retire-on-reject-scope.md
+  acceptance_criteria:
+  - 'A rejected apply run moves no inbox stub: fixture with committed stubs, confirm callback returning REJECTED — every stub is still at its original inbox/ path afterwards; pre-fix this fixture shows them under processed/.'
+  - 'The applied outcome is byte-identical to today: stubs retire to processed/ exactly as ATLAS-122 specified, idempotence preserved (missing source or existing target is a skip, not an error).'
+  - The rejected PlanRun itself is otherwise unchanged (status, provenance, renders untouched) — the fix narrows the retirement trigger only.
+  - The planning spec's apply-lifecycle text and the _retire_inbox_stubs docstring both state the new rule and its rationale (reject judges the diff, deleting a stub judges its content) in the same change.
+  non_goals:
+  - No change to applied-path retirement, the processed/ namespace, or idempotence semantics.
+  - No un-retire tooling or recovery path for past runs — restoring already-retired stubs stays a manual git act.
+  - No new stub lifecycle states.
+  implementation_notes: []
+  test_requirements:
+  - Apply-level unit tests over tmp-path repo fixtures with a scripted confirm callback (no planner calls, ATLAS_LIVE_TESTS=0); the rejected-outcome fixture is the named regression.
+  documentation_requirements: []
+  definition_of_done:
+  - All acceptance criteria evidenced by named tests; full gate sweep green; the planning spec's apply section documents the narrowed retirement rule in the same change.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags: []
+  component: null
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  source_anchor: docs/planning/inbox/inbox-stub-retire-on-reject-scope.md#retire-on-reject-scope
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-11T20:50:12.516279Z'
+  updated_at: '2026-07-11T20:50:12.516279Z'
+  completed_at: null
+- id: ef2ed0b9-fd92-4ac5-8023-a66ffbbacbc4
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 5bd967eb-98c0-42a6-bec3-042a34145078
+  key: ATLAS-158
+  title: 'Stubs-only plan mode: mint committed inbox stubs without a model call'
+  objective: atlas plan --stubs-only produces an apply-ready PlanRun from committed inbox stubs alone — zero model calls, zero generation cost, no double-emission surface.
+  context: 'Minting hand-authored stubs today requires a full planner draw whose only planning contribution is to echo the backlog so promotion can inject the stubs — every such run costs a full generation (£5 at current corpus size) and re-exposes the F-4 double-emission surface, since the model sees the stubs in its corpus and may re-emit them alongside their deterministic promotion. A stubs-only mode skips generation entirely: the proposal is the verbatim keyed backlog echo plus the promoted stubs (promotion already re-states A-1 epics from the backlog on exactly this pattern), flowing through the ordinary gates -> reconcile -> PlanRun path. Deterministic by construction (ADR-0005: pure code, no model), so the diff is exactly the stub ADDs. Complements the F-4 reconciler dedup rather than replacing it — dedup still guards full generative runs; this mode makes the common mint-a-batch case free and duplicate-proof.'
+  status: planned
+  ticket_type: feature
+  risk_level: low
+  priority: 50
+  relevant_docs:
+  - docs/planning/inbox/inbox-stub-stubs-only-plan-mode.md
+  acceptance_criteria:
+  - atlas plan --stubs-only with N committed stubs yields a PlanRun whose diff is exactly N ticket ADDs (plus no-op A-1 epic re-statements); proven by a pipeline-level test whose model client is a fake asserting zero generation calls.
+  - An empty inbox under --stubs-only is a clean-exit precondition failure with a message naming the empty inbox (nothing to mint), never an empty-diff PlanRun.
+  - 'PlanRun provenance records the mode: a stubs-only run is distinguishable from a generative run in the stored record.'
+  - '--stubs-only and --staged are mutually exclusive: passing both is an argparse error, exercised by a CLI test.'
+  - With the flag absent, the generative path is byte-identical to today (existing pipeline tests pass unmodified).
+  - atlas apply consumes a stubs-only PlanRun unchanged, including the stub retirement lifecycle.
+  non_goals:
+  - No dedup logic — the promotion-dedup ticket (F-4) owns reconciler-level collapse.
+  - No prompt or staged-generation changes; the generative path is untouched.
+  - No stub subset selection or interactive stub picking — the committed inbox is the batch.
+  implementation_notes: []
+  test_requirements:
+  - Pipeline- and CLI-level tests with fake clients and tmp-path repos (no live model calls, ATLAS_LIVE_TESTS=0); the zero-generation-calls assertion is the milestone anchor.
+  documentation_requirements: []
+  definition_of_done:
+  - All acceptance criteria evidenced by named tests; full gate sweep green; running-atlas-plan.md and the planning spec document the mode, its provenance marker, and the cost rationale in the same change.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags: []
+  component: null
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  source_anchor: docs/planning/inbox/inbox-stub-stubs-only-plan-mode.md#stubs-only-plan-mode
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-11T20:50:12.516279Z'
+  updated_at: '2026-07-11T20:50:12.516279Z'
   completed_at: null
