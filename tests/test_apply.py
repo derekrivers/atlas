@@ -18,6 +18,7 @@ from uuid import uuid4
 import pytest
 from planner_fakes import FAKE_IDENTITY, FakePlannerClient
 from test_plan_pipeline import (
+    INBOX_PATH,
     INBOX_STUB,
     NOW,
     _epic,
@@ -656,6 +657,50 @@ def test_ac2_apply_materialises_the_promoted_ticket(tmp_path: Path) -> None:
     inbox = repo / "docs" / "planning" / "inbox"
     assert not (inbox / "ATLAS-9-1.md").exists()
     assert (inbox / "processed" / "ATLAS-9-1.md").exists()
+
+
+# --- promotion dedup: apply collapses too, at the confirm gate (ATLAS-151) ---
+
+
+def test_apply_collapses_stub_reemission_and_mints_once(tmp_path: Path) -> None:
+    # apply reconstructs plan's promotion identity positionally — the trailing
+    # len(inbox) proposal tickets — which is sound because the AT-5 staleness
+    # re-check pins the apply-time inbox to plan time (test_staleness_covers_
+    # inbox above is the load-bearing guarantee). The collapse line reaches the
+    # operator's confirm diff (the eyeball check the 149/150 mint slipped
+    # past), and one stub mints exactly ONE ticket. Red (pre-fix): two mints —
+    # the ATLAS-149/150 and 155/158 duplicate-mint shape.
+    repo = fixture_repo_with_inbox(tmp_path)
+    database = fresh_db(tmp_path)
+    reemission = _ticket(
+        title="Follow-up from ATLAS-9",
+        objective="Investigate the retry seam.",
+        source_anchor=f"{INBOX_PATH}#follow-up-from-atlas-9",
+    )
+    run_plan(
+        repo_root=repo,
+        database=database,
+        client=FakePlannerClient(proposal_json(tickets=[_ticket(), reemission])),
+        identity=FAKE_IDENTITY,
+        now=NOW,
+    )
+
+    confirmed_diffs = []
+
+    def confirm(diff: Any) -> ApplyDecision:
+        confirmed_diffs.append(diff)
+        return ApplyDecision.CONFIRMED
+
+    result = apply(repo, database, planning_dir(tmp_path), confirm)
+
+    assert result.outcome == "applied"
+    # The operator SAW the collapse at the confirm gate.
+    assert [note.absorbed for note in confirmed_diffs[0].collapses] == ["new:1"]
+    # Exactly one ticket minted for the stub, plus the model's own ticket —
+    # never a duplicate pair.
+    tickets = TicketRepo(database).list()
+    assert len([t for t in tickets if t.title == "Follow-up from ATLAS-9"]) == 1
+    assert len(tickets) == 2
 
 
 # --- ATLAS-109: add-only apply (skip MODIFY / PROPOSE_ARCHIVE) ---------------

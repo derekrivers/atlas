@@ -287,6 +287,22 @@ fix's acceptance criteria: edgeless duplicates are invisible in the
 dependency section — the dedup must act at ticket identity, not edges.
 Owner: queued inbox stub (next planner batch).
 
+**Pattern closed (2026-07-12, ATLAS-151):** a third reproduction landed
+before the fix (ATLAS-155/158 — the fix ticket's own mint: byte-identical
+content, identical stub anchors, edges on the promotion side only).
+Across the three, duplicates matched or diverged on every candidate
+feature, so the operator-ratified design uses positional identity: the
+pipeline threads the promote_inbox_stubs-injected index set into
+reconcile, which collapses any keyless model ticket sharing a promotion
+ticket's anchor, re-points its edges to the survivor, and prints one
+COLLAPSE line per absorbed ticket at both gates (spec §4). Closed class:
+shared-anchor re-emission (the 155/158 and double-emission shapes).
+Boundary, held open deliberately: foreign-anchor re-emission (this
+entry's own 149/150 shape) never collides with a promotion anchor and
+remains gate-read territory; a near-title collapse heuristic becomes a
+stub if a fourth reproduction appears. Owner: operator gate reads until
+that stub is minted.
+
 ## Meta-label ATLAS-004M doubly assigned
 
 ATLAS-004M was used by PR #155 (key-namespace burn record) and reused by
