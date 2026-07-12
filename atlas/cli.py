@@ -8,7 +8,8 @@ injectable so tests drive the CLI with a fake client and an in-memory
 database and make zero real API calls.
 
 `plan` exit codes: 0 PlanRun proposed; 1 recorded failure (PlanRun failed);
-2 clean-exit precondition (dirty tree, missing product/key, model error).
+2 clean-exit precondition (dirty tree, missing product/key, model error; in
+--stubs-only also an empty inbox or a malformed committed stub, ATLAS-153).
 
 `apply` exit codes: 0 applied; 1 operator rejected (PlanRun rejected); 2
 refusal/precondition (no proposed plan, stale plan, dirty tree,
@@ -199,8 +200,10 @@ from atlas.planning.ingestion import DirtyInputError, collect_input_documents
 from atlas.planning.pipeline import (
     PRODUCT_KEY,
     PlanPreconditionError,
+    PlanResult,
     format_plan_diff,
     run_plan,
+    run_stubs_only_plan,
 )
 from atlas.planning.progress import (
     STAGE_ASSEMBLY,
@@ -209,6 +212,7 @@ from atlas.planning.progress import (
     STAGE_TICKETS,
     PlanProgress,
 )
+from atlas.planning.promotion import StubPromotionError
 from atlas.planning.reconciler import DEFAULT_SIMILARITY_THRESHOLD, PlanDiff
 from atlas.planning.staged import StagedProposalGenerator, TemplateStagedGenerator
 from atlas.pm import (
@@ -276,12 +280,24 @@ def build_parser() -> argparse.ArgumentParser:
         default=".",
         help="repository root to plan against (default: current directory)",
     )
-    plan.add_argument(
+    # Generation-mode selection: --staged reshapes generation, --stubs-only
+    # skips it entirely — combining them is meaningless, so argparse refuses
+    # (ATLAS-153).
+    plan_mode = plan.add_mutually_exclusive_group()
+    plan_mode.add_argument(
         "--staged",
         action="store_true",
         help="generate across the three staged calls and assemble one "
         "proposal (ADR-0010); seeds a non-empty backlog to re-plan it "
         "(ATLAS-144)",
+    )
+    plan_mode.add_argument(
+        "--stubs-only",
+        action="store_true",
+        help="mint the committed inbox stubs without a model call: the "
+        "proposal is the verbatim keyed backlog echo plus the promoted "
+        "stubs (ATLAS-153); needs no ANTHROPIC_API_KEY; an empty inbox "
+        "is a precondition failure (exit 2)",
     )
     apply = subcommands.add_parser(
         "apply",
@@ -740,6 +756,23 @@ def _plan_command(
     staged_generator: StagedProposalGenerator | None = None,
 ) -> int:
     resolved_db = database if database is not None else Database(args.db)
+
+    # --stubs-only invokes no PlannerClient (ATLAS-153): the client — and
+    # with it ANTHROPIC_API_KEY — is neither constructed nor required, so
+    # the branch sits before the client bootstrap.
+    if getattr(args, "stubs_only", False):
+        try:
+            result = run_stubs_only_plan(
+                repo_root=Path(args.repo).resolve(),
+                database=resolved_db,
+                similarity_threshold=args.similarity_threshold,
+                now=datetime.now(UTC),
+            )
+        except (DirtyInputError, PlanPreconditionError, StubPromotionError) as error:
+            print(error, file=sys.stderr)
+            return EXIT_PRECONDITION
+        return _print_plan_result(result)
+
     if client is None:
         try:
             client = AnthropicPlannerClient()
@@ -765,10 +798,26 @@ def _plan_command(
             staged_generator=staged_generator,
             on_progress=_render_plan_progress,
         )
-    except (DirtyInputError, PlanPreconditionError, ModelCallError) as error:
+    except (
+        DirtyInputError,
+        PlanPreconditionError,
+        ModelCallError,
+        StubPromotionError,
+    ) as error:
+        # StubPromotionError joins the clean-exit set (ATLAS-153, gate-
+        # authorised): a malformed committed stub is the same fail-closed
+        # posture as an uncommitted one, and previously escaped the
+        # generative path as a raw traceback.
         print(error, file=sys.stderr)
         return EXIT_PRECONDITION
 
+    return _print_plan_result(result)
+
+
+def _print_plan_result(result: PlanResult) -> int:
+    """The plan presentation both entry paths share (ATLAS-153): a recorded
+    failure to stderr (exit 1), else the §2.4 diff and the persisted-PlanRun
+    line to stdout (exit 0) — byte-identical to the pre-ATLAS-153 output."""
     if result.status is PlanRunStatus.FAILED:
         print("Plan failed (recorded):", file=sys.stderr)
         print(result.failure_reason, file=sys.stderr)

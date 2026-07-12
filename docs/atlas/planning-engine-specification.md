@@ -116,6 +116,17 @@ so the promotion is self-contained rather than dependent on the model
 re-emitting the epic with its key. An `epic_ref` naming an epic that is in
 neither the proposal nor the backlog is a typed failure, not a silent drop.
 
+The optional `depends_on` list (ATLAS-153) declares the promoted ticket's
+dependency edges deterministically; promotion turns each entry into one
+`depends_on` edge with a single pinned mechanical reason (never inferred
+per-stub, ADR-0005). Each entry is an **existing ticket key** — an edge
+from the new ticket to that ticket; an unknown key fails gate 3 as a typed
+`GATE3_UNRESOLVED_TARGET` — or a **sibling stub filename in the same batch**
+(basename match, `.md` suffix) — an edge between the two new tickets; an
+`.md` entry naming no sibling (or the stub itself) is a typed promotion
+failure. The contract is honoured identically on the generative and
+stubs-only paths, so a stub means the same thing whichever door mints it.
+
 Promotion is **fail-closed**: a committed stub whose front-matter block is
 missing or invalid — or whose fields violate the ticket contract — raises a
 typed error at plan time (the same fail-closed posture as an uncommitted
@@ -132,6 +143,30 @@ Dedup and retirement are unchanged: a promoted stub is retired to
 `inbox/processed/` on apply (§2.2) and `processed/` is excluded from the
 inbox read, so a promoted, applied stub is never re-read and never yields a
 second `ADD`.
+
+**Stubs-only entry path (ATLAS-153).** `atlas plan --stubs-only` gives
+deterministic promotion its own door: generation is skipped entirely and the
+proposal is built by pure code — the current backlog re-stated verbatim with
+its real keys (a no-op to the reconciler by construction: no `MODIFY`, no
+`PROPOSE_ARCHIVE`, no frozen `CONFLICT`) plus the promoted stubs. The
+assembled proposal flows through the same gates (section 5), the same
+reconciler (section 4; the promotion-collapse pre-pass runs and is trivially
+a no-op — there are no model tickets to collapse), and persists the same
+`PlanRun` shape, which `atlas apply` (§2.2) consumes unchanged, stub
+retirement included. No `PlannerClient` is constructed, so no API key is
+required; `--stubs-only` and `--staged` are mutually exclusive at the CLI.
+An empty committed inbox is a clean-exit precondition failure naming the
+inbox — never an empty-diff `PlanRun`. Because there is no model to create
+epics and no parse stage to bounds-check a placeholder, a stub's `epic_ref`
+must name an existing epic key under this path (a placeholder ref is a typed
+precondition failure). Provenance records the mode: `generation_stages` is
+the empty list (a generative run always stores ≥ 1 stage record), the model
+and prompt columns carry pinned `none` / `stubs-only` sentinels, and
+`raw_output_hash` is over the constructed proposal's canonical JSON;
+`input_doc_shas` still pins corpus + inbox, so the AT-5 staleness re-check
+holds identically. A gate failure (e.g. a `depends_on` entry naming a
+nonexistent ticket) records a `failed` run exactly as a generative gate
+failure would (§6).
 
 ### 2.2 `atlas apply`
 

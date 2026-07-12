@@ -27,6 +27,15 @@ Contract (planning-engine-specification.md §2.1):
   re-stated verbatim from the backlog into the proposal so the ADD is anchored
   independently of what the model emitted (A-1). A ``new_epic:<n>`` ref is
   model-owned and left for the gates to validate.
+- ``depends_on`` (optional, ATLAS-153) declares the promoted ticket's edges
+  deterministically — the channel the stubs-only path needs, since it has no
+  model to emit edges, honoured identically on the generative path so a stub
+  means the same thing at both doors. Each entry is a string: an existing
+  ticket key becomes a new->existing edge (an unknown key fails gate 3,
+  typed); a sibling stub FILENAME in the same batch (matched on basename,
+  ``.md`` suffix) becomes a new->new edge; an ``.md`` entry naming no sibling
+  is a fail-closed :class:`StubPromotionError`. The edge reason is a single
+  pinned constant (ADR-0005: never inferred per-stub).
 
 Retire/dedup is the existing ``processed/`` lifecycle: ``collect_inbox_documents``
 reads only top-level ``inbox/*.md`` and ``atlas apply`` retires consumed stubs to
@@ -37,6 +46,7 @@ yields a second ADD.
 from __future__ import annotations
 
 import re
+from pathlib import PurePosixPath
 
 import yaml
 from pydantic import ValidationError
@@ -48,13 +58,24 @@ from atlas.core.anchors import (
     UnknownDocumentError,
 )
 from atlas.core.enums import RiskLevel
-from atlas.planning.proposal import Proposal, ProposalEpic, ProposalTicket
+from atlas.core.models.dependency import DependencyType
+from atlas.planning.proposal import (
+    Proposal,
+    ProposalDependency,
+    ProposalEpic,
+    ProposalTicket,
+)
 from atlas.planning.reconciler import Backlog
 
 # D-3: pinned mechanical defaults. Never inferred per-stub (ADR-0005). Taken
 # from the front-matter when present, else these constants.
 _DEFAULT_PRIORITY = 50
 _DEFAULT_RISK_LEVEL = RiskLevel.LOW
+
+# The one edge reason a depends_on entry yields (ATLAS-153): a pinned
+# mechanical constant, never inferred per-stub (ADR-0005). An operator who
+# wants a richer reason edits the minted edge, not the stub.
+_DEPENDS_ON_REASON = "declared by the stub's depends_on front-matter (ATLAS-153)"
 
 # Front-matter is a YAML block delimited by --- at the very start of the stub,
 # same shape the template renderer parses (renderer.py).
@@ -180,6 +201,81 @@ def _build_ticket(
         ) from error
 
 
+def _depends_on_refs(document: SourceDocument, data: dict[str, object]) -> list[str]:
+    """The stub's optional ``depends_on`` list (ATLAS-153), validated: a list
+    of non-empty strings, or absent/empty for no declared edges. Anything else
+    is fail-closed, like every other front-matter defect."""
+    raw = data.get("depends_on")
+    if raw is None or raw == []:
+        return []
+    if not isinstance(raw, list) or not all(
+        isinstance(entry, str) and entry for entry in raw
+    ):
+        raise StubPromotionError(
+            document.path,
+            "depends_on",
+            "depends_on must be a list of non-empty strings (existing ticket "
+            "keys or sibling stub filenames)",
+        )
+    return raw
+
+
+def _promoted_dependencies(
+    inbox_documents: list[SourceDocument],
+    front_matter: list[dict[str, object]],
+    base_index: int,
+) -> list[ProposalDependency]:
+    """Build the depends_on edges the batch's stubs declare (ATLAS-153).
+
+    ``base_index`` is where the promoted tickets start in the final proposal
+    (they are appended at the tail), so stub ``position`` promotes to proposal
+    ticket ``new:<base_index + position>``. An ``.md`` entry must name a
+    sibling stub in this batch (basename match) — a new->new edge; naming no
+    sibling, or the stub itself, is fail-closed. Any other entry is emitted
+    verbatim as the target: an existing backlog key resolves, and an unknown
+    key is gate 3's typed ``GATE3_UNRESOLVED_TARGET`` failure — promotion
+    never guesses what a bad reference meant.
+    """
+    index_by_basename = {
+        PurePosixPath(document.path).name: base_index + position
+        for position, document in enumerate(inbox_documents)
+    }
+    edges: list[ProposalDependency] = []
+    for position, (document, data) in enumerate(
+        zip(inbox_documents, front_matter, strict=True)
+    ):
+        source_index = base_index + position
+        for entry in _depends_on_refs(document, data):
+            if entry.endswith(".md"):
+                sibling = index_by_basename.get(entry)
+                if sibling is None:
+                    raise StubPromotionError(
+                        document.path,
+                        "depends_on",
+                        f"names sibling stub {entry!r}, which is not in this "
+                        "inbox batch",
+                    )
+                if sibling == source_index:
+                    raise StubPromotionError(
+                        document.path,
+                        "depends_on",
+                        f"names the stub itself ({entry!r}); a ticket cannot "
+                        "depend on itself",
+                    )
+                target = f"new:{sibling}"
+            else:
+                target = entry
+            edges.append(
+                ProposalDependency(
+                    source=f"new:{source_index}",
+                    target=target,
+                    dependency_type=DependencyType.DEPENDS_ON,
+                    reason=_DEPENDS_ON_REASON,
+                )
+            )
+    return edges
+
+
 def _restate_epic(epic: object) -> ProposalEpic:
     """Re-state a backlog epic verbatim as a keyed ProposalEpic (A-1).
 
@@ -206,15 +302,22 @@ def promote_inbox_stubs(
 ) -> Proposal:
     """Return ``proposal`` with one deterministically-built ADD ticket injected
     per committed inbox stub, plus any backlog epic those tickets need re-stated
-    (A-1). An empty inbox is a no-op — the proposal is returned unchanged.
+    (A-1) and any depends_on edges the stubs declare (ATLAS-153). An empty
+    inbox is a no-op — the proposal is returned unchanged.
     """
     if not inbox_documents:
         return proposal
 
+    front_matter = [_parse_front_matter(document) for document in inbox_documents]
     promoted = [
-        _build_ticket(document, _parse_front_matter(document), anchor_index)
-        for document in inbox_documents
+        _build_ticket(document, data, anchor_index)
+        for document, data in zip(inbox_documents, front_matter, strict=True)
     ]
+    # depends_on edges (ATLAS-153): the promoted tickets are appended at the
+    # tail below, so the batch starts at today's ticket count.
+    added_dependencies = _promoted_dependencies(
+        inbox_documents, front_matter, base_index=len(proposal.tickets)
+    )
 
     # A-1: guarantee each existing-key epic_ref is present-and-keyed in the
     # proposal, re-stating from the backlog when the model omitted it, so the
@@ -243,6 +346,6 @@ def promote_inbox_stubs(
     return Proposal(
         epics=list(proposal.epics) + added_epics,
         tickets=list(proposal.tickets) + promoted,
-        dependencies=proposal.dependencies,
+        dependencies=list(proposal.dependencies) + added_dependencies,
         planner_notes=proposal.planner_notes,
     )

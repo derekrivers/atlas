@@ -131,6 +131,9 @@ uv run atlas plan
 #          --repo PATH                 repository root (default: current directory)
 #          --staged                    multi-call staged generation (ADR-0010;
 #                                       seeds a non-empty backlog to re-plan it)
+#          --stubs-only                mint the committed inbox stubs with no
+#                                       model call (ATLAS-153); mutually
+#                                       exclusive with --staged
 ```
 
 The command runs the full proposer pipeline: **ingest** the committed documents →
@@ -179,6 +182,71 @@ a backlog containing one with a clean-exit precondition (exit `2`) rather than
 omit — and thereby archive — it. Attach such tickets to an epic, or re-plan them
 without `--staged`; an unassigned stage-2 batch is a tracked follow-up.
 
+### Stubs-only mode (`--stubs-only`)
+
+`--stubs-only` mints the committed inbox stubs **without a model call**: the
+proposal is built by pure code — the current backlog re-stated verbatim with
+its real keys, plus one promoted ADD per committed stub (the same ATLAS-146
+promotion the generative path runs) — and flows through the same gates, the
+same reconciler (the ATLAS-151 collapse pre-pass runs and is trivially a
+no-op: there are no model tickets to collapse), and the same `PlanRun` →
+`atlas apply` path, stub retirement included. Deterministic by construction
+(ADR-0005): same stubs + same backlog ⇒ the same diff, exactly one ticket ADD
+per stub. This is the designed replacement for burning a **~£5, ~15-minute
+generative draw** whose only planning contribution was echoing the backlog so
+promotion could inject the stubs — and it closes that draw's F-4
+double-emission surface, since there is no model output to re-emit a stub.
+
+Because no `PlannerClient` is constructed, **`ANTHROPIC_API_KEY` is not
+required** (Prerequisite 4 does not apply); the run completes in seconds.
+`--stubs-only` and `--staged` are mutually exclusive — combining them is an
+argparse error.
+
+**Empty inbox.** An empty committed inbox is a clean-exit precondition
+failure (exit `2`) whose message names the inbox — never an empty-diff
+`PlanRun`. Commit stubs first, or run a generative plan.
+
+**Declaring dependencies: the `depends_on` front-matter contract.** A stub
+may carry an optional `depends_on` list naming the edges its ticket needs;
+promotion turns each entry into a `depends_on` dependency ADD with a single
+pinned mechanical reason (never inferred per-stub, ADR-0005). Each entry is
+one of:
+
+- an **existing ticket key** (`ATLAS-26`) → an edge from the new ticket to
+  that ticket;
+- a **sibling stub filename in the same batch** (`inbox-stub-foo.md`,
+  basename match) → an edge between the two new tickets;
+- anything else: an `.md` name matching no sibling fails closed at plan time
+  (a typed stub error, exit `2`); a key that exists nowhere fails gate 3
+  (`GATE3_UNRESOLVED_TARGET`) as a recorded `failed` run (exit `1`).
+
+The contract is honoured identically on generative runs, so a stub means the
+same thing whichever door mints it.
+
+**Stub authoring under stubs-only.** `epic_ref` must name an **existing epic
+key** — there is no model to create a `new_epic:<n>` placeholder, so a
+placeholder ref is a typed precondition failure (exit `2`). Prefer declaring
+an explicit `source_anchor` pointing at a durable corpus document
+(`docs/atlas/…`): the default — the stub's own heading — dangles once apply
+retires the stub to `processed/`, and a later run's verbatim backlog echo
+then fails gate 4 on the retired path (see the known constraint below).
+
+**Provenance.** A stubs-only `PlanRun` records `generation_stages: []` (zero
+stages — unreachable generatively, so the stored record distinguishes the
+modes on its own), `model_provider: none`, `model_name: stubs-only`, and
+`prompt_version: stubs-only`; `raw_output_hash` is over the constructed
+proposal's canonical JSON. `input_doc_shas` still pins corpus + inbox, so
+apply's staleness re-check (AT-5) behaves identically to a generative run.
+
+**Known constraint: previously minted stub anchors.** A ticket minted from
+an inbox stub whose `source_anchor` defaulted to the stub's own heading
+carries an anchor under `docs/planning/inbox/…` that stops resolving once
+the stub is retired to `processed/`. A stubs-only run re-states the backlog
+verbatim, so such a ticket fails gate 4 (`GATE4_UNRESOLVED_ANCHOR`) as a
+recorded `failed` run — honest and typed, not a crash, but it blocks the
+mode until those anchors are repaired or the tickets are frozen. Declare
+durable `source_anchor`s in new stubs (above) to stop accruing more.
+
 ## Reviewing the diff and running `atlas apply`
 
 ```sh
@@ -222,6 +290,9 @@ Every row is the actual message and exit code from the commands.
 | `model call failed: …` / `model call failed after 3 attempts: …` | plan | 2 | Transient (network/timeout/API). A mid-stream transport drop is auto-retried (3 attempts, 1s/2s backoff) before this surfaces — the `after 3 attempts` variant means every retry was exhausted. Re-run. |
 | `Plan failed (recorded):` + `{"stage": "truncation", …max_tokens=64000…}` | plan | 1 | The capacity boundary (below). Re-running a single-call plan often succeeds; the durable fix is `atlas plan --staged` (first run or re-plan). |
 | `the staged path cannot seed epic-less ticket(s) […]` | plan (`--staged`) | 2 | The backlog has a `tech_debt` ticket with no epic; staged generation batches per epic and cannot seed it. Attach it to an epic, or re-plan without `--staged`. |
+| `the committed follow-up inbox 'docs/planning/inbox' has no stubs: nothing to mint…` | plan (`--stubs-only`) | 2 | The inbox is empty. Commit stubs first, or run a generative plan. |
+| `inbox stub '…' cannot be promoted: … (field '…')` | plan | 2 | The committed stub's front-matter is missing, invalid, or a `depends_on` entry names no sibling in the batch. Fix the stub and re-commit. |
+| `inbox stub '…' declares epic_ref 'new_epic:…'…` | plan (`--stubs-only`) | 2 | Stubs-only has no model to create epics; point `epic_ref` at an existing epic key. |
 | `Plan failed (recorded):` + `{"stage": "parse", …}` | plan | 1 | The model output was not valid JSON. Re-run; if persistent, the prompt/model needs attention. |
 | `Plan failed (recorded):` + `{"stage": "gates", "failures": […]}` | plan | 1 | A validation gate failed. Read the per-failure `gate`/`code`/`reason` — usually an unresolvable `source_anchor` (gate 4), an orphan epic (gate 5), or an oversized ticket (gate 7). |
 | `no proposed PlanRun to apply; run \`atlas plan\` first` | apply | 2 | Run `atlas plan` first (the last run failed or none exists). |
@@ -246,6 +317,11 @@ Each written render carries a header comment with the `plan_run_id` (and the
 prompt version and key high-water marks), so an applied backlog traces back to the
 exact `PlanRun` that produced it. The provenance chain reads
 `input_doc_shas → prompt_hash → raw_output_hash → proposal → renders`.
+
+`generation_stages` records how the proposal was generated: one record for a
+single-call run, three for a staged run, and `[]` for a stubs-only run — the
+empty list is the stubs-only mode marker (ATLAS-153; see
+[Stubs-only mode](#stubs-only-mode---stubs-only)).
 
 ## The capacity boundary
 
