@@ -225,27 +225,20 @@ same thing whichever door mints it.
 
 **Stub authoring under stubs-only.** `epic_ref` must name an **existing epic
 key** — there is no model to create a `new_epic:<n>` placeholder, so a
-placeholder ref is a typed precondition failure (exit `2`). Prefer declaring
-an explicit `source_anchor` pointing at a durable corpus document
-(`docs/atlas/…`): the default — the stub's own heading — dangles once apply
-retires the stub to `processed/`, and a later run's verbatim backlog echo
-then fails gate 4 on the retired path (see the known constraint below).
+placeholder ref is a typed precondition failure (exit `2`). The default
+`source_anchor` — the stub's own first heading at its durable
+`inbox/processed/` path (ATLAS-159) — stays resolvable after apply retires
+the stub, so it needs no special handling; declare an explicit
+`source_anchor` only when a corpus document (`docs/atlas/…`) is the truer
+source for the ticket.
 
 **Provenance.** A stubs-only `PlanRun` records `generation_stages: []` (zero
 stages — unreachable generatively, so the stored record distinguishes the
 modes on its own), `model_provider: none`, `model_name: stubs-only`, and
 `prompt_version: stubs-only`; `raw_output_hash` is over the constructed
-proposal's canonical JSON. `input_doc_shas` still pins corpus + inbox, so
-apply's staleness re-check (AT-5) behaves identically to a generative run.
-
-**Known constraint: previously minted stub anchors.** A ticket minted from
-an inbox stub whose `source_anchor` defaulted to the stub's own heading
-carries an anchor under `docs/planning/inbox/…` that stops resolving once
-the stub is retired to `processed/`. A stubs-only run re-states the backlog
-verbatim, so such a ticket fails gate 4 (`GATE4_UNRESOLVED_ANCHOR`) as a
-recorded `failed` run — honest and typed, not a crash, but it blocks the
-mode until those anchors are repaired or the tickets are frozen. Declare
-durable `source_anchor`s in new stubs (above) to stop accruing more.
+proposal's canonical JSON. `input_doc_shas` still pins corpus + inbox +
+`inbox/processed/` (ATLAS-159), so apply's staleness re-check (AT-5)
+behaves identically to a generative run.
 
 ## Reviewing the diff and running `atlas apply`
 

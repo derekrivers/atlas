@@ -350,3 +350,39 @@ high-water `updatedAt` cursor with a full-pull fallback on any gap, and
 prove the miss-window behaviour with a fake-clock test. Owner: a future
 inbox stub against the PM Engine epic (queued behind need; none while the
 post-148 arithmetic holds — that evidence is the ATLAS-148 bound test).
+
+## One-time stub-anchor repair outside planning (2026-07-12, ATLAS-159)
+
+Structural defect found at ATLAS-153 delivery: `promote_inbox_stubs`
+anchored each minted ticket to its stub's ACTIVE-inbox path, and apply
+retires that stub to `inbox/processed/` — so every stub-minted ticket's
+anchor dangled the moment its own apply completed, and gate 4 refused
+every later stubs-only echo as `GATE4_UNRESOLVED_ANCHOR`. Sixteen live
+tickets carried such anchors: ATLAS-109/110/147-158 (named in the
+rendered ticket) plus ATLAS-159/160, whose stubs were retired by the
+very apply that minted them (PR #171) — the premise delta ratified at
+the plan gate. Eight of the sixteen were frozen (done/rejected, spec
+§4), so planning could not repair them and no other sanctioned anchor
+writer existed.
+
+Operator ruling (ATLAS-159 plan gate, PR #172): branch (a) — a scoped
+ONE-TIME repair outside planning, per the ATLAS-007M bootstrap-exception
+precedent. Bootstrap exception, not precedent. The repair is
+`scripts/repair_stub_anchors.py`: it verifies every named ticket
+fail-closed BEFORE any write (anchor is an active-inbox anchor, its stub
+is genuinely retired, the rewritten anchor resolves against committed
+`processed/` state), rewrites exactly the sixteen named anchors to their
+durable `processed/` spelling in one transaction (`source_anchor` +
+`updated_at` only), is idempotent, and never writes `docs/planning/`
+(ADR-0007 — the renders self-correct at the next apply). Run once by the
+operator against the live store; the script refuses any drift from the
+named set.
+
+Forward fix in the same change (unconditional): promotion anchors to the
+durable `processed/` path from birth, the anchor index and
+`input_doc_shas` cover `processed/`, and apply's AT-5 fresh set collects
+it symmetrically — the defect class cannot recur, proven by the
+promotion-then-retirement round-trip test. Note: bumping `updated_at` on
+the sixteen rows means the next Linear sync tick re-pushes their
+definitions once (`updated_at > linear_synced_at`); expected, harmless,
+and on the record here.
