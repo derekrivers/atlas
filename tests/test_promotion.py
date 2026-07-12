@@ -268,4 +268,15 @@ def test_ac9_does_not_duplicate_an_epic_already_present() -> None:
 
 
 def test_promoted_ticket_anchor_targets_processed_path() -> None:
-    assert 1 == 2  # seeded red (B011); implemented against the forward fix
+    # The forward fix: the default anchor cites the stub's first heading at
+    # its DURABLE processed/ path from birth, and that anchor resolves in the
+    # very index the minting run's gate 4 validates against (the pipeline
+    # indexes each active stub at both addresses).
+    index = anchor_index()
+    ticket = promote_inbox_stubs(
+        keyed_epic_proposal(), [stub_document()], Backlog(), index
+    ).tickets[0]
+    assert ticket.source_anchor == f"{PROCESSED_STUB_PATH}#smoke-b-fixture"
+    resolved = index.resolve(ticket.source_anchor)
+    assert resolved.path == PROCESSED_STUB_PATH
+    assert resolved.heading == "Smoke B fixture"

@@ -1697,4 +1697,24 @@ def test_rejected_source_edge_does_not_block_add_only_apply(tmp_path: Path) -> N
 
 
 def test_at5_reads_processed_change_as_stale(tmp_path: Path) -> None:
-    assert 1 == 2  # seeded red (B011)
+    # input_doc_shas now pins the processed/ subdir alongside corpus + inbox:
+    # a retired stub landing (or changing) between plan and apply reads as
+    # stale and refuses — gate 4's "resolves at the recorded SHA" would
+    # otherwise be validated against a set apply no longer sees.
+    repo = fixture_repo_with_inbox(tmp_path)
+    database = fresh_db(tmp_path)
+    run_plan(
+        repo_root=repo,
+        database=database,
+        client=FakePlannerClient(proposal_json()),
+        identity=FAKE_IDENTITY,
+        now=NOW,
+    )
+    retired = repo / "docs" / "planning" / "inbox" / "processed" / "late.md"
+    retired.parent.mkdir(parents=True, exist_ok=True)
+    retired.write_text("# Late retirement\n\nBody.\n", encoding="utf-8")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "a processed stub landed after planning")
+
+    with pytest.raises(StalePlanError, match="AT-5"):
+        apply(repo, database, planning_dir(tmp_path), confirmed)
