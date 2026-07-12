@@ -21,12 +21,15 @@ from test_plan_pipeline import (
     INBOX_PATH,
     INBOX_STUB,
     NOW,
+    PLAN_MD,
+    PRODUCT_MD,
     _epic,
     _ticket,
     fixture_repo,
     fixture_repo_with_inbox,
     fresh_db,
     git,
+    make_repo,
     proposal_json,
 )
 
@@ -49,7 +52,7 @@ from atlas.planning.apply import (
     run_apply,
 )
 from atlas.planning.ingestion import collect_input_documents
-from atlas.planning.pipeline import run_plan
+from atlas.planning.pipeline import run_plan, run_stubs_only_plan
 from atlas.planning.proposal import Proposal
 from atlas.planning.reconciler import DEFAULT_SIMILARITY_THRESHOLD, Backlog, reconcile
 from atlas.storage import (
@@ -549,6 +552,28 @@ def plan_then_with_inbox(tmp_path: Path) -> tuple[Path, Database]:
     return repo, database
 
 
+def stubs_only_plan_with_inbox(tmp_path: Path) -> tuple[Path, Database]:
+    """A proposed stubs-only PlanRun over the same inbox fixture (ATLAS-153):
+    no model, so the stub anchors to a seeded backlog epic instead of the
+    model's new_epic:0."""
+    repo = make_repo(
+        tmp_path,
+        {
+            "PRODUCT.md": PRODUCT_MD,
+            "docs/atlas/plan.md": PLAN_MD,
+            INBOX_PATH: INBOX_STUB.replace(
+                'epic_ref: "new_epic:0"', 'epic_ref: "ATLAS-E1"'
+            ),
+        },
+    )
+    database = fresh_db(tmp_path)
+    product = ProductRepo(database).get_by_key("ATLAS")
+    assert product is not None
+    EpicRepo(database).add(Epic(**_epic_model_kwargs(product.id, key="ATLAS-E1")))
+    run_stubs_only_plan(repo_root=repo, database=database, now=NOW)
+    return repo, database
+
+
 def test_apply_retires_stubs_on_applied(tmp_path: Path) -> None:
     # AT-5: an applied plan's inbox stubs land under processed/ and are gone
     # from inbox/. Wrong answer: they linger and reappear next plan.
@@ -596,11 +621,17 @@ def test_retire_is_idempotent(tmp_path: Path) -> None:
     assert (inbox / "processed" / "ATLAS-9-1.md").exists()
 
 
+@pytest.mark.parametrize("mode", ["generative", "stubs_only"])
 @pytest.mark.parametrize("mutate", ["change", "add", "remove"])
-def test_staleness_covers_inbox(tmp_path: Path, mutate: str) -> None:
+def test_staleness_covers_inbox(tmp_path: Path, mutate: str, mode: str) -> None:
     # AT-8: an inbox stub changed, added, or removed between plan and apply
     # reads as stale. Wrong answer: an inbox change slips past the re-check.
-    repo, database = plan_then_with_inbox(tmp_path)
+    # A stubs-only PlanRun (ATLAS-153) pins the same corpus + inbox domain,
+    # so the re-check must refuse identically in both modes.
+    if mode == "generative":
+        repo, database = plan_then_with_inbox(tmp_path)
+    else:
+        repo, database = stubs_only_plan_with_inbox(tmp_path)
     inbox = repo / "docs" / "planning" / "inbox"
     if mutate == "change":
         (inbox / "ATLAS-9-1.md").write_text(INBOX_STUB + "\nmore.\n", encoding="utf-8")

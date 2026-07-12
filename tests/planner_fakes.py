@@ -39,6 +39,17 @@ class RaisingPlannerClient:
         raise ModelCallError("simulated model call failure")
 
 
+class MustNotBeCalledClient:
+    """Proves a path performs zero generation calls (ATLAS-153): any
+    generate() call is an immediate, attributable test failure."""
+
+    def generate(self, prompt: str) -> str:
+        raise AssertionError(
+            "PlannerClient.generate was called on a path that must not "
+            "call the model (ATLAS-153)"
+        )
+
+
 class TruncatingPlannerClient:
     """Simulates a token-limit truncation (stop_reason == max_tokens): the
     real client raises this on a cut-off response, carrying the partial

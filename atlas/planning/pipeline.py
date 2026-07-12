@@ -12,6 +12,11 @@ testable against a fake client and an in-memory database. Key
 assignment and render writes are `atlas apply`'s (ATLAS-27); this
 command persists a PlanRun and prints the diff, nothing else.
 
+`run_stubs_only_plan` (ATLAS-153) is the second entry path: the same
+ingest -> gates -> reconcile -> PlanRun flow with generation replaced by
+pure code (the verbatim keyed backlog echo plus deterministic inbox-stub
+promotion) — zero model calls, generation_stages == [] as the mode marker.
+
 Failure contract (gap 1) — the dividing line is the provenance chain:
 - before raw output exists (dirty tree, missing product, no documents,
   model-call error): a typed exception, clean exit, no PlanRun;
@@ -33,12 +38,15 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from pydantic import ValidationError as PydanticValidationError
+
 from atlas.core.anchors import AnchorIndex
 from atlas.core.models import (
     PlanRun,
     PlanRunStatus,
     Ticket,
 )
+from atlas.core.models.dependency import DependencyType
 from atlas.planning.client import ModelIdentity, PlannerClient, TruncatedOutputError
 from atlas.planning.gates import GateFailure, run_gates
 from atlas.planning.ingestion import (
@@ -47,7 +55,14 @@ from atlas.planning.ingestion import (
 )
 from atlas.planning.progress import ProgressCallback
 from atlas.planning.promotion import promote_inbox_stubs
-from atlas.planning.proposal import Proposal, ProposalError, parse_proposal
+from atlas.planning.proposal import (
+    Proposal,
+    ProposalDependency,
+    ProposalEpic,
+    ProposalError,
+    ProposalTicket,
+    parse_proposal,
+)
 from atlas.planning.reconciler import (
     DEFAULT_SIMILARITY_THRESHOLD,
     FROZEN_STATUSES,
@@ -86,6 +101,19 @@ TICKET_PREFIX = "ATLAS"
 # match the producer's (atlas/pm/sync.py) and apply's (atlas/planning/apply.py).
 DEFAULT_INBOX_DIR = Path("docs/planning/inbox")
 
+# Stubs-only provenance sentinels (ATLAS-153): the mode makes no model call
+# and renders no prompt, so the non-null provenance columns carry pinned
+# constants. The load-bearing mode marker is generation_stages == [] — zero
+# stages is unreachable on any generative path (single-call stores one
+# record, staged stores three), so a reader distinguishes the modes from the
+# stored record alone. prompt_hash is the SHA-256 of the empty string (no
+# prompt was rendered); raw_output_hash is over the constructed proposal's
+# canonical JSON, keeping the input_doc_shas -> raw_output_hash -> proposal
+# audit chain deterministic and meaningful.
+STUBS_ONLY_PROVIDER = "none"
+STUBS_ONLY_MODEL = "stubs-only"
+STUBS_ONLY_PROMPT_VERSION = "stubs-only"
+
 
 class PlanPreconditionError(RuntimeError):
     """A clean-exit precondition failed before any model output existed."""
@@ -97,6 +125,32 @@ class ProductNotFoundError(PlanPreconditionError):
 
 class NoInputDocumentsError(PlanPreconditionError):
     """The §2.1 input set is empty (wrong repo root, or nothing tracked)."""
+
+
+class EmptyInboxError(PlanPreconditionError):
+    """``--stubs-only`` found no committed inbox stubs: nothing to mint.
+
+    A clean-exit precondition failure, never an empty-diff PlanRun
+    (ATLAS-153): the mode exists to mint stubs, so an empty inbox means the
+    operator ran it against the wrong state — the message names the inbox so
+    the fix (commit stubs, or run a generative plan) is obvious."""
+
+
+class BacklogEchoError(PlanPreconditionError):
+    """The stored backlog cannot be re-stated as a §3.11 proposal
+    (ATLAS-153). Unreachable for a backlog minted through the proposal
+    contract (its bounds were enforced at gate 1); fail-closed with the
+    offending key rather than a raw validation traceback if state ever
+    drifts out from under that assumption."""
+
+
+class StubEpicRefError(PlanPreconditionError):
+    """A stub promoted in a stubs-only run declares an ``epic_ref`` that is
+    not an existing epic key (ATLAS-153). The generative path leaves
+    ``new_epic:<n>`` refs to the parse-time bounds check and the gates; a
+    stubs-only run has no parse stage and no model to create epics, so the
+    ref could only mis-anchor to an echoed epic by positional accident or
+    crash the reconciler out of bounds — refuse it typed, before the gates."""
 
 
 class StagedReplanUnsupportedError(PlanPreconditionError):
@@ -361,6 +415,240 @@ def run_plan(
 
     # Reconcile against the backlog and persist at proposed. The validated
     # proposal is stored so apply (ATLAS-27) can materialise the backlog.
+    diff = reconcile(
+        proposal,
+        backlog,
+        similarity_threshold=similarity_threshold,
+        promotion_indices=promotion_indices,
+    )
+    plan_run = PlanRun(
+        id=uuid4(),
+        status=PlanRunStatus.PROPOSED,
+        proposal=proposal.model_dump(mode="json"),
+        diff_summary=diff.as_summary(),
+        failure_reason=None,
+        approved_by=None,
+        created_at=now,
+        applied_at=None,
+        **provenance,
+    )
+    PlanRunRepo(database).add(plan_run)
+    return PlanResult(
+        status=PlanRunStatus.PROPOSED,
+        plan_run=plan_run,
+        diff=diff,
+        failure_reason=None,
+    )
+
+
+def _echo_backlog_proposal(backlog: Backlog) -> Proposal:
+    """Re-state the current backlog verbatim as a keyed §3.11 proposal
+    (ATLAS-153): every epic and ticket echoed field-for-field with its real
+    key (``epic_ref`` resolved to the owning epic's key), every
+    ticket-to-ticket edge echoed with its stored reason. Pure code, no model
+    (ADR-0005). A verbatim echo reconciles to a no-op — no MODIFY, no
+    PROPOSE_ARCHIVE, and no frozen CONFLICT (the reconciler skips no-change
+    matches before its frozen check) — so the only diff entries a stubs-only
+    run produces are the promotion's own ADDs.
+
+    Edge filters mirror the reconciler's backlog read (reconciler.py,
+    "Dependency edges"): ticket-to-ticket edges only, dangling rows skipped.
+    Milestone-1 storage is ``depends_on``-only (the proposal contract
+    enforced it at mint), so the echo asserts rather than filters on type.
+    """
+    epic_key_by_id = {epic.id: epic.key for epic in backlog.epics}
+    ticket_key_by_id = {ticket.id: ticket.key for ticket in backlog.tickets}
+
+    try:
+        epics = [
+            ProposalEpic(
+                key=epic.key,
+                title=epic.title,
+                description=epic.description,
+                objective=epic.objective,
+                priority=epic.priority,
+                risk_level=epic.risk_level,
+                source_anchor=epic.source_anchor,
+            )
+            for epic in backlog.epics
+        ]
+        tickets = [
+            ProposalTicket(
+                key=ticket.key,
+                epic_ref=(
+                    epic_key_by_id.get(ticket.epic_id)
+                    if ticket.epic_id is not None
+                    else None
+                ),
+                title=ticket.title,
+                objective=ticket.objective,
+                context=ticket.context,
+                ticket_type=ticket.ticket_type,
+                risk_level=ticket.risk_level,
+                priority=ticket.priority,
+                source_anchor=ticket.source_anchor,
+                relevant_docs=list(ticket.relevant_docs),
+                tags=list(ticket.tags),
+                component=ticket.component,
+                acceptance_criteria=list(ticket.acceptance_criteria),
+                non_goals=list(ticket.non_goals),
+                test_requirements=list(ticket.test_requirements),
+                implementation_notes=list(ticket.implementation_notes),
+                documentation_requirements=list(ticket.documentation_requirements),
+                definition_of_done=list(ticket.definition_of_done),
+            )
+            for ticket in backlog.tickets
+        ]
+    except PydanticValidationError as error:
+        raise BacklogEchoError(
+            "the stored backlog cannot be re-stated as a proposal (a field "
+            "violates the §3.11 contract the backlog was minted under): "
+            f"{error.errors()[0].get('msg')} — repair the store before a "
+            "stubs-only run"
+        ) from error
+
+    dependencies = []
+    for dependency in backlog.dependencies:
+        if dependency.target_entity_type != "ticket":
+            continue  # M1 reconciles ticket-to-ticket edges only (§3.11)
+        source_key = ticket_key_by_id.get(dependency.source_ticket_id)
+        target_key = ticket_key_by_id.get(dependency.target_entity_id)
+        if source_key is None or target_key is None:
+            continue  # dangling rows are ATLAS-19's validator's concern
+        dependencies.append(
+            ProposalDependency(
+                source=source_key,
+                target=target_key,
+                dependency_type=DependencyType.DEPENDS_ON,
+                reason=dependency.reason,
+            )
+        )
+
+    return Proposal(
+        epics=epics,
+        tickets=tickets,
+        dependencies=dependencies,
+        planner_notes=[
+            "stubs-only run (ATLAS-153): verbatim keyed backlog echo plus "
+            "deterministic inbox-stub promotion; no model call"
+        ],
+    )
+
+
+def run_stubs_only_plan(
+    *,
+    repo_root: Path,
+    database: Database,
+    similarity_threshold: float = DEFAULT_SIMILARITY_THRESHOLD,
+    now: datetime,
+    inbox_dir: Path = DEFAULT_INBOX_DIR,
+) -> PlanResult:
+    """Run `atlas plan --stubs-only` once (ATLAS-153): an apply-ready PlanRun
+    from committed inbox stubs alone — the second entry path beside
+    :func:`run_plan`, generation untouched.
+
+    The proposal is built by pure code — the verbatim keyed backlog echo
+    (:func:`_echo_backlog_proposal`) plus the promoted stubs
+    (:func:`promote_inbox_stubs`, called exactly as the generative path calls
+    it) — and flows through the SAME gates, the SAME reconciler (the
+    ATLAS-151 collapse pre-pass runs and is trivially a no-op: every echoed
+    ticket is keyed, every promoted one is promotion-injected), and persists
+    the SAME PlanRun shape, so `atlas apply` consumes it unchanged —
+    ``promotion_indices`` is the trailing ``len(inbox)`` range, the exact
+    positional identity apply already reconstructs under the AT-5 staleness
+    guarantee. No PlannerClient is constructed or called; there is no
+    generative failure surface (no truncation, no parse stage), but a gate
+    failure still records a FAILED PlanRun exactly as a generative run's
+    would — that is how a ``depends_on`` entry naming a nonexistent ticket
+    surfaces (gate 3, typed).
+
+    ``input_doc_shas`` still pins corpus + inbox, so apply's AT-5 re-check
+    holds identically. An empty inbox is a typed clean-exit precondition
+    (:class:`EmptyInboxError`) — nothing persisted, never an empty-diff
+    PlanRun.
+    """
+    # Pre-flight: product attribution (clean exit, no PlanRun).
+    product = ProductRepo(database).get_by_key(PRODUCT_KEY)
+    if product is None:
+        raise ProductNotFoundError(
+            f"no {PRODUCT_KEY!r} product in the database; bootstrap the "
+            "product before planning (setup gap, not a plan failure)"
+        )
+
+    # Ingest from HEAD; a dirty/untracked input set raises DirtyInputError.
+    # The full corpus is still read — it feeds the anchor index gate 4
+    # resolves against and the input_doc_shas the AT-5 re-check compares.
+    documents = collect_input_documents(repo_root)
+    if not documents:
+        raise NoInputDocumentsError(
+            f"no planner input documents found under {repo_root}; is the "
+            "repo root correct and are the documents committed?"
+        )
+    inbox_documents = collect_inbox_documents(repo_root, inbox_dir)
+    if not inbox_documents:
+        raise EmptyInboxError(
+            f"the committed follow-up inbox {inbox_dir.as_posix()!r} has no "
+            "stubs: nothing to mint. Commit inbox stubs first, or run a "
+            "generative `atlas plan` (stubs-only plans promoted stubs only)"
+        )
+    anchor_index = AnchorIndex.build(documents + inbox_documents)
+
+    # Current backlog from operational state (the database; ADR-0006).
+    epics = EpicRepo(database).list()
+    tickets = TicketRepo(database).list()
+    dependencies = TicketDependencyRepo(database).list()
+    backlog = Backlog(epics=epics, tickets=tickets, dependencies=dependencies)
+    backlog_keys = {epic.key for epic in epics} | {ticket.key for ticket in tickets}
+
+    # The stubs-only proposal: verbatim keyed echo + deterministic promotion,
+    # positionally identical to the generative path's injection (ATLAS-151).
+    proposal = _echo_backlog_proposal(backlog)
+    tickets_before_promotion = len(proposal.tickets)
+    proposal = promote_inbox_stubs(proposal, inbox_documents, backlog, anchor_index)
+    promotion_indices = frozenset(
+        range(tickets_before_promotion, len(proposal.tickets))
+    )
+
+    # No model, no parse stage: the parse-time epic_ref bounds check never
+    # runs here, so a stub's new_epic:<n> ref — meaningless without a model
+    # to create epics — must be refused typed instead (StubEpicRefError).
+    # Promotion already failed closed on an existing-key ref naming no
+    # backlog epic, so only placeholder refs can reach this.
+    epic_keys = {epic.key for epic in epics}
+    for index in sorted(promotion_indices):
+        ref = proposal.tickets[index].epic_ref
+        if ref is not None and ref not in epic_keys:
+            document = inbox_documents[index - tickets_before_promotion]
+            raise StubEpicRefError(
+                f"inbox stub {document.path!r} declares epic_ref {ref!r}; a "
+                "stubs-only run has no model to create epics, so epic_ref "
+                "must name an existing epic key"
+            )
+
+    provenance: dict[str, Any] = {
+        "product_id": product.id,
+        "input_doc_shas": anchor_index.input_doc_shas,
+        "model_provider": STUBS_ONLY_PROVIDER,
+        "model_name": STUBS_ONLY_MODEL,
+        "model_parameters": {},
+        "prompt_version": STUBS_ONLY_PROMPT_VERSION,
+        "prompt_hash": _sha256(""),
+        "similarity_threshold": similarity_threshold,
+        "raw_output_hash": _sha256(
+            json.dumps(proposal.model_dump(mode="json"), sort_keys=True)
+        ),
+        "generation_stages": [],  # the zero-stage mode marker (ATLAS-153)
+    }
+
+    # Gates 2-7, unchanged: a failure records a FAILED PlanRun (spec §6).
+    failures = run_gates(
+        proposal, current_backlog_keys=backlog_keys, anchor_index=anchor_index
+    )
+    if failures:
+        return _record_failed(database, provenance, now, _gate_failure_reason(failures))
+
+    # Reconcile against the backlog and persist at proposed, exactly as the
+    # generative path does — apply consumes the PlanRun unchanged.
     diff = reconcile(
         proposal,
         backlog,
