@@ -1,7 +1,7 @@
 # Render written only by `atlas apply` (ADR-0006/0007); do not hand-edit.
-# plan_run_id: 32d81e84-3545-4d2c-bb15-7bf9e2c9d13e
-# prompt_version: staged[planner-stage-epics-v1.2.0+planner-stage-tickets-v1.6.0+planner-stage-dependencies-v1.0.0]
-# ticket_key_high_water: 160
+# plan_run_id: 99059e71-d447-4747-af54-59e9bde16bf1
+# prompt_version: stubs-only
+# ticket_key_high_water: 163
 # epic_key_high_water: 11
 epics:
 - id: aa0a9535-cf03-4a01-a6d3-313520606d0d

@@ -1,7 +1,7 @@
 %% Render written only by `atlas apply` (ADR-0006/0007); do not hand-edit.
-%% plan_run_id: 32d81e84-3545-4d2c-bb15-7bf9e2c9d13e
-%% prompt_version: staged[planner-stage-epics-v1.2.0+planner-stage-tickets-v1.6.0+planner-stage-dependencies-v1.0.0]
-%% ticket_key_high_water: 160
+%% plan_run_id: 99059e71-d447-4747-af54-59e9bde16bf1
+%% prompt_version: stubs-only
+%% ticket_key_high_water: 163
 %% epic_key_high_water: 11
 graph TD
   subgraph ATLAS-E1["Bootstrap Repository"]
@@ -51,6 +51,8 @@ graph TD
     ATLAS-157["ATLAS-157 Retire-on-reject scope: a rejected apply must not retire hand-authored inbox stubs"]
     ATLAS-158["ATLAS-158 Stubs-only plan mode: mint committed inbox stubs without a model call"]
     ATLAS-159["ATLAS-159 Durable stub anchors: promote against processed/ paths and repair the 14 dangling live anchors"]
+    ATLAS-161["ATLAS-161 Collapse pre-pass anchor normalization: old-spelling stub re-emissions still collapse"]
+    ATLAS-163["ATLAS-163 Retirement target-exists handling: a stub whose processed/ twin already exists must not silently survive the inbox"]
   end
   subgraph ATLAS-E4["Dependency Graph"]
     ATLAS-33["ATLAS-33 Graph schema and build from storage"]
@@ -103,6 +105,7 @@ graph TD
     ATLAS-68["ATLAS-68 Context pack generation with input_doc_shas and staleness detection"]
     ATLAS-69["ATLAS-69 Context CLI: render, validate, and show commands"]
     ATLAS-70["ATLAS-70 Context pack validation: required fields, token estimate, anchor resolution, DRAFT exclusion"]
+    ATLAS-162["ATLAS-162 Context-pack anchor resolution covers processed stubs: packs render for stub-minted tickets"]
   end
   subgraph ATLAS-E8["Evidence-Driven Delivery"]
     ATLAS-71["ATLAS-71 Evidence schema with trust fields and append-only enforcement"]
@@ -363,5 +366,5 @@ graph TD
   classDef rejected stroke-width:1px;
   class ATLAS-110 done;
   class ATLAS-1,ATLAS-2,ATLAS-3,ATLAS-4,ATLAS-5,ATLAS-6,ATLAS-7,ATLAS-8,ATLAS-9,ATLAS-10,ATLAS-11,ATLAS-12,ATLAS-13,ATLAS-14,ATLAS-15,ATLAS-16,ATLAS-17,ATLAS-18,ATLAS-19,ATLAS-20,ATLAS-21,ATLAS-22,ATLAS-23,ATLAS-24,ATLAS-25,ATLAS-26,ATLAS-27,ATLAS-28,ATLAS-29,ATLAS-30,ATLAS-31,ATLAS-32,ATLAS-33,ATLAS-34,ATLAS-35,ATLAS-36,ATLAS-37,ATLAS-38,ATLAS-39,ATLAS-40,ATLAS-41,ATLAS-42,ATLAS-43,ATLAS-44,ATLAS-45,ATLAS-46,ATLAS-47,ATLAS-48,ATLAS-49,ATLAS-50,ATLAS-51,ATLAS-52,ATLAS-53,ATLAS-54,ATLAS-55,ATLAS-56,ATLAS-57,ATLAS-58,ATLAS-59,ATLAS-60,ATLAS-61,ATLAS-62,ATLAS-63,ATLAS-64,ATLAS-65,ATLAS-66,ATLAS-67,ATLAS-68,ATLAS-69,ATLAS-70,ATLAS-71,ATLAS-72,ATLAS-73,ATLAS-74,ATLAS-75,ATLAS-76,ATLAS-77,ATLAS-78,ATLAS-79,ATLAS-80,ATLAS-81,ATLAS-82,ATLAS-83,ATLAS-84,ATLAS-85,ATLAS-86,ATLAS-87,ATLAS-88,ATLAS-89,ATLAS-90,ATLAS-91,ATLAS-92,ATLAS-93,ATLAS-94,ATLAS-95,ATLAS-96,ATLAS-97,ATLAS-98,ATLAS-99,ATLAS-100,ATLAS-101,ATLAS-102,ATLAS-103,ATLAS-104,ATLAS-105,ATLAS-106,ATLAS-107,ATLAS-147,ATLAS-148,ATLAS-151,ATLAS-152,ATLAS-153,ATLAS-154 needs_human_decision;
-  class ATLAS-159,ATLAS-160 planned;
+  class ATLAS-159,ATLAS-160,ATLAS-161,ATLAS-162,ATLAS-163 planned;
   class ATLAS-108,ATLAS-109,ATLAS-149,ATLAS-150,ATLAS-155,ATLAS-156,ATLAS-157,ATLAS-158 rejected;
