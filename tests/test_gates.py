@@ -202,3 +202,10 @@ def test_aggregation_reports_every_failure() -> None:
         "GATE6_UNKNOWN_KEY",
     ]
     assert [failure.gate for failure in failures] == [4, 5, 6]
+
+
+# --- ATLAS-159 AC-4: the gate keeps its teeth ---------------------------------
+
+
+def test_gate4_still_fails_genuinely_dangling_anchor() -> None:
+    assert 1 == 2  # seeded red (B011)

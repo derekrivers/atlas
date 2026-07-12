@@ -447,3 +447,32 @@ def test_apply_consumes_a_stubs_only_plan_run_unchanged(tmp_path: Path) -> None:
         name = Path(path).name
         assert not (inbox / name).exists()
         assert (inbox / "processed" / name).exists()
+
+
+# --- ATLAS-159: durable stub anchors -----------------------------------------
+
+
+def test_promotion_then_retirement_round_trip_anchor_resolves(tmp_path: Path) -> None:
+    assert 1 == 2  # seeded red (B011); implemented against AC-1
+
+
+def test_retired_stub_echo_passes_gate4_after_fix(tmp_path: Path) -> None:
+    assert 1 == 2  # seeded red (B011); implemented against AC-3 (post-fix half)
+
+
+def test_live_shape_dangling_echo_fails_gate4_pre_repair(tmp_path: Path) -> None:
+    assert 1 == 2  # seeded red (B011); implemented against AC-3 (pre-fix half)
+
+
+def test_live_shape_passes_gate4_post_repair(tmp_path: Path) -> None:
+    assert 1 == 2  # seeded red (B011); implemented against AC-2
+
+
+def test_empty_inbox_with_processed_stubs_still_clean_precondition(
+    tmp_path: Path,
+) -> None:
+    assert 1 == 2  # seeded red (B011); the DoD live-proof shape
+
+
+def test_inbox_processed_basename_collision_fails_closed(tmp_path: Path) -> None:
+    assert 1 == 2  # seeded red (B011); ratified assumption 2

@@ -251,3 +251,10 @@ def test_ac9_does_not_duplicate_an_epic_already_present() -> None:
         anchor_index(),
     )
     assert [e.key for e in result.epics] == ["ATLAS-E1"]  # not re-added
+
+
+# --- ATLAS-159: the promoted anchor targets the durable processed/ path ------
+
+
+def test_promoted_ticket_anchor_targets_processed_path() -> None:
+    assert 1 == 2  # seeded red (B011); implemented against the forward fix

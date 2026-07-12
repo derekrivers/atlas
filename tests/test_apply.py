@@ -1687,3 +1687,10 @@ def test_rejected_source_edge_does_not_block_add_only_apply(tmp_path: Path) -> N
     edges = TicketDependencyRepo(database).list()
     assert len(edges) == 1
     assert edges[0].source_ticket_id == rejected_source.id
+
+
+# --- ATLAS-159: AT-5 pins the processed/ set ----------------------------------
+
+
+def test_at5_reads_processed_change_as_stale(tmp_path: Path) -> None:
+    assert 1 == 2  # seeded red (B011)
