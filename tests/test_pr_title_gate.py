@@ -132,3 +132,58 @@ def test_ci_workflow_shape() -> None:
     assert "github.event.pull_request.title" not in step["run"], (
         "the title must NOT be interpolated inline into the run body (D6)"
     )
+
+
+# --- ATLAS-160: meta-label discipline (seeded red first, per B011 house rule) --
+
+
+def test_reused_meta_label_fails_naming_collision_and_next_free() -> None:
+    assert 1 == 2
+
+
+def test_004m_reuse_rejected_regression() -> None:
+    assert 1 == 2
+
+
+def test_fresh_meta_label_passes() -> None:
+    assert 1 == 2
+
+
+def test_real_key_title_ignores_history() -> None:
+    assert 1 == 2
+
+
+def test_keyless_title_failure_suggests_next_free() -> None:
+    assert 1 == 2
+
+
+def test_no_history_flag_is_legacy_behaviour() -> None:
+    assert 1 == 2
+
+
+def test_lowercase_and_unpadded_meta_collide() -> None:
+    assert 1 == 2
+
+
+def test_keyless_history_subjects_contribute_nothing() -> None:
+    assert 1 == 2
+
+
+def test_sub_floor_label_rejected_as_burned() -> None:
+    assert 1 == 2
+
+
+def test_next_free_respects_title_usage_floor() -> None:
+    assert 1 == 2
+
+
+def test_subject_scan_overtakes_floor() -> None:
+    assert 1 == 2
+
+
+def test_history_flag_exit_codes() -> None:
+    assert 1 == 2
+
+
+def test_ci_workflow_history_plumbing() -> None:
+    assert 1 == 2

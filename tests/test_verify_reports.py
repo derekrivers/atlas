@@ -224,3 +224,10 @@ def test_reports_module_imports_no_io_layer() -> None:
 
     forbidden = ("atlas.github", "atlas.storage", "atlas.cli", "atlas.pm")
     assert not [m for m in modules if m.startswith(forbidden)]
+
+
+# --- ATLAS-160: the trailing key boundary (seeded red first, per B011) --------
+
+
+def test_meta_suffix_not_captured_as_real_key() -> None:
+    assert 1 == 2
