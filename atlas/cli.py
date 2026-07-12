@@ -55,8 +55,10 @@ functions: `render <KEY> [--budget N] [--json]`, `validate <KEY>`, `show <KEY>`.
 A shared loader turns a bare `<KEY>` into the five already-loaded inputs the pure
 builder/validator take — the ticket (`TicketRepo.get_by_key`), the global
 dependency graph (`build_dependency_graph`, the full-backlog projection), the
-input documents re-ingested from HEAD every invocation (`collect_input_documents`,
-so staleness is real), the ACCEPTED ADRs, and the lessons — and the three
+input documents re-ingested from HEAD every invocation (`collect_input_documents`
+plus the committed `processed/` stubs via `collect_processed_documents`, so
+stub-minted anchors resolve and staleness is real), the ACCEPTED ADRs, and the
+lessons — and the three
 commands are thin wrappers over it. Everything is TRANSIENT: a pack is built
 in-memory and printed; nothing is persisted (no `ContextPackRepo`, no
 `atlas/storage/` writes) — pack persistence is deferred to the PM promotion gate's
@@ -196,8 +198,13 @@ from atlas.planning.client import (
     PlannerClient,
     PlannerClientError,
 )
-from atlas.planning.ingestion import DirtyInputError, collect_input_documents
+from atlas.planning.ingestion import (
+    DirtyInputError,
+    collect_input_documents,
+    collect_processed_documents,
+)
 from atlas.planning.pipeline import (
+    DEFAULT_INBOX_DIR,
     PRODUCT_KEY,
     PlanPreconditionError,
     PlanResult,
@@ -1220,9 +1227,12 @@ def _load_context_inputs(key: str, repo_root: Path, db: Database) -> _ContextInp
     - ``graph`` is the GLOBAL dependency projection over the full backlog
       (``build_dependency_graph`` = ``project_graph`` over the four repos); the
       retrievers select from it.
-    - ``documents`` are re-ingested from HEAD every invocation
-      (``collect_input_documents``), matching the builder's live semantics so
-      staleness is real; a dirty/untracked input set raises ``DirtyInputError``.
+    - ``documents`` are re-ingested from HEAD every invocation: the §2.1 corpus
+      (``collect_input_documents``) plus the committed retired stubs
+      (``collect_processed_documents``, ATLAS-162) so a stub-minted ticket's
+      durable ``inbox/processed/`` anchor resolves for the pack exactly as it
+      does at gate 4; live re-ingestion keeps staleness real, and a
+      dirty/untracked file in either set raises ``DirtyInputError``.
     - ``accepted_adrs`` is ``ADRRepo.list()`` filtered to ACCEPTED.
     - ``lessons`` is the full ``LessonRepo.list()`` (``select_lessons`` is
       ACTIVE-only by construction).
@@ -1231,7 +1241,9 @@ def _load_context_inputs(key: str, repo_root: Path, db: Database) -> _ContextInp
     if ticket is None:
         raise _ContextNotFoundError(f"no ticket with key {key!r}")
     graph = build_dependency_graph(db)
-    documents = collect_input_documents(repo_root)
+    documents = collect_input_documents(repo_root) + collect_processed_documents(
+        repo_root, DEFAULT_INBOX_DIR
+    )
     accepted_adrs = [
         adr for adr in ADRRepo(db).list() if adr.status == ADRStatus.ACCEPTED
     ]

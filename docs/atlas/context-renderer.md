@@ -20,7 +20,12 @@ Sources and selection, in order:
    `source_anchor`. **Section-level extraction**: include only the
    anchored heading's section (heading to next same-level heading) plus
    its parent heading chain for orientation — never whole files. Cap: 5
-   doc sections.
+   doc sections. Anchor resolution and reference matching run over the
+   planner input corpus plus the committed
+   `docs/planning/inbox/processed/` stubs (durable stub anchors,
+   ATLAS-159), ingested under the same committed-only, fail-closed
+   contract — so a stub-minted ticket's pack resolves exactly what
+   gate 4 resolved when it minted (ATLAS-162).
 2. **ADRs:** ADR dependency targets of the ticket, plus any accepted ADR
    whose title tokens intersect the ticket's component/tags. Rendered as
    decision + consequences only (context and alternatives omitted).

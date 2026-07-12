@@ -61,6 +61,22 @@ CONTEXT_SPEC = "\n".join(
 ANCHOR_PATH = "docs/atlas/context-spec.md"
 ANCHOR = f"{ANCHOR_PATH}#target-section"
 
+# A retired inbox stub at its durable processed/ address (ATLAS-162): the pack
+# path resolves a stub-minted ticket's anchor here, exactly as gate 4 does.
+_STUB_PHRASE = "What gate 4 can resolve, a pack can cite."
+PROCESSED_STUB_PATH = "docs/planning/inbox/processed/inbox-stub-fixture.md"
+PROCESSED_STUB = "\n".join(
+    [
+        "# Stub Fixture",
+        "",
+        "## Packs See Processed",
+        "",
+        _STUB_PHRASE,
+        "",
+    ]
+)
+STUB_ANCHOR = f"{PROCESSED_STUB_PATH}#packs-see-processed"
+
 
 def corpus_files(spec: str = CONTEXT_SPEC) -> dict[str, str]:
     """The committed §2.1 input set the loader re-ingests from HEAD: the four
@@ -77,6 +93,12 @@ def corpus_files(spec: str = CONTEXT_SPEC) -> dict[str, str]:
 @pytest.fixture
 def repo(tmp_path: Path) -> Path:
     return make_repo(tmp_path, corpus_files())
+
+
+@pytest.fixture
+def repo_with_processed(tmp_path: Path) -> Path:
+    """The corpus plus one committed retired stub under inbox/processed/."""
+    return make_repo(tmp_path, corpus_files() | {PROCESSED_STUB_PATH: PROCESSED_STUB})
 
 
 @pytest.fixture
@@ -299,3 +321,112 @@ def test_milestone_sections_active_lessons_estimate_and_staleness(
 
     # The wrong answer: the recorded SHA is stable across a real content edit.
     assert before_sha != after_sha
+
+
+# --- processed-stub anchors (ATLAS-162) --------------------------------------
+
+
+def test_render_stub_anchored_ticket_resolves_and_excerpts_stub(
+    repo_with_processed: Path, db: Database, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """AC1: a ticket anchored at inbox/processed/<name>.md#slug renders — the
+    stub content is the pack's source excerpt and its SHA is pinned."""
+    seed_full(db, make_ticket("ATLAS-162", source_anchor=STUB_ANCHOR))
+
+    args = ["context", "render", "ATLAS-162", "--repo", str(repo_with_processed)]
+    code = main([*args, "--json"], database=db)
+    captured = capsys.readouterr()
+
+    # The wrong answer: the pre-fix corpus-only index — UnknownDocumentError
+    # and a precondition exit.
+    assert code == EXIT_OK, captured.err
+    pack = json.loads(captured.out)
+    assert _STUB_PHRASE in pack["rendered_markdown"]
+    assert PROCESSED_STUB_PATH in pack["input_doc_shas"]
+
+
+def test_validate_stub_anchored_ticket_is_valid_at_slug_depth(
+    repo_with_processed: Path, db: Database, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """AC1 (validation twin): the validator shares the loaded document set, so
+    the same stub-minted ticket passes the spec-true slug-level anchor check."""
+    seed_full(db, make_ticket("ATLAS-162", source_anchor=STUB_ANCHOR))
+
+    code = main(
+        ["context", "validate", "ATLAS-162", "--repo", str(repo_with_processed)],
+        database=db,
+    )
+    captured = capsys.readouterr()
+
+    assert code == EXIT_OK, captured.err
+    assert "INVALID" not in captured.out
+    assert "slug" in captured.out
+
+
+def test_render_dangling_processed_anchor_is_clean_precondition(
+    repo_with_processed: Path, db: Database, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """AC3: resolution gains the processed/ set, not leniency — an anchor to a
+    nonexistent processed/ document still fails, cleanly and by name."""
+    dangling = "docs/planning/inbox/processed/no-such-stub.md#nope"
+    seed_full(db, make_ticket("ATLAS-90", source_anchor=dangling))
+
+    code = main(
+        ["context", "render", "ATLAS-90", "--repo", str(repo_with_processed)],
+        database=db,
+    )
+    captured = capsys.readouterr()
+
+    # The wrong answer: a silent pass (leniency) or a traceback.
+    assert code == EXIT_PRECONDITION
+    assert captured.out == ""
+    assert "no-such-stub" in captured.err
+    assert "Traceback" not in captured.err
+
+
+def test_corpus_anchored_pack_byte_identical_with_processed_stubs_present(
+    repo: Path, db: Database, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """AC4: committing a processed/ stub changes NOTHING for a corpus-anchored
+    ticket — rendered_markdown and input_doc_shas are byte-identical."""
+    seed_full(db)
+
+    main(["context", "render", "ATLAS-58", "--repo", str(repo), "--json"], database=db)
+    before = json.loads(capsys.readouterr().out)
+
+    target = repo / PROCESSED_STUB_PATH
+    target.parent.mkdir(parents=True)
+    target.write_text(PROCESSED_STUB, encoding="utf-8")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "add processed stub")
+
+    main(["context", "render", "ATLAS-58", "--repo", str(repo), "--json"], database=db)
+    after = json.loads(capsys.readouterr().out)
+
+    # The wrong answer: the stub leaks into a corpus ticket's pack or shas.
+    assert after["rendered_markdown"] == before["rendered_markdown"]
+    assert after["input_doc_shas"] == before["input_doc_shas"]
+
+
+def test_uncommitted_processed_stub_fails_closed(
+    repo_with_processed: Path, db: Database, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The reused collector's contract holds at this seam: a dirty processed/
+    file is a clean DirtyInputError precondition exit, never a silent read."""
+    seed_full(db, make_ticket("ATLAS-162", source_anchor=STUB_ANCHOR))
+    stub = repo_with_processed / PROCESSED_STUB_PATH
+    stub.write_text(PROCESSED_STUB + "\ndirty edit\n", encoding="utf-8")
+
+    code = main(
+        ["context", "render", "ATLAS-162", "--repo", str(repo_with_processed)],
+        database=db,
+    )
+    captured = capsys.readouterr()
+
+    # The wrong answer: rendering from the dirty tree (pre-fix, the processed/
+    # set was outside every committed-state gate on this path).
+    assert code == EXIT_PRECONDITION
+    assert captured.out == ""
+    assert PROCESSED_STUB_PATH in captured.err
+    assert "dirty or untracked" in captured.err
+    assert "Traceback" not in captured.err
