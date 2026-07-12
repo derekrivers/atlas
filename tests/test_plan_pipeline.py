@@ -434,8 +434,7 @@ def test_ac1_committed_stub_is_promoted_to_an_add(tmp_path: Path) -> None:
     # ATLAS-159: the default anchor is the stub's durable processed/ path from
     # birth, so it keeps resolving after apply retires the stub.
     assert (
-        promoted[0]["source_anchor"]
-        == f"{PROCESSED_INBOX_PATH}#follow-up-from-atlas-9"
+        promoted[0]["source_anchor"] == f"{PROCESSED_INBOX_PATH}#follow-up-from-atlas-9"
     )
 
 

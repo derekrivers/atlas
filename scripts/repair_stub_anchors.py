@@ -171,12 +171,8 @@ def apply_repair(
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--db", required=True, help="database URL")
-    parser.add_argument(
-        "--repo", type=Path, default=Path.cwd(), help="repository root"
-    )
-    parser.add_argument(
-        "--yes", action="store_true", help="apply without prompting"
-    )
+    parser.add_argument("--repo", type=Path, default=Path.cwd(), help="repository root")
+    parser.add_argument("--yes", action="store_true", help="apply without prompting")
     args = parser.parse_args(argv)
 
     database = Database(args.db)

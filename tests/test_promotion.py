@@ -80,8 +80,8 @@ def anchor_index() -> AnchorIndex:
         [
             SourceDocument(path=CORPUS_PATH, sha="c0ffee", content=CORPUS),
             stub,
+            *durable_alias_documents([stub], []),
         ]
-        + durable_alias_documents([stub], [])
     )
 
 

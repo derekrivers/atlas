@@ -135,9 +135,7 @@ def durable_alias_documents(
         if alias_path in processed_paths:
             raise InboxCollisionError(document.path, alias_path)
         aliases.append(
-            SourceDocument(
-                path=alias_path, sha=document.sha, content=document.content
-            )
+            SourceDocument(path=alias_path, sha=document.sha, content=document.content)
         )
     return aliases
 

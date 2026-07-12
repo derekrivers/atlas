@@ -703,7 +703,7 @@ def test_live_shape_dangling_echo_fails_gate4_pre_repair(tmp_path: Path) -> None
     gate4 = [f for f in payload["failures"] if f["code"] == "GATE4_UNRESOLVED_ANCHOR"]
     assert len(gate4) == len(LIVE_SHAPE)
     reasons = " ".join(f["reason"] for f in gate4)
-    for key, _status, basename, slug in LIVE_SHAPE:
+    for _key, _status, basename, slug in LIVE_SHAPE:
         assert f"{LIVE_INBOX}/{basename}#{slug}" in reasons
     stored = PlanRunRepo(database).list()
     assert len(stored) == 1

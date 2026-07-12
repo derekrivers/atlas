@@ -296,9 +296,7 @@ def run_plan(
         + processed_documents
         + durable_alias_documents(inbox_documents, processed_documents)
     )
-    input_doc_shas = {
-        doc.path: doc.sha for doc in all_documents + processed_documents
-    }
+    input_doc_shas = {doc.path: doc.sha for doc in all_documents + processed_documents}
 
     # Current backlog from operational state (the database; ADR-0006).
     epics = EpicRepo(database).list()
@@ -618,8 +616,7 @@ def run_stubs_only_plan(
         + durable_alias_documents(inbox_documents, processed_documents)
     )
     input_doc_shas = {
-        doc.path: doc.sha
-        for doc in documents + inbox_documents + processed_documents
+        doc.path: doc.sha for doc in documents + inbox_documents + processed_documents
     }
 
     # Current backlog from operational state (the database; ADR-0006).
