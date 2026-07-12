@@ -1,7 +1,7 @@
 # Render written only by `atlas apply` (ADR-0006/0007); do not hand-edit.
-# plan_run_id: e09e1ae6-5502-4c9b-800a-d25ae089734b
+# plan_run_id: 32d81e84-3545-4d2c-bb15-7bf9e2c9d13e
 # prompt_version: staged[planner-stage-epics-v1.2.0+planner-stage-tickets-v1.6.0+planner-stage-dependencies-v1.0.0]
-# ticket_key_high_water: 158
+# ticket_key_high_water: 160
 # epic_key_high_water: 11
 dependencies:
 - id: 1d4aafed-6d6a-4f61-97d9-5af5c9a4f88e
@@ -706,6 +706,15 @@ dependencies:
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-07-04T18:05:38.538342Z'
+- id: d50210da-fbaf-4ed4-9311-69bd703d3521
+  source_ticket_id: 684c2080-119a-49bc-9cab-1da7fc336bbe
+  target_entity_type: ticket
+  target_entity_id: 29a22a05-6039-4654-adaf-acaa92deed23
+  dependency_type: depends_on
+  reason: Meta-label lint runs in CI; the CI pipeline must exist before extending the title gate.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-12T15:41:52.463377Z'
 - id: 689b659c-44f7-4d44-8c21-1f7fcd02588f
   source_ticket_id: 6a07b007-2b3a-43df-ade7-88e8b8cc1b90
   target_entity_type: ticket
@@ -1642,6 +1651,24 @@ dependencies:
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-07-04T18:05:38.538342Z'
+- id: 13d46539-fb59-4d8a-a487-b8ecaf6f4411
+  source_ticket_id: ebd51575-a750-4d93-869e-01008aa3feb5
+  target_entity_type: ticket
+  target_entity_id: 587ab736-54d9-43b3-b57f-a445471aa58e
+  dependency_type: depends_on
+  reason: Durable stub anchors fix requires the stubs-only plan mode to exist so the round-trip can be tested.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-12T15:41:52.463377Z'
+- id: 717bbe9c-d14c-4730-a5dd-0304f0c5403e
+  source_ticket_id: ebd51575-a750-4d93-869e-01008aa3feb5
+  target_entity_type: ticket
+  target_entity_id: efa14ba6-fd67-48c5-8e25-4099c417cd9d
+  dependency_type: depends_on
+  reason: The anchor repair involves apply's retirement step; apply must be implemented.
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-12T15:41:52.463377Z'
 - id: d333b9dc-5a5f-4e7d-9e22-bcb9c784e581
   source_ticket_id: eca263f4-c4e9-4de3-8abf-0b8dc7a83ef6
   target_entity_type: ticket

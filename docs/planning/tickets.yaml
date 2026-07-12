@@ -1,7 +1,7 @@
 # Render written only by `atlas apply` (ADR-0006/0007); do not hand-edit.
-# plan_run_id: e09e1ae6-5502-4c9b-800a-d25ae089734b
+# plan_run_id: 32d81e84-3545-4d2c-bb15-7bf9e2c9d13e
 # prompt_version: staged[planner-stage-epics-v1.2.0+planner-stage-tickets-v1.6.0+planner-stage-dependencies-v1.0.0]
-# ticket_key_high_water: 158
+# ticket_key_high_water: 160
 # epic_key_high_water: 11
 tickets:
 - id: 06701bee-33ed-44e6-b735-52dfd7c5edc8
@@ -6861,7 +6861,7 @@ tickets:
   title: 'Promotion dedup: collapse model re-emission of committed inbox stubs (F-4)'
   objective: During reconciliation, collapse a model-emitted proposal ticket whose source_anchor matches a promotion-injected ticket's anchor into the promotion ticket, so one stub always yields exactly one ticket ADD regardless of what the model re-emits.
   context: 'Two live reproductions confirmed the root cause: promote_inbox_stubs injects a ticket per stub while the model, seeing the stubs in its corpus, independently emits tickets for the same work; the reconciler treats them as distinct ADDs. The 2026-07-08 double-emission (E6/E8 pairs) and the applied duplicate mints ATLAS-149/150 (exact-title copies of 147/148, cancelled same day) are the named fixtures. The stub''s source_anchor is the identity key. Dependency edges the model attached to its duplicate must be re-pointed to the surviving promotion ticket. This is a bug fix in the reconciler.'
-  status: planned
+  status: needs_human_decision
   ticket_type: bug
   risk_level: medium
   priority: 70
@@ -6893,7 +6893,7 @@ tickets:
   - Full CI gate sweep green.
   - The planning spec's reconciliation section documents the collapse rule.
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: f1b88518-11c3-4b39-988d-a650fdb7b152
   external_github_issue_id: null
   tags:
   - planning
@@ -6901,9 +6901,9 @@ tickets:
   - inbox
   - dedup
   component: atlas.planning
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-07-11T20:50:12.516279Z'
+  last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
+  status_entered_at: '2026-07-12T07:16:20.400709Z'
   review_cycle_count: 0
   source_anchor: docs/planning/inbox/inbox-stub-f4-promotion-dedup.md#promotion-dedup-f-4
   created_by_type: agent
@@ -6918,7 +6918,7 @@ tickets:
   title: 'Retire-on-reject scope: a rejected apply must not retire hand-authored inbox stubs'
   objective: Narrow the inbox stub retirement trigger so that a rejected apply leaves the inbox exactly as it found it; only an applied run retires the stubs that fed it.
   context: 'ATLAS-122 (D2) retires inbox stubs to processed/ on both the applied and the rejected outcome. The 2026-07-08 double-emission created a second decline reason: a diff declined for duplicate ADDs whose stub content is still wanted. Under the current scope, that decline retires every hand-authored stub that fed the run, forcing a manual restore before the re-roll. A reject is a verdict on the diff, not on the stubs: an operator who genuinely declines a stub''s content deletes the stub (a git-visible act) rather than having apply infer it. This is a bug fix in atlas apply''s retirement logic.'
-  status: planned
+  status: needs_human_decision
   ticket_type: bug
   risk_level: medium
   priority: 70
@@ -6948,7 +6948,7 @@ tickets:
   - Full CI gate sweep green.
   - The planning spec's apply section documents the narrowed retirement rule.
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: 21c420f5-740d-46c4-a15c-bc376c7729ff
   external_github_issue_id: null
   tags:
   - planning
@@ -6956,9 +6956,9 @@ tickets:
   - inbox
   - retirement
   component: atlas.planning
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-07-11T20:50:12.516279Z'
+  last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
+  status_entered_at: '2026-07-12T07:16:20.400709Z'
   review_cycle_count: 0
   source_anchor: docs/planning/inbox/inbox-stub-retire-on-reject-scope.md#retire-on-reject-scope
   created_by_type: agent
@@ -6973,7 +6973,7 @@ tickets:
   title: 'Stubs-only plan mode: mint committed inbox stubs without a model call'
   objective: Implement atlas plan --stubs-only, which produces an apply-ready PlanRun from committed inbox stubs alone — zero model calls, zero generation cost, no double-emission surface.
   context: 'Minting hand-authored stubs today requires a full planner draw whose only planning contribution is to echo the backlog so promotion can inject the stubs — every such run costs a full generation and re-exposes the F-4 double-emission surface. A stubs-only mode skips generation entirely: the proposal is the verbatim keyed backlog echo plus the promoted stubs, flowing through the ordinary gates → reconcile → PlanRun path. Deterministic by construction (ADR-0005: pure code, no model). Complements the F-4 reconciler dedup rather than replacing it.'
-  status: planned
+  status: needs_human_decision
   ticket_type: feature
   risk_level: medium
   priority: 60
@@ -7006,7 +7006,7 @@ tickets:
   - Full CI gate sweep green.
   - running-atlas-plan.md and the planning spec document the mode in the same change.
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: 4504031d-fc81-4716-b21c-af34f78a46db
   external_github_issue_id: null
   tags:
   - planning
@@ -7014,9 +7014,9 @@ tickets:
   - inbox
   - stubs-only
   component: atlas.planning
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-07-11T20:50:12.516279Z'
+  last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
+  status_entered_at: '2026-07-12T07:16:20.400709Z'
   review_cycle_count: 0
   source_anchor: docs/planning/inbox/inbox-stub-stubs-only-plan-mode.md#stubs-only-plan-mode
   created_by_type: agent
@@ -7031,7 +7031,7 @@ tickets:
   title: 'Accepted-types spelling: admit canceled and duplicate Linear state types for rejected'
   objective: Fix validate_against_states so preflight C2 passes on the rejected mappings by admitting the live board's canceled and duplicate Linear state types alongside the existing cancelled.
   context: 'Known gap flagged by ATLAS-148: _ACCEPTED_TYPES admits only ''cancelled'' for rejected, while the live board reports type ''canceled'' (US spelling) for the Canceled state and type ''duplicate'' for the Duplicate state. Preflight C2 fails on the rejected mappings the moment the operator adds the documented Duplicate entry to LINEAR_STATE_MAP. The sync tick itself does not run this validation and is unaffected. This is the inbox stub from docs/planning/inbox/inbox-stub-accepted-types-spelling.md.'
-  status: planned
+  status: needs_human_decision
   ticket_type: bug
   risk_level: low
   priority: 50
@@ -7056,7 +7056,7 @@ tickets:
   definition_of_done:
   - All acceptance criteria evidenced by named tests; full gate sweep green; pm-engine-and-linear-sync.md gap paragraph updated.
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: fa5e7fa7-02f5-47d0-be13-5aa4184ddd2c
   external_github_issue_id: null
   tags:
   - pm-engine
@@ -7064,9 +7064,9 @@ tickets:
   - preflight
   - bug
   component: atlas.linear
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-07-11T20:50:12.516279Z'
+  last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
+  status_entered_at: '2026-07-12T07:16:20.400709Z'
   review_cycle_count: 0
   source_anchor: docs/planning/inbox/inbox-stub-accepted-types-spelling.md#accepted-types-spelling
   created_by_type: agent
@@ -7081,7 +7081,7 @@ tickets:
   title: 'Accepted-types spelling: admit the live canceled and duplicate state types for rejected'
   objective: 'Preflight C2 passes on the rejected mappings: validate_against_states accepts the live board''s canceled and duplicate Linear state types for TicketStatus.REJECTED.'
   context: 'Known gap flagged for follow-up (not folded in) by ATLAS-148: _ACCEPTED_TYPES admits only ''cancelled'' for rejected, while the live board reports type ''canceled'' (US spelling) for the Canceled state and type ''duplicate'' for the Duplicate state — pm-engine-and-linear-sync.md documents both under the state-map completeness table. The sync tick does not run this validation and is unaffected, but preflight C2 fails on the rejected mappings the moment the operator adds the documented Duplicate entry (cd8e7c95-8a25-48ad-b0ef-19e00f000e70) to LINEAR_STATE_MAP — which the apply-and-cancel disposition for duplicate mints depends on to pull board Duplicates to rejected with full semantic honesty.'
-  status: planned
+  status: rejected
   ticket_type: bug
   risk_level: low
   priority: 50
@@ -7102,13 +7102,13 @@ tickets:
   definition_of_done:
   - All acceptance criteria evidenced by named tests; full gate sweep green; pm-engine-and-linear-sync.md's gap paragraph updated in the same change (doc linter green).
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: 28694608-1173-444e-840b-c1bccfd8f5d6
   external_github_issue_id: null
   tags: []
   component: null
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-07-11T20:50:12.516279Z'
+  last_observed_linear_state_id: cd8e7c95-8a25-48ad-b0ef-19e00f000e70
+  status_entered_at: '2026-07-12T07:16:20.400709Z'
   review_cycle_count: 0
   source_anchor: docs/planning/inbox/inbox-stub-accepted-types-spelling.md#accepted-types-spelling
   created_by_type: agent
@@ -7123,7 +7123,7 @@ tickets:
   title: 'Promotion dedup: collapse model re-emission of committed inbox stubs (F-4)'
   objective: A planner draw that re-emits a committed inbox stub alongside its deterministic promotion produces exactly one ticket ADD, not two.
   context: 'Two live reproductions: the declined 2026-07-08 double-emission (E6/E8 pairs) and the applied duplicate mints ATLAS-149/150 (exact-title copies of 147/148, cancelled same day — debt register: ''Duplicate mints''). Root cause: promote_inbox_stubs injects a ticket per stub while the model, which sees the stubs in its corpus, may independently emit tickets for the same work; the reconciler treats them as distinct ADDs. Critical finding baked in: the 149/150 duplicates carried no dependency edges, so the diff''s dependency section could not surface them — dedup must act at ticket identity, not edges. The stub''s source_anchor is the identity key: a promotion-injected ticket and a model-emitted ticket citing the same stub anchor are the same work.'
-  status: planned
+  status: rejected
   ticket_type: bug
   risk_level: low
   priority: 50
@@ -7145,13 +7145,13 @@ tickets:
   definition_of_done:
   - All acceptance criteria evidenced by named tests; full gate sweep green; the reconciliation section of the planning spec documents the collapse rule in the same change.
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: 74f852f5-06ee-414f-8102-7d6e4a9a65a2
   external_github_issue_id: null
   tags: []
   component: null
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-07-11T20:50:12.516279Z'
+  last_observed_linear_state_id: cd8e7c95-8a25-48ad-b0ef-19e00f000e70
+  status_entered_at: '2026-07-12T07:16:20.400709Z'
   review_cycle_count: 0
   source_anchor: docs/planning/inbox/inbox-stub-f4-promotion-dedup.md#promotion-dedup-f-4
   created_by_type: agent
@@ -7166,7 +7166,7 @@ tickets:
   title: 'Retire-on-reject scope: a rejected apply must not retire hand-authored inbox stubs'
   objective: A rejected apply leaves the inbox exactly as it found it; only an applied run retires the stubs that fed it.
   context: 'ATLAS-122 (D2) retires inbox stubs to processed/ on BOTH the applied and the rejected outcome — ''both mean considered'' — designed when a decline meant the follow-up''s content was declined. The 2026-07-08 double-emission created the other decline reason: a diff declined for duplicate ADDs whose stub content is still wanted. Under the current scope that decline retires every hand-authored stub that fed the run, forcing a manual restore before the re-roll (the restore dance observed 2026-07-08, and re-observed as a hazard on PR #155''s stray-commit incident). A reject is a verdict on the diff, not on the stubs: an operator who genuinely declines a stub''s content deletes the stub — a git-visible act — rather than having apply infer it. Interacts with the promotion-dedup fix (F-4): apply-and-cancel is the standing disposition for duplicate mints precisely because a decline currently costs both a re-roll and the restore dance; this ticket removes the second cost.'
-  status: planned
+  status: rejected
   ticket_type: bug
   risk_level: low
   priority: 50
@@ -7188,13 +7188,13 @@ tickets:
   definition_of_done:
   - All acceptance criteria evidenced by named tests; full gate sweep green; the planning spec's apply section documents the narrowed retirement rule in the same change.
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: 46a4e2c8-aa41-4eee-b03f-d2bf786cdfe9
   external_github_issue_id: null
   tags: []
   component: null
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-07-11T20:50:12.516279Z'
+  last_observed_linear_state_id: cd8e7c95-8a25-48ad-b0ef-19e00f000e70
+  status_entered_at: '2026-07-12T07:16:20.400709Z'
   review_cycle_count: 0
   source_anchor: docs/planning/inbox/inbox-stub-retire-on-reject-scope.md#retire-on-reject-scope
   created_by_type: agent
@@ -7209,7 +7209,7 @@ tickets:
   title: 'Stubs-only plan mode: mint committed inbox stubs without a model call'
   objective: atlas plan --stubs-only produces an apply-ready PlanRun from committed inbox stubs alone — zero model calls, zero generation cost, no double-emission surface.
   context: 'Minting hand-authored stubs today requires a full planner draw whose only planning contribution is to echo the backlog so promotion can inject the stubs — every such run costs a full generation (£5 at current corpus size) and re-exposes the F-4 double-emission surface, since the model sees the stubs in its corpus and may re-emit them alongside their deterministic promotion. A stubs-only mode skips generation entirely: the proposal is the verbatim keyed backlog echo plus the promoted stubs (promotion already re-states A-1 epics from the backlog on exactly this pattern), flowing through the ordinary gates -> reconcile -> PlanRun path. Deterministic by construction (ADR-0005: pure code, no model), so the diff is exactly the stub ADDs. Complements the F-4 reconciler dedup rather than replacing it — dedup still guards full generative runs; this mode makes the common mint-a-batch case free and duplicate-proof.'
-  status: planned
+  status: rejected
   ticket_type: feature
   risk_level: low
   priority: 50
@@ -7233,6 +7233,49 @@ tickets:
   definition_of_done:
   - All acceptance criteria evidenced by named tests; full gate sweep green; running-atlas-plan.md and the planning spec document the mode, its provenance marker, and the cost rationale in the same change.
   estimated_effort: null
+  external_linear_id: 0e08fd08-5ed1-4023-bd0c-37504ace9264
+  external_github_issue_id: null
+  tags: []
+  component: null
+  linear_synced_at: '2026-07-11T20:50:12.516279Z'
+  last_observed_linear_state_id: cd8e7c95-8a25-48ad-b0ef-19e00f000e70
+  status_entered_at: '2026-07-12T07:16:20.400709Z'
+  review_cycle_count: 0
+  source_anchor: docs/planning/inbox/inbox-stub-stubs-only-plan-mode.md#stubs-only-plan-mode
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-11T20:50:12.516279Z'
+  updated_at: '2026-07-11T20:50:12.516279Z'
+  completed_at: null
+- id: ebd51575-a750-4d93-869e-01008aa3feb5
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 5bd967eb-98c0-42a6-bec3-042a34145078
+  key: ATLAS-159
+  title: 'Durable stub anchors: promote against processed/ paths and repair the 14 dangling live anchors'
+  objective: Stub-minted tickets carry source_anchors that remain valid after stub retirement, and the 14 live tickets whose anchors dangled when apply moved their stubs to processed/ echo cleanly through gate 4.
+  context: 'Structural defect found at ATLAS-153 delivery: promote_inbox_stubs anchors each minted ticket to the stub''s active-inbox path, and apply then retires the stub to inbox/processed/ — so every stub-minted ticket''s anchor dangles the moment its own apply completes. Fourteen live tickets (ATLAS-109/110/147-158) carry such anchors today; a live stubs-only run echoes them verbatim and fails gate 4 as a typed recorded failure (honest, but it blocks the door ATLAS-153 built). The forward fix is one line: promotion anchors to the processed/ path, which is known at promotion time and is the file''s durable home. The repair of the 14 is a design ruling, because ten of them are frozen (done/rejected), planning cannot modify frozen tickets (spec §4), and no other sanctioned anchor writer exists. Present the fork at the plan gate; the operator rules there: (a) a scoped one-time repair exception outside planning, documented in the debt register per the ATLAS-007M bootstrap-exception precedent; (b) gate 4 relaxed for keyed verbatim echoes, on the principle that an unchanged echo asserts no new anchor claim — a permanent semantics change, wider than the incident; (c) repair only the four unfrozen tickets via a normal MODIFY apply and exempt frozen echoes from gate 4 — a narrower hybrid. Do not implement any branch before the gate rules.'
+  status: planned
+  ticket_type: bug
+  risk_level: low
+  priority: 50
+  relevant_docs:
+  - docs/planning/inbox/inbox-stub-durable-stub-anchors.md
+  acceptance_criteria:
+  - promote_inbox_stubs anchors minted tickets to the inbox/processed/ path; a promotion-then-retirement round trip leaves a resolvable anchor, proven by a test that runs apply's retirement and re-validates the anchor.
+  - The ratified repair branch (from the gate fork) is implemented for all 14 affected tickets, each named in the change; after repair, a live-shaped fixture echoing all 14 passes gate 4.
+  - 'Seeded regression: pre-fix, a stubs-only echo of a retired-stub ticket fails gate 4; post-fix it passes.'
+  - 'Negative: a genuinely dangling anchor (file absent from both inbox/ and processed/) still fails gate 4 — the gate keeps its teeth.'
+  - The runbook's known-constraint note from ATLAS-153 is deleted in the same change (deletion over annotation).
+  non_goals:
+  - No change to retirement itself, gate 4's behaviour for unkeyed tickets, the depends_on contract, or the collapse pre-pass.
+  - No general anchor-migration tooling — this repairs one named defect.
+  implementation_notes: []
+  test_requirements:
+  - Fixture-driven, ATLAS_LIVE_TESTS=0, seeds `assert 1 == 2` (B011); the 14-ticket live shape is a named fixture; the round-trip test exercises real promotion and real retirement, not mocks of either.
+  documentation_requirements: []
+  definition_of_done:
+  - All acceptance criteria evidenced by named tests; full gate sweep green; spec §2.1's promotion text and the debt register (if branch (a) is ruled) updated in the same change.
+  estimated_effort: null
   external_linear_id: null
   external_github_issue_id: null
   tags: []
@@ -7241,9 +7284,52 @@ tickets:
   last_observed_linear_state_id: null
   status_entered_at: null
   review_cycle_count: 0
-  source_anchor: docs/planning/inbox/inbox-stub-stubs-only-plan-mode.md#stubs-only-plan-mode
+  source_anchor: docs/planning/inbox/inbox-stub-durable-stub-anchors.md#durable-stub-anchors
   created_by_type: agent
   created_by_id: planner
-  created_at: '2026-07-11T20:50:12.516279Z'
-  updated_at: '2026-07-11T20:50:12.516279Z'
+  created_at: '2026-07-12T15:41:52.463377Z'
+  updated_at: '2026-07-12T15:41:52.463377Z'
+  completed_at: null
+- id: 684c2080-119a-49bc-9cab-1da7fc336bbe
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: aa0a9535-cf03-4a01-a6d3-313520606d0d
+  key: ATLAS-160
+  title: 'Meta-label discipline in lint-pr-title: reject reused ATLAS-00xM labels and suggest the next free one'
+  objective: A PR titled with an already-merged meta label fails the title gate with a message naming the collision and the next free label, ending both the double-assignment and the guess-the-next-number dance.
+  context: 'ATLAS-004M was assigned twice (#155 and #158 — debt register: ''Meta-label ATLAS-004M doubly assigned''), caught only at branch review; the register routed a lint-pr-title extension as the pattern closure. Separately, three stub-landing PRs (#164, #165, #169) failed the title gate for missing labels and each cost a manual enumerate-merged-titles round to pick the next number. One check closes both: when a PR title carries an ATLAS-00xM-form label, validate it is unused among merged PR titles and, on any title-gate failure where a meta label is plausible (keyless doc/planning-only change), print the next free meta label in the failure message. The check runs where lint-pr-title already runs and uses whatever merged-title source that gate already has access to; if the current check is regex-only with no history access, the plan gate decides the cheapest honest source (e.g. git log of the default branch''s merge/squash subjects) rather than adding a network dependency.'
+  status: planned
+  ticket_type: tech_debt
+  risk_level: low
+  priority: 50
+  relevant_docs:
+  - docs/planning/inbox/inbox-stub-meta-label-discipline.md
+  acceptance_criteria:
+  - A PR title bearing a meta label already present in merged history fails the gate with a message naming the colliding PR reference and the next free label; proven against a fixture history containing the real 004M double assignment.
+  - A PR title bearing the next free meta label passes; a real-key title (ATLAS-<digits> without the M) is wholly unaffected — the existing key-form behaviour is byte-identical, proven by the existing tests passing unmodified.
+  - A title-gate failure on a label-less title includes the next-free-label suggestion in its message.
+  - 'Seeded regression: pre-fix, the 004M-reuse fixture passes the gate; post-fix it fails.'
+  - The debt-register 'Meta-label ATLAS-004M doubly assigned' entry's pattern-closure line is updated to point at this ticket (deletion over annotation for its 'queued' clause).
+  non_goals:
+  - No change to real-key (ATLAS-<digits>) validation, the (KEY) title convention, or any CI wiring beyond the existing title-gate invocation.
+  - No retroactive relabeling of merged PRs — the 004M/007M designation in the register stands as the historical record.
+  implementation_notes: []
+  test_requirements:
+  - 'Unit tests over fixture title histories (no live GitHub calls, ATLAS_LIVE_TESTS=0); seeds `assert 1 == 2` (B011); the 004M shape and the #169-style missing-label shape are named fixtures.'
+  documentation_requirements: []
+  definition_of_done:
+  - All acceptance criteria evidenced by named tests; full gate sweep green; debt-register pointer updated in the same change.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags: []
+  component: null
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  source_anchor: docs/planning/inbox/inbox-stub-meta-label-discipline.md#meta-label-discipline
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-12T15:41:52.463377Z'
+  updated_at: '2026-07-12T15:41:52.463377Z'
   completed_at: null
