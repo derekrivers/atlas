@@ -469,3 +469,41 @@ def test_ac6_promotion_adds_no_model_call(tmp_path: Path) -> None:
 
     assert client.calls == 1  # one generation, none for promotion
     assert len(_promoted(database)) == 1
+
+
+# --- promotion dedup: plan threads positional identity (ATLAS-151) ----------
+
+
+def test_plan_collapses_model_reemission_of_committed_stub(tmp_path: Path) -> None:
+    # The pipeline knows exactly which tickets promote_inbox_stubs appended
+    # (positional identity) and threads that set into reconcile: a model
+    # ticket re-emitting the stub's anchor collapses into the promotion
+    # ticket, so one stub yields exactly one ticket ADD. Red (pre-fix): the
+    # re-emission and the promotion each ADD — the ATLAS-149/150/155/158
+    # duplicate-mint defect.
+    repo = fixture_repo_with_inbox(tmp_path)
+    database = fresh_db(tmp_path)
+    reemission = _ticket(
+        title="Follow-up from ATLAS-9",
+        objective="Investigate the retry seam.",
+        source_anchor=f"{INBOX_PATH}#follow-up-from-atlas-9",
+    )
+    client = FakePlannerClient(proposal_json(tickets=[_ticket(), reemission]))
+
+    result = run(repo, database, client)
+
+    assert result.status is PlanRunStatus.PROPOSED
+    assert result.diff is not None
+    ticket_adds = [
+        e for e in result.diff.entries if e.kind == "ticket" and e.entry_type == "ADD"
+    ]
+    # new:0 = the model's own ticket, new:2 = the promotion ticket; new:1
+    # (the re-emission) is absorbed, not ADDed.
+    assert [e.identity for e in ticket_adds] == ["new:0", "new:2"]
+    assert [note.absorbed for note in result.diff.collapses] == ["new:1"]
+    assert [note.survivor for note in result.diff.collapses] == ["new:2"]
+    # The collapse is on the persisted record the operator audits.
+    stored = PlanRunRepo(database).list()[0]
+    assert stored.diff_summary["collapses"] == [
+        note.as_dict() for note in result.diff.collapses
+    ]

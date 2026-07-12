@@ -11,6 +11,21 @@ pass become PROPOSE_ARCHIVE; nothing is ever deleted. Frozen tickets
 entry would have been. Ambiguity is fail-closed: duplicate echoed keys
 and exact similarity ties are CONFLICT, never an arbitrary choice.
 
+Promotion dedup (ATLAS-151): before the matching passes, a keyless
+model-emitted ticket whose source_anchor equals a promotion-injected
+ticket's anchor is collapsed into the promotion ticket — it takes no
+part in matching, emits no ADD, and its dependency refs re-point to the
+survivor, deduplicated. Which tickets are promotion-injected is
+POSITIONAL identity (``promotion_indices``, supplied by the caller):
+three live reproductions (the declined 2026-07-08 double-emission,
+ATLAS-149/150, ATLAS-155/158) matched or diverged on every candidate
+content feature — edges, anchors, titles, full content — so no
+recognition heuristic over duplicate features is stable. Deterministic
+promotion content always wins; the diff records one collapse note per
+absorbed ticket. Boundary: a duplicate citing a foreign anchor never
+collides with a promotion anchor and is deliberately NOT collapsed —
+foreign-anchor re-emission remains gate-read territory.
+
 Dependency edges reconcile by resolved (source, target) identity:
 proposal-only ADD, backlog-only PROPOSE_ARCHIVE, changed reason MODIFY;
 a frozen SOURCE conflicts (the edge is the source's planning surface),
@@ -153,10 +168,36 @@ class DiffEntry:
 
 
 @dataclass(frozen=True)
+class CollapseNote:
+    """One promotion-dedup collapse (ATLAS-151): the absorbed model ticket,
+    the surviving promotion ticket, and the shared anchor that keyed it.
+
+    Not a DiffEntry: a collapse is not an ADD/MODIFY/PROPOSE_ARCHIVE/CONFLICT
+    on the backlog, it is a note that a proposal ticket was folded into
+    another before matching — so it must not disturb the four-type counts
+    contract apply's refusal logic and key assignment read."""
+
+    absorbed: str  # new:<n> of the absorbed model ticket
+    absorbed_title: str
+    survivor: str  # resolved identity of the promotion ticket
+    anchor: str  # the shared source_anchor (the promotion side's)
+
+    def as_dict(self) -> dict[str, str]:
+        return {
+            "absorbed": self.absorbed,
+            "absorbed_title": self.absorbed_title,
+            "survivor": self.survivor,
+            "anchor": self.anchor,
+        }
+
+
+@dataclass(frozen=True)
 class PlanDiff:
     """Deterministically ordered entries plus counts per type (§2.4)."""
 
     entries: tuple[DiffEntry, ...]
+    # Promotion-dedup collapses (ATLAS-151), ordered by absorbed index.
+    collapses: tuple[CollapseNote, ...] = ()
 
     @property
     def counts(self) -> dict[str, int]:
@@ -174,6 +215,7 @@ class PlanDiff:
         return {
             "counts": self.counts,
             "entries": [entry.as_dict() for entry in self.entries],
+            "collapses": [note.as_dict() for note in self.collapses],
         }
 
 
@@ -209,6 +251,10 @@ class _MatchState:
     conflicted_proposal: set[int]
     conflicted_existing: set[str]
     conflicts: list[DiffEntry]
+    # Promotion dedup (ATLAS-151): absorbed model index -> surviving
+    # promotion index. Absorbed indices take no part in any matching pass
+    # and emit no entries; dependency refs to them re-point to the survivor.
+    absorbed: dict[int, int] = field(default_factory=dict)
 
 
 def _identity(item: ProposalEpic | ProposalTicket, index: int, kind: str) -> str:
@@ -221,11 +267,16 @@ def _match_items(
     proposal_items: Sequence[ProposalEpic | ProposalTicket],
     existing_by_key: dict[str, Epic | Ticket],
     kind: str,
+    absorbed: dict[int, int] | None = None,
 ) -> _MatchState:
-    """Passes 1 and 2 (key, then unambiguous-1:1 anchor)."""
-    state = _MatchState({}, set(), set(), [])
+    """Passes 1 and 2 (key, then unambiguous-1:1 anchor). ``absorbed``
+    (ATLAS-151) removes collapsed indices from the matching universe —
+    notably restoring pass 2's 1:1 anchor rule, which the duplicate's
+    shared anchor would otherwise defeat as an ambiguous group."""
+    state = _MatchState({}, set(), set(), [], dict(absorbed or {}))
 
     # Pass 1: key. Duplicate echoed keys are a CONFLICT (spec §4).
+    # (Absorbed items are keyless by construction, so they claim nothing.)
     claims: dict[str, list[int]] = {}
     for index, item in enumerate(proposal_items):
         if item.key is not None and item.key in existing_by_key:
@@ -256,7 +307,9 @@ def _match_items(
     free_proposal = [
         index
         for index in range(len(proposal_items))
-        if index not in state.matches and index not in state.conflicted_proposal
+        if index not in state.matches
+        and index not in state.conflicted_proposal
+        and index not in state.absorbed
     ]
     matched_keys = set(state.matches.values()) | state.conflicted_existing
     free_existing = [key for key in sorted(existing_by_key) if key not in matched_keys]
@@ -290,7 +343,9 @@ def _similarity_pass(
     free_proposal = sorted(
         index
         for index in range(len(proposal_items))
-        if index not in state.matches and index not in state.conflicted_proposal
+        if index not in state.matches
+        and index not in state.conflicted_proposal
+        and index not in state.absorbed
     )
     taken = set(state.matches.values()) | state.conflicted_existing
     free_existing = sorted(key for key in existing_by_key if key not in taken)
@@ -387,19 +442,51 @@ def _diff_fields(
     return changes
 
 
+def _absorb_promoted_duplicates(
+    tickets: Sequence[ProposalTicket], promotion_indices: frozenset[int]
+) -> dict[int, int]:
+    """The ATLAS-151 collapse pre-pass: map each keyless model-emitted ticket
+    whose source_anchor equals a promotion-injected ticket's anchor to that
+    promotion ticket's index. Runs before the three matching passes; indices
+    are never renumbered, so ``new:<n>`` identities keep indexing the stored
+    proposal and apply's materialisation is untouched. Keyed tickets echo
+    existing backlog tickets (never ADD candidates) and are left alone."""
+    anchor_to_promotion: dict[str, int] = {}
+    for index in sorted(promotion_indices):
+        if 0 <= index < len(tickets):
+            anchor_to_promotion.setdefault(tickets[index].source_anchor, index)
+    absorbed: dict[int, int] = {}
+    for index, ticket in enumerate(tickets):
+        if index in promotion_indices or ticket.key is not None:
+            continue
+        survivor = anchor_to_promotion.get(ticket.source_anchor)
+        if survivor is not None:
+            absorbed[index] = survivor
+    return absorbed
+
+
 def reconcile(
     proposal: Proposal,
     backlog: Backlog,
     *,
     similarity_threshold: float = DEFAULT_SIMILARITY_THRESHOLD,
+    promotion_indices: frozenset[int] = frozenset(),
 ) -> PlanDiff:
-    """Reconcile a gate-passed proposal against the current backlog."""
+    """Reconcile a gate-passed proposal against the current backlog.
+
+    ``promotion_indices`` (ATLAS-151) names the proposal tickets injected by
+    ``promote_inbox_stubs`` — positional identity, supplied by the caller
+    (`atlas plan` records the indices it appended; `atlas apply` reconstructs
+    the same trailing set under the AT-5 staleness guarantee). Empty set ⇒
+    no collapse, byte-for-byte the pre-ATLAS-151 behaviour."""
     entries: list[DiffEntry] = []
 
     epics_by_key = {epic.key: epic for epic in backlog.epics}
     tickets_by_key = {ticket.key: ticket for ticket in backlog.tickets}
     epic_key_by_id = {epic.id: epic.key for epic in backlog.epics}
     ticket_key_by_id = {ticket.id: ticket.key for ticket in backlog.tickets}
+
+    absorbed = _absorb_promoted_duplicates(proposal.tickets, promotion_indices)
 
     epic_state = _match_items(proposal.epics, epics_by_key, "epic")  # type: ignore[arg-type]
     _similarity_pass(
@@ -409,7 +496,12 @@ def reconcile(
         similarity_threshold,
         "epic",
     )
-    ticket_state = _match_items(proposal.tickets, tickets_by_key, "ticket")  # type: ignore[arg-type]
+    ticket_state = _match_items(
+        proposal.tickets,
+        tickets_by_key,  # type: ignore[arg-type]
+        "ticket",
+        absorbed,
+    )
     _similarity_pass(
         proposal.tickets,
         tickets_by_key,  # type: ignore[arg-type]
@@ -481,6 +573,8 @@ def reconcile(
         ticket.key for ticket in backlog.tickets if ticket.status in FROZEN_STATUSES
     }
     for index, ticket_item in enumerate(proposal.tickets):
+        if index in ticket_state.absorbed:
+            continue  # collapsed into its promotion ticket (ATLAS-151)
         if index in ticket_state.conflicted_proposal:
             continue
         if index not in ticket_state.matches:
@@ -567,11 +661,21 @@ def reconcile(
             )
 
     # Dependency edges: resolved (source, target) identity (spec §4).
+    # An absorbed ref re-points to its surviving promotion ticket before
+    # normal resolution (ATLAS-151); the (source, target) dict then dedupes
+    # re-pointed edges against the survivor's own edges for free.
     def resolve_ticket_ref(value: str) -> str:
         if value.startswith("new:"):
             index = int(value.removeprefix("new:"))
+            index = ticket_state.absorbed.get(index, index)
             return ticket_state.matches.get(index, f"new:{index}")
         return value
+
+    def is_absorbed_ref(value: str) -> bool:
+        return (
+            value.startswith("new:")
+            and int(value.removeprefix("new:")) in ticket_state.absorbed
+        )
 
     proposal_edges: dict[tuple[str, str], str] = {}
     for dependency in proposal.dependencies:
@@ -579,6 +683,10 @@ def reconcile(
             resolve_ticket_ref(dependency.source),
             resolve_ticket_ref(dependency.target),
         )
+        if identity_pair[0] == identity_pair[1] and (
+            is_absorbed_ref(dependency.source) or is_absorbed_ref(dependency.target)
+        ):
+            continue  # re-pointing made a duplicate<->survivor edge a self-loop
         proposal_edges[identity_pair] = dependency.reason
     backlog_edges: dict[tuple[str, str], str] = {}
     for backlog_dependency in backlog.dependencies:
@@ -633,4 +741,19 @@ def reconcile(
                 )
             )
 
-    return PlanDiff(entries=tuple(sorted(entries, key=_entry_sort_key)))
+    # One collapse note per absorbed ticket (ATLAS-151), by absorbed index.
+    # The survivor's identity resolves exactly like a dependency ref would:
+    # its matched key when a pass claimed it, else its own new:<n>.
+    collapses = tuple(
+        CollapseNote(
+            absorbed=f"new:{index}",
+            absorbed_title=proposal.tickets[index].title,
+            survivor=ticket_state.matches.get(survivor, f"new:{survivor}"),
+            anchor=proposal.tickets[survivor].source_anchor,
+        )
+        for index, survivor in sorted(ticket_state.absorbed.items())
+    )
+
+    return PlanDiff(
+        entries=tuple(sorted(entries, key=_entry_sort_key)), collapses=collapses
+    )

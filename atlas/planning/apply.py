@@ -413,9 +413,8 @@ def run_apply(
     # carries the inbox stubs, so a corpus-only fresh set would always mismatch
     # and refuse every apply. An added, removed, or changed inbox stub between
     # plan and apply correctly reads as stale.
-    fresh_documents = collect_input_documents(repo_root) + collect_inbox_documents(
-        repo_root, inbox_dir
-    )
+    fresh_inbox = collect_inbox_documents(repo_root, inbox_dir)
+    fresh_documents = collect_input_documents(repo_root) + fresh_inbox
     fresh_shas = {doc.path: doc.sha for doc in fresh_documents}
     if fresh_shas != plan_run.input_doc_shas:
         raise StalePlanError(
@@ -435,8 +434,21 @@ def run_apply(
     )
 
     proposal = Proposal.model_validate(plan_run.proposal)
+    # Promotion identity, reconstructed positionally (ATLAS-151): plan's
+    # promote_inbox_stubs appended exactly one ticket per committed stub at
+    # the proposal's tail, and the AT-5 staleness check above just proved the
+    # inbox is byte-identical to plan time — so the promotion-injected set is
+    # the trailing len(fresh_inbox) tickets. Threading it into reconcile makes
+    # this diff collapse model re-emissions exactly as plan's did, and puts
+    # the collapse lines in front of the operator at the confirm gate.
+    promotion_indices = frozenset(
+        range(len(proposal.tickets) - len(fresh_inbox), len(proposal.tickets))
+    )
     diff = reconcile(
-        proposal, backlog, similarity_threshold=plan_run.similarity_threshold
+        proposal,
+        backlog,
+        similarity_threshold=plan_run.similarity_threshold,
+        promotion_indices=promotion_indices,
     )
 
     # Refuse diffs this ticket does not apply (operator ruling, AT-4).

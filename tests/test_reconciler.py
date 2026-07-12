@@ -632,9 +632,206 @@ def test_entry_ordering_is_deterministic_and_documented() -> None:
     kinds = [entry.kind for entry in diff.entries]
     assert kinds == sorted(kinds, key=["epic", "ticket", "dependency"].index)
     summary = diff.as_summary()
-    assert set(summary) == {"counts", "entries"}
+    assert set(summary) == {"counts", "entries", "collapses"}
     assert summary["counts"]["MODIFY"] >= 1
+    assert summary["collapses"] == []  # no promotion identity threaded here
     assert all(
         set(entry) >= {"type", "kind", "identity", "title"}
         for entry in summary["entries"]
     )
+
+
+# --- promotion dedup (ATLAS-151) ----------------------------------------------
+#
+# Identity is POSITIONAL (promotion_indices), never content: three live
+# reproductions (the declined 2026-07-08 double-emission, ATLAS-149/150,
+# ATLAS-155/158) matched or diverged on every candidate feature — edges,
+# anchors, titles, full content — so a keyless model ticket collapses iff its
+# source_anchor equals a promotion-injected ticket's anchor.
+
+STUB_ANCHORS = [
+    "docs/planning/inbox/stub-one.md#one",
+    "docs/planning/inbox/stub-two.md#two",
+    "docs/planning/inbox/stub-three.md#three",
+    "docs/planning/inbox/stub-four.md#four",
+]
+
+
+def promoted_ticket(anchor: str, ordinal: int) -> dict[str, Any]:
+    """One promotion-injected ticket, byte-identical to what a model
+    re-emission of the same stub would carry (the 155/158 shape)."""
+    return ticket_payload(
+        title=f"Stub work item {ordinal}",
+        objective=f"Deliver stub {ordinal}.",
+        source_anchor=anchor,
+    )
+
+
+def test_shared_anchor_reemission_collapses_155_158_shape() -> None:
+    # The ATLAS-155/158 reproduction: four committed stubs, the model re-emits
+    # all four with IDENTICAL anchors and byte-identical content; dependency
+    # edges exist on the promotion side only. One stub must yield exactly one
+    # ticket ADD. Wrong answer (pre-fix): eight ADDs, four duplicate mints.
+    model_copies = [promoted_ticket(a, n) for n, a in enumerate(STUB_ANCHORS)]
+    promoted = [promoted_ticket(a, n) for n, a in enumerate(STUB_ANCHORS)]
+    proposal = proposal_of(
+        tickets=model_copies + promoted,
+        dependencies=[
+            dependency_payload(source="new:5", target="new:4", reason="Order."),
+        ],
+    )
+    promotion_indices = frozenset(range(4, 8))
+
+    pre_fix = reconcile(proposal, Backlog())
+    assert sum(1 for e in pre_fix.entries if e.kind == "ticket") == 8
+
+    diff = reconcile(proposal, Backlog(), promotion_indices=promotion_indices)
+    ticket_adds = [
+        e for e in diff.entries if e.kind == "ticket" and e.entry_type == "ADD"
+    ]
+    assert len(ticket_adds) == 4
+    # Promotion always wins: the survivors are the injected indices.
+    assert [e.identity for e in ticket_adds] == ["new:4", "new:5", "new:6", "new:7"]
+    # The promotion-side edge is untouched.
+    assert [e.identity for e in diff.entries if e.kind == "dependency"] == [
+        "new:5 -> new:4"
+    ]
+    assert len(diff.collapses) == 4
+
+
+def test_foreign_anchor_duplicates_not_collapsed_149_150_shape() -> None:
+    # The ATLAS-149/150 reproduction, asserted HONESTLY as the negative
+    # boundary: the model's duplicates were edgeless EXACT-TITLE copies citing
+    # FOREIGN (corpus) anchors. They never collide with a promotion anchor, so
+    # this rule deliberately does NOT collapse them — foreign-anchor
+    # re-emission remains a gate-read concern (spec §4 boundary; the operator
+    # reads the ADD list). ATLAS-151 closes the shared-anchor class only.
+    promoted = [promoted_ticket(a, n) for n, a in enumerate(STUB_ANCHORS[:2])]
+    foreign_copies = [
+        promoted_ticket("docs/a.md#alpha", 0),
+        promoted_ticket("docs/a.md#beta", 1),
+    ]
+    proposal = proposal_of(tickets=foreign_copies + promoted, dependencies=[])
+    diff = reconcile(proposal, Backlog(), promotion_indices=frozenset({2, 3}))
+    ticket_adds = [
+        e for e in diff.entries if e.kind == "ticket" and e.entry_type == "ADD"
+    ]
+    assert len(ticket_adds) == 4  # duplicates survive; the gate must catch them
+    assert diff.collapses == ()
+
+
+def test_edgeless_shared_anchor_duplicate_still_collapsed() -> None:
+    # The dedup acts at ticket identity, not edges (debt-register note: the
+    # 149/150 duplicates were invisible in the dependency section). A
+    # re-emitted duplicate carrying NO edges still collapses.
+    promoted = [promoted_ticket(STUB_ANCHORS[0], 0)]
+    proposal = proposal_of(
+        tickets=[promoted_ticket(STUB_ANCHORS[0], 0), *promoted], dependencies=[]
+    )
+    diff = reconcile(proposal, Backlog(), promotion_indices=frozenset({1}))
+    ticket_adds = [
+        e for e in diff.entries if e.kind == "ticket" and e.entry_type == "ADD"
+    ]
+    assert [e.identity for e in ticket_adds] == ["new:1"]
+    assert len(diff.collapses) == 1
+
+
+def test_collapsed_duplicate_edges_repointed_and_deduplicated() -> None:
+    # AC-5: edges the model attached to its duplicate re-point to the
+    # surviving promotion ticket and dedupe against the survivor's own edges;
+    # a duplicate<->survivor edge collapses to a self-loop and is dropped.
+    epic = backlog_epic()
+    existing = backlog_ticket(epic, key="ATLAS-1")
+    duplicate = promoted_ticket(STUB_ANCHORS[0], 0)  # new:0, the model's copy
+    genuine = ticket_payload(
+        title="Genuinely new work",
+        objective="Something else entirely.",
+        source_anchor="docs/a.md#alpha",
+        epic_ref="ATLAS-E1",
+    )  # new:1
+    promoted = [promoted_ticket(STUB_ANCHORS[0], 0)]  # new:2, the survivor
+    proposal = proposal_of(
+        epics=[echo_epic(epic)],
+        tickets=[duplicate, genuine, *promoted],
+        dependencies=[
+            # Attached to the duplicate: must re-point to new:2.
+            dependency_payload(source="new:0", target="ATLAS-1", reason="Needs."),
+            dependency_payload(source="new:1", target="new:0", reason="After."),
+            # The survivor already carries the same edge: dedupe to one ADD.
+            dependency_payload(source="new:2", target="ATLAS-1", reason="Needs."),
+            # Duplicate -> survivor becomes a self-loop after re-pointing: drop.
+            dependency_payload(source="new:0", target="new:2", reason="Twin."),
+        ],
+    )
+    diff = reconcile(
+        proposal,
+        Backlog(epics=[epic], tickets=[existing]),
+        promotion_indices=frozenset({2}),
+    )
+    edge_identities = sorted(e.identity for e in diff.entries if e.kind == "dependency")
+    assert edge_identities == ["new:1 -> new:2", "new:2 -> ATLAS-1"]
+
+
+def test_distinct_anchor_tickets_never_collapsed() -> None:
+    # Negative: model tickets citing distinct anchors are genuine new work and
+    # must never be absorbed, whatever the promotion set contains.
+    promoted = [promoted_ticket(STUB_ANCHORS[0], 0)]
+    genuine = [
+        ticket_payload(
+            title="Other work",
+            objective="Different deliverable.",
+            source_anchor="docs/a.md#alpha",
+        ),
+        ticket_payload(
+            title="More work",
+            objective="Another deliverable.",
+            source_anchor="docs/a.md#beta",
+        ),
+    ]
+    proposal = proposal_of(tickets=genuine + promoted, dependencies=[])
+    diff = reconcile(proposal, Backlog(), promotion_indices=frozenset({2}))
+    ticket_adds = [
+        e for e in diff.entries if e.kind == "ticket" and e.entry_type == "ADD"
+    ]
+    assert [e.identity for e in ticket_adds] == ["new:0", "new:1", "new:2"]
+    assert diff.collapses == ()
+
+
+def test_diff_records_one_collapse_line_per_absorbed_ticket() -> None:
+    # AC-1: one line per collapse naming the absorbed model ticket and the
+    # surviving promotion ticket, in the structured summary AND the rendered
+    # presentation at both gates (plan output and apply's confirm).
+    from atlas.planning.pipeline import format_plan_diff
+
+    model_copies = [promoted_ticket(a, n) for n, a in enumerate(STUB_ANCHORS[:2])]
+    promoted = [promoted_ticket(a, n) for n, a in enumerate(STUB_ANCHORS[:2])]
+    proposal = proposal_of(tickets=model_copies + promoted, dependencies=[])
+    diff = reconcile(proposal, Backlog(), promotion_indices=frozenset({2, 3}))
+
+    assert [note.as_dict() for note in diff.collapses] == [
+        {
+            "absorbed": "new:0",
+            "absorbed_title": "Stub work item 0",
+            "survivor": "new:2",
+            "anchor": STUB_ANCHORS[0],
+        },
+        {
+            "absorbed": "new:1",
+            "absorbed_title": "Stub work item 1",
+            "survivor": "new:3",
+            "anchor": STUB_ANCHORS[1],
+        },
+    ]
+    assert diff.as_summary()["collapses"] == [n.as_dict() for n in diff.collapses]
+
+    rendered = format_plan_diff(diff)
+    assert "COLLAPSE 2" in rendered.splitlines()[0]
+    collapse_lines = [
+        line for line in rendered.splitlines() if line.startswith("  COLLAPSE")
+    ]
+    assert len(collapse_lines) == 2
+    assert "new:0" in collapse_lines[0] and "new:2" in collapse_lines[0]
+
+    # And a collapse-free diff renders byte-identically to the old shape.
+    plain = reconcile(proposal, Backlog())
+    assert "COLLAPSE" not in format_plan_diff(plain)

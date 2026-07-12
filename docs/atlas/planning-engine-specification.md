@@ -193,8 +193,13 @@ fenced code blocks are not headings; the scan excludes them.
 `atlas plan` prints, and `PlanRun.diff_summary` stores, one block per entry:
 type (ADD / MODIFY / PROPOSE_ARCHIVE / CONFLICT), key or `new:<n>`, title,
 anchor, and for MODIFY a per-field before/after list. Summary line first:
-counts per type. The key counter lives in the `key_counters` table
-(knowledge-core.md#key-counter).
+counts per type. Promotion-dedup collapses (§4, ATLAS-151) render one
+`COLLAPSE` line each directly after the summary — naming the absorbed
+model ticket, the surviving promotion ticket, and the shared anchor — and
+add a `COLLAPSE <n>` count to the summary line only when nonzero; a
+collapse-free diff renders byte-identically to the four-type shape. The
+same lines appear in `atlas apply`'s confirmation prompt. The key counter
+lives in the `key_counters` table (knowledge-core.md#key-counter).
 
 ## 3. Proposal contract
 
@@ -232,6 +237,31 @@ Pure deterministic code. Matching passes, in order:
 
 Existing items unmatched by any pass become `PROPOSE_ARCHIVE`. Nothing is
 ever deleted.
+
+Promotion dedup (pre-pass, ATLAS-151): `reconcile` accepts the set of
+promotion-injected proposal tickets (`promotion_indices`). Identity is
+POSITIONAL — `atlas plan` records the index range `promote_inbox_stubs`
+appended to the proposal's tail; `atlas apply` reconstructs the same set
+as the trailing `len(inbox)` tickets of the stored proposal, which is
+sound because the AT-5 staleness re-check pins the apply-time inbox to
+plan time. Before the matching passes, a keyless model-emitted ticket
+whose `source_anchor` equals a promotion-injected ticket's anchor is
+collapsed into the promotion ticket: it takes no part in matching, emits
+no `ADD`, and its dependency edges are re-pointed to the surviving
+promotion ticket and deduplicated against the survivor's own edges (a
+duplicate↔survivor edge degenerates to a self-loop and is dropped).
+Deterministic promotion content always wins; one committed stub yields
+exactly one ticket `ADD` regardless of what the model re-emits. The diff
+records one collapse line per absorbed ticket (§2.4), surfaced at both
+gates. Rationale: three live reproductions (the declined 2026-07-08
+double-emission, the cancelled duplicate mints ATLAS-149/150, and
+ATLAS-155/158) matched or diverged on every candidate content feature —
+edges, anchors, titles, full content — so recognition heuristics over
+duplicate features are unstable; only the pipeline's positional knowledge
+of what it injected is reliable. Boundary: a re-emission citing a foreign
+anchor (the ATLAS-149/150 shape) never collides with a promotion anchor
+and is deliberately not collapsed — foreign-anchor re-emission remains a
+gate-read concern at the operator's confirm step.
 
 Match ambiguity: duplicate echoed keys are a `CONFLICT` naming every
 claimant. The anchor pass matches only unambiguous 1:1 (anchor, entity

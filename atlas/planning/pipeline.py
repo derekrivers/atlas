@@ -340,7 +340,17 @@ def run_plan(
     # one. Pure code, no model call. A committed stub with missing/invalid
     # front-matter is a fail-closed StubPromotionError at plan time (like
     # DirtyInputError), never a silent skip.
+    tickets_before_promotion = len(proposal.tickets)
     proposal = promote_inbox_stubs(proposal, inbox_documents, backlog, anchor_index)
+    # Promotion identity is POSITIONAL (ATLAS-151): promote_inbox_stubs appends
+    # its tickets at the tail, so the injected set is exactly this index range.
+    # Threaded into reconcile so a model re-emission of a committed stub
+    # (same source_anchor) collapses into the promotion ticket instead of
+    # minting a duplicate ADD. apply reconstructs the same set (AT-5 pins the
+    # inbox between plan and apply), so both diffs collapse identically.
+    promotion_indices = frozenset(
+        range(tickets_before_promotion, len(proposal.tickets))
+    )
 
     # Gates 2-7: a recorded failure carrying the full GateFailure list.
     failures = run_gates(
@@ -351,7 +361,12 @@ def run_plan(
 
     # Reconcile against the backlog and persist at proposed. The validated
     # proposal is stored so apply (ATLAS-27) can materialise the backlog.
-    diff = reconcile(proposal, backlog, similarity_threshold=similarity_threshold)
+    diff = reconcile(
+        proposal,
+        backlog,
+        similarity_threshold=similarity_threshold,
+        promotion_indices=promotion_indices,
+    )
     plan_run = PlanRun(
         id=uuid4(),
         status=PlanRunStatus.PROPOSED,
@@ -554,13 +569,26 @@ def _record_failed(
 
 def format_plan_diff(diff: PlanDiff) -> str:
     """The §2.4 diff presentation: a counts summary line, then one block
-    per entry (type, key/new:<n>, title, anchor; MODIFY before/after)."""
+    per entry (type, key/new:<n>, title, anchor; MODIFY before/after).
+    Promotion-dedup collapses (ATLAS-151) render one line each right after
+    the summary — they surface at BOTH gates (`atlas plan` output and
+    apply's confirm), the exact eyeball check the 149/150 mint slipped
+    past. The summary line carries a COLLAPSE count only when nonzero, so
+    the collapse-free presentation is byte-identical to before."""
     counts = diff.counts
     summary = "Plan diff: " + ", ".join(
         f"{entry_type} {counts[entry_type]}"
         for entry_type in ("ADD", "MODIFY", "PROPOSE_ARCHIVE", "CONFLICT")
     )
+    if diff.collapses:
+        summary += f", COLLAPSE {len(diff.collapses)}"
     lines = [summary]
+    for note in diff.collapses:
+        lines.append(
+            f"  {'COLLAPSE':<15} {'ticket':<10} {note.absorbed}"
+            f"  {note.absorbed_title!r} absorbed into promotion ticket "
+            f"{note.survivor} ({note.anchor})"
+        )
     for entry in diff.entries:
         anchor = f" ({entry.anchor})" if entry.anchor else ""
         lines.append(
