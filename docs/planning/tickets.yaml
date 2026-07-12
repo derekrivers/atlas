@@ -1,7 +1,7 @@
 # Render written only by `atlas apply` (ADR-0006/0007); do not hand-edit.
-# plan_run_id: 99059e71-d447-4747-af54-59e9bde16bf1
+# plan_run_id: 89d5cd7d-c738-4918-8980-af8c758072e9
 # prompt_version: stubs-only
-# ticket_key_high_water: 163
+# ticket_key_high_water: 165
 # epic_key_high_water: 11
 tickets:
 - id: 06701bee-33ed-44e6-b735-52dfd7c5edc8
@@ -7455,4 +7455,89 @@ tickets:
   created_by_id: planner
   created_at: '2026-07-12T18:22:39.288674Z'
   updated_at: '2026-07-12T18:22:39.288674Z'
+  completed_at: null
+- id: 9e97d8c3-d336-44f2-9909-56e5944686e5
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 4d034c8b-0752-4089-8ff9-2fd43f51c6f4
+  key: ATLAS-164
+  title: 'Pack embedding: the rendered context pack rides the Linear issue description'
+  objective: A ticket's Linear issue carries its rendered Atlas context pack in the description, so a dispatched agent reads its context from the board — no hand-authored prompt required.
+  context: 'The Phase 8 milestone''s unproven leg (roadmap seed 82; design ruling in symphony-integration.md: ''the rendered context pack is embedded in the Linear issue description''). The definition-push currently sends title plus a definition-fields description composed by render_definition_description (ownership.py), whose own comment defers pack embedding to this ticket. All prerequisites landed: F-7 anchor durability (ATLAS-159), pack rendering for every ticket class including stub-minted (ATLAS-162), and the batched push (ATLAS-148). Shape: at definition-push time, render the ticket''s context pack and compose it into the pushed description beneath the definition fields, delimited so pulls and humans can distinguish pack from definition; the pack section is Atlas-owned like the rest of the description (one-directional push, per the field-ownership rules). Design decisions for the plan gate, not pre-decided here: (1) the size-overflow path — Linear descriptions have practical limits; the symphony-integration doc names a fallback (docs/planning/packs/<key>.md with a link) which does not exist yet — the gate decides build-it-now versus truncation-with-marker, with the operator ruling; (2) render-failure posture at push time — a ticket whose pack fails validation should push definition-only with a typed anomaly rather than blocking the whole tick (propose, argue, gate rules); (3) staleness — packs are corpus-derived, so when a re-push fires on definition change, the pack re-renders; whether unchanged-definition-but-changed-corpus triggers a re-push is a cost/benefit call for the gate (the batched pull budget from ATLAS-148 is the constraint to respect).'
+  status: planned
+  ticket_type: feature
+  risk_level: low
+  priority: 50
+  relevant_docs:
+  - docs/planning/inbox/inbox-stub-pack-embedding.md
+  acceptance_criteria:
+  - A pushed ticket's Linear description contains the definition fields followed by a delimited rendered pack section; proven by an emulator-level fixture asserting section order, delimiter, and pack content for a corpus-anchored and a stub-minted ticket (the ATLAS-162 class).
+  - 'The pack section round-trips the pull untouched: pull-side parsing ignores it and no pack content leaks into any Atlas-owned field; proven with a pull fixture over an embedded description.'
+  - The gate-ruled size-overflow behaviour is implemented with a named test at the boundary (a pack exceeding the pinned limit exercises the ruled path, not an exception).
+  - 'The gate-ruled render-failure posture is implemented: a ticket whose pack cannot render pushes per the ruling with a typed, logged outcome; the tick completes for the remaining tickets.'
+  - 'Push request count stays within the ATLAS-148 budget shape: embedding adds rendering cost, not per-ticket Linear requests; proven by extending the request-bound test.'
+  non_goals:
+  - No Symphony-side changes, no WORKFLOW.md prompt changes, no pull-side pack consumption (agents read the description; Atlas never parses packs back).
+  - No pack format redesign; the pack renders as ATLAS-162 left it.
+  - No re-push scheduling changes beyond what decision (3) rules.
+  implementation_notes: []
+  test_requirements:
+  - Emulator/fixture-driven, ATLAS_LIVE_TESTS=0, seeds `assert 1 == 2` (B011); the size-boundary and render-failure fixtures are named; one fixture is a stub-minted ticket to pin the ATLAS-162 dependency live.
+  documentation_requirements: []
+  definition_of_done:
+  - All acceptance criteria evidenced by named tests; full gate sweep green; symphony-integration.md's pack-delivery section and pm-engine-and-linear-sync.md's push-field text updated in the same change; follow-ups routed with owners.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags: []
+  component: null
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  source_anchor: docs/planning/inbox/processed/inbox-stub-pack-embedding.md#pack-embedding
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-12T19:17:29.997658Z'
+  updated_at: '2026-07-12T19:17:29.997658Z'
+  completed_at: null
+- id: a3c878d1-aacd-4a95-a2b1-01fb415eff56
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 5bd967eb-98c0-42a6-bec3-042a34145078
+  key: ATLAS-165
+  title: 'relevant_docs spelling repair: stored active-inbox document references move to their durable processed/ paths'
+  objective: No stored ticket field references a retired active-inbox document path; pack rendering's relevant_docs retrieval finds every referenced document.
+  context: 'Routed from ATLAS-162: the ATLAS-159 repair script rewrote source_anchor only, so stub-minted tickets'' relevant_docs entries still cite docs/planning/inbox/<name>.md spellings whose files now live under processed/ — soft-skipped by the pack renderer today, degrading packs for exactly the tickets pack embedding is about to serve. Same disease as the anchor repair, same cure shape: stored-data rewrite outside planning for the frozen rows, since planning cannot modify frozen tickets (spec §4) and the affected set spans statuses. Two candidate mechanisms for the plan gate: (a) extend scripts/repair_stub_anchors.py''s fail-closed pattern to relevant_docs entries (verified old-path-retired, new-path-present, per-row printed, idempotent, named-set-scoped — the ATLAS-159 branch (a) precedent, second use); (b) if ATLAS-161''s normalization helper lands first and naturally covers read-time normalization of both spellings, a read-side fix may make the data rewrite unnecessary — the gate checks 161''s state and rules. Enumerate the affected set live at plan time (do not trust this stub''s count; the ATLAS-159 ''14'' went stale inside one day).'
+  status: planned
+  ticket_type: bug
+  risk_level: low
+  priority: 50
+  relevant_docs:
+  - docs/planning/inbox/inbox-stub-relevant-docs-repair.md
+  acceptance_criteria:
+  - Post-fix, a scan of every stored ticket's relevant_docs finds zero entries whose path exists only under processed/; the scan is a named test over a live-shaped fixture.
+  - Pack rendering for a previously-degraded fixture ticket includes the formerly-skipped document; seeded regression proves the pre-fix skip.
+  - 'If mechanism (a) is ruled: the script refuses on any row outside the enumerated set, is idempotent, prints each rewrite, and bumps updated_at only on rewritten rows.'
+  - 'Negative: a relevant_docs entry whose document is genuinely absent from both locations still soft-skips (or fails per the renderer''s existing contract) — the repair fixes spellings, not existence.'
+  non_goals:
+  - No renderer contract changes beyond what mechanism (b) would entail if ruled; no source_anchor changes (done); no ATLAS-161 collapse work.
+  implementation_notes: []
+  test_requirements:
+  - Fixture-driven, ATLAS_LIVE_TESTS=0, seeds `assert 1 == 2` (B011).
+  documentation_requirements: []
+  definition_of_done:
+  - All acceptance criteria evidenced by named tests; full gate sweep green; the ATLAS-162 follow-up routing closed with a pointer to this ticket; debt-register entry if mechanism (a) is ruled (second use of the repair exception, so noted).
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags: []
+  component: null
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  source_anchor: docs/planning/inbox/processed/inbox-stub-relevant-docs-repair.md#relevantdocs-spelling-repair
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-12T19:17:29.997658Z'
+  updated_at: '2026-07-12T19:17:29.997658Z'
   completed_at: null
