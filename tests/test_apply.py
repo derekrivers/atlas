@@ -22,6 +22,7 @@ from test_plan_pipeline import (
     INBOX_STUB,
     NOW,
     PLAN_MD,
+    PROCESSED_INBOX_PATH,
     PRODUCT_MD,
     _epic,
     _ticket,
@@ -703,10 +704,13 @@ def test_apply_collapses_stub_reemission_and_mints_once(tmp_path: Path) -> None:
     # the ATLAS-149/150 and 155/158 duplicate-mint shape.
     repo = fixture_repo_with_inbox(tmp_path)
     database = fresh_db(tmp_path)
+    # ATLAS-159: the promotion ticket anchors at the durable processed/ path,
+    # so the shared-anchor re-emission cites that spelling (the collapse
+    # matches on anchor equality, unchanged).
     reemission = _ticket(
         title="Follow-up from ATLAS-9",
         objective="Investigate the retry seam.",
-        source_anchor=f"{INBOX_PATH}#follow-up-from-atlas-9",
+        source_anchor=f"{PROCESSED_INBOX_PATH}#follow-up-from-atlas-9",
     )
     run_plan(
         repo_root=repo,

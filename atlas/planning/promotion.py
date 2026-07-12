@@ -59,6 +59,7 @@ from atlas.core.anchors import (
 )
 from atlas.core.enums import RiskLevel
 from atlas.core.models.dependency import DependencyType
+from atlas.planning.ingestion import processed_path_for
 from atlas.planning.proposal import (
     Proposal,
     ProposalDependency,
@@ -139,18 +140,24 @@ def _parse_front_matter(document: SourceDocument) -> dict[str, object]:
 
 
 def _stub_anchor(document: SourceDocument, anchor_index: AnchorIndex) -> str:
-    """The stub's own first heading anchor — its default ``source_anchor`` (D-2).
+    """The stub's own first heading at its durable ``processed/`` path — its
+    default ``source_anchor`` (D-2, ATLAS-159).
 
-    The inbox stub is in the indexed input set (merged as a separate source), so
-    its headings are valid anchors; gate 4 resolves the same string.
+    Apply retires the stub to ``inbox/processed/`` the moment its plan lands,
+    so an anchor minted against the active-inbox path dangles from its own
+    apply onward. The durable path is known at promotion time (retirement is a
+    pure move; slugs are byte-identical at both addresses) and the pipeline
+    indexes each active stub under it too, so gate 4 resolves this anchor in
+    the minting run and in every run after retirement.
     """
+    durable = processed_path_for(document.path)
     try:
-        slugs = anchor_index.slugs_for(document.path)
+        slugs = anchor_index.slugs_for(durable)
     except UnknownDocumentError as error:  # pragma: no cover - defensive
         raise StubPromotionError(
             document.path,
             "source_anchor",
-            f"stub is not in the indexed input set: {error}",
+            f"stub's durable path is not in the indexed input set: {error}",
         ) from error
     if not slugs:
         raise StubPromotionError(
@@ -158,7 +165,7 @@ def _stub_anchor(document: SourceDocument, anchor_index: AnchorIndex) -> str:
             "source_anchor",
             "stub has no heading to anchor to; add a heading or declare source_anchor",
         )
-    return f"{document.path}#{slugs[0]}"
+    return f"{durable}#{slugs[0]}"
 
 
 def _build_ticket(

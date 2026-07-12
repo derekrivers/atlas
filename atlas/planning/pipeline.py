@@ -52,6 +52,8 @@ from atlas.planning.gates import GateFailure, run_gates
 from atlas.planning.ingestion import (
     collect_inbox_documents,
     collect_input_documents,
+    collect_processed_documents,
+    durable_alias_documents,
 )
 from atlas.planning.progress import ProgressCallback
 from atlas.planning.promotion import promote_inbox_stubs
@@ -282,7 +284,21 @@ def run_plan(
     # inbox is a no-op; an uncommitted stub raises DirtyInputError (the gate).
     inbox_documents = collect_inbox_documents(repo_root, inbox_dir)
     all_documents = documents + inbox_documents
-    anchor_index = AnchorIndex.build(all_documents)
+    # Retired stubs and durable aliases (ATLAS-159): processed/ headings join
+    # the anchor index (never the prompt payload) so a stub-minted ticket's
+    # durable anchor resolves after retirement, and each ACTIVE stub is
+    # indexed at its future processed/ path too so the anchor promotion mints
+    # resolves in this very run. Real files are pinned; aliases are not (the
+    # alias is the already-pinned inbox blob at its future address).
+    processed_documents = collect_processed_documents(repo_root, inbox_dir)
+    anchor_index = AnchorIndex.build(
+        all_documents
+        + processed_documents
+        + durable_alias_documents(inbox_documents, processed_documents)
+    )
+    input_doc_shas = {
+        doc.path: doc.sha for doc in all_documents + processed_documents
+    }
 
     # Current backlog from operational state (the database; ADR-0006).
     epics = EpicRepo(database).list()
@@ -365,7 +381,7 @@ def run_plan(
     raw_output_hash = _sha256(generated.raw_output)
     provenance: dict[str, Any] = {
         "product_id": product.id,
-        "input_doc_shas": anchor_index.input_doc_shas,
+        "input_doc_shas": input_doc_shas,
         "model_provider": identity.provider,
         "model_name": identity.model,
         "model_parameters": dict(identity.parameters),
@@ -562,10 +578,10 @@ def run_stubs_only_plan(
     would — that is how a ``depends_on`` entry naming a nonexistent ticket
     surfaces (gate 3, typed).
 
-    ``input_doc_shas`` still pins corpus + inbox, so apply's AT-5 re-check
-    holds identically. An empty inbox is a typed clean-exit precondition
-    (:class:`EmptyInboxError`) — nothing persisted, never an empty-diff
-    PlanRun.
+    ``input_doc_shas`` still pins corpus + inbox + processed (ATLAS-159), so
+    apply's AT-5 re-check holds identically. An empty inbox is a typed
+    clean-exit precondition (:class:`EmptyInboxError`) — nothing persisted,
+    never an empty-diff PlanRun.
     """
     # Pre-flight: product attribution (clean exit, no PlanRun).
     product = ProductRepo(database).get_by_key(PRODUCT_KEY)
@@ -591,7 +607,20 @@ def run_stubs_only_plan(
             "stubs: nothing to mint. Commit inbox stubs first, or run a "
             "generative `atlas plan` (stubs-only plans promoted stubs only)"
         )
-    anchor_index = AnchorIndex.build(documents + inbox_documents)
+    # Processed stubs + durable aliases join the index exactly as on the
+    # generative path (ATLAS-159): the verbatim backlog echo re-states every
+    # stub-minted ticket's durable anchor, and gate 4 must resolve it here too.
+    processed_documents = collect_processed_documents(repo_root, inbox_dir)
+    anchor_index = AnchorIndex.build(
+        documents
+        + inbox_documents
+        + processed_documents
+        + durable_alias_documents(inbox_documents, processed_documents)
+    )
+    input_doc_shas = {
+        doc.path: doc.sha
+        for doc in documents + inbox_documents + processed_documents
+    }
 
     # Current backlog from operational state (the database; ADR-0006).
     epics = EpicRepo(database).list()
@@ -627,7 +656,7 @@ def run_stubs_only_plan(
 
     provenance: dict[str, Any] = {
         "product_id": product.id,
-        "input_doc_shas": anchor_index.input_doc_shas,
+        "input_doc_shas": input_doc_shas,
         "model_provider": STUBS_ONLY_PROVIDER,
         "model_name": STUBS_ONLY_MODEL,
         "model_parameters": {},
