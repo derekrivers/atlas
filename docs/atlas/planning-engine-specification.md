@@ -84,10 +84,22 @@ The committed follow-up inbox is read as a *separate* input source
 alongside the corpus: its top-level stubs are merged into the planner
 input — anchor index, document payload, and recorded `input_doc_shas` —
 for visibility and provenance, but the inbox is not part of the §2.1
-corpus globs and the `processed/` subdir is excluded. It is committed-only
-on the same fail-closed contract (an uncommitted stub is a typed dirty
-error), and an empty inbox is a no-op. The producer/consumer mechanism is
-owned by pm-engine-and-linear-sync.md "Follow-up ingestion".
+corpus globs and the `processed/` subdir is excluded from the document
+payload (retired stubs are consumed follow-ups the planner never re-reads).
+The `processed/` files DO feed anchor resolution and provenance (ATLAS-159):
+their headings join the anchor index so a stub-minted ticket's durable
+anchor keeps resolving at gate 4 after retirement, and their SHAs are
+pinned in `input_doc_shas` so gate 4's "resolves at the recorded SHA" and
+the AT-5 staleness re-check cover them. Each ACTIVE stub is additionally
+indexed under its future `processed/` path (the same blob at its durable
+address — retirement is a pure move), so an anchor minted against that
+path resolves in the very run that mints it; the alias is index-only,
+never pinned (the blob is already pinned at its real path). An active stub
+sharing its basename with a retired one is a typed fail-closed error. The
+inbox is committed-only on the same fail-closed contract (an uncommitted
+stub is a typed dirty error), and an empty inbox is a no-op. The
+producer/consumer mechanism is owned by pm-engine-and-linear-sync.md
+"Follow-up ingestion".
 
 **Deterministic promotion.** Beyond provenance, each committed inbox stub
 is promoted to exactly one proposed `ADD` ticket by pure code — no model
@@ -103,8 +115,11 @@ of the file. The block carries the semantic fields — `title`, `objective`,
 `context`, `ticket_type`, `epic_ref`, and the non-empty `acceptance_criteria`
 (≤ 7), `non_goals`, `test_requirements`, `definition_of_done` lists. The
 promoter supplies only mechanical defaults: `source_anchor` defaults to the
-stub's own heading anchor (the stub is in the indexed input set, so this
-resolves at gate 4), `relevant_docs` to `[<stub path>]`, and `tags` /
+stub's own first heading at its durable `inbox/processed/` path — the
+address apply's retirement gives the file, known at promotion time — so
+the anchor resolves at gate 4 from birth (the active stub is indexed at
+both addresses, ATLAS-159) and never dangles when its own apply retires
+the stub, `relevant_docs` to `[<stub path>]`, and `tags` /
 `component` / `implementation_notes` / `documentation_requirements` to their
 empty forms. `priority` and `risk_level` are taken from the front-matter if
 present, else the single pinned constants `priority = 50` and
@@ -163,8 +178,8 @@ precondition failure). Provenance records the mode: `generation_stages` is
 the empty list (a generative run always stores ≥ 1 stage record), the model
 and prompt columns carry pinned `none` / `stubs-only` sentinels, and
 `raw_output_hash` is over the constructed proposal's canonical JSON;
-`input_doc_shas` still pins corpus + inbox, so the AT-5 staleness re-check
-holds identically. A gate failure (e.g. a `depends_on` entry naming a
+`input_doc_shas` still pins corpus + inbox + `processed/` (ATLAS-159), so
+the AT-5 staleness re-check holds identically. A gate failure (e.g. a `depends_on` entry naming a
 nonexistent ticket) records a `failed` run exactly as a generative gate
 failure would (§6).
 
@@ -194,8 +209,9 @@ planning renders (ADR-0006); the doc linter flags out-of-band edits.
 On both the applied and the rejected outcome — both mean "considered" —
 apply retires the inbox stubs that fed the plan to
 `docs/planning/inbox/processed/`, an idempotent move (the staleness
-re-check in step 2 folds the inbox into the fresh SHA set, so an inbox
-change between plan and apply reads as stale). The mechanism is owned by
+re-check in step 2 folds the inbox AND the `processed/` subdir into the
+fresh SHA set (ATLAS-159), so a stub change — active or retired — between
+plan and apply reads as stale). The mechanism is owned by
 pm-engine-and-linear-sync.md "Follow-up ingestion".
 
 Atomicity. The DB commit (counter increment + backlog rows + the

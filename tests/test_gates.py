@@ -202,3 +202,45 @@ def test_aggregation_reports_every_failure() -> None:
         "GATE6_UNKNOWN_KEY",
     ]
     assert [failure.gate for failure in failures] == [4, 5, 6]
+
+
+# --- ATLAS-159 AC-4: the gate keeps its teeth ---------------------------------
+
+
+def test_gate4_still_fails_genuinely_dangling_anchor() -> None:
+    # A genuinely dangling anchor — its file absent from BOTH the active
+    # inbox and processed/ — still fails gate 4 after the durable-anchor fix.
+    # The index below contains an active stub AND a retired stub; the ticket
+    # cites a basename that is in neither place.
+    from atlas.core.anchors import AnchorIndex, SourceDocument
+
+    stub_body = "# A stub heading\n\nBody.\n"
+    index = AnchorIndex.build(
+        [
+            SourceDocument(
+                path="docs/planning/inbox/a-stub.md", sha="a1", content=stub_body
+            ),
+            SourceDocument(
+                path="docs/planning/inbox/processed/retired.md",
+                sha="b2",
+                content=stub_body,
+            ),
+        ]
+    )
+    payload = proposal_payload(
+        tickets=[
+            ticket_payload(
+                source_anchor="docs/planning/inbox/processed/never-existed.md#a-stub-heading"
+            )
+        ],
+        epics=[
+            epic_payload(
+                source_anchor="docs/planning/inbox/processed/retired.md#a-stub-heading"
+            )
+        ],
+    )
+    proposal = parse_proposal(json.dumps(payload))
+    failures = run_gates(proposal, current_backlog_keys=set(), anchor_index=index)
+    assert codes(failures) == ["GATE4_UNRESOLVED_ANCHOR"]
+    assert failures[0].gate == 4
+    assert "never-existed.md" in failures[0].reason

@@ -22,6 +22,7 @@ from test_plan_pipeline import (
     INBOX_STUB,
     NOW,
     PLAN_MD,
+    PROCESSED_INBOX_PATH,
     PRODUCT_MD,
     _epic,
     _ticket,
@@ -703,10 +704,13 @@ def test_apply_collapses_stub_reemission_and_mints_once(tmp_path: Path) -> None:
     # the ATLAS-149/150 and 155/158 duplicate-mint shape.
     repo = fixture_repo_with_inbox(tmp_path)
     database = fresh_db(tmp_path)
+    # ATLAS-159: the promotion ticket anchors at the durable processed/ path,
+    # so the shared-anchor re-emission cites that spelling (the collapse
+    # matches on anchor equality, unchanged).
     reemission = _ticket(
         title="Follow-up from ATLAS-9",
         objective="Investigate the retry seam.",
-        source_anchor=f"{INBOX_PATH}#follow-up-from-atlas-9",
+        source_anchor=f"{PROCESSED_INBOX_PATH}#follow-up-from-atlas-9",
     )
     run_plan(
         repo_root=repo,
@@ -1687,3 +1691,30 @@ def test_rejected_source_edge_does_not_block_add_only_apply(tmp_path: Path) -> N
     edges = TicketDependencyRepo(database).list()
     assert len(edges) == 1
     assert edges[0].source_ticket_id == rejected_source.id
+
+
+# --- ATLAS-159: AT-5 pins the processed/ set ----------------------------------
+
+
+def test_at5_reads_processed_change_as_stale(tmp_path: Path) -> None:
+    # input_doc_shas now pins the processed/ subdir alongside corpus + inbox:
+    # a retired stub landing (or changing) between plan and apply reads as
+    # stale and refuses — gate 4's "resolves at the recorded SHA" would
+    # otherwise be validated against a set apply no longer sees.
+    repo = fixture_repo_with_inbox(tmp_path)
+    database = fresh_db(tmp_path)
+    run_plan(
+        repo_root=repo,
+        database=database,
+        client=FakePlannerClient(proposal_json()),
+        identity=FAKE_IDENTITY,
+        now=NOW,
+    )
+    retired = repo / "docs" / "planning" / "inbox" / "processed" / "late.md"
+    retired.parent.mkdir(parents=True, exist_ok=True)
+    retired.write_text("# Late retirement\n\nBody.\n", encoding="utf-8")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "a processed stub landed after planning")
+
+    with pytest.raises(StalePlanError, match="AT-5"):
+        apply(repo, database, planning_dir(tmp_path), confirmed)

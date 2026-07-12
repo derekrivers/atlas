@@ -22,6 +22,7 @@ import inspect
 import json
 from collections.abc import Sequence
 from pathlib import Path
+from typing import Any
 from uuid import uuid4
 
 import pytest
@@ -39,15 +40,24 @@ from test_plan_pipeline import (
     PRODUCT_MD,
     fixture_repo,
     fresh_db,
+    git,
     make_repo,
 )
 
 from atlas.cli import EXIT_OK, EXIT_PRECONDITION, main
+from atlas.core.anchors import AnchorIndex
 from atlas.core.enums import ActorType
 from atlas.core.models import Epic, PlanRunStatus, Ticket, TicketDependency
 from atlas.core.models.dependency import DependencyType
 from atlas.planning.apply import run_apply
+from atlas.planning.ingestion import (
+    InboxCollisionError,
+    collect_inbox_documents,
+    collect_input_documents,
+    collect_processed_documents,
+)
 from atlas.planning.pipeline import (
+    DEFAULT_INBOX_DIR,
     EmptyInboxError,
     PlanResult,
     StubEpicRefError,
@@ -447,3 +457,312 @@ def test_apply_consumes_a_stubs_only_plan_run_unchanged(tmp_path: Path) -> None:
         name = Path(path).name
         assert not (inbox / name).exists()
         assert (inbox / "processed" / name).exists()
+
+
+# --- ATLAS-159: durable stub anchors -----------------------------------------
+#
+# The sixteen-ticket live shape (named fixture): every live ticket whose
+# source_anchor was minted against an active-inbox path that its own apply
+# retired to processed/ — ATLAS-109/110/147-158 from the rendered ticket plus
+# ATLAS-159/160, retired by the apply that minted them (PR #171; ratified
+# premise delta). Keys, statuses, stub basenames, and heading slugs mirror the
+# live store; sixteen tickets share ten stub files, exactly as live.
+
+LIVE_SHAPE = (
+    (
+        "ATLAS-109",
+        "rejected",
+        "smoke-b-fixture.md",
+        "smoke-b-fixture-add-a-delivery-loop-smoke-marker-to-the-readme",
+    ),
+    (
+        "ATLAS-110",
+        "done",
+        "smoke-b-fixture-v2.md",
+        "smoke-b-fixture-v2-document-the-delivery-loop-under-docs",
+    ),
+    (
+        "ATLAS-147",
+        "needs_human_decision",
+        "inbox-stub-op8-linear-client-hardening.md",
+        "linear-client-hardening-op-8",
+    ),
+    (
+        "ATLAS-148",
+        "needs_human_decision",
+        "inbox-stub-op9-sync-request-budget.md",
+        "sync-request-budget-op-9",
+    ),
+    (
+        "ATLAS-149",
+        "rejected",
+        "inbox-stub-op8-linear-client-hardening.md",
+        "linear-client-hardening-op-8",
+    ),
+    (
+        "ATLAS-150",
+        "rejected",
+        "inbox-stub-op9-sync-request-budget.md",
+        "sync-request-budget-op-9",
+    ),
+    (
+        "ATLAS-151",
+        "needs_human_decision",
+        "inbox-stub-f4-promotion-dedup.md",
+        "promotion-dedup-f-4",
+    ),
+    (
+        "ATLAS-152",
+        "needs_human_decision",
+        "inbox-stub-retire-on-reject-scope.md",
+        "retire-on-reject-scope",
+    ),
+    (
+        "ATLAS-153",
+        "needs_human_decision",
+        "inbox-stub-stubs-only-plan-mode.md",
+        "stubs-only-plan-mode",
+    ),
+    (
+        "ATLAS-154",
+        "needs_human_decision",
+        "inbox-stub-accepted-types-spelling.md",
+        "accepted-types-spelling",
+    ),
+    (
+        "ATLAS-155",
+        "rejected",
+        "inbox-stub-accepted-types-spelling.md",
+        "accepted-types-spelling",
+    ),
+    (
+        "ATLAS-156",
+        "rejected",
+        "inbox-stub-f4-promotion-dedup.md",
+        "promotion-dedup-f-4",
+    ),
+    (
+        "ATLAS-157",
+        "rejected",
+        "inbox-stub-retire-on-reject-scope.md",
+        "retire-on-reject-scope",
+    ),
+    (
+        "ATLAS-158",
+        "rejected",
+        "inbox-stub-stubs-only-plan-mode.md",
+        "stubs-only-plan-mode",
+    ),
+    (
+        "ATLAS-159",
+        "planned",
+        "inbox-stub-durable-stub-anchors.md",
+        "durable-stub-anchors",
+    ),
+    (
+        "ATLAS-160",
+        "planned",
+        "inbox-stub-meta-label-discipline.md",
+        "meta-label-discipline",
+    ),
+)
+
+LIVE_INBOX = "docs/planning/inbox"
+LIVE_TRIGGER_STUB = f"{LIVE_INBOX}/inbox-stub-trigger.md"
+
+
+def _retired_stub_content(slug: str) -> str:
+    # The first heading slugifies back to the live slug (§2.3: hyphens from
+    # spaces), so the fixture anchors byte-match the live store's.
+    return f"# {slug.replace('-', ' ')}\n\nRetired stub body.\n"
+
+
+def live_shape_repo(
+    tmp_path: Path,
+    *,
+    with_trigger_stub: bool = True,
+    omit_processed: str | None = None,
+) -> Path:
+    files = {
+        "PRODUCT.md": PRODUCT_MD,
+        "docs/atlas/plan.md": PLAN_MD,
+    }
+    for _key, _status, basename, slug in LIVE_SHAPE:
+        if basename == omit_processed:
+            continue
+        files[f"{LIVE_INBOX}/processed/{basename}"] = _retired_stub_content(slug)
+    if with_trigger_stub:
+        files[LIVE_TRIGGER_STUB] = _stub("Trigger stub")
+    return make_repo(tmp_path, files)
+
+
+def live_shape_db(tmp_path: Path) -> Database:
+    database = fresh_db(tmp_path)
+    product = ProductRepo(database).get_by_key("ATLAS")
+    assert product is not None
+    epic = Epic(**_epic_model_kwargs(product.id, key=JULY_EPIC_KEY))
+    EpicRepo(database).add(epic)
+    for key, status, basename, slug in LIVE_SHAPE:
+        TicketRepo(database).add(
+            Ticket(
+                **_ticket_model_kwargs(product.id, epic.id, key=key)
+                | {
+                    "title": f"Existing work {key}",
+                    "status": status,
+                    "source_anchor": f"{LIVE_INBOX}/{basename}#{slug}",
+                }
+            )
+        )
+    return database
+
+
+def live_shape_setup(tmp_path: Path, **repo_kwargs: Any) -> tuple[Path, Database]:
+    return live_shape_repo(tmp_path, **repo_kwargs), live_shape_db(tmp_path)
+
+
+def test_promotion_then_retirement_round_trip_anchor_resolves(tmp_path: Path) -> None:
+    # AC-1: REAL promotion (run_stubs_only_plan), REAL retirement (run_apply's
+    # own _retire_inbox_stubs on the applied outcome), no mocks of either.
+    # After the operator commits the retirement move, a fresh HEAD ingestion —
+    # the exact index a later run's gate 4 resolves against — still resolves
+    # every minted ticket's anchor, at its durable processed/ path.
+    repo, database = july_setup(tmp_path)
+    _seed_counter(database, tickets=45, epics=1)
+    run_stubs(repo, database)
+    result = run_apply(
+        repo_root=repo,
+        database=database,
+        now=APPLY_NOW,
+        confirm=confirmed,
+        planning_dir=tmp_path / "planning",
+    )
+    assert result.outcome == "applied"
+    # The retirement really moved the stubs (the round trip's second half).
+    for path in JULY_STUBS:
+        assert not (repo / path).exists()
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "land the retirement move")
+
+    fresh_index = AnchorIndex.build(
+        collect_input_documents(repo)
+        + collect_inbox_documents(repo, DEFAULT_INBOX_DIR)
+        + collect_processed_documents(repo, DEFAULT_INBOX_DIR)
+    )
+    minted = [
+        ticket
+        for ticket in TicketRepo(database).list()
+        if ticket.key not in JULY_BACKLOG_KEYS
+    ]
+    assert len(minted) == 4
+    for ticket in minted:
+        resolved = fresh_index.resolve(ticket.source_anchor)
+        assert resolved.path.startswith("docs/planning/inbox/processed/")
+
+
+def test_retired_stub_echo_passes_gate4_after_fix(tmp_path: Path) -> None:
+    # AC-3, post-fix half: after the round trip above, a SECOND stubs-only run
+    # echoes the minted tickets verbatim — their durable anchors resolve at
+    # gate 4 and the run is PROPOSED with exactly the new stub's ADD. (Pre-fix
+    # this exact scenario failed gate 4 on the retired inbox path: the pre-fix
+    # half is pinned by test_live_shape_dangling_echo_fails_gate4_pre_repair.)
+    repo, database = july_setup(tmp_path)
+    _seed_counter(database, tickets=45, epics=1)
+    run_stubs(repo, database)
+    run_apply(
+        repo_root=repo,
+        database=database,
+        now=APPLY_NOW,
+        confirm=confirmed,
+        planning_dir=tmp_path / "planning",
+    )
+    (repo / LIVE_TRIGGER_STUB).write_text(_stub("Second batch"), encoding="utf-8")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "land the retirement move and a new stub")
+
+    result = run_stubs(repo, database)
+
+    assert result.status is PlanRunStatus.PROPOSED
+    assert result.diff is not None
+    ticket_entries = [e for e in result.diff.entries if e.kind == "ticket"]
+    assert [entry.entry_type for entry in ticket_entries] == [ADD]
+    assert result.failure_reason is None
+
+
+def test_live_shape_dangling_echo_fails_gate4_pre_repair(tmp_path: Path) -> None:
+    # AC-3, pre-fix half (the seeded regression's red state, pinned): the
+    # sixteen-ticket live shape with its pre-repair active-inbox anchors fails
+    # gate 4 as a typed recorded failure — one GATE4_UNRESOLVED_ANCHOR per
+    # dangling ticket, every old anchor named. This is exactly the live
+    # failure that blocks the ATLAS-153 door until the repair runs.
+    repo, database = live_shape_setup(tmp_path)
+    result = run_stubs(repo, database)
+
+    assert result.status is PlanRunStatus.FAILED
+    assert result.failure_reason is not None
+    payload = json.loads(result.failure_reason)
+    gate4 = [f for f in payload["failures"] if f["code"] == "GATE4_UNRESOLVED_ANCHOR"]
+    assert len(gate4) == len(LIVE_SHAPE)
+    reasons = " ".join(f["reason"] for f in gate4)
+    for _key, _status, basename, slug in LIVE_SHAPE:
+        assert f"{LIVE_INBOX}/{basename}#{slug}" in reasons
+    stored = PlanRunRepo(database).list()
+    assert len(stored) == 1
+    assert stored[0].status is PlanRunStatus.FAILED
+
+
+def test_live_shape_passes_gate4_post_repair(tmp_path: Path) -> None:
+    # AC-2: the ruled branch (a) repair, applied to the live shape, rewrites
+    # all sixteen named anchors to their durable processed/ spelling; the same
+    # echo then passes gate 4 and the run is PROPOSED — the ATLAS-153 door
+    # opens. The repair runs the REAL script functions (plan + apply), each
+    # ticket named in its rewrite.
+    import importlib
+
+    repair = importlib.import_module("scripts.repair_stub_anchors")
+
+    repo, database = live_shape_setup(tmp_path)
+    rewrites, already = repair.plan_repair(database, repo)
+    assert already == []
+    assert [rewrite.key for rewrite in rewrites] == list(repair.REPAIR_KEYS)
+    assert len(rewrites) == len(LIVE_SHAPE)
+    repair.apply_repair(database, rewrites, now=APPLY_NOW)
+
+    result = run_stubs(repo, database)
+
+    assert result.status is PlanRunStatus.PROPOSED
+    assert result.diff is not None
+    ticket_entries = [e for e in result.diff.entries if e.kind == "ticket"]
+    assert [entry.entry_type for entry in ticket_entries] == [ADD]  # the trigger
+    counts = result.diff.counts
+    assert counts[MODIFY] == 0
+    assert counts[PROPOSE_ARCHIVE] == 0
+    assert counts[CONFLICT] == 0
+
+
+def test_empty_inbox_with_processed_stubs_still_clean_precondition(
+    tmp_path: Path,
+) -> None:
+    # The DoD live-proof shape: the post-merge live probe is `atlas plan
+    # --stubs-only` against an EMPTY active inbox with a populated processed/
+    # subdir — exactly this fixture. It must fail ONLY on the empty-inbox
+    # precondition (typed, clean exit, no PlanRun), never on gate 4.
+    repo = live_shape_repo(tmp_path, with_trigger_stub=False)
+    database = live_shape_db(tmp_path)
+    with pytest.raises(EmptyInboxError, match="docs/planning/inbox"):
+        run_stubs(repo, database)
+    assert PlanRunRepo(database).list() == []
+
+
+def test_inbox_processed_basename_collision_fails_closed(tmp_path: Path) -> None:
+    # Ratified assumption 2: the same basename present in BOTH the active
+    # inbox and processed/ is a typed fail-closed error at plan time — the
+    # durable alias would collide with the real retired document, and
+    # retirement's target-exists skip would re-read the stub forever.
+    colliding = dict(JULY_STUBS)
+    colliding["docs/planning/inbox/processed/inbox-stub-f4-promotion-dedup.md"] = (
+        _retired_stub_content("promotion-dedup-f-4")
+    )
+    repo, database = july_setup(tmp_path, colliding)
+    with pytest.raises(InboxCollisionError, match="inbox-stub-f4-promotion-dedup"):
+        run_stubs(repo, database)
+    assert PlanRunRepo(database).list() == []

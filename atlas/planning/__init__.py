@@ -13,8 +13,12 @@ from atlas.core.anchors import (
 from atlas.planning.gates import GateFailure, run_gates
 from atlas.planning.ingestion import (
     DirtyInputError,
+    InboxCollisionError,
     collect_inbox_documents,
     collect_input_documents,
+    collect_processed_documents,
+    durable_alias_documents,
+    processed_path_for,
 )
 from atlas.planning.proposal import (
     Proposal,
@@ -60,6 +64,7 @@ __all__ = [
     "DirtyInputError",
     "FrontMatterError",
     "GateFailure",
+    "InboxCollisionError",
     "IngestionError",
     "MalformedAnchorError",
     "MissingVariableError",
@@ -83,9 +88,12 @@ __all__ = [
     "UnknownTemplateVersionError",
     "collect_inbox_documents",
     "collect_input_documents",
+    "collect_processed_documents",
     "current_release",
+    "durable_alias_documents",
     "extract_json_object",
     "parse_proposal",
+    "processed_path_for",
     "reconcile",
     "render_planner_prompt",
     "run_gates",

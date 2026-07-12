@@ -29,6 +29,10 @@ _ROOT_DOCS = ("PRODUCT.md", "ARCHITECTURE.md", "ROADMAP.md", "WORKFLOW.md")
 _GLOBS = ("docs/decisions/*.md", "docs/atlas/*.md", "docs/domain/*.md")
 _INPUT_PATTERNS = _ROOT_DOCS + _GLOBS
 
+# The retired-stub subdir under the inbox (ATLAS-122 lifecycle). Apply's
+# retirement move targets it; ATLAS-159 anchors promotion to it from birth.
+PROCESSED_SUBDIR = "processed"
+
 _STATUS_HEADING_RE = re.compile(r"^##\s+Status\s*$")
 
 
@@ -74,6 +78,66 @@ def _matches_inbox(path: str, inbox_dir: str) -> bool:
     """
     candidate = PurePosixPath(path)
     return candidate.suffix == ".md" and candidate.parent == PurePosixPath(inbox_dir)
+
+
+def _matches_processed(path: str, inbox_dir: str) -> bool:
+    """A retired inbox stub (ATLAS-159): ``<inbox_dir>/processed/<name>.md``."""
+    candidate = PurePosixPath(path)
+    return (
+        candidate.suffix == ".md"
+        and candidate.parent == PurePosixPath(inbox_dir) / PROCESSED_SUBDIR
+    )
+
+
+def processed_path_for(path: str) -> str:
+    """The durable ``processed/`` home of an active inbox stub path (ATLAS-159).
+
+    Retirement is a pure move (``atlas apply``, §2.2), so the file's content —
+    and therefore its heading slugs — is byte-identical at both addresses; the
+    durable path is known at promotion time by construction.
+    """
+    candidate = PurePosixPath(path)
+    return str(candidate.parent / PROCESSED_SUBDIR / candidate.name)
+
+
+class InboxCollisionError(IngestionError):
+    """An active inbox stub shares its basename with a retired ``processed/``
+    file (ATLAS-159). Fail-closed: the durable-anchor alias would collide with
+    the real retired document, and retirement's target-exists skip would leave
+    the active stub re-read by every plan — an operator-repair state, never a
+    silent pick."""
+
+    def __init__(self, stub_path: str, processed_path: str) -> None:
+        super().__init__(
+            f"active inbox stub {stub_path!r} collides with retired stub "
+            f"{processed_path!r}; rename or remove one before planning"
+        )
+        self.stub_path = stub_path
+        self.processed_path = processed_path
+
+
+def durable_alias_documents(
+    inbox_documents: list[SourceDocument],
+    processed_documents: list[SourceDocument],
+) -> list[SourceDocument]:
+    """Each active inbox stub re-keyed at its durable ``processed/`` path
+    (ATLAS-159): the same blob (same SHA, same content, same heading slugs) at
+    the address apply's retirement will give it, so a promotion anchor minted
+    against the durable path resolves at gate 4 in the run that mints it.
+    Aliases feed the anchor index only — never ``input_doc_shas`` (the blob is
+    already pinned at its real path). A basename collision with a real retired
+    stub is a typed :class:`InboxCollisionError`, fail-closed.
+    """
+    processed_paths = {document.path for document in processed_documents}
+    aliases = []
+    for document in inbox_documents:
+        alias_path = processed_path_for(document.path)
+        if alias_path in processed_paths:
+            raise InboxCollisionError(document.path, alias_path)
+        aliases.append(
+            SourceDocument(path=alias_path, sha=document.sha, content=document.content)
+        )
+    return aliases
 
 
 def _assert_committed_state(
@@ -158,6 +222,33 @@ def collect_inbox_documents(repo_root: Path, inbox_dir: Path) -> list[SourceDocu
     _assert_committed_state(repo_root, lambda path: _matches_inbox(path, inbox))
     tracked = _git(repo_root, "ls-tree", "-r", "--name-only", "HEAD").splitlines()
     paths = sorted(path for path in tracked if _matches_inbox(path, inbox))
+
+    documents = []
+    for path in paths:
+        sha = _git(repo_root, "rev-parse", f"HEAD:{path}").strip()
+        content = _git(repo_root, "show", f"HEAD:{path}")
+        documents.append(SourceDocument(path=path, sha=sha, content=content))
+    return documents
+
+
+def collect_processed_documents(
+    repo_root: Path, inbox_dir: Path
+) -> list[SourceDocument]:
+    """The committed retired stubs from HEAD (ATLAS-159):
+    ``<inbox_dir>/processed/*.md``.
+
+    Anchor-resolution and provenance input ONLY — retired stubs are consumed
+    follow-ups, so they never join the planner's document payload; they are
+    read so a stub-minted ticket's durable ``processed/`` anchor keeps
+    resolving at gate 4 after retirement, and pinned into ``input_doc_shas``
+    so gate 4's "resolves at the recorded SHA" and the AT-5 staleness re-check
+    stay airtight. Same committed-only, fail-closed contract as the active
+    inbox; sorted for determinism; an empty or missing subdir yields ``[]``.
+    """
+    inbox = inbox_dir.as_posix()
+    _assert_committed_state(repo_root, lambda path: _matches_processed(path, inbox))
+    tracked = _git(repo_root, "ls-tree", "-r", "--name-only", "HEAD").splitlines()
+    paths = sorted(path for path in tracked if _matches_processed(path, inbox))
 
     documents = []
     for path in paths:

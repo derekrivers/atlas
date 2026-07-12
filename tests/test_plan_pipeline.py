@@ -241,6 +241,8 @@ INBOX_STUB = (
     "Investigate the retry seam.\n"
 )
 INBOX_PATH = "docs/planning/inbox/ATLAS-9-1.md"
+# The stub's durable home (ATLAS-159): promotion anchors here from birth.
+PROCESSED_INBOX_PATH = "docs/planning/inbox/processed/ATLAS-9-1.md"
 
 
 def fixture_repo_with_inbox(tmp_path: Path) -> Path:
@@ -429,7 +431,11 @@ def test_ac1_committed_stub_is_promoted_to_an_add(tmp_path: Path) -> None:
     assert len(promoted) == 1
     assert promoted[0]["key"] is None
     assert promoted[0]["epic_ref"] == "new_epic:0"
-    assert promoted[0]["source_anchor"] == f"{INBOX_PATH}#follow-up-from-atlas-9"
+    # ATLAS-159: the default anchor is the stub's durable processed/ path from
+    # birth, so it keeps resolving after apply retires the stub.
+    assert (
+        promoted[0]["source_anchor"] == f"{PROCESSED_INBOX_PATH}#follow-up-from-atlas-9"
+    )
 
 
 def test_ac4_a_stub_already_under_processed_is_not_repromoted(tmp_path: Path) -> None:
@@ -483,10 +489,14 @@ def test_plan_collapses_model_reemission_of_committed_stub(tmp_path: Path) -> No
     # duplicate-mint defect.
     repo = fixture_repo_with_inbox(tmp_path)
     database = fresh_db(tmp_path)
+    # ATLAS-159: the promotion ticket's anchor is the stub's durable
+    # processed/ path, so a shared-anchor re-emission cites that spelling
+    # (both spellings are in the valid-anchor list; the collapse matches on
+    # anchor equality, unchanged).
     reemission = _ticket(
         title="Follow-up from ATLAS-9",
         objective="Investigate the retry seam.",
-        source_anchor=f"{INBOX_PATH}#follow-up-from-atlas-9",
+        source_anchor=f"{PROCESSED_INBOX_PATH}#follow-up-from-atlas-9",
     )
     client = FakePlannerClient(proposal_json(tickets=[_ticket(), reemission]))
 
@@ -507,3 +517,35 @@ def test_plan_collapses_model_reemission_of_committed_stub(tmp_path: Path) -> No
     assert stored.diff_summary["collapses"] == [
         note.as_dict() for note in result.diff.collapses
     ]
+
+
+def test_reemission_citing_active_inbox_spelling_is_not_collapsed(
+    tmp_path: Path,
+) -> None:
+    # ATLAS-159 boundary, made loud on purpose: the collapse pre-pass matches
+    # on ANCHOR EQUALITY (ATLAS-151, unchanged by design — a rendered
+    # non-goal), and the promotion ticket now carries the durable processed/
+    # spelling. A model re-emission citing the stub's ACTIVE-inbox spelling —
+    # still a valid, resolvable anchor while the stub is uncollected — is
+    # therefore an uncollapsed extra ADD the operator catches at the diff
+    # gates, the same posture as a foreign-anchor re-emission (the
+    # ATLAS-149/150 shape). Closing this spelling gap is a routed follow-up,
+    # not a silent semantics change here.
+    repo = fixture_repo_with_inbox(tmp_path)
+    database = fresh_db(tmp_path)
+    reemission = _ticket(
+        title="Follow-up from ATLAS-9",
+        objective="Investigate the retry seam.",
+        source_anchor=f"{INBOX_PATH}#follow-up-from-atlas-9",
+    )
+    client = FakePlannerClient(proposal_json(tickets=[_ticket(), reemission]))
+
+    result = run(repo, database, client)
+
+    assert result.status is PlanRunStatus.PROPOSED
+    assert result.diff is not None
+    ticket_adds = [
+        e for e in result.diff.entries if e.kind == "ticket" and e.entry_type == "ADD"
+    ]
+    assert [e.identity for e in ticket_adds] == ["new:0", "new:1", "new:2"]
+    assert result.diff.collapses == ()

@@ -64,8 +64,10 @@ from atlas.core.models.dependency import DependencyType
 from atlas.core.yaml_io import RenderHeader, render_document
 from atlas.dependencies import project_graph, validate_graph
 from atlas.planning.ingestion import (
+    PROCESSED_SUBDIR,
     collect_inbox_documents,
     collect_input_documents,
+    collect_processed_documents,
 )
 from atlas.planning.key_authority import (
     EPIC_PREFIX,
@@ -101,10 +103,11 @@ CREATED_BY = "planner"
 RENDER_FILES = ("epics.yaml", "tickets.yaml", "dependencies.yaml", "roadmap.mmd")
 
 # The committed follow-up inbox (ATLAS-45 producer, ATLAS-122 consumer): apply
-# retires the stubs that fed a plan to the processed/ subdir. The default must
-# match the producer's (atlas/pm/sync.py) and plan's (atlas/planning/pipeline.py).
+# retires the stubs that fed a plan to the processed/ subdir (the shared
+# PROCESSED_SUBDIR name from ingestion, which ATLAS-159 also anchors against).
+# The default must match the producer's (atlas/pm/sync.py) and plan's
+# (atlas/planning/pipeline.py).
 DEFAULT_INBOX_DIR = Path("docs/planning/inbox")
-_PROCESSED_SUBDIR = "processed"
 
 
 def is_existing_dependency_add(entry: DiffEntry) -> bool:
@@ -366,7 +369,7 @@ def _retire_inbox_stubs(repo_root: Path, inbox_dir: Path, plan_run: PlanRun) -> 
     separate recovery path, idempotence is enough.
     """
     inbox = inbox_dir.as_posix()
-    processed_dir = repo_root / inbox_dir / _PROCESSED_SUBDIR
+    processed_dir = repo_root / inbox_dir / PROCESSED_SUBDIR
     for path in plan_run.input_doc_shas:
         candidate = PurePosixPath(path)
         if candidate.suffix != ".md" or candidate.parent != PurePosixPath(inbox):
@@ -409,12 +412,17 @@ def run_apply(
 
     # Staleness re-check BEFORE confirmation (AT-5); reuses ingestion's
     # dirty-tree + SHA machinery (a dirty tree raises DirtyInputError here).
-    # The fresh set folds in the inbox (ATLAS-122, D3): input_doc_shas now
-    # carries the inbox stubs, so a corpus-only fresh set would always mismatch
-    # and refuse every apply. An added, removed, or changed inbox stub between
-    # plan and apply correctly reads as stale.
+    # The fresh set folds in the inbox (ATLAS-122, D3) and the processed
+    # subdir (ATLAS-159): input_doc_shas carries both alongside the corpus, so
+    # a narrower fresh set would always mismatch and refuse every apply. An
+    # added, removed, or changed stub — active or retired — between plan and
+    # apply correctly reads as stale.
     fresh_inbox = collect_inbox_documents(repo_root, inbox_dir)
-    fresh_documents = collect_input_documents(repo_root) + fresh_inbox
+    fresh_documents = (
+        collect_input_documents(repo_root)
+        + fresh_inbox
+        + collect_processed_documents(repo_root, inbox_dir)
+    )
     fresh_shas = {doc.path: doc.sha for doc in fresh_documents}
     if fresh_shas != plan_run.input_doc_shas:
         raise StalePlanError(

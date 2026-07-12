@@ -21,6 +21,7 @@ from atlas.core.anchors import AnchorIndex, SourceDocument
 from atlas.core.enums import ActorType, RiskLevel
 from atlas.core.models import Epic
 from atlas.core.models.epic import EpicStatus
+from atlas.planning.ingestion import durable_alias_documents
 from atlas.planning.promotion import (
     _DEFAULT_PRIORITY,
     _DEFAULT_RISK_LEVEL,
@@ -34,6 +35,8 @@ NOW = datetime(2025, 1, 1, tzinfo=UTC)
 CORPUS_PATH = "docs/atlas/plan.md"
 CORPUS = "# Planning\n\n## Backlog\n\nThe backlog section.\n"
 STUB_PATH = "docs/planning/inbox/smoke-b-fixture.md"
+# The stub's durable home (ATLAS-159): the default anchor targets it.
+PROCESSED_STUB_PATH = "docs/planning/inbox/processed/smoke-b-fixture.md"
 
 
 def stub_front_matter(**overrides: Any) -> dict[str, Any]:
@@ -69,10 +72,15 @@ def _yaml_scalar(value: Any) -> str:
 
 
 def anchor_index() -> AnchorIndex:
+    # Mirrors the pipeline's index (ATLAS-159): the active stub is indexed at
+    # its current path AND its durable processed/ alias, exactly as
+    # durable_alias_documents builds it, so the default anchor resolves.
+    stub = stub_document()
     return AnchorIndex.build(
         [
             SourceDocument(path=CORPUS_PATH, sha="c0ffee", content=CORPUS),
-            stub_document(),
+            stub,
+            *durable_alias_documents([stub], []),
         ]
     )
 
@@ -145,7 +153,10 @@ def test_ac1_defaults_anchor_and_relevant_docs_to_the_stub() -> None:
     ticket = promote_inbox_stubs(
         keyed_epic_proposal(), [stub_document()], Backlog(), anchor_index()
     ).tickets[0]
-    assert ticket.source_anchor == f"{STUB_PATH}#smoke-b-fixture"
+    # ATLAS-159: the default anchor is the stub's first heading at its DURABLE
+    # processed/ path — the address apply's retirement gives the file — so it
+    # resolves at gate 4 from birth and never dangles on retirement.
+    assert ticket.source_anchor == f"{PROCESSED_STUB_PATH}#smoke-b-fixture"
     assert ticket.relevant_docs == [STUB_PATH]
 
 
@@ -251,3 +262,21 @@ def test_ac9_does_not_duplicate_an_epic_already_present() -> None:
         anchor_index(),
     )
     assert [e.key for e in result.epics] == ["ATLAS-E1"]  # not re-added
+
+
+# --- ATLAS-159: the promoted anchor targets the durable processed/ path ------
+
+
+def test_promoted_ticket_anchor_targets_processed_path() -> None:
+    # The forward fix: the default anchor cites the stub's first heading at
+    # its DURABLE processed/ path from birth, and that anchor resolves in the
+    # very index the minting run's gate 4 validates against (the pipeline
+    # indexes each active stub at both addresses).
+    index = anchor_index()
+    ticket = promote_inbox_stubs(
+        keyed_epic_proposal(), [stub_document()], Backlog(), index
+    ).tickets[0]
+    assert ticket.source_anchor == f"{PROCESSED_STUB_PATH}#smoke-b-fixture"
+    resolved = index.resolve(ticket.source_anchor)
+    assert resolved.path == PROCESSED_STUB_PATH
+    assert resolved.heading == "Smoke B fixture"
