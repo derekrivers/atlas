@@ -33,10 +33,15 @@ from atlas.core.enums import EvidenceStatus
 from atlas.core.models import VerificationCheck
 from atlas.verification.pr_completion import PRVerification
 
-# A ticket key: the ``ATLAS-`` prefix (case-insensitive) plus a run of digits.
-# The prefix is the disambiguator — a bare ``#126`` (the PR number) carries no
-# ``ATLAS-`` prefix and so is never captured as a ticket key (R1).
-_KEY = r"ATLAS-(\d+)"
+# A ticket key: the ``ATLAS-`` prefix (case-insensitive) plus a run of digits,
+# NOT followed by a letter. The prefix is the disambiguator — a bare ``#126``
+# (the PR number) carries no ``ATLAS-`` prefix and so is never captured as a
+# ticket key (R1). The trailing lookahead keeps an ``ATLAS-00xM`` meta label
+# (the non-key tag for records PRs; scripts/check_pr_title.py owns that form)
+# from misparsing as a real key — ``ATLAS-004M`` is not ``ATLAS-004``, and not
+# ``ATLAS-00`` either: the lookahead also forbids a digit, which is reachable
+# only by backtracking out of a letter-blocked match (ATLAS-160).
+_KEY = r"ATLAS-(\d+)(?![A-Za-z0-9])"
 
 # Bare-key matches anywhere in the PR TITLE — the Atlas day-one convention is
 # the ``(ATLAS-NN)`` suffix, but we match the key wherever it appears so a

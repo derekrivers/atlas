@@ -310,10 +310,14 @@ PR #158 (terminal-dependency fix), which by sequence position should
 have been ATLAS-007M and is hereby so designated. The meta counter
 resumes at the next unused number (verify against merged PR titles
 before each use — this entry exists because that verification was
-skipped once). To close the pattern: extend the lint-pr-title check to
-reject a reused ATLAS-00xM label against merged history — small code
-change, queued for a future inbox stub; eyes are demonstrably not
-enough.
+skipped once). **Pattern closed (2026-07-12, ATLAS-160):** lint-pr-title rejects a
+reused ATLAS-00xM label against the default branch's merged squash
+subjects and prints the next free label on meta and label-less
+failures. Because single-commit squashes took the commit message,
+titles burned 000M–016M while subject history carries only
+002M/003m/004M; labels below the documented floor (`_META_FLOOR` in
+`scripts/check_pr_title.py`, 017M at closure) are rejected as burned
+to cover that divergence. Eyes are no longer the mechanism.
 
 ## Finding: the parked backlog blocks autonomous promotion (2026-07-08)
 

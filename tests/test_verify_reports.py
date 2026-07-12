@@ -230,4 +230,14 @@ def test_reports_module_imports_no_io_layer() -> None:
 
 
 def test_meta_suffix_not_captured_as_real_key() -> None:
-    assert 1 == 2
+    """ATLAS-160 boundary ruling (operator-ratified): a key candidate followed
+    by a letter is not a key. ATLAS-004M is a meta label, NOT ticket ATLAS-004
+    — pre-fix the mapper resolved the phantom key and the title gate passed
+    meta-labeled titles by mistake. Real keys (digit-terminated) are untouched;
+    body closing-keyword matches get the same boundary (one _KEY, R1). Wrong
+    answers: ('ATLAS-004',) — no boundary at all — and ('ATLAS-00',), a
+    letter-only lookahead that lets \\d+ backtrack a digit past the M (caught
+    live by this test's first red run)."""
+    assert parse_close_set("docs: record (ATLAS-004M)", None) == ()
+    assert parse_close_set("fix: x (ATLAS-142) (ATLAS-004M)", None) == ("ATLAS-142",)
+    assert parse_close_set("chore: cleanup", "Closes ATLAS-15M") == ()
