@@ -9,10 +9,12 @@ records ``input_doc_shas`` so a doc edit after rendering is detectable (the
 
 Pure builder: ZERO storage/git/file/model-API calls and no
 ``collect_input_documents`` — every input is already loaded (``graph`` is an
-ATLAS-31 projection, ``documents`` the ``collect_input_documents`` output,
-``accepted_adrs``/``lessons`` are listings). Loading them and the CLI are
-ATLAS-58; this builder neither loads nor validates (ATLAS-60). It imports only
-the four ``atlas.context`` retrievers, ``atlas.core.*``, networkx, and stdlib —
+ATLAS-31 projection, ``documents`` the caller's collection — the §2.1 corpus
+plus the committed ``processed/`` stubs, so stub-minted anchors resolve
+(ATLAS-162) — and ``accepted_adrs``/``lessons`` are listings). Loading them
+and the CLI are ATLAS-58; this builder neither loads nor validates (ATLAS-60).
+It imports only the four ``atlas.context`` retrievers, ``atlas.core.*``,
+networkx, and stdlib —
 nothing above ``atlas.context`` in the spine (lint-imports confirms no
 ``atlas.planning`` edge).
 

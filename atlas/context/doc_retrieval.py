@@ -17,8 +17,9 @@ one enum field; here the anchor section and the references are distinct types):
    selection within them, is deferred).
 
 Pure computation: ZERO model/API calls and ZERO storage/git/file access. The
-sole state input is ``documents`` — the caller's ``collect_input_documents``
-output (exactly as :func:`select_adrs` takes the projected graph) — and the
+sole state input is ``documents`` — the caller's collection, the §2.1 corpus
+plus the committed ``processed/`` stubs so stub-minted anchors resolve
+(ATLAS-162; exactly as :func:`select_adrs` takes the projected graph) — and the
 :class:`AnchorIndex` is built from it internally. Building that corpus is the
 caller's job (ATLAS-56/-58), so this stays a pure function exercised directly in
 tests. It SELECTS and extracts the section and RECORDS the reference SHAs;

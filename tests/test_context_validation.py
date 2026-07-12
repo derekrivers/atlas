@@ -20,6 +20,7 @@ from uuid import uuid4
 from test_pack import build_full, make_corpus, make_lesson, make_ticket
 
 from atlas.context import ContextPackValidation, validate_context_pack
+from atlas.core.anchors import SourceDocument
 
 # --- the all-valid baseline ----------------------------------------------------
 
@@ -155,6 +156,29 @@ def test_unresolvable_source_anchor_is_slug_depth_typed_failure() -> None:
     assert result.valid is False
     assert len(result.failures) == 1
     assert "anchor[main.md#no-such-heading]" in result.failures[0]
+    assert "UnknownAnchorError" in result.failures[0]
+
+
+def test_unknown_slug_in_processed_doc_is_typed_slug_failure() -> None:
+    # ATLAS-162: resolution gains the processed/ set, not leniency. With a
+    # retired stub IN the document set, an anchor citing that stub with a wrong
+    # slug still fails at slug depth with the typed reason. The wrong answer:
+    # membership of the processed/ path making its slugs pass unresolved.
+    pack, _ticket, _related, _adr, lesson = build_full()
+    processed = SourceDocument(
+        path="docs/planning/inbox/processed/stub.md",
+        sha="sha-stub",
+        content="# Stub\n\n## Real Heading\n\nbody\n",
+    )
+    bad_anchor = "docs/planning/inbox/processed/stub.md#wrong-slug"
+    bad_ticket = make_ticket(source_anchor=bad_anchor)
+    result = validate_context_pack(
+        pack, documents=[*make_corpus(), processed], lessons=[lesson], ticket=bad_ticket
+    )
+    assert result.anchor_check_depth == "slug"
+    assert result.valid is False
+    assert len(result.failures) == 1
+    assert f"anchor[{bad_anchor}]" in result.failures[0]
     assert "UnknownAnchorError" in result.failures[0]
 
 
