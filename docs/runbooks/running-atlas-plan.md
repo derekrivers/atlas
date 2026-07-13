@@ -290,6 +290,7 @@ Every row is the actual message and exit code from the commands.
 | `Plan failed (recorded):` + `{"stage": "gates", "failures": […]}` | plan | 1 | A validation gate failed. Read the per-failure `gate`/`code`/`reason` — usually an unresolvable `source_anchor` (gate 4), an orphan epic (gate 5), or an oversized ticket (gate 7). |
 | `no proposed PlanRun to apply; run \`atlas plan\` first` | apply | 2 | Run `atlas plan` first (the last run failed or none exists). |
 | `the plan is stale: input documents changed since planning; re-run \`atlas plan\`` | apply | 2 | A document changed after the plan. Re-run `atlas plan`, then apply. |
+| `inbox stub retirement collision: active stub '…' cannot be retired because '…' already exists` | apply | 2 | The same stub basename exists in both the active inbox and `processed/`. Rename or remove one, then re-plan/apply. |
 | `the diff touches frozen ticket(s) (…); apply refuses a diff with CONFLICT entries` | apply | 2 | The proposal would change an in-progress/done ticket (AT-4). Re-plan; frozen tickets are immutable to planning. |
 | `the diff contains MODIFY entries; MODIFY application is a follow-up…` | apply | 2 | Applying field changes to existing tickets is not built yet. Only ADD/PROPOSE_ARCHIVE/CONFLICT diffs apply today. |
 | `apply needs confirmation: re-run with --yes (no TTY available).` | apply | 2 | You are non-interactive; re-run with `--yes`. |

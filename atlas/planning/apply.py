@@ -64,10 +64,10 @@ from atlas.core.models.dependency import DependencyType
 from atlas.core.yaml_io import RenderHeader, render_document
 from atlas.dependencies import project_graph, validate_graph
 from atlas.planning.ingestion import (
-    PROCESSED_SUBDIR,
     collect_inbox_documents,
     collect_input_documents,
     collect_processed_documents,
+    processed_path_for,
 )
 from atlas.planning.key_authority import (
     EPIC_PREFIX,
@@ -103,8 +103,8 @@ CREATED_BY = "planner"
 RENDER_FILES = ("epics.yaml", "tickets.yaml", "dependencies.yaml", "roadmap.mmd")
 
 # The committed follow-up inbox (ATLAS-45 producer, ATLAS-122 consumer): apply
-# retires the stubs that fed a plan to the processed/ subdir (the shared
-# PROCESSED_SUBDIR name from ingestion, which ATLAS-159 also anchors against).
+# retires the stubs that fed a plan to the processed/ subdir (through
+# ingestion.processed_path_for, which ATLAS-159 also anchors against).
 # The default must match the producer's (atlas/pm/sync.py) and plan's
 # (atlas/planning/pipeline.py).
 DEFAULT_INBOX_DIR = Path("docs/planning/inbox")
@@ -145,6 +145,19 @@ class UnsupportedDiffError(ApplyError):
 
 class ConflictRefusalError(ApplyError):
     """The diff touches a frozen ticket (CONFLICT); apply refuses it (AT-4)."""
+
+
+class InboxRetirementCollisionError(ApplyError):
+    """An active inbox stub cannot be retired because processed/ already has it."""
+
+    def __init__(self, stub_path: str, processed_path: str) -> None:
+        super().__init__(
+            f"inbox stub retirement collision: active stub {stub_path!r} cannot "
+            f"be retired because {processed_path!r} already exists; rename or "
+            "remove one before applying"
+        )
+        self.stub_path = stub_path
+        self.processed_path = processed_path
 
 
 class ApplyDecision(Enum):
@@ -362,24 +375,43 @@ def _retire_inbox_stubs(repo_root: Path, inbox_dir: Path, plan_run: PlanRun) -> 
     alone). This is a legal ``docs/planning/`` write — apply is that tree's sole
     writer (ADR-0006/0007).
 
-    Idempotent: a missing source (already moved) or an existing target is a skip,
-    not an error, so re-running apply is safe. The move is lifecycle metadata, not
-    backlog state: a crash mid-move may leave a stub in ``inbox/``, which is simply
-    re-read next plan (the producer's dedup + the operator absorb it) — there is no
-    separate recovery path, idempotence is enough.
+    Idempotent for an already-moved source: a missing source is a skip. A present
+    source plus an existing target is NOT idempotence; it is the ATLAS-159
+    basename collision state, so fail closed with a typed error rather than
+    leaving the active stub to be read again by a later plan.
     """
     inbox = inbox_dir.as_posix()
-    processed_dir = repo_root / inbox_dir / PROCESSED_SUBDIR
+    for path, processed_path in _inbox_retirement_targets(plan_run, inbox):
+        source = repo_root / path
+        target = repo_root / processed_path
+        if not source.exists():
+            continue  # already moved
+        if target.exists():
+            raise InboxRetirementCollisionError(path, processed_path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        os.replace(source, target)
+
+
+def _inbox_retirement_targets(plan_run: PlanRun, inbox: str) -> list[tuple[str, str]]:
+    """Active inbox stubs from ``input_doc_shas`` and their processed/ targets."""
+    targets = []
     for path in plan_run.input_doc_shas:
         candidate = PurePosixPath(path)
         if candidate.suffix != ".md" or candidate.parent != PurePosixPath(inbox):
             continue  # a corpus doc, or already under processed/
-        source = repo_root / path
-        target = processed_dir / candidate.name
-        if not source.exists() or target.exists():
-            continue  # already moved, or the target is present: a skip
-        processed_dir.mkdir(parents=True, exist_ok=True)
-        os.replace(source, target)
+        targets.append((path, processed_path_for(path)))
+    return targets
+
+
+def _refuse_inbox_retirement_collisions(
+    repo_root: Path, inbox_dir: Path, plan_run: PlanRun
+) -> None:
+    """Apply-time symmetry with ATLAS-159's plan-time inbox collision check."""
+    for stub_path, processed_path in _inbox_retirement_targets(
+        plan_run, inbox_dir.as_posix()
+    ):
+        if (repo_root / stub_path).exists() and (repo_root / processed_path).exists():
+            raise InboxRetirementCollisionError(stub_path, processed_path)
 
 
 def run_apply(
@@ -491,6 +523,8 @@ def run_apply(
             f"the diff touches frozen ticket(s) ({names}); apply refuses a "
             "diff with CONFLICT entries (AT-4)"
         )
+
+    _refuse_inbox_retirement_collisions(repo_root, inbox_dir, plan_run)
 
     # Decision point: nothing is written before this returns CONFIRMED.
     decision = confirm(diff)

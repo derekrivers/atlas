@@ -208,10 +208,13 @@ planning renders (ADR-0006); the doc linter flags out-of-band edits.
 
 On both the applied and the rejected outcome — both mean "considered" —
 apply retires the inbox stubs that fed the plan to
-`docs/planning/inbox/processed/`, an idempotent move (the staleness
-re-check in step 2 folds the inbox AND the `processed/` subdir into the
-fresh SHA set (ATLAS-159), so a stub change — active or retired — between
-plan and apply reads as stale). The mechanism is owned by
+`docs/planning/inbox/processed/`. A missing source is an idempotent
+already-moved skip, but a present active stub whose same-named
+`processed/` target already exists is a typed apply-time refusal before
+confirmation, symmetric with the ATLAS-159 plan-time collision check. The
+staleness re-check in step 2 folds the inbox AND the `processed/` subdir
+into the fresh SHA set (ATLAS-159), so a stub change — active or retired
+— between plan and apply reads as stale. The mechanism is owned by
 pm-engine-and-linear-sync.md "Follow-up ingestion".
 
 Atomicity. The DB commit (counter increment + backlog rows + the
