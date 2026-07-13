@@ -47,8 +47,8 @@ import pytest
 from linear_fakes import InMemoryLinearClient
 from test_models_validation import NOW, dependency_kwargs, ticket_kwargs
 
-from atlas.core.enums import ActorType
-from atlas.core.models import AnomalyType, DebtItem, Ticket, TicketDependency
+from atlas.core.enums import ActorType, EntityStatus
+from atlas.core.models import AnomalyType, DebtItem, Lesson, Ticket, TicketDependency
 from atlas.core.models.ticket import TicketStatus
 from atlas.linear.client import LinearComment, LinearIssue, WorkflowState
 from atlas.linear.ownership import LinearStatusMap
@@ -57,6 +57,7 @@ from atlas.pm.sync import CREATED_BY
 from atlas.storage import (
     Database,
     DebtItemRepo,
+    LessonRepo,
     TicketDependencyRepo,
     TicketRepo,
     TicketStatusTransitionRepo,
@@ -277,6 +278,14 @@ def debt_rows(
         for item in items
         if item.anomaly_type == kind
         and (ticket_id is None or item.ticket_id == ticket_id)
+    ]
+
+
+def draft_lessons(db: Database) -> list[Lesson]:
+    return [
+        lesson
+        for lesson in LessonRepo(db).list()
+        if lesson.status is EntityStatus.DRAFT
     ]
 
 
@@ -631,6 +640,37 @@ def test_dwell_breach_logged_once_past_horizon(db: Database) -> None:
     assert client.state_writes == []
     pulled = TicketRepo(db).get_by_key("ATLAS-220")
     assert pulled is not None and pulled.status == TicketStatus.IN_PROGRESS
+
+
+def test_dwell_breach_files_one_draft_lesson_and_second_tick_dedupes(
+    db: Database,
+) -> None:
+    client = RecordingClient()
+    ticket = seed_ticket(
+        db,
+        client,
+        key="ATLAS-219",
+        status=TicketStatus.IN_PROGRESS,
+        status_entered_at=NOW,
+        with_issue=False,
+    )
+
+    first = run(db, client, now=PAST_IN_PROGRESS)
+    second = run(db, client, now=PAST_IN_PROGRESS + timedelta(hours=1))
+
+    items = debt_rows(db, AnomalyType.DWELL_BREACH, ticket.id)
+    assert len(items) == 1
+    (item,) = items
+    lessons = draft_lessons(db)
+    assert first.draft_lessons_filed == 1
+    assert second.draft_lessons_filed == 0
+    assert len(lessons) == 1  # wrong answer: duplicate DRAFT on re-tick
+    (lesson,) = lessons
+    assert lesson.related_ticket_ids == [ticket.id]
+    content = "\n".join([lesson.title, lesson.problem, lesson.outcome, *lesson.tags])
+    assert "dwell_breach" in content
+    assert ticket.key in content
+    assert str(item.id) in content
 
 
 def test_no_breach_inside_horizon(db: Database) -> None:
@@ -1029,6 +1069,39 @@ def test_over_threshold_routes_to_needs_human_and_logs_one_note(db: Database) ->
     assert result.review_cycles_logged == 1
 
 
+def test_review_cycle_breach_files_one_draft_lesson_and_second_tick_dedupes(
+    db: Database,
+) -> None:
+    client = RecordingClient()
+    ticket = seed_ticket(
+        db,
+        client,
+        key="ATLAS-229",
+        status=TicketStatus.PR_OPEN,
+        status_entered_at=NOW,
+        review_cycle_count=4,
+        issue_state=PR_OPEN_STATE,
+    )
+    assert ticket.external_linear_id is not None
+
+    first = run(db, client, now=LATER)
+    second = run(db, client, now=LATER + timedelta(hours=1))
+
+    items = debt_rows(db, AnomalyType.REVIEW_CYCLE, ticket.id)
+    assert len(items) == 1
+    (item,) = items
+    lessons = draft_lessons(db)
+    assert first.draft_lessons_filed == 1
+    assert second.draft_lessons_filed == 0
+    assert len(lessons) == 1  # wrong answer: duplicate DRAFT on re-tick
+    (lesson,) = lessons
+    assert lesson.related_ticket_ids == [ticket.id]
+    content = "\n".join([lesson.title, lesson.problem, lesson.outcome, *lesson.tags])
+    assert "review_cycle" in content
+    assert ticket.key in content
+    assert str(item.id) in content
+
+
 def test_at_threshold_does_not_route_or_log(db: Database) -> None:
     client = RecordingClient()
     # Exactly 3 round trips: "more than 3" routes, so 3 does NOT. Wrong answer:
@@ -1048,6 +1121,34 @@ def test_at_threshold_does_not_route_or_log(db: Database) -> None:
     assert client.state_writes == []  # not routed
     assert DebtItemRepo(db).list() == []  # not logged
     assert result.routed_to_human == 0 and result.review_cycles_logged == 0
+
+
+def test_below_threshold_anomalies_file_no_draft_lesson(db: Database) -> None:
+    client = RecordingClient()
+    seed_ticket(
+        db,
+        client,
+        key="ATLAS-228",
+        status=TicketStatus.PR_OPEN,
+        status_entered_at=NOW,
+        review_cycle_count=3,
+        issue_state=PR_OPEN_STATE,
+    )
+    seed_ticket(
+        db,
+        client,
+        key="ATLAS-227",
+        status=TicketStatus.IN_PROGRESS,
+        status_entered_at=NOW,
+        with_issue=False,
+    )
+
+    result = run(db, client, now=INSIDE_IN_PROGRESS)
+
+    assert result.draft_lessons_filed == 0
+    assert debt_rows(db, AnomalyType.REVIEW_CYCLE) == []
+    assert debt_rows(db, AnomalyType.DWELL_BREACH) == []
+    assert draft_lessons(db) == []
 
 
 def test_already_reconciled_ticket_is_not_rerouted(db: Database) -> None:
