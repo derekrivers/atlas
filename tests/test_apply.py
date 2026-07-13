@@ -44,15 +44,22 @@ from atlas.core.models import (
 from atlas.core.yaml_io import parse_document
 from atlas.dependencies import DanglingTargetError, GraphValidationFailed
 from atlas.planning.apply import (
+    DEFAULT_INBOX_DIR,
     ApplyDecision,
     ApplyResult,
     ConflictRefusalError,
+    InboxRetirementCollisionError,
     NoProposedPlanError,
     StalePlanError,
     UnsupportedDiffError,
     run_apply,
 )
-from atlas.planning.ingestion import collect_input_documents
+from atlas.planning.ingestion import (
+    InboxCollisionError,
+    collect_inbox_documents,
+    collect_input_documents,
+    collect_processed_documents,
+)
 from atlas.planning.pipeline import run_plan, run_stubs_only_plan
 from atlas.planning.proposal import Proposal
 from atlas.planning.reconciler import DEFAULT_SIMILARITY_THRESHOLD, Backlog, reconcile
@@ -258,9 +265,15 @@ def test_stale_plan_refused_before_confirmation(tmp_path: Path) -> None:
 
 
 def _add_proposed_plan_run(
-    database: Database, repo: Path, product_id: object, proposal: dict[str, Any]
+    database: Database,
+    repo: Path,
+    product_id: object,
+    proposal: dict[str, Any],
+    input_doc_shas: dict[str, str] | None = None,
 ) -> PlanRun:
-    shas = {doc.path: doc.sha for doc in collect_input_documents(repo)}
+    shas = input_doc_shas or {
+        doc.path: doc.sha for doc in collect_input_documents(repo)
+    }
     plan_run = PlanRun(
         id=uuid4(),
         product_id=product_id,  # type: ignore[arg-type]
@@ -575,6 +588,27 @@ def stubs_only_plan_with_inbox(tmp_path: Path) -> tuple[Path, Database]:
     return repo, database
 
 
+def fixture_repo_with_inbox_retirement_collision(tmp_path: Path) -> Path:
+    return make_repo(
+        tmp_path,
+        {
+            "PRODUCT.md": PRODUCT_MD,
+            "docs/atlas/plan.md": PLAN_MD,
+            INBOX_PATH: INBOX_STUB,
+            PROCESSED_INBOX_PATH: "# Already processed\n\nExisting twin.\n",
+        },
+    )
+
+
+def input_doc_shas_with_inbox(repo: Path) -> dict[str, str]:
+    documents = (
+        collect_input_documents(repo)
+        + collect_inbox_documents(repo, DEFAULT_INBOX_DIR)
+        + collect_processed_documents(repo, DEFAULT_INBOX_DIR)
+    )
+    return {document.path: document.sha for document in documents}
+
+
 def test_apply_retires_stubs_on_applied(tmp_path: Path) -> None:
     # AT-5: an applied plan's inbox stubs land under processed/ and are gone
     # from inbox/. Wrong answer: they linger and reappear next plan.
@@ -602,9 +636,9 @@ def test_apply_retires_stubs_on_rejected(tmp_path: Path) -> None:
     assert (inbox / "processed" / "ATLAS-9-1.md").exists()
 
 
-def test_retire_is_idempotent(tmp_path: Path) -> None:
-    # AT-7: a stub already in processed/ (or a re-run) is a skip, not an error.
-    from atlas.planning.apply import DEFAULT_INBOX_DIR, _retire_inbox_stubs
+def test_retire_is_idempotent_for_already_moved_source(tmp_path: Path) -> None:
+    # AT-7: a re-run after the source moved is a skip, not an error.
+    from atlas.planning.apply import _retire_inbox_stubs
 
     repo, database = plan_then_with_inbox(tmp_path)
     plan_run = PlanRunRepo(database).latest_proposed()
@@ -615,11 +649,92 @@ def test_retire_is_idempotent(tmp_path: Path) -> None:
     assert (inbox / "processed" / "ATLAS-9-1.md").exists()
     # Source now gone → a re-run is a skip, no error.
     _retire_inbox_stubs(repo, DEFAULT_INBOX_DIR, plan_run)
-    # Target already present → a re-appeared source is left untouched, no clobber.
+    # Source present plus target present is the collision state: fail closed,
+    # leave both files untouched, and make the operator repair it explicitly.
+    processed_content = (inbox / "processed" / "ATLAS-9-1.md").read_text(
+        encoding="utf-8"
+    )
     (inbox / "ATLAS-9-1.md").write_text("re-appeared\n", encoding="utf-8")
-    _retire_inbox_stubs(repo, DEFAULT_INBOX_DIR, plan_run)
+    with pytest.raises(InboxRetirementCollisionError, match=r"ATLAS-9-1\.md"):
+        _retire_inbox_stubs(repo, DEFAULT_INBOX_DIR, plan_run)
     assert (inbox / "ATLAS-9-1.md").read_text(encoding="utf-8") == "re-appeared\n"
-    assert (inbox / "processed" / "ATLAS-9-1.md").exists()
+    assert (inbox / "processed" / "ATLAS-9-1.md").read_text(
+        encoding="utf-8"
+    ) == processed_content
+
+
+def test_apply_retirement_collision_refuses_before_confirmation_and_next_plan(
+    tmp_path: Path,
+) -> None:
+    # ATLAS-163 branch: fail closed, symmetric with the ATLAS-159 plan-time
+    # collision check. Red before this fix: apply confirmed, minted the promoted
+    # ticket, skipped the target-exists move, and left the active stub behind.
+    repo = fixture_repo_with_inbox_retirement_collision(tmp_path)
+    database = fresh_db(tmp_path)
+
+    with pytest.raises(InboxCollisionError, match=r"ATLAS-9-1\.md"):
+        run_plan(
+            repo_root=repo,
+            database=database,
+            client=FakePlannerClient(proposal_json()),
+            identity=FAKE_IDENTITY,
+            now=NOW,
+        )
+    assert PlanRunRepo(database).list() == []
+
+    product = ProductRepo(database).get_by_key("ATLAS")
+    assert product is not None
+    promoted_proposal = {
+        "epics": [_epic()],
+        "tickets": [
+            _ticket(
+                title="Follow-up from ATLAS-9",
+                objective="Investigate the retry seam.",
+                source_anchor=f"{PROCESSED_INBOX_PATH}#follow-up-from-atlas-9",
+            )
+        ],
+        "dependencies": [],
+        "planner_notes": [],
+    }
+    _add_proposed_plan_run(
+        database,
+        repo,
+        product.id,
+        promoted_proposal,
+        input_doc_shas_with_inbox(repo),
+    )
+    confirm_calls = 0
+
+    def spy(diff: object) -> ApplyDecision:
+        nonlocal confirm_calls
+        confirm_calls += 1
+        return ApplyDecision.CONFIRMED
+
+    with pytest.raises(InboxRetirementCollisionError, match=r"ATLAS-9-1\.md") as info:
+        apply(repo, database, planning_dir(tmp_path), confirm=spy)
+
+    assert info.value.stub_path == INBOX_PATH
+    assert info.value.processed_path == PROCESSED_INBOX_PATH
+    assert confirm_calls == 0
+    assert PlanRunRepo(database).latest_proposed() is not None
+    assert TicketRepo(database).list() == []
+    assert (repo / INBOX_PATH).exists()
+    assert (repo / PROCESSED_INBOX_PATH).read_text(encoding="utf-8") == (
+        "# Already processed\n\nExisting twin.\n"
+    )
+    assert not planning_dir(tmp_path).exists()
+
+    # The same tree cannot fall through to re-promotion on a later plan either:
+    # the front door still refuses the same basename-in-both-places state.
+    with pytest.raises(InboxCollisionError, match=r"ATLAS-9-1\.md"):
+        run_plan(
+            repo_root=repo,
+            database=database,
+            client=FakePlannerClient(proposal_json()),
+            identity=FAKE_IDENTITY,
+            now=NOW,
+        )
+    assert len(PlanRunRepo(database).list()) == 1
 
 
 @pytest.mark.parametrize("mode", ["generative", "stubs_only"])
