@@ -119,7 +119,7 @@ stub's own first heading at its durable `inbox/processed/` path — the
 address apply's retirement gives the file, known at promotion time — so
 the anchor resolves at gate 4 from birth (the active stub is indexed at
 both addresses, ATLAS-159) and never dangles when its own apply retires
-the stub, `relevant_docs` to `[<stub path>]`, and `tags` /
+the stub, `relevant_docs` to `[<durable processed/ stub path>]`, and `tags` /
 `component` / `implementation_notes` / `documentation_requirements` to their
 empty forms. `priority` and `risk_level` are taken from the front-matter if
 present, else the single pinned constants `priority = 50` and

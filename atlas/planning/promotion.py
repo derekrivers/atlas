@@ -192,7 +192,8 @@ def _build_ticket(
         "priority": data.get("priority", _DEFAULT_PRIORITY),
         "source_anchor": data.get("source_anchor")
         or _stub_anchor(document, anchor_index),
-        "relevant_docs": data.get("relevant_docs") or [document.path],
+        "relevant_docs": data.get("relevant_docs")
+        or [processed_path_for(document.path)],
         "tags": data.get("tags") or [],
         "component": data.get("component"),
         "implementation_notes": data.get("implementation_notes") or [],

@@ -157,7 +157,7 @@ def test_ac1_defaults_anchor_and_relevant_docs_to_the_stub() -> None:
     # processed/ path — the address apply's retirement gives the file — so it
     # resolves at gate 4 from birth and never dangles on retirement.
     assert ticket.source_anchor == f"{PROCESSED_STUB_PATH}#smoke-b-fixture"
-    assert ticket.relevant_docs == [STUB_PATH]
+    assert ticket.relevant_docs == [PROCESSED_STUB_PATH]
 
 
 # --- AC-3: empty inbox is a no-op -----------------------------------------

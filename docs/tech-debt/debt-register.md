@@ -393,3 +393,23 @@ promotion-then-retirement round-trip test. Note: bumping `updated_at` on
 the sixteen rows means the next Linear sync tick re-pushes their
 definitions once (`updated_at > linear_synced_at`); expected, harmless,
 and on the record here.
+
+## One-time stub relevant_docs repair outside planning (2026-07-13, ATLAS-165)
+
+The ATLAS-159 data repair fixed `source_anchor` only. The same historical
+stub-minted rows still stored `relevant_docs` entries at retired
+`docs/planning/inbox/<name>.md` spellings, while the files now live under
+`docs/planning/inbox/processed/<name>.md`. The pack renderer's documented
+contract exact-matches `relevant_docs` against the loaded corpus and soft-skips
+unmatched paths, so those stored spellings degraded rendered context packs.
+
+Operator ruling (ATLAS-165 plan gate): branch (a) again — a second scoped
+ONE-TIME repair outside planning, because the affected set spans frozen
+tickets and planning cannot edit frozen rows. This is explicitly recorded as
+the second use of the repair exception, not a general data-migration precedent.
+`scripts/repair_stub_anchors.py --repair relevant-docs` verifies the live
+named set fail-closed before any write, refuses any additional retired-active
+row outside that set, rewrites only `relevant_docs` + `updated_at`, prints each
+row rewrite, is idempotent, and never writes `docs/planning/` (ADR-0007).
+Forward fix: stub promotion now defaults `relevant_docs` to the durable
+`processed/` path from birth, matching the durable source-anchor posture.
