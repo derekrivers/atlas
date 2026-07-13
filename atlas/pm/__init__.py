@@ -18,9 +18,15 @@ record. A layer above ``atlas.storage``/``atlas.linear``/``atlas.core`` in the
 import spine.
 """
 
+from atlas.pm.agent_runs import (
+    AgentRunReconstructionResult,
+    agent_run_observation,
+    reconstruct_agent_runs,
+)
 from atlas.pm.completion import complete_verified
 from atlas.pm.promotion import promote_ready
 from atlas.pm.report import (
+    AgentRunMetric,
     AnomalyCount,
     CycleTimeStat,
     DeliveryReport,
@@ -44,6 +50,8 @@ __all__ = [
     "CRASH_DEDUP_WINDOW",
     "DEFAULT_INTERVAL_SECONDS",
     "PUSHABLE_STATUSES",
+    "AgentRunMetric",
+    "AgentRunReconstructionResult",
     "AnomalyCount",
     "CycleTimeStat",
     "DeliveryReport",
@@ -52,9 +60,11 @@ __all__ = [
     "SyncResult",
     "ThroughputBucket",
     "TickConfig",
+    "agent_run_observation",
     "build_delivery_report",
     "complete_verified",
     "promote_ready",
+    "reconstruct_agent_runs",
     "render_markdown",
     "report_json",
     "run_scheduler",

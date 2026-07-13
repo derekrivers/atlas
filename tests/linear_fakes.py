@@ -63,6 +63,7 @@ class InMemoryLinearClient:
             state_id=DEFAULT_STATE.id,
             state_name=DEFAULT_STATE.name,
             state_type=DEFAULT_STATE.type,
+            description=str(definition.get("description", "")),
         )
         self._issues[issue_id] = issue
         return issue
@@ -76,6 +77,7 @@ class InMemoryLinearClient:
             state_id=current.state_id,
             state_name=current.state_name,
             state_type=current.state_type,
+            description=str(definition.get("description", current.description or "")),
         )
         self._issues[issue_id] = updated
         return updated
@@ -122,6 +124,7 @@ class InMemoryLinearClient:
             state_id=state_id,
             state_name=match.name if match else None,
             state_type=match.type if match else None,
+            description=current.description,
         )
         self._issues[issue_id] = updated
         return updated
@@ -163,4 +166,5 @@ class InMemoryLinearClient:
             state_id=state.id,
             state_name=state.name,
             state_type=state.type,
+            description=current.description,
         )

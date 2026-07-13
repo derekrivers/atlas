@@ -161,6 +161,18 @@ Pull-based, consistent with ADR-0008 (no webhooks before hosting):
    anomalies otherwise. (The pre-148 shape fetched each ticket's issue
    individually — ~110 requests per tick on a 110-ticket board, which is
    what starved the 2,500/hour budget at the default cadence.)
+
+   Immediately after the pull, reconstruct `AgentRun` rows from local
+   observations (ATLAS-166): each `in_progress` entry in the
+   `TicketStatusTransition` log is one dispatch cycle, keyed by that dispatch
+   transition id. The next `review_required` or `needs_human_decision`
+   transition supplies the handoff timestamp/state when present; evidence and
+   verification rows supply the PR number/head commit; the already-fetched
+   issue description supplies the Atlas-authored context-pack header
+   (`pack_id`, `rendered_at`). Missing pieces remain null and never block the
+   tick. The step makes no Linear call of its own and updates an existing
+   partial run when later ticks observe handoff or evidence.
+
 2. Push definition updates (title/priority/labels/description) for
    tickets whose Atlas `updated_at` is newer, only while the ticket is in
    a pre-dispatch status or `Ready for Agent`.
@@ -225,8 +237,9 @@ plain loop (or cron) — no distributed job system.
 definitions) are ATLAS-42 (`atlas/pm/sync.py`, `sync_tick`). Step 1's "log
 anomalies otherwise" clause — an unmapped Linear state appends one
 `OUT_OF_OWNERSHIP_TRANSITION` `DebtItem` per transition — is ATLAS-118 (woven
-into `sync_tick`'s pull). Step 3 (readiness promotion, sole writer into `Ready
-for Agent`) is ATLAS-43. Step 4 (the follow-up comment scan) is ATLAS-45.
+into `sync_tick`'s pull). AgentRun reconstruction after the pull is ATLAS-166.
+Step 3 (readiness promotion, sole writer into `Ready for Agent`) is ATLAS-43.
+Step 4 (the follow-up comment scan) is ATLAS-45.
 Step 5's anomaly checks split by mechanism, all woven into `sync_tick`'s final
 pass after `promote_ready`: dwell-breach logging is ATLAS-119 (a `_detect_dwell`
 pass keyed on `Ticket.status_entered_at`; report-only, never moves a ticket),
@@ -421,14 +434,15 @@ Learning System workflow.
 ## Delivery metrics
 
 `atlas pm report` (ATLAS-47): throughput (tickets done/week), cycle time per
-state, ready-queue depth, anomaly counts, dwell breaches, and the DRAFT lessons
-awaiting operator review. CLI/markdown output with a `--json` form; no dashboard
-(Revision 1). A PURE READER — it makes no Linear calls and writes nothing,
-computing every metric from stored tickets, `DebtItem`s, transition rows, and
-`Lesson` rows (never from the per-tick, ephemeral `SyncResult`), so it runs with
-no network and no secrets.
+state, ready-queue depth, anomaly counts, dwell breaches, tick failures, agent
+runs, and the DRAFT lessons awaiting operator review. CLI/markdown output with
+a `--json` form; no dashboard (Revision 1). A PURE READER — it makes no Linear
+calls and writes nothing, computing every metric from stored tickets,
+`DebtItem`s, transition rows, tick failures, `AgentRun`s, and `Lesson` rows
+(never from the per-tick, ephemeral `SyncResult`), so it runs with no network
+and no secrets.
 
-The five metrics and the draft queue, as computed in v1:
+The metrics, as computed in v1:
 
 - **Throughput** — tickets currently `done`, bucketed by the ISO week
   (`YYYY-Www`) of `status_entered_at`. A `done` ticket with a null entry time
@@ -452,10 +466,15 @@ The five metrics and the draft queue, as computed in v1:
   ones (the query-time `recurring(...)` predicate) called out per type.
 - **Dwell breaches** — the `DWELL_BREACH` subset of the anomaly log (ATLAS-119),
   surfaced per ticket.
+- **Tick failures** — the count of durable scheduler crash rows.
 - **Draft lessons** — DRAFT `Lesson` rows, including anomaly-draft rows filed
   from review-cycle and dwell-breach patterns. The report surfaces their title,
   pattern tags, related ticket keys, and `DebtItem` evidence ids for operator
   review; it does not promote, discard, or otherwise mutate the rows.
+- **Agent runs** — the count of reconstructed `AgentRun` rows and the mean
+  dispatch-to-handoff duration over rows with both `started_at` and
+  `completed_at` populated. Partial observations count as rows but do not enter
+  the mean.
 
 ## Open items
 

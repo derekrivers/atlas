@@ -102,6 +102,9 @@ class LinearIssue:
 
     ``state_type`` is carried for the status-map's load-time validation
     (ownership.py ``validate_against_states``, D7); it is never a lookup key.
+    ``description`` is carried as an observation field for Atlas-authored
+    context-pack headers (AgentRun reconstruction); it is never written back
+    through the pull path.
     ``identifier`` (the human-facing ``ATL-42`` handle) is carried for
     diagnostics by the batched pull (ATLAS-148) and is never a join key —
     tickets join to issues by ``external_linear_id``/``id`` ONLY; it defaults
@@ -113,6 +116,7 @@ class LinearIssue:
     state_id: str | None
     state_name: str | None
     state_type: str | None
+    description: str | None = None
     identifier: str | None = None
 
 
@@ -241,7 +245,7 @@ def reject_unowned_keys(definition: Mapping[str, Any]) -> None:
 
 # GraphQL documents. Every issue selection returns the same fragment so the
 # DTO is assembled identically on create, update, and fetch.
-_ISSUE_FIELDS = "id title state { id name type }"
+_ISSUE_FIELDS = "id title description state { id name type }"
 _CREATE_MUTATION = (
     "mutation IssueCreate($input: IssueCreateInput!) { "
     f"issueCreate(input: $input) {{ success issue {{ {_ISSUE_FIELDS} }} }} }}"
@@ -343,6 +347,7 @@ def _issue_from_node(node: Mapping[str, Any]) -> LinearIssue:
         state_id=state["id"] if state else None,
         state_name=state["name"] if state else None,
         state_type=state["type"] if state else None,
+        description=node.get("description"),
         # Only the batched project-issues selection fetches `identifier`
         # (ATLAS-148, diagnostics only); the single-issue selections leave it
         # None via the DTO default.

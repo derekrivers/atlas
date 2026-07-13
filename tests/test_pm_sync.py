@@ -55,6 +55,7 @@ from atlas.linear.ownership import LinearStatusMap
 from atlas.pm import SyncResult, sync_tick
 from atlas.pm.sync import CREATED_BY
 from atlas.storage import (
+    AgentRunRepo,
     Database,
     DebtItemRepo,
     LessonRepo,
@@ -1558,6 +1559,7 @@ def test_noop_tick_over_110_ticket_board_stays_within_request_budget(
     assert client.calls.get("fetch_issue", 0) == 0  # the pre-148 loop is gone
     assert client.calls.get("update_issue", 0) == 0  # cursors current: no push
     assert client.calls.get("create_issue", 0) == 0
+    assert AgentRunRepo(db).list() == []  # no dispatch transitions, no runs
 
 
 def test_second_noop_tick_costs_the_same_budget(db: Database) -> None:
@@ -1571,6 +1573,7 @@ def test_second_noop_tick_costs_the_same_budget(db: Database) -> None:
     run(db, client)
 
     assert client.total_calls() <= REQUEST_BUDGET, client.calls
+    assert AgentRunRepo(db).list() == []
 
 
 def test_pull_joins_by_external_linear_id_never_title(db: Database) -> None:

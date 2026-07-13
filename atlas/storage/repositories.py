@@ -407,6 +407,42 @@ class AgentRunRepo(_Repo[AgentRun]):
     def __init__(self, db: Database) -> None:
         super().__init__(db, AgentRun, AgentRunRow)
 
+    def list_for_ticket(self, ticket_id: UUID) -> list[AgentRun]:
+        """Every run reconstructed/recorded for ``ticket_id``, oldest first.
+
+        AgentRun is not append-only in the Evidence sense: Phase 8
+        reconstruction may create a partial observed row at dispatch and fill in
+        handoff/evidence fields on a later tick. The read path stays focused so
+        the producer can enforce one row per dispatch transition.
+        """
+        with self._db.session() as session:
+            rows = session.scalars(
+                sa.select(AgentRunRow)
+                .where(AgentRunRow.ticket_id == ticket_id)
+                .order_by(
+                    AgentRunRow.started_at, AgentRunRow.created_at, AgentRunRow.id
+                )
+            )
+            return [self._to_model(row) for row in rows]
+
+    def replace(self, model: AgentRun) -> AgentRun:
+        """Replace the mutable observation fields for one existing AgentRun.
+
+        Used by AgentRun reconstruction only: the row identity and created_at
+        stay stable, while nullable observation fields can be filled when later
+        ticks see handoff/evidence. A missing id is a programmer error and is
+        reported as ``ValueError`` rather than silently inserting a second run.
+        """
+        _reject_naive(model)
+        with self._db.session() as session, session.begin():
+            row = session.get(AgentRunRow, model.id)
+            if row is None:
+                raise ValueError(f"no AgentRun with id {model.id}")
+            payload = model.model_dump()
+            for column in AgentRunRow.__table__.columns:
+                setattr(row, column.name, payload[column.name])
+        return model
+
 
 class ContextPackRepo(_Repo[ContextPack]):
     def __init__(self, db: Database) -> None:

@@ -106,6 +106,7 @@ from atlas.linear.ownership import (
     definition_payload,
     status_from_issue,
 )
+from atlas.pm.agent_runs import reconstruct_agent_runs
 from atlas.pm.completion import complete_verified
 from atlas.pm.promotion import promote_ready
 from atlas.storage.db import Database
@@ -325,9 +326,13 @@ class SyncResult:
     degraded to definition-only on an enumerated render failure (D-2) — each of
     those also appended one ``PACK_RENDER_FAILURE`` DebtItem. All three count
     only pushes that actually fired, so they are bounded by
-    ``pushed_created + pushed_updated``. ``draft_lessons_filed`` (ATLAS-167)
-    counts DRAFT lesson rows filed from newly logged review-cycle or dwell-breach
-    anomaly patterns, deduped by pattern type and ticket set."""
+    ``pushed_created + pushed_updated``. ``agent_runs_reconstructed`` and
+    ``agent_runs_updated`` count the local AgentRun reconstruction step
+    (ATLAS-166): rows inserted for newly observed dispatch cycles, and existing
+    rows filled in when later handoff/evidence becomes observable.
+    ``draft_lessons_filed`` (ATLAS-167) counts DRAFT lesson rows filed from
+    newly logged review-cycle or dwell-breach anomaly patterns, deduped by
+    pattern type and ticket set."""
 
     status_pulled: int = 0
     status_unchanged: int = 0
@@ -339,6 +344,8 @@ class SyncResult:
     packs_embedded: int = 0
     packs_truncated: int = 0
     pack_render_failures: int = 0
+    agent_runs_reconstructed: int = 0
+    agent_runs_updated: int = 0
     promoted: int = 0
     completed: int = 0
     follow_ups_stubbed: int = 0
@@ -1196,12 +1203,29 @@ def sync_tick(
         if needs_pull
         else {}
     )
+    # Pull all joined tickets first, then reconstruct AgentRuns from the local
+    # transition/evidence store plus the already-fetched board descriptions
+    # (ATLAS-166). The push pass runs after reconstruction so this step is
+    # strictly post-pull and still adds no Linear request of its own.
+    pulled_board: list[Ticket] = []
+    for ticket in pull_board:
+        after_pull = _pull(ticket, tickets, debt, issues_by_id, status_map, result, now)
+        pulled_board.append(after_pull)
+    reconstructed = reconstruct_agent_runs(
+        tickets=tickets,
+        db=db,
+        issue_descriptions_by_id={
+            issue_id: issue.description for issue_id, issue in issues_by_id.items()
+        },
+        now=now,
+    )
+    result.agent_runs_reconstructed = reconstructed.created
+    result.agent_runs_updated = reconstructed.updated
     # The lazily-invoked pack-inputs seam (ATLAS-164): nothing loads until the
     # first push that will actually embed, so a no-op tick stays byte-identical
     # in both requests and local reads.
     pack_inputs = _PackInputLoader(db, documents)
-    for ticket in pull_board:
-        after_pull = _pull(ticket, tickets, debt, issues_by_id, status_map, result, now)
+    for after_pull in pulled_board:
         _push(
             after_pull,
             tickets,
