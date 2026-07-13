@@ -32,10 +32,11 @@ deps subcommand takes `--db` and `--json`.
 `pm report` (ATLAS-47) is the read side of the Phase 4 PM Engine: a PURE READER
 that renders the five `pm-engine-and-linear-sync.md` "Delivery metrics" —
 throughput, historical cycle time per state (from the transition log,
-ATLAS-126), ready-queue depth, anomaly counts, and dwell breaches — as markdown,
-or as structured JSON with `--json`. It computes everything from stored tickets,
-DebtItems, and status transitions (`atlas.pm.build_delivery_report`); it makes no
-Linear call and writes nothing, so it runs with no network and no secrets.
+ATLAS-126), ready-queue depth, anomaly counts, and dwell breaches — plus the
+ATLAS-167 DRAFT lesson queue as markdown, or as structured JSON with `--json`.
+It computes everything from stored tickets, DebtItems, status transitions, and
+Lessons (`atlas.pm.build_delivery_report`); it makes no Linear call and writes
+nothing, so it runs with no network and no secrets.
 `datetime.now(UTC)` is read only at this boundary and passed into the pure
 builder.
 
@@ -1095,17 +1096,18 @@ def _deps_command(args: argparse.Namespace, *, database: Database | None) -> int
 
 
 def _pm_report(resolved_db: Database, *, as_json: bool) -> int:
-    """Render the delivery metrics (ATLAS-47). A pure reader: it builds the
-    report from stored tickets, DebtItems, and the transition log and emits it,
-    writing nothing and making no Linear call. `datetime.now(UTC)` is read only
-    here and passed into the pure builder so every metric is deterministic under
-    test."""
+    """Render the delivery metrics and draft lesson queue. A pure reader: it
+    builds the report from stored tickets, DebtItems, the transition log, and
+    DRAFT lessons and emits it, writing nothing and making no Linear call.
+    `datetime.now(UTC)` is read only here and passed into the pure builder so
+    every metric is deterministic under test."""
     report = build_delivery_report(
         TicketRepo(resolved_db),
         DebtItemRepo(resolved_db),
         TickFailureRepo(resolved_db),
         TicketStatusTransitionRepo(resolved_db),
         now=datetime.now(UTC),
+        lesson_repo=LessonRepo(resolved_db),
     )
     if as_json:
         print(json.dumps(report_json(report)))

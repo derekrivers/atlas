@@ -4,13 +4,15 @@ The read side of the Phase 4 anomaly stack and ticket lifecycle: a PURE
 READER that surfaces what the PM Engine has already recorded as the five
 ``pm-engine-and-linear-sync.md`` "Delivery metrics" — throughput, cycle time
 per state, ready-queue depth, anomaly counts, and dwell breaches — for the
-``atlas pm report`` CLI to render as markdown or ``--json``.
+``atlas pm report`` CLI to render as markdown or ``--json``. ATLAS-167 adds a
+read-only DRAFT lessons section to that same report, sourced from `Lesson` rows
+the anomaly step filed for operator review.
 
 It makes NO Linear calls and writes NOTHING. Every metric is computed from
-stored ``Ticket``s, ``DebtItem``s, and ``TicketStatusTransition``s via
-``TicketRepo``/``DebtItemRepo``/``TicketStatusTransitionRepo`` reads only —
-never from the per-tick, ephemeral ``SyncResult`` (which is not persisted) —
-so it runs with no network and no secrets.
+stored ``Ticket``s, ``DebtItem``s, ``TicketStatusTransition``s, and optional
+``Lesson`` rows via repository reads only — never from the per-tick, ephemeral
+``SyncResult`` (which is not persisted) — so it runs with no network and no
+secrets.
 
 :func:`build_delivery_report` is a pure builder: it takes ``now`` explicitly
 (the CLI boundary supplies ``datetime.now(UTC)``), so every metric is
@@ -47,11 +49,14 @@ from itertools import pairwise
 from statistics import median
 from uuid import UUID
 
+from atlas.core.enums import EntityStatus
 from atlas.core.models.debt_item import AnomalyType, DebtItem
+from atlas.core.models.lesson import Lesson
 from atlas.core.models.ticket import Ticket, TicketStatus
 from atlas.core.models.ticket_status_transition import TicketStatusTransition
 from atlas.storage.repositories import (
     DebtItemRepo,
+    LessonRepo,
     TicketRepo,
     TicketStatusTransitionRepo,
     TickFailureRepo,
@@ -117,9 +122,22 @@ class DwellBreach:
 
 
 @dataclass(frozen=True)
+class DraftLesson:
+    """A DRAFT lesson surfaced for operator review in the PM report."""
+
+    lesson_id: UUID
+    title: str
+    category: str
+    pattern: str
+    ticket_keys: list[str]
+    debt_item_ids: list[str]
+
+
+@dataclass(frozen=True)
 class DeliveryReport:
     """The five delivery metrics at ``generated_at`` (the injected ``now``),
-    plus the PM-scheduler tick-failure count (ATLAS-125)."""
+    plus the PM-scheduler tick-failure count (ATLAS-125) and DRAFT lessons
+    awaiting operator review."""
 
     generated_at: datetime
     throughput: list[ThroughputBucket]
@@ -128,6 +146,7 @@ class DeliveryReport:
     anomaly_counts: list[AnomalyCount]
     dwell_breaches: list[DwellBreach]
     tick_failure_count: int
+    draft_lessons: list[DraftLesson]
 
 
 def _hours_between(later: datetime, earlier: datetime) -> float:
@@ -261,6 +280,38 @@ def _dwell_breaches(
     return sorted(breaches, key=lambda breach: breach.ticket_key)
 
 
+def _tag_values(lesson: Lesson, prefix: str) -> list[str]:
+    return sorted(
+        tag.removeprefix(prefix) for tag in lesson.tags if tag.startswith(prefix)
+    )
+
+
+def _draft_lessons(lessons: list[Lesson], tickets: list[Ticket]) -> list[DraftLesson]:
+    """DRAFT lesson rows, enriched with ticket keys and anomaly-evidence tags."""
+
+    key_by_id = {ticket.id: ticket.key for ticket in tickets}
+    drafts: list[DraftLesson] = []
+    for lesson in lessons:
+        if lesson.status is not EntityStatus.DRAFT:
+            continue
+        ticket_keys = [
+            key_by_id.get(ticket_id, str(ticket_id))
+            for ticket_id in lesson.related_ticket_ids
+        ] or _tag_values(lesson, "ticket:")
+        patterns = _tag_values(lesson, "anomaly:")
+        drafts.append(
+            DraftLesson(
+                lesson_id=lesson.id,
+                title=lesson.title,
+                category=lesson.category.value,
+                pattern=", ".join(patterns) if patterns else "n/a",
+                ticket_keys=sorted(ticket_keys),
+                debt_item_ids=_tag_values(lesson, "debt-item:"),
+            )
+        )
+    return sorted(drafts, key=lambda draft: (draft.title, str(draft.lesson_id)))
+
+
 def build_delivery_report(
     ticket_repo: TicketRepo,
     debt_repo: DebtItemRepo,
@@ -268,18 +319,19 @@ def build_delivery_report(
     transition_repo: TicketStatusTransitionRepo,
     *,
     now: datetime,
+    lesson_repo: LessonRepo | None = None,
 ) -> DeliveryReport:
-    """Compute the five delivery metrics plus the tick-failure count from
-    stored state (ATLAS-47; tick failures ATLAS-125; historical cycle time
-    ATLAS-126).
+    """Compute the delivery metrics, tick-failure count, and draft lesson queue
+    from stored state (ATLAS-47; tick failures ATLAS-125; historical cycle time
+    ATLAS-126; draft lessons ATLAS-167).
 
     A pure builder: it performs read-only
     ``TicketRepo``/``DebtItemRepo``/``TickFailureRepo``/``TicketStatusTransitionRepo``
-    queries, takes ``now`` explicitly so every metric is deterministic, and
-    returns a :class:`DeliveryReport`. It writes nothing and makes no Linear
-    call. An empty database yields a well-formed, fully zeroed report (empty
-    lists, a zero ready-queue depth, and a zero tick-failure count), never an
-    error.
+    queries, plus ``LessonRepo`` when supplied for the DRAFT lesson section.
+    It takes ``now`` explicitly so every metric is deterministic, and returns a
+    :class:`DeliveryReport`. It writes nothing and makes no Linear call. An
+    empty database yields a well-formed, fully zeroed report (empty lists, a zero
+    ready-queue depth, and a zero tick-failure count), never an error.
     """
     tickets = ticket_repo.list()
     debt_items = debt_repo.list()
@@ -294,6 +346,10 @@ def build_delivery_report(
         anomaly_counts=_anomaly_counts(debt_items, debt_repo),
         dwell_breaches=_dwell_breaches(debt_items, tickets, debt_repo),
         tick_failure_count=len(tick_failure_repo.list()),
+        draft_lessons=_draft_lessons(
+            lesson_repo.list() if lesson_repo is not None else [],
+            tickets,
+        ),
     )
 
 
@@ -334,6 +390,17 @@ def report_json(report: DeliveryReport) -> dict[str, object]:
             for breach in report.dwell_breaches
         ],
         "tick_failure_count": report.tick_failure_count,
+        "draft_lessons": [
+            {
+                "lesson_id": str(draft.lesson_id),
+                "title": draft.title,
+                "category": draft.category,
+                "pattern": draft.pattern,
+                "ticket_keys": draft.ticket_keys,
+                "debt_item_ids": draft.debt_item_ids,
+            }
+            for draft in report.draft_lessons
+        ],
     }
 
 
@@ -342,9 +409,9 @@ def _hours(value: float | None) -> str:
 
 
 def render_markdown(report: DeliveryReport) -> str:
-    """Render the five metrics as markdown (Revision 1: CLI/markdown, no
-    dashboard). An empty database still renders every section, each stating its
-    zero state in prose rather than an empty table."""
+    """Render the report as markdown (Revision 1: CLI/markdown, no dashboard).
+    An empty database still renders every section, each stating its zero state in
+    prose rather than an empty table."""
     lines: list[str] = ["# Delivery metrics", ""]
     lines.append(
         f"_Generated {report.generated_at.isoformat()} — read-only; computed "
@@ -423,6 +490,22 @@ def render_markdown(report: DeliveryReport) -> str:
     lines.append("## Tick failures")
     lines.append("")
     lines.append(f"{report.tick_failure_count} recorded PM-scheduler tick failure(s).")
+    lines.append("")
+
+    # 7. DRAFT lessons awaiting the operator's promotion/discard workflow.
+    lines.append("## Draft lessons")
+    lines.append("")
+    if report.draft_lessons:
+        lines.append("| Lesson | Pattern | Tickets | DebtItem evidence ids |")
+        lines.append("| --- | --- | --- | --- |")
+        for draft in report.draft_lessons:
+            tickets = ", ".join(draft.ticket_keys) if draft.ticket_keys else "n/a"
+            evidence = ", ".join(draft.debt_item_ids) if draft.debt_item_ids else "n/a"
+            lines.append(
+                f"| {draft.title} | {draft.pattern} | {tickets} | {evidence} |"
+            )
+    else:
+        lines.append("No draft lessons recorded.")
     lines.append("")
 
     return "\n".join(lines)

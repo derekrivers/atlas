@@ -33,6 +33,7 @@ from uuid import UUID, uuid4
 
 import pytest
 from test_debt_item_model import debt_item_kwargs
+from test_lesson_model import lesson_kwargs
 from test_models_validation import ticket_kwargs
 from test_tick_failure_model import tick_failure_kwargs
 from test_ticket_status_transition_model import transition_kwargs
@@ -41,6 +42,7 @@ from atlas.cli import EXIT_OK, main
 from atlas.core.models import (
     AnomalyType,
     DebtItem,
+    Lesson,
     Ticket,
     TicketStatusTransition,
     TickFailure,
@@ -49,6 +51,7 @@ from atlas.pm import build_delivery_report, render_markdown, report_json
 from atlas.storage import (
     Database,
     DebtItemRepo,
+    LessonRepo,
     TicketRepo,
     TicketStatusTransitionRepo,
     TickFailureRepo,
@@ -91,6 +94,16 @@ def seed_debt(db: Database, items: list[DebtItem]) -> None:
     repo = DebtItemRepo(db)
     for item in items:
         repo.record(item)
+
+
+def make_lesson(**overrides: object) -> Lesson:
+    return Lesson(**lesson_kwargs() | {"id": uuid4()} | overrides)
+
+
+def seed_lessons(db: Database, items: list[Lesson]) -> None:
+    repo = LessonRepo(db)
+    for item in items:
+        repo.add(item)
 
 
 def make_failure(**overrides: object) -> TickFailure:
@@ -152,6 +165,7 @@ def test_report_markdown_has_all_five_sections(
     assert "## Ready-queue depth" in out
     assert "## Anomaly counts" in out
     assert "## Dwell breaches" in out
+    assert "## Draft lessons" in out
 
 
 def test_report_json_parses_to_the_same_data(
@@ -173,6 +187,54 @@ def test_report_json_parses_to_the_same_data(
     types = {row["anomaly_type"]: row["count"] for row in payload["anomaly_counts"]}
     assert types == {kind.value: 0 for kind in AnomalyType}
     assert payload["dwell_breaches"] == []
+    assert payload["draft_lessons"] == []
+
+
+def test_report_surfaces_draft_lessons_with_anomaly_evidence(
+    db: Database, capsys: pytest.CaptureFixture[str]
+) -> None:
+    ticket = make_ticket("ATLAS-9", status="in_progress")
+    seed_tickets(db, [ticket])
+    debt = make_debt(ticket.id, AnomalyType.DWELL_BREACH)
+    seed_debt(db, [debt])
+    draft = make_lesson(
+        product_id=ticket.product_id,
+        status="draft",
+        title="Detected dwell_breach pattern for ATLAS-9",
+        related_ticket_ids=[ticket.id],
+        tags=[
+            "anomaly-draft",
+            "anomaly:dwell_breach",
+            "anomaly-draft-key:dwell_breach:ATLAS-9",
+            "ticket:ATLAS-9",
+            f"debt-item:{debt.id}",
+        ],
+    )
+    seed_lessons(db, [draft])
+
+    code = main(["pm", "report"], database=db)
+    out = capsys.readouterr().out
+
+    assert code == EXIT_OK
+    assert "## Draft lessons" in out
+    assert draft.title in out
+    assert "dwell_breach" in out
+    assert ticket.key in out
+    assert str(debt.id) in out
+
+    code = main(["pm", "report", "--json"], database=db)
+    payload = json.loads(capsys.readouterr().out)
+    assert code == EXIT_OK
+    assert payload["draft_lessons"] == [
+        {
+            "lesson_id": str(draft.id),
+            "title": draft.title,
+            "category": "failure_pattern",
+            "pattern": "dwell_breach",
+            "ticket_keys": [ticket.key],
+            "debt_item_ids": [str(debt.id)],
+        }
+    ]
 
 
 # --- anomaly counts: by type, with the miscount/omission wrong answers named -

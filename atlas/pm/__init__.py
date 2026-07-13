@@ -9,8 +9,9 @@ ATLAS-43 adds step 3, readiness promotion to ``Ready for Agent``
 ticket whose persisted Verification Engine verdict is PASSED to ``Done``, through
 the same sanctioned Linear-only ``set_state`` path. ATLAS-47 adds the
 read side: :func:`build_delivery_report` and its renderers, a pure reader of
-stored tickets and ``DebtItem``s for the ``atlas pm report`` command. The
-follow-up ingestion is a later ticket. ATLAS-50 adds the recurring scheduler:
+stored tickets, ``DebtItem``s, transition rows, and DRAFT ``Lesson`` rows for the
+``atlas pm report`` command. The follow-up ingestion is a later ticket. ATLAS-50
+adds the recurring scheduler:
 :func:`run_scheduler` calls :func:`sync_tick` on a cadence and records one
 ``TickFailure`` on a crashing tick (create-on-crash), the sole writer of that
 record. A layer above ``atlas.storage``/``atlas.linear``/``atlas.core`` in the
@@ -23,6 +24,7 @@ from atlas.pm.report import (
     AnomalyCount,
     CycleTimeStat,
     DeliveryReport,
+    DraftLesson,
     DwellBreach,
     ThroughputBucket,
     build_delivery_report,
@@ -45,6 +47,7 @@ __all__ = [
     "AnomalyCount",
     "CycleTimeStat",
     "DeliveryReport",
+    "DraftLesson",
     "DwellBreach",
     "SyncResult",
     "ThroughputBucket",
