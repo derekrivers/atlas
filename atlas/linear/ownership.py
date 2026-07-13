@@ -19,8 +19,9 @@ import json
 import os
 import re
 from collections.abc import Callable, Iterable, Mapping
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple
 
+from atlas.core.models.context_pack import ContextPack
 from atlas.core.models.ticket import Ticket, TicketStatus
 
 if TYPE_CHECKING:  # back-reference only; avoids a runtime client <-> ownership cycle
@@ -55,10 +56,11 @@ class LinearStatusMapError(ValueError):
 # Both are *owned but not yet syncable*: present in the ADR-0006 ownership
 # table, absent from the payload, never silently guessed. `description` is a
 # full-spec markdown render of the ticket (objective + every populated rich
-# field), composed by `render_definition_description` below; context-pack
-# embedding still arrives in Phase 8 per the design doc. This stays a single
-# owned field -- the render widens the *content* of `description`, not the set
-# of keys over the wire.
+# field), composed by `render_definition_description` below; at definition-push
+# time the PM Engine widens it further with the rendered context pack
+# (`compose_embedded_description`, ATLAS-164 — the Phase 8 delivery this table
+# previously deferred). This stays a single owned field -- both renders widen
+# the *content* of `description`, not the set of keys over the wire.
 OWNED_DEFINITION_FIELDS: tuple[tuple[str, Callable[[Ticket], object]], ...] = (
     ("title", lambda ticket: render_definition_title(ticket)),
     ("description", lambda ticket: render_definition_description(ticket)),
@@ -165,6 +167,92 @@ def definition_payload(ticket: Ticket) -> dict[str, object]:
     never cross Atlas -> Linear through this boundary."""
 
     return {key: getter(ticket) for key, getter in OWNED_DEFINITION_FIELDS}
+
+
+# --- Context-pack embedding (ATLAS-164) -------------------------------------
+#
+# The pinned delimiter/header form from symphony-integration.md
+# "Context pack delivery" (gate assumption A-4): the definition render, a blank
+# line, `---`, one header line naming the pack, then the pack's
+# rendered_markdown verbatim. The header travels with the pack so staleness is
+# VISIBLE at dispatch time (`rendered_at`) and the run is attributable to an
+# exact render (`pack_id`) — the D-3 ruling accepts corpus staleness between
+# definition pushes precisely because this header keeps it observable.
+PACK_HEADER_PREFIX = "ATLAS CONTEXT PACK v1"
+
+# The pinned overflow limit on the whole composed description (D-1/A-2):
+# ~2x the structural ceiling (the pack builder is fail-closed at a 12,000-token
+# budget with the chars/4 estimator, so a surviving pack is <= ~48k chars) and
+# well under the 250,000-char reference figure Linear documents for
+# email-created issue bodies — the only size figure Linear publishes anywhere
+# (no GraphQL description limit is documented). Overflow is defensive, not
+# expected.
+EMBED_DESCRIPTION_LIMIT = 100_000
+
+
+class ComposedDescription(NamedTuple):
+    """The composed embedded description plus whether the D-1 truncation fired
+    (``pack_truncated`` feeds the ``SyncResult.packs_truncated`` counter; the
+    definition fields are never what was cut)."""
+
+    description: str
+    pack_truncated: bool
+
+
+def _truncation_marker(ticket_key: str, limit: int) -> str:
+    """The visible D-1 marker appended when the pack tail is truncated: names
+    the truncation and the full-pack route (``atlas context render <KEY>``,
+    gate assumption A-2)."""
+
+    return (
+        f"\n[pack truncated at {limit} chars — "
+        f"full pack: atlas context render {ticket_key}]"
+    )
+
+
+def compose_embedded_description(
+    ticket: Ticket, pack: ContextPack, *, limit: int = EMBED_DESCRIPTION_LIMIT
+) -> ComposedDescription:
+    """Compose the owned ``description`` for an embedding definition push
+    (ATLAS-164): the definition render, a blank line, ``---``, the pinned
+    header line, then the pack's ``rendered_markdown``.
+
+    Pure: same ticket + same pack -> byte-identical string, no clock, no I/O.
+    Layer-clean: :class:`ContextPack` is an ``atlas.core`` model, so nothing
+    above this boundary is imported. This widens the *content* of the
+    already-owned ``description`` (the ATLAS-143 precedent); no new key crosses
+    Atlas -> Linear and ``OWNED_LINEAR_INPUT_KEYS`` is unchanged.
+
+    Re-push idempotence, amended honestly (the D-6 note): the definition render
+    and this composition are pure, but a re-push builds a FRESH pack, whose
+    ``pack_id``/``rendered_at`` differ — so an embedded re-push is no longer
+    byte-identical across crash-retries. Harmless: ``update_issue`` overwrites,
+    and byte-exactness across re-pushes is not a contract (gate assumption
+    A-5); correctness of re-push remains the timestamp cursor's job.
+
+    Overflow (D-1, truncation-with-marker): when the composed description
+    exceeds ``limit``, ONLY the pack tail is truncated — the definition render,
+    the delimiter, and the header are never cut — and the visible
+    :func:`_truncation_marker` line is appended, keeping the result within
+    ``limit``. A definition so large that the prefix and marker alone exceed
+    ``limit`` composes over-limit rather than cutting definition fields (the
+    stronger rule; the pack builder's token budget makes this unreachable in
+    practice).
+    """
+
+    definition = render_definition_description(ticket)
+    header = (
+        f"{PACK_HEADER_PREFIX} | pack_id: {pack.id} | "
+        f"rendered_at: {pack.created_at.isoformat()}"
+    )
+    prefix = f"{definition}\n\n---\n{header}\n"
+    full = prefix + pack.rendered_markdown
+    if len(full) <= limit:
+        return ComposedDescription(full, False)
+    marker = _truncation_marker(ticket.key, limit)
+    available = limit - len(prefix) - len(marker)
+    truncated = pack.rendered_markdown[: max(0, available)]
+    return ComposedDescription(prefix + truncated + marker, True)
 
 
 # --- Status direction: Linear -> Atlas -------------------------------------

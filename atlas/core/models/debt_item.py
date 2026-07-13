@@ -28,7 +28,7 @@ class AnomalyType(StrEnum):
     """Class of delivery anomaly a DebtItem records (data-model §6.1;
     pm-engine-and-linear-sync.md "Anomaly and dwell detection").
 
-    The four observation classes the PM Engine appends one row per. A
+    The five observation classes the PM Engine appends one row per. A
     model-specific enum, defined with its model like EvidenceType — not a
     §2 shared type — and used only by DebtItem and DebtItemRepo.
     """
@@ -37,6 +37,11 @@ class AnomalyType(StrEnum):
     REVIEW_CYCLE = "review_cycle"
     DWELL_BREACH = "dwell_breach"
     STALE_BLOCK = "stale_block"
+    # ATLAS-164 (D-2): a context pack failed to render at definition-push time;
+    # the push degraded to definition-only and the tick continued. One row per
+    # failed embed push — naturally bounded, since pushes fire only on
+    # definition change.
+    PACK_RENDER_FAILURE = "pack_render_failure"
 
 
 class DebtItem(BaseModel):

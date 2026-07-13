@@ -121,6 +121,7 @@ def run(db: Database, client: RecordingClient) -> SyncResult:
         team_id=TEAM_ID,
         project_id=PROJECT_ID,
         inbox_dir=Path(tempfile.mkdtemp()),
+        documents=lambda: [],
         now=NOW,
     )
 
@@ -307,6 +308,7 @@ def test_zero_ready_for_agent_states_raises(db: Database) -> None:
             team_id=TEAM_ID,
             project_id=PROJECT_ID,
             inbox_dir=Path(tempfile.mkdtemp()),
+            documents=lambda: [],
             now=NOW,
         )
 

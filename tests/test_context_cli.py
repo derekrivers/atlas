@@ -32,6 +32,21 @@ from typing import Any
 from uuid import uuid4
 
 import pytest
+from context_corpus import (
+    ANCHOR,
+    ANCHOR_PATH,
+    CONTEXT_SPEC,
+    PROCESSED_STUB,
+    PROCESSED_STUB_PATH,
+    STUB_ANCHOR,
+    corpus_files,
+)
+from context_corpus import (
+    BODY_PHRASE as _BODY_PHRASE,
+)
+from context_corpus import (
+    STUB_PHRASE as _STUB_PHRASE,
+)
 from test_ingestion import git, make_repo
 from test_lesson_model import lesson_kwargs
 from test_models_validation import ticket_kwargs
@@ -39,55 +54,6 @@ from test_models_validation import ticket_kwargs
 from atlas.cli import EXIT_OK, EXIT_PRECONDITION, main
 from atlas.core.models import Lesson, Ticket
 from atlas.storage import Database, LessonRepo, TicketRepo
-
-# The anchor doc: a "## Target Section" heading (slug "target-section") with a
-# distinctive body phrase, and a following same-level heading that ends it.
-_BODY_PHRASE = "The renderer assembles the minimum high-value context."
-CONTEXT_SPEC = "\n".join(
-    [
-        "# Context Spec",
-        "",
-        "## Target Section",
-        "",
-        _BODY_PHRASE,
-        "",
-        "## Next Section",
-        "",
-        "next body",
-        "",
-    ]
-)
-
-ANCHOR_PATH = "docs/atlas/context-spec.md"
-ANCHOR = f"{ANCHOR_PATH}#target-section"
-
-# A retired inbox stub at its durable processed/ address (ATLAS-162): the pack
-# path resolves a stub-minted ticket's anchor here, exactly as gate 4 does.
-_STUB_PHRASE = "What gate 4 can resolve, a pack can cite."
-PROCESSED_STUB_PATH = "docs/planning/inbox/processed/inbox-stub-fixture.md"
-PROCESSED_STUB = "\n".join(
-    [
-        "# Stub Fixture",
-        "",
-        "## Packs See Processed",
-        "",
-        _STUB_PHRASE,
-        "",
-    ]
-)
-STUB_ANCHOR = f"{PROCESSED_STUB_PATH}#packs-see-processed"
-
-
-def corpus_files(spec: str = CONTEXT_SPEC) -> dict[str, str]:
-    """The committed §2.1 input set the loader re-ingests from HEAD: the four
-    root docs plus the anchor doc the ticket points into."""
-    return {
-        "PRODUCT.md": "# Product\n\n## Vision\n",
-        "ARCHITECTURE.md": "# Architecture\n",
-        "ROADMAP.md": "# Roadmap\n\n## Phase 5\n",
-        "WORKFLOW.md": "# Workflow\n",
-        ANCHOR_PATH: spec,
-    }
 
 
 @pytest.fixture

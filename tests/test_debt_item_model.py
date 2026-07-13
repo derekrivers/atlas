@@ -37,12 +37,13 @@ DOCUMENTED_FIELDS: dict[str, tuple[Any, Any]] = {
     "created_at": (datetime, REQUIRED),
 }
 
-# data-model §6.1 (four members)
+# data-model §6.1 (five members)
 DOCUMENTED_TYPES = {
     "OUT_OF_OWNERSHIP_TRANSITION": "out_of_ownership_transition",
     "REVIEW_CYCLE": "review_cycle",
     "DWELL_BREACH": "dwell_breach",
     "STALE_BLOCK": "stale_block",
+    "PACK_RENDER_FAILURE": "pack_render_failure",
 }
 
 
