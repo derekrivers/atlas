@@ -1157,6 +1157,7 @@ class AnomalyType(str, Enum):
     REVIEW_CYCLE = "review_cycle"
     DWELL_BREACH = "dwell_breach"
     STALE_BLOCK = "stale_block"
+    PACK_RENDER_FAILURE = "pack_render_failure"
 
 class DebtItem(BaseModel):
     id: UUID

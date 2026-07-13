@@ -68,11 +68,12 @@ Decisions encoded here:
 ## Context pack delivery
 
 **Decision: the rendered context pack is embedded in the Linear issue
-description at sync time.** When the PM Engine moves a ticket to
-`Ready for Agent`, it writes the issue description as:
+description at sync time (delivered by ATLAS-164).** At every definition
+push — create and update, all pushable statuses — the PM Engine writes the
+issue description as:
 
 ```text
-<human-readable summary>
+<definition description>
 
 ---
 ATLAS CONTEXT PACK v1 | pack_id: <uuid> | rendered_at: <ts>
@@ -82,20 +83,56 @@ ATLAS CONTEXT PACK v1 | pack_id: <uuid> | rendered_at: <ts>
 Rationale: Symphony renders `issue.description` into the agent prompt via
 the `WORKFLOW.md` template, so embedding requires no Atlas API, no network
 access from the workspace, and no credentials beyond what Symphony already
-holds. The pack's `input_doc_shas` and `pack_id` travel with it, so
-staleness is detectable and every agent run is attributable to an exact
-pack (`AgentRun.input_context_pack_id`).
+holds. The `pack_id` and `rendered_at` travel in the header, so staleness
+is visible at dispatch time and every agent run is attributable to an
+exact render (`AgentRun.input_context_pack_id` needs the deferred
+pack-persistence ticket — packs are transient today, so the embedded
+`pack_id` references a pack no store yet holds).
 
-Rules:
+Rules (the three ATLAS-164 gate rulings):
 
-- The PM Engine refreshes the embedded pack on every sync **while the
-  ticket is in `Ready for Agent` only**. Once `In Progress`, the
-  description is frozen — re-rendering context under a running agent
-  creates mid-flight scope drift.
-- If a rendered pack exceeds the Linear description limit, the PM Engine
-  embeds the objective/constraints/criteria sections plus a repo path, and
-  commits the full pack to `docs/planning/packs/<ticket-key>.md` for the
-  workspace checkout to read. This is the fallback, not the default.
+- **Refresh on definition change only (D-3).** The embedded pack re-renders
+  exactly when the sync cursor re-pushes the definition
+  (`updated_at > linear_synced_at`) — never per sync. Per-sync refresh
+  already contradicts the merged ATLAS-148 request-budget pin (zero pushes
+  on an untouched board), and unchanged-definition corpus detection would
+  need persisted pack state plus O(affected-tickets) `update_issue` calls
+  for a routine docs edit. Corpus staleness between definition pushes is
+  therefore accepted: the window that matters (`Ready for Agent` →
+  `In Progress`, frozen after dispatch) is short on a working board, and
+  the header's `rendered_at` keeps the accepted staleness visible. Once
+  `In Progress`, the description is frozen — re-rendering context under a
+  running agent creates mid-flight scope drift. If freshness is wanted
+  later, the persisted-pack + corpus-sha design goes through the
+  pack-persistence ticket, not the sync tick.
+- **Overflow truncates the pack with a visible marker (D-1).** When the
+  composed description exceeds the pinned `EMBED_DESCRIPTION_LIMIT`
+  (100,000 chars — roughly twice the ~48,000-char structural ceiling the
+  pack builder's fail-closed 12,000-token budget implies, and well under
+  the 250,000-character message-body cap Linear documents for
+  email-created issues, the only size figure Linear publishes; no GraphQL
+  description limit is documented), the PACK tail alone is truncated and a
+  marker line names the truncation and the full render
+  (`atlas context render <KEY>`). Definition fields are never cut.
+  Everything stays inside the one owned description field. The
+  previously-documented fallback — committing the full pack to
+  `docs/planning/packs/<ticket-key>.md` — is rejected and must not
+  return: it would add a second standing `docs/planning/` writer
+  (ADR-0007), and an uncommitted `packs/<key>.md` is invisible to the
+  dispatched agent's HEAD-reading workspace — the fallback doesn't merely
+  cost an ADR-0007 exception, it fails to deliver the very milestone it
+  exists to serve.
+- **A render failure pushes definition-only, typed and logged (D-2).** On
+  an enumerated typed failure (the token-budget raise, the
+  ingestion/anchor errors, the retriever preconditions, a
+  documents-loader failure) the push degrades to exactly the
+  definition-only payload, one `PACK_RENDER_FAILURE` DebtItem is appended
+  (naming the ticket key, the failure class, and the degradation), and
+  the tick continues; a non-typed exception still crashes the tick loudly
+  — fail-closed, never a blanket handler. The cursor stamps on the
+  fallback, so a broken render is not retried every tick; the fixed pack
+  rides the next definition change (an operator force-re-push lever is
+  routed as a follow-up).
 
 ## Workflow contract
 
@@ -172,7 +209,13 @@ Per the Symphony spec, implementations must document their trust posture:
 
 ## Open items (resolve before Phase 8 starts, not before Phase 5)
 
-- Linear description size limit in practice → validates the fallback rule.
+- ~~Linear description size limit in practice.~~ Resolved at the ATLAS-164
+  gate: Linear publishes NO description size limit for the GraphQL API
+  (developer docs, editor docs, and community reports searched; no
+  observed 400 in this repo's live history). The only documented figure
+  anywhere is the 250,000-character message-body cap for email-created
+  issues — the reference point the 100,000-char pin sits well under. The
+  overflow rule above (truncation-with-marker) encodes the finding.
 - Exact follow-up comment schema for `atlas:proposed-follow-up`.
 - Whether `Changes Requested` re-dispatch should require a fresh pack
   render (current position: no — same pack, feedback arrives via PR

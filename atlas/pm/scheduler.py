@@ -57,6 +57,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
 
+from atlas.core.anchors import SourceDocument
 from atlas.core.enums import ActorType
 from atlas.core.models.tick_failure import TickFailure
 from atlas.linear.client import LinearClient, LinearRateLimitError
@@ -108,8 +109,11 @@ class TickConfig:
     """The injection a single ``sync_tick`` needs, built once and reused every
     tick. Mirrors ``sync_tick``'s keyword-only signature exactly (``tickets``,
     ``db``, ``client``, ``status_map``, ``team_id``, ``project_id``,
-    ``inbox_dir``); ``now`` is the one thing taken fresh per tick (D1) and so is
-    not held here."""
+    ``inbox_dir``, ``documents``); ``now`` is the one thing taken fresh per tick
+    (D1) and so is not held here. ``documents`` (ATLAS-164) is the pack-inputs
+    provider the CLI builds from the ``atlas.planning`` collectors — injected
+    because the import spine places ``atlas.pm`` below ``atlas.planning`` — and
+    the tick invokes it lazily, only when a push will actually embed."""
 
     tickets: TicketRepo
     db: Database
@@ -118,6 +122,7 @@ class TickConfig:
     team_id: str
     project_id: str
     inbox_dir: Path
+    documents: Callable[[], list[SourceDocument]]
 
 
 def _signature(exc: BaseException) -> str:
@@ -188,6 +193,7 @@ def run_tick(
             team_id=config.team_id,
             project_id=config.project_id,
             inbox_dir=config.inbox_dir,
+            documents=config.documents,
             now=now,
         )
     except Exception as exc:  # create-on-crash: a tick crash never kills the loop

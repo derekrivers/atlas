@@ -144,6 +144,7 @@ def make_config(db: Database, tmp_path: Path) -> TickConfig:
         team_id="team-1",
         project_id="project-1",
         inbox_dir=tmp_path / "inbox",
+        documents=lambda: [],
     )
 
 
@@ -443,6 +444,7 @@ def test_injection_passed_into_sync_tick_and_clean_tick_records_nothing(
             "team_id": config.team_id,
             "project_id": config.project_id,
             "inbox_dir": config.inbox_dir,
+            "documents": config.documents,
             "now": NOW,
         }
     ]

@@ -41,14 +41,14 @@ from collections.abc import Mapping
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from linear_fakes import InMemoryLinearClient
 from test_models_validation import NOW, dependency_kwargs, ticket_kwargs
 
 from atlas.core.enums import ActorType
-from atlas.core.models import AnomalyType, Ticket, TicketDependency
+from atlas.core.models import AnomalyType, DebtItem, Ticket, TicketDependency
 from atlas.core.models.ticket import TicketStatus
 from atlas.linear.client import LinearComment, LinearIssue, WorkflowState
 from atlas.linear.ownership import LinearStatusMap
@@ -241,6 +241,14 @@ def run(
     # seed no comments, so it writes nothing. A throwaway temp dir per call keeps
     # them isolated. The follow-up behaviour itself is covered in
     # tests/test_pm_follow_ups.py.
+    #
+    # The documents provider (ATLAS-164) defaults to an EMPTY corpus: no seeded
+    # anchor resolves, so every definition push's pack render fails and degrades
+    # to definition-only (D-2) — keeping this suite's push-payload assertions
+    # byte-stable at the pre-164 form. The cost, declared: an embedding push
+    # here also appends one PACK_RENDER_FAILURE DebtItem, so DebtItem
+    # assertions in this module scope to the anomaly type under test. The
+    # embedding behaviour itself is covered in tests/test_pm_pack_embedding.py.
     return sync_tick(
         tickets=TicketRepo(db),
         db=db,
@@ -249,8 +257,27 @@ def run(
         team_id=TEAM_ID,
         project_id=PROJECT_ID,
         inbox_dir=inbox_dir or Path(tempfile.mkdtemp()),
+        documents=lambda: [],
         now=now,
     )
+
+
+def debt_rows(
+    db: Database, kind: AnomalyType, ticket_id: UUID | None = None
+) -> list[DebtItem]:
+    """The DebtItems of one anomaly class (optionally one ticket's). Scoping by
+    type keeps each proof honest now that a definition push over this suite's
+    deliberately EMPTY corpus also appends one PACK_RENDER_FAILURE row per push
+    (ATLAS-164 D-2; the embedding behaviour is proved in
+    tests/test_pm_pack_embedding.py, not here)."""
+
+    items = DebtItemRepo(db).list()
+    return [
+        item
+        for item in items
+        if item.anomaly_type == kind
+        and (ticket_id is None or item.ticket_id == ticket_id)
+    ]
 
 
 # --- idempotency -----------------------------------------------------------
@@ -308,10 +335,9 @@ def test_unmapped_state_logs_one_debt_item_without_changing_status(
     # The first writer of the ATLAS-116 model: exactly one system-written
     # OUT_OF_OWNERSHIP_TRANSITION row for this ticket. Wrong answer = no row,
     # the wrong type, or not system-written.
-    items = DebtItemRepo(db).list()
+    items = debt_rows(db, AnomalyType.OUT_OF_OWNERSHIP_TRANSITION)
     assert len(items) == 1
     (item,) = items
-    assert item.anomaly_type == AnomalyType.OUT_OF_OWNERSHIP_TRANSITION
     assert item.created_by_type == ActorType.SYSTEM
     assert item.ticket_id == ticket.id
     assert item.product_id == ticket.product_id
@@ -484,7 +510,7 @@ def test_persisting_unmapped_state_logs_exactly_one_row_across_n_ticks(
 
     # The dedup: five ticks over a state that stays unmapped yield ONE row.
     # Wrong answer: five rows (one per tick), which makes recurring(...) lie.
-    assert len(DebtItemRepo(db).list()) == 1
+    assert len(debt_rows(db, AnomalyType.OUT_OF_OWNERSHIP_TRANSITION)) == 1
     assert results[0].anomalies_logged == 1
     assert all(r.anomalies_logged == 0 for r in results[1:])
     assert all(r.unmapped == 1 for r in results)  # the state is observed every tick
@@ -503,7 +529,7 @@ def test_transition_into_a_different_unmapped_state_logs_a_new_row(
     client.simulate_linear_state(ticket.external_linear_id, UNMAPPED2)
     run(db, client)  # transition into a DIFFERENT unmapped state -> row 2
 
-    items = DebtItemRepo(db).list_for_ticket(ticket.id)
+    items = debt_rows(db, AnomalyType.OUT_OF_OWNERSHIP_TRANSITION, ticket.id)
     assert len(items) == 2  # wrong answer: 1 (a naive "already logged" dedup)
     # One row per distinct out-of-ownership state (order-independent: both
     # observations share observed_at, so the list tiebreaks by id).
@@ -524,7 +550,8 @@ def test_unmapped_then_mapped_then_unmapped_logs_a_new_row(db: Database) -> None
     client.simulate_linear_state(ticket.external_linear_id, UNMAPPED)
     run(db, client)  # re-occurrence is a genuine NEW transition -> row 2
 
-    assert len(DebtItemRepo(db).list_for_ticket(ticket.id)) == 2  # wrong answer: 1
+    rows = debt_rows(db, AnomalyType.OUT_OF_OWNERSHIP_TRANSITION, ticket.id)
+    assert len(rows) == 2  # wrong answer: 1
     pulled = TicketRepo(db).get_by_key("ATLAS-212")
     assert pulled is not None
     assert pulled.status == TicketStatus.IN_PROGRESS  # the mapped pull stuck
@@ -560,7 +587,7 @@ def test_recurring_reports_the_true_count_after_three_transitions(
         client.simulate_linear_state(ticket.external_linear_id, UNMAPPED)
         run(db, client)
 
-    assert len(repo.list_for_ticket(ticket.id)) == 3
+    assert len(debt_rows(db, kind, ticket.id)) == 3
     # Three real transitions -> recurring is True (the predicate is now honest
     # because dedup kept the count to genuine transitions, not ticks).
     assert repo.recurring(ticket.id, kind) is True

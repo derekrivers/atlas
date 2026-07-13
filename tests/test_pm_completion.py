@@ -428,6 +428,7 @@ def test_sync_tick_surfaces_completed_count(db: Database) -> None:
         team_id=TEAM_ID,
         project_id=PROJECT_ID,
         inbox_dir=Path(tempfile.mkdtemp()),
+        documents=lambda: [],
         now=NOW,
     )
 

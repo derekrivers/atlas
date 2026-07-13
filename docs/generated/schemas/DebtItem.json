@@ -11,12 +11,13 @@
       "type": "string"
     },
     "AnomalyType": {
-      "description": "Class of delivery anomaly a DebtItem records (data-model §6.1;\npm-engine-and-linear-sync.md \"Anomaly and dwell detection\").\n\nThe four observation classes the PM Engine appends one row per. A\nmodel-specific enum, defined with its model like EvidenceType — not a\n§2 shared type — and used only by DebtItem and DebtItemRepo.",
+      "description": "Class of delivery anomaly a DebtItem records (data-model §6.1;\npm-engine-and-linear-sync.md \"Anomaly and dwell detection\").\n\nThe five observation classes the PM Engine appends one row per. A\nmodel-specific enum, defined with its model like EvidenceType — not a\n§2 shared type — and used only by DebtItem and DebtItemRepo.",
       "enum": [
         "out_of_ownership_transition",
         "review_cycle",
         "dwell_breach",
-        "stale_block"
+        "stale_block",
+        "pack_render_failure"
       ],
       "title": "AnomalyType",
       "type": "string"

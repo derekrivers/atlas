@@ -417,7 +417,10 @@ def _add_pm_parser(subcommands: argparse._SubParsersAction) -> None:  # type: ig
 
     # `sync` (ATLAS-50): the recurring scheduler. No `--json` (it is a long-running
     # loop, not a one-shot read); `--once` runs exactly one tick; `--interval` owns
-    # the cadence; `--inbox-dir` is the follow-up inbox sync_tick writes stubs to.
+    # the cadence; `--inbox-dir` is the follow-up inbox sync_tick writes stubs to;
+    # `--repo` (ATLAS-164) is the repo root the pack-inputs provider re-ingests
+    # documents from (the repo-root sense, mirroring `plan`/`context` — NOT the
+    # GitHub OWNER/REPO slug `evidence`/`verify` mean).
     sync = pm_sub.add_parser(
         "sync",
         help="Run the recurring Linear sync loop (--once runs a single tick)",
@@ -438,6 +441,11 @@ def _add_pm_parser(subcommands: argparse._SubParsersAction) -> None:  # type: ig
         "--inbox-dir",
         default="docs/planning/inbox",
         help="follow-up inbox directory (default docs/planning/inbox)",
+    )
+    sync.add_argument(
+        "--repo",
+        default=".",
+        help="repository root to ingest pack documents from (default: current dir)",
     )
 
 
@@ -1109,8 +1117,9 @@ def _pm_report(resolved_db: Database, *, as_json: bool) -> int:
 def _build_tick_config(args: argparse.Namespace, resolved_db: Database) -> TickConfig:
     """Build the real `sync_tick` injection from config (D3): the live
     `LinearGraphQLClient` (creds from env), the env-configured `LinearStatusMap`,
-    the team id from `LINEAR_TEAM_ID`, the project id from `LINEAR_PROJECT_ID`, and
-    the inbox dir from `--inbox-dir`. Each boundary fails loud on a missing
+    the team id from `LINEAR_TEAM_ID`, the project id from `LINEAR_PROJECT_ID`,
+    the inbox dir from `--inbox-dir`, and the pack-inputs documents provider from
+    `--repo` (ATLAS-164). Each boundary fails loud on a missing
     precondition — `LinearGraphQLClient()` raises `MissingLinearTokenError` without
     a key, `from_env()` raises `LinearStatusMapError` on a missing/malformed map,
     and an unset team id OR project id raises `MissingLinearTokenError` — so a
@@ -1119,7 +1128,16 @@ def _build_tick_config(args: argparse.Namespace, resolved_db: Database) -> TickC
     the project's UUID, NOT its slug, and scopes issue creation so created issues
     are visible to Symphony's project-scoped poll. Reads the environment only; it
     makes no network call, so it is testable with fake creds set in the
-    environment."""
+    environment.
+
+    The `documents` provider is the ATLAS-162 collector pair over `--repo` — the
+    §2.1 corpus plus the committed `processed/` stubs under `--inbox-dir`, exactly
+    what `_load_context_inputs` feeds `atlas context render`. It is built HERE
+    because the import spine places `atlas.pm` below `atlas.planning`: the tick
+    cannot import the collectors, so the CLI (which may) injects the closure, and
+    the tick invokes it lazily — only when a push will actually embed, so its
+    dirty-tree `DirtyInputError` fail-closed contract surfaces per embedding tick,
+    never at config-build time."""
 
     client = LinearGraphQLClient()  # raises MissingLinearTokenError without a key
     status_map = LinearStatusMap.from_env()  # raises LinearStatusMapError if unset
@@ -1135,6 +1153,14 @@ def _build_tick_config(args: argparse.Namespace, resolved_db: Database) -> TickC
             f"{PROJECT_ID_ENV} is not set; the scheduler needs the Linear project "
             "id (a UUID, not the slug) to create issues Symphony can see"
         )
+    repo_root = Path(args.repo)
+    inbox_dir = Path(args.inbox_dir)
+
+    def documents() -> list[SourceDocument]:
+        return collect_input_documents(repo_root) + collect_processed_documents(
+            repo_root, inbox_dir
+        )
+
     return TickConfig(
         tickets=TicketRepo(resolved_db),
         db=resolved_db,
@@ -1142,7 +1168,8 @@ def _build_tick_config(args: argparse.Namespace, resolved_db: Database) -> TickC
         status_map=status_map,
         team_id=team_id,
         project_id=project_id,
-        inbox_dir=Path(args.inbox_dir),
+        inbox_dir=inbox_dir,
+        documents=documents,
     )
 
 

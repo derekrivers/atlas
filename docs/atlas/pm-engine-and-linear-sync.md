@@ -16,7 +16,7 @@ and never writes to `docs/planning/` (that is `atlas apply`'s monopoly).
 | Field                      | Owner / direction              |
 | -------------------------- | ------------------------------ |
 | title, priority, labels    | Atlas → Linear                 |
-| description | Atlas → Linear, frozen once In Progress. Summary only in v1; context pack embedded from Phase 8 (`symphony-integration.md#context-pack-delivery`) |
+| description | Atlas → Linear, frozen once In Progress. Full-spec definition render with the rendered context pack embedded beneath it at definition-push time (ATLAS-164; push-only — Atlas never parses packs back — behind the pinned `ATLAS CONTEXT PACK v1 \| pack_id: … \| rendered_at: …` delimiter; `symphony-integration.md#context-pack-delivery`) |
 | state                      | split by transition edge (see symphony-integration state table) |
 | comments                   | agent writes; Atlas reads tagged follow-ups |
 | assignee, estimates        | unsynced in v1                 |
@@ -46,17 +46,26 @@ at `https://api.linear.app/graphql` (stdlib transport, no webhooks —
 ADR-0008); `InMemoryLinearClient` is the contract-tested fake.
 
 **Definitions (Atlas → Linear).** `definition_payload(ticket)` is built only
-by iterating `OWNED_DEFINITION_FIELDS` (title and a description that is the v1
-human-readable summary). It carries no state key, and the client rejects any
+by iterating `OWNED_DEFINITION_FIELDS` (title and the full-spec definition
+description). It carries no state key, and the client rejects any
 key outside `OWNED_LINEAR_INPUT_KEYS`, so ticket *status* is mechanically
-incapable of crossing Atlas → Linear. Two doctrine fields are owned but not
+incapable of crossing Atlas → Linear. At definition-push time the sync tick
+widens the description with the ticket's rendered context pack
+(`compose_embedded_description`, ATLAS-164) beneath the definition fields,
+behind the pinned delimiter — still the same single owned key, content
+widened exactly as ATLAS-143 widened `title`; the render-failure posture,
+the 100,000-char overflow pin, and the definition-change-only refresh rule
+are the three gate rulings recorded in
+`symphony-integration.md#context-pack-delivery`. Two doctrine fields are
+owned but not
 yet syncable, deferred rather than silently guessed: `labels` is owned in the
 table above but has no `Ticket.labels` field; and `priority` is owned but has
 no honest mapping yet — Atlas `priority` is an unconstrained signed integer
 while Linear `priority` is an inverted 4-value enum (0 = None, 1 = Urgent …
 4 = Low), so ATLAS-42 deferred it (a naive clamp would lose information and
 invert meaning) until that mapping is pinned (tracked in
-`docs/tech-debt/debt-register.md`). v1 therefore syncs title + description.
+`docs/tech-debt/debt-register.md`). The sync therefore carries title +
+description (definition + embedded pack), and nothing else.
 
 **Status (Linear → Atlas).** `LinearStatusMap` is an operator-configured
 `dict[linear_state_id → TicketStatus]`, sourced from the JSON env var
@@ -173,16 +182,17 @@ Pull-based, consistent with ADR-0008 (no webhooks before hosting):
    (exactly one state must map to `ready_for_agent`, validated at load), so the
    state written is exactly the one the next pull reads back.
 
-   Context-pack rendering (Phase 5) and embedding the pack into the issue
-   description (Phase 8, ATLAS-82, per
-   `symphony-integration.md#context-pack-delivery`) are forward
-   capabilities. Distinguish dependency-readiness (the Phase 3 predicate,
-   live now — which already enforces criteria-present and ADR-accepted, not
-   dependencies alone) from dispatch-readiness (dependency-ready +
-   pack-rendered): only the `pack-rendered` conjunct is deferred, becoming
-   load-bearing when Symphony consumes this state (Phase 8). Promoting without
-   a pack in Phase 4–7 is harmless — nothing dispatches off `Ready for Agent`
-   until Phase 8.
+   Context-pack rendering (Phase 5) is live, and embedding the pack into
+   the issue description is delivered by ATLAS-164 at the definition-push
+   step above (per `symphony-integration.md#context-pack-delivery`, the
+   Phase 8 milestone leg). Distinguish dependency-readiness (the Phase 3
+   predicate, live now — which already enforces criteria-present and
+   ADR-accepted, not dependencies alone) from dispatch-readiness
+   (dependency-ready + pack-rendered): the `pack-rendered` conjunct of
+   PROMOTION remains deferred — promotion does not gate on a successful
+   render, and a push-time render failure degrades that push to
+   definition-only under the D-2 rule rather than blocking the ticket —
+   becoming load-bearing when Symphony consumes this state.
 4. Scan issue comments for the `atlas:proposed-follow-up` tag — but only
    for tickets in the **active-state set** `{ready_for_agent, in_progress,
    pr_open, review_required, changes_requested}` (ATLAS-148; one
