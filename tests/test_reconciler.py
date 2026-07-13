@@ -655,6 +655,10 @@ STUB_ANCHORS = [
     "docs/planning/inbox/stub-three.md#three",
     "docs/planning/inbox/stub-four.md#four",
 ]
+ACTIVE_INBOX_STUB_ONE_ANCHOR = "docs/planning/inbox/stub-one.md#one"
+DURABLE_INBOX_STUB_ONE_ANCHOR = "docs/planning/inbox/processed/stub-one.md#one"
+OTHER_ACTIVE_INBOX_STUB_ANCHOR = "docs/planning/inbox/stub-five.md#one"
+OTHER_DURABLE_INBOX_STUB_ANCHOR = "docs/planning/inbox/processed/stub-five.md#one"
 
 
 def promoted_ticket(anchor: str, ordinal: int) -> dict[str, Any]:
@@ -734,6 +738,58 @@ def test_edgeless_shared_anchor_duplicate_still_collapsed() -> None:
     ]
     assert [e.identity for e in ticket_adds] == ["new:1"]
     assert len(diff.collapses) == 1
+
+
+def test_active_inbox_spelling_reemission_collapses_into_processed_promotion() -> None:
+    # ATLAS-161: ATLAS-159 moved the promotion side to the durable processed/
+    # spelling, but a model can still re-emit the active spelling it saw in the
+    # planner payload. Those two spellings are one stub identity in the
+    # collapse pre-pass only.
+    model_copy = promoted_ticket(ACTIVE_INBOX_STUB_ONE_ANCHOR, 0)
+    promoted = promoted_ticket(DURABLE_INBOX_STUB_ONE_ANCHOR, 0)
+    proposal = proposal_of(tickets=[model_copy, promoted], dependencies=[])
+
+    diff = reconcile(proposal, Backlog(), promotion_indices=frozenset({1}))
+
+    ticket_adds = [
+        e for e in diff.entries if e.kind == "ticket" and e.entry_type == "ADD"
+    ]
+    assert [e.identity for e in ticket_adds] == ["new:1"]
+    assert [note.as_dict() for note in diff.collapses] == [
+        {
+            "absorbed": "new:0",
+            "absorbed_title": "Stub work item 0",
+            "survivor": "new:1",
+            "anchor": DURABLE_INBOX_STUB_ONE_ANCHOR,
+        }
+    ]
+    # Stored proposal anchors are not rewritten by the normalization key.
+    assert proposal.tickets[0].source_anchor == ACTIVE_INBOX_STUB_ONE_ANCHOR
+    assert proposal.tickets[1].source_anchor == DURABLE_INBOX_STUB_ONE_ANCHOR
+
+
+@pytest.mark.parametrize(
+    "different_stub_anchor",
+    [OTHER_ACTIVE_INBOX_STUB_ANCHOR, OTHER_DURABLE_INBOX_STUB_ANCHOR],
+    ids=["active-inbox-different-stub", "processed-different-stub"],
+)
+def test_different_stub_anchor_spelling_is_not_collapsed(
+    different_stub_anchor: str,
+) -> None:
+    # Negative: normalization equates active/processed spellings of the SAME
+    # stub only. A different stub filename remains different under either
+    # spelling, even if the re-emission's content looks like the promotion.
+    model_copy = promoted_ticket(different_stub_anchor, 0)
+    promoted = promoted_ticket(DURABLE_INBOX_STUB_ONE_ANCHOR, 0)
+    proposal = proposal_of(tickets=[model_copy, promoted], dependencies=[])
+
+    diff = reconcile(proposal, Backlog(), promotion_indices=frozenset({1}))
+
+    ticket_adds = [
+        e for e in diff.entries if e.kind == "ticket" and e.entry_type == "ADD"
+    ]
+    assert [e.identity for e in ticket_adds] == ["new:0", "new:1"]
+    assert diff.collapses == ()
 
 
 def test_collapsed_duplicate_edges_repointed_and_deduplicated() -> None:

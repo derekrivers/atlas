@@ -297,11 +297,14 @@ reconcile, which collapses any keyless model ticket sharing a promotion
 ticket's anchor, re-points its edges to the survivor, and prints one
 COLLAPSE line per absorbed ticket at both gates (spec §4). Closed class:
 shared-anchor re-emission (the 155/158 and double-emission shapes).
-Boundary, held open deliberately: foreign-anchor re-emission (this
-entry's own 149/150 shape) never collides with a promotion anchor and
-remains gate-read territory; a near-title collapse heuristic becomes a
-stub if a fourth reproduction appears. Owner: operator gate reads until
-that stub is minted.
+Follow-up 1 closed (ATLAS-161): the same-stub active-inbox and durable
+`processed/` anchor spellings now share one canonical identity inside the
+collapse pre-pass only; stored anchors, gate 4, and the anchor index remain
+byte-identical. Boundary still held open deliberately: foreign-anchor
+re-emission (this entry's own 149/150 shape) never collides with a
+promotion anchor and remains gate-read territory; a near-title collapse
+heuristic becomes a stub if a fourth reproduction appears. Owner:
+operator gate reads until that stub is minted.
 
 ## Meta-label ATLAS-004M doubly assigned
 

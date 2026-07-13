@@ -297,13 +297,17 @@ as the trailing `len(inbox)` tickets of the stored proposal, which is
 sound because the AT-5 staleness re-check pins the apply-time inbox to
 plan time. Before the matching passes, a keyless model-emitted ticket
 whose `source_anchor` equals a promotion-injected ticket's anchor is
-collapsed into the promotion ticket: it takes no part in matching, emits
-no `ADD`, and its dependency edges are re-pointed to the surviving
-promotion ticket and deduplicated against the survivor's own edges (a
-duplicate↔survivor edge degenerates to a self-loop and is dropped).
-Deterministic promotion content always wins; one committed stub yields
-exactly one ticket `ADD` regardless of what the model re-emits. The diff
-records one collapse line per absorbed ticket (§2.4), surfaced at both
+collapsed into the promotion ticket; for this equality only, active
+`docs/planning/inbox/<name>.md#...` and durable
+`docs/planning/inbox/processed/<name>.md#...` spellings of the same stub
+share one canonical identity (ATLAS-161). The absorbed ticket takes no
+part in matching, emits no `ADD`, and its dependency edges are re-pointed
+to the surviving promotion ticket and deduplicated against the survivor's
+own edges (a duplicate↔survivor edge degenerates to a self-loop and is
+dropped). Stored anchors, gate 4, and the anchor index keep their original
+byte spellings. Deterministic promotion content always wins; one committed
+stub yields exactly one ticket `ADD` regardless of what the model re-emits.
+The diff records one collapse line per absorbed ticket (§2.4), surfaced at both
 gates. Rationale: three live reproductions (the declined 2026-07-08
 double-emission, the cancelled duplicate mints ATLAS-149/150, and
 ATLAS-155/158) matched or diverged on every candidate content feature —

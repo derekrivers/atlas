@@ -22,9 +22,12 @@ ATLAS-149/150, ATLAS-155/158) matched or diverged on every candidate
 content feature — edges, anchors, titles, full content — so no
 recognition heuristic over duplicate features is stable. Deterministic
 promotion content always wins; the diff records one collapse note per
-absorbed ticket. Boundary: a duplicate citing a foreign anchor never
-collides with a promotion anchor and is deliberately NOT collapsed —
-foreign-anchor re-emission remains gate-read territory.
+absorbed ticket. For this pre-pass equality only, an active-inbox stub
+anchor and its durable ``inbox/processed/`` spelling share one
+canonical identity; stored anchors, gate 4, and the anchor index keep
+their byte-identical spellings. Boundary: a duplicate citing a foreign
+anchor never collides with a promotion anchor and is deliberately NOT
+collapsed — foreign-anchor re-emission remains gate-read territory.
 
 Dependency edges reconcile by resolved (source, target) identity:
 proposal-only ADD, backlog-only PROPOSE_ARCHIVE, changed reason MODIFY;
@@ -68,6 +71,9 @@ _KIND_ORDER = {"epic": 0, "ticket": 1, "dependency": 2}
 
 _NON_ALNUM_RE = re.compile(r"[^0-9a-z]+")
 _NATURAL_RE = re.compile(r"(\d+)")
+_STUB_ANCHOR_IDENTITY_RE = re.compile(
+    r"^(docs/planning/inbox/)(?:processed/)?([^/#]+\.md)(#.*)?$"
+)
 
 _TICKET_FIELDS = (
     "title",
@@ -241,6 +247,22 @@ def _plain(value: Any) -> Any:
     if isinstance(value, str):
         return str(value)  # collapses StrEnum members to plain strings
     return value
+
+
+def _collapse_anchor_identity(anchor: str) -> str:
+    """Canonical key for promotion-collapse comparison only (ATLAS-161).
+
+    Active stubs are indexed under both ``docs/planning/inbox/<name>.md`` and
+    ``docs/planning/inbox/processed/<name>.md`` while promotion tickets store
+    the durable spelling. The collapse pre-pass treats those spellings as the
+    same stub identity without rewriting the proposal, diff, gate resolution,
+    or stored anchors.
+    """
+    match = _STUB_ANCHOR_IDENTITY_RE.fullmatch(anchor)
+    if match is None:
+        return anchor
+    fragment = match.group(3) or ""
+    return f"{match.group(1)}{match.group(2)}{fragment}"
 
 
 @dataclass
@@ -454,12 +476,16 @@ def _absorb_promoted_duplicates(
     anchor_to_promotion: dict[str, int] = {}
     for index in sorted(promotion_indices):
         if 0 <= index < len(tickets):
-            anchor_to_promotion.setdefault(tickets[index].source_anchor, index)
+            anchor_to_promotion.setdefault(
+                _collapse_anchor_identity(tickets[index].source_anchor), index
+            )
     absorbed: dict[int, int] = {}
     for index, ticket in enumerate(tickets):
         if index in promotion_indices or ticket.key is not None:
             continue
-        survivor = anchor_to_promotion.get(ticket.source_anchor)
+        survivor = anchor_to_promotion.get(
+            _collapse_anchor_identity(ticket.source_anchor)
+        )
         if survivor is not None:
             absorbed[index] = survivor
     return absorbed

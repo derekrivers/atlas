@@ -490,9 +490,8 @@ def test_plan_collapses_model_reemission_of_committed_stub(tmp_path: Path) -> No
     repo = fixture_repo_with_inbox(tmp_path)
     database = fresh_db(tmp_path)
     # ATLAS-159: the promotion ticket's anchor is the stub's durable
-    # processed/ path, so a shared-anchor re-emission cites that spelling
-    # (both spellings are in the valid-anchor list; the collapse matches on
-    # anchor equality, unchanged).
+    # processed/ path, so this existing ATLAS-151 fixture keeps the
+    # durable-spelling re-emission unchanged.
     reemission = _ticket(
         title="Follow-up from ATLAS-9",
         objective="Investigate the retry seam.",
@@ -519,18 +518,14 @@ def test_plan_collapses_model_reemission_of_committed_stub(tmp_path: Path) -> No
     ]
 
 
-def test_reemission_citing_active_inbox_spelling_is_not_collapsed(
+def test_reemission_citing_active_inbox_spelling_collapses(
     tmp_path: Path,
 ) -> None:
-    # ATLAS-159 boundary, made loud on purpose: the collapse pre-pass matches
-    # on ANCHOR EQUALITY (ATLAS-151, unchanged by design — a rendered
-    # non-goal), and the promotion ticket now carries the durable processed/
-    # spelling. A model re-emission citing the stub's ACTIVE-inbox spelling —
-    # still a valid, resolvable anchor while the stub is uncollected — is
-    # therefore an uncollapsed extra ADD the operator catches at the diff
-    # gates, the same posture as a foreign-anchor re-emission (the
-    # ATLAS-149/150 shape). Closing this spelling gap is a routed follow-up,
-    # not a silent semantics change here.
+    # ATLAS-161 replaces the ATLAS-159 loud boundary: the collapse pre-pass
+    # normalizes only stub-anchor equality, so a model re-emission citing the
+    # stub's ACTIVE-inbox spelling collapses into the promotion ticket carrying
+    # the durable processed/ spelling. The stored proposal still keeps both
+    # original spellings byte-identical.
     repo = fixture_repo_with_inbox(tmp_path)
     database = fresh_db(tmp_path)
     reemission = _ticket(
@@ -547,5 +542,21 @@ def test_reemission_citing_active_inbox_spelling_is_not_collapsed(
     ticket_adds = [
         e for e in result.diff.entries if e.kind == "ticket" and e.entry_type == "ADD"
     ]
-    assert [e.identity for e in ticket_adds] == ["new:0", "new:1", "new:2"]
-    assert result.diff.collapses == ()
+    assert [e.identity for e in ticket_adds] == ["new:0", "new:2"]
+    assert [note.as_dict() for note in result.diff.collapses] == [
+        {
+            "absorbed": "new:1",
+            "absorbed_title": "Follow-up from ATLAS-9",
+            "survivor": "new:2",
+            "anchor": f"{PROCESSED_INBOX_PATH}#follow-up-from-atlas-9",
+        }
+    ]
+    stored = PlanRunRepo(database).list()[0]
+    assert (
+        stored.proposal["tickets"][1]["source_anchor"]
+        == f"{INBOX_PATH}#follow-up-from-atlas-9"
+    )
+    assert (
+        stored.proposal["tickets"][2]["source_anchor"]
+        == f"{PROCESSED_INBOX_PATH}#follow-up-from-atlas-9"
+    )
