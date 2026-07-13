@@ -345,6 +345,17 @@ observation; recurrence and severity derive by query. Recording a
 `DebtItem` never changes ticket state: only the review-cycling rule below
 routes to `Needs Human`. Logging debt and moving a ticket are separate
 concerns.
+
+After the review-cycle and dwell-breach clauses append their `DebtItem` rows,
+the same step-5 anomaly pass files one DRAFT `Lesson` row for each newly
+detected pattern instance. The draft is keyed by anomaly type plus sorted ticket
+set, so a re-tick over unchanged state, or a later repeat of the same
+pattern/ticket set, does not duplicate it. The row names the pattern, the ticket
+keys, and the `DebtItem` ids as evidence pointers; it is a store row only
+(`status = draft`, system-written by the PM Engine), never a document write, and
+it triggers no automation. Promotion or discard remains the operator-owned
+Learning System workflow.
+
 - Review cycling (ATLAS-120): more than 3 `changes_requested → pr_open` round
   trips routes the ticket to `Needs Human` with a failure-analysis note. This is
   the **one anomaly that changes ticket state** — it both logs AND moves, where
@@ -410,13 +421,14 @@ concerns.
 ## Delivery metrics
 
 `atlas pm report` (ATLAS-47): throughput (tickets done/week), cycle time per
-state, ready-queue depth, anomaly counts, dwell breaches. CLI/markdown output
-with a `--json` form; no dashboard (Revision 1). A PURE READER — it makes no
-Linear calls and writes nothing, computing every metric from stored tickets and
-`DebtItem`s (never from the per-tick, ephemeral `SyncResult`), so it runs with
+state, ready-queue depth, anomaly counts, dwell breaches, and the DRAFT lessons
+awaiting operator review. CLI/markdown output with a `--json` form; no dashboard
+(Revision 1). A PURE READER — it makes no Linear calls and writes nothing,
+computing every metric from stored tickets, `DebtItem`s, transition rows, and
+`Lesson` rows (never from the per-tick, ephemeral `SyncResult`), so it runs with
 no network and no secrets.
 
-The five metrics, as computed in v1:
+The five metrics and the draft queue, as computed in v1:
 
 - **Throughput** — tickets currently `done`, bucketed by the ISO week
   (`YYYY-Www`) of `status_entered_at`. A `done` ticket with a null entry time
@@ -440,6 +452,10 @@ The five metrics, as computed in v1:
   ones (the query-time `recurring(...)` predicate) called out per type.
 - **Dwell breaches** — the `DWELL_BREACH` subset of the anomaly log (ATLAS-119),
   surfaced per ticket.
+- **Draft lessons** — DRAFT `Lesson` rows, including anomaly-draft rows filed
+  from review-cycle and dwell-breach patterns. The report surfaces their title,
+  pattern tags, related ticket keys, and `DebtItem` evidence ids for operator
+  review; it does not promote, discard, or otherwise mutate the rows.
 
 ## Open items
 

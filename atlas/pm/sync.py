@@ -26,7 +26,8 @@ ticket is created and no Atlas/Linear state is written on the scan path. Step 1'
 "log anomalies otherwise" clause is
 ATLAS-118: an unmapped Linear state appends one ``OUT_OF_OWNERSHIP_TRANSITION``
 ``DebtItem`` per *transition* (see :func:`_pull` and the transition signal
-``Ticket.last_observed_linear_state_id``). Step 5 has three clauses. Dwell-breach
+``Ticket.last_observed_linear_state_id``). Step 5 has three detection clauses plus
+the DRAFT-lesson filing remainder. Dwell-breach
 (ATLAS-119): a ticket sitting in a working state past its horizon appends one
 ``DWELL_BREACH`` ``DebtItem`` per dwell *episode* (see :func:`_detect_dwell`,
 ``DWELL_HORIZONS``, and the episode boundary ``Ticket.status_entered_at``) —
@@ -41,9 +42,12 @@ structural blockers have all cleared (``blocked(graph, key)`` empty) appends one
 ``STALE_BLOCK`` ``DebtItem`` per blocked *episode* (see
 :func:`_detect_stale_block`) — report-only like dwell, it surfaces a candidate to
 move but NEVER routes, since the graph sees only structural blockers and the
-operator owns the move. The remaining work — the recurring scheduler (ATLAS-50) and the
-follow-up CONSUMER (ATLAS-122: plan reads the committed inbox, apply moves
-processed stubs) — is deliberately NOT here.
+operator owns the move. ATLAS-167 adds the filing remainder for the review-cycle
+and dwell-breach clauses: newly appended `DebtItem`s produce idempotent DRAFT
+`Lesson` rows keyed by anomaly type plus ticket set, for operator review only.
+The remaining work — the recurring scheduler (ATLAS-50) and the follow-up
+CONSUMER (ATLAS-122: plan reads the committed inbox, apply moves processed
+stubs) — is deliberately NOT here.
 
 Directionality is structural, not conventional. The pull reads only the
 issue's state id (:func:`status_from_issue`) and writes only ``status``; the
@@ -81,16 +85,16 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import networkx as nx
 
 from atlas.context.pack import ContextBudgetExceededError, build_context_pack
 from atlas.core.anchors import IngestionError, SourceDocument
-from atlas.core.enums import ActorType
+from atlas.core.enums import ActorType, EntityStatus
 from atlas.core.models.adr import ADRStatus, ArchitectureDecisionRecord
 from atlas.core.models.debt_item import AnomalyType, DebtItem
-from atlas.core.models.lesson import Lesson
+from atlas.core.models.lesson import Lesson, LessonCategory
 from atlas.core.models.ticket import Ticket, TicketStatus
 from atlas.dependencies.blockers import blocked
 from atlas.dependencies.graph import build_dependency_graph
@@ -321,7 +325,9 @@ class SyncResult:
     degraded to definition-only on an enumerated render failure (D-2) — each of
     those also appended one ``PACK_RENDER_FAILURE`` DebtItem. All three count
     only pushes that actually fired, so they are bounded by
-    ``pushed_created + pushed_updated``."""
+    ``pushed_created + pushed_updated``. ``draft_lessons_filed`` (ATLAS-167)
+    counts DRAFT lesson rows filed from newly logged review-cycle or dwell-breach
+    anomaly patterns, deduped by pattern type and ticket set."""
 
     status_pulled: int = 0
     status_unchanged: int = 0
@@ -340,6 +346,7 @@ class SyncResult:
     routed_to_human: int = 0
     review_cycles_logged: int = 0
     stale_blocks: int = 0
+    draft_lessons_filed: int = 0
 
 
 def _definition_changed(ticket: Ticket) -> bool:
@@ -350,6 +357,107 @@ def _definition_changed(ticket: Ticket) -> bool:
     if ticket.linear_synced_at is None:
         return True
     return ticket.updated_at > ticket.linear_synced_at
+
+
+def _draft_lesson_key(anomaly_type: AnomalyType, tickets: list[Ticket]) -> str:
+    """Stable DRAFT-lesson dedup key: pattern type plus sorted ticket set."""
+
+    ticket_keys = ",".join(sorted(ticket.key for ticket in tickets))
+    return f"anomaly-draft-key:{anomaly_type.value}:{ticket_keys}"
+
+
+def _has_lesson_for_pattern(lessons: LessonRepo, draft_key: str) -> bool:
+    """True when a lesson row already records this pattern instance."""
+
+    return any(draft_key in lesson.tags for lesson in lessons.list())
+
+
+def _file_anomaly_draft_lessons(
+    new_items: list[DebtItem],
+    tickets_by_id: Mapping[UUID, Ticket],
+    lessons: LessonRepo,
+    result: SyncResult,
+    now: datetime,
+) -> None:
+    """File one DRAFT lesson per newly observed anomaly pattern instance.
+
+    The filing step is intentionally downstream of the existing detectors: the
+    detectors still decide when a threshold fires and append the DebtItem. This
+    helper only groups the newly appended REVIEW_CYCLE/DWELL_BREACH rows by
+    pattern type and ticket set, writes a DRAFT Lesson for the operator, and
+    dedupes by that pattern/ticket-set key so a re-tick or later episode cannot
+    create duplicate drafts.
+    """
+
+    grouped: dict[tuple[UUID, AnomalyType], list[tuple[DebtItem, Ticket]]] = {}
+    for item in new_items:
+        if item.anomaly_type not in {
+            AnomalyType.REVIEW_CYCLE,
+            AnomalyType.DWELL_BREACH,
+        }:
+            continue
+        ticket = tickets_by_id.get(item.ticket_id)
+        if ticket is None:
+            continue
+        grouped.setdefault((item.product_id, item.anomaly_type), []).append(
+            (item, ticket)
+        )
+
+    for (_product_id, anomaly_type), pairs in grouped.items():
+        tickets = sorted(
+            {ticket.id: ticket for _item, ticket in pairs}.values(),
+            key=lambda ticket: ticket.key,
+        )
+        draft_key = _draft_lesson_key(anomaly_type, tickets)
+        if _has_lesson_for_pattern(lessons, draft_key):
+            continue
+        ticket_keys = [ticket.key for ticket in tickets]
+        debt_ids = [
+            str(item.id)
+            for item, _ticket in sorted(pairs, key=lambda pair: pair[1].key)
+        ]
+        lesson = Lesson(
+            id=uuid4(),
+            product_id=tickets[0].product_id,
+            status=EntityStatus.DRAFT,
+            category=LessonCategory.FAILURE_PATTERN,
+            title=(
+                f"Detected {anomaly_type.value} pattern for {', '.join(ticket_keys)}"
+            ),
+            problem=(
+                f"The PM sync anomaly step detected {anomaly_type.value} for "
+                f"ticket(s): {', '.join(ticket_keys)}."
+            ),
+            solution=(
+                "Operator review required: promote this DRAFT if it captures a "
+                "reusable lesson, or discard it in the later lesson workflow."
+            ),
+            outcome=(
+                "Filed from existing anomaly detection. DebtItem evidence ids: "
+                f"{', '.join(debt_ids)}."
+            ),
+            confidence=0.5,
+            related_ticket_ids=[ticket.id for ticket in tickets],
+            related_adr_ids=[],
+            tags=[
+                "anomaly-draft",
+                f"anomaly:{anomaly_type.value}",
+                draft_key,
+                *[f"ticket:{key}" for key in ticket_keys],
+                *[f"debt-item:{debt_id}" for debt_id in debt_ids],
+            ],
+            created_by_type=ActorType.SYSTEM,
+            created_by_id=CREATED_BY,
+            created_at=now,
+            updated_at=now,
+        )
+        lessons.add(lesson)
+        result.draft_lessons_filed += 1
+        logger.info(
+            "linear-sync: DRAFT lesson filed for %s pattern across %s",
+            anomaly_type.value,
+            ", ".join(ticket_keys),
+        )
 
 
 def _out_of_ownership_item(
@@ -411,7 +519,7 @@ def _detect_dwell(
     debt: DebtItemRepo,
     result: SyncResult,
     now: datetime,
-) -> None:
+) -> DebtItem | None:
     """Step 5 (ATLAS-119): append one ``DWELL_BREACH`` per dwell *episode* when
     ``ticket`` has sat in a horizoned working state too long. Report-only — it
     NEVER writes ticket state (that is ATLAS-120's review-cycling rule).
@@ -427,14 +535,14 @@ def _detect_dwell(
 
     horizon = DWELL_HORIZONS.get(ticket.status)
     if horizon is None:
-        return  # this status carries no dwell horizon; never breaches
+        return None  # this status carries no dwell horizon; never breaches
     if ticket.status_entered_at is None:
-        return  # unknown entry time: skip, never a false breach
+        return None  # unknown entry time: skip, never a false breach
     if now - ticket.status_entered_at < horizon:
-        return  # still inside the horizon
+        return None  # still inside the horizon
     if debt.logged_since(ticket.id, AnomalyType.DWELL_BREACH, ticket.status_entered_at):
-        return  # this episode already logged one breach; not one per tick
-    debt.record(_dwell_breach_item(ticket, horizon, now))
+        return None  # this episode already logged one breach; not one per tick
+    item = debt.record(_dwell_breach_item(ticket, horizon, now))
     result.dwell_breaches += 1
     logger.info(
         "linear-sync: dwell breach for %s in %s (entered %s, horizon %s); "
@@ -444,6 +552,7 @@ def _detect_dwell(
         ticket.status_entered_at.isoformat(),
         horizon,
     )
+    return item
 
 
 def _stale_block_item(ticket: Ticket, now: datetime) -> DebtItem:
@@ -565,7 +674,7 @@ def _detect_review_cycle(
     needs_human_state_id: str,
     result: SyncResult,
     now: datetime,
-) -> None:
+) -> DebtItem | None:
     """Step 5 (ATLAS-120): route a review-cycling ticket to ``Needs Human`` and
     log one ``REVIEW_CYCLE`` note. The ONE anomaly that both moves a ticket AND
     logs — everywhere else the two are separate (D6).
@@ -592,13 +701,13 @@ def _detect_review_cycle(
     retrying across ticks logs exactly ONE ``REVIEW_CYCLE``, not one per tick."""
 
     if ticket.status not in CYCLING_STATES:
-        return  # not cycling (e.g. already routed and reconciled into Needs Human)
+        return None  # not cycling (e.g. already routed and reconciled into Needs Human)
     if ticket.review_cycle_count <= REVIEW_CYCLE_THRESHOLD:
-        return  # at or under threshold; routing at 3 would be the wrong answer
+        return None  # at or under threshold; routing at 3 would be the wrong answer
     if ticket.external_linear_id is None:
-        return  # no Linear join: nothing to route (mirrors promote_ready)
+        return None  # no Linear join: nothing to route (mirrors promote_ready)
     if ticket.status_entered_at is None:
-        return  # no episode boundary for dedup; unreachable when count > threshold
+        return None  # no episode boundary for dedup; unreachable when count > threshold
     # Route first: the one sanctioned move (ATLAS-43), idempotent and Linear-only.
     # A raise here aborts the tick before the log and is retried next tick.
     client.set_state(ticket.external_linear_id, needs_human_state_id)
@@ -613,14 +722,15 @@ def _detect_review_cycle(
     # Then log once per pr_open episode: a route retrying across ticks (not yet
     # reconciled) must not double-log. status_entered_at is the episode boundary.
     if debt.logged_since(ticket.id, AnomalyType.REVIEW_CYCLE, ticket.status_entered_at):
-        return  # this episode already logged its note; not one per tick
-    debt.record(_review_cycle_item(ticket, now))
+        return None  # this episode already logged its note; not one per tick
+    item = debt.record(_review_cycle_item(ticket, now))
     result.review_cycles_logged += 1
     logger.info(
         "linear-sync: review-cycle DebtItem logged for %s (%d round trips)",
         ticket.key,
         ticket.review_cycle_count,
     )
+    return item
 
 
 def _stub_index(stem: str) -> tuple[str, int] | None:
@@ -1041,8 +1151,8 @@ def sync_tick(
     so a tagged comment already stubbed (in inbox/ or inbox/processed/) is written
     once, not once per tick.
 
-    Then step 5: a final pass re-reads the tickets and runs three clauses per
-    ticket. Dwell-breach (ATLAS-119): append one ``DWELL_BREACH`` DebtItem per
+    Then step 5: a final pass re-reads the tickets and runs the anomaly clauses
+    per ticket. Dwell-breach (ATLAS-119): append one ``DWELL_BREACH`` DebtItem per
     dwell episode for a ticket sitting in a horizoned working state past its
     horizon (:func:`_detect_dwell`) — report-only. Review-cycling (ATLAS-120):
     route a ticket over ``REVIEW_CYCLE_THRESHOLD`` round trips to ``Needs Human``
@@ -1054,9 +1164,11 @@ def sync_tick(
     cycling. Stale-block (ATLAS-44): append one ``STALE_BLOCK`` DebtItem per
     blocked episode for a ticket stranded in ``blocked`` whose structural blockers
     have all cleared (:func:`_detect_stale_block`, reusing the same ``graph``
-    built for promotion above) — report-only, it NEVER moves the ticket. The pass
-    runs after promotion so it sees this tick's pulled statuses and freshly
-    stamped ``status_entered_at``; the graph reflects current Atlas state because
+    built for promotion above) — report-only, it NEVER moves the ticket. Then
+    ATLAS-167 files DRAFT lessons from the newly appended review-cycle and
+    dwell-breach rows, deduped by anomaly type plus ticket set. The pass runs
+    after promotion so it sees this tick's pulled statuses and freshly stamped
+    ``status_entered_at``; the graph reflects current Atlas state because
     promotion writes Linear only. Returns per-tick counters.
 
     ``now`` is the injected tick clock (no hidden ``datetime.now``): it stamps
@@ -1067,6 +1179,7 @@ def sync_tick(
 
     result = SyncResult()
     debt = DebtItemRepo(db)
+    lessons = LessonRepo(db)
     # Step 1's one batched read (ATLAS-148): every issue in the configured
     # project, keyed by id — the join key. Tickets join by external_linear_id
     # ONLY; title and identifier are never consulted. Fetched lazily: a board
@@ -1128,8 +1241,23 @@ def sync_tick(
     # guard, mirroring promote_ready), before the loop, so a misconfigured map
     # fails loudly even when no ticket is over threshold.
     needs_human_state_id = status_map.state_id_for(TicketStatus.NEEDS_HUMAN_DECISION)
-    for ticket in tickets.list():
-        _detect_dwell(ticket, debt, result, now)
-        _detect_review_cycle(ticket, debt, client, needs_human_state_id, result, now)
+    step5_tickets = tickets.list()
+    new_anomaly_items: list[DebtItem] = []
+    for ticket in step5_tickets:
+        dwell_item = _detect_dwell(ticket, debt, result, now)
+        if dwell_item is not None:
+            new_anomaly_items.append(dwell_item)
+        review_item = _detect_review_cycle(
+            ticket, debt, client, needs_human_state_id, result, now
+        )
+        if review_item is not None:
+            new_anomaly_items.append(review_item)
         _detect_stale_block(ticket, graph, debt, result, now)
+    _file_anomaly_draft_lessons(
+        new_anomaly_items,
+        {ticket.id: ticket for ticket in step5_tickets},
+        lessons,
+        result,
+        now,
+    )
     return result
