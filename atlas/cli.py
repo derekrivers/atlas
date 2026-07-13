@@ -233,6 +233,7 @@ from atlas.pm import (
 )
 from atlas.storage import (
     ADRRepo,
+    AgentRunRepo,
     Database,
     DebtItemRepo,
     EffortValidationError,
@@ -1096,9 +1097,10 @@ def _deps_command(args: argparse.Namespace, *, database: Database | None) -> int
 
 
 def _pm_report(resolved_db: Database, *, as_json: bool) -> int:
-    """Render the delivery metrics and draft lesson queue. A pure reader: it
-    builds the report from stored tickets, DebtItems, the transition log, and
-    DRAFT lessons and emits it, writing nothing and making no Linear call.
+    """Render the delivery metrics, draft lesson queue, and agent-run
+    sections. A pure reader: it builds the report from stored tickets,
+    DebtItems, the transition log, tick failures, AgentRuns, and DRAFT
+    lessons and emits it, writing nothing and making no Linear call.
     `datetime.now(UTC)` is read only here and passed into the pure builder so
     every metric is deterministic under test."""
     report = build_delivery_report(
@@ -1106,6 +1108,7 @@ def _pm_report(resolved_db: Database, *, as_json: bool) -> int:
         DebtItemRepo(resolved_db),
         TickFailureRepo(resolved_db),
         TicketStatusTransitionRepo(resolved_db),
+        AgentRunRepo(resolved_db),
         now=datetime.now(UTC),
         lesson_repo=LessonRepo(resolved_db),
     )

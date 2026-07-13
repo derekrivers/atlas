@@ -306,9 +306,9 @@ def test_repush_composes_from_ticket_never_from_linear(
     db: Database, repo: Path
 ) -> None:
     # A definition-changed RE-push (cursor EARLIER, ticket LATER): the pushed
-    # description is composed from the ticket and a fresh pack — never read
-    # back from Linear (structurally: the pull DTO carries no description) —
-    # so exactly ONE header appears, never an accumulated second pack.
+    # description is composed from the ticket and a fresh pack — never from the
+    # pulled Linear description — so exactly ONE header appears, never an
+    # accumulated second pack.
     client = RecordingClient()
     ticket = seed(
         db,

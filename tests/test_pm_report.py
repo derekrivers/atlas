@@ -27,8 +27,9 @@ Falsifiable, with the wrong answer named:
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
@@ -40,6 +41,9 @@ from test_ticket_status_transition_model import transition_kwargs
 
 from atlas.cli import EXIT_OK, main
 from atlas.core.models import (
+    AgentProvider,
+    AgentRun,
+    AgentRunStatus,
     AnomalyType,
     DebtItem,
     Lesson,
@@ -49,6 +53,7 @@ from atlas.core.models import (
 )
 from atlas.pm import build_delivery_report, render_markdown, report_json
 from atlas.storage import (
+    AgentRunRepo,
     Database,
     DebtItemRepo,
     LessonRepo,
@@ -116,6 +121,28 @@ def seed_failures(db: Database, items: list[TickFailure]) -> None:
         repo.record(item)
 
 
+def make_agent_run(**overrides: object) -> AgentRun:
+    data: dict[str, Any] = {
+        "id": uuid4(),
+        "product_id": uuid4(),
+        "ticket_id": uuid4(),
+        "provider": AgentProvider.SYMPHONY,
+        "status": AgentRunStatus.SUCCEEDED,
+        "objective": "Implement a ticket.",
+        "started_at": NOW,
+        "completed_at": NOW + timedelta(hours=2),
+        "created_at": NOW + timedelta(hours=3),
+    }
+    data.update(overrides)
+    return AgentRun(**data)
+
+
+def seed_agent_runs(db: Database, items: list[AgentRun]) -> None:
+    repo = AgentRunRepo(db)
+    for item in items:
+        repo.add(item)
+
+
 def make_transition(
     ticket_id: UUID, to_status: str, occurred_at: datetime, **overrides: object
 ) -> TicketStatusTransition:
@@ -166,6 +193,7 @@ def test_report_markdown_has_all_five_sections(
     assert "## Anomaly counts" in out
     assert "## Dwell breaches" in out
     assert "## Draft lessons" in out
+    assert "## Agent runs" in out
 
 
 def test_report_json_parses_to_the_same_data(
@@ -188,6 +216,11 @@ def test_report_json_parses_to_the_same_data(
     assert types == {kind.value: 0 for kind in AnomalyType}
     assert payload["dwell_breaches"] == []
     assert payload["draft_lessons"] == []
+    assert payload["agent_runs"] == {
+        "count": 0,
+        "handed_off_count": 0,
+        "mean_dispatch_to_handoff_hours": None,
+    }
 
 
 def test_report_surfaces_draft_lessons_with_anomaly_evidence(
@@ -619,6 +652,7 @@ def test_empty_db_markdown_is_well_formed(
     assert "0 ticket(s) in `ready_for_agent`." in out
     assert "No dwell breaches recorded." in out
     assert "0 recorded PM-scheduler tick failure(s)." in out
+    assert "0 reconstructed agent run(s)." in out
 
 
 # --- tick failures: a recorded crash moves the count (ATLAS-125) ------------
@@ -679,3 +713,53 @@ def test_tick_failure_count_surfaces_in_json_and_markdown(
     assert "## Tick failures" in render_markdown(report)
     assert "2 recorded PM-scheduler tick failure(s)." in render_markdown(report)
     assert report_json(report)["tick_failure_count"] == 2
+
+
+# --- agent runs: reconstructed dispatch attribution (ATLAS-166) -------------
+
+
+def test_agent_runs_surface_count_and_mean_dispatch_to_handoff(
+    db: Database, capsys: pytest.CaptureFixture[str]
+) -> None:
+    seed_agent_runs(
+        db,
+        [
+            make_agent_run(
+                started_at=NOW,
+                completed_at=NOW + timedelta(hours=2),
+            ),
+            make_agent_run(
+                started_at=NOW + timedelta(hours=1),
+                completed_at=NOW + timedelta(hours=7),
+            ),
+            # Partial observation: counted, excluded from the handoff mean.
+            make_agent_run(
+                status=AgentRunStatus.RUNNING,
+                started_at=NOW + timedelta(hours=8),
+                completed_at=None,
+            ),
+        ],
+    )
+
+    code = main(["pm", "report", "--json"], database=db)
+    payload = json.loads(capsys.readouterr().out)
+
+    assert code == EXIT_OK
+    assert payload["agent_runs"] == {
+        "count": 3,
+        "handed_off_count": 2,
+        "mean_dispatch_to_handoff_hours": 4.0,
+    }
+
+    report = build_delivery_report(
+        TicketRepo(db),
+        DebtItemRepo(db),
+        TickFailureRepo(db),
+        TicketStatusTransitionRepo(db),
+        AgentRunRepo(db),
+        now=NOW,
+    )
+    markdown = render_markdown(report)
+    assert "## Agent runs" in markdown
+    assert "3 reconstructed agent run(s)." in markdown
+    assert "2 handed off; mean dispatch-to-handoff: 4 h." in markdown

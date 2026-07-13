@@ -50,11 +50,13 @@ from statistics import median
 from uuid import UUID
 
 from atlas.core.enums import EntityStatus
+from atlas.core.models.agent_run import AgentRun
 from atlas.core.models.debt_item import AnomalyType, DebtItem
 from atlas.core.models.lesson import Lesson
 from atlas.core.models.ticket import Ticket, TicketStatus
 from atlas.core.models.ticket_status_transition import TicketStatusTransition
 from atlas.storage.repositories import (
+    AgentRunRepo,
     DebtItemRepo,
     LessonRepo,
     TicketRepo,
@@ -134,10 +136,24 @@ class DraftLesson:
 
 
 @dataclass(frozen=True)
+class AgentRunMetric:
+    """Observed AgentRun attribution: total rows and mean dispatch-to-handoff.
+
+    ``count`` includes partial rows (dispatch observed, handoff/evidence not yet
+    observed). The mean is computed only over rows with both ``started_at`` and
+    ``completed_at`` populated, so partial observations remain visible without
+    biasing the duration."""
+
+    count: int
+    handed_off_count: int
+    mean_dispatch_to_handoff_hours: float | None
+
+
+@dataclass(frozen=True)
 class DeliveryReport:
-    """The five delivery metrics at ``generated_at`` (the injected ``now``),
-    plus the PM-scheduler tick-failure count (ATLAS-125) and DRAFT lessons
-    awaiting operator review."""
+    """The delivery metrics at ``generated_at`` (the injected ``now``), plus
+    the PM-scheduler tick-failure count (ATLAS-125), DRAFT lessons awaiting
+    operator review (ATLAS-167), and AgentRun attribution (ATLAS-166)."""
 
     generated_at: datetime
     throughput: list[ThroughputBucket]
@@ -147,6 +163,7 @@ class DeliveryReport:
     dwell_breaches: list[DwellBreach]
     tick_failure_count: int
     draft_lessons: list[DraftLesson]
+    agent_runs: AgentRunMetric
 
 
 def _hours_between(later: datetime, earlier: datetime) -> float:
@@ -312,18 +329,35 @@ def _draft_lessons(lessons: list[Lesson], tickets: list[Ticket]) -> list[DraftLe
     return sorted(drafts, key=lambda draft: (draft.title, str(draft.lesson_id)))
 
 
+def _agent_runs(agent_runs: list[AgentRun]) -> AgentRunMetric:
+    durations = [
+        _hours_between(run.completed_at, run.started_at)
+        for run in agent_runs
+        if run.started_at is not None and run.completed_at is not None
+    ]
+    return AgentRunMetric(
+        count=len(agent_runs),
+        handed_off_count=len(durations),
+        mean_dispatch_to_handoff_hours=(
+            round(sum(durations) / len(durations), 2) if durations else None
+        ),
+    )
+
+
 def build_delivery_report(
     ticket_repo: TicketRepo,
     debt_repo: DebtItemRepo,
     tick_failure_repo: TickFailureRepo,
     transition_repo: TicketStatusTransitionRepo,
+    agent_run_repo: AgentRunRepo | None = None,
     *,
     now: datetime,
     lesson_repo: LessonRepo | None = None,
 ) -> DeliveryReport:
-    """Compute the delivery metrics, tick-failure count, and draft lesson queue
-    from stored state (ATLAS-47; tick failures ATLAS-125; historical cycle time
-    ATLAS-126; draft lessons ATLAS-167).
+    """Compute the delivery metrics, tick-failure count, draft lesson queue,
+    and AgentRun attribution from stored state (ATLAS-47; tick failures
+    ATLAS-125; historical cycle time ATLAS-126; AgentRuns ATLAS-166; draft
+    lessons ATLAS-167).
 
     A pure builder: it performs read-only
     ``TicketRepo``/``DebtItemRepo``/``TickFailureRepo``/``TicketStatusTransitionRepo``
@@ -350,6 +384,7 @@ def build_delivery_report(
             lesson_repo.list() if lesson_repo is not None else [],
             tickets,
         ),
+        agent_runs=_agent_runs(agent_run_repo.list() if agent_run_repo else []),
     )
 
 
@@ -401,6 +436,13 @@ def report_json(report: DeliveryReport) -> dict[str, object]:
             }
             for draft in report.draft_lessons
         ],
+        "agent_runs": {
+            "count": report.agent_runs.count,
+            "handed_off_count": report.agent_runs.handed_off_count,
+            "mean_dispatch_to_handoff_hours": (
+                report.agent_runs.mean_dispatch_to_handoff_hours
+            ),
+        },
     }
 
 
@@ -506,6 +548,17 @@ def render_markdown(report: DeliveryReport) -> str:
             )
     else:
         lines.append("No draft lessons recorded.")
+    lines.append("")
+
+    # 8. Agent runs (ATLAS-166): reconstructed dispatch attribution.
+    lines.append("## Agent runs")
+    lines.append("")
+    mean = _hours(report.agent_runs.mean_dispatch_to_handoff_hours)
+    lines.append(f"{report.agent_runs.count} reconstructed agent run(s).")
+    lines.append(
+        f"{report.agent_runs.handed_off_count} handed off; "
+        f"mean dispatch-to-handoff: {mean} h."
+    )
     lines.append("")
 
     return "\n".join(lines)

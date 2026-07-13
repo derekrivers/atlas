@@ -104,6 +104,7 @@ class _Emulator:
             issue = {
                 "id": issue_id,
                 "title": payload.get("title", ""),
+                "description": payload.get("description", ""),
                 "state": dict(self.states[0]),
             }
             self.issues[issue_id] = issue
@@ -113,6 +114,8 @@ class _Emulator:
             payload = variables.get("input", {})
             if "title" in payload:
                 issue["title"] = payload["title"]
+            if "description" in payload:
+                issue["description"] = payload["description"]
             if "stateId" in variables:
                 # The sanctioned set_state path (ATLAS-43): the mutation pins
                 # `input: { stateId: $stateId }`, so $stateId is a top-level
@@ -505,8 +508,8 @@ def test_fetch_project_issues_query_shape_and_single_page(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # ATLAS-148 AC-1, the query shape: one project-scoped, cursor-paginated
-    # document carrying id/identifier/title/state per issue; a board within one
-    # page costs exactly ONE request.
+    # document carrying id/identifier/title/description/state per issue; a board
+    # within one page costs exactly ONE request.
     emulator = _Emulator()
     sent: list[dict[str, Any]] = []
     monkeypatch.setattr(
@@ -525,11 +528,12 @@ def test_fetch_project_issues_query_shape_and_single_page(
     query = sent[0]["query"]
     assert "project(id: $id)" in query
     assert "issues(first: $first, after: $after)" in query
-    for field in ("identifier", "id", "title", "state"):
+    for field in ("identifier", "id", "title", "description", "state"):
         assert field in query
     assert "pageInfo { hasNextPage endCursor }" in query
     assert sent[0]["variables"]["id"] == "proj-1"
     assert [issue.id for issue in issues] == [created.id]
+    assert [issue.description for issue in issues] == ["d"]
 
 
 def test_fetch_project_issues_paginates_until_exhausted(
