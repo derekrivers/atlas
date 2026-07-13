@@ -38,7 +38,7 @@ hooks:
   before_remove: |
     true
 agent:
-  max_concurrent_agents: 1
+  max_concurrent_agents: 2
   max_turns: 20
 # ─────────────────────────────────────────────────────────────────────────
 # Codex model requirement — read before editing `codex.command` below.
@@ -60,6 +60,11 @@ codex:
   turn_sandbox_policy:
     type: workspaceWrite
     networkAccess: true
+    # Codex workspace-write marks each writable root's top-level .git
+    # read-only; listing .git as its own root (resolved against the
+    # workspace cwd) exempts it so agents can branch/commit/push.
+    writableRoots:
+      - .git
 ---
 
 You are an autonomous Atlas execution agent working a single Linear ticket,
