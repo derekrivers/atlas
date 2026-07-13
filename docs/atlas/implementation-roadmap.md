@@ -414,6 +414,15 @@ Milestone test: a ready, context-rich fixture ticket flows
 pack → Symphony → PR → evidence → verification without manual steps other
 than the defined human gates.
 
+Phase-tail deliveries, live-discovered and stub-minted (non-seed keys,
+not counted against the roadmap totals): the stubs-only plan mode
+(ATLAS-153), the meta-label title gate (ATLAS-160), collapse spelling
+normalization (ATLAS-161), retirement collision fail-closed handling
+(ATLAS-163), pack embedding — the milestone leg (ATLAS-164), the
+relevant_docs repair (ATLAS-165), AgentRun reconstruction (ATLAS-166),
+and DRAFT-lesson filing (ATLAS-167), with the verified-completion gate
+(ATLAS-131) load-bearing throughout acceptance.
+
 ---
 
 # Phase 9 — Learning System
