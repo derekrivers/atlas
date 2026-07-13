@@ -121,9 +121,9 @@ def test_ac1_no_symphony_default_states() -> None:
 # --- AC-2: serialized concurrency ---------------------------------------------
 
 
-def test_ac2_max_concurrent_agents_is_one() -> None:
+def test_ac2_max_concurrent_agents_is_two() -> None:
     front, _ = _split()
-    assert front["agent"]["max_concurrent_agents"] == 1
+    assert front["agent"]["max_concurrent_agents"] == 2
 
 
 # --- AC-3: ADR-0007 — no agent-created tickets --------------------------------
