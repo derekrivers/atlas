@@ -1,4 +1,4 @@
-"""Learning-system extraction public surface."""
+"""Learning-system public surface."""
 
 from atlas.learning.extractor import (
     DEFAULT_RAW_DIFF_SIZE_CAP_BYTES,
@@ -9,6 +9,19 @@ from atlas.learning.extractor import (
     extract_lesson_for_ticket,
     notable_done_ticket,
     render_extraction_prompt,
+)
+from atlas.learning.patterns import PATTERN_THRESHOLD, PatternCandidate
+from atlas.learning.report import (
+    ActiveCitationCount,
+    CategoryStatusCount,
+    LessonDwellBreach,
+    LessonsReport,
+    LessonSummary,
+    StatusLessonGroup,
+    TagLessonGroup,
+    build_lessons_report,
+    lessons_report_json,
+    render_lessons_report_markdown,
 )
 from atlas.learning.scheduler import (
     DEFAULT_INTERVAL_SECONDS as DEFAULT_LESSON_SCHEDULER_INTERVAL_SECONDS,
@@ -26,16 +39,28 @@ from atlas.learning.scheduler import (
 __all__ = [
     "DEFAULT_LESSON_SCHEDULER_INTERVAL_SECONDS",
     "DEFAULT_RAW_DIFF_SIZE_CAP_BYTES",
+    "PATTERN_THRESHOLD",
+    "ActiveCitationCount",
+    "CategoryStatusCount",
     "ExtractionTrigger",
+    "LessonDwellBreach",
     "LessonExtractionError",
     "LessonModelClient",
     "LessonSchedulerConfig",
+    "LessonSummary",
+    "LessonsReport",
+    "PatternCandidate",
     "ScheduledExtraction",
+    "StatusLessonGroup",
+    "TagLessonGroup",
     "assemble_evidence_bundle",
+    "build_lessons_report",
     "extract_lesson_for_ticket",
     "find_tickets_needing_extraction",
+    "lessons_report_json",
     "notable_done_ticket",
     "render_extraction_prompt",
+    "render_lessons_report_markdown",
     "run_lesson_scheduler",
     "run_poll_cycle",
 ]

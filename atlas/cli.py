@@ -89,6 +89,13 @@ never a traceback; no token is ever printed. `evidence` exit codes: 0 success; 2
 precondition. NOTE: `pull --repo` is the GitHub `OWNER/REPO` slug, not the
 repo-root path that `plan`/`context` `--repo` mean.
 
+`lessons report` is the Learning System's pure read side: it renders lesson
+analytics (category/status and tag grouping, ACTIVE citation counts, pattern
+candidates, DRAFT promotion backlog age, and dwell-breach rows) as markdown or
+JSON. It reads stored Lessons, DebtItems, and Tickets; it writes nothing and
+makes no LLM call. `lessons extract <KEY>` remains the explicit operator-request
+write side for generating one DRAFT lesson.
+
 `verify` (ATLAS-80) is the Phase 7 entry point that makes the verification engine
 usable: `verify --pr N --repo OWNER/REPO` verifies every ticket the PR closes,
 RECORDS the verdict, and REPORTS it. It mirrors `evidence pull`'s GitHub-client +
@@ -181,7 +188,10 @@ from atlas.learning import (
     DEFAULT_LESSON_SCHEDULER_INTERVAL_SECONDS,
     ExtractionTrigger,
     LessonSchedulerConfig,
+    build_lessons_report,
     extract_lesson_for_ticket,
+    lessons_report_json,
+    render_lessons_report_markdown,
     run_lesson_scheduler,
 )
 from atlas.linear.client import (
@@ -2267,13 +2277,22 @@ def _add_preflight_parser(subcommands: argparse._SubParsersAction) -> None:  # t
 
 
 def _add_lessons_parser(subcommands: argparse._SubParsersAction) -> None:  # type: ignore[type-arg]
-    """The `atlas lessons` group: extraction, scheduler, and operator gate."""
+    """The `atlas lessons` group: reporting, extraction, scheduler, and gates."""
 
     lessons = subcommands.add_parser(
         "lessons",
-        help="Learning System: extract, review, and promote lessons",
+        help="Learning System: report, extract, review, and promote lessons",
     )
     lessons_sub = lessons.add_subparsers(dest="lessons_command", required=True)
+
+    report = lessons_sub.add_parser(
+        "report",
+        help=("Lesson analytics as markdown (read-only; --json for structured output)"),
+    )
+    report.add_argument("--db", default=None, help="database URL")
+    report.add_argument(
+        "--json", action="store_true", help="emit machine-readable JSON"
+    )
 
     review = lessons_sub.add_parser(
         "review",
@@ -2363,8 +2382,20 @@ def _lessons_command(
     database: Database | None,
     client: PlannerClient | None,
 ) -> int:
-    """Route `atlas lessons` extraction, scheduler, and operator-gate commands."""
+    """Route `atlas lessons` report, extraction, scheduler, and gate commands."""
     resolved_db = database if database is not None else Database(args.db)
+    if args.lessons_command == "report":
+        report = build_lessons_report(
+            LessonRepo(resolved_db),
+            DebtItemRepo(resolved_db),
+            TicketRepo(resolved_db),
+            now=datetime.now(UTC),
+        )
+        if args.json:
+            print(json.dumps(lessons_report_json(report)))
+        else:
+            print(render_lessons_report_markdown(report))
+        return EXIT_OK
     if args.lessons_command == "review":
         return _lessons_review(args, resolved_db)
     if args.lessons_command in {"extract", "schedule"}:
