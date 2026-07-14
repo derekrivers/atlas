@@ -37,12 +37,16 @@ failures are logged, never retried into noise.
 
 ## Promotion workflow
 
-`atlas lessons review` lists DRAFTs; per lesson the operator can
-**promote** (sets ACTIVE, operator assigns `confidence` 0–1 at promotion —
-confidence is an operator judgement, not a model output), **edit then
-promote**, **reject** (ARCHIVED, kept for pattern detection), or **merge**
-into an existing lesson. Promotion is the single human gate between agent
-experience and future agent context.
+`atlas lessons review` lists DRAFTs; `atlas lessons review --stale` lists
+ACTIVE lessons due for review. Per lesson the operator can **promote** with
+`atlas lessons promote <LESSON_ID> --confidence <0.0-1.0>` (sets ACTIVE,
+operator assigns confidence at promotion — confidence is an operator
+judgement, not a model output), **edit then promote** by manually editing the
+stored lesson before promotion, **reject** with `atlas lessons reject
+<LESSON_ID>` (ARCHIVED, kept for pattern detection), **merge** with
+`atlas lessons merge <DRAFT_ID> --into <ACTIVE_ID>`, or **archive** an obsolete
+ACTIVE lesson with `atlas lessons archive <LESSON_ID>`. Promotion is the
+single human gate between agent experience and future agent context.
 
 ## Retrieval interplay
 

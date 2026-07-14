@@ -246,7 +246,10 @@ from atlas.storage import (
     DebtItemRepo,
     EffortValidationError,
     EvidenceRepo,
+    LessonNotFoundError,
     LessonRepo,
+    LessonStateError,
+    LessonValidationError,
     ProductRepo,
     TicketNotFoundError,
     TicketRepo,
@@ -2264,15 +2267,70 @@ def _add_preflight_parser(subcommands: argparse._SubParsersAction) -> None:  # t
 
 
 def _add_lessons_parser(subcommands: argparse._SubParsersAction) -> None:  # type: ignore[type-arg]
-    """The `atlas lessons` group. `extract <KEY>` is the operator request
-    trigger for lesson extraction; `schedule` is the recurring automatic
-    extractor for terminal tickets and PM failure-analysis events."""
+    """The `atlas lessons` group: extraction, scheduler, and operator gate."""
 
     lessons = subcommands.add_parser(
         "lessons",
-        help="Learning System: extract DRAFT lessons for operator review",
+        help="Learning System: extract, review, and promote lessons",
     )
     lessons_sub = lessons.add_subparsers(dest="lessons_command", required=True)
+
+    review = lessons_sub.add_parser(
+        "review",
+        help="List DRAFT lessons awaiting promotion, or stale ACTIVE lessons",
+    )
+    review.add_argument(
+        "--stale",
+        action="store_true",
+        help="list ACTIVE lessons included in 10+ post-action context packs "
+        "with zero citation/re-confirmation signal",
+    )
+    review.add_argument(
+        "--json", action="store_true", help="emit machine-readable JSON"
+    )
+    review.add_argument("--db", default=None, help="database URL")
+
+    promote = lessons_sub.add_parser(
+        "promote",
+        help="Promote a DRAFT lesson to ACTIVE with operator confidence",
+    )
+    promote.add_argument("lesson_id", type=UUID, help="lesson UUID to promote")
+    promote.add_argument(
+        "--confidence",
+        type=float,
+        required=True,
+        help="operator confidence from 0.0 to 1.0 inclusive",
+    )
+    promote.add_argument("--db", default=None, help="database URL")
+
+    reject = lessons_sub.add_parser(
+        "reject",
+        help="Reject a DRAFT lesson and retain it as ARCHIVED",
+    )
+    reject.add_argument("lesson_id", type=UUID, help="lesson UUID to reject")
+    reject.add_argument("--db", default=None, help="database URL")
+
+    archive = lessons_sub.add_parser(
+        "archive",
+        help="Archive a DRAFT or ACTIVE lesson without deleting it",
+    )
+    archive.add_argument("lesson_id", type=UUID, help="lesson UUID to archive")
+    archive.add_argument("--db", default=None, help="database URL")
+
+    merge = lessons_sub.add_parser(
+        "merge",
+        help="Merge a DRAFT lesson into an existing ACTIVE lesson",
+    )
+    merge.add_argument("draft_lesson_id", type=UUID, help="DRAFT lesson UUID")
+    merge.add_argument(
+        "--into",
+        dest="target_lesson_id",
+        type=UUID,
+        required=True,
+        help="ACTIVE target lesson UUID",
+    )
+    merge.add_argument("--db", default=None, help="database URL")
+
     extract = lessons_sub.add_parser(
         "extract",
         help="Extract one DRAFT lesson for a ticket key",
@@ -2305,11 +2363,132 @@ def _lessons_command(
     database: Database | None,
     client: PlannerClient | None,
 ) -> int:
-    """Route `atlas lessons`: manual extract and the recurring scheduler."""
-
+    """Route `atlas lessons` extraction, scheduler, and operator-gate commands."""
     resolved_db = database if database is not None else Database(args.db)
-    if args.lessons_command not in {"extract", "schedule"}:
+    if args.lessons_command == "review":
+        return _lessons_review(args, resolved_db)
+    if args.lessons_command in {"extract", "schedule"}:
+        return _lessons_extract_or_schedule(args, resolved_db, client=client)
+
+    repo = LessonRepo(resolved_db)
+    now = datetime.now(UTC)
+    try:
+        if args.lessons_command == "promote":
+            lesson = repo.promote(
+                args.lesson_id,
+                confidence=args.confidence,
+                now=now,
+            )
+            print(
+                f"Promoted lesson {lesson.id} to ACTIVE "
+                f"(confidence: {lesson.confidence})."
+            )
+            return EXIT_OK
+        if args.lessons_command == "reject":
+            lesson = repo.reject(args.lesson_id, now=now)
+            print(f"Rejected lesson {lesson.id}; status is ARCHIVED.")
+            return EXIT_OK
+        if args.lessons_command == "archive":
+            lesson = repo.archive(args.lesson_id, now=now)
+            print(f"Archived lesson {lesson.id}.")
+            return EXIT_OK
+        if args.lessons_command == "merge":
+            draft, target = repo.merge(
+                args.draft_lesson_id,
+                args.target_lesson_id,
+                now=now,
+            )
+            print(
+                f"Merged DRAFT lesson {draft.id} into ACTIVE lesson {target.id}; "
+                f"draft status is ARCHIVED."
+            )
+            return EXIT_OK
+    except (LessonNotFoundError, LessonStateError, LessonValidationError) as error:
+        print(error, file=sys.stderr)
         return EXIT_PRECONDITION
+
+    return EXIT_PRECONDITION
+
+
+def _source_ticket_label(lesson: Lesson, ticket_keys_by_id: dict[UUID, str]) -> str:
+    if not lesson.related_ticket_ids:
+        return "-"
+    source_ticket_id = lesson.related_ticket_ids[0]
+    return ticket_keys_by_id.get(source_ticket_id, str(source_ticket_id))
+
+
+def _lesson_review_row(
+    lesson: Lesson,
+    ticket_keys_by_id: dict[UUID, str],
+    *,
+    context_pack_count: int | None = None,
+) -> dict[str, object]:
+    row: dict[str, object] = {
+        "id": str(lesson.id),
+        "title": lesson.title,
+        "source_ticket": _source_ticket_label(lesson, ticket_keys_by_id),
+        "created_at": lesson.created_at.isoformat(),
+        "status": lesson.status.value,
+    }
+    if context_pack_count is not None:
+        row["context_pack_count"] = context_pack_count
+        row["last_operator_action_at"] = lesson.updated_at.isoformat()
+    return row
+
+
+def _review_line(row: dict[str, object]) -> str:
+    prefix = f"{row['id']}  {row['created_at']}  source={row['source_ticket']}"
+    if "context_pack_count" in row:
+        prefix = (
+            f"{prefix}  packs={row['context_pack_count']}  "
+            f"last_operator_action={row['last_operator_action_at']}"
+        )
+    return f"{prefix}  {row['title']}"
+
+
+def _lessons_review(args: argparse.Namespace, resolved_db: Database) -> int:
+    """List DRAFT lessons or stale ACTIVE lessons for operator review."""
+    repo = LessonRepo(resolved_db)
+    ticket_keys_by_id = {
+        ticket.id: ticket.key for ticket in TicketRepo(resolved_db).list()
+    }
+
+    if args.stale:
+        reviews = repo.list_stale_active()
+        rows = [
+            _lesson_review_row(
+                review.lesson,
+                ticket_keys_by_id,
+                context_pack_count=review.context_pack_count,
+            )
+            for review in reviews
+        ]
+        text = (
+            "\n".join(["Stale ACTIVE lessons:", *[_review_line(row) for row in rows]])
+            if rows
+            else "No stale ACTIVE lessons."
+        )
+        _emit({"stale_lessons": rows}, text, as_json=args.json)
+        return EXIT_OK
+
+    drafts = repo.list_drafts()
+    rows = [_lesson_review_row(lesson, ticket_keys_by_id) for lesson in drafts]
+    text = (
+        "\n".join(["DRAFT lessons:", *[_review_line(row) for row in rows]])
+        if rows
+        else "No DRAFT lessons."
+    )
+    _emit({"draft_lessons": rows}, text, as_json=args.json)
+    return EXIT_OK
+
+
+def _lessons_extract_or_schedule(
+    args: argparse.Namespace,
+    resolved_db: Database,
+    *,
+    client: PlannerClient | None,
+) -> int:
+    """Route lesson extraction and the recurring extraction scheduler."""
     lesson_client = client
     if lesson_client is None:
         try:
