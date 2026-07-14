@@ -81,8 +81,11 @@ closing the loop Docs → Delivery → Lessons → Docs.
 
 ## Delivery analytics
 
-`atlas lessons report`: lessons by category and status, citation counts,
-pattern candidates, promotion backlog age. CLI/markdown only.
+`atlas lessons report`: lessons by category/status and tag, ACTIVE citation
+counts from `related_ticket_ids`, deterministic pattern candidates, promotion
+backlog age, and dwell-breach rows. Markdown is the default CLI output;
+`--json` emits the same data for machine consumers. The command is a pure
+reader with no writes and no LLM calls.
 
 ## Open items
 
