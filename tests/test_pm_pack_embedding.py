@@ -17,8 +17,8 @@ The named cases, mapped to the gate's ACs and rulings (PR #180):
   PACK tail truncates with a visible marker; definition fields are never cut;
   the push path uses the default pinned constant (100,000 chars).
 - AC-4 / D-2: a pack render failure pushes definition-only (today's exact
-  payload) with one typed ``PACK_RENDER_FAILURE`` DebtItem and a stamped
-  cursor (A-3), and never blocks the remaining tickets; a documents-loader
+  payload) with one typed ``PACK_RENDER_FAILURE`` DebtItem and an unstamped
+  cursor, so the next tick retries until a full embed succeeds; a documents-loader
   failure degrades every embed this tick and the tick completes.
 - AC-5: a push tick's request count is exactly pushes + fixed cost — rendering
   adds zero Linear calls (the ATLAS-148 no-op bound itself stays pinned
@@ -26,6 +26,8 @@ The named cases, mapped to the gate's ACs and rulings (PR #180):
 - D-3: an unchanged definition with a changed corpus does not re-push — packs
   refresh on definition change only; corpus staleness is accepted and visible
   via the header's ``rendered_at``.
+- ATLAS-169 repair: ``repair_packs`` re-embeds already-stamped descriptions
+  missing the pack header and is idempotent once repaired.
 """
 
 from __future__ import annotations
@@ -177,6 +179,7 @@ def run(
     documents: Callable[[], list[SourceDocument]],
     *,
     now: datetime = NOW,
+    repair_packs: bool = False,
 ) -> SyncResult:
     return sync_tick(
         tickets=TicketRepo(db),
@@ -188,6 +191,7 @@ def run(
         inbox_dir=Path(tempfile.mkdtemp()),
         documents=documents,
         now=now,
+        repair_packs=repair_packs,
     )
 
 
@@ -463,14 +467,13 @@ def test_pack_render_failure_pushes_definition_only_with_typed_anomaly(
     assert "ATLAS-905" in item.summary
     assert "UnknownAnchorError" in item.summary
     assert "definition-only" in item.summary
+    assert "cursor unstamped" in item.summary
     assert item.observed_at == NOW
-    # The cursor STAMPED on the fallback (A-3): the next tick is a no-op — no
-    # per-tick render retry, no update_issue drip, no DebtItem storm.
-    second = run(db, client, provider)
-    assert second.pushed_updated == 0
-    assert second.pack_render_failures == 0
-    assert len(client.updates) == 1
-    assert len(DebtItemRepo(db).list()) == 1
+    # The cursor is deliberately left behind: the next tick retries instead of
+    # making a transient render refusal permanent.
+    after = TicketRepo(db).get_by_key("ATLAS-905")
+    assert after is not None
+    assert after.linear_synced_at != after.updated_at
 
 
 def test_pack_render_failure_does_not_block_remaining_tickets(
@@ -518,6 +521,98 @@ def test_documents_loader_failure_degrades_every_embed_this_tick(
     assert len(items) == 2
     assert {item.ticket_id for item in items} == {first.id, second.id}
     assert all("DirtyInputError" in item.summary for item in items)
+    assert all("cursor unstamped" in item.summary for item in items)
+
+
+def test_dirty_pack_input_retries_until_full_embed_then_noops(
+    db: Database, repo: Path
+) -> None:
+    client = RecordingClient()
+    ticket = seed(db, client, key="ATLAS-921")
+    provider = collector_pair(repo)
+    (repo / ANCHOR_PATH).write_text(CONTEXT_SPEC + "\ndirty edit\n", encoding="utf-8")
+
+    first = run(db, client, provider)
+    after_dirty = TicketRepo(db).get_by_key("ATLAS-921")
+
+    assert first.pushed_updated == 1
+    assert first.pack_render_failures == 1
+    assert first.packs_embedded == 0
+    assert after_dirty is not None
+    assert after_dirty.linear_synced_at != after_dirty.updated_at
+    issue_id, definition = client.updates[-1]
+    assert issue_id == ticket.external_linear_id
+    assert PACK_HEADER_PREFIX not in str(definition["description"])
+
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "commit dirty pack input")
+    second = run(db, client, provider)
+    after_clean = TicketRepo(db).get_by_key("ATLAS-921")
+
+    assert second.pushed_updated == 1
+    assert second.pack_render_failures == 0
+    assert second.packs_embedded == 1
+    assert after_clean is not None
+    assert after_clean.linear_synced_at == after_clean.updated_at
+    _, embedded = client.updates[-1]
+    assert PACK_HEADER_PREFIX in str(embedded["description"])
+
+    third = run(db, client, provider)
+
+    assert third.pushed_updated == 0
+    assert third.packs_embedded == 0
+    assert len(client.updates) == 2
+
+
+def test_non_enumerated_pack_render_failure_still_crashes_before_write(
+    db: Database, repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client = RecordingClient()
+    seed(db, client, key="ATLAS-922")
+
+    def boom(*args: object, **kwargs: object) -> ContextPack:
+        raise RuntimeError("non-enumerated")
+
+    monkeypatch.setattr("atlas.pm.sync.build_context_pack", boom)
+
+    with pytest.raises(RuntimeError, match="non-enumerated"):
+        run(db, client, collector_pair(repo))
+
+    assert client.updates == []
+    assert DebtItemRepo(db).list() == []
+
+
+def test_repair_packs_reembeds_one_pack_absent_stamped_ticket(
+    db: Database, repo: Path
+) -> None:
+    client = RecordingClient()
+    absent = seed(db, client, key="ATLAS-923", linear_synced_at=NOW)
+    present = seed(db, client, key="ATLAS-924", linear_synced_at=NOW)
+    assert present.external_linear_id is not None
+    client.update_issue(
+        present.external_linear_id,
+        {"title": "already embedded", "description": f"{PACK_HEADER_PREFIX} | ok"},
+    )
+    client.updates.clear()
+
+    result = run(db, client, collector_pair(repo), repair_packs=True)
+
+    assert result.packs_repaired == 1
+    assert result.packs_embedded == 1
+    assert result.pushed_updated == 1
+    assert len(client.updates) == 1
+    issue_id, definition = client.updates[0]
+    assert issue_id == absent.external_linear_id
+    assert PACK_HEADER_PREFIX in str(definition["description"])
+    repaired = TicketRepo(db).get_by_key("ATLAS-923")
+    assert repaired is not None
+    assert repaired.linear_synced_at == repaired.updated_at
+
+    second = run(db, client, collector_pair(repo), repair_packs=True)
+
+    assert second.packs_repaired == 0
+    assert second.pushed_updated == 0
+    assert len(client.updates) == 1
 
 
 # --- AC-5: request budget on a push tick -------------------------------------

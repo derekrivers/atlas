@@ -329,6 +329,45 @@ def test_anomaly_counts_match_stored_rows_and_a_seeded_row_moves_the_count(
     assert moved[AnomalyType.OUT_OF_OWNERSHIP_TRANSITION.value].count == 2
 
 
+def test_pack_render_failure_report_counts_cursor_unstamped_tickets(
+    db: Database, capsys: pytest.CaptureFixture[str]
+) -> None:
+    stale = make_ticket(
+        "ATLAS-10",
+        updated_at=NOW,
+        linear_synced_at=NOW - timedelta(minutes=1),
+    )
+    stamped = make_ticket("ATLAS-11", updated_at=NOW, linear_synced_at=NOW)
+    seed_tickets(db, [stale, stamped])
+    seed_debt(
+        db,
+        [
+            make_debt(stale.id, AnomalyType.PACK_RENDER_FAILURE),
+            make_debt(stamped.id, AnomalyType.PACK_RENDER_FAILURE),
+        ],
+    )
+
+    report = build_delivery_report(
+        TicketRepo(db),
+        DebtItemRepo(db),
+        TickFailureRepo(db),
+        TicketStatusTransitionRepo(db),
+        now=NOW,
+    )
+    counts = {c.anomaly_type: c for c in report.anomaly_counts}
+
+    pack_failures = counts[AnomalyType.PACK_RENDER_FAILURE.value]
+    assert pack_failures.count == 2
+    assert pack_failures.cursor_unstamped_ticket_count == 1
+
+    code = main(["pm", "report"], database=db)
+    out = capsys.readouterr().out
+
+    assert code == EXIT_OK
+    assert "Cursor-unstamped tickets" in out
+    assert "| pack_render_failure | 2 | 0 | 1 |" in out
+
+
 # --- ready-queue depth -----------------------------------------------------
 
 

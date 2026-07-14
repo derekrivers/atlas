@@ -54,8 +54,8 @@ widens the description with the ticket's rendered context pack
 (`compose_embedded_description`, ATLAS-164) beneath the definition fields,
 behind the pinned delimiter — still the same single owned key, content
 widened exactly as ATLAS-143 widened `title`; the render-failure posture,
-the 100,000-char overflow pin, and the definition-change-only refresh rule
-are the three gate rulings recorded in
+the 100,000-char overflow pin, the definition-change-only refresh rule,
+and the operator-invoked pack repair sweep are recorded in
 `symphony-integration.md#context-pack-delivery`. Two doctrine fields are
 owned but not
 yet syncable, deferred rather than silently guessed: `labels` is owned in the
@@ -175,7 +175,24 @@ Pull-based, consistent with ADR-0008 (no webhooks before hosting):
 
 2. Push definition updates (title/priority/labels/description) for
    tickets whose Atlas `updated_at` is newer, only while the ticket is in
-   a pre-dispatch status or `Ready for Agent`.
+   a pre-dispatch status or `Ready for Agent`. A successful full embed
+   stamps `linear_synced_at` to the pushed `updated_at`. An enumerated
+   context-pack render failure still pushes the definition-only payload
+   and logs one `PACK_RENDER_FAILURE`, but does **not** stamp the cursor:
+   `updated_at` remains ahead of `linear_synced_at`, so the next tick retries
+   the full embed until the render condition clears. A first-sync degraded
+   create records only the Linear join key, never the cursor, so the retry
+   updates the same issue instead of creating a duplicate.
+
+   `atlas pm sync --repair-packs` adds an operator-invoked, one-shot repair
+   sweep after this normal push pass. The sweep examines only descriptions
+   already returned by the batched project pull, selects pushable tickets with
+   an `external_linear_id`, a current definition cursor, and no
+   `ATLAS CONTEXT PACK v1` header in Linear, then re-renders and re-pushes the
+   full embedded description. Successful repairs stamp normally; a second
+   repair run over the same board is a zero-write no-op. The plain periodic
+   tick does not run this branch and therefore keeps the ATLAS-148 request
+   budget unchanged.
 3. Run the readiness predicate (dependency-engine.md#readiness-predicate);
    for each newly ready ticket, write `Ready for Agent` in Linear through the
    PM Engine's dedicated state-write path (`LinearClient.set_state`). The
@@ -203,7 +220,8 @@ Pull-based, consistent with ADR-0008 (no webhooks before hosting):
    (dependency-ready + pack-rendered): the `pack-rendered` conjunct of
    PROMOTION remains deferred — promotion does not gate on a successful
    render, and a push-time render failure degrades that push to
-   definition-only under the D-2 rule rather than blocking the ticket —
+   definition-only under the D-2 rule rather than blocking the ticket, with
+   the cursor left unstamped so a later clean tick retries the embed —
    becoming load-bearing when Symphony consumes this state.
 4. Scan issue comments for the `atlas:proposed-follow-up` tag — but only
    for tickets in the **active-state set** `{ready_for_agent, in_progress,
@@ -463,7 +481,10 @@ The metrics, as computed in v1:
   nothing is assigned, a duration is measured.
 - **Ready-queue depth** — the count of tickets in `ready_for_agent`.
 - **Anomaly counts** — `DebtItem`s grouped by `AnomalyType`, with the recurring
-  ones (the query-time `recurring(...)` predicate) called out per type.
+  ones (the query-time `recurring(...)` predicate) called out per type. For
+  `PACK_RENDER_FAILURE`, the same table also counts tickets whose definition
+  cursor is still unstamped, i.e. degraded pushes still waiting for a successful
+  full embed retry.
 - **Dwell breaches** — the `DWELL_BREACH` subset of the anomaly log (ATLAS-119),
   surfaced per ticket.
 - **Tick failures** — the count of durable scheduler crash rows.

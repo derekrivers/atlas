@@ -451,6 +451,28 @@ def test_injection_passed_into_sync_tick_and_clean_tick_records_nothing(
     assert failures.list() == []  # a clean tick records no TickFailure
 
 
+def test_repair_pack_flag_is_passed_into_sync_tick(
+    db: Database, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    spy = SpyTick()
+    spy_sync_tick(monkeypatch, spy)
+    config = TickConfig(
+        tickets=TicketRepo(db),
+        db=db,
+        client=InMemoryLinearClient(),
+        status_map=LinearStatusMap({}),
+        team_id="team-1",
+        project_id="project-1",
+        inbox_dir=tmp_path / "inbox",
+        documents=lambda: [],
+        repair_packs=True,
+    )
+
+    run_tick(config, TickFailureRepo(db), now=NOW)
+
+    assert spy.calls[0]["repair_packs"] is True
+
+
 # --- GAP 2: the failure signature -------------------------------------------
 
 
@@ -465,11 +487,23 @@ def test_signature_is_fully_qualified_type_name() -> None:
 
 def test_sync_subparser_parses_flags() -> None:
     args = build_parser().parse_args(
-        ["pm", "sync", "--once", "--interval", "30", "--inbox-dir", "x", "--db", "y"]
+        [
+            "pm",
+            "sync",
+            "--once",
+            "--repair-packs",
+            "--interval",
+            "30",
+            "--inbox-dir",
+            "x",
+            "--db",
+            "y",
+        ]
     )
     assert args.command == "pm"
     assert args.pm_command == "sync"
     assert args.once is True
+    assert args.repair_packs is True
     assert args.interval == 30
     assert args.inbox_dir == "x"
     assert args.db == "y"
@@ -478,6 +512,7 @@ def test_sync_subparser_parses_flags() -> None:
 def test_sync_flag_defaults() -> None:
     args = build_parser().parse_args(["pm", "sync"])
     assert args.once is False
+    assert args.repair_packs is False
     assert args.interval == DEFAULT_INTERVAL_SECONDS
     assert args.inbox_dir == "docs/planning/inbox"
 
@@ -512,6 +547,51 @@ def test_build_tick_config_wires_from_env(
     assert config.project_id == "project-xyz"  # from LINEAR_PROJECT_ID
     assert config.inbox_dir == Path(str(tmp_path))  # from --inbox-dir
     assert config.status_map.status_for("s-ready") is not None  # from_env parsed
+    assert config.repair_packs is False
+
+
+def test_repair_packs_cli_mode_runs_one_tick(
+    db: Database, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _live_env(monkeypatch)
+    monkeypatch.setattr("atlas.cli._install_shutdown_handlers", lambda event: None)
+    calls: list[dict[str, object]] = []
+
+    def fake_run_scheduler(
+        config: TickConfig,
+        *,
+        interval: float,
+        once: bool,
+        shutdown: threading.Event,
+    ) -> None:
+        calls.append(
+            {
+                "config": config,
+                "interval": interval,
+                "once": once,
+                "shutdown": shutdown,
+            }
+        )
+
+    monkeypatch.setattr("atlas.cli.run_scheduler", fake_run_scheduler)
+
+    code = main(
+        [
+            "pm",
+            "sync",
+            "--repair-packs",
+            "--inbox-dir",
+            str(tmp_path / "inbox"),
+        ],
+        database=db,
+    )
+
+    assert code == EXIT_OK
+    assert len(calls) == 1
+    assert calls[0]["once"] is True
+    config = calls[0]["config"]
+    assert isinstance(config, TickConfig)
+    assert config.repair_packs is True
 
 
 def test_sync_missing_creds_is_clean_precondition(
