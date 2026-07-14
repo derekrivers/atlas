@@ -1,0 +1,23 @@
+---
+title: "Rebase-onto-fresh-main before PR open and before every push (the #188 conflict class)"
+objective: "Dispatched agents integrate their branch against current origin/main before opening a PR, before every subsequent push, and before the Review Required handoff — so merge conflicts are resolved by the agent at authoring time, not discovered by the operator at merge time, and every verification verdict pins to a head that is current against main at handoff."
+context: "Phase 8 carry-forward (closure report §5, the #188 conflict class): each agent clones at dispatch and goes stale as sibling PRs land; the operator inherits the conflict at merge. The engineer's discipline — fetch and rebase locally before pushing — is the fix. Pre-ruled decisions: D-1 no Symphony code changes — Symphony's SPEC already provides hooks.before_run (runs before every attempt, failure aborts the attempt), and the contract body is Atlas-owned; the whole change is WORKFLOW.md front matter plus contract body, delivered as a normal PR against this repository. D-2 hooks.before_run gains a freshness step (git fetch origin main) so every attempt, including Changes Requested resumes, starts with current refs; conflict RESOLUTION stays in the contract body because it requires judgement a hook cannot exercise. D-3 the contract body gains a binding integration rule: immediately before opening the PR, before every push, and before moving to Review Required, run git fetch origin main && git rebase origin/main; conflicts touching only files inside the pack's scope are resolved by the agent and noted in the PR description; any conflict touching a file outside pack scope is a blocker — comment and move to Needs Human, never improvise. D-4 ordering is binding under ADR-0008: rebase precedes push precedes CI, so system-tier evidence pins to the final head; an agent never rebases after entering Review Required — post-verdict staleness (a sibling PR merged first) is routed by the operator through Changes Requested, where the same discipline reapplies and CI re-runs on the new head (L-6 stale-verdict lesson). D-5 after_create drops --depth 1 (full clone): a depth-1 clone can lack the merge base after a later fetch, making git rebase fail fatally; the repository is small and determinism beats seconds. (Rejected alternative, recorded: keep depth 1 and fetch --unshallow in the sync step — more moving parts for no benefit at current repo size.) D-6 max_concurrent_agents stays 1 in this ticket; raising it is a separate operator knob exercised only after this lands. D-7 GitHub merge queue / auto-merge branch-update is explicitly out of scope v1; noted in symphony-integration.md as the platform-level answer if concurrency outgrows agent-side rebasing."
+ticket_type: "infrastructure"
+epic_ref: "ATLAS-E10"
+acceptance_criteria:
+  - "WORKFLOW.md hooks.before_run fetches origin/main; hooks.after_create clones without --depth 1; the two per-product knobs (tracker.project_slug, hooks.after_create repo URL) remain the only per-product values per the canonical-contract header."
+  - "The contract body states the integration rule verbatim enough to be unambiguous: rebase onto origin/main before PR open, before every push, and before Review Required; in-scope conflicts resolved and noted in the PR description; out-of-scope conflicts route to Needs Human."
+  - "The contract body states the ADR-0008 ordering: rebase precedes push precedes CI; no rebase after Review Required; post-verdict staleness routes through Changes Requested."
+  - "symphony-integration.md documents the integration discipline, the shallow-clone rejection (D-5), and the merge-queue deferral (D-7) in the same change."
+  - "Negative: a fixture or documented probe demonstrates the depth-1 failure mode that motivated D-5, or cites the recorded #188 conflict as the evidence trail."
+non_goals:
+  - "No Symphony code changes. No merge-queue or auto-merge configuration. No concurrency increase. No changes to verification, evidence pinning, or the Changes Requested loop beyond documentation. No per-product WORKFLOW forking."
+test_requirements:
+  - "WORKFLOW.md front matter remains parseable by yaml.safe_load and any existing workflow-config acceptance assertions pass unmodified; seeded defects use assert 1 == 2 (B011); ATLAS_LIVE_TESTS=0."
+definition_of_done:
+  - "All acceptance criteria evidenced by named tests or named doc anchors; full gate sweep green; symphony-integration.md and WORKFLOW.md updated in the same change; PR title carries the minted key."
+---
+
+# Rebase before PR
+
+The agent inherits the engineer's discipline: nobody pushes a stale branch.
