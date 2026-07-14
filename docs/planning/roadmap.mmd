@@ -1,7 +1,7 @@
 %% Render written only by `atlas apply` (ADR-0006/0007); do not hand-edit.
-%% plan_run_id: 3c918ea6-38cf-499c-91e3-81d0d4ed9809
+%% plan_run_id: da8d4dd7-4955-47ee-92cb-dde1004b2005
 %% prompt_version: stubs-only
-%% ticket_key_high_water: 167
+%% ticket_key_high_water: 169
 %% epic_key_high_water: 11
 graph TD
   subgraph ATLAS-E1["Bootstrap Repository"]
@@ -145,6 +145,8 @@ graph TD
     ATLAS-164["ATLAS-164 Pack embedding: the rendered context pack rides the Linear issue description"]
     ATLAS-166["ATLAS-166 AgentRun reconstruction: build the run record from board and PR observation"]
     ATLAS-167["ATLAS-167 Failure-analysis remainder: detected anomaly patterns file DRAFT lessons"]
+    ATLAS-168["ATLAS-168 Rebase-onto-fresh-main before PR open and before every push (the #188 conflict class)"]
+    ATLAS-169["ATLAS-169 Degraded definition-only push must not advance the sync cursor; repair pack-absent pushed tickets"]
   end
   subgraph ATLAS-E11["Organisational Learning"]
     ATLAS-99["ATLAS-99 Lesson extraction on ticket completion and failure events"]
@@ -367,8 +369,10 @@ graph TD
   classDef done stroke-width:1px;
   classDef needs_human_decision stroke-width:1px;
   classDef planned stroke-width:1px;
+  classDef ready_for_agent stroke-width:1px;
   classDef rejected stroke-width:1px;
-  class ATLAS-1,ATLAS-2,ATLAS-3,ATLAS-4,ATLAS-5,ATLAS-6,ATLAS-7,ATLAS-8,ATLAS-9,ATLAS-10,ATLAS-11,ATLAS-12,ATLAS-13,ATLAS-14,ATLAS-15,ATLAS-16,ATLAS-17,ATLAS-18,ATLAS-19,ATLAS-20,ATLAS-21,ATLAS-22,ATLAS-23,ATLAS-110,ATLAS-153,ATLAS-161,ATLAS-162,ATLAS-163,ATLAS-164,ATLAS-165 done;
+  class ATLAS-1,ATLAS-2,ATLAS-3,ATLAS-4,ATLAS-5,ATLAS-6,ATLAS-7,ATLAS-8,ATLAS-9,ATLAS-10,ATLAS-11,ATLAS-12,ATLAS-13,ATLAS-14,ATLAS-15,ATLAS-16,ATLAS-17,ATLAS-18,ATLAS-19,ATLAS-20,ATLAS-21,ATLAS-22,ATLAS-23,ATLAS-110,ATLAS-153,ATLAS-161,ATLAS-162,ATLAS-163,ATLAS-164,ATLAS-165,ATLAS-166,ATLAS-167 done;
   class ATLAS-24,ATLAS-25,ATLAS-26,ATLAS-27,ATLAS-28,ATLAS-29,ATLAS-30,ATLAS-31,ATLAS-32,ATLAS-33,ATLAS-34,ATLAS-35,ATLAS-36,ATLAS-37,ATLAS-38,ATLAS-39,ATLAS-40,ATLAS-41,ATLAS-42,ATLAS-43,ATLAS-44,ATLAS-45,ATLAS-46,ATLAS-47,ATLAS-48,ATLAS-49,ATLAS-50,ATLAS-51,ATLAS-52,ATLAS-53,ATLAS-54,ATLAS-55,ATLAS-56,ATLAS-57,ATLAS-58,ATLAS-59,ATLAS-60,ATLAS-61,ATLAS-62,ATLAS-63,ATLAS-64,ATLAS-65,ATLAS-66,ATLAS-67,ATLAS-68,ATLAS-69,ATLAS-70,ATLAS-71,ATLAS-72,ATLAS-73,ATLAS-74,ATLAS-75,ATLAS-76,ATLAS-77,ATLAS-78,ATLAS-79,ATLAS-80,ATLAS-81,ATLAS-82,ATLAS-83,ATLAS-84,ATLAS-85,ATLAS-86,ATLAS-87,ATLAS-88,ATLAS-89,ATLAS-90,ATLAS-91,ATLAS-92,ATLAS-93,ATLAS-94,ATLAS-95,ATLAS-96,ATLAS-97,ATLAS-98,ATLAS-99,ATLAS-100,ATLAS-101,ATLAS-102,ATLAS-103,ATLAS-104,ATLAS-105,ATLAS-106,ATLAS-107,ATLAS-147,ATLAS-148,ATLAS-151,ATLAS-152,ATLAS-154,ATLAS-159,ATLAS-160 needs_human_decision;
-  class ATLAS-166,ATLAS-167 planned;
+  class ATLAS-169 planned;
+  class ATLAS-168 ready_for_agent;
   class ATLAS-108,ATLAS-109,ATLAS-149,ATLAS-150,ATLAS-155,ATLAS-156,ATLAS-157,ATLAS-158 rejected;

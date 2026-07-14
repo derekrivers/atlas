@@ -1,7 +1,7 @@
 # Render written only by `atlas apply` (ADR-0006/0007); do not hand-edit.
-# plan_run_id: 3c918ea6-38cf-499c-91e3-81d0d4ed9809
+# plan_run_id: da8d4dd7-4955-47ee-92cb-dde1004b2005
 # prompt_version: stubs-only
-# ticket_key_high_water: 167
+# ticket_key_high_water: 169
 # epic_key_high_water: 11
 tickets:
 - id: 06701bee-33ed-44e6-b735-52dfd7c5edc8
@@ -7548,7 +7548,7 @@ tickets:
   title: 'AgentRun reconstruction: build the run record from board and PR observation'
   objective: Every Symphony-dispatched ticket yields a persisted AgentRun row — dispatch time, handoff state, PR number, head commit, and the embedded pack_id — reconstructed from observation, so dispatched work is attributable without reading transcripts.
   context: 'Phase 8 seed 84. The AgentRun model and AgentRunRepo exist (atlas/core/models/agent_run.py, storage/repositories.py) with no producer. Atlas observes rather than integrates (ADR-0008): the record is reconstructed at sync time from what the loop already sees — the ticket''s status transitions (dispatch = entry into in_progress; handoff = entry into review_required/needs_human_decision), the PR resolved from the verification close-set parsing or evidence rows, the head commit from evidence pins, and input_context_pack_id parsed from the PACK header the push embedded (pack_id / rendered_at are in the delimited section Atlas itself wrote — parsing our own header is not pull-side pack consumption and does not violate the ATLAS-164 non-goal). Pre-ruled decisions: reconstruction runs as a sync-tick step AFTER the pull, is idempotent (one AgentRun per ticket per dispatch cycle, keyed on ticket + dispatch transition id), tolerates missing pieces by recording what is observable with nulls elsewhere (never blocks the tick, never raises for absent data), and adds NO per-ticket Linear requests (reads the store and existing evidence only — the ATLAS-148 request-bound test extends to prove it).'
-  status: planned
+  status: done
   ticket_type: feature
   risk_level: low
   priority: 50
@@ -7569,13 +7569,13 @@ tickets:
   definition_of_done:
   - All acceptance criteria evidenced by named tests; full gate sweep green; pm-engine-and-linear-sync.md documents the reconstruction step in the same change.
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: f6abaa6d-ad01-4239-b64e-875b9bcc1405
   external_github_issue_id: null
   tags: []
   component: null
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-07-13T15:00:44.871696Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-07-13T18:56:42.801067Z'
   review_cycle_count: 0
   source_anchor: docs/planning/inbox/processed/inbox-stub-agentrun-reconstruction.md#agentrun-reconstruction
   created_by_type: agent
@@ -7590,7 +7590,7 @@ tickets:
   title: 'Failure-analysis remainder: detected anomaly patterns file DRAFT lessons'
   objective: Recurring delivery anomalies (review cycling, dwell breaches) produce DRAFT lesson records an operator can promote or discard — closing Phase 8 seed 86's undelivered half.
   context: 'Detection shipped in July (review-cycle counting, dwell horizons, anomaly DebtItems — ATLAS-120/121/126); the remainder is the filing: when a pattern crosses its threshold, write a DRAFT lesson row capturing the pattern, the tickets exhibiting it, and the evidence pointers — for the operator, not for automation. Pre-ruled decisions: DRAFT lessons are store rows (the lessons table the E11 schema already carries; if absent, this ticket adds the minimal model+migration and E11 inherits it), never documents (no docs/ writes — ADR-0007); filing runs in the sync tick''s anomaly step, idempotent per pattern instance (keyed on pattern type + ticket set, no duplicate drafts on re-tick); thresholds are the existing detection thresholds — this ticket adds NO new detection, only filing of what already fires; drafts are surfaced via `atlas pm report` (a drafts section) and a `lessons list --draft` read path if the lessons CLI exists, else the report section alone; promotion/discard of drafts is explicitly E11 territory and OUT of scope.'
-  status: planned
+  status: done
   ticket_type: feature
   risk_level: low
   priority: 50
@@ -7610,6 +7610,90 @@ tickets:
   definition_of_done:
   - All acceptance criteria evidenced by named tests; full gate sweep green; pm-engine-and-linear-sync.md's anomaly section documents the filing step in the same change.
   estimated_effort: null
+  external_linear_id: dd915157-afe9-4bb9-8650-a39bb45a91b1
+  external_github_issue_id: null
+  tags: []
+  component: null
+  linear_synced_at: '2026-07-13T15:00:44.871696Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-07-13T17:44:11.879620Z'
+  review_cycle_count: 0
+  source_anchor: docs/planning/inbox/processed/inbox-stub-draft-lessons.md#draft-lessons-from-anomalies
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-13T15:00:44.871696Z'
+  updated_at: '2026-07-13T15:00:44.871696Z'
+  completed_at: null
+- id: de42721f-9fba-49e7-9751-bc101ec6fe9b
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 4d034c8b-0752-4089-8ff9-2fd43f51c6f4
+  key: ATLAS-168
+  title: 'Rebase-onto-fresh-main before PR open and before every push (the #188 conflict class)'
+  objective: Dispatched agents integrate their branch against current origin/main before opening a PR, before every subsequent push, and before the Review Required handoff — so merge conflicts are resolved by the agent at authoring time, not discovered by the operator at merge time, and every verification verdict pins to a head that is current against main at handoff.
+  context: 'Phase 8 carry-forward (closure report §5, the #188 conflict class): each agent clones at dispatch and goes stale as sibling PRs land; the operator inherits the conflict at merge. The engineer''s discipline — fetch and rebase locally before pushing — is the fix. Pre-ruled decisions: D-1 no Symphony code changes — Symphony''s SPEC already provides hooks.before_run (runs before every attempt, failure aborts the attempt), and the contract body is Atlas-owned; the whole change is WORKFLOW.md front matter plus contract body, delivered as a normal PR against this repository. D-2 hooks.before_run gains a freshness step (git fetch origin main) so every attempt, including Changes Requested resumes, starts with current refs; conflict RESOLUTION stays in the contract body because it requires judgement a hook cannot exercise. D-3 the contract body gains a binding integration rule: immediately before opening the PR, before every push, and before moving to Review Required, run git fetch origin main && git rebase origin/main; conflicts touching only files inside the pack''s scope are resolved by the agent and noted in the PR description; any conflict touching a file outside pack scope is a blocker — comment and move to Needs Human, never improvise. D-4 ordering is binding under ADR-0008: rebase precedes push precedes CI, so system-tier evidence pins to the final head; an agent never rebases after entering Review Required — post-verdict staleness (a sibling PR merged first) is routed by the operator through Changes Requested, where the same discipline reapplies and CI re-runs on the new head (L-6 stale-verdict lesson). D-5 after_create drops --depth 1 (full clone): a depth-1 clone can lack the merge base after a later fetch, making git rebase fail fatally; the repository is small and determinism beats seconds. (Rejected alternative, recorded: keep depth 1 and fetch --unshallow in the sync step — more moving parts for no benefit at current repo size.) D-6 max_concurrent_agents stays 1 in this ticket; raising it is a separate operator knob exercised only after this lands. D-7 GitHub merge queue / auto-merge branch-update is explicitly out of scope v1; noted in symphony-integration.md as the platform-level answer if concurrency outgrows agent-side rebasing.'
+  status: ready_for_agent
+  ticket_type: infrastructure
+  risk_level: low
+  priority: 50
+  relevant_docs:
+  - docs/planning/inbox/processed/inbox-stub-rebase-before-pr.md
+  acceptance_criteria:
+  - WORKFLOW.md hooks.before_run fetches origin/main; hooks.after_create clones without --depth 1; the two per-product knobs (tracker.project_slug, hooks.after_create repo URL) remain the only per-product values per the canonical-contract header.
+  - 'The contract body states the integration rule verbatim enough to be unambiguous: rebase onto origin/main before PR open, before every push, and before Review Required; in-scope conflicts resolved and noted in the PR description; out-of-scope conflicts route to Needs Human.'
+  - 'The contract body states the ADR-0008 ordering: rebase precedes push precedes CI; no rebase after Review Required; post-verdict staleness routes through Changes Requested.'
+  - symphony-integration.md documents the integration discipline, the shallow-clone rejection (D-5), and the merge-queue deferral (D-7) in the same change.
+  - 'Negative: a fixture or documented probe demonstrates the depth-1 failure mode that motivated D-5, or cites the recorded #188 conflict as the evidence trail.'
+  non_goals:
+  - No Symphony code changes. No merge-queue or auto-merge configuration. No concurrency increase. No changes to verification, evidence pinning, or the Changes Requested loop beyond documentation. No per-product WORKFLOW forking.
+  implementation_notes: []
+  test_requirements:
+  - WORKFLOW.md front matter remains parseable by yaml.safe_load and any existing workflow-config acceptance assertions pass unmodified; seeded defects use assert 1 == 2 (B011); ATLAS_LIVE_TESTS=0.
+  documentation_requirements: []
+  definition_of_done:
+  - All acceptance criteria evidenced by named tests or named doc anchors; full gate sweep green; symphony-integration.md and WORKFLOW.md updated in the same change; PR title carries the minted key.
+  estimated_effort: null
+  external_linear_id: 5f4062d4-8dbf-436e-b658-cf2be85533ab
+  external_github_issue_id: null
+  tags: []
+  component: null
+  linear_synced_at: '2026-07-13T20:20:45.360832Z'
+  last_observed_linear_state_id: df1ebd92-7c41-4585-a15b-29b9e73f840f
+  status_entered_at: '2026-07-13T20:21:54.893973Z'
+  review_cycle_count: 0
+  source_anchor: docs/planning/inbox/processed/inbox-stub-rebase-before-pr.md#rebase-before-pr
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-13T20:20:45.360832Z'
+  updated_at: '2026-07-13T20:20:45.360832Z'
+  completed_at: null
+- id: f2e913af-4798-4f29-8fc7-7a180abed0d7
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 4d034c8b-0752-4089-8ff9-2fd43f51c6f4
+  key: ATLAS-169
+  title: Degraded definition-only push must not advance the sync cursor; repair pack-absent pushed tickets
+  objective: A push degraded to definition-only by an enumerated pack-render failure leaves the sync cursor unstamped so the embed retries on the next tick once the condition clears; a one-shot repair path re-embeds already-stamped tickets whose Linear description lacks the pack header — converting transient render failures back into transient states.
+  context: 'Live bite, 2026-07-13, PlanRun 5fd330e1: `atlas apply` retired an inbox stub to processed/ uncommitted; the tick''s pack loader correctly refused (DirtyInputError, ADR-0006 committed-only) and degraded ATLAS-168''s push to definition-only — but the degraded push still stamped the cursor via mark_definition_pushed, and inbound status changes deliberately never bump updated_at (repositories.py cursor-directionality rule), so no future tick re-embeds: a one-tick dirty tree became a permanently pack-less ticket. This closes the deferred pack-freshness carry-forward (Phase 8 closure §5, pointer at the ATLAS-164 gate record). Pre-ruled decisions: D-1 on an enumerated degradation (the D-2 render-failure classes in sync.py) the definition IS still pushed (Linear must not show a stale definition) but mark_definition_pushed is NOT called — updated_at stays ahead of linear_synced_at and the next tick retries the full embed; the retry is naturally bounded because it fires only while the cursor is unstamped. D-2 non-enumerated failures keep their existing semantics unchanged. D-3 repair path: a sweep over pushable tickets with external_linear_id set whose current Linear description lacks the `ATLAS CONTEXT PACK v1` header re-renders and re-pushes the full embed, stamping normally on success — exposed as `atlas pm sync --repair-packs` (or the house-preferred flag spelling), idempotent, zero writes when every description carries the header. D-4 detection reads the description already fetched by the batched pull where possible; the repair must not blow the per-tick request budget (ATLAS-148) — if a dedicated fetch is unavoidable it is repair-mode-only, never on the plain tick. D-5 the degradation log line additionally names the ticket as cursor-unstamped, so `atlas pm report`''s anomaly section can count still-degraded tickets. D-6 no changes to the fail-closed loader, the DirtyInputError contract, or the D-2 enumeration itself — this ticket changes only what happens AFTER a correct refusal.'
+  status: planned
+  ticket_type: bug
+  risk_level: low
+  priority: 50
+  relevant_docs:
+  - docs/planning/inbox/processed/inbox-stub-degraded-embed-cursor.md
+  acceptance_criteria:
+  - Fixture tick with a dirty pack input pushes definition-only and does NOT stamp linear_synced_at; a second tick after the input is committed pushes the full embed and stamps; the same-state third tick pushes nothing (no-op bound unchanged).
+  - 'Negative: a successful embed push stamps exactly as today (existing sync tests pass unmodified); a non-enumerated failure path is byte-identical to current behaviour.'
+  - Repair sweep over a fixture board with one pack-absent description re-embeds exactly that ticket and stamps it; re-running the sweep is a zero-write no-op.
+  - The plain tick's Linear request count for the no-op board is unchanged (ATLAS-148 budget assertion holds).
+  - The degradation log/report names cursor-unstamped tickets; pm-engine-and-linear-sync.md documents the retry-until-embedded rule and the repair flag in the same change.
+  non_goals:
+  - No changes to pack rendering, the compression ladder, DirtyInputError, or the enumerated-failure list; no automatic periodic repair (operator-invoked only, v1); no Linear description hand-edits; no cursor changes for the status direction.
+  implementation_notes: []
+  test_requirements:
+  - Fixture-driven, ATLAS_LIVE_TESTS=0; seeded defects use assert 1 == 2 (B011); enumeration pins hold.
+  documentation_requirements: []
+  definition_of_done:
+  - All acceptance criteria evidenced by named tests; full gate sweep green; ATLAS-168's live repair is performed by the operator post-merge via the new flag and recorded on the ticket; PR title carries the minted key.
+  estimated_effort: null
   external_linear_id: null
   external_github_issue_id: null
   tags: []
@@ -7618,9 +7702,9 @@ tickets:
   last_observed_linear_state_id: null
   status_entered_at: null
   review_cycle_count: 0
-  source_anchor: docs/planning/inbox/processed/inbox-stub-draft-lessons.md#draft-lessons-from-anomalies
+  source_anchor: docs/planning/inbox/processed/inbox-stub-degraded-embed-cursor.md#degraded-embeds-retry-stamped-victims-get-repaired
   created_by_type: agent
   created_by_id: planner
-  created_at: '2026-07-13T15:00:44.871696Z'
-  updated_at: '2026-07-13T15:00:44.871696Z'
+  created_at: '2026-07-14T06:11:26.843190Z'
+  updated_at: '2026-07-14T06:11:26.843190Z'
   completed_at: null
