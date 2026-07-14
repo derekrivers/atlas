@@ -124,6 +124,8 @@ DOCUMENTED_FIELDS: dict[type[BaseModel], dict[str, FieldSpec]] = {
         "status_entered_at": (datetime | None, None),
         # PM-Engine review-cycling round-trip counter (ATLAS-120).
         "review_cycle_count": (int, 0),
+        # Learning-system extraction cursor (ATLAS-106).
+        "lesson_extraction_attempted_at": (datetime | None, None),
         "source_anchor": (str, REQUIRED),
         "created_by_type": (ActorType, REQUIRED),
         "created_by_id": (str, REQUIRED),

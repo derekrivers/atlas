@@ -177,7 +177,13 @@ from atlas.github import (
     normalise_reviews,
     normalise_workflow_runs,
 )
-from atlas.learning import ExtractionTrigger, extract_lesson_for_ticket
+from atlas.learning import (
+    DEFAULT_LESSON_SCHEDULER_INTERVAL_SECONDS,
+    ExtractionTrigger,
+    LessonSchedulerConfig,
+    extract_lesson_for_ticket,
+    run_lesson_scheduler,
+)
 from atlas.linear.client import (
     PROJECT_ID_ENV,
     TEAM_ID_ENV,
@@ -2259,8 +2265,8 @@ def _add_preflight_parser(subcommands: argparse._SubParsersAction) -> None:  # t
 
 def _add_lessons_parser(subcommands: argparse._SubParsersAction) -> None:  # type: ignore[type-arg]
     """The `atlas lessons` group. `extract <KEY>` is the operator request
-    trigger for lesson extraction; review/promotion workflows are separate
-    tickets."""
+    trigger for lesson extraction; `schedule` is the recurring automatic
+    extractor for terminal tickets and PM failure-analysis events."""
 
     lessons = subcommands.add_parser(
         "lessons",
@@ -2274,6 +2280,24 @@ def _add_lessons_parser(subcommands: argparse._SubParsersAction) -> None:  # typ
     extract.add_argument("key", help="the ticket key")
     extract.add_argument("--db", default=None, help="database URL")
 
+    schedule = lessons_sub.add_parser(
+        "schedule",
+        help="Run the recurring lesson extraction scheduler",
+    )
+    schedule.add_argument("--db", default=None, help="database URL")
+    schedule.add_argument(
+        "--once",
+        action="store_true",
+        help="run exactly one poll cycle and exit (no cadence)",
+    )
+    schedule.add_argument(
+        "--interval",
+        type=float,
+        default=DEFAULT_LESSON_SCHEDULER_INTERVAL_SECONDS,
+        help="seconds between poll cycles "
+        f"(default {DEFAULT_LESSON_SCHEDULER_INTERVAL_SECONDS})",
+    )
+
 
 def _lessons_command(
     args: argparse.Namespace,
@@ -2281,14 +2305,10 @@ def _lessons_command(
     database: Database | None,
     client: PlannerClient | None,
 ) -> int:
-    """Route `atlas lessons extract <KEY>` through the learning extractor."""
+    """Route `atlas lessons`: manual extract and the recurring scheduler."""
 
     resolved_db = database if database is not None else Database(args.db)
-    if args.lessons_command != "extract":
-        return EXIT_PRECONDITION
-    ticket = TicketRepo(resolved_db).get_by_key(args.key)
-    if ticket is None:
-        print(f"no ticket with key {args.key!r}", file=sys.stderr)
+    if args.lessons_command not in {"extract", "schedule"}:
         return EXIT_PRECONDITION
     lesson_client = client
     if lesson_client is None:
@@ -2297,6 +2317,25 @@ def _lessons_command(
         except PlannerClientError as error:
             print(error, file=sys.stderr)
             return EXIT_PRECONDITION
+    if args.lessons_command == "schedule":
+        shutdown = threading.Event()
+        _install_shutdown_handlers(shutdown)
+        run_lesson_scheduler(
+            LessonSchedulerConfig(
+                db=resolved_db,
+                tickets=TicketRepo(resolved_db),
+                debt_items=DebtItemRepo(resolved_db),
+                client=lesson_client,
+            ),
+            interval=args.interval,
+            once=args.once,
+            shutdown=shutdown,
+        )
+        return EXIT_OK
+    ticket = TicketRepo(resolved_db).get_by_key(args.key)
+    if ticket is None:
+        print(f"no ticket with key {args.key!r}", file=sys.stderr)
+        return EXIT_PRECONDITION
     lesson = extract_lesson_for_ticket(
         ticket,
         db=resolved_db,

@@ -437,6 +437,10 @@ class Ticket(BaseModel):
     # human intervention). Status-coupled, never bumped by an Atlas definition
     # edit.
     review_cycle_count: int = 0
+    # Learning-system extraction cursor (ATLAS-106): the last time the
+    # learning extractor attempted extraction for this ticket. Never bumped by
+    # an Atlas definition edit.
+    lesson_extraction_attempted_at: Optional[datetime] = None
     # Reconciler anchor-match pass; AT-1 traceability — every item
     # traceable to a document anchor.
     source_anchor: str
@@ -478,6 +482,7 @@ CREATE TABLE tickets (
     last_observed_linear_state_id TEXT,
     status_entered_at TIMESTAMPTZ,
     review_cycle_count INTEGER NOT NULL DEFAULT 0,
+    lesson_extraction_attempted_at TIMESTAMPTZ,
     source_anchor TEXT NOT NULL,
     created_by_type TEXT NOT NULL,
     created_by_id TEXT NOT NULL,

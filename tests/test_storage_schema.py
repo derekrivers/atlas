@@ -108,6 +108,7 @@ DOCUMENTED_COLUMNS: dict[str, dict[str, tuple[bool, str | None]]] = {
         "last_observed_linear_state_id": (True, None),
         "status_entered_at": (True, None),
         "review_cycle_count": (NN, "0"),
+        "lesson_extraction_attempted_at": (True, None),
         "source_anchor": (NN, None),
         "created_by_type": (NN, None),
         "created_by_id": (NN, None),

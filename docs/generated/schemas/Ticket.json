@@ -197,6 +197,19 @@
       "default": null,
       "title": "Last Observed Linear State Id"
     },
+    "lesson_extraction_attempted_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Lesson Extraction Attempted At"
+    },
     "linear_synced_at": {
       "anyOf": [
         {

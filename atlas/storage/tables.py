@@ -169,6 +169,9 @@ class TicketRow(Base):
     review_cycle_count: Mapped[int] = mapped_column(
         sa.Integer, server_default=sa.text("0")
     )
+    lesson_extraction_attempted_at: Mapped[datetime | None] = mapped_column(
+        UTCDateTime()
+    )
     source_anchor: Mapped[str] = mapped_column(sa.Text)
     created_by_type: Mapped[str] = mapped_column(sa.Text)
     created_by_id: Mapped[str] = mapped_column(sa.Text)
