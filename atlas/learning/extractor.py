@@ -5,7 +5,8 @@ whether a ``done`` transition is notable, assembles a bounded evidence bundle,
 renders a versioned prompt, calls an injected LLM client, validates the model's
 JSON against the :class:`Lesson` schema after assigning system-owned fields, and
 persists the resulting DRAFT lesson. LLM failures are logged once at WARNING and
-return ``None``; callers do not retry automatic events.
+return ``None``; every invocation stamps the extraction-attempt cursor so callers
+do not retry automatic events.
 """
 
 from __future__ import annotations
@@ -386,6 +387,12 @@ def _parse_lesson(
         ) from error
 
 
+def _record_extraction_attempt(ticket: Ticket, *, db: Database, now: datetime) -> None:
+    """Stamp the ticket-level extraction attempt cursor."""
+
+    TicketRepo(db).mark_lesson_extraction_attempted(ticket.key, attempted_at=now)
+
+
 def extract_lesson_for_ticket(
     ticket: Ticket,
     *,
@@ -402,21 +409,23 @@ def extract_lesson_for_ticket(
     ``done`` events are gated by :func:`notable_done_ticket` unless ``force`` is
     true (the CLI/operator request path). All extraction failures are logged at
     WARNING with the ticket key and exception type, and return ``None`` without
-    persisting a partial lesson.
+    persisting a partial lesson. Every call records an attempt timestamp,
+    including deterministic non-extractions and failed model calls, so all
+    automatic trigger paths share the same retry cursor.
     """
 
-    checks = VerificationCheckRepo(db).list_for_ticket(ticket.id)
-    if (
-        not force
-        and trigger is ExtractionTrigger.DONE
-        and not notable_done_ticket(
-            ticket,
-            tickets=TicketRepo(db).list(),
-            verification_checks=checks,
-        )
-    ):
-        return None
     try:
+        checks = VerificationCheckRepo(db).list_for_ticket(ticket.id)
+        if (
+            not force
+            and trigger is ExtractionTrigger.DONE
+            and not notable_done_ticket(
+                ticket,
+                tickets=TicketRepo(db).list(),
+                verification_checks=checks,
+            )
+        ):
+            return None
         if client is None:
             raise LessonExtractionError("no lesson model client configured")
         bundle = assemble_evidence_bundle(
@@ -461,3 +470,5 @@ def extract_lesson_for_ticket(
             error,
         )
         return None
+    finally:
+        _record_extraction_attempt(ticket, db=db, now=now)

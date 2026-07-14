@@ -438,8 +438,8 @@ class Ticket(BaseModel):
     # edit.
     review_cycle_count: int = 0
     # Learning-system extraction cursor (ATLAS-106): the last time the
-    # continuous learning scheduler attempted extraction for this ticket.
-    # Written only by the scheduler and never bumped by an Atlas definition edit.
+    # learning extractor attempted extraction for this ticket. Never bumped by
+    # an Atlas definition edit.
     lesson_extraction_attempted_at: Optional[datetime] = None
     # Reconciler anchor-match pass; AT-1 traceability — every item
     # traceable to a document anchor.

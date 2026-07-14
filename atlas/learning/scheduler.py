@@ -3,8 +3,9 @@
 The scheduler is the deterministic recurring loop for learning-system.md's
 automatic extraction triggers. It polls stored tickets and PM failure-analysis
 DebtItems, identifies tickets whose extraction cursor is stale, calls the
-learning extractor, then stamps ``Ticket.lesson_extraction_attempted_at`` so the
-same ticket is not re-extracted on every tick.
+learning extractor, and relies on that extractor to stamp
+``Ticket.lesson_extraction_attempted_at`` so the same ticket is not re-extracted
+on every tick.
 
 Only :func:`atlas.learning.extractor.extract_lesson_for_ticket` may call a model.
 This module decides *when* to call it, logs per-ticket failures, and keeps the
@@ -65,11 +66,12 @@ class LessonExtractor(Protocol):
 class LessonSchedulerConfig:
     """Injected scheduler dependencies.
 
-    ``tickets`` supplies both the polling read and the sole write to
-    ``lesson_extraction_attempted_at``. ``debt_items`` is read-only here.
-    ``client`` is passed through to the extractor; the scheduler never calls it
-    directly. ``extractor`` is injectable so unit tests can prove loop behaviour
-    without invoking a model or prompt rendering.
+    ``tickets`` supplies the polling read and a defensive fallback cursor write
+    when a custom extractor raises before recording its own attempt.
+    ``debt_items`` is read-only here. ``client`` is passed through to the
+    extractor; the scheduler never calls it directly. ``extractor`` is
+    injectable so unit tests can prove loop behaviour without invoking a model
+    or prompt rendering.
     """
 
     db: Database
@@ -148,10 +150,10 @@ def run_poll_cycle(
 ) -> list[ScheduledExtraction]:
     """Run exactly one learning-scheduler poll cycle.
 
-    A failed extraction for one ticket is logged and isolated; the scheduler
-    still stamps that ticket's attempt cursor and continues processing the rest
-    of the worklist. Returning the attempted worklist gives tests and future
-    callers a cheap audit surface without reading logs.
+    A failed extraction for one ticket is logged and isolated; the extractor
+    records the attempt cursor, with a scheduler fallback for injected
+    extractors that raise before doing so. Returning the attempted worklist gives
+    tests and future callers a cheap audit surface without reading logs.
     """
 
     attempted: list[ScheduledExtraction] = []
@@ -177,9 +179,14 @@ def run_poll_cycle(
                 error,
             )
         finally:
-            config.tickets.mark_lesson_extraction_attempted(
-                item.ticket.key, attempted_at=now
+            current = config.tickets.get(item.ticket.id)
+            attempted_at = (
+                None if current is None else current.lesson_extraction_attempted_at
             )
+            if attempted_at is None or attempted_at < now:
+                config.tickets.mark_lesson_extraction_attempted(
+                    item.ticket.key, attempted_at=now
+                )
         attempted.append(item)
     return attempted
 

@@ -415,13 +415,13 @@ class TicketRepo(_KeyedRepo[Ticket]):
     def mark_lesson_extraction_attempted(
         self, key: str, *, attempted_at: datetime
     ) -> Ticket:
-        """Stamp the learning scheduler's extraction-attempt cursor.
+        """Stamp the learning system's extraction-attempt cursor.
 
         This is the single storage writer for ``lesson_extraction_attempted_at``:
-        the continuous learning scheduler calls it after each attempted
-        extraction, whether that attempt produced a lesson or failed. It touches
-        no definition fields and deliberately leaves ``updated_at`` unchanged,
-        so a learning cursor write never causes a Linear definition re-push.
+        extraction paths call it after each attempt, whether that attempt
+        produced a lesson or failed. It touches no definition fields and
+        deliberately leaves ``updated_at`` unchanged, so a learning cursor write
+        never causes a Linear definition re-push.
         """
         if attempted_at.utcoffset() is None:
             raise NaiveDatetimeError("Ticket", "lesson_extraction_attempted_at")

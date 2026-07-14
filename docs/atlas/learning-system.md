@@ -25,9 +25,9 @@ A lesson-extraction run fires on:
 `atlas lessons schedule` is the recurring loop for the automatic triggers. It
 polls tickets in `done` or `rejected` status with no extraction attempt cursor,
 and tickets with a `DWELL_BREACH` or `REVIEW_CYCLE` DebtItem recorded after the
-last cursor. Each attempted extraction stamps
-`Ticket.lesson_extraction_attempted_at`; extractor failures are logged and do not
-stop the rest of the poll cycle.
+last cursor. The extractor stamps `Ticket.lesson_extraction_attempted_at` on
+each attempt, so scheduler and sync-triggered extraction share one retry cursor;
+extractor failures are logged and do not stop the rest of the poll cycle.
 
 The extractor is an LLM call over a bounded evidence bundle (ticket, agent
 runs, PR review history, verification verdicts — not raw diffs beyond a
