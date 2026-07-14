@@ -313,3 +313,38 @@ def test_cli_review_stale_lists_active_lessons_meeting_pack_threshold(
     assert "Only nine packs" not in out
     assert "Recently re-confirmed" not in out
     assert "Draft with packs" not in out
+
+
+def test_cli_lessons_report_includes_pattern_candidates(
+    db: Database, capsys: pytest.CaptureFixture[str]
+) -> None:
+    for index in range(3):
+        seed_lesson(
+            db,
+            make_lesson(
+                title=f"Recurring failure {index + 1}",
+                tags=["review-loop"],
+                created_at=NOW + timedelta(minutes=index),
+                updated_at=NOW + timedelta(minutes=index),
+                confidence=None,
+            ),
+        )
+    seed_lesson(
+        db,
+        make_lesson(
+            title="Below threshold",
+            tags=["scope-creep"],
+            confidence=None,
+        ),
+    )
+
+    code = main(["lessons", "report"], database=db)
+    out = capsys.readouterr().out
+
+    assert code == EXIT_OK
+    assert "## Pattern candidates" in out
+    assert "| failure tag | review-loop | 3 |" in out
+    assert "Recurring failure 1" in out
+    assert "Recurring failure 2" in out
+    assert "Recurring failure 3" in out
+    assert "| failure tag | scope-creep |" not in out
