@@ -93,6 +93,7 @@ from uuid import uuid4
 
 import networkx as nx
 
+from atlas.context.lesson_retrieval import retrieve_lessons
 from atlas.context.pack import ContextBudgetExceededError, build_context_pack
 from atlas.core.anchors import IngestionError, SourceDocument
 from atlas.core.enums import ActorType
@@ -233,14 +234,13 @@ PACK_RENDER_FAILURE_TYPES: tuple[type[Exception], ...] = (
 
 @dataclass
 class _PackInputs:
-    """The four already-loaded inputs ``build_context_pack`` takes, loaded once
+    """The already-loaded shared inputs ``build_context_pack`` takes, loaded once
     per tick by :class:`_PackInputLoader` (mirrors the CLI's ``_ContextInputs``
-    minus the ticket, which the push loop already holds)."""
+    minus the ticket and ticket-specific lesson retrieval)."""
 
     graph: nx.DiGraph[str]
     documents: list[SourceDocument]
     accepted_adrs: list[ArchitectureDecisionRecord]
-    lessons: list[Lesson]
 
 
 class _PackInputLoader:
@@ -250,8 +250,9 @@ class _PackInputLoader:
     cannot import the corpus collectors — the ``documents`` provider is a
     callable built by the CLI (which may import ``atlas.planning``) and
     injected through :class:`~atlas.pm.scheduler.TickConfig`. Everything else
-    (graph projection, accepted ADRs, lessons) loads inside ``atlas.pm``, all
-    layer-legal and DB-only.
+    shared (graph projection, accepted ADRs) loads inside ``atlas.pm``, all
+    layer-legal and DB-only. Lessons are retrieved per ticket so ADR-0009's
+    ACTIVE-only filter is enforced at query time against that ticket's facets.
 
     Lazy and once-per-tick: nothing loads until the FIRST push that will
     actually embed calls :meth:`load`, so a no-op tick loads nothing and stays
@@ -294,9 +295,11 @@ class _PackInputLoader:
                     for adr in ADRRepo(self._db).list()
                     if adr.status == ADRStatus.ACCEPTED
                 ],
-                lessons=LessonRepo(self._db).list(),
             )
         return self._inputs
+
+    def lessons_for(self, ticket: Ticket) -> list[Lesson]:
+        return retrieve_lessons(ticket, self._db)
 
 
 @dataclass
@@ -961,7 +964,7 @@ def _render_embedded_description(
             graph=inputs.graph,
             documents=inputs.documents,
             accepted_adrs=inputs.accepted_adrs,
-            lessons=inputs.lessons,
+            lessons=pack_inputs.lessons_for(ticket),
         )
     except PACK_RENDER_FAILURE_TYPES as error:
         definition_push = failure_posture == "definition_push"
