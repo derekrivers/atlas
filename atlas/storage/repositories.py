@@ -28,7 +28,7 @@ import sqlalchemy as sa
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from atlas.core.enums import ActorType, EvidenceStatus
+from atlas.core.enums import ActorType, EntityStatus, EvidenceStatus
 from atlas.core.models import (
     AgentRun,
     AnomalyType,
@@ -108,6 +108,18 @@ class TicketNotFoundError(ValueError):
     """set_estimated_effort named a key with no stored ticket."""
 
 
+class LessonNotFoundError(ValueError):
+    """A lesson lifecycle command named no stored lesson."""
+
+
+class LessonStateError(ValueError):
+    """A lesson lifecycle transition was requested from the wrong state."""
+
+
+class LessonValidationError(ValueError):
+    """Operator-supplied lesson lifecycle input failed validation."""
+
+
 @dataclass(frozen=True)
 class Reservation:
     """The keys an apply reserved from one prefix's counter: the assigned
@@ -117,6 +129,14 @@ class Reservation:
     first: int
     last: int
     high_water: int
+
+
+@dataclass(frozen=True)
+class StaleLessonReview:
+    """An ACTIVE lesson that should be surfaced for operator review."""
+
+    lesson: Lesson
+    context_pack_count: int
 
 
 def _reject_naive(model: BaseModel) -> None:
@@ -443,6 +463,177 @@ class TicketDependencyRepo(_Repo[TicketDependency]):
 class LessonRepo(_Repo[Lesson]):
     def __init__(self, db: Database) -> None:
         super().__init__(db, Lesson, LessonRow)
+
+    def list_drafts(self) -> list[Lesson]:
+        """Lessons waiting for the ADR-0009 operator promotion gate."""
+        with self._db.session() as session:
+            rows = session.scalars(
+                sa.select(LessonRow)
+                .where(LessonRow.status == EntityStatus.DRAFT.value)
+                .order_by(LessonRow.created_at, LessonRow.id)
+            )
+            return [self._to_model(row) for row in rows]
+
+    def promote(self, lesson_id: UUID, *, confidence: float, now: datetime) -> Lesson:
+        """Promote one DRAFT lesson to ACTIVE with operator confidence.
+
+        Confidence is the operator's judgement at the promotion gate, never an
+        extractor/model output. The repository validates the lifecycle input so
+        every caller, including the CLI, shares the same state-machine contract.
+        """
+        if now.utcoffset() is None:
+            raise NaiveDatetimeError("Lesson", "updated_at")
+        if confidence < 0.0 or confidence > 1.0:
+            raise LessonValidationError(
+                f"confidence must be between 0.0 and 1.0 inclusive; got {confidence!r}"
+            )
+        with self._db.session() as session, session.begin():
+            row = self._get_lesson_row(session, lesson_id)
+            self._require_status(row, EntityStatus.DRAFT, action="promote")
+            row.status = EntityStatus.ACTIVE.value
+            row.confidence = confidence
+            row.updated_at = now
+            return self._to_model(row)
+
+    def reject(self, lesson_id: UUID, *, now: datetime) -> Lesson:
+        """Reject a DRAFT lesson, retaining it as ARCHIVED."""
+        if now.utcoffset() is None:
+            raise NaiveDatetimeError("Lesson", "updated_at")
+        with self._db.session() as session, session.begin():
+            row = self._get_lesson_row(session, lesson_id)
+            self._require_status(row, EntityStatus.DRAFT, action="reject")
+            row.status = EntityStatus.ARCHIVED.value
+            row.updated_at = now
+            return self._to_model(row)
+
+    def archive(self, lesson_id: UUID, *, now: datetime) -> Lesson:
+        """Archive a DRAFT or ACTIVE lesson without deleting it."""
+        if now.utcoffset() is None:
+            raise NaiveDatetimeError("Lesson", "updated_at")
+        with self._db.session() as session, session.begin():
+            row = self._get_lesson_row(session, lesson_id)
+            if row.status not in {
+                EntityStatus.DRAFT.value,
+                EntityStatus.ACTIVE.value,
+            }:
+                raise LessonStateError(
+                    "only DRAFT or ACTIVE lessons can be archived; "
+                    f"lesson {lesson_id} is {row.status!r}"
+                )
+            row.status = EntityStatus.ARCHIVED.value
+            row.updated_at = now
+            return self._to_model(row)
+
+    def merge(
+        self,
+        draft_lesson_id: UUID,
+        target_lesson_id: UUID,
+        *,
+        now: datetime,
+    ) -> tuple[Lesson, Lesson]:
+        """Merge a DRAFT lesson into an existing ACTIVE lesson.
+
+        The DRAFT is archived and its source/citation tickets are appended to
+        the target's ``related_ticket_ids`` without duplicates.
+        """
+        if now.utcoffset() is None:
+            raise NaiveDatetimeError("Lesson", "updated_at")
+        if draft_lesson_id == target_lesson_id:
+            raise LessonValidationError("cannot merge a lesson into itself")
+        with self._db.session() as session, session.begin():
+            draft_row = self._get_lesson_row(session, draft_lesson_id)
+            target_row = self._get_lesson_row(session, target_lesson_id)
+            self._require_status(draft_row, EntityStatus.DRAFT, action="merge")
+            self._require_status(target_row, EntityStatus.ACTIVE, action="merge into")
+
+            merged_ticket_ids = list(target_row.related_ticket_ids or [])
+            seen = {str(ticket_id) for ticket_id in merged_ticket_ids}
+            for ticket_id in draft_row.related_ticket_ids or []:
+                ticket_id_str = str(ticket_id)
+                if ticket_id_str not in seen:
+                    merged_ticket_ids.append(ticket_id_str)
+                    seen.add(ticket_id_str)
+
+            target_row.related_ticket_ids = merged_ticket_ids
+            target_row.updated_at = now
+            draft_row.status = EntityStatus.ARCHIVED.value
+            draft_row.updated_at = now
+            return self._to_model(draft_row), self._to_model(target_row)
+
+    def list_stale_active(self, *, threshold: int = 10) -> list[StaleLessonReview]:
+        """ACTIVE lessons due for stale-memory review.
+
+        Predicate, documented for ATLAS-100: ``updated_at`` is the last operator
+        action because promotion/reject/archive/merge are the only v1 operator
+        writers. For each ACTIVE lesson, count context packs created after that
+        timestamp that included the lesson. If at least ``threshold`` packs
+        included it and none of those packs' ``ticket_id`` values appears in the
+        lesson's ``related_ticket_ids``, the lesson has zero post-operator
+        citation/re-confirmation signal and is returned for review.
+        """
+        if threshold < 1:
+            raise LessonValidationError("stale review threshold must be >= 1")
+
+        with self._db.session() as session:
+            lesson_rows = list(
+                session.scalars(
+                    sa.select(LessonRow)
+                    .where(LessonRow.status == EntityStatus.ACTIVE.value)
+                    .order_by(LessonRow.created_at, LessonRow.id)
+                )
+            )
+            pack_rows = list(
+                session.scalars(
+                    sa.select(ContextPackRow).order_by(
+                        ContextPackRow.created_at, ContextPackRow.id
+                    )
+                )
+            )
+
+        reviews: list[StaleLessonReview] = []
+        for lesson_row in lesson_rows:
+            lesson_id = str(lesson_row.id)
+            included_after_operator_action = [
+                pack_row
+                for pack_row in pack_rows
+                if pack_row.created_at > lesson_row.updated_at
+                and lesson_id in {str(value) for value in pack_row.historical_lessons}
+            ]
+            if len(included_after_operator_action) < threshold:
+                continue
+
+            related_ticket_ids = {
+                str(ticket_id) for ticket_id in lesson_row.related_ticket_ids or []
+            }
+            included_ticket_ids = {
+                str(pack_row.ticket_id)
+                for pack_row in included_after_operator_action
+                if pack_row.ticket_id is not None
+            }
+            if related_ticket_ids & included_ticket_ids:
+                continue
+
+            reviews.append(
+                StaleLessonReview(
+                    lesson=self._to_model(lesson_row),
+                    context_pack_count=len(included_after_operator_action),
+                )
+            )
+        return reviews
+
+    def _get_lesson_row(self, session: Session, lesson_id: UUID) -> LessonRow:
+        row = session.get(LessonRow, lesson_id)
+        if row is None:
+            raise LessonNotFoundError(f"no lesson with id {lesson_id}")
+        return row
+
+    @staticmethod
+    def _require_status(row: LessonRow, required: EntityStatus, *, action: str) -> None:
+        if row.status != required.value:
+            raise LessonStateError(
+                f"can only {action} {required.value.upper()} lessons; "
+                f"lesson {row.id} is {row.status!r}"
+            )
 
 
 class AgentRunRepo(_Repo[AgentRun]):
