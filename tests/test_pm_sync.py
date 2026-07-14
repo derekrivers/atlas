@@ -49,7 +49,7 @@ from linear_fakes import InMemoryLinearClient
 from test_models_validation import NOW, dependency_kwargs, ticket_kwargs
 
 from atlas.core.anchors import SourceDocument
-from atlas.core.enums import ActorType, EntityStatus
+from atlas.core.enums import ActorType, EntityStatus, EvidenceStatus
 from atlas.core.models import (
     AnomalyType,
     DebtItem,
@@ -333,7 +333,7 @@ def seed_passed_verification(db: Database, ticket: Ticket, now: datetime = NOW) 
                 id=uuid4(),
                 ticket_id=ticket.id,
                 check_type=check.check_type,
-                status="passed",
+                status=EvidenceStatus.PASSED,
                 summary=f"{check.check_type.value} passed",
                 required=True,
                 evidence_ids=[],

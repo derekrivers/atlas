@@ -110,9 +110,7 @@ def select_lessons(
     matched.sort(key=lambda pair: pair[0].id)
     matched.sort(key=lambda pair: pair[0].created_at, reverse=True)
     matched.sort(
-        key=lambda pair: (
-            pair[0].confidence if pair[0].confidence is not None else -1.0
-        ),
+        key=lambda pair: pair[0].confidence if pair[0].confidence is not None else -1.0,
         reverse=True,
     )
 

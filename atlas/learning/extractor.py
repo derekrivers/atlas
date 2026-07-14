@@ -224,8 +224,10 @@ def render_extraction_prompt(
     if extra:
         raise LessonExtractionError(f"undeclared lesson prompt variables: {extra}")
     try:
-        text = Environment(undefined=StrictUndefined).from_string(body).render(
-            dict(variables)
+        text = (
+            Environment(undefined=StrictUndefined)
+            .from_string(body)
+            .render(dict(variables))
         )
     except UndefinedError as error:
         raise LessonExtractionError(
