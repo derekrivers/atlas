@@ -176,6 +176,7 @@ from atlas.github import (
     normalise_reviews,
     normalise_workflow_runs,
 )
+from atlas.learning import ExtractionTrigger, extract_lesson_for_ticket
 from atlas.linear.client import (
     PROJECT_ID_ENV,
     TEAM_ID_ENV,
@@ -336,6 +337,7 @@ def build_parser() -> argparse.ArgumentParser:
     _add_verify_parser(subcommands)
     _add_confirm_parser(subcommands)
     _add_preflight_parser(subcommands)
+    _add_lessons_parser(subcommands)
     return parser
 
 
@@ -1187,6 +1189,7 @@ def _build_tick_config(args: argparse.Namespace, resolved_db: Database) -> TickC
         inbox_dir=inbox_dir,
         documents=documents,
         repair_packs=args.repair_packs,
+        lesson_client=AnthropicPlannerClient(),
     )
 
 
@@ -1214,7 +1217,7 @@ def _pm_sync(args: argparse.Namespace, resolved_db: Database) -> int:
 
     try:
         config = _build_tick_config(args, resolved_db)
-    except (MissingLinearTokenError, LinearStatusMapError) as error:
+    except (MissingLinearTokenError, LinearStatusMapError, PlannerClientError) as error:
         print(error, file=sys.stderr)
         return EXIT_PRECONDITION
 
@@ -2253,6 +2256,64 @@ def _add_preflight_parser(subcommands: argparse._SubParsersAction) -> None:  # t
     )
 
 
+def _add_lessons_parser(subcommands: argparse._SubParsersAction) -> None:  # type: ignore[type-arg]
+    """The `atlas lessons` group. `extract <KEY>` is the operator request
+    trigger for lesson extraction; review/promotion workflows are separate
+    tickets."""
+
+    lessons = subcommands.add_parser(
+        "lessons",
+        help="Learning System: extract DRAFT lessons for operator review",
+    )
+    lessons_sub = lessons.add_subparsers(dest="lessons_command", required=True)
+    extract = lessons_sub.add_parser(
+        "extract",
+        help="Extract one DRAFT lesson for a ticket key",
+    )
+    extract.add_argument("key", help="the ticket key")
+    extract.add_argument("--db", default=None, help="database URL")
+
+
+def _lessons_command(
+    args: argparse.Namespace,
+    *,
+    database: Database | None,
+    client: PlannerClient | None,
+) -> int:
+    """Route `atlas lessons extract <KEY>` through the learning extractor."""
+
+    resolved_db = database if database is not None else Database(args.db)
+    if args.lessons_command != "extract":
+        return EXIT_PRECONDITION
+    ticket = TicketRepo(resolved_db).get_by_key(args.key)
+    if ticket is None:
+        print(f"no ticket with key {args.key!r}", file=sys.stderr)
+        return EXIT_PRECONDITION
+    lesson_client = client
+    if lesson_client is None:
+        try:
+            lesson_client = AnthropicPlannerClient()
+        except PlannerClientError as error:
+            print(error, file=sys.stderr)
+            return EXIT_PRECONDITION
+    lesson = extract_lesson_for_ticket(
+        ticket,
+        db=resolved_db,
+        client=lesson_client,
+        now=datetime.now(UTC),
+        trigger=ExtractionTrigger.OPERATOR_REQUEST,
+        force=True,
+    )
+    if lesson is None:
+        print(f"Lesson extraction failed for {ticket.key}; see logs.", file=sys.stderr)
+        return EXIT_RECORDED_FAILURE
+    print(
+        f"Extracted DRAFT lesson {lesson.id} for {ticket.key} "
+        f"(confidence: {lesson.confidence})."
+    )
+    return EXIT_OK
+
+
 def _format_preflight_report(report: PreflightReport) -> str:
     """Render the findings as a loud, line-per-finding block; the CLI sets the
     exit code from `report.ok`."""
@@ -2373,6 +2434,8 @@ def main(
         return _preflight_command(
             args, linear_client=linear_client, model_probe=model_probe
         )
+    if args.command == "lessons":
+        return _lessons_command(args, database=database, client=client)
     return EXIT_PRECONDITION  # unreachable: subparser is required
 
 

@@ -36,6 +36,7 @@ Deterministic: the in-memory fake, no network, no secrets.
 
 from __future__ import annotations
 
+import json
 import tempfile
 from collections.abc import Mapping
 from datetime import datetime, timedelta
@@ -48,8 +49,15 @@ from linear_fakes import InMemoryLinearClient
 from test_models_validation import NOW, dependency_kwargs, ticket_kwargs
 
 from atlas.core.anchors import SourceDocument
-from atlas.core.enums import ActorType, EntityStatus
-from atlas.core.models import AnomalyType, DebtItem, Lesson, Ticket, TicketDependency
+from atlas.core.enums import ActorType, EntityStatus, EvidenceStatus
+from atlas.core.models import (
+    AnomalyType,
+    DebtItem,
+    Lesson,
+    Ticket,
+    TicketDependency,
+    VerificationCheck,
+)
 from atlas.core.models.ticket import TicketStatus
 from atlas.linear.client import LinearComment, LinearIssue, WorkflowState
 from atlas.linear.ownership import LinearStatusMap
@@ -63,7 +71,9 @@ from atlas.storage import (
     TicketDependencyRepo,
     TicketRepo,
     TicketStatusTransitionRepo,
+    VerificationCheckRepo,
 )
+from atlas.verification import required_checks
 
 # Workflow states the fake exposes and the status map keys off (stable ids).
 STARTED = WorkflowState(id="state-started", name="In Progress", type="started")
@@ -89,6 +99,7 @@ NEEDS_HUMAN = WorkflowState(id="state-needs-human", name="Needs Human", type="st
 # via set_state. sync_tick resolves state_id_for(DONE) up front every tick (the
 # load-time guard), so the shared status map must carry it.
 DONE_STATE = WorkflowState(id="state-done", name="Done", type="completed")
+REJECTED_STATE = WorkflowState(id="state-rejected", name="Rejected", type="canceled")
 TEAM_ID = "team-1"
 # The Linear project (id/UUID) issue creation is scoped to (ATLAS-135). Threaded
 # through sync_tick exactly like TEAM_ID; the RecordingClient records it per create
@@ -119,6 +130,7 @@ class RecordingClient(InMemoryLinearClient):
                 CHANGES_REQUESTED_STATE,
                 NEEDS_HUMAN,
                 DONE_STATE,
+                REJECTED_STATE,
             ]
         )
         self.creates: list[dict[str, Any]] = []
@@ -170,8 +182,28 @@ def status_map() -> LinearStatusMap:
             # The unique Done state the verified-completion step (ATLAS-131) resolves
             # via state_id_for(DONE), likewise resolved up front every tick.
             DONE_STATE.id: TicketStatus.DONE,
+            REJECTED_STATE.id: TicketStatus.REJECTED,
         }
     )
+
+
+class FakeLessonClient:
+    def __init__(self, *, tag: str = "pm-sync") -> None:
+        self.tag = tag
+        self.prompts: list[str] = []
+
+    def generate(self, prompt: str) -> str:
+        self.prompts.append(prompt)
+        return json.dumps(
+            {
+                "category": "failure_pattern",
+                "title": f"Extracted {self.tag} lesson",
+                "problem": f"Observed {self.tag}.",
+                "solution": "Review the bounded evidence bundle.",
+                "outcome": "A draft lesson was filed for operator review.",
+                "tags": [self.tag],
+            }
+        )
 
 
 @pytest.fixture
@@ -244,6 +276,7 @@ def run(
     *,
     now: datetime = NOW,
     inbox_dir: Path | None = None,
+    lesson_client: FakeLessonClient | None = None,
 ) -> SyncResult:
     # The follow-up scan (step 4, ATLAS-45) needs an inbox dir; these sync tests
     # seed no comments, so it writes nothing. A throwaway temp dir per call keeps
@@ -264,6 +297,7 @@ def run(
         inbox_dir=inbox_dir or Path(tempfile.mkdtemp()),
         documents=lambda: [PACK_DOC],
         now=now,
+        lesson_client=lesson_client,
     )
 
 
@@ -287,6 +321,26 @@ def draft_lessons(db: Database) -> list[Lesson]:
         for lesson in LessonRepo(db).list()
         if lesson.status is EntityStatus.DRAFT
     ]
+
+
+def seed_passed_verification(db: Database, ticket: Ticket, now: datetime = NOW) -> None:
+    repo = VerificationCheckRepo(db)
+    for check in required_checks(ticket):
+        if not check.required:
+            continue
+        repo.add(
+            VerificationCheck(
+                id=uuid4(),
+                ticket_id=ticket.id,
+                check_type=check.check_type,
+                status=EvidenceStatus.PASSED,
+                summary=f"{check.check_type.value} passed",
+                required=True,
+                evidence_ids=[],
+                created_at=now,
+                completed_at=now,
+            )
+        )
 
 
 # --- idempotency -----------------------------------------------------------
@@ -324,6 +378,65 @@ def test_linear_status_change_lands_in_one_tick(db: Database) -> None:
     assert pulled is not None
     assert pulled.status == TicketStatus.IN_PROGRESS  # wrong answer: still planned
     assert result.status_pulled == 1
+
+
+def test_done_transition_extracts_lesson_when_notable(db: Database) -> None:
+    client = RecordingClient()
+    lesson_client = FakeLessonClient(tag="done")
+    prior = seed_ticket(
+        db,
+        client,
+        key="ATLAS-198",
+        status=TicketStatus.REJECTED,
+        status_entered_at=NOW - timedelta(days=3),
+        with_issue=False,
+    )
+    ticket = seed_ticket(
+        db,
+        client,
+        key="ATLAS-199",
+        status=TicketStatus.REVIEW_REQUIRED,
+        issue_state=DONE_STATE,
+        updated_at=NOW - timedelta(hours=3),
+        status_entered_at=NOW - timedelta(hours=1),
+    )
+    # Same ticket_type as the prior failure; PASSED on the first review cycle.
+    assert prior.ticket_type == ticket.ticket_type
+    seed_passed_verification(db, ticket)
+
+    result = run(db, client, lesson_client=lesson_client)
+
+    pulled = TicketRepo(db).get_by_key("ATLAS-199")
+    assert pulled is not None and pulled.status == TicketStatus.DONE
+    lessons = draft_lessons(db)
+    assert result.draft_lessons_filed == 1
+    assert len(lessons) == 1
+    assert lessons[0].confidence is None
+    assert lessons[0].related_ticket_ids == [ticket.id]
+    assert "ATLAS-199" in lesson_client.prompts[0]
+
+
+def test_rejected_transition_extracts_lesson(db: Database) -> None:
+    client = RecordingClient()
+    lesson_client = FakeLessonClient(tag="rejected")
+    ticket = seed_ticket(
+        db,
+        client,
+        key="ATLAS-197",
+        status=TicketStatus.IN_PROGRESS,
+        issue_state=REJECTED_STATE,
+    )
+
+    result = run(db, client, lesson_client=lesson_client)
+
+    pulled = TicketRepo(db).get_by_key("ATLAS-197")
+    assert pulled is not None and pulled.status == TicketStatus.REJECTED
+    lessons = draft_lessons(db)
+    assert result.draft_lessons_filed == 1
+    assert len(lessons) == 1
+    assert lessons[0].confidence is None
+    assert lessons[0].related_ticket_ids == [ticket.id]
+    assert "ATLAS-197" in lesson_client.prompts[0]
 
 
 def test_unmapped_state_logs_one_debt_item_without_changing_status(
@@ -646,6 +759,7 @@ def test_dwell_breach_files_one_draft_lesson_and_second_tick_dedupes(
     db: Database,
 ) -> None:
     client = RecordingClient()
+    lesson_client = FakeLessonClient(tag="dwell_breach")
     ticket = seed_ticket(
         db,
         client,
@@ -655,8 +769,13 @@ def test_dwell_breach_files_one_draft_lesson_and_second_tick_dedupes(
         with_issue=False,
     )
 
-    first = run(db, client, now=PAST_IN_PROGRESS)
-    second = run(db, client, now=PAST_IN_PROGRESS + timedelta(hours=1))
+    first = run(db, client, now=PAST_IN_PROGRESS, lesson_client=lesson_client)
+    second = run(
+        db,
+        client,
+        now=PAST_IN_PROGRESS + timedelta(hours=1),
+        lesson_client=lesson_client,
+    )
 
     items = debt_rows(db, AnomalyType.DWELL_BREACH, ticket.id)
     assert len(items) == 1
@@ -667,10 +786,10 @@ def test_dwell_breach_files_one_draft_lesson_and_second_tick_dedupes(
     assert len(lessons) == 1  # wrong answer: duplicate DRAFT on re-tick
     (lesson,) = lessons
     assert lesson.related_ticket_ids == [ticket.id]
-    content = "\n".join([lesson.title, lesson.problem, lesson.outcome, *lesson.tags])
-    assert "dwell_breach" in content
-    assert ticket.key in content
-    assert str(item.id) in content
+    assert lesson.confidence is None
+    assert "dwell_breach" in lesson.tags
+    assert ticket.key in lesson_client.prompts[0]
+    assert str(item.id) in lesson_client.prompts[0]
 
 
 def test_no_breach_inside_horizon(db: Database) -> None:
@@ -1073,6 +1192,7 @@ def test_review_cycle_breach_files_one_draft_lesson_and_second_tick_dedupes(
     db: Database,
 ) -> None:
     client = RecordingClient()
+    lesson_client = FakeLessonClient(tag="review_cycle")
     ticket = seed_ticket(
         db,
         client,
@@ -1084,8 +1204,13 @@ def test_review_cycle_breach_files_one_draft_lesson_and_second_tick_dedupes(
     )
     assert ticket.external_linear_id is not None
 
-    first = run(db, client, now=LATER)
-    second = run(db, client, now=LATER + timedelta(hours=1))
+    first = run(db, client, now=LATER, lesson_client=lesson_client)
+    second = run(
+        db,
+        client,
+        now=LATER + timedelta(hours=1),
+        lesson_client=lesson_client,
+    )
 
     items = debt_rows(db, AnomalyType.REVIEW_CYCLE, ticket.id)
     assert len(items) == 1
@@ -1096,10 +1221,10 @@ def test_review_cycle_breach_files_one_draft_lesson_and_second_tick_dedupes(
     assert len(lessons) == 1  # wrong answer: duplicate DRAFT on re-tick
     (lesson,) = lessons
     assert lesson.related_ticket_ids == [ticket.id]
-    content = "\n".join([lesson.title, lesson.problem, lesson.outcome, *lesson.tags])
-    assert "review_cycle" in content
-    assert ticket.key in content
-    assert str(item.id) in content
+    assert lesson.confidence is None
+    assert "review_cycle" in lesson.tags
+    assert ticket.key in lesson_client.prompts[0]
+    assert str(item.id) in lesson_client.prompts[0]
 
 
 def test_at_threshold_does_not_route_or_log(db: Database) -> None:

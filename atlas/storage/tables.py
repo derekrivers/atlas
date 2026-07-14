@@ -207,7 +207,7 @@ class LessonRow(Base):
     problem: Mapped[str] = mapped_column(sa.Text)
     solution: Mapped[str] = mapped_column(sa.Text)
     outcome: Mapped[str] = mapped_column(sa.Text)
-    confidence: Mapped[float] = mapped_column(sa.Numeric(4, 3, asdecimal=False))
+    confidence: Mapped[float | None] = mapped_column(sa.Numeric(4, 3, asdecimal=False))
     related_ticket_ids: Mapped[list[str]] = mapped_column(
         JSONB, server_default=_EMPTY_LIST
     )

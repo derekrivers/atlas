@@ -27,7 +27,7 @@ ticket is created and no Atlas/Linear state is written on the scan path. Step 1'
 ATLAS-118: an unmapped Linear state appends one ``OUT_OF_OWNERSHIP_TRANSITION``
 ``DebtItem`` per *transition* (see :func:`_pull` and the transition signal
 ``Ticket.last_observed_linear_state_id``). Step 5 has three detection clauses plus
-the DRAFT-lesson filing remainder. Dwell-breach
+the DRAFT-lesson extraction remainder. Dwell-breach
 (ATLAS-119): a ticket sitting in a working state past its horizon appends one
 ``DWELL_BREACH`` ``DebtItem`` per dwell *episode* (see :func:`_detect_dwell`,
 ``DWELL_HORIZONS``, and the episode boundary ``Ticket.status_entered_at``) —
@@ -42,9 +42,10 @@ structural blockers have all cleared (``blocked(graph, key)`` empty) appends one
 ``STALE_BLOCK`` ``DebtItem`` per blocked *episode* (see
 :func:`_detect_stale_block`) — report-only like dwell, it surfaces a candidate to
 move but NEVER routes, since the graph sees only structural blockers and the
-operator owns the move. ATLAS-167 adds the filing remainder for the review-cycle
-and dwell-breach clauses: newly appended `DebtItem`s produce idempotent DRAFT
-`Lesson` rows keyed by anomaly type plus ticket set, for operator review only.
+operator owns the move. ATLAS-99 adds the extraction remainder for the
+review-cycle and dwell-breach clauses: newly appended `DebtItem`s trigger the
+lesson extractor, which calls an LLM over a bounded evidence bundle and persists
+DRAFT `Lesson` rows for operator review only.
 The remaining work — the recurring scheduler (ATLAS-50) and the follow-up
 CONSUMER (ATLAS-122: plan reads the committed inbox, apply moves processed
 stubs) — is deliberately NOT here.
@@ -88,20 +89,25 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import networkx as nx
 
 from atlas.context.pack import ContextBudgetExceededError, build_context_pack
 from atlas.core.anchors import IngestionError, SourceDocument
-from atlas.core.enums import ActorType, EntityStatus
+from atlas.core.enums import ActorType
 from atlas.core.models.adr import ADRStatus, ArchitectureDecisionRecord
 from atlas.core.models.debt_item import AnomalyType, DebtItem
-from atlas.core.models.lesson import Lesson, LessonCategory
+from atlas.core.models.lesson import Lesson
 from atlas.core.models.ticket import Ticket, TicketStatus
 from atlas.dependencies.blockers import blocked
 from atlas.dependencies.graph import build_dependency_graph
 from atlas.dependencies.validation import TERMINAL_STATUSES
+from atlas.learning import (
+    ExtractionTrigger,
+    LessonModelClient,
+    extract_lesson_for_ticket,
+)
 from atlas.linear.client import LinearClient, LinearIssue
 from atlas.linear.ownership import (
     PACK_HEADER_PREFIX,
@@ -334,9 +340,9 @@ class SyncResult:
     ``agent_runs_updated`` count the local AgentRun reconstruction step
     (ATLAS-166): rows inserted for newly observed dispatch cycles, and existing
     rows filled in when later handoff/evidence becomes observable.
-    ``draft_lessons_filed`` (ATLAS-167) counts DRAFT lesson rows filed from
-    newly logged review-cycle or dwell-breach anomaly patterns, deduped by
-    pattern type and ticket set. ``packs_repaired`` (ATLAS-169) counts
+    ``draft_lessons_filed`` (ATLAS-99) counts DRAFT lesson rows extracted from
+    completion/failure transitions and newly logged review-cycle or dwell-breach
+    failure-analysis events. ``packs_repaired`` (ATLAS-169) counts
     operator-invoked repair-mode updates that re-embedded a full context pack
     into an already-stamped Linear description that lacked the pack header."""
 
@@ -371,107 +377,6 @@ def _definition_changed(ticket: Ticket) -> bool:
     if ticket.linear_synced_at is None:
         return True
     return ticket.updated_at > ticket.linear_synced_at
-
-
-def _draft_lesson_key(anomaly_type: AnomalyType, tickets: list[Ticket]) -> str:
-    """Stable DRAFT-lesson dedup key: pattern type plus sorted ticket set."""
-
-    ticket_keys = ",".join(sorted(ticket.key for ticket in tickets))
-    return f"anomaly-draft-key:{anomaly_type.value}:{ticket_keys}"
-
-
-def _has_lesson_for_pattern(lessons: LessonRepo, draft_key: str) -> bool:
-    """True when a lesson row already records this pattern instance."""
-
-    return any(draft_key in lesson.tags for lesson in lessons.list())
-
-
-def _file_anomaly_draft_lessons(
-    new_items: list[DebtItem],
-    tickets_by_id: Mapping[UUID, Ticket],
-    lessons: LessonRepo,
-    result: SyncResult,
-    now: datetime,
-) -> None:
-    """File one DRAFT lesson per newly observed anomaly pattern instance.
-
-    The filing step is intentionally downstream of the existing detectors: the
-    detectors still decide when a threshold fires and append the DebtItem. This
-    helper only groups the newly appended REVIEW_CYCLE/DWELL_BREACH rows by
-    pattern type and ticket set, writes a DRAFT Lesson for the operator, and
-    dedupes by that pattern/ticket-set key so a re-tick or later episode cannot
-    create duplicate drafts.
-    """
-
-    grouped: dict[tuple[UUID, AnomalyType], list[tuple[DebtItem, Ticket]]] = {}
-    for item in new_items:
-        if item.anomaly_type not in {
-            AnomalyType.REVIEW_CYCLE,
-            AnomalyType.DWELL_BREACH,
-        }:
-            continue
-        ticket = tickets_by_id.get(item.ticket_id)
-        if ticket is None:
-            continue
-        grouped.setdefault((item.product_id, item.anomaly_type), []).append(
-            (item, ticket)
-        )
-
-    for (_product_id, anomaly_type), pairs in grouped.items():
-        tickets = sorted(
-            {ticket.id: ticket for _item, ticket in pairs}.values(),
-            key=lambda ticket: ticket.key,
-        )
-        draft_key = _draft_lesson_key(anomaly_type, tickets)
-        if _has_lesson_for_pattern(lessons, draft_key):
-            continue
-        ticket_keys = [ticket.key for ticket in tickets]
-        debt_ids = [
-            str(item.id)
-            for item, _ticket in sorted(pairs, key=lambda pair: pair[1].key)
-        ]
-        lesson = Lesson(
-            id=uuid4(),
-            product_id=tickets[0].product_id,
-            status=EntityStatus.DRAFT,
-            category=LessonCategory.FAILURE_PATTERN,
-            title=(
-                f"Detected {anomaly_type.value} pattern for {', '.join(ticket_keys)}"
-            ),
-            problem=(
-                f"The PM sync anomaly step detected {anomaly_type.value} for "
-                f"ticket(s): {', '.join(ticket_keys)}."
-            ),
-            solution=(
-                "Operator review required: promote this DRAFT if it captures a "
-                "reusable lesson, or discard it in the later lesson workflow."
-            ),
-            outcome=(
-                "Filed from existing anomaly detection. DebtItem evidence ids: "
-                f"{', '.join(debt_ids)}."
-            ),
-            confidence=0.5,
-            related_ticket_ids=[ticket.id for ticket in tickets],
-            related_adr_ids=[],
-            tags=[
-                "anomaly-draft",
-                f"anomaly:{anomaly_type.value}",
-                draft_key,
-                *[f"ticket:{key}" for key in ticket_keys],
-                *[f"debt-item:{debt_id}" for debt_id in debt_ids],
-            ],
-            created_by_type=ActorType.SYSTEM,
-            created_by_id=CREATED_BY,
-            created_at=now,
-            updated_at=now,
-        )
-        lessons.add(lesson)
-        result.draft_lessons_filed += 1
-        logger.info(
-            "linear-sync: DRAFT lesson filed for %s pattern across %s",
-            anomaly_type.value,
-            ", ".join(ticket_keys),
-        )
 
 
 def _out_of_ownership_item(
@@ -866,11 +771,13 @@ def _scan_follow_ups(
 def _pull(
     ticket: Ticket,
     tickets: TicketRepo,
+    db: Database,
     debt: DebtItemRepo,
     issues_by_id: Mapping[str, LinearIssue],
     status_map: LinearStatusMap,
     result: SyncResult,
     now: datetime,
+    lesson_client: LessonModelClient | None,
 ) -> Ticket:
     """Step 1 (Linear -> Atlas): mirror a mapped status onto a non-terminal
     ticket, and (ATLAS-118) log an out-of-ownership anomaly when the observed
@@ -946,7 +853,51 @@ def _pull(
         mapped.value,
         ticket.key,
     )
+    if mapped is TicketStatus.DONE:
+        lesson = extract_lesson_for_ticket(
+            updated,
+            db=db,
+            client=lesson_client,
+            now=now,
+            trigger=ExtractionTrigger.DONE,
+        )
+        if lesson is not None:
+            result.draft_lessons_filed += 1
+    elif mapped is TicketStatus.REJECTED:
+        lesson = extract_lesson_for_ticket(
+            updated,
+            db=db,
+            client=lesson_client,
+            now=now,
+            trigger=ExtractionTrigger.REJECTED,
+        )
+        if lesson is not None:
+            result.draft_lessons_filed += 1
     return updated
+
+
+def _extract_pm_failure_lesson(
+    *,
+    ticket: Ticket,
+    item: DebtItem,
+    db: Database,
+    lesson_client: LessonModelClient | None,
+    result: SyncResult,
+    now: datetime,
+) -> None:
+    """Run lesson extraction for one newly logged PM failure-analysis event."""
+
+    lesson = extract_lesson_for_ticket(
+        ticket,
+        db=db,
+        client=lesson_client,
+        now=now,
+        trigger=ExtractionTrigger.PM_FAILURE_ANALYSIS,
+        failure_event=item,
+        force=True,
+    )
+    if lesson is not None:
+        result.draft_lessons_filed += 1
 
 
 def _pack_render_failure_item(
@@ -1221,6 +1172,7 @@ def sync_tick(
     documents: Callable[[], list[SourceDocument]],
     now: datetime,
     repair_packs: bool = False,
+    lesson_client: LessonModelClient | None = None,
 ) -> SyncResult:
     """Run one idempotent sync pass over every ticket (steps 1-5).
 
@@ -1303,9 +1255,9 @@ def sync_tick(
     blocked episode for a ticket stranded in ``blocked`` whose structural blockers
     have all cleared (:func:`_detect_stale_block`, reusing the same ``graph``
     built for promotion above) — report-only, it NEVER moves the ticket. Then
-    ATLAS-167 files DRAFT lessons from the newly appended review-cycle and
-    dwell-breach rows, deduped by anomaly type plus ticket set. The pass runs
-    after promotion so it sees this tick's pulled statuses and freshly stamped
+    ATLAS-99 extracts DRAFT lessons from the newly appended review-cycle and
+    dwell-breach rows. The pass runs after promotion so it sees this tick's
+    pulled statuses and freshly stamped
     ``status_entered_at``; the graph reflects current Atlas state because
     promotion writes Linear only. Returns per-tick counters.
 
@@ -1317,7 +1269,6 @@ def sync_tick(
 
     result = SyncResult()
     debt = DebtItemRepo(db)
-    lessons = LessonRepo(db)
     # Step 1's one batched read (ATLAS-148): every issue in the configured
     # project, keyed by id — the join key. Tickets join by external_linear_id
     # ONLY; title and identifier are never consulted. Fetched lazily: a board
@@ -1340,7 +1291,17 @@ def sync_tick(
     # strictly post-pull and still adds no Linear request of its own.
     pulled_board: list[Ticket] = []
     for ticket in pull_board:
-        after_pull = _pull(ticket, tickets, debt, issues_by_id, status_map, result, now)
+        after_pull = _pull(
+            ticket,
+            tickets,
+            db,
+            debt,
+            issues_by_id,
+            status_map,
+            result,
+            now,
+            lesson_client,
+        )
         pulled_board.append(after_pull)
     reconstructed = reconstruct_agent_runs(
         tickets=tickets,
@@ -1422,11 +1383,16 @@ def sync_tick(
         if review_item is not None:
             new_anomaly_items.append(review_item)
         _detect_stale_block(ticket, graph, debt, result, now)
-    _file_anomaly_draft_lessons(
-        new_anomaly_items,
-        {ticket.id: ticket for ticket in step5_tickets},
-        lessons,
-        result,
-        now,
-    )
+    tickets_by_id = {ticket.id: ticket for ticket in step5_tickets}
+    for item in new_anomaly_items:
+        event_ticket = tickets_by_id.get(item.ticket_id)
+        if event_ticket is not None:
+            _extract_pm_failure_lesson(
+                ticket=event_ticket,
+                item=item,
+                db=db,
+                lesson_client=lesson_client,
+                result=result,
+                now=now,
+            )
     return result

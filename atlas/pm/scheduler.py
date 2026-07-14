@@ -60,6 +60,7 @@ from uuid import uuid4
 from atlas.core.anchors import SourceDocument
 from atlas.core.enums import ActorType
 from atlas.core.models.tick_failure import TickFailure
+from atlas.learning import LessonModelClient
 from atlas.linear.client import LinearClient, LinearRateLimitError
 from atlas.linear.ownership import LinearStatusMap
 from atlas.pm.sync import sync_tick
@@ -125,6 +126,7 @@ class TickConfig:
     inbox_dir: Path
     documents: Callable[[], list[SourceDocument]]
     repair_packs: bool = False
+    lesson_client: LessonModelClient | None = None
 
 
 def _signature(exc: BaseException) -> str:
@@ -187,7 +189,34 @@ def run_tick(
     the crash ever escaping."""
 
     try:
-        if config.repair_packs:
+        if config.lesson_client is not None and config.repair_packs:
+            sync_tick(
+                tickets=config.tickets,
+                db=config.db,
+                client=config.client,
+                status_map=config.status_map,
+                team_id=config.team_id,
+                project_id=config.project_id,
+                inbox_dir=config.inbox_dir,
+                documents=config.documents,
+                now=now,
+                repair_packs=True,
+                lesson_client=config.lesson_client,
+            )
+        elif config.lesson_client is not None:
+            sync_tick(
+                tickets=config.tickets,
+                db=config.db,
+                client=config.client,
+                status_map=config.status_map,
+                team_id=config.team_id,
+                project_id=config.project_id,
+                inbox_dir=config.inbox_dir,
+                documents=config.documents,
+                now=now,
+                lesson_client=config.lesson_client,
+            )
+        elif config.repair_packs:
             sync_tick(
                 tickets=config.tickets,
                 db=config.db,

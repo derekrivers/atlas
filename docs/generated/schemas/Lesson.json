@@ -43,10 +43,18 @@
       "$ref": "#/$defs/LessonCategory"
     },
     "confidence": {
-      "maximum": 1,
-      "minimum": 0,
-      "title": "Confidence",
-      "type": "number"
+      "anyOf": [
+        {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Confidence"
     },
     "created_at": {
       "format": "date-time",
@@ -127,7 +135,6 @@
     "problem",
     "solution",
     "outcome",
-    "confidence",
     "created_by_type",
     "created_by_id",
     "created_at",

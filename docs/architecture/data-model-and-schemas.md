@@ -548,6 +548,8 @@ reason: Ticket generation requires the Ticket model to exist first.
 A lesson records organisational learning.
 
 Lessons may come from successful work, failed work, incidents, recurring blockers, or human decisions.
+Agent-authored extraction drafts leave `confidence` null until the operator
+assigns confidence at promotion.
 
 ## Pydantic Model
 
@@ -573,7 +575,7 @@ class Lesson(BaseModel):
     problem: str
     solution: str
     outcome: str
-    confidence: float = Field(ge=0, le=1)
+    confidence: float | None = Field(default=None, ge=0, le=1)
     related_ticket_ids: list[UUID] = Field(default_factory=list)
     related_adr_ids: list[UUID] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)
@@ -595,7 +597,7 @@ CREATE TABLE lessons (
     problem TEXT NOT NULL,
     solution TEXT NOT NULL,
     outcome TEXT NOT NULL,
-    confidence NUMERIC(4,3) NOT NULL CHECK (confidence >= 0 AND confidence <= 1),
+    confidence NUMERIC(4,3) CHECK (confidence >= 0 AND confidence <= 1),
     related_ticket_ids JSONB NOT NULL DEFAULT '[]',
     related_adr_ids JSONB NOT NULL DEFAULT '[]',
     tags JSONB NOT NULL DEFAULT '[]',
@@ -1421,7 +1423,7 @@ The Pydantic models are the single contract; JSON Schemas are generated from the
   "problem": "Large multi-part tickets caused agents to make broad, hard-to-review changes.",
   "solution": "Split tickets into narrow, dependency-aware units with explicit non-goals.",
   "outcome": "Agent PRs became easier to review and less likely to fail.",
-  "confidence": 0.9,
+  "confidence": null,
   "tags": ["planning", "ticketing", "agent-execution"]
 }
 ```

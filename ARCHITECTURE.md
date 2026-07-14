@@ -36,6 +36,7 @@ lower layer must never import a higher one. Ordered high → low:
 atlas.cli           # CLI entry point and command wiring
 atlas.planning      # plan/apply pipeline, reconciler, renderer
 atlas.pm            # Phase 4 PM Engine: Linear sync loop (sync_tick)
+atlas.learning      # Phase 8 Learning System: lesson extraction
 atlas.context       # Phase 5 Context Renderer: per-ticket retrieval
 atlas.dependencies  # dependency-graph projection and analyses
 atlas.evidence      # Phase 6 evidence mappers: normalised CI -> Evidence
