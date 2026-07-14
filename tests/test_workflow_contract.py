@@ -187,6 +187,61 @@ def test_ac7_workspace_clones_atlas_with_operator_slug() -> None:
     assert front["tracker"]["project_slug"] == "26cc58f4bc91"
 
 
+# --- ATLAS-168: mainline freshness before PRs, pushes, and handoff ------------
+
+
+def _integration_section() -> str:
+    _, body = _split()
+    flowed = " ".join(body.split())
+    start = flowed.index("## Integration discipline")
+    end = flowed.index("## How to move the ticket")
+    return flowed[start:end]
+
+
+def test_atlas_168_hooks_fetch_current_main_and_full_clone() -> None:
+    front, _ = _split()
+    hooks = front["hooks"]
+    assert hooks["before_run"].strip() == "git fetch origin main"
+    assert "git clone https://github.com/derekrivers/atlas ." in hooks["after_create"]
+    assert "--depth" not in hooks["after_create"]
+    assert "https://github.com/derekrivers/atlas" not in hooks["before_run"]
+
+
+def test_atlas_168_contract_rebases_before_pr_push_and_handoff() -> None:
+    section = _integration_section()
+    assert "before opening the PR" in section
+    assert "before every push" in section
+    assert "before moving to `Review Required`" in section
+    assert "git fetch origin main && git rebase origin/main" in section
+    assert "context pack's scope" in section
+    assert "PR description" in section
+    assert "outside that scope" in section
+    assert "`Needs Human`" in section
+
+
+def test_atlas_168_contract_pins_adr0008_ordering() -> None:
+    section = _integration_section()
+    assert "ADR-0008" in section
+    assert "rebase precedes push precedes CI" in section
+    assert "system-tier evidence pins to a head" in section
+    assert "After entering `Review Required`, never rebase on your own" in section
+    assert "verification verdict becomes stale" in section
+    assert "`Changes Requested`" in section
+    assert "rerun CI on the new head" in section
+
+
+def test_atlas_168_symphony_doc_records_design_rationale() -> None:
+    doc = _read(SYMPHONY_DOC)
+    assert "### Mainline freshness discipline" in doc
+    assert "hooks.before_run" in doc
+    assert "git fetch origin main && git rebase origin/main" in doc
+    assert "depth-1 clone can lack the merge base" in doc
+    assert "Phase 8 closure report §5" in doc
+    assert "#188 conflict class" in doc
+    assert "GitHub merge queue" in doc
+    assert "deferred from v1" in doc
+
+
 # --- F2 (ATLAS-136): the agent's inherited environment is narrowed ------------
 #
 # The single per-ticket WORKFLOW.md edit: the codex command must no longer

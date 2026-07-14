@@ -157,6 +157,42 @@ prompt template. The prompt instructs the agent to:
    follow-up`; the PM Engine converts them into plan proposals (ADR-0007)
    — agents never create tickets directly.
 
+### Mainline freshness discipline
+
+Symphony's `hooks.before_run` fetches `origin/main` before every attempt,
+including `Changes Requested` resumes. That keeps the local ref current while
+leaving conflict resolution in the Atlas-owned contract body, where the agent
+can apply judgement.
+
+The contract requires the agent to run
+`git fetch origin main && git rebase origin/main` immediately before opening
+the PR, before every push, and before moving to `Review Required`. Conflicts
+that touch only files inside the context pack's scope are resolved by the
+agent and noted in the PR description. Any conflict touching a file outside
+that scope is a blocker: the agent comments on Linear and moves the ticket to
+`Needs Human`.
+
+ADR-0008 fixes the ordering: rebase precedes push precedes CI, so
+system-tier evidence pins to the final head that is current against
+`origin/main` at handoff. The agent never rebases after entering
+`Review Required`. If a sibling PR merges first and makes the verdict stale,
+the operator routes the ticket through `Changes Requested`; the resumed agent
+rebases, pushes, and reruns CI on the new head.
+
+`hooks.after_create` performs a full clone, not `git clone --depth 1`. A
+depth-1 clone can lack the merge base after a later fetch, which makes
+`git rebase origin/main` fail fatally. The repository is small enough that the
+full clone is the deterministic choice. The rejected alternative was to keep
+`--depth 1` and fetch `--unshallow` in the sync step; that adds moving parts
+with no current payoff. The recorded evidence trail for the motivating
+conflict class is the Phase 8 closure report §5 carry-forward, "WORKFLOW:
+rebase-onto-fresh-main-before-PR (the #188 conflict class)".
+
+GitHub merge queue or auto-merge branch update is the platform-level answer if
+agent-side rebasing stops scaling, but it is deferred from v1. This workflow
+keeps `max_concurrent_agents: 1`; raising concurrency or configuring merge
+queue belongs to a separate operator decision.
+
 ## Ticket transitions: one writer per state edge
 
 To prevent races between the PM Engine and agents:
