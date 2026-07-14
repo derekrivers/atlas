@@ -22,6 +22,13 @@ A lesson-extraction run fires on:
    (review-cycle breach, dwell breach) — failure-pattern candidate.
 3. Operator request: `atlas lessons extract <KEY>`.
 
+`atlas lessons schedule` is the recurring loop for the automatic triggers. It
+polls tickets in `done` or `rejected` status with no extraction attempt cursor,
+and tickets with a `DWELL_BREACH` or `REVIEW_CYCLE` DebtItem recorded after the
+last cursor. Each attempted extraction stamps
+`Ticket.lesson_extraction_attempted_at`; extractor failures are logged and do not
+stop the rest of the poll cycle.
+
 The extractor is an LLM call over a bounded evidence bundle (ticket, agent
 runs, PR review history, verification verdicts — not raw diffs beyond a
 size cap), producing a schema-valid Lesson with `status: DRAFT`,

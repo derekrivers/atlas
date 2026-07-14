@@ -412,6 +412,28 @@ class TicketRepo(_KeyedRepo[Ticket]):
             row.linear_synced_at = synced_at
             return self._to_model(row)
 
+    def mark_lesson_extraction_attempted(
+        self, key: str, *, attempted_at: datetime
+    ) -> Ticket:
+        """Stamp the learning scheduler's extraction-attempt cursor.
+
+        This is the single storage writer for ``lesson_extraction_attempted_at``:
+        the continuous learning scheduler calls it after each attempted
+        extraction, whether that attempt produced a lesson or failed. It touches
+        no definition fields and deliberately leaves ``updated_at`` unchanged,
+        so a learning cursor write never causes a Linear definition re-push.
+        """
+        if attempted_at.utcoffset() is None:
+            raise NaiveDatetimeError("Ticket", "lesson_extraction_attempted_at")
+        with self._db.session() as session, session.begin():
+            row = session.scalars(
+                sa.select(TicketRow).where(TicketRow.key == key)
+            ).first()
+            if row is None:
+                raise TicketNotFoundError(f"no ticket with key {key!r}")
+            row.lesson_extraction_attempted_at = attempted_at
+            return self._to_model(row)
+
 
 class TicketDependencyRepo(_Repo[TicketDependency]):
     def __init__(self, db: Database) -> None:

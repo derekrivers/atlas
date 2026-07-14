@@ -102,6 +102,11 @@ class Ticket(BaseModel):
     # (no reset on human intervention — deferred). Like the cursor fields above
     # it is status-coupled and NEVER bumps ``updated_at``.
     review_cycle_count: int = 0
+    # Learning-system extraction cursor (ATLAS-106): the last time the
+    # continuous learning scheduler attempted extraction for this ticket. The
+    # scheduler is the sole writer and never bumps updated_at, so recording an
+    # attempt cannot look like a definition edit or cause a Linear re-push.
+    lesson_extraction_attempted_at: datetime | None = None
     # Reconciler anchor-match pass; AT-1 traceability — every item
     # traceable to a document anchor.
     source_anchor: str
