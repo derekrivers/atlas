@@ -56,10 +56,11 @@ def _lesson_ids(lessons: list[Lesson]) -> list[UUID]:
 
 
 def _insert_raw_lesson_row(db: Database, **overrides: Any) -> UUID:
+    row_id = uuid4()
     data = (
         lesson_kwargs()
         | {
-            "id": uuid4(),
+            "id": row_id,
             "status": "draft",
             "related_ticket_ids": [],
             "related_adr_ids": [],
@@ -88,7 +89,7 @@ def _insert_raw_lesson_row(db: Database, **overrides: Any) -> UUID:
                 updated_at=data["updated_at"],
             )
         )
-    return data["id"]
+    return row_id
 
 
 def test_tag_match_selects_intersecting_and_excludes_disjoint() -> None:
