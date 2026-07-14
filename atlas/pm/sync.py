@@ -121,7 +121,7 @@ from atlas.pm.agent_runs import reconstruct_agent_runs
 from atlas.pm.completion import complete_verified
 from atlas.pm.promotion import promote_ready
 from atlas.storage.db import Database
-from atlas.storage.repositories import ADRRepo, DebtItemRepo, LessonRepo, TicketRepo
+from atlas.storage.repositories import ADRRepo, DebtItemRepo, TicketRepo
 
 # Attribution for system-observed anomalies (data-model §6.1): the PM Engine
 # writes DebtItems from deterministic observation, so created_by_type is
