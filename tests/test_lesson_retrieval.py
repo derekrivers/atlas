@@ -11,14 +11,23 @@ input-order retriever gets it wrong).
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
+import pytest
 from test_lesson_model import lesson_kwargs
 from test_models_validation import ticket_kwargs
 
-from atlas.context import DEFAULT_LESSON_CAP, LessonMatch, select_lessons
+from atlas.context import (
+    DEFAULT_LESSON_CAP,
+    LessonMatch,
+    retrieve_lessons,
+    select_lessons,
+)
 from atlas.core.models import Lesson, Ticket
+from atlas.storage import Database, LessonRepo
+from atlas.storage.tables import LessonRow
 
 
 def make_lesson(**overrides: Any) -> Lesson:
@@ -31,8 +40,56 @@ def make_ticket(**overrides: Any) -> Ticket:
     return Ticket(**ticket_kwargs() | overrides)
 
 
+@pytest.fixture
+def db(tmp_path: Path) -> Database:
+    database = Database(f"sqlite:///{tmp_path}/atlas.db")
+    database.create_all()
+    return database
+
+
 def _ids(matches: list[LessonMatch]) -> list[UUID]:
     return [m.lesson_id for m in matches]
+
+
+def _lesson_ids(lessons: list[Lesson]) -> list[UUID]:
+    return [lesson.id for lesson in lessons]
+
+
+def _insert_raw_lesson_row(db: Database, **overrides: Any) -> UUID:
+    row_id = uuid4()
+    data = (
+        lesson_kwargs()
+        | {
+            "id": row_id,
+            "status": "draft",
+            "related_ticket_ids": [],
+            "related_adr_ids": [],
+            "tags": [],
+        }
+        | overrides
+    )
+    with db.session() as session, session.begin():
+        session.add(
+            LessonRow(
+                id=data["id"],
+                product_id=data["product_id"],
+                status=data["status"],
+                category=data["category"],
+                title=data["title"],
+                problem=data["problem"],
+                solution=data["solution"],
+                outcome=data["outcome"],
+                confidence=data["confidence"],
+                related_ticket_ids=data["related_ticket_ids"],
+                related_adr_ids=data["related_adr_ids"],
+                tags=data["tags"],
+                created_by_type=data["created_by_type"],
+                created_by_id=data["created_by_id"],
+                created_at=data["created_at"],
+                updated_at=data["updated_at"],
+            )
+        )
+    return row_id
 
 
 def test_tag_match_selects_intersecting_and_excludes_disjoint() -> None:
@@ -126,6 +183,22 @@ def test_ranking_confidence_then_recency_then_id() -> None:
     assert _ids(result) == [top.id, recent.id, tie_lo.id, tie_hi.id]
 
 
+def test_ranking_sorts_null_confidence_after_numeric() -> None:
+    ticket = make_ticket(tags=["renderer"], component=None)
+    newer = datetime(2026, 6, 1, tzinfo=UTC)
+    older = datetime(2026, 1, 1, tzinfo=UTC)
+    numeric = make_lesson(
+        tags=["renderer"], confidence=0.1, created_at=older, updated_at=older
+    )
+    null_confidence = make_lesson(
+        tags=["renderer"], confidence=1.0, created_at=newer, updated_at=newer
+    ).model_copy(update={"confidence": None})
+
+    result = select_lessons([null_confidence, numeric], ticket, cap=10)
+
+    assert _ids(result) == [numeric.id, null_confidence.id]
+
+
 def test_cap_keeps_only_the_top_three() -> None:
     """More than three matches -> exactly the top three by the ranking."""
     ticket = make_ticket(tags=["renderer"], component=None)
@@ -166,3 +239,77 @@ def test_shared_tags_are_the_matched_normalised_tags_sorted() -> None:
     result = select_lessons([lesson], ticket)
 
     assert result[0].shared_tags == ("context", "renderer")
+
+
+def test_retrieve_lessons_excludes_draft_at_query_level(db: Database) -> None:
+    ticket = make_ticket(tags=["renderer"], component=None)
+    active = make_lesson(status="active", tags=["renderer"], confidence=0.1)
+    LessonRepo(db).add(active)
+    draft_id = _insert_raw_lesson_row(
+        db,
+        status="draft",
+        category="not_a_lesson_category",
+        tags=["renderer"],
+        confidence=1.0,
+    )
+
+    result = retrieve_lessons(ticket, db)
+
+    assert _lesson_ids(result) == [active.id]
+    assert draft_id not in _lesson_ids(result)
+
+
+def test_retrieve_lessons_caps_at_three(db: Database) -> None:
+    ticket = make_ticket(tags=["renderer"], component=None)
+    base = datetime(2026, 1, 1, tzinfo=UTC)
+    lessons = [
+        make_lesson(
+            tags=["renderer"],
+            confidence=confidence,
+            created_at=base,
+            updated_at=base,
+        )
+        for confidence in (0.9, 0.8, 0.7, 0.6)
+    ]
+    repo = LessonRepo(db)
+    for lesson in lessons:
+        repo.add(lesson)
+
+    result = retrieve_lessons(ticket, db)
+
+    assert _lesson_ids(result) == [lesson.id for lesson in lessons[:3]]
+
+
+def test_retrieve_lessons_ranks_confidence_then_recency(db: Database) -> None:
+    ticket = make_ticket(tags=["renderer"], component=None)
+    old = datetime(2026, 1, 1, tzinfo=UTC)
+    new = datetime(2026, 6, 1, tzinfo=UTC)
+    top = make_lesson(tags=["renderer"], confidence=0.9, created_at=old, updated_at=old)
+    recent = make_lesson(
+        tags=["renderer"], confidence=0.5, created_at=new, updated_at=new
+    )
+    stale = make_lesson(
+        tags=["renderer"], confidence=0.5, created_at=old, updated_at=old
+    )
+    repo = LessonRepo(db)
+    for lesson in (stale, recent, top):
+        repo.add(lesson)
+
+    result = retrieve_lessons(ticket, db, cap=10)
+
+    assert _lesson_ids(result) == [top.id, recent.id, stale.id]
+
+
+def test_retrieve_lessons_uses_ticket_type_when_tags_are_insufficient(
+    db: Database,
+) -> None:
+    ticket = make_ticket(tags=["renderer"], component=None, ticket_type="bug")
+    type_match = make_lesson(tags=["bug"])
+    disjoint = make_lesson(tags=["storage"])
+    repo = LessonRepo(db)
+    repo.add(disjoint)
+    repo.add(type_match)
+
+    result = retrieve_lessons(ticket, db)
+
+    assert _lesson_ids(result) == [type_match.id]

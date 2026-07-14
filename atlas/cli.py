@@ -133,6 +133,7 @@ from atlas.context import (
     ContextBudgetExceededError,
     ContextPackValidation,
     build_context_pack,
+    retrieve_lessons,
     validate_context_pack,
 )
 from atlas.core.anchors import IngestionError, SourceDocument
@@ -1281,8 +1282,8 @@ def _load_context_inputs(key: str, repo_root: Path, db: Database) -> _ContextInp
       does at gate 4; live re-ingestion keeps staleness real, and a
       dirty/untracked file in either set raises ``DirtyInputError``.
     - ``accepted_adrs`` is ``ADRRepo.list()`` filtered to ACCEPTED.
-    - ``lessons`` is the full ``LessonRepo.list()`` (``select_lessons`` is
-      ACTIVE-only by construction).
+    - ``lessons`` is ``retrieve_lessons(ticket, db)``: the DB-backed retriever
+      filters to ACTIVE in SQL, then applies the v1 tag/ticket_type match.
     """
     ticket = TicketRepo(db).get_by_key(key)
     if ticket is None:
@@ -1294,7 +1295,7 @@ def _load_context_inputs(key: str, repo_root: Path, db: Database) -> _ContextInp
     accepted_adrs = [
         adr for adr in ADRRepo(db).list() if adr.status == ADRStatus.ACCEPTED
     ]
-    lessons = LessonRepo(db).list()
+    lessons = retrieve_lessons(ticket, db)
     return _ContextInputs(ticket, graph, documents, accepted_adrs, lessons)
 
 

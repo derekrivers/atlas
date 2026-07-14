@@ -23,6 +23,7 @@ from atlas.context.doc_retrieval import (
 from atlas.context.lesson_retrieval import (
     DEFAULT_LESSON_CAP,
     LessonMatch,
+    retrieve_lessons,
     select_lessons,
 )
 from atlas.context.pack import (
@@ -58,6 +59,7 @@ __all__ = [
     "RelatedTicket",
     "RelatedTicketSource",
     "build_context_pack",
+    "retrieve_lessons",
     "select_adrs",
     "select_doc_sections",
     "select_lessons",
