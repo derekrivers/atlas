@@ -34,7 +34,9 @@ workspace:
   root: ~/code/atlas-workspaces
 hooks:
   after_create: |
-    git clone --depth 1 https://github.com/derekrivers/atlas .
+    git clone https://github.com/derekrivers/atlas .
+  before_run: |
+    git fetch origin main
   before_remove: |
     true
 agent:
@@ -93,6 +95,29 @@ Ticket description:
 {% else %}
 No description provided — treat this as a blocker (see Hard limits).
 {% endif %}
+
+## Integration discipline
+
+Immediately before opening the PR, before every push (including the initial
+branch publish and every later update), and before moving to `Review Required`,
+run:
+
+```bash
+git fetch origin main && git rebase origin/main
+```
+
+Resolve conflicts that touch only files inside the context pack's scope (or,
+when no pack is present, the ticket description's definition fields), and note
+those resolved conflicts in the PR description. If any conflict touches a file
+outside that scope, stop: comment on Linear with the blocker details, move the
+ticket to `Needs Human`, and do not improvise.
+
+Under ADR-0008, this ordering is binding: rebase precedes push precedes CI, so
+system-tier evidence pins to a head that is current against `origin/main` at
+handoff. After entering `Review Required`, never rebase on your own. If a
+sibling PR merges first and the verification verdict becomes stale, the operator
+routes the ticket through `Changes Requested`; on that resume, apply this same
+discipline and rerun CI on the new head.
 
 ## How to move the ticket (you perform every transition)
 
