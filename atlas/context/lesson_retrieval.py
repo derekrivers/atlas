@@ -109,7 +109,12 @@ def select_lessons(
     # unique id makes it a true total order (no input/set-iteration order leaks).
     matched.sort(key=lambda pair: pair[0].id)
     matched.sort(key=lambda pair: pair[0].created_at, reverse=True)
-    matched.sort(key=lambda pair: pair[0].confidence, reverse=True)
+    matched.sort(
+        key=lambda pair: (
+            pair[0].confidence if pair[0].confidence is not None else -1.0
+        ),
+        reverse=True,
+    )
 
     return [
         LessonMatch(lesson_id=lesson.id, shared_tags=shared)

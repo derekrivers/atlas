@@ -32,8 +32,8 @@ DOCUMENTED_FIELDS: dict[str, tuple[Any, Any]] = {
     "problem": (str, REQUIRED),
     "solution": (str, REQUIRED),
     "outcome": (str, REQUIRED),
-    # Required, bounded 0..1 (ratified; SQL CHECK mirrors it).
-    "confidence": (float, REQUIRED),
+    # Operator-assigned at promotion; extraction drafts leave it null.
+    "confidence": (float | None, None),
     "related_ticket_ids": (list[UUID], LIST_FACTORY),
     "related_adr_ids": (list[UUID], LIST_FACTORY),
     "tags": (list[str], LIST_FACTORY),
@@ -150,6 +150,10 @@ def test_confidence_boundaries_accepted(in_bounds: float) -> None:
     assert Lesson(**lesson_kwargs() | {"confidence": in_bounds}).confidence == (
         in_bounds
     )
+
+
+def test_confidence_null_accepted_for_drafts() -> None:
+    assert Lesson(**lesson_kwargs() | {"confidence": None}).confidence is None
 
 
 def test_status_uses_canonical_shared_enum() -> None:

@@ -521,6 +521,7 @@ def _live_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """Set fake-but-well-formed Linear env so the live config builds with no
     network (client construction and map parsing read env only)."""
     monkeypatch.setenv(API_KEY_ENV, "lin_api_fake")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "anthropic_fake")
     monkeypatch.setenv(TEAM_ID_ENV, "team-xyz")
     monkeypatch.setenv(PROJECT_ID_ENV, "project-xyz")
     monkeypatch.setenv(

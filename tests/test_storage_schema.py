@@ -127,7 +127,7 @@ DOCUMENTED_COLUMNS: dict[str, dict[str, tuple[bool, str | None]]] = {
         "created_by_id": (NN, None),
         "created_at": (NN, None),
     },
-    # §3.6 (post-chore: confidence CHECK; status default)
+    # §3.6 (post-ATLAS-99: confidence nullable until operator promotion)
     "lessons": {
         "id": (NN, None),
         "product_id": (NN, None),
@@ -137,7 +137,7 @@ DOCUMENTED_COLUMNS: dict[str, dict[str, tuple[bool, str | None]]] = {
         "problem": (NN, None),
         "solution": (NN, None),
         "outcome": (NN, None),
-        "confidence": (NN, None),
+        "confidence": (True, None),
         "related_ticket_ids": (NN, "'[]'"),
         "related_adr_ids": (NN, "'[]'"),
         "tags": (NN, "'[]'"),

@@ -42,7 +42,7 @@ class Lesson(BaseModel):
     problem: str
     solution: str
     outcome: str
-    confidence: float = Field(ge=0, le=1)
+    confidence: float | None = Field(default=None, ge=0, le=1)
     related_ticket_ids: list[UUID] = Field(default_factory=list)
     related_adr_ids: list[UUID] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)

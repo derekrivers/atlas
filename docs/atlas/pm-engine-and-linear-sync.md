@@ -378,14 +378,13 @@ routes to `Needs Human`. Logging debt and moving a ticket are separate
 concerns.
 
 After the review-cycle and dwell-breach clauses append their `DebtItem` rows,
-the same step-5 anomaly pass files one DRAFT `Lesson` row for each newly
-detected pattern instance. The draft is keyed by anomaly type plus sorted ticket
-set, so a re-tick over unchanged state, or a later repeat of the same
-pattern/ticket set, does not duplicate it. The row names the pattern, the ticket
-keys, and the `DebtItem` ids as evidence pointers; it is a store row only
-(`status = draft`, system-written by the PM Engine), never a document write, and
-it triggers no automation. Promotion or discard remains the operator-owned
-Learning System workflow.
+the same step-5 anomaly pass triggers lesson extraction for each newly observed
+failure-analysis event. The extractor calls an LLM over a bounded evidence
+bundle and persists a schema-valid DRAFT `Lesson` with `confidence = null` and
+the source ticket in `related_ticket_ids`; a re-tick over unchanged state does
+not retry because no new `DebtItem` is appended. The row is store-only, never a
+document write, and promotion or discard remains the operator-owned Learning
+System workflow.
 
 - Review cycling (ATLAS-120): more than 3 `changes_requested → pr_open` round
   trips routes the ticket to `Needs Human` with a failure-analysis note. This is
@@ -488,10 +487,11 @@ The metrics, as computed in v1:
 - **Dwell breaches** — the `DWELL_BREACH` subset of the anomaly log (ATLAS-119),
   surfaced per ticket.
 - **Tick failures** — the count of durable scheduler crash rows.
-- **Draft lessons** — DRAFT `Lesson` rows, including anomaly-draft rows filed
-  from review-cycle and dwell-breach patterns. The report surfaces their title,
-  pattern tags, related ticket keys, and `DebtItem` evidence ids for operator
-  review; it does not promote, discard, or otherwise mutate the rows.
+- **Draft lessons** — DRAFT `Lesson` rows awaiting operator review, including
+  lesson-extraction rows from completion, rejection, review-cycle, and dwell
+  events. The report surfaces their title, pattern tags when present, related
+  ticket keys, and `DebtItem` evidence ids when present; it does not promote,
+  discard, or otherwise mutate the rows.
 - **Agent runs** — the count of reconstructed `AgentRun` rows and the mean
   dispatch-to-handoff duration over rows with both `started_at` and
   `completed_at` populated. Partial observations count as rows but do not enter
