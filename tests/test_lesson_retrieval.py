@@ -123,12 +123,12 @@ def test_active_only_excludes_high_confidence_non_active_lessons() -> None:
     assert deprecated.id not in selected
 
 
-def test_component_facet_alone_selects() -> None:
-    """A lesson matching ONLY via ticket.component is selected."""
+def test_component_facet_alone_does_not_select() -> None:
+    """Component is not a lesson retrieval facet; only tags and ticket_type are."""
     ticket = make_ticket(tags=[], component="planner")
-    hit = make_lesson(tags=["planner"])
+    component_only = make_lesson(tags=["planner"])
 
-    assert _ids(select_lessons([hit], ticket)) == [hit.id]
+    assert select_lessons([component_only], ticket) == []
 
 
 def test_ticket_type_facet_alone_selects() -> None:
@@ -241,7 +241,7 @@ def test_shared_tags_are_the_matched_normalised_tags_sorted() -> None:
     assert result[0].shared_tags == ("context", "renderer")
 
 
-def test_retrieve_lessons_excludes_draft_at_query_level(db: Database) -> None:
+def test_retrieve_lessons_excludes_non_active_at_query_level(db: Database) -> None:
     ticket = make_ticket(tags=["renderer"], component=None)
     active = make_lesson(status="active", tags=["renderer"], confidence=0.1)
     LessonRepo(db).add(active)
@@ -252,11 +252,19 @@ def test_retrieve_lessons_excludes_draft_at_query_level(db: Database) -> None:
         tags=["renderer"],
         confidence=1.0,
     )
+    archived_id = _insert_raw_lesson_row(
+        db,
+        status="archived",
+        category="not_a_lesson_category",
+        tags=["renderer"],
+        confidence=1.0,
+    )
 
     result = retrieve_lessons(ticket, db)
 
     assert _lesson_ids(result) == [active.id]
     assert draft_id not in _lesson_ids(result)
+    assert archived_id not in _lesson_ids(result)
 
 
 def test_retrieve_lessons_caps_at_three(db: Database) -> None:

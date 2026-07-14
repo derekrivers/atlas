@@ -560,6 +560,44 @@ class LessonRepo(_Repo[Lesson]):
             draft_row.updated_at = now
             return self._to_model(draft_row), self._to_model(target_row)
 
+    def record_ticket_citation(
+        self, *, lesson_ids: list[UUID], ticket_id: UUID
+    ) -> list[Lesson]:
+        """Append ``ticket_id`` to the cited lessons' ``related_ticket_ids``.
+
+        Citation feedback is system-observed usage, not an operator lifecycle
+        action, so it deliberately leaves ``updated_at`` untouched. That keeps
+        ``updated_at`` as the stale-review boundary for promotion/reject/archive/
+        merge actions while still making successful reuse visible on the lesson.
+        Missing lesson ids are ignored: a stale/tampered pack should not block
+        ticket completion feedback for the lessons that still exist.
+        """
+        ordered_ids = list(dict.fromkeys(lesson_ids))
+        if not ordered_ids:
+            return []
+
+        with self._db.session() as session, session.begin():
+            rows = list(
+                session.scalars(
+                    sa.select(LessonRow).where(LessonRow.id.in_(ordered_ids))
+                )
+            )
+            rows_by_id = {row.id: row for row in rows}
+            cited: list[Lesson] = []
+            ticket_id_str = str(ticket_id)
+            for lesson_id in ordered_ids:
+                row = rows_by_id.get(lesson_id)
+                if row is None:
+                    continue
+                related_ticket_ids = [
+                    str(existing_id) for existing_id in row.related_ticket_ids or []
+                ]
+                if ticket_id_str not in related_ticket_ids:
+                    related_ticket_ids.append(ticket_id_str)
+                    row.related_ticket_ids = related_ticket_ids
+                cited.append(self._to_model(row))
+            return cited
+
     def list_stale_active(self, *, threshold: int = 10) -> list[StaleLessonReview]:
         """ACTIVE lessons due for stale-memory review.
 
@@ -680,6 +718,16 @@ class AgentRunRepo(_Repo[AgentRun]):
 class ContextPackRepo(_Repo[ContextPack]):
     def __init__(self, db: Database) -> None:
         super().__init__(db, ContextPack, ContextPackRow)
+
+    def latest_for_ticket(self, ticket_id: UUID) -> ContextPack | None:
+        """Return the newest stored context pack for ``ticket_id``, if any."""
+        with self._db.session() as session:
+            row = session.scalars(
+                sa.select(ContextPackRow)
+                .where(ContextPackRow.ticket_id == ticket_id)
+                .order_by(ContextPackRow.created_at.desc(), ContextPackRow.id.desc())
+            ).first()
+            return None if row is None else self._to_model(row)
 
 
 RAW_PAYLOAD_CAP_BYTES = 64 * 1024

@@ -1275,13 +1275,17 @@ class _ContextNotFoundError(Exception):
 class _ContextInputs(NamedTuple):
     """The five already-loaded inputs the pure ``atlas.context`` builder and
     validator take (D2). Loaded once per invocation by ``_load_context_inputs``;
-    the three commands are thin wrappers over this tuple."""
+    the three commands are thin wrappers over this tuple. ``lessons`` is the
+    renderer's ACTIVE-only retrieval result; ``validation_lessons`` is the full
+    catalogue so a tampered pack can identify a DRAFT/ARCHIVED lesson by status
+    instead of treating it as dangling."""
 
     ticket: Ticket
     graph: nx.DiGraph[str]
     documents: list[SourceDocument]
     accepted_adrs: list[ArchitectureDecisionRecord]
     lessons: list[Lesson]
+    validation_lessons: list[Lesson]
 
 
 def _load_context_inputs(key: str, repo_root: Path, db: Database) -> _ContextInputs:
@@ -1303,6 +1307,8 @@ def _load_context_inputs(key: str, repo_root: Path, db: Database) -> _ContextInp
     - ``accepted_adrs`` is ``ADRRepo.list()`` filtered to ACCEPTED.
     - ``lessons`` is ``retrieve_lessons(ticket, db)``: the DB-backed retriever
       filters to ACTIVE in SQL, then applies the v1 tag/ticket_type match.
+    - ``validation_lessons`` is the full lesson catalogue for the defensive
+      validator's no-DRAFT check against externally/tampered packs.
     """
     ticket = TicketRepo(db).get_by_key(key)
     if ticket is None:
@@ -1315,7 +1321,10 @@ def _load_context_inputs(key: str, repo_root: Path, db: Database) -> _ContextInp
         adr for adr in ADRRepo(db).list() if adr.status == ADRStatus.ACCEPTED
     ]
     lessons = retrieve_lessons(ticket, db)
-    return _ContextInputs(ticket, graph, documents, accepted_adrs, lessons)
+    validation_lessons = LessonRepo(db).list()
+    return _ContextInputs(
+        ticket, graph, documents, accepted_adrs, lessons, validation_lessons
+    )
 
 
 def _build_pack(inputs: _ContextInputs, *, budget: int) -> ContextPack:
@@ -1358,7 +1367,7 @@ def _context_validate(inputs: _ContextInputs, args: argparse.Namespace) -> int:
     result = validate_context_pack(
         pack,
         documents=inputs.documents,
-        lessons=inputs.lessons,
+        lessons=inputs.validation_lessons,
         ticket=inputs.ticket,
     )
     payload = {

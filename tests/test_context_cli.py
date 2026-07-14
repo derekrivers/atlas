@@ -51,6 +51,7 @@ from test_ingestion import git, make_repo
 from test_lesson_model import lesson_kwargs
 from test_models_validation import ticket_kwargs
 
+import atlas.cli as cli
 from atlas.cli import EXIT_OK, EXIT_PRECONDITION, main
 from atlas.core.models import Lesson, Ticket
 from atlas.storage import Database, LessonRepo, TicketRepo
@@ -142,6 +143,24 @@ def test_render_prints_markdown_and_json_is_a_pack(
     assert "## Objective" in payload["rendered_markdown"]
 
 
+def test_render_with_only_draft_matching_lessons_includes_none(
+    repo: Path, db: Database, capsys: pytest.CaptureFixture[str]
+) -> None:
+    TicketRepo(db).add(make_ticket("ATLAS-61"))
+    LessonRepo(db).add(make_lesson("DRAFT_ONLY_MARKER", "draft"))
+
+    code = main(
+        ["context", "render", "ATLAS-61", "--repo", str(repo), "--json"],
+        database=db,
+    )
+    pack = json.loads(capsys.readouterr().out)
+
+    assert code == EXIT_OK
+    assert pack["historical_lessons"] == []
+    assert "## Lessons" not in pack["rendered_markdown"]
+    assert "DRAFT_ONLY_MARKER" not in pack["rendered_markdown"]
+
+
 def test_render_tiny_budget_is_a_clean_over_budget_error(
     repo: Path, db: Database, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -193,6 +212,34 @@ def test_validate_broken_ticket_exits_non_zero_and_names_failure(
     # The wrong answer: a silent pass, or a verdict that does not name the cause.
     assert "test_commands" in out
     assert "INVALID" in out
+
+
+def test_validate_rejects_tampered_pack_containing_draft_lesson(
+    repo: Path,
+    db: Database,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ticket = make_ticket("ATLAS-60")
+    TicketRepo(db).add(ticket)
+    LessonRepo(db).add(make_lesson("ACTIVE_LESSON_MARKER", "active"))
+    draft = make_lesson("DRAFT_LESSON_MARKER", "draft")
+    LessonRepo(db).add(draft)
+    original_build_pack = cli._build_pack
+
+    def tampered_pack(inputs: Any, *, budget: int) -> Any:
+        pack = original_build_pack(inputs, budget=budget)
+        return pack.model_copy(update={"historical_lessons": [draft.id]})
+
+    monkeypatch.setattr(cli, "_build_pack", tampered_pack)
+
+    code = main(["context", "validate", "ATLAS-60", "--repo", str(repo)], database=db)
+    out = capsys.readouterr().out
+
+    assert code == EXIT_PRECONDITION
+    assert "INVALID" in out
+    assert f"lesson[{draft.id}]" in out
+    assert "'draft'" in out
 
 
 # --- show ------------------------------------------------------------------

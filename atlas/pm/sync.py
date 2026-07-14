@@ -121,7 +121,13 @@ from atlas.pm.agent_runs import reconstruct_agent_runs
 from atlas.pm.completion import complete_verified
 from atlas.pm.promotion import promote_ready
 from atlas.storage.db import Database
-from atlas.storage.repositories import ADRRepo, DebtItemRepo, TicketRepo
+from atlas.storage.repositories import (
+    ADRRepo,
+    ContextPackRepo,
+    DebtItemRepo,
+    LessonRepo,
+    TicketRepo,
+)
 
 # Attribution for system-observed anomalies (data-model §6.1): the PM Engine
 # writes DebtItems from deterministic observation, so created_by_type is
@@ -771,6 +777,29 @@ def _scan_follow_ups(
         )
 
 
+def _record_lesson_citation_feedback(ticket: Ticket, db: Database) -> int:
+    """Record successful reuse for lessons in ``ticket``'s latest stored pack.
+
+    The pack is optional because pack persistence is not part of every render
+    path. When no stored pack is known, completion still proceeds and there is no
+    citation feedback to apply.
+    """
+    pack = ContextPackRepo(db).latest_for_ticket(ticket.id)
+    if pack is None or not pack.historical_lessons:
+        return 0
+    cited_lessons = LessonRepo(db).record_ticket_citation(
+        lesson_ids=pack.historical_lessons,
+        ticket_id=ticket.id,
+    )
+    if cited_lessons:
+        logger.info(
+            "linear-sync: recorded citation feedback for %s on %d lesson(s)",
+            ticket.key,
+            len(cited_lessons),
+        )
+    return len(cited_lessons)
+
+
 def _pull(
     ticket: Ticket,
     tickets: TicketRepo,
@@ -857,6 +886,7 @@ def _pull(
         ticket.key,
     )
     if mapped is TicketStatus.DONE:
+        _record_lesson_citation_feedback(updated, db)
         lesson = extract_lesson_for_ticket(
             updated,
             db=db,

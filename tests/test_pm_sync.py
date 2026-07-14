@@ -46,12 +46,14 @@ from uuid import UUID, uuid4
 
 import pytest
 from linear_fakes import InMemoryLinearClient
+from test_lesson_model import lesson_kwargs
 from test_models_validation import NOW, dependency_kwargs, ticket_kwargs
 
 from atlas.core.anchors import SourceDocument
 from atlas.core.enums import ActorType, EntityStatus, EvidenceStatus
 from atlas.core.models import (
     AnomalyType,
+    ContextPack,
     DebtItem,
     Lesson,
     Ticket,
@@ -65,6 +67,7 @@ from atlas.pm import SyncResult, sync_tick
 from atlas.pm.sync import CREATED_BY
 from atlas.storage import (
     AgentRunRepo,
+    ContextPackRepo,
     Database,
     DebtItemRepo,
     LessonRepo,
@@ -414,6 +417,50 @@ def test_done_transition_extracts_lesson_when_notable(db: Database) -> None:
     assert lessons[0].confidence is None
     assert lessons[0].related_ticket_ids == [ticket.id]
     assert "ATLAS-199" in lesson_client.prompts[0]
+
+
+def test_done_transition_records_citation_feedback_for_latest_pack(
+    db: Database,
+) -> None:
+    client = RecordingClient()
+    ticket = seed_ticket(
+        db,
+        client,
+        key="ATLAS-196",
+        status=TicketStatus.REVIEW_REQUIRED,
+        issue_state=DONE_STATE,
+    )
+    lesson = Lesson(
+        **lesson_kwargs()
+        | {
+            "id": uuid4(),
+            "product_id": ticket.product_id,
+            "status": EntityStatus.ACTIVE,
+            "related_ticket_ids": [],
+        }
+    )
+    LessonRepo(db).add(lesson)
+    ContextPackRepo(db).add(
+        ContextPack(
+            id=uuid4(),
+            product_id=ticket.product_id,
+            ticket_id=ticket.id,
+            title=ticket.title,
+            objective=ticket.objective,
+            historical_lessons=[lesson.id],
+            rendered_markdown="## Lessons\n\n### Reused lesson",
+            created_at=NOW - timedelta(minutes=1),
+        )
+    )
+
+    result = run(db, client)
+
+    pulled = TicketRepo(db).get_by_key("ATLAS-196")
+    cited = LessonRepo(db).get(lesson.id)
+    assert pulled is not None and pulled.status == TicketStatus.DONE
+    assert result.status_pulled == 1
+    assert cited is not None
+    assert cited.related_ticket_ids == [ticket.id]
 
 
 def test_rejected_transition_extracts_lesson(db: Database) -> None:

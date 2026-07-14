@@ -3,7 +3,7 @@
 
 Selects the lessons worth putting in front of an execution agent for one ticket.
 One source: ``status: ACTIVE`` lessons (ADR-0009) whose tags intersect the
-ticket's tag/component/ticket_type facets.
+ticket's tag/ticket_type facets.
 
 The pure :func:`select_lessons` selector takes an already-loaded lesson listing,
 exactly as :func:`~atlas.context.adr_retrieval.select_adrs` takes the
@@ -70,15 +70,9 @@ class LessonMatch:
 
 
 def _ticket_facets(ticket: Ticket) -> frozenset[str]:
-    """The ticket's matchable facet set (rule 4): its tags, its component, and
-    its ticket_type, each normalised, with empty strings dropped.
-
-    rule 4 names ``tags`` and ``ticket_type``; the roadmap line names
-    ``component``. Both are unioned here — a doc-reconciliation follow-up aligns
-    the two wordings to "tags, component, and ticket_type"."""
+    """The ticket's matchable facet set (rule 4): its tags and ticket_type,
+    each normalised, with empty strings dropped."""
     facets = {_normalise(tag) for tag in ticket.tags}
-    if ticket.component:
-        facets.add(_normalise(ticket.component))
     facets.add(_normalise(ticket.ticket_type.value))
     facets.discard("")
     return frozenset(facets)
@@ -148,9 +142,9 @@ def retrieve_lessons(
     """Load up to ``cap`` matching ACTIVE lessons for ``ticket`` from storage.
 
     ADR-0009's governance boundary is enforced in the query itself: DRAFT (and
-    other non-ACTIVE) rows are not loaded and then filtered in Python. Tag,
-    component, and ticket_type matching stays in Python because v1 matching is a
-    normalised set intersection over the JSON tag list.
+    other non-ACTIVE) rows are not loaded and then filtered in Python. Tag and
+    ticket_type matching stays in Python because v1 matching is a normalised set
+    intersection over the JSON tag list.
     """
     with db.session() as session:
         rows = session.scalars(
