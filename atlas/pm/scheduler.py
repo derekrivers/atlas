@@ -107,13 +107,14 @@ def _utcnow() -> datetime:
 @dataclass(frozen=True)
 class TickConfig:
     """The injection a single ``sync_tick`` needs, built once and reused every
-    tick. Mirrors ``sync_tick``'s keyword-only signature exactly (``tickets``,
-    ``db``, ``client``, ``status_map``, ``team_id``, ``project_id``,
-    ``inbox_dir``, ``documents``); ``now`` is the one thing taken fresh per tick
-    (D1) and so is not held here. ``documents`` (ATLAS-164) is the pack-inputs
-    provider the CLI builds from the ``atlas.planning`` collectors — injected
-    because the import spine places ``atlas.pm`` below ``atlas.planning`` — and
-    the tick invokes it lazily, only when a push will actually embed."""
+    tick. Mirrors ``sync_tick``'s keyword-only signature except for ``now``
+    (taken fresh per tick): ``tickets``, ``db``, ``client``, ``status_map``,
+    ``team_id``, ``project_id``, ``inbox_dir``, ``documents``, and the
+    operator-invoked ``repair_packs`` flag. ``documents`` (ATLAS-164) is the
+    pack-inputs provider the CLI builds from the ``atlas.planning`` collectors —
+    injected because the import spine places ``atlas.pm`` below
+    ``atlas.planning`` — and the tick invokes it lazily, only when a push or
+    pack repair will actually embed."""
 
     tickets: TicketRepo
     db: Database
@@ -123,6 +124,7 @@ class TickConfig:
     project_id: str
     inbox_dir: Path
     documents: Callable[[], list[SourceDocument]]
+    repair_packs: bool = False
 
 
 def _signature(exc: BaseException) -> str:
@@ -185,17 +187,31 @@ def run_tick(
     the crash ever escaping."""
 
     try:
-        sync_tick(
-            tickets=config.tickets,
-            db=config.db,
-            client=config.client,
-            status_map=config.status_map,
-            team_id=config.team_id,
-            project_id=config.project_id,
-            inbox_dir=config.inbox_dir,
-            documents=config.documents,
-            now=now,
-        )
+        if config.repair_packs:
+            sync_tick(
+                tickets=config.tickets,
+                db=config.db,
+                client=config.client,
+                status_map=config.status_map,
+                team_id=config.team_id,
+                project_id=config.project_id,
+                inbox_dir=config.inbox_dir,
+                documents=config.documents,
+                now=now,
+                repair_packs=True,
+            )
+        else:
+            sync_tick(
+                tickets=config.tickets,
+                db=config.db,
+                client=config.client,
+                status_map=config.status_map,
+                team_id=config.team_id,
+                project_id=config.project_id,
+                inbox_dir=config.inbox_dir,
+                documents=config.documents,
+                now=now,
+            )
     except Exception as exc:  # create-on-crash: a tick crash never kills the loop
         _record_crash(failures, exc, now)
         return exc

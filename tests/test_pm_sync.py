@@ -47,6 +47,7 @@ import pytest
 from linear_fakes import InMemoryLinearClient
 from test_models_validation import NOW, dependency_kwargs, ticket_kwargs
 
+from atlas.core.anchors import SourceDocument
 from atlas.core.enums import ActorType, EntityStatus
 from atlas.core.models import AnomalyType, DebtItem, Lesson, Ticket, TicketDependency
 from atlas.core.models.ticket import TicketStatus
@@ -96,6 +97,11 @@ PROJECT_ID = "project-1"
 
 EARLIER = NOW
 LATER = NOW + timedelta(hours=1)
+PACK_DOC = SourceDocument(
+    path="docs/atlas/implementation-roadmap.md",
+    sha="sha-pack-doc",
+    content="# Phase 1\n\nA resolvable fixture section for sync tests.\n",
+)
 
 
 class RecordingClient(InMemoryLinearClient):
@@ -244,13 +250,10 @@ def run(
     # them isolated. The follow-up behaviour itself is covered in
     # tests/test_pm_follow_ups.py.
     #
-    # The documents provider (ATLAS-164) defaults to an EMPTY corpus: no seeded
-    # anchor resolves, so every definition push's pack render fails and degrades
-    # to definition-only (D-2) — keeping this suite's push-payload assertions
-    # byte-stable at the pre-164 form. The cost, declared: an embedding push
-    # here also appends one PACK_RENDER_FAILURE DebtItem, so DebtItem
-    # assertions in this module scope to the anomaly type under test. The
-    # embedding behaviour itself is covered in tests/test_pm_pack_embedding.py.
+    # The documents provider (ATLAS-164) supplies a minimal committed corpus
+    # whose heading matches ticket_kwargs().source_anchor. This suite's cursor
+    # and request-budget assertions stay about the generic sync loop; the
+    # degraded pack-render posture is covered in tests/test_pm_pack_embedding.py.
     return sync_tick(
         tickets=TicketRepo(db),
         db=db,
@@ -259,7 +262,7 @@ def run(
         team_id=TEAM_ID,
         project_id=PROJECT_ID,
         inbox_dir=inbox_dir or Path(tempfile.mkdtemp()),
-        documents=lambda: [],
+        documents=lambda: [PACK_DOC],
         now=now,
     )
 
@@ -267,11 +270,7 @@ def run(
 def debt_rows(
     db: Database, kind: AnomalyType, ticket_id: UUID | None = None
 ) -> list[DebtItem]:
-    """The DebtItems of one anomaly class (optionally one ticket's). Scoping by
-    type keeps each proof honest now that a definition push over this suite's
-    deliberately EMPTY corpus also appends one PACK_RENDER_FAILURE row per push
-    (ATLAS-164 D-2; the embedding behaviour is proved in
-    tests/test_pm_pack_embedding.py, not here)."""
+    """The DebtItems of one anomaly class (optionally one ticket's)."""
 
     items = DebtItemRepo(db).list()
     return [

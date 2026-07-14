@@ -106,11 +106,15 @@ class CycleTimeStat:
 class AnomalyCount:
     """``DebtItem``s of one ``AnomalyType``: the total row count and the number
     of distinct tickets for which that type recurs (>= ``RECURRENCE_THRESHOLD``
-    rows, via ``DebtItemRepo.recurring``)."""
+    rows, via ``DebtItemRepo.recurring``). ``cursor_unstamped_ticket_count`` is
+    non-zero only for ``PACK_RENDER_FAILURE``: it counts tickets that still have
+    a recorded pack-render failure while their definition cursor remains behind,
+    i.e. still waiting for the retry-until-embedded path."""
 
     anomaly_type: str
     count: int
     recurring_ticket_count: int
+    cursor_unstamped_ticket_count: int
 
 
 @dataclass(frozen=True)
@@ -237,8 +241,16 @@ def _cycle_time_per_state(
     return stats
 
 
+def _cursor_unstamped(ticket: Ticket) -> bool:
+    """The same definition-cursor predicate the sync push path uses."""
+
+    return (
+        ticket.linear_synced_at is None or ticket.updated_at > ticket.linear_synced_at
+    )
+
+
 def _anomaly_counts(
-    debt_items: list[DebtItem], debt_repo: DebtItemRepo
+    debt_items: list[DebtItem], debt_repo: DebtItemRepo, tickets: list[Ticket]
 ) -> list[AnomalyCount]:
     """``DebtItem``s grouped by ``AnomalyType``, with recurring tickets called
     out per type via ``DebtItemRepo.recurring``.
@@ -248,6 +260,7 @@ def _anomaly_counts(
     visible count and none can be silently omitted."""
     tickets_by_type: dict[str, set[UUID]] = {kind.value: set() for kind in AnomalyType}
     counts: dict[str, int] = {kind.value: 0 for kind in AnomalyType}
+    tickets_by_id = {ticket.id: ticket for ticket in tickets}
     for item in debt_items:
         key = item.anomaly_type.value
         counts[key] += 1
@@ -260,11 +273,20 @@ def _anomaly_counts(
             for ticket_id in tickets_by_type[kind.value]
             if debt_repo.recurring(ticket_id, kind, threshold=RECURRENCE_THRESHOLD)
         )
+        cursor_unstamped = 0
+        if kind is AnomalyType.PACK_RENDER_FAILURE:
+            cursor_unstamped = sum(
+                1
+                for ticket_id in tickets_by_type[kind.value]
+                if (ticket := tickets_by_id.get(ticket_id)) is not None
+                and _cursor_unstamped(ticket)
+            )
         result.append(
             AnomalyCount(
                 anomaly_type=kind.value,
                 count=counts[kind.value],
                 recurring_ticket_count=recurring,
+                cursor_unstamped_ticket_count=cursor_unstamped,
             )
         )
     return result
@@ -377,7 +399,7 @@ def build_delivery_report(
         throughput=_throughput(tickets),
         cycle_time_per_state=_cycle_time_per_state(transition_repo.list_all()),
         ready_queue_depth=ready_depth,
-        anomaly_counts=_anomaly_counts(debt_items, debt_repo),
+        anomaly_counts=_anomaly_counts(debt_items, debt_repo, tickets),
         dwell_breaches=_dwell_breaches(debt_items, tickets, debt_repo),
         tick_failure_count=len(tick_failure_repo.list()),
         draft_lessons=_draft_lessons(
@@ -413,6 +435,7 @@ def report_json(report: DeliveryReport) -> dict[str, object]:
                 "anomaly_type": count.anomaly_type,
                 "count": count.count,
                 "recurring_ticket_count": count.recurring_ticket_count,
+                "cursor_unstamped_ticket_count": (count.cursor_unstamped_ticket_count),
             }
             for count in report.anomaly_counts
         ],
@@ -506,11 +529,13 @@ def render_markdown(report: DeliveryReport) -> str:
     # 4. Anomaly counts.
     lines.append("## Anomaly counts")
     lines.append("")
-    lines.append("| Type | Count | Recurring tickets |")
-    lines.append("| --- | --- | --- |")
+    lines.append("| Type | Count | Recurring tickets | Cursor-unstamped tickets |")
+    lines.append("| --- | --- | --- | --- |")
     for count in report.anomaly_counts:
         lines.append(
-            f"| {count.anomaly_type} | {count.count} | {count.recurring_ticket_count} |"
+            f"| {count.anomaly_type} | {count.count} | "
+            f"{count.recurring_ticket_count} | "
+            f"{count.cursor_unstamped_ticket_count} |"
         )
     lines.append("")
 

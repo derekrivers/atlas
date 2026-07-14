@@ -129,10 +129,14 @@ Rules (the three ATLAS-164 gate rulings):
   definition-only payload, one `PACK_RENDER_FAILURE` DebtItem is appended
   (naming the ticket key, the failure class, and the degradation), and
   the tick continues; a non-typed exception still crashes the tick loudly
-  — fail-closed, never a blanket handler. The cursor stamps on the
-  fallback, so a broken render is not retried every tick; the fixed pack
-  rides the next definition change (an operator force-re-push lever is
-  routed as a follow-up).
+  — fail-closed, never a blanket handler. The cursor is not stamped on
+  the fallback, so `updated_at` stays ahead of `linear_synced_at` and the
+  next tick retries the full embed once the render condition clears. The
+  log and DebtItem summary name the ticket as cursor-unstamped, and
+  `atlas pm report` counts still-unstamped `PACK_RENDER_FAILURE` tickets.
+  Already-stamped historical victims whose Linear description lacks the
+  `ATLAS CONTEXT PACK v1` header are repaired by the operator-invoked
+  `atlas pm sync --repair-packs` sweep, not by the plain periodic tick.
 
 ## Workflow contract
 

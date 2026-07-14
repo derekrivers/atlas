@@ -362,6 +362,26 @@ class TicketRepo(_KeyedRepo[Ticket]):
             row.last_observed_linear_state_id = state_id
             return self._to_model(row)
 
+    def mark_external_linear_id(self, key: str, external_linear_id: str) -> Ticket:
+        """Record a confirmed Linear join key without stamping the sync cursor.
+
+        A first create whose context-pack render degraded to definition-only must
+        remember the issue it just created so the next retry updates that issue
+        rather than creating a duplicate. This is deliberately narrower than
+        :meth:`mark_definition_pushed`: it writes only ``external_linear_id`` and
+        leaves ``linear_synced_at``/``updated_at`` untouched, so the definition
+        cursor still retries until a full embedded push succeeds.
+        """
+        with self._db.session() as session, session.begin():
+            row = session.scalars(
+                sa.select(TicketRow).where(TicketRow.key == key)
+            ).first()
+            if row is None:
+                raise TicketNotFoundError(f"no ticket with key {key!r}")
+            if row.external_linear_id is None:
+                row.external_linear_id = external_linear_id
+            return self._to_model(row)
+
     def mark_definition_pushed(
         self,
         key: str,

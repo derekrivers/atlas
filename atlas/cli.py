@@ -418,11 +418,13 @@ def _add_pm_parser(subcommands: argparse._SubParsersAction) -> None:  # type: ig
     )
 
     # `sync` (ATLAS-50): the recurring scheduler. No `--json` (it is a long-running
-    # loop, not a one-shot read); `--once` runs exactly one tick; `--interval` owns
-    # the cadence; `--inbox-dir` is the follow-up inbox sync_tick writes stubs to;
-    # `--repo` (ATLAS-164) is the repo root the pack-inputs provider re-ingests
-    # documents from (the repo-root sense, mirroring `plan`/`context` — NOT the
-    # GitHub OWNER/REPO slug `evidence`/`verify` mean).
+    # loop, not a one-shot read); `--once` runs exactly one tick; `--repair-packs`
+    # adds the ATLAS-169 one-shot repair sweep and also runs exactly one tick;
+    # `--interval` owns the cadence; `--inbox-dir` is the follow-up inbox
+    # sync_tick writes stubs to; `--repo` (ATLAS-164) is the repo root the
+    # pack-inputs provider re-ingests documents from (the repo-root sense,
+    # mirroring `plan`/`context` — NOT the GitHub OWNER/REPO slug
+    # `evidence`/`verify` mean).
     sync = pm_sub.add_parser(
         "sync",
         help="Run the recurring Linear sync loop (--once runs a single tick)",
@@ -448,6 +450,14 @@ def _add_pm_parser(subcommands: argparse._SubParsersAction) -> None:  # type: ig
         "--repo",
         default=".",
         help="repository root to ingest pack documents from (default: current dir)",
+    )
+    sync.add_argument(
+        "--repair-packs",
+        action="store_true",
+        help=(
+            "run one sync tick with the operator-invoked repair sweep for "
+            "already-stamped Linear descriptions missing the embedded pack header"
+        ),
     )
 
 
@@ -1123,8 +1133,9 @@ def _build_tick_config(args: argparse.Namespace, resolved_db: Database) -> TickC
     """Build the real `sync_tick` injection from config (D3): the live
     `LinearGraphQLClient` (creds from env), the env-configured `LinearStatusMap`,
     the team id from `LINEAR_TEAM_ID`, the project id from `LINEAR_PROJECT_ID`,
-    the inbox dir from `--inbox-dir`, and the pack-inputs documents provider from
-    `--repo` (ATLAS-164). Each boundary fails loud on a missing
+    the inbox dir from `--inbox-dir`, the pack-inputs documents provider from
+    `--repo` (ATLAS-164), and the operator-invoked `--repair-packs` flag
+    (ATLAS-169). Each boundary fails loud on a missing
     precondition — `LinearGraphQLClient()` raises `MissingLinearTokenError` without
     a key, `from_env()` raises `LinearStatusMapError` on a missing/malformed map,
     and an unset team id OR project id raises `MissingLinearTokenError` — so a
@@ -1175,6 +1186,7 @@ def _build_tick_config(args: argparse.Namespace, resolved_db: Database) -> TickC
         project_id=project_id,
         inbox_dir=inbox_dir,
         documents=documents,
+        repair_packs=args.repair_packs,
     )
 
 
@@ -1211,7 +1223,7 @@ def _pm_sync(args: argparse.Namespace, resolved_db: Database) -> int:
     run_scheduler(
         config,
         interval=args.interval,
-        once=args.once,
+        once=args.once or args.repair_packs,
         shutdown=shutdown,
     )
     return EXIT_OK

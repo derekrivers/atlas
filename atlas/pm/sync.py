@@ -65,9 +65,12 @@ leaves ``OWNED_LINEAR_INPUT_KEYS`` unchanged.
 Idempotency rests on the sync cursor ``Ticket.linear_synced_at``: a definition
 is re-pushed only while ``updated_at > linear_synced_at`` (or it has never
 synced), and the cursor is stamped to the pushed ``updated_at`` — so a second
-tick over an unchanged Linear produces zero writes (no redundant status set,
-no re-push). A missed or interrupted tick costs latency only (D5: push to
-Linear first, then stamp; a failed push is retried next tick).
+tick over an unchanged, successfully embedded Linear description produces zero
+writes (no redundant status set, no re-push). A missed or interrupted tick
+costs latency only (D5: push to Linear first, then stamp; a failed push is
+retried next tick). An enumerated context-pack render failure is the one
+intentional unstamped success: it pushes definition-only, leaves
+``linear_synced_at`` behind, and retries until the full embed succeeds.
 
 Layering: this is ``atlas.pm``, above ``atlas.storage``/``atlas.linear``/
 ``atlas.core`` in the import spine — it needs ``TicketRepo``, so it cannot live
@@ -101,6 +104,7 @@ from atlas.dependencies.graph import build_dependency_graph
 from atlas.dependencies.validation import TERMINAL_STATUSES
 from atlas.linear.client import LinearClient, LinearIssue
 from atlas.linear.ownership import (
+    PACK_HEADER_PREFIX,
     LinearStatusMap,
     compose_embedded_description,
     definition_payload,
@@ -322,17 +326,19 @@ class SyncResult:
     counters (ATLAS-164) split each definition push's context-pack outcome:
     ``packs_embedded`` counts pushes whose description carried a rendered pack,
     ``packs_truncated`` the subset whose pack tail hit the D-1 pin (a truncated
-    pack still counts as embedded), and ``pack_render_failures`` the pushes that
-    degraded to definition-only on an enumerated render failure (D-2) — each of
-    those also appended one ``PACK_RENDER_FAILURE`` DebtItem. All three count
-    only pushes that actually fired, so they are bounded by
-    ``pushed_created + pushed_updated``. ``agent_runs_reconstructed`` and
+    pack still counts as embedded), and ``pack_render_failures`` the embed
+    attempts that hit an enumerated render failure (D-2) — each of those also
+    appended one ``PACK_RENDER_FAILURE`` DebtItem. Definition-push failures
+    degrade to definition-only and leave the cursor unstamped; repair-mode
+    failures write nothing. ``agent_runs_reconstructed`` and
     ``agent_runs_updated`` count the local AgentRun reconstruction step
     (ATLAS-166): rows inserted for newly observed dispatch cycles, and existing
     rows filled in when later handoff/evidence becomes observable.
     ``draft_lessons_filed`` (ATLAS-167) counts DRAFT lesson rows filed from
     newly logged review-cycle or dwell-breach anomaly patterns, deduped by
-    pattern type and ticket set."""
+    pattern type and ticket set. ``packs_repaired`` (ATLAS-169) counts
+    operator-invoked repair-mode updates that re-embedded a full context pack
+    into an already-stamped Linear description that lacked the pack header."""
 
     status_pulled: int = 0
     status_unchanged: int = 0
@@ -344,6 +350,7 @@ class SyncResult:
     packs_embedded: int = 0
     packs_truncated: int = 0
     pack_render_failures: int = 0
+    packs_repaired: int = 0
     agent_runs_reconstructed: int = 0
     agent_runs_updated: int = 0
     promoted: int = 0
@@ -943,7 +950,11 @@ def _pull(
 
 
 def _pack_render_failure_item(
-    ticket: Ticket, error: Exception, now: datetime
+    ticket: Ticket,
+    error: Exception,
+    now: datetime,
+    *,
+    summary_posture: str,
 ) -> DebtItem:
     """Build the ``PACK_RENDER_FAILURE`` DebtItem for a definition push whose
     context pack failed to render (ATLAS-164 D-2).
@@ -952,10 +963,8 @@ def _pack_render_failure_item(
     observation items: ``product_id``/``ticket_id`` come from the pushed ticket,
     the type is ``PACK_RENDER_FAILURE``, and ``observed_at``/``created_at`` are
     the injected tick clock. The summary names the ticket key, the failure
-    class, and the degradation taken ("pushed definition-only"); the specific
-    error text lives in the accompanying ``logger.warning``. One row per failed
-    embed push — naturally bounded, since pushes fire only on definition
-    change."""
+    class, and the degradation/repair posture; the specific error text lives in
+    the accompanying ``logger.warning``."""
 
     return DebtItem(
         id=uuid4(),
@@ -964,7 +973,7 @@ def _pack_render_failure_item(
         anomaly_type=AnomalyType.PACK_RENDER_FAILURE,
         summary=(
             f"context pack render failed for {ticket.key} "
-            f"({type(error).__name__}); pushed definition-only"
+            f"({type(error).__name__}); {summary_posture}"
         ),
         observed_at=now,
         created_by_type=ActorType.SYSTEM,
@@ -979,6 +988,8 @@ def _render_embedded_description(
     debt: DebtItemRepo,
     result: SyncResult,
     now: datetime,
+    *,
+    failure_posture: str = "definition_push",
 ) -> str | None:
     """Render ``ticket``'s context pack and compose the embedded description
     (ATLAS-164), or ``None`` when the push must degrade to definition-only.
@@ -986,10 +997,11 @@ def _render_embedded_description(
     The D-2 seam: an enumerated :data:`PACK_RENDER_FAILURE_TYPES` failure —
     from the once-per-tick input load or from this ticket's render — appends
     one ``PACK_RENDER_FAILURE`` DebtItem, warns with the key and error, bumps
-    the counter, and returns ``None``; the caller pushes today's exact
-    definition-only payload and the tick continues. A non-enumerated exception
-    propagates: a bug crashes the tick loudly, never eaten. The D-1 truncation
-    lives in the pure composer; only the counters are read here."""
+    the counter, and returns ``None``. In the definition-push path the caller
+    pushes today's exact definition-only payload and leaves the cursor
+    unstamped; in repair mode the caller writes nothing. A non-enumerated
+    exception propagates: a bug crashes the tick loudly, never eaten. The D-1
+    truncation lives in the pure composer; only the counters are read here."""
 
     try:
         inputs = pack_inputs.load()
@@ -1001,15 +1013,37 @@ def _render_embedded_description(
             lessons=inputs.lessons,
         )
     except PACK_RENDER_FAILURE_TYPES as error:
-        debt.record(_pack_render_failure_item(ticket, error, now))
-        result.pack_render_failures += 1
-        logger.warning(
-            "linear-sync: context pack render failed for %s (%s: %s); "
-            "pushing definition-only",
-            ticket.key,
-            type(error).__name__,
-            error,
+        definition_push = failure_posture == "definition_push"
+        posture = (
+            "pushed definition-only; cursor unstamped"
+            if definition_push
+            else "repair skipped; no Linear write"
         )
+        debt.record(
+            _pack_render_failure_item(
+                ticket,
+                error,
+                now,
+                summary_posture=posture,
+            )
+        )
+        result.pack_render_failures += 1
+        if definition_push:
+            logger.warning(
+                "linear-sync: context pack render failed for %s (%s: %s); "
+                "pushing definition-only; cursor unstamped",
+                ticket.key,
+                type(error).__name__,
+                error,
+            )
+        else:
+            logger.warning(
+                "linear-sync: context pack repair render failed for %s (%s: %s); "
+                "no Linear write",
+                ticket.key,
+                type(error).__name__,
+                error,
+            )
         return None
     composed = compose_embedded_description(ticket, pack)
     result.packs_embedded += 1
@@ -1034,7 +1068,7 @@ def _push(
     debt: DebtItemRepo,
     result: SyncResult,
     now: datetime,
-) -> None:
+) -> str | None:
     """Step 2 (Atlas -> Linear): push the owned definition for a pushable
     ticket whose cursor says it changed. Push first, then stamp (D5).
 
@@ -1043,10 +1077,10 @@ def _push(
     create and update paths alike) — ``description`` stays the single owned key,
     widened in content per the ATLAS-143 precedent. A render failure degrades
     THIS ticket's push to today's exact definition-only payload
-    (:func:`_render_embedded_description`, D-2) and the cursor still stamps
-    (A-3): not stamping would retry the broken render every tick — an unbounded
-    ``update_issue`` drip against the ATLAS-148 budget — so the DebtItem is the
-    operator's signal and the fixed pack rides the next definition change.
+    (:func:`_render_embedded_description`, D-2) and leaves the definition cursor
+    unstamped: the next tick retries the full embed once the render condition
+    clears. On a first-sync degraded create, only the Linear join key is recorded
+    so the retry updates the same issue rather than creating a duplicate.
 
     ``project_id`` is the creation scope threaded alongside ``team_id`` (ATLAS-135):
     a first-sync create places the issue in the configured Linear project so it is
@@ -1056,35 +1090,123 @@ def _push(
 
     if ticket.status not in PUSHABLE_STATUSES or not _definition_changed(ticket):
         result.push_skipped += 1
-        return
+        return None
     definition = definition_payload(ticket)
     embedded = _render_embedded_description(ticket, pack_inputs, debt, result, now)
+    degraded = embedded is None
     if embedded is not None:
         # Widen the owned description in place: definition fields first, then
         # the delimited pack (compose_embedded_description). The D-2 fallback
         # IS the unwidened definition_payload above.
         definition["description"] = embedded
     if ticket.external_linear_id is None:
-        # First sync: create the issue and write back the join key. Stamped
-        # immediately after the confirmed create to shrink the non-idempotent
-        # create-retry window (tracked in docs/tech-debt/debt-register.md).
+        # First sync: create the issue and write back the join key. A full embed
+        # stamps immediately after the confirmed create to shrink the
+        # non-idempotent create-retry window (tracked in
+        # docs/tech-debt/debt-register.md); a degraded create records only the
+        # join key so the next tick updates this issue with the full embed.
         issue = client.create_issue(definition, team_id=team_id, project_id=project_id)
-        tickets.mark_definition_pushed(
-            ticket.key,
-            synced_at=ticket.updated_at,
-            external_linear_id=issue.id,
-        )
+        if degraded:
+            tickets.mark_external_linear_id(ticket.key, issue.id)
+        else:
+            tickets.mark_definition_pushed(
+                ticket.key,
+                synced_at=ticket.updated_at,
+                external_linear_id=issue.id,
+            )
         result.pushed_created += 1
-        logger.info("linear-sync: created Linear issue %s for %s", issue.id, ticket.key)
-        return
+        if degraded:
+            logger.info(
+                "linear-sync: created Linear issue %s for %s with definition-only "
+                "description; cursor unstamped",
+                issue.id,
+                ticket.key,
+            )
+        else:
+            logger.info(
+                "linear-sync: created Linear issue %s for %s", issue.id, ticket.key
+            )
+        return issue.id
     # update_issue is idempotent, so a stamp lost to a crash only re-pushes the
     # same definition next tick — safe to re-run. With an embedded pack the
     # retry is no longer byte-identical (a fresh render mints a new
     # pack_id/rendered_at — gate assumption A-5) but remains a plain overwrite.
     client.update_issue(ticket.external_linear_id, definition)
-    tickets.mark_definition_pushed(ticket.key, synced_at=ticket.updated_at)
     result.pushed_updated += 1
-    logger.info("linear-sync: pushed definition for %s", ticket.key)
+    if degraded:
+        logger.info(
+            "linear-sync: pushed definition-only for %s; cursor unstamped",
+            ticket.key,
+        )
+    else:
+        tickets.mark_definition_pushed(ticket.key, synced_at=ticket.updated_at)
+        logger.info("linear-sync: pushed definition for %s", ticket.key)
+    return ticket.external_linear_id
+
+
+def _has_context_pack_header(description: str | None) -> bool:
+    """Does a Linear description already carry Atlas's embedded-pack header?"""
+
+    return description is not None and PACK_HEADER_PREFIX in description
+
+
+def _repair_pack_absent_descriptions(
+    *,
+    tickets: TicketRepo,
+    client: LinearClient,
+    issues_by_id: Mapping[str, LinearIssue],
+    skipped_issue_ids: set[str],
+    pack_inputs: _PackInputLoader,
+    debt: DebtItemRepo,
+    result: SyncResult,
+    now: datetime,
+) -> None:
+    """Repair already-stamped pushable tickets whose Linear description lacks
+    the Atlas context-pack header.
+
+    Repair mode is operator-invoked only. It reads the descriptions already
+    carried by the batched project pull, writes only matching pack-absent
+    descriptions, and stamps normally after a successful full embed. Tickets
+    whose definition cursor is already stale are left to the normal push retry
+    path; tickets updated by the normal push earlier in this tick are skipped
+    because the prefetched description map is necessarily stale for them.
+    """
+
+    for ticket in tickets.list():
+        issue_id = ticket.external_linear_id
+        if issue_id is None:
+            continue
+        if issue_id in skipped_issue_ids:
+            continue
+        if ticket.status not in PUSHABLE_STATUSES:
+            continue
+        if _definition_changed(ticket):
+            continue
+        issue = issues_by_id.get(issue_id)
+        if issue is None or _has_context_pack_header(issue.description):
+            continue
+
+        embedded = _render_embedded_description(
+            ticket,
+            pack_inputs,
+            debt,
+            result,
+            now,
+            failure_posture="repair",
+        )
+        if embedded is None:
+            continue
+
+        definition = definition_payload(ticket)
+        definition["description"] = embedded
+        client.update_issue(issue_id, definition)
+        tickets.mark_definition_pushed(ticket.key, synced_at=ticket.updated_at)
+        result.pushed_updated += 1
+        result.packs_repaired += 1
+        logger.info(
+            "linear-sync: repaired missing embedded context pack for %s",
+            ticket.key,
+        )
 
 
 def sync_tick(
@@ -1098,6 +1220,7 @@ def sync_tick(
     inbox_dir: Path,
     documents: Callable[[], list[SourceDocument]],
     now: datetime,
+    repair_packs: bool = False,
 ) -> SyncResult:
     """Run one idempotent sync pass over every ticket (steps 1-5).
 
@@ -1119,14 +1242,22 @@ def sync_tick(
     keeps ``atlas.planning``'s collectors out of this layer) plus DB-local
     graph/ADR/lesson reads, so a tick with no push loads NOTHING and adds zero
     requests; an enumerated render failure degrades that push to
-    definition-only with one typed ``PACK_RENDER_FAILURE`` DebtItem (D-2), the
-    cursor stamping either way (A-3 — the embedded pack refreshes on
-    definition change only, D-3). Pull precedes push so a
+    definition-only with one typed ``PACK_RENDER_FAILURE`` DebtItem (D-2), and
+    leaves the cursor unstamped so the next tick retries the full embed once the
+    render condition clears. Pull precedes push so a
     status pulled into a frozen state freezes the same tick's push. Each Linear
     write is bracketed by its own DB commit (push-then-stamp), so an
     interrupted tick is safe to re-run. An issue the push just created is not
     in this tick's pre-fetched map, which changes nothing: its ticket had no
     join key when step 1 ran, so it was never pulled in the same tick anyway.
+
+    When ``repair_packs`` is true (operator-invoked only), a one-shot repair
+    sweep follows the normal push pass: pushable tickets that are already
+    cursor-stamped, have an ``external_linear_id``, and whose already-fetched
+    Linear description lacks the ``ATLAS CONTEXT PACK v1`` header are re-rendered
+    and re-pushed with a full embed. Successful repairs stamp normally; a board
+    whose descriptions already carry the header writes nothing. The plain tick
+    does not run this branch and therefore keeps the ATLAS-148 request bound.
 
     Then step 3 (ATLAS-43): project the dependency graph and promote every
     dependency-ready ticket to ``Ready for Agent`` via the sanctioned
@@ -1225,8 +1356,9 @@ def sync_tick(
     # first push that will actually embed, so a no-op tick stays byte-identical
     # in both requests and local reads.
     pack_inputs = _PackInputLoader(db, documents)
+    pushed_issue_ids: set[str] = set()
     for after_pull in pulled_board:
-        _push(
+        pushed_issue_id = _push(
             after_pull,
             tickets,
             client,
@@ -1236,6 +1368,19 @@ def sync_tick(
             debt,
             result,
             now,
+        )
+        if pushed_issue_id is not None:
+            pushed_issue_ids.add(pushed_issue_id)
+    if repair_packs:
+        _repair_pack_absent_descriptions(
+            tickets=tickets,
+            client=client,
+            issues_by_id=issues_by_id,
+            skipped_issue_ids=pushed_issue_ids,
+            pack_inputs=pack_inputs,
+            debt=debt,
+            result=result,
+            now=now,
         )
     graph = build_dependency_graph(db)
     result.promoted = promote_ready(
