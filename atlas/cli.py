@@ -96,6 +96,8 @@ dwell-breach rows) as markdown or JSON. `search` scans ACTIVE Lessons by title
 and tag tokens, with optional tag filtering, for deterministic organisational
 memory lookup. They write nothing and make no LLM call. `lessons extract <KEY>`
 remains the explicit operator-request write side for generating one DRAFT lesson.
+`lessons playbook <tag>` drafts canonical-doc Markdown from ACTIVE lessons under
+one tag onto a new review branch, with no commit or automatic PR creation.
 
 `verify` (ATLAS-80) is the Phase 7 entry point that makes the verification engine
 usable: `verify --pr N --repo OWNER/REPO` verifies every ticket the PR closes,
@@ -189,7 +191,11 @@ from atlas.learning import (
     DEFAULT_LESSON_SCHEDULER_INTERVAL_SECONDS,
     ExtractionTrigger,
     LessonSchedulerConfig,
+    NoActiveLessonsForTagError,
+    PlaybookGenerationError,
+    PlaybookGitError,
     build_lessons_report,
+    draft_playbook_branch,
     extract_lesson_for_ticket,
     lesson_search_results_json,
     lessons_report_json,
@@ -2294,7 +2300,10 @@ def _add_lessons_parser(subcommands: argparse._SubParsersAction) -> None:  # typ
 
     lessons = subcommands.add_parser(
         "lessons",
-        help="Learning System: report, search, extract, review, and promote lessons",
+        help=(
+            "Learning System: report, search, extract, playbook, review, "
+            "and promote lessons"
+        ),
     )
     lessons_sub = lessons.add_subparsers(dest="lessons_command", required=True)
 
@@ -2388,6 +2397,18 @@ def _add_lessons_parser(subcommands: argparse._SubParsersAction) -> None:  # typ
     extract.add_argument("key", help="the ticket key")
     extract.add_argument("--db", default=None, help="database URL")
 
+    playbook = lessons_sub.add_parser(
+        "playbook",
+        help="Draft a playbook from ACTIVE lessons under a tag on a new branch",
+    )
+    playbook.add_argument("tag", help="lesson tag to draft into a playbook")
+    playbook.add_argument(
+        "--repo",
+        default=".",
+        help="repository root for the playbook branch (default: current directory)",
+    )
+    playbook.add_argument("--db", default=None, help="database URL")
+
     schedule = lessons_sub.add_parser(
         "schedule",
         help="Run the recurring lesson extraction scheduler",
@@ -2440,6 +2461,8 @@ def _lessons_command(
         return EXIT_OK
     if args.lessons_command == "review":
         return _lessons_review(args, resolved_db)
+    if args.lessons_command == "playbook":
+        return _lessons_playbook(args, resolved_db, client=client)
     if args.lessons_command in {"extract", "schedule"}:
         return _lessons_extract_or_schedule(args, resolved_db, client=client)
 
@@ -2602,6 +2625,44 @@ def _lessons_extract_or_schedule(
     print(
         f"Extracted DRAFT lesson {lesson.id} for {ticket.key} "
         f"(confidence: {lesson.confidence})."
+    )
+    return EXIT_OK
+
+
+def _lessons_playbook(
+    args: argparse.Namespace,
+    resolved_db: Database,
+    *,
+    client: PlannerClient | None,
+) -> int:
+    """Draft a playbook branch from ACTIVE lessons under one tag."""
+
+    lesson_client = client
+    if lesson_client is None:
+        try:
+            lesson_client = AnthropicPlannerClient()
+        except PlannerClientError as error:
+            print(error, file=sys.stderr)
+            return EXIT_PRECONDITION
+    try:
+        result = draft_playbook_branch(
+            LessonRepo(resolved_db),
+            args.tag,
+            client=lesson_client,
+            repo_root=Path(args.repo).resolve(),
+            now=datetime.now(UTC),
+        )
+    except NoActiveLessonsForTagError as error:
+        print(error, file=sys.stderr)
+        return EXIT_PRECONDITION
+    except (PlaybookGenerationError, PlaybookGitError) as error:
+        print(error, file=sys.stderr)
+        return EXIT_PRECONDITION
+
+    print(f"Drafted playbook {result.path.as_posix()} on branch {result.branch_name}.")
+    print(
+        "Review the file, commit it, push the branch, and open a PR for "
+        "operator review and merge."
     )
     return EXIT_OK
 
