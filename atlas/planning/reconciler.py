@@ -45,6 +45,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from atlas.core.models import Epic, Ticket, TicketDependency, TicketStatus
+from atlas.core.tokens import normalise_tokens as normalise_tokens
 from atlas.planning.proposal import Proposal, ProposalEpic, ProposalTicket
 
 DEFAULT_SIMILARITY_THRESHOLD = 0.85
@@ -69,7 +70,6 @@ CONFLICT = "CONFLICT"
 _TYPE_ORDER = {ADD: 0, MODIFY: 1, PROPOSE_ARCHIVE: 2, CONFLICT: 3}
 _KIND_ORDER = {"epic": 0, "ticket": 1, "dependency": 2}
 
-_NON_ALNUM_RE = re.compile(r"[^0-9a-z]+")
 _NATURAL_RE = re.compile(r"(\d+)")
 _STUB_ANCHOR_IDENTITY_RE = re.compile(
     r"^(docs/planning/inbox/)(?:processed/)?([^/#]+\.md)(#.*)?$"
@@ -99,12 +99,6 @@ _EPIC_FIELDS = (
     "risk_level",
     "source_anchor",
 )
-
-
-def normalise_tokens(text: str) -> frozenset[str]:
-    """Spec §4 normalisation: casefold; every non-alphanumeric character
-    becomes a space; whitespace-split into a token set."""
-    return frozenset(_NON_ALNUM_RE.sub(" ", text.casefold()).split())
 
 
 def similarity(title_a: str, objective_a: str, title_b: str, objective_b: str) -> float:

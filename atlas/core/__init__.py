@@ -24,6 +24,7 @@ from atlas.core.models import (
     TicketStatus,
     TicketType,
 )
+from atlas.core.tokens import normalise_tokens
 from atlas.core.trust import InvalidActorTypeError, evidence_tier
 
 __all__ = [
@@ -54,4 +55,5 @@ __all__ = [
     "TicketStatus",
     "TicketType",
     "evidence_tier",
+    "normalise_tokens",
 ]
