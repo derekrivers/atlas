@@ -284,9 +284,13 @@ Pure deterministic code. Matching passes, in order:
    fixed for the run, and recorded in `PlanRun.similarity_threshold` — no
    config file, environment variable, or settings layer. Normalisation:
    casefold; every non-alphanumeric character becomes a space;
-   whitespace-split into a token set. Similarity is the Sørensen–Dice
-   coefficient over the token sets of the concatenated title and
-   objective — 2·|A∩B| / (|A| + |B|); two empty sets score 1.0.
+   whitespace-split into a token set. The primitive lives in
+   `atlas/core/tokens.py` and is shared with other deterministic consumers,
+   but this §4 contract remains authoritative: changing its behaviour requires
+   an ADR plus a spec edit, and consumers that need different tokenisation
+   must add their own function. Similarity is the Sørensen–Dice coefficient
+   over the token sets of the concatenated title and objective —
+   2·|A∩B| / (|A| + |B|); two empty sets score 1.0.
 4. **No match** — proposal item becomes `ADD`.
 
 Existing items unmatched by any pass become `PROPOSE_ARCHIVE`. Nothing is

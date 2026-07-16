@@ -40,9 +40,17 @@ from atlas.learning.scheduler import (
 from atlas.learning.scheduler import (
     run_scheduler as run_lesson_scheduler,
 )
+from atlas.learning.search import (
+    DEFAULT_LESSON_SEARCH_LIMIT,
+    LessonSearchResult,
+    lesson_search_results_json,
+    render_lesson_search_results,
+    search_lessons,
+)
 
 __all__ = [
     "DEFAULT_LESSON_SCHEDULER_INTERVAL_SECONDS",
+    "DEFAULT_LESSON_SEARCH_LIMIT",
     "DEFAULT_RAW_DIFF_SIZE_CAP_BYTES",
     "PATTERN_THRESHOLD",
     "ActiveCitationCount",
@@ -52,6 +60,7 @@ __all__ = [
     "LessonExtractionError",
     "LessonModelClient",
     "LessonSchedulerConfig",
+    "LessonSearchResult",
     "LessonSummary",
     "LessonsReport",
     "PatternCandidate",
@@ -64,10 +73,13 @@ __all__ = [
     "detect_pattern_candidates",
     "extract_lesson_for_ticket",
     "find_tickets_needing_extraction",
+    "lesson_search_results_json",
     "lessons_report_json",
     "notable_done_ticket",
     "render_extraction_prompt",
+    "render_lesson_search_results",
     "render_lessons_report_markdown",
     "run_lesson_scheduler",
     "run_poll_cycle",
+    "search_lessons",
 ]

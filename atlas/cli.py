@@ -89,12 +89,13 @@ never a traceback; no token is ever printed. `evidence` exit codes: 0 success; 2
 precondition. NOTE: `pull --repo` is the GitHub `OWNER/REPO` slug, not the
 repo-root path that `plan`/`context` `--repo` mean.
 
-`lessons report` is the Learning System's pure read side: it renders lesson
-analytics (category/status and tag grouping, ACTIVE citation counts, pattern
-candidates, DRAFT promotion backlog age, and dwell-breach rows) as markdown or
-JSON. It reads stored Lessons, DebtItems, and Tickets; it writes nothing and
-makes no LLM call. `lessons extract <KEY>` remains the explicit operator-request
-write side for generating one DRAFT lesson.
+`lessons report` and `lessons search <query>` are the Learning System's pure
+read side. `report` renders lesson analytics (category/status and tag grouping,
+ACTIVE citation counts, pattern candidates, DRAFT promotion backlog age, and
+dwell-breach rows) as markdown or JSON. `search` scans ACTIVE Lessons by title
+and tag tokens, with optional tag filtering, for deterministic organisational
+memory lookup. They write nothing and make no LLM call. `lessons extract <KEY>`
+remains the explicit operator-request write side for generating one DRAFT lesson.
 
 `verify` (ATLAS-80) is the Phase 7 entry point that makes the verification engine
 usable: `verify --pr N --repo OWNER/REPO` verifies every ticket the PR closes,
@@ -190,9 +191,12 @@ from atlas.learning import (
     LessonSchedulerConfig,
     build_lessons_report,
     extract_lesson_for_ticket,
+    lesson_search_results_json,
     lessons_report_json,
+    render_lesson_search_results,
     render_lessons_report_markdown,
     run_lesson_scheduler,
+    search_lessons,
 )
 from atlas.linear.client import (
     PROJECT_ID_ENV,
@@ -2290,9 +2294,27 @@ def _add_lessons_parser(subcommands: argparse._SubParsersAction) -> None:  # typ
 
     lessons = subcommands.add_parser(
         "lessons",
-        help="Learning System: report, extract, review, and promote lessons",
+        help="Learning System: report, search, extract, review, and promote lessons",
     )
     lessons_sub = lessons.add_subparsers(dest="lessons_command", required=True)
+
+    search = lessons_sub.add_parser(
+        "search",
+        help=(
+            "Search ACTIVE lessons by title/tag keyword tokens "
+            "(read-only; --json for structured output)"
+        ),
+    )
+    search.add_argument("query", nargs="+", help="keyword query")
+    search.add_argument(
+        "--tag",
+        default=None,
+        help="filter to lessons carrying this exact tag before keyword matching",
+    )
+    search.add_argument(
+        "--json", action="store_true", help="emit machine-readable JSON array"
+    )
+    search.add_argument("--db", default=None, help="database URL")
 
     report = lessons_sub.add_parser(
         "report",
@@ -2393,6 +2415,17 @@ def _lessons_command(
 ) -> int:
     """Route `atlas lessons` report, extraction, scheduler, and gate commands."""
     resolved_db = database if database is not None else Database(args.db)
+    if args.lessons_command == "search":
+        results = search_lessons(
+            LessonRepo(resolved_db).list(),
+            " ".join(args.query),
+            tag=args.tag,
+        )
+        if args.json:
+            print(json.dumps(lesson_search_results_json(results)))
+        else:
+            print(render_lesson_search_results(results))
+        return EXIT_OK
     if args.lessons_command == "report":
         report = build_lessons_report(
             LessonRepo(resolved_db),
