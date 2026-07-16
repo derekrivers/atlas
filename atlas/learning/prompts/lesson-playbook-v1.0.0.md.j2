@@ -1,0 +1,33 @@
+---
+prompt_version: lesson-playbook-v1.0.0
+template_engine: jinja2
+template_variables:
+  - tag
+  - lessons_json
+---
+# Atlas Lesson Playbook Drafting
+
+Draft a concise operational playbook for Atlas from the ACTIVE lessons tagged
+`{{ tag }}`.
+
+Use only the lesson records below. Each record is already operator-promoted
+ACTIVE memory. Do not include DRAFT or ARCHIVED material, and do not invent
+lesson IDs, ticket IDs, outcomes, or cited sources.
+
+Return Markdown only. Do not wrap the response in a code fence. Do not include
+the top-level `# ... Playbook` heading and do not include a provenance section;
+deterministic Atlas code will add both. Avoid JSON code fences.
+
+Use practical sections an operator can review and merge as a canonical Atlas
+document, such as:
+
+- When to use this playbook
+- Operating rules
+- Failure modes to avoid
+- Review checklist
+
+ACTIVE lesson records:
+
+```json no-schema
+{{ lessons_json }}
+```
