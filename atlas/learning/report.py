@@ -19,7 +19,12 @@ from atlas.core.enums import EntityStatus
 from atlas.core.models.debt_item import AnomalyType, DebtItem
 from atlas.core.models.lesson import Lesson, LessonCategory
 from atlas.core.models.ticket import Ticket
-from atlas.learning.patterns import PatternCandidate, detect_pattern_candidates
+from atlas.learning.patterns import (
+    PATTERN_THRESHOLD,
+    PatternCandidate,
+    PatternCandidateSource,
+    detect_pattern_candidates,
+)
 from atlas.storage.repositories import DebtItemRepo, LessonRepo, TicketRepo
 
 REPORT_STATUSES = (
@@ -235,7 +240,11 @@ def build_lessons_report(
         lessons_by_status=_lessons_by_status(lessons),
         lessons_by_tag=_lessons_by_tag(lessons),
         active_citation_counts=_active_citation_counts(lessons),
-        pattern_candidates=detect_pattern_candidates(lessons, debt_items),
+        pattern_candidates=detect_pattern_candidates(
+            lessons,
+            threshold=PATTERN_THRESHOLD,
+            code_quality_debt_items=debt_items,
+        ),
         promotion_backlog_age_hours=backlog_age,
         promotion_backlog_oldest_created_at=backlog_oldest,
         dwell_breaches=_dwell_breaches(debt_items, tickets),
@@ -292,7 +301,13 @@ def lessons_report_json(report: LessonsReport) -> dict[str, object]:
             for count in report.active_citation_counts
         ],
         "pattern_candidates": [
-            {"tag": candidate.tag, "count": candidate.count}
+            {
+                "source": candidate.source.value,
+                "tag": candidate.tag,
+                "count": candidate.count,
+                "lesson_titles": list(candidate.lesson_titles),
+                "ticket_ids": [str(ticket_id) for ticket_id in candidate.ticket_ids],
+            }
             for candidate in report.pattern_candidates
         ],
         "promotion_backlog_age_hours": report.promotion_backlog_age_hours,
@@ -322,6 +337,12 @@ def _tags(tags: list[str]) -> str:
 
 def _hours(value: float | None) -> str:
     return "n/a" if value is None else f"{value:g}"
+
+
+def _candidate_source(candidate: PatternCandidate) -> str:
+    if candidate.source is PatternCandidateSource.CODE_QUALITY_DEBT_CATEGORY:
+        return "code-quality debt category"
+    return "failure tag"
 
 
 def render_lessons_report_markdown(report: LessonsReport) -> str:
@@ -402,10 +423,16 @@ def render_lessons_report_markdown(report: LessonsReport) -> str:
     lines.append("## Pattern candidates")
     lines.append("")
     if report.pattern_candidates:
-        lines.append("| Tag | Count |")
-        lines.append("| --- | --- |")
+        lines.append("| Source | Tag | Count | Lesson titles | Ticket ids |")
+        lines.append("| --- | --- | --- | --- | --- |")
         for candidate in report.pattern_candidates:
-            lines.append(f"| {_md(candidate.tag)} | {candidate.count} |")
+            lesson_titles = ", ".join(candidate.lesson_titles) or "n/a"
+            ticket_ids = ", ".join(str(ticket_id) for ticket_id in candidate.ticket_ids)
+            lines.append(
+                f"| {_md(_candidate_source(candidate))} | {_md(candidate.tag)} | "
+                f"{candidate.count} | {_md(lesson_titles)} | "
+                f"{_md(ticket_ids or 'n/a')} |"
+            )
     else:
         lines.append("No pattern candidates detected.")
     lines.append("")

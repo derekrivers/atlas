@@ -10,7 +10,12 @@ from atlas.learning.extractor import (
     notable_done_ticket,
     render_extraction_prompt,
 )
-from atlas.learning.patterns import PATTERN_THRESHOLD, PatternCandidate
+from atlas.learning.patterns import (
+    PATTERN_THRESHOLD,
+    PatternCandidate,
+    PatternCandidateSource,
+    detect_pattern_candidates,
+)
 from atlas.learning.report import (
     ActiveCitationCount,
     CategoryStatusCount,
@@ -50,11 +55,13 @@ __all__ = [
     "LessonSummary",
     "LessonsReport",
     "PatternCandidate",
+    "PatternCandidateSource",
     "ScheduledExtraction",
     "StatusLessonGroup",
     "TagLessonGroup",
     "assemble_evidence_bundle",
     "build_lessons_report",
+    "detect_pattern_candidates",
     "extract_lesson_for_ticket",
     "find_tickets_needing_extraction",
     "lessons_report_json",

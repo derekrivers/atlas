@@ -43,7 +43,8 @@ ACTIVE lessons due for review. Per lesson the operator can **promote** with
 operator assigns confidence at promotion — confidence is an operator
 judgement, not a model output), **edit then promote** by manually editing the
 stored lesson before promotion, **reject** with `atlas lessons reject
-<LESSON_ID>` (ARCHIVED, kept for pattern detection), **merge** with
+<LESSON_ID>` (ARCHIVED, retained for audit; v1 pattern-candidate detection
+counts DRAFT and ACTIVE lessons only), **merge** with
 `atlas lessons merge <DRAFT_ID> --into <ACTIVE_ID>`, or **archive** an obsolete
 ACTIVE lesson with `atlas lessons archive <LESSON_ID>`. Promotion is the
 single human gate between agent experience and future agent context.
@@ -64,10 +65,12 @@ honest:
 
 ## Pattern detection
 
-Deterministic heuristics over lessons, debt items, and anomaly logs (no
-LLM): recurrence of the same tag across ≥3 failure-pattern lessons, or
-the same DebtItem category recurring across tickets, raises a
-pattern-candidate flag in `atlas lessons report`. Patterns are inputs to
+Deterministic heuristics over lessons and the code-quality debt register
+(once ATLAS-117 exists; no LLM): recurrence of the same tag across ≥3
+DRAFT or ACTIVE failure-pattern lessons, or the same code-quality
+debt-register category recurring across tickets, raises a pattern-candidate
+flag in `atlas lessons report`. Delivery-anomaly `DebtItem.anomaly_type`
+is not a code-quality debt category (ADR-0011). Patterns are inputs to
 playbooks and to planning (a recurring failure tag is a strong signal a
 doc or lint rule is missing — the harness-engineering response).
 

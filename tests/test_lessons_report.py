@@ -157,9 +157,10 @@ def test_promotion_backlog_age_uses_oldest_draft(db: Database) -> None:
     assert report.promotion_backlog_oldest_created_at == NOW - timedelta(days=3)
 
 
-def test_pattern_candidates_count_failure_tags_and_debt_categories() -> None:
+def test_pattern_candidates_count_failure_tags_and_skip_delivery_anomaly_debt() -> None:
     lessons = [
         make_lesson(status="draft", category="failure_pattern", tags=["rebase"]),
+        make_lesson(status="active", category="failure_pattern", tags=["rebase"]),
         make_lesson(status="active", category="failure_pattern", tags=["rebase"]),
         make_lesson(status="archived", category="failure_pattern", tags=["rebase"]),
         make_lesson(status="active", category="testing", tags=["rebase"]),
@@ -167,10 +168,9 @@ def test_pattern_candidates_count_failure_tags_and_debt_categories() -> None:
     tickets = [make_ticket(f"ATLAS-{index}") for index in range(1, 4)]
     debt = [make_debt(ticket.id, AnomalyType.DWELL_BREACH) for ticket in tickets]
 
-    candidates = detect_pattern_candidates(lessons, debt)
+    candidates = detect_pattern_candidates(lessons, code_quality_debt_items=debt)
 
     assert [(candidate.tag, candidate.count) for candidate in candidates] == [
-        ("debt:dwell_breach", 3),
         ("rebase", 3),
     ]
 
