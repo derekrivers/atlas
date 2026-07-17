@@ -34,6 +34,7 @@ DOCUMENTED_FIELDS: dict[str, tuple[Any, Any]] = {
     "outcome": (str, REQUIRED),
     # Operator-assigned at promotion; extraction drafts leave it null.
     "confidence": (float | None, None),
+    "source_ticket_id": (UUID, REQUIRED),
     "related_ticket_ids": (list[UUID], LIST_FACTORY),
     "related_adr_ids": (list[UUID], LIST_FACTORY),
     "tags": (list[str], LIST_FACTORY),
@@ -66,6 +67,7 @@ def lesson_kwargs() -> dict[str, Any]:
         "solution": "Split into narrow, dependency-aware units.",
         "outcome": "Agent PRs became easier to review.",
         "confidence": 0.9,
+        "source_ticket_id": uuid4(),
         "created_by_type": "agent",
         "created_by_id": "claude",
         "created_at": datetime(2026, 6, 12, tzinfo=UTC),

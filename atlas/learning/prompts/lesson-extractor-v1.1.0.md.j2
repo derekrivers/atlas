@@ -40,7 +40,8 @@ without pretending there is source ticket vocabulary to reuse.
 
 Return exactly one JSON object and no surrounding prose. The object must be
 valid after deterministic Atlas code assigns id, product_id, status, confidence,
-related_ticket_ids, created_by_type, created_by_id, created_at, and updated_at.
+source_ticket_id, related_ticket_ids, created_by_type, created_by_id, created_at,
+and updated_at.
 
 Allowed output keys:
 
@@ -52,8 +53,9 @@ Allowed output keys:
 - `related_adr_ids`
 - `tags`
 
-Do not output `status`, `confidence`, `related_ticket_ids`, identity fields, or
-timestamps. Confidence is assigned only by the operator at promotion.
+Do not output `status`, `confidence`, `source_ticket_id`, `related_ticket_ids`,
+identity fields, or timestamps. Confidence is assigned only by the operator at
+promotion.
 
 The final persisted object is validated against this Lesson JSON Schema:
 

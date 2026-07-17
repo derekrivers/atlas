@@ -261,7 +261,8 @@ def test_cli_lessons_schedule_once_triggers_extraction_for_fixture_tickets(
     assert "failed=0" in out
     lessons = LessonRepo(db).list()
     assert len(lessons) == 1
-    assert lessons[0].related_ticket_ids == [eligible.id]
+    assert lessons[0].source_ticket_id == eligible.id
+    assert lessons[0].related_ticket_ids == []
     assert repo.get(declined.id).lesson_extraction_attempted_at is not None  # type: ignore[union-attr]
     assert repo.get(eligible.id).lesson_extraction_attempted_at is not None  # type: ignore[union-attr]
     assert repo.get(skipped.id).lesson_extraction_attempted_at == (  # type: ignore[union-attr]

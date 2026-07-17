@@ -297,8 +297,8 @@ def test_prompt_preserves_lesson_output_key_contract() -> None:
 
     assert allowed_output_keys(prompt) == LESSON_ALLOWED_OUTPUT_KEYS
     assert (
-        "Do not output `status`, `confidence`, `related_ticket_ids`, identity "
-        "fields, or timestamps."
+        "Do not output `status`, `confidence`, `source_ticket_id`, "
+        "`related_ticket_ids`, identity fields, or timestamps."
     ) in flat
 
 
@@ -367,7 +367,8 @@ def test_done_ticket_with_prior_same_type_failure_persists_draft(db: Database) -
     assert lesson is not None
     assert lesson.status.value == "draft"
     assert lesson.confidence is None
-    assert lesson.related_ticket_ids == [ticket.id]
+    assert lesson.source_ticket_id == ticket.id
+    assert lesson.related_ticket_ids == []
     assert LessonRepo(db).list() == [lesson]
     stored = TicketRepo(db).get(ticket.id)
     assert stored is not None
@@ -395,7 +396,8 @@ def test_rejected_ticket_persists_draft(db: Database) -> None:
     assert lesson is not None
     assert lesson.status.value == "draft"
     assert lesson.confidence is None
-    assert lesson.related_ticket_ids == [ticket.id]
+    assert lesson.source_ticket_id == ticket.id
+    assert lesson.related_ticket_ids == []
     stored = TicketRepo(db).get(ticket.id)
     assert stored is not None
     assert stored.lesson_extraction_attempted_at == NOW
@@ -417,7 +419,8 @@ def test_pm_failure_analysis_event_persists_draft(db: Database) -> None:
 
     assert lesson is not None
     assert lesson.confidence is None
-    assert lesson.related_ticket_ids == [ticket.id]
+    assert lesson.source_ticket_id == ticket.id
+    assert lesson.related_ticket_ids == []
     stored = TicketRepo(db).get(ticket.id)
     assert stored is not None
     assert stored.lesson_extraction_attempted_at == NOW
@@ -440,7 +443,8 @@ def test_cli_lessons_extract_persists_draft_with_null_confidence(
     (lesson,) = LessonRepo(db).list()
     assert lesson.status.value == "draft"
     assert lesson.confidence is None
-    assert lesson.related_ticket_ids == [ticket.id]
+    assert lesson.source_ticket_id == ticket.id
+    assert lesson.related_ticket_ids == []
 
 
 def test_failed_llm_call_logs_warning_and_persists_no_partial(

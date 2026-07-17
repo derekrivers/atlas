@@ -381,10 +381,11 @@ After the review-cycle and dwell-breach clauses append their `DebtItem` rows,
 the same step-5 anomaly pass triggers lesson extraction for each newly observed
 failure-analysis event. The extractor calls an LLM over a bounded evidence
 bundle and persists a schema-valid DRAFT `Lesson` with `confidence = null` and
-the source ticket in `related_ticket_ids`; a re-tick over unchanged state does
-not retry because no new `DebtItem` is appended. The row is store-only, never a
-document write, and promotion or discard remains the operator-owned Learning
-System workflow.
+the source ticket in `source_ticket_id`; `related_ticket_ids` remains reserved
+for later citation feedback. A re-tick over unchanged state does not retry
+because no new `DebtItem` is appended. The row is store-only, never a document
+write, and promotion or discard remains the operator-owned Learning System
+workflow.
 
 - Review cycling (ATLAS-120): more than 3 `changes_requested → pr_open` round
   trips routes the ticket to `Needs Human` with a failure-analysis note. This is

@@ -139,12 +139,15 @@ def test_promote_out_of_range_confidence_raises_typed_validation_error(
 def test_merge_archives_draft_and_updates_target_related_tickets(
     db: Database,
 ) -> None:
+    target_source = uuid4()
+    draft_source = uuid4()
     shared_ticket = uuid4()
     new_ticket = uuid4()
     draft = seed_lesson(
         db,
         make_lesson(
             title="Duplicate draft",
+            source_ticket_id=draft_source,
             related_ticket_ids=[shared_ticket, new_ticket],
             confidence=None,
         ),
@@ -154,6 +157,7 @@ def test_merge_archives_draft_and_updates_target_related_tickets(
         make_lesson(
             status="active",
             title="Existing active",
+            source_ticket_id=target_source,
             related_ticket_ids=[shared_ticket],
         ),
     )
@@ -162,7 +166,13 @@ def test_merge_archives_draft_and_updates_target_related_tickets(
 
     assert archived_draft.status is EntityStatus.ARCHIVED
     assert updated_target.status is EntityStatus.ACTIVE
+    assert archived_draft.source_ticket_id == draft_source
+    assert updated_target.source_ticket_id == target_source
     assert updated_target.related_ticket_ids == [shared_ticket, new_ticket]
+    # Seeded red first with assert 1 == 2 (B011): the merged-away source is
+    # audit provenance on the archived draft, not a target citation.
+    if draft_source in updated_target.related_ticket_ids:
+        assert 1 == 2  # type: ignore[comparison-overlap]
     assert LessonRepo(db).get(draft.id) == archived_draft
     assert LessonRepo(db).get(target.id) == updated_target
 
@@ -175,7 +185,8 @@ def test_cli_review_lists_only_draft_lessons_with_source_ticket(
         db,
         make_lesson(
             title="Review me",
-            related_ticket_ids=[source.id],
+            source_ticket_id=source.id,
+            related_ticket_ids=[],
             created_at=NOW - timedelta(days=1),
             confidence=None,
         ),
@@ -248,7 +259,8 @@ def test_cli_review_stale_lists_active_lessons_meeting_pack_threshold(
         make_lesson(
             status="active",
             title="Needs stale review",
-            related_ticket_ids=[source.id],
+            source_ticket_id=source.id,
+            related_ticket_ids=[],
             updated_at=NOW,
         ),
     )
@@ -309,6 +321,7 @@ def test_cli_review_stale_lists_active_lessons_meeting_pack_threshold(
 
     assert code == EXIT_OK
     assert "Needs stale review" in out
+    assert "ATLAS-272" in out
     assert "packs=10" in out
     assert "Only nine packs" not in out
     assert "Recently re-confirmed" not in out

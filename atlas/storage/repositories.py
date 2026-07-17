@@ -533,8 +533,10 @@ class LessonRepo(_Repo[Lesson]):
     ) -> tuple[Lesson, Lesson]:
         """Merge a DRAFT lesson into an existing ACTIVE lesson.
 
-        The DRAFT is archived and its source/citation tickets are appended to
-        the target's ``related_ticket_ids`` without duplicates.
+        The DRAFT is archived and its citation tickets are appended to the
+        target's ``related_ticket_ids`` without duplicates. The target's
+        ``source_ticket_id`` remains the target provenance; the archived DRAFT
+        row retains its own source for audit.
         """
         if now.utcoffset() is None:
             raise NaiveDatetimeError("Lesson", "updated_at")

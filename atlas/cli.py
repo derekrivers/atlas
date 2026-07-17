@@ -2622,10 +2622,7 @@ def _lessons_command(
 
 
 def _source_ticket_label(lesson: Lesson, ticket_keys_by_id: dict[UUID, str]) -> str:
-    if not lesson.related_ticket_ids:
-        return "-"
-    source_ticket_id = lesson.related_ticket_ids[0]
-    return ticket_keys_by_id.get(source_ticket_id, str(source_ticket_id))
+    return ticket_keys_by_id.get(lesson.source_ticket_id, str(lesson.source_ticket_id))
 
 
 def _lesson_review_row(

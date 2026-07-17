@@ -80,6 +80,7 @@ def _insert_raw_lesson_row(db: Database, **overrides: Any) -> UUID:
                 solution=data["solution"],
                 outcome=data["outcome"],
                 confidence=data["confidence"],
+                source_ticket_id=data["source_ticket_id"],
                 related_ticket_ids=data["related_ticket_ids"],
                 related_adr_ids=data["related_adr_ids"],
                 tags=data["tags"],

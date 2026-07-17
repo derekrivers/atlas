@@ -8,7 +8,10 @@ under the PostgreSQL dialect (the honesty mechanism for a SQLite-only
 CI; compile-compatibility is the stated limit of the claim).
 """
 
+import json
+from datetime import UTC, datetime
 from pathlib import Path
+from uuid import UUID
 
 import pytest
 import sqlalchemy as sa
@@ -139,6 +142,7 @@ DOCUMENTED_COLUMNS: dict[str, dict[str, tuple[bool, str | None]]] = {
         "solution": (NN, None),
         "outcome": (NN, None),
         "confidence": (True, None),
+        "source_ticket_id": (NN, None),
         "related_ticket_ids": (NN, "'[]'"),
         "related_adr_ids": (NN, "'[]'"),
         "tags": (NN, "'[]'"),
@@ -322,6 +326,19 @@ def migrated_db(tmp_path: Path) -> Database:
     return db
 
 
+def _alembic_config(url: str) -> Config:
+    config = Config(str(REPO_ROOT / "alembic.ini"))
+    config.set_main_option(
+        "script_location", str(REPO_ROOT / "atlas" / "storage" / "migrations")
+    )
+    config.set_main_option("sqlalchemy.url", url)
+    return config
+
+
+def _uuid_text(value: object) -> str:
+    return str(UUID(str(value)))
+
+
 def test_documented_tables_exactly(migrated_db: Database) -> None:
     inspector = sa.inspect(migrated_db.engine)
     assert set(inspector.get_table_names()) == set(DOCUMENTED_COLUMNS)
@@ -400,13 +417,123 @@ def test_key_counters_primary_key_is_prefix(migrated_db: Database) -> None:
     assert pk["constrained_columns"] == ["prefix"]
 
 
+def test_lesson_source_ticket_migration_splits_old_positional_related_ids(
+    tmp_path: Path,
+) -> None:
+    url = f"sqlite:///{tmp_path}/old-lessons.db"
+    config = _alembic_config(url)
+    command.upgrade(config, "0019")
+
+    product_id = UUID("11111111-1111-4111-8111-111111111111")
+    lesson_a = UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+    lesson_b = UUID("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
+    source_a = UUID("22222222-2222-4222-8222-222222222222")
+    source_b = UUID("33333333-3333-4333-8333-333333333333")
+    citation_a1 = UUID("44444444-4444-4444-8444-444444444444")
+    citation_a2 = UUID("55555555-5555-4555-8555-555555555555")
+    citation_b1 = UUID("66666666-6666-4666-8666-666666666666")
+    old_related = {
+        lesson_a: [source_a, citation_a1, citation_a2],
+        lesson_b: [source_b, citation_b1],
+    }
+    old_related_text = {
+        str(lesson_id): [str(ticket_id) for ticket_id in ticket_ids]
+        for lesson_id, ticket_ids in old_related.items()
+    }
+    migrated_at = datetime(2026, 7, 17, 12, tzinfo=UTC)
+
+    engine = sa.create_engine(url)
+    metadata = sa.MetaData()
+    products = sa.Table("products", metadata, autoload_with=engine)
+    lessons = sa.Table("lessons", metadata, autoload_with=engine)
+    with engine.begin() as connection:
+        connection.execute(
+            products.insert().values(
+                id=product_id.hex,
+                key="ATLAS",
+                name="Atlas",
+                description="Atlas product",
+                vision="Repeatable work",
+                status="active",
+                goals=[],
+                non_goals=[],
+                constraints=[],
+                created_by_type="human",
+                created_by_id="operator",
+                created_at=migrated_at,
+                updated_at=migrated_at,
+            )
+        )
+        for lesson_id, related_ticket_ids in old_related.items():
+            connection.execute(
+                lessons.insert().values(
+                    id=lesson_id.hex,
+                    product_id=product_id.hex,
+                    status="active",
+                    category="testing",
+                    title=f"Legacy lesson {str(lesson_id)[:1]}",
+                    problem="Problem",
+                    solution="Solution",
+                    outcome="Outcome",
+                    confidence=0.7,
+                    related_ticket_ids=[
+                        str(ticket_id) for ticket_id in related_ticket_ids
+                    ],
+                    related_adr_ids=[],
+                    tags=[],
+                    created_by_type="agent",
+                    created_by_id="lesson-extractor",
+                    created_at=migrated_at,
+                    updated_at=migrated_at,
+                )
+            )
+
+    command.upgrade(config, "head")
+
+    with engine.connect() as connection:
+        rows = connection.execute(
+            sa.text(
+                "SELECT id, source_ticket_id, related_ticket_ids FROM lessons "
+                "ORDER BY id"
+            )
+        ).mappings()
+        migrated = {
+            _uuid_text(row["id"]): (
+                _uuid_text(row["source_ticket_id"]),
+                json.loads(row["related_ticket_ids"]),
+            )
+            for row in rows
+        }
+
+    assert migrated == {
+        str(lesson_a): (str(source_a), [str(citation_a1), str(citation_a2)]),
+        str(lesson_b): (str(source_b), [str(citation_b1)]),
+    }
+    assert all(
+        len(citations) == len(old_related_text[lesson_id]) - 1
+        for lesson_id, (_source, citations) in migrated.items()
+    )
+
+    command.downgrade(config, "0019")
+
+    with engine.connect() as connection:
+        inspector = sa.inspect(connection)
+        assert "source_ticket_id" not in [
+            column["name"] for column in inspector.get_columns("lessons")
+        ]
+        rows = connection.execute(
+            sa.text("SELECT id, related_ticket_ids FROM lessons ORDER BY id")
+        ).mappings()
+        restored = {
+            _uuid_text(row["id"]): json.loads(row["related_ticket_ids"]) for row in rows
+        }
+
+    assert restored == old_related_text
+
+
 def test_alembic_upgrades_fresh_db_and_matches_metadata(tmp_path: Path) -> None:
     url = f"sqlite:///{tmp_path}/migrated.db"
-    config = Config(str(REPO_ROOT / "alembic.ini"))
-    config.set_main_option(
-        "script_location", str(REPO_ROOT / "atlas" / "storage" / "migrations")
-    )
-    config.set_main_option("sqlalchemy.url", url)
+    config = _alembic_config(url)
     command.upgrade(config, "head")
 
     engine = sa.create_engine(url)
