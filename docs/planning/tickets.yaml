@@ -1,7 +1,7 @@
 # Render written only by `atlas apply` (ADR-0006/0007); do not hand-edit.
-# plan_run_id: da8d4dd7-4955-47ee-92cb-dde1004b2005
+# plan_run_id: 9f735fc4-15a6-4366-9caf-043b344caaf9
 # prompt_version: stubs-only
-# ticket_key_high_water: 169
+# ticket_key_high_water: 177
 # epic_key_high_water: 11
 tickets:
 - id: 06701bee-33ed-44e6-b735-52dfd7c5edc8
@@ -54,6 +54,7 @@ tickets:
   last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
   status_entered_at: '2026-07-13T14:57:37.434252Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T14:00:07.671079Z'
   source_anchor: docs/atlas/bootstrap-guide.md#3-create-the-repository
   created_by_type: agent
   created_by_id: planner
@@ -114,6 +115,7 @@ tickets:
   last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
   status_entered_at: '2026-07-13T14:57:37.434252Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T14:00:07.671079Z'
   source_anchor: docs/atlas/bootstrap-guide.md#6-initialise-python-project
   created_by_type: agent
   created_by_id: planner
@@ -176,6 +178,7 @@ tickets:
   last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
   status_entered_at: '2026-07-13T07:27:08.805795Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T14:00:07.671079Z'
   source_anchor: docs/atlas/implementation-roadmap.md#epic-bootstrap-repository
   created_by_type: agent
   created_by_id: planner
@@ -242,6 +245,7 @@ tickets:
   last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
   status_entered_at: '2026-07-13T14:57:37.434252Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T14:00:07.671079Z'
   source_anchor: docs/atlas/implementation-roadmap.md#epic-bootstrap-repository
   created_by_type: agent
   created_by_id: planner
@@ -298,6 +302,7 @@ tickets:
   last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
   status_entered_at: '2026-07-13T14:57:37.434252Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T14:00:07.671079Z'
   source_anchor: docs/atlas/implementation-roadmap.md#epic-bootstrap-repository
   created_by_type: agent
   created_by_id: planner
@@ -364,6 +369,7 @@ tickets:
   last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
   status_entered_at: '2026-07-13T14:57:37.434252Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T14:00:07.671079Z'
   source_anchor: docs/atlas/implementation-roadmap.md#epic-bootstrap-repository
   created_by_type: agent
   created_by_id: planner
@@ -428,6 +434,7 @@ tickets:
   last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
   status_entered_at: '2026-07-13T14:57:37.434252Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T14:00:07.671079Z'
   source_anchor: docs/atlas/implementation-roadmap.md#epic-knowledge-core
   created_by_type: agent
   created_by_id: planner
@@ -494,6 +501,7 @@ tickets:
   last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
   status_entered_at: '2026-07-13T14:57:37.434252Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T14:00:07.671079Z'
   source_anchor: docs/atlas/implementation-roadmap.md#epic-knowledge-core
   created_by_type: agent
   created_by_id: planner
@@ -554,6 +562,7 @@ tickets:
   last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
   status_entered_at: '2026-07-13T14:57:37.434252Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T14:00:07.671079Z'
   source_anchor: docs/decisions/0009-single-operator-governance.md#decision
   created_by_type: agent
   created_by_id: planner
@@ -616,6 +625,7 @@ tickets:
   last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
   status_entered_at: '2026-07-13T15:00:28.260695Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T14:00:07.671079Z'
   source_anchor: docs/decisions/0008-ci-sourced-evidence-with-trust-tiers.md#decision
   created_by_type: agent
   created_by_id: planner
@@ -679,6 +689,7 @@ tickets:
   last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
   status_entered_at: '2026-07-13T14:57:37.434252Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T14:00:07.671079Z'
   source_anchor: docs/atlas/planning-engine-specification.md#6-planrun-schema
   created_by_type: agent
   created_by_id: planner
@@ -743,6 +754,7 @@ tickets:
   last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
   status_entered_at: '2026-07-13T14:57:37.434252Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T14:00:07.671079Z'
   source_anchor: docs/atlas/implementation-roadmap.md#epic-knowledge-core
   created_by_type: agent
   created_by_id: planner
@@ -805,6 +817,7 @@ tickets:
   last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
   status_entered_at: '2026-07-13T14:57:37.434252Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T14:00:07.671079Z'
   source_anchor: docs/atlas/bootstrap-guide.md#10-generated-yaml-shapes
   created_by_type: agent
   created_by_id: planner
@@ -870,6 +883,7 @@ tickets:
   last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
   status_entered_at: '2026-07-13T14:57:37.434252Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T14:00:07.671079Z'
   source_anchor: docs/decisions/0002-use-postgresql-as-source-of-truth.md#decision
   created_by_type: agent
   created_by_id: planner
@@ -938,6 +952,7 @@ tickets:
   last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
   status_entered_at: '2026-07-13T14:57:37.434252Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T14:00:07.671079Z'
   source_anchor: docs/atlas/implementation-roadmap.md#epic-knowledge-core
   created_by_type: agent
   created_by_id: planner
@@ -1000,6 +1015,7 @@ tickets:
   last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
   status_entered_at: '2026-07-13T14:57:37.434252Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T14:00:07.671079Z'
   source_anchor: docs/atlas/implementation-roadmap.md#phase-1--knowledge-core-models-are-the-single-contract
   created_by_type: agent
   created_by_id: planner
@@ -1059,6 +1075,7 @@ tickets:
   last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
   status_entered_at: '2026-07-13T14:57:37.434252Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T14:00:07.671079Z'
   source_anchor: docs/atlas/planning-engine-specification.md#21-atlas-plan
   created_by_type: agent
   created_by_id: planner
@@ -1118,6 +1135,7 @@ tickets:
   last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
   status_entered_at: '2026-07-13T14:57:37.434252Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T14:00:07.671079Z'
   source_anchor: docs/atlas/implementation-roadmap.md#epic-generative-planning-with-deterministic-reconciliation
   created_by_type: agent
   created_by_id: planner
@@ -1177,6 +1195,7 @@ tickets:
   last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
   status_entered_at: '2026-07-13T14:57:37.434252Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T14:00:07.671079Z'
   source_anchor: docs/atlas/planning-engine-specification.md#5-validation-gates
   created_by_type: agent
   created_by_id: planner
@@ -1239,6 +1258,7 @@ tickets:
   last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
   status_entered_at: '2026-07-13T14:57:37.434252Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T14:00:07.671079Z'
   source_anchor: docs/atlas/planning-engine-specification.md#4-reconciler
   created_by_type: agent
   created_by_id: planner
@@ -1296,6 +1316,7 @@ tickets:
   last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
   status_entered_at: '2026-07-13T14:57:37.434252Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T14:00:07.671079Z'
   source_anchor: docs/atlas/planning-engine-specification.md#22-atlas-apply
   created_by_type: agent
   created_by_id: planner
@@ -1357,6 +1378,7 @@ tickets:
   last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
   status_entered_at: '2026-07-13T14:57:37.434252Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T14:00:07.671079Z'
   source_anchor: docs/atlas/planning-engine-specification.md#21-atlas-plan
   created_by_type: agent
   created_by_id: planner
@@ -1420,6 +1442,7 @@ tickets:
   last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
   status_entered_at: '2026-07-13T07:27:08.805795Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T14:00:07.671079Z'
   source_anchor: docs/atlas/planning-engine-specification.md#22-atlas-apply
   created_by_type: agent
   created_by_id: planner
@@ -1481,6 +1504,7 @@ tickets:
   last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
   status_entered_at: '2026-07-05T15:53:13.776434Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: null
   source_anchor: docs/atlas/planning-engine-specification.md#6-planrun-schema
   created_by_type: agent
   created_by_id: planner
@@ -1539,6 +1563,7 @@ tickets:
   last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
   status_entered_at: '2026-07-05T15:53:13.776434Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: null
   source_anchor: docs/atlas/planning-large-corpora.md#4-recommended-design-staged-generation-single-proposal-reconciliation
   created_by_type: agent
   created_by_id: planner
@@ -1598,6 +1623,7 @@ tickets:
   last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
   status_entered_at: '2026-07-05T15:53:13.776434Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: null
   source_anchor: docs/atlas/planning-large-corpora.md#41-environment-owned-index-assembly-worked-example
   created_by_type: agent
   created_by_id: planner
@@ -1657,6 +1683,7 @@ tickets:
   last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
   status_entered_at: '2026-07-05T15:53:13.776434Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: null
   source_anchor: docs/atlas/planning-large-corpora.md#53-provenance-across-multiple-calls
   created_by_type: agent
   created_by_id: planner
@@ -1713,6 +1740,7 @@ tickets:
   last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
   status_entered_at: '2026-07-05T15:53:13.776434Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: null
   source_anchor: docs/atlas/planning-large-corpora.md#54-truncation-within-a-stage
   created_by_type: agent
   created_by_id: planner
@@ -1775,6 +1803,7 @@ tickets:
   last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
   status_entered_at: '2026-07-05T15:53:13.776434Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: null
   source_anchor: docs/atlas/planning-engine-specification.md#7-acceptance-tests-milestone-1
   created_by_type: agent
   created_by_id: planner
@@ -1833,6 +1862,7 @@ tickets:
   last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
   status_entered_at: '2026-07-05T15:53:13.776434Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: null
   source_anchor: docs/atlas/planning-engine-specification.md#72-at-7-work-coverage-finding-atlas-112
   created_by_type: agent
   created_by_id: planner
@@ -1893,6 +1923,7 @@ tickets:
   last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
   status_entered_at: '2026-07-05T15:53:13.776434Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: null
   source_anchor: docs/atlas/planning-large-corpora.md#52-the-reconciler-at-2-at-7--unchanged
   created_by_type: agent
   created_by_id: planner
@@ -1951,6 +1982,7 @@ tickets:
   last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
   status_entered_at: '2026-07-05T15:53:13.776434Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: null
   source_anchor: docs/atlas/implementation-roadmap.md#epic-generative-planning-with-deterministic-reconciliation
   created_by_type: agent
   created_by_id: planner
@@ -1964,7 +1996,7 @@ tickets:
   title: Graph schema and build from storage
   objective: Implement the NetworkX DiGraph projection from relational storage, providing the pure `project_graph` function and the `build_dependency_graph` entry point that reads tickets, epics, ADRs, and dependency rows and returns a fully attributed DiGraph.
   context: The dependency engine requires a NetworkX DiGraph projected on demand from the relational tables (never persisted; the database is authoritative per ADR-0006). Nodes are keyed by entity key (ticket ATLAS-<n>, epic ATLAS-E<n>, ADR ADR-<nnnn>), carry typed attributes (node_type, key, entity_id, present, status, priority, risk_level, estimated_effort, ticket_type, acceptance_criteria_count, epic_key for tickets; status, priority, risk_level for epics; status, number for ADRs), and edges carry dependency_type, reason, and dependency_id. Absent targets are represented as present=False nodes rather than being dropped. The pure core `project_graph(tickets, epics, adrs, dependencies)` takes models in and returns a graph out with no I/O, enabling deterministic testing.
-  status: needs_human_decision
+  status: done
   ticket_type: feature
   risk_level: high
   priority: 100
@@ -2014,9 +2046,10 @@ tickets:
   - networkx
   component: atlas.dependencies
   linear_synced_at: '2026-07-04T18:05:38.538342Z'
-  last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
-  status_entered_at: '2026-07-05T15:53:13.776434Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-07-14T08:51:09.018256Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T14:00:07.671079Z'
   source_anchor: docs/atlas/dependency-engine.md#graph-projection-build
   created_by_type: agent
   created_by_id: planner
@@ -2078,6 +2111,7 @@ tickets:
   last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
   status_entered_at: '2026-07-05T15:53:13.776434Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: null
   source_anchor: docs/atlas/dependency-engine.md#effort-population
   created_by_type: agent
   created_by_id: planner
@@ -2091,7 +2125,7 @@ tickets:
   title: 'Graph validation: acyclicity and dangling-target detection'
   objective: Implement `validate_graph(graph)` that checks the dependency DiGraph for acyclicity, self-edges, duplicate edges, dangling polymorphic targets, and terminal-to-non-terminal depends_on edges, raising typed errors on any violation.
   context: Validation must run on every graph build and on every dependency mutation. Any failure is a typed error; `atlas apply` and the PM Engine refuse to proceed on an invalid graph. Acyclicity failures must report the full cycle path. Dangling targets (present=False nodes) are a hard error that blocks readiness computation. The validation function is the gate that readiness, critical-path, and blocker analyses run after — they consume an already-validated graph. The TERMINAL_STATUSES constant defined here is the single source used by all analyses.
-  status: needs_human_decision
+  status: done
   ticket_type: feature
   risk_level: high
   priority: 95
@@ -2135,9 +2169,10 @@ tickets:
   - acyclicity
   component: atlas.dependencies
   linear_synced_at: '2026-07-04T18:05:38.538342Z'
-  last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
-  status_entered_at: '2026-07-05T15:53:13.776434Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-07-14T08:51:09.018256Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T14:00:07.671079Z'
   source_anchor: docs/atlas/dependency-engine.md#validation-rules
   created_by_type: agent
   created_by_id: planner
@@ -2151,7 +2186,7 @@ tickets:
   title: Readiness detection
   objective: Implement `is_ready(graph, key)` and `ready_tickets(graph)` in `atlas/dependencies/readiness.py`, returning typed `ReadinessResult` objects that carry the failing condition(s) with machine-readable `NotReadyCode` values.
   context: 'A ticket is ready exactly when: (1) status is `planned` or `backlog`; (2) every depends_on ticket target has status `done`; (3) every depends_on ADR target has status `accepted`; (4) the ticket has >= 1 acceptance criterion; (5) no dependency target is missing (dangling). The function reads node attributes from the already-validated graph only — never storage. `ReadinessResult.ready` is derived from the reasons list so it can never contradict them. Each failure is a `NotReadyReason` with a machine `NotReadyCode`. Readiness does not require a rendered context pack. This predicate is consumed by the PM Engine in Phase 4.'
-  status: needs_human_decision
+  status: done
   ticket_type: feature
   risk_level: medium
   priority: 85
@@ -2196,9 +2231,10 @@ tickets:
   - graph
   component: atlas.dependencies
   linear_synced_at: '2026-07-04T18:05:38.538342Z'
-  last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
-  status_entered_at: '2026-07-05T15:53:13.776434Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-07-14T08:51:09.018256Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T14:00:07.671079Z'
   source_anchor: docs/atlas/dependency-engine.md#readiness-predicate
   created_by_type: agent
   created_by_id: planner
@@ -2262,6 +2298,7 @@ tickets:
   last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
   status_entered_at: '2026-07-05T15:53:13.776434Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: null
   source_anchor: docs/atlas/dependency-engine.md#critical-path
   created_by_type: agent
   created_by_id: planner
@@ -2321,6 +2358,7 @@ tickets:
   last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
   status_entered_at: '2026-07-05T15:53:13.776434Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: null
   source_anchor: docs/atlas/dependency-engine.md#blocker-analysis
   created_by_type: agent
   created_by_id: planner
@@ -2381,6 +2419,7 @@ tickets:
   last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
   status_entered_at: '2026-07-05T15:53:13.776434Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: null
   source_anchor: docs/atlas/dependency-engine.md#cli
   created_by_type: agent
   created_by_id: planner
@@ -2445,6 +2484,7 @@ tickets:
   last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
   status_entered_at: '2026-07-05T15:53:13.776434Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: null
   source_anchor: docs/atlas/dependency-engine.md#cli
   created_by_type: agent
   created_by_id: planner
@@ -2505,6 +2545,7 @@ tickets:
   last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
   status_entered_at: '2026-07-05T15:53:13.776434Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: null
   source_anchor: docs/atlas/implementation-roadmap.md#epic-dependency-graph
   created_by_type: agent
   created_by_id: planner
@@ -2518,7 +2559,7 @@ tickets:
   title: Consolidate natural-key sort primitive and break dependencies→planning import cycle
   objective: Move the duplicated natural-key sort helper into a single canonical location in atlas.core and eliminate the import inversion where atlas.dependencies imports from atlas.planning, so the layer spine is clean before import-linter enforcement is installed.
   context: 'The Phase 3 closure report (referenced in the roadmap Phase 3.5 section) identified two architectural problems: (1) the natural-key sort helper is duplicated across modules rather than living in a single core primitive, and (2) atlas.dependencies imports from atlas.planning, which is an inverted edge in the canonical layer spine (atlas.planning sits above atlas.dependencies). ARCHITECTURE.md defines the layer spine with atlas.planning above atlas.dependencies, meaning atlas.dependencies must never import from atlas.planning. This ticket resolves both issues as a prerequisite to installing import-linter enforcement.'
-  status: needs_human_decision
+  status: done
   ticket_type: tech_debt
   risk_level: medium
   priority: 10
@@ -2563,9 +2604,10 @@ tickets:
   - dependencies
   component: atlas.core
   linear_synced_at: '2026-07-04T18:05:38.538342Z'
-  last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
-  status_entered_at: '2026-07-05T15:53:13.776434Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-07-14T08:51:09.018256Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T14:00:07.671079Z'
   source_anchor: docs/atlas/implementation-roadmap.md#epic-layer-spine
   created_by_type: agent
   created_by_id: planner
@@ -2579,7 +2621,7 @@ tickets:
   title: Install import-linter layers contract enforcing the atlas layer spine
   objective: Add an import-linter `layers` contract to `pyproject.toml` that mechanically enforces the canonical layer spine defined in ARCHITECTURE.md, wire it into pre-commit and CI, and confirm it catches a known inverted edge so architectural regressions are detected automatically on every PR.
   context: ARCHITECTURE.md defines a canonical layer spine for the `atlas` package (cli → planning → pm → context → dependencies → evidence → storage → linear → github → core). The architecture document explicitly states that an import-linter `layers` contract in `pyproject.toml` enforces this in pre-commit and CI. Without this enforcement, inverted edges (such as the dependencies→planning inversion fixed in the preceding ticket) can silently re-appear. This ticket installs the first architecture-fitness sensor for the atlas package, implementing Phase 3.5's mechanical guard.
-  status: needs_human_decision
+  status: done
   ticket_type: infrastructure
   risk_level: medium
   priority: 9
@@ -2627,9 +2669,10 @@ tickets:
   - architecture-fitness
   component: null
   linear_synced_at: '2026-07-04T18:05:38.538342Z'
-  last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
-  status_entered_at: '2026-07-05T15:53:13.776434Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-07-14T08:51:09.018256Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T14:00:07.671079Z'
   source_anchor: ARCHITECTURE.md#layer-spine
   created_by_type: agent
   created_by_id: planner
@@ -2692,6 +2735,7 @@ tickets:
   last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
   status_entered_at: '2026-07-05T15:53:13.776434Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: null
   source_anchor: docs/atlas/implementation-roadmap.md#epic-layer-spine
   created_by_type: agent
   created_by_id: planner
@@ -2705,7 +2749,7 @@ tickets:
   title: Linear integration with ADR-0006 field ownership boundary
   objective: 'Implement the atlas.linear boundary layer: LinearClient with create/update/fetch operations, field-ownership allow-list enforcing definitions Atlas→Linear and status Linear→Atlas, LinearStatusMap with operator-configured state-id mapping, and the InMemoryLinearClient fake for contract testing.'
   context: 'ADR-0006 establishes strict field ownership: ticket definitions (title, description) flow Atlas→Linear; ticket status flows Linear→Atlas; nothing else crosses. The atlas.linear package is the Phase 4 provider boundary that enforces this mechanically. LinearClient must reject any attempt to push status fields, and status mapping must use stable Linear state IDs (not rename-fragile names). The LinearStatusMap is sourced from the LINEAR_STATE_MAP env var. Secrets (LINEAR_API_KEY, LINEAR_TEAM_ID, LINEAR_PROJECT_ID, LINEAR_STATE_MAP) are read only at this boundary and never logged.'
-  status: needs_human_decision
+  status: done
   ticket_type: feature
   risk_level: high
   priority: 100
@@ -2755,9 +2799,10 @@ tickets:
   - boundary
   component: atlas.linear
   linear_synced_at: '2026-07-04T18:05:38.538342Z'
-  last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
-  status_entered_at: '2026-07-05T15:53:13.776434Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-07-14T08:51:09.018256Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T14:00:07.671079Z'
   source_anchor: docs/atlas/pm-engine-and-linear-sync.md#field-ownership-boundary-atlas-41
   created_by_type: agent
   created_by_id: planner
@@ -2771,7 +2816,7 @@ tickets:
   title: Ticket synchronisation sync_tick (pull status, push definitions)
   objective: 'Implement sync_tick in atlas/pm/sync.py: pull Linear status for all tracked tickets and apply mapped state changes (Atlas status written by apply_linear_status, the sole post-creation status writer); push definition updates for tickets whose Atlas updated_at is newer and are in a pre-dispatch or Ready for Agent status.'
   context: 'The sync loop is the heartbeat of the PM Engine. Steps 1 and 2 of the five-step loop: (1) fetch Linear states for tickets with an external_linear_id in a non-terminal Atlas status, apply mapped transitions via apply_linear_status, and count/log unmapped states; (2) push owned definition fields (title, description summary) for tickets whose updated_at is newer than last push. apply_linear_status is the single writer of Atlas ticket status post-creation; it also stamps status_entered_at and increments review_cycle_count on changes_requested→pr_open transitions. The sync is pull-based (ADR-0008); ticks are idempotent.'
-  status: needs_human_decision
+  status: done
   ticket_type: feature
   risk_level: high
   priority: 90
@@ -2821,9 +2866,10 @@ tickets:
   - status
   component: atlas.pm
   linear_synced_at: '2026-07-04T18:05:38.538342Z'
-  last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
-  status_entered_at: '2026-07-05T15:53:13.776434Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-07-14T08:51:09.018256Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T14:00:07.671079Z'
   source_anchor: docs/atlas/pm-engine-and-linear-sync.md#sync-loop
   created_by_type: agent
   created_by_id: planner
@@ -2886,6 +2932,7 @@ tickets:
   last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
   status_entered_at: '2026-07-05T15:53:13.776434Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: null
   source_anchor: docs/atlas/pm-engine-and-linear-sync.md#sync-loop
   created_by_type: agent
   created_by_id: planner
@@ -2946,6 +2993,7 @@ tickets:
   last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
   status_entered_at: '2026-07-05T15:53:13.776434Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: null
   source_anchor: docs/atlas/pm-engine-and-linear-sync.md#anomaly-and-dwell-detection
   created_by_type: agent
   created_by_id: planner
@@ -3009,6 +3057,7 @@ tickets:
   last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
   status_entered_at: '2026-07-05T15:53:13.776434Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: null
   source_anchor: docs/atlas/pm-engine-and-linear-sync.md#follow-up-ingestion
   created_by_type: agent
   created_by_id: planner
@@ -3022,7 +3071,7 @@ tickets:
   title: 'Delivery-anomaly model: DebtItem and recurrence predicate'
   objective: Implement the DebtItem model (append-only delivery-anomaly record), the debt_items table migration, DebtItemRepo with the add method and the recurring(ticket_id, anomaly_type, threshold) query-time predicate, and the AnomalyType enum covering OUT_OF_OWNERSHIP_TRANSITION, DWELL_BREACH, REVIEW_CYCLE, and STALE_BLOCK.
   context: 'ADR-0011 resolves that DebtItem denotes the delivery-anomaly record: one row per observation, system-written (created_by_type=system), append-only. Recurrence is a query-time predicate (DebtItemRepo.recurring), never a stored counter and never a creation gate. This is the foundational model that all anomaly-logging passes (ATLAS-118, ATLAS-119, ATLAS-120, ATLAS-44) write to. The model must be in place before any anomaly writer can land.'
-  status: needs_human_decision
+  status: done
   ticket_type: infrastructure
   risk_level: high
   priority: 95
@@ -3070,9 +3119,10 @@ tickets:
   - storage
   component: atlas.storage
   linear_synced_at: '2026-07-04T18:05:38.538342Z'
-  last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
-  status_entered_at: '2026-07-05T15:53:13.776434Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-07-14T08:51:09.018256Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T14:00:07.671079Z'
   source_anchor: docs/decisions/0011-debtitem-denotes-delivery-anomalies.md#decision
   created_by_type: agent
   created_by_id: planner
@@ -3133,6 +3183,7 @@ tickets:
   last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
   status_entered_at: '2026-07-05T15:53:13.776434Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: null
   source_anchor: docs/atlas/pm-engine-and-linear-sync.md#anomaly-and-dwell-detection
   created_by_type: agent
   created_by_id: planner
@@ -3146,7 +3197,7 @@ tickets:
   title: Dwell-breach logging (ATLAS-119)
   objective: 'Implement the dwell-breach detection pass (step 5 of the sync loop): for tickets in in_progress, pr_open, or review_required that have exceeded their configured dwell horizon, append one DWELL_BREACH DebtItem per episode, deduped by Ticket.status_entered_at.'
   context: 'Dwell horizons (defaults: in_progress 24h, pr_open 48h, review_required 7d) are configurable. The detection is report-only: it never changes ticket state. Per-episode dedup is enforced by status_entered_at: one DWELL_BREACH row per episode (since the ticket entered its current status). A NULL status_entered_at is skipped. status_entered_at is stamped by apply_linear_status (the sole post-creation status writer) on every real status change. This pass requires the status_entered_at field on Ticket, which must be added via migration if not already present.'
-  status: needs_human_decision
+  status: done
   ticket_type: feature
   risk_level: medium
   priority: 75
@@ -3192,9 +3243,10 @@ tickets:
   - debt-item
   component: atlas.pm
   linear_synced_at: '2026-07-04T18:05:38.538342Z'
-  last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
-  status_entered_at: '2026-07-05T15:53:13.776434Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-07-14T08:51:09.018256Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T14:00:07.671079Z'
   source_anchor: docs/atlas/pm-engine-and-linear-sync.md#anomaly-and-dwell-detection
   created_by_type: agent
   created_by_id: planner
@@ -3208,7 +3260,7 @@ tickets:
   title: Review-cycling detection and Needs Human routing (ATLAS-120)
   objective: 'Implement the review-cycling detection pass (step 5 of the sync loop): when a ticket''s review_cycle_count exceeds 3 while in changes_requested or pr_open, route it to needs_human_decision via LinearClient.set_state and append one REVIEW_CYCLE DebtItem, deduped per pr_open episode.'
   context: Review cycling is the one anomaly that changes ticket state. The round-trip count is tracked on Ticket.review_cycle_count, incremented by apply_linear_status only on changes_requested→pr_open transitions. The routing uses the same sanctioned set_state path as readiness promotion, resolved via state_id_for(needs_human_decision). The REVIEW_CYCLE DebtItem is a deterministic failure-analysis summary (no model call, no Linear comment). Dedup is per pr_open episode via status_entered_at. The write is Linear-only; the next pull reconciles Atlas status.
-  status: needs_human_decision
+  status: done
   ticket_type: feature
   risk_level: high
   priority: 72
@@ -3253,9 +3305,10 @@ tickets:
   - debt-item
   component: atlas.pm
   linear_synced_at: '2026-07-04T18:05:38.538342Z'
-  last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
-  status_entered_at: '2026-07-05T15:53:13.776434Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-07-14T08:51:09.018256Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T14:00:07.671079Z'
   source_anchor: docs/atlas/pm-engine-and-linear-sync.md#anomaly-and-dwell-detection
   created_by_type: agent
   created_by_id: planner
@@ -3269,7 +3322,7 @@ tickets:
   title: State-transition history model (TicketStatusTransition)
   objective: 'Implement the TicketStatusTransition append-only model and migration: every real status change written by apply_linear_status appends one row recording the from_status, to_status, and transitioned_at timestamp, enabling true historical per-state cycle time computation.'
   context: ATLAS-121 in the roadmap. apply_linear_status is the sole post-creation status writer; it must append a TicketStatusTransition row on every real status change. This log is the prerequisite for historical cycle time in the delivery report (ATLAS-126). Until it lands, the delivery report can only report current-dwell proxy metrics. The model is append-only; rows are never updated or deleted.
-  status: needs_human_decision
+  status: done
   ticket_type: infrastructure
   risk_level: high
   priority: 88
@@ -3316,9 +3369,10 @@ tickets:
   - status
   component: atlas.storage
   linear_synced_at: '2026-07-04T18:05:38.538342Z'
-  last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
-  status_entered_at: '2026-07-05T15:53:13.776434Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-07-14T08:51:09.018256Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T14:00:07.671079Z'
   source_anchor: docs/atlas/pm-engine-and-linear-sync.md#delivery-metrics
   created_by_type: agent
   created_by_id: planner
@@ -3332,7 +3386,7 @@ tickets:
   title: Tick-failure record model (TickFailure) and recorded_since predicate
   objective: 'Implement the TickFailure append-only model and migration: one row per tick-level crash, system-attributed, with a failure_signature (exception type FQCN) and detail field; and the DebtItemRepo.recorded_since(signature, since) query-time dedup predicate used by the scheduler''s create-on-crash logic.'
   context: 'ATLAS-125 in the roadmap. TickFailure is a separate model from DebtItem (no ticket_id; it is tick-level). The scheduler (ATLAS-50) is the sole writer: when sync_tick raises, the scheduler records one TickFailure and continues. The dedup predicate recorded_since(signature, since) returns True if a TickFailure with that signature exists since the given timestamp, enabling the scheduler to bound row volume (default 1-hour window). The count surfaces in the delivery report.'
-  status: needs_human_decision
+  status: done
   ticket_type: infrastructure
   risk_level: medium
   priority: 82
@@ -3378,9 +3432,10 @@ tickets:
   - tick-failure
   component: atlas.storage
   linear_synced_at: '2026-07-04T18:05:38.538342Z'
-  last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
-  status_entered_at: '2026-07-05T15:53:13.776434Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-07-14T08:51:09.018256Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T14:00:07.671079Z'
   source_anchor: docs/atlas/pm-engine-and-linear-sync.md#sync-loop
   created_by_type: agent
   created_by_id: planner
@@ -3394,7 +3449,7 @@ tickets:
   title: 'PM scheduler: recurring sync_tick loop with create-on-crash'
   objective: 'Implement the PM scheduler in atlas/pm/scheduler.py: a plain loop that calls sync_tick on a configurable cadence, records a TickFailure on crash and continues, supports --once for a single tick, and shuts down gracefully on SIGTERM/SIGINT after the in-flight tick completes.'
   context: 'ATLAS-50 in the roadmap. The scheduler is the recurring driver of the sync loop. It is a plain loop with an interruptible sleep between ticks (default 60s, --interval). --once runs exactly one tick and exits. Graceful shutdown: SIGTERM/SIGINT sets a shutdown flag consulted only after the in-flight tick returns. Create-on-crash: when sync_tick raises, the scheduler calls TickFailureRepo.add (if recorded_since returns False for the signature within the CRASH_DEDUP_WINDOW of 1 hour) and continues. The scheduler is exposed via atlas pm sync CLI command.'
-  status: needs_human_decision
+  status: done
   ticket_type: feature
   risk_level: medium
   priority: 78
@@ -3441,9 +3496,10 @@ tickets:
   - cli
   component: atlas.pm
   linear_synced_at: '2026-07-04T18:05:38.538342Z'
-  last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
-  status_entered_at: '2026-07-05T15:53:13.776434Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-07-14T08:51:09.018256Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T14:00:07.671079Z'
   source_anchor: docs/atlas/pm-engine-and-linear-sync.md#sync-loop
   created_by_type: agent
   created_by_id: planner
@@ -3457,7 +3513,7 @@ tickets:
   title: Delivery metrics CLI report (atlas pm report)
   objective: 'Implement atlas pm report: a pure-reader CLI command that computes and displays throughput (tickets done/week), cycle time per state from the TicketStatusTransition log, ready-queue depth, anomaly counts by type with recurring flags, and dwell breaches — all from stored tickets and DebtItems, with no Linear calls and no writes.'
   context: 'ATLAS-47 in the roadmap. The delivery report is a pure reader: it makes no Linear calls and writes nothing, computing every metric from stored tickets and DebtItems. Throughput is bucketed by ISO week of status_entered_at for done tickets. Cycle time per state is computed from the TicketStatusTransition log (completed episodes only). Ready-queue depth is the count of tickets in ready_for_agent. Anomaly counts are grouped by AnomalyType with recurring ones called out. Dwell breaches are the DWELL_BREACH subset. Output is CLI/markdown with a --json form.'
-  status: needs_human_decision
+  status: done
   ticket_type: feature
   risk_level: low
   priority: 60
@@ -3507,9 +3563,10 @@ tickets:
   - delivery-report
   component: atlas.cli
   linear_synced_at: '2026-07-04T18:05:38.538342Z'
-  last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
-  status_entered_at: '2026-07-05T15:53:13.776434Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-07-14T08:51:09.018256Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T14:00:07.671079Z'
   source_anchor: docs/atlas/pm-engine-and-linear-sync.md#delivery-metrics
   created_by_type: agent
   created_by_id: planner
@@ -3571,6 +3628,7 @@ tickets:
   last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
   status_entered_at: '2026-07-05T15:53:13.776434Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: null
   source_anchor: docs/atlas/pm-engine-and-linear-sync.md#delivery-metrics
   created_by_type: agent
   created_by_id: planner
@@ -3634,6 +3692,7 @@ tickets:
   last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
   status_entered_at: '2026-07-05T15:53:13.776434Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: null
   source_anchor: docs/atlas/pm-engine-and-linear-sync.md#follow-up-ingestion
   created_by_type: agent
   created_by_id: planner
@@ -3647,7 +3706,7 @@ tickets:
   title: 'Ticket tags and component fields: storage layer'
   objective: Add free-form tags and component fields to the stored Ticket model and database schema so the context renderer can match tickets against ADRs and lessons by tag/component.
   context: 'The context renderer (Phase 5) matches lessons and ADRs against a ticket''s tags and component. These fields do not yet exist on the Ticket model or in the database. This ticket adds the storage half: the Pydantic model field, the SQLAlchemy column, and the Alembic migration. The planner-emission half (ATLAS-128) is a separate ticket that depends on this one.'
-  status: needs_human_decision
+  status: done
   ticket_type: feature
   risk_level: medium
   priority: 50
@@ -3685,9 +3744,10 @@ tickets:
   - ticket-model
   component: atlas.storage
   linear_synced_at: '2026-07-04T18:05:38.538342Z'
-  last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
-  status_entered_at: '2026-07-05T15:53:13.776434Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-07-14T08:51:09.018256Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T14:00:07.671079Z'
   source_anchor: docs/atlas/implementation-roadmap.md#epic-execution-context
   created_by_type: agent
   created_by_id: planner
@@ -3743,6 +3803,7 @@ tickets:
   last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
   status_entered_at: '2026-07-05T15:53:13.776434Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: null
   source_anchor: docs/atlas/implementation-roadmap.md#epic-execution-context
   created_by_type: agent
   created_by_id: planner
@@ -3797,6 +3858,7 @@ tickets:
   last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
   status_entered_at: '2026-07-05T15:53:13.776434Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: null
   source_anchor: docs/atlas/implementation-roadmap.md#epic-execution-context
   created_by_type: agent
   created_by_id: planner
@@ -3850,6 +3912,7 @@ tickets:
   last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
   status_entered_at: '2026-07-05T15:53:13.776434Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: null
   source_anchor: docs/atlas/context-renderer.md#retrieval-rules-v1
   created_by_type: agent
   created_by_id: planner
@@ -3905,6 +3968,7 @@ tickets:
   last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
   status_entered_at: '2026-07-05T15:53:13.776434Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: null
   source_anchor: docs/atlas/context-renderer.md#retrieval-rules-v1
   created_by_type: agent
   created_by_id: planner
@@ -3918,7 +3982,7 @@ tickets:
   title: Historical lesson retrieval (ACTIVE only, tag/component matching)
   objective: 'Implement lesson retrieval for the context renderer: return up to 3 ACTIVE lessons matched by tag intersection with the ticket''s tags and ticket_type, ranked by confidence then recency, excluding all DRAFT lessons.'
   context: 'ADR-0009 mandates that only ACTIVE lessons are retrievable into context packs — DRAFT lessons (agent-authored, not yet operator-promoted) must never appear. The context renderer retrieval rules (context-renderer.md §Retrieval rules v1) specify: status=ACTIVE only, matched by tag intersection with the ticket''s tags and ticket_type, ranked by confidence then recency, cap 3. This ticket implements that retrieval function in atlas.context.'
-  status: needs_human_decision
+  status: done
   ticket_type: feature
   risk_level: high
   priority: 45
@@ -3958,9 +4022,10 @@ tickets:
   - governance
   component: atlas.context
   linear_synced_at: '2026-07-04T18:05:38.538342Z'
-  last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
-  status_entered_at: '2026-07-05T15:53:13.776434Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-07-14T13:53:28.779235Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T14:00:07.671079Z'
   source_anchor: docs/atlas/context-renderer.md#retrieval-rules-v1
   created_by_type: agent
   created_by_id: planner
@@ -4016,6 +4081,7 @@ tickets:
   last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
   status_entered_at: '2026-07-05T15:53:13.776434Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: null
   source_anchor: docs/atlas/context-renderer.md#retrieval-rules-v1
   created_by_type: agent
   created_by_id: planner
@@ -4070,6 +4136,7 @@ tickets:
   last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
   status_entered_at: '2026-07-05T15:53:13.776434Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: null
   source_anchor: docs/atlas/context-renderer.md#token-budget-and-compression-ladder
   created_by_type: agent
   created_by_id: planner
@@ -4127,6 +4194,7 @@ tickets:
   last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
   status_entered_at: '2026-07-05T15:53:13.776434Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: null
   source_anchor: docs/atlas/context-renderer.md#staleness-and-provenance
   created_by_type: agent
   created_by_id: planner
@@ -4180,6 +4248,7 @@ tickets:
   last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
   status_entered_at: '2026-07-05T15:53:13.776434Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: null
   source_anchor: docs/atlas/context-renderer.md#cli
   created_by_type: agent
   created_by_id: planner
@@ -4239,6 +4308,7 @@ tickets:
   last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
   status_entered_at: '2026-07-05T15:53:13.776434Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: null
   source_anchor: docs/atlas/context-renderer.md#validation
   created_by_type: agent
   created_by_id: planner
@@ -4252,7 +4322,7 @@ tickets:
   title: Evidence schema with trust fields and append-only enforcement
   objective: Extend the Evidence model with commit_sha, external_run_id, payload_hash, and created_by_type trust-tier fields, and enforce append-only semantics at the repository layer so agent-submitted records are capped at PENDING.
   context: ADR-0008 mandates that evidence records carry commit_sha, external_run_id, and payload_hash, and that the creating actor's trust tier determines the maximum status an evidence record may hold. System-tier records (CI ingestion) may carry any status; agent-tier records are capped at PENDING regardless of the submitted value. The Evidence model was introduced in Phase 1 (ATLAS-14) with basic fields; this ticket adds the trust-tier fields and enforces the append-only and capping rules at the EvidenceRepo layer. The Verification Engine (Phase 7) depends on these semantics being correct and auditable.
-  status: needs_human_decision
+  status: done
   ticket_type: feature
   risk_level: high
   priority: 100
@@ -4296,9 +4366,10 @@ tickets:
   - storage
   component: atlas.evidence
   linear_synced_at: '2026-07-04T18:05:38.538342Z'
-  last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
-  status_entered_at: '2026-07-05T15:53:13.776434Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-07-14T08:51:09.018256Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T14:00:07.671079Z'
   source_anchor: docs/atlas/implementation-roadmap.md#epic-evidence-driven-delivery
   created_by_type: agent
   created_by_id: planner
@@ -4312,7 +4383,7 @@ tickets:
   title: GitHub Checks/Workflow-Runs polling client
   objective: Implement a transport-agnostic GitHub polling client in atlas.github that fetches workflow runs and check runs for a PR head SHA, normalises raw API responses into a common payload shape, and handles ETags, rate-limit backoff, and deduplication.
   context: ADR-0008 mandates a pull-based transport for the MVP because a public webhook endpoint is not available. The evidence-pipeline.md design specifies that every tick the poller fetches workflow runs and check runs for tickets in pr_open, review_required, or changes_requested states, using conditional requests (ETags) to stay within rate limits and backing off on secondary-rate-limit responses. The client must be written transport-agnostic so a future HMAC-verified webhook receiver can replace polling with no schema change. This client is the boundary layer in atlas.github; the normaliser and evidence mappers are separate tickets.
-  status: needs_human_decision
+  status: done
   ticket_type: feature
   risk_level: high
   priority: 90
@@ -4355,9 +4426,10 @@ tickets:
   - evidence
   component: atlas.github
   linear_synced_at: '2026-07-04T18:05:38.538342Z'
-  last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
-  status_entered_at: '2026-07-05T15:53:13.776434Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-07-14T08:51:09.018256Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T14:00:07.671079Z'
   source_anchor: docs/atlas/evidence-pipeline.md#poller
   created_by_type: agent
   created_by_id: planner
@@ -4371,7 +4443,7 @@ tickets:
   title: Test evidence mapping (CI job-name-driven evidence typing)
   objective: Implement the normaliser that maps GitHub workflow-run and check-run payloads to TEST_RESULT Evidence records, driven by the job-name prefix convention, and writes them as system-tier append-only records pinned to the PR head commit SHA.
   context: 'evidence-pipeline.md specifies that evidence typing is driven by CI job names: jobs prefixed ''test'' map to TEST_RESULT, ''lint'' to LINT_RESULT, ''build'' to BUILD_RESULT, ''coverage'' to COVERAGE_REPORT. Unrecognised jobs are ingested as BUILD_RESULT with a warning. This ticket covers the test prefix mapping and the shared normalisation infrastructure (status normalisation table, payload_hash computation, dedup key logic) that the build/lint/coverage mapper ticket will reuse. The normaliser sits in atlas.evidence and calls EvidenceRepo.add.'
-  status: needs_human_decision
+  status: done
   ticket_type: feature
   risk_level: medium
   priority: 80
@@ -4413,9 +4485,10 @@ tickets:
   - test-result
   component: atlas.evidence
   linear_synced_at: '2026-07-04T18:05:38.538342Z'
-  last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
-  status_entered_at: '2026-07-05T15:53:13.776434Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-07-14T08:51:09.018256Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T14:00:07.671079Z'
   source_anchor: docs/atlas/evidence-pipeline.md#job-name-convention-ci-contract
   created_by_type: agent
   created_by_id: planner
@@ -4429,7 +4502,7 @@ tickets:
   title: Build, lint, and coverage evidence mapping
   objective: Extend the evidence normaliser to map GitHub workflow-run payloads with 'build', 'lint', and 'coverage' job-name prefixes to BUILD_RESULT, LINT_RESULT, and COVERAGE_REPORT Evidence records respectively, reusing the shared normalisation infrastructure from the test mapper.
   context: evidence-pipeline.md defines four job-name prefix mappings. The test mapper ticket delivers the shared infrastructure and the 'test' prefix. This ticket adds the remaining three prefixes ('build', 'lint', 'coverage') and ensures the full job-name convention table is complete. The doc linter is also specified to check workflow job names against this table; that check is noted here as a documentation requirement but the linter integration itself is out of scope for this ticket.
-  status: needs_human_decision
+  status: done
   ticket_type: feature
   risk_level: medium
   priority: 75
@@ -4472,9 +4545,10 @@ tickets:
   - coverage
   component: atlas.evidence
   linear_synced_at: '2026-07-04T18:05:38.538342Z'
-  last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
-  status_entered_at: '2026-07-05T15:53:13.776434Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-07-14T08:51:09.018256Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T14:00:07.671079Z'
   source_anchor: docs/atlas/evidence-pipeline.md#job-name-convention-ci-contract
   created_by_type: agent
   created_by_id: planner
@@ -4532,6 +4606,7 @@ tickets:
   last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
   status_entered_at: '2026-07-05T15:53:13.776434Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: null
   source_anchor: docs/atlas/evidence-pipeline.md#status-normalisation
   created_by_type: agent
   created_by_id: planner
@@ -4545,7 +4620,7 @@ tickets:
   title: Documentation evidence ingestion
   objective: Implement ingestion of documentation change evidence by inspecting the PR file list for changes under docs/ and producing a DOCUMENTATION_UPDATE Evidence record listing the touched paths.
   context: evidence-pipeline.md specifies that Atlas inspects the PR file list; changes under docs/ produce a DOCUMENTATION_UPDATE record (PASSED) listing the touched paths. Tickets with documentation requirements and no such record will fail verification in Phase 7 — the evidence layer only records, it does not enforce. The PR file list is fetched via the GitHub client. This is a system-tier record pinned to the PR head commit SHA.
-  status: needs_human_decision
+  status: done
   ticket_type: feature
   risk_level: low
   priority: 65
@@ -4586,9 +4661,10 @@ tickets:
   - normaliser
   component: atlas.evidence
   linear_synced_at: '2026-07-04T18:05:38.538342Z'
-  last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
-  status_entered_at: '2026-07-05T15:53:13.776434Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-07-14T08:51:09.018256Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T14:00:07.671079Z'
   source_anchor: docs/atlas/evidence-pipeline.md#status-normalisation
   created_by_type: agent
   created_by_id: planner
@@ -4647,6 +4723,7 @@ tickets:
   last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
   status_entered_at: '2026-07-05T15:53:13.776434Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: null
   source_anchor: docs/atlas/evidence-pipeline.md#tier-and-pinning-enforcement
   created_by_type: agent
   created_by_id: planner
@@ -4704,6 +4781,7 @@ tickets:
   last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
   status_entered_at: '2026-07-05T15:53:13.776434Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: null
   source_anchor: docs/atlas/evidence-pipeline.md#retention
   created_by_type: agent
   created_by_id: planner
@@ -4760,6 +4838,7 @@ tickets:
   last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
   status_entered_at: '2026-07-05T15:53:13.776434Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: null
   source_anchor: docs/atlas/implementation-roadmap.md#epic-evidence-driven-delivery
   created_by_type: agent
   created_by_id: planner
@@ -4818,6 +4897,7 @@ tickets:
   last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
   status_entered_at: '2026-07-05T15:53:13.776434Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: null
   source_anchor: docs/atlas/evidence-pipeline.md#cli
   created_by_type: agent
   created_by_id: planner
@@ -4831,7 +4911,7 @@ tickets:
   title: Verification rules and required-check matrix
   objective: Define and implement the required-check matrix that maps ticket_type to the set of VerificationCheckTypes that must pass, and provide the rule resolver that returns the required checks for a given ticket.
   context: The Verification Engine's first responsibility is knowing which checks are required for each ticket type. The required-check matrix (feature, bug, tech_debt, infrastructure, documentation, spike/research) is defined in verification-engine.md and must be implemented as configuration (YAML in repo) plus a Python resolver. The SECURITY check is surfaced as non-gating (required=False) for critical risk tickets. This is the foundation all evaluators depend on.
-  status: needs_human_decision
+  status: done
   ticket_type: feature
   risk_level: medium
   priority: 100
@@ -4873,9 +4953,10 @@ tickets:
   - configuration
   component: atlas.verification
   linear_synced_at: '2026-07-04T18:05:38.538342Z'
-  last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
-  status_entered_at: '2026-07-05T15:53:13.776434Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-07-14T08:51:09.018256Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T14:00:07.671079Z'
   source_anchor: docs/atlas/verification-engine.md#required-check-matrix
   created_by_type: agent
   created_by_id: planner
@@ -4889,7 +4970,7 @@ tickets:
   title: Tests, lint, build, and coverage check evaluators
   objective: Implement the per-check evaluators for TESTS, LINT, BUILD, and COVERAGE check types that query the evidence store for the latest system-tier evidence pinned to the PR head commit and return a typed evaluation result.
   context: For machine-checkable checks (tests, lint, build, coverage), the Verification Engine must find the latest system-tier evidence record of the matching type with commit_sha equal to the PR head commit. Agent-tier evidence is ignored entirely for these checks. A new push resets these checks to PENDING. This implements the core 'no evidence = no completion' rule for CI-produced evidence.
-  status: needs_human_decision
+  status: done
   ticket_type: feature
   risk_level: high
   priority: 90
@@ -4934,9 +5015,10 @@ tickets:
   - ci
   component: atlas.verification
   linear_synced_at: '2026-07-04T18:05:38.538342Z'
-  last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
-  status_entered_at: '2026-07-05T15:53:13.776434Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-07-14T08:51:09.018256Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T14:00:07.671079Z'
   source_anchor: docs/atlas/verification-engine.md#evaluation-semantics
   created_by_type: agent
   created_by_id: planner
@@ -4950,7 +5032,7 @@ tickets:
   title: Documentation check evaluator
   objective: Implement the DOCUMENTATION check evaluator that verifies a DOCUMENTATION_UPDATE evidence record exists for the PR head commit covering at least one path named in the ticket's documentation_requirements.
   context: The evidence pipeline (Phase 6) records DOCUMENTATION_UPDATE evidence when PR file changes include paths under docs/. The verification engine must check that such a record exists for the head commit and that it covers at least one path from the ticket's documentation_requirements field. Tickets with documentation requirements and no such record fail verification.
-  status: needs_human_decision
+  status: done
   ticket_type: feature
   risk_level: medium
   priority: 80
@@ -4991,9 +5073,10 @@ tickets:
   - evaluator
   component: atlas.verification
   linear_synced_at: '2026-07-04T18:05:38.538342Z'
-  last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
-  status_entered_at: '2026-07-05T15:53:13.776434Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-07-14T08:51:09.018256Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T14:00:07.671079Z'
   source_anchor: docs/atlas/verification-engine.md#evaluation-semantics
   created_by_type: agent
   created_by_id: planner
@@ -5007,7 +5090,7 @@ tickets:
   title: Acceptance criteria check evaluator (operator confirmation)
   objective: Implement the ACCEPTANCE_CRITERIA check evaluator that requires a human-tier MANUAL_APPROVAL evidence record per criterion, identified by the SHA-256 hash of the criterion text, pinned to the PR head commit.
   context: In v1, acceptance criteria verification is operator-confirmed. atlas verify presents each criterion as a checklist; the operator's confirmations are stored as human-tier MANUAL_APPROVAL evidence records carrying raw_payload['acceptance_criterion_hash'] — the SHA-256 hex digest of the criterion text after strip(). The check passes only when every criterion has such a confirmation at the head commit. Rewording a criterion changes its hash, requiring re-confirmation.
-  status: needs_human_decision
+  status: done
   ticket_type: feature
   risk_level: high
   priority: 80
@@ -5052,9 +5135,10 @@ tickets:
   - human-approval
   component: atlas.verification
   linear_synced_at: '2026-07-04T18:05:38.538342Z'
-  last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
-  status_entered_at: '2026-07-05T15:53:13.776434Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-07-14T08:51:09.018256Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T14:00:07.671079Z'
   source_anchor: docs/atlas/verification-engine.md#evaluation-semantics
   created_by_type: agent
   created_by_id: planner
@@ -5068,7 +5152,7 @@ tickets:
   title: Scope check evaluator (heuristic, operator waive/fail)
   objective: Implement the SCOPE check evaluator that compares the PR file list against the ticket's declared in-scope set (relevant_docs union source_anchor path), presents out-of-scope files for operator waive/fail decisions recorded as human-tier MANUAL_APPROVAL evidence, and returns a typed verdict.
   context: The scope evaluator derives the in-scope set from relevant_docs and the path part of source_anchor (no allowed_paths field in v1). Out-of-scope files require operator decisions stored as human-tier MANUAL_APPROVAL records carrying raw_payload['scope_decision_path']. PASSED = waive, FAILED = reject. The check passes when every changed file is in scope or waived; PENDING while any out-of-scope file is undecided.
-  status: needs_human_decision
+  status: done
   ticket_type: feature
   risk_level: medium
   priority: 75
@@ -5112,9 +5196,10 @@ tickets:
   - evaluator
   component: atlas.verification
   linear_synced_at: '2026-07-04T18:05:38.538342Z'
-  last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
-  status_entered_at: '2026-07-05T15:53:13.776434Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-07-14T08:51:09.018256Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T14:00:07.671079Z'
   source_anchor: docs/atlas/verification-engine.md#evaluation-semantics
   created_by_type: agent
   created_by_id: planner
@@ -5128,7 +5213,7 @@ tickets:
   title: Human approval check evaluator
   objective: Implement the HUMAN_APPROVAL check evaluator that requires a blanket human-tier MANUAL_APPROVAL evidence record from the operator pinned to the PR head commit, distinguished from acceptance-criteria and scope decisions by the absence of both discriminator keys.
   context: For ticket types requiring human approval (feature/infrastructure at risk >= high, spike/research always), the operator must provide a blanket PR approval. This is a human-tier MANUAL_APPROVAL record carrying neither acceptance_criterion_hash nor scope_decision_path in raw_payload. The latest such record by (created_at, id) decides. PASSED = approved, FAILED = operator rejected. None at head commit = PENDING.
-  status: needs_human_decision
+  status: done
   ticket_type: feature
   risk_level: medium
   priority: 75
@@ -5170,9 +5255,10 @@ tickets:
   - evaluator
   component: atlas.verification
   linear_synced_at: '2026-07-04T18:05:38.538342Z'
-  last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
-  status_entered_at: '2026-07-05T15:53:13.776434Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-07-14T08:51:09.018256Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T14:00:07.671079Z'
   source_anchor: docs/atlas/verification-engine.md#evaluation-semantics
   created_by_type: agent
   created_by_id: planner
@@ -5186,7 +5272,7 @@ tickets:
   title: Ticket-level verdict composition
   objective: Implement the verify(ticket) function that composes per-check evaluations into a single ticket verdict using the required-check matrix, applying fail-precedence over gating checks and returning PASSED only when every required check is PASSED.
   context: 'The verdict composer takes a ticket, its PR head commit, and the evidence records, runs each required evaluator, and folds the results: FAILED if any required check is FAILED (fail precedence), PASSED if all required checks are PASSED, otherwise PENDING. Non-required checks (like the deferred SECURITY surface) appear in the breakdown but do not gate. A required check with no wired evaluator holds the verdict at PENDING rather than silently passing.'
-  status: needs_human_decision
+  status: done
   ticket_type: feature
   risk_level: high
   priority: 70
@@ -5231,9 +5317,10 @@ tickets:
   - composition
   component: atlas.verification
   linear_synced_at: '2026-07-04T18:05:38.538342Z'
-  last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
-  status_entered_at: '2026-07-05T15:53:13.776434Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-07-14T08:51:09.018256Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T14:00:07.671079Z'
   source_anchor: docs/atlas/verification-engine.md#verdict-and-completion
   created_by_type: agent
   created_by_id: planner
@@ -5289,6 +5376,7 @@ tickets:
   last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
   status_entered_at: '2026-07-05T15:53:13.776434Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: null
   source_anchor: docs/atlas/verification-engine.md#verdict-and-completion
   created_by_type: agent
   created_by_id: planner
@@ -5348,6 +5436,7 @@ tickets:
   last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
   status_entered_at: '2026-07-05T15:53:13.776434Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: null
   source_anchor: docs/atlas/verification-engine.md#reports
   created_by_type: agent
   created_by_id: planner
@@ -5412,6 +5501,7 @@ tickets:
   last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
   status_entered_at: '2026-07-05T15:53:13.776434Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: null
   source_anchor: docs/atlas/verification-engine.md#reports
   created_by_type: agent
   created_by_id: planner
@@ -5470,6 +5560,7 @@ tickets:
   last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
   status_entered_at: '2026-07-05T15:53:13.776434Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: null
   source_anchor: docs/atlas/implementation-roadmap.md#epic-completion-validation
   created_by_type: agent
   created_by_id: planner
@@ -5531,6 +5622,7 @@ tickets:
   last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
   status_entered_at: '2026-07-05T15:53:13.776434Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: null
   source_anchor: docs/atlas/symphony-integration.md#workflow-contract
   created_by_type: agent
   created_by_id: planner
@@ -5597,6 +5689,7 @@ tickets:
   last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
   status_entered_at: '2026-07-05T15:53:13.776434Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: null
   source_anchor: docs/atlas/symphony-integration.md#context-pack-delivery
   created_by_type: agent
   created_by_id: planner
@@ -5610,7 +5703,7 @@ tickets:
   title: PR ingestion and AgentRun reconstruction from observation
   objective: Create AgentRun records by observing Linear activity, PR metadata, and CI evidence rather than by agent self-report, so every dispatched agent session is attributable to an exact context pack and commit.
   context: Per symphony-integration.md, AgentRun records are created by Atlas from observation — not by the agent reporting on itself — consistent with the evidence trust model (ADR-0008). When a ticket transitions from Ready for Agent to In Progress, Atlas infers an agent session has started. When a PR is opened, Atlas links the PR to the ticket and records the head commit. The AgentRun model (data-model §3.9) carries input_context_pack_id, pr_number, head_commit_sha, and outcome fields. The roadmap seeds this as ATLAS-84.
-  status: needs_human_decision
+  status: done
   ticket_type: feature
   risk_level: high
   priority: 80
@@ -5656,9 +5749,10 @@ tickets:
   - evidence
   component: atlas.pm
   linear_synced_at: '2026-07-04T18:05:38.538342Z'
-  last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
-  status_entered_at: '2026-07-05T15:53:13.776434Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-07-14T08:51:09.018256Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T14:00:07.671079Z'
   source_anchor: docs/atlas/symphony-integration.md#retry-and-failure-seam
   created_by_type: agent
   created_by_id: planner
@@ -5719,6 +5813,7 @@ tickets:
   last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
   status_entered_at: '2026-07-05T15:53:13.776434Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: null
   source_anchor: docs/atlas/symphony-integration.md#state-mapping
   created_by_type: agent
   created_by_id: planner
@@ -5732,7 +5827,7 @@ tickets:
   title: 'Ticket-level failure analysis: cycle and dwell detection with DRAFT lesson creation'
   objective: Implement Atlas-owned ticket-level failure analysis that detects review cycling and dwell breaches after Symphony handoff, files failure-analysis notes, proposes ticket splits for oversized work, and creates DRAFT lessons from repeated failure patterns.
   context: 'Per symphony-integration.md retry-and-failure-seam, Atlas owns ticket-level outcomes while Symphony owns intra-ticket execution reliability. The PM Engine watches for: tickets cycling changes_requested ↔ pr_open more than N times (default 3); tickets dwelling in active states beyond configurable horizons; and verification failures after handoff. Its responses are planning-level: file a failure-analysis note, propose a ticket split, or route to Needs Human. Repeated failure patterns become DRAFT lessons (ADR-0009). The roadmap seeds this as ATLAS-86. Note: cycle detection (ATLAS-120) and dwell detection (ATLAS-119) are already delivered in Phase 4; this ticket wires the lesson-creation and split-proposal responses specific to Phase 8.'
-  status: needs_human_decision
+  status: done
   ticket_type: feature
   risk_level: medium
   priority: 60
@@ -5778,9 +5873,10 @@ tickets:
   - pm-engine
   component: atlas.pm
   linear_synced_at: '2026-07-04T18:05:38.538342Z'
-  last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
-  status_entered_at: '2026-07-05T15:53:13.776434Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-07-14T08:51:09.018256Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T14:00:07.671079Z'
   source_anchor: docs/atlas/symphony-integration.md#retry-and-failure-seam
   created_by_type: agent
   created_by_id: planner
@@ -5844,6 +5940,7 @@ tickets:
   last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
   status_entered_at: '2026-07-05T15:53:13.776434Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: null
   source_anchor: docs/atlas/implementation-roadmap.md#epic-autonomous-delivery
   created_by_type: agent
   created_by_id: planner
@@ -5912,6 +6009,7 @@ tickets:
   last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
   status_entered_at: '2026-07-05T15:53:13.776434Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: null
   source_anchor: docs/atlas/symphony-integration.md#boundary
   created_by_type: agent
   created_by_id: planner
@@ -5925,7 +6023,7 @@ tickets:
   title: Lesson extraction on ticket completion and failure events
   objective: Implement the lesson extractor that fires on ticket completion (done) and failure events (rejected, PM failure-analysis), producing schema-valid DRAFT lessons via an LLM call over a bounded evidence bundle.
   context: 'The Learning System is the final phase of the Atlas harness. Per learning-system.md, lesson extraction fires on three triggers: ticket reaching done (success-pattern candidate), ticket reaching rejected or a PM failure-analysis event (failure-pattern candidate), and operator request. The extractor makes an LLM call over a bounded evidence bundle (ticket, agent runs, PR review history, verification verdicts) and produces a Lesson with status DRAFT, confidence null, and related_ticket_ids populated. ADR-0009 mandates that all agent-authored lessons start as DRAFT and are excluded from context-pack retrieval until operator promotion. ADR-0005 requires that the LLM interprets; deterministic code assembles the evidence bundle and validates the output schema.'
-  status: needs_human_decision
+  status: done
   ticket_type: feature
   risk_level: high
   priority: 100
@@ -5978,9 +6076,10 @@ tickets:
   - llm
   component: atlas.learning
   linear_synced_at: '2026-07-04T18:05:38.538342Z'
-  last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
-  status_entered_at: '2026-07-05T15:53:13.776434Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-07-14T10:24:18.599952Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T14:00:07.671079Z'
   source_anchor: docs/atlas/learning-system.md#extraction-triggers
   created_by_type: agent
   created_by_id: planner
@@ -5994,7 +6093,7 @@ tickets:
   title: Lesson promotion CLI with DRAFT/ACTIVE/ARCHIVED lifecycle
   objective: Implement the operator-facing `atlas lessons review` and promotion commands that move lessons through the DRAFT → ACTIVE → ARCHIVED lifecycle, enforcing the ADR-0009 gate between agent-authored lessons and context-pack retrieval.
   context: 'ADR-0009 establishes the lesson promotion gate as the single most important governance mechanism in the Learning System: agent-authored lessons must not enter context packs until the operator promotes them. The learning-system.md promotion workflow specifies: `atlas lessons review` lists DRAFTs; per lesson the operator can promote (sets ACTIVE, operator assigns confidence 0–1), edit then promote, reject (ARCHIVED), or merge into an existing lesson. Confidence is an operator judgement, not a model output. The Lesson model already carries a status field (ATLAS-13). This ticket implements the CLI surface and the state-machine transitions.'
-  status: needs_human_decision
+  status: done
   ticket_type: feature
   risk_level: high
   priority: 99
@@ -6046,9 +6145,10 @@ tickets:
   - governance
   component: atlas.learning
   linear_synced_at: '2026-07-04T18:05:38.538342Z'
-  last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
-  status_entered_at: '2026-07-05T15:53:13.776434Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-07-14T14:23:02.798204Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T14:23:02.798204Z'
   source_anchor: docs/atlas/learning-system.md#promotion-workflow
   created_by_type: agent
   created_by_id: planner
@@ -6062,7 +6162,7 @@ tickets:
   title: Lesson retrieval integration with Context Renderer (ACTIVE only)
   objective: Wire the lesson retrieval step into the Context Renderer so that only ACTIVE lessons are included in context packs, matched by tag and ticket_type intersection, ranked by confidence then recency, capped at 3.
   context: 'The Context Renderer (Phase 5, context-renderer.md) specifies lesson retrieval as retrieval rule 4: `status: ACTIVE` only (ADR-0009), matched by tag intersection with the ticket''s tags and ticket_type, ranked by confidence then recency, cap 3. The compression ladder also specifies that lesson bodies are dropped to titles before other compression steps. This ticket implements the retrieval query and its integration into the pack assembly, ensuring the DRAFT gate is enforced at the retrieval layer and that no DRAFT lesson ever appears in a rendered pack.'
-  status: needs_human_decision
+  status: done
   ticket_type: feature
   risk_level: high
   priority: 98
@@ -6115,9 +6215,10 @@ tickets:
   - lesson-retrieval
   component: atlas.context
   linear_synced_at: '2026-07-04T18:05:38.538342Z'
-  last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
-  status_entered_at: '2026-07-05T15:53:13.776434Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-07-16T18:44:09.120754Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-16T18:44:09.120754Z'
   source_anchor: docs/atlas/learning-system.md#retrieval-interplay
   created_by_type: agent
   created_by_id: planner
@@ -6131,7 +6232,7 @@ tickets:
   title: Failure and success pattern detection over accumulated lessons
   objective: Implement deterministic heuristic pattern detection over lessons, debt items, and anomaly logs that raises pattern-candidate flags when recurring failure tags or recurring debt categories are detected, surfaced via `atlas lessons report`.
   context: 'learning-system.md specifies pattern detection as deterministic heuristics over lessons, debt items, and anomaly logs — no LLM. The rule: recurrence of the same tag across ≥3 failure-pattern lessons, or the same DebtItem category recurring across tickets, raises a pattern-candidate flag in `atlas lessons report`. ADR-0011 clarifies that pattern detection over code-quality debt must re-point at the reintroduced code-quality register (ATLAS-117), not at the delivery anomaly''s anomaly_type. ADR-0005 requires all quantitative detection to be deterministic code. Patterns are inputs to playbooks and to planning.'
-  status: needs_human_decision
+  status: done
   ticket_type: feature
   risk_level: medium
   priority: 97
@@ -6181,9 +6282,10 @@ tickets:
   - analytics
   component: atlas.learning
   linear_synced_at: '2026-07-04T18:05:38.538342Z'
-  last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
-  status_entered_at: '2026-07-05T15:53:13.776434Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-07-16T19:22:28.446440Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-16T19:22:28.446440Z'
   source_anchor: docs/atlas/learning-system.md#pattern-detection
   created_by_type: agent
   created_by_id: planner
@@ -6197,7 +6299,7 @@ tickets:
   title: Playbook generation from ACTIVE lessons under a tag
   objective: Implement `atlas lessons playbook <tag>` that drafts a playbook from ACTIVE lessons under a tag into `docs/atlas/playbooks/<tag>.md` as a PR branch for operator review and merge.
   context: 'learning-system.md specifies: `atlas lessons playbook <tag>` drafts a playbook from the ACTIVE lessons under a tag into `docs/atlas/playbooks/<tag>.md` as a PR branch, which the operator reviews and merges. Merged playbooks are canonical docs: the planner and context renderer pick them up through normal doc ingestion, closing the loop Docs → Delivery → Lessons → Docs. ADR-0006 requires that knowledge reaching canonical documents does so only via PR — never direct writes. The playbook is generated by an LLM call over the ACTIVE lessons for the tag; the operator reviews and merges.'
-  status: needs_human_decision
+  status: done
   ticket_type: feature
   risk_level: medium
   priority: 96
@@ -6245,9 +6347,10 @@ tickets:
   - cli
   component: atlas.learning
   linear_synced_at: '2026-07-04T18:05:38.538342Z'
-  last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
-  status_entered_at: '2026-07-05T15:53:13.776434Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-07-16T19:47:08.958866Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-16T19:47:08.958866Z'
   source_anchor: docs/atlas/learning-system.md#playbooks
   created_by_type: agent
   created_by_id: planner
@@ -6261,7 +6364,7 @@ tickets:
   title: Delivery analytics report (`atlas lessons report`)
   objective: Implement `atlas lessons report` providing lessons by category and status, citation counts, pattern candidates, promotion backlog age, and dwell breaches — CLI/markdown output only.
   context: 'learning-system.md specifies delivery analytics as: `atlas lessons report` — lessons by category and status, citation counts, pattern candidates, promotion backlog age. CLI/markdown only. The PM Engine''s delivery metrics (ATLAS-47) cover throughput and cycle time; this report covers the learning-specific signals. Per ADR-0005, all quantitative values are computed by deterministic code. The report is a pure reader — it makes no writes and no LLM calls.'
-  status: needs_human_decision
+  status: done
   ticket_type: feature
   risk_level: low
   priority: 95
@@ -6310,9 +6413,10 @@ tickets:
   - reporting
   component: atlas.learning
   linear_synced_at: '2026-07-04T18:05:38.538342Z'
-  last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
-  status_entered_at: '2026-07-05T15:53:13.776434Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-07-14T18:34:26.914810Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T18:34:26.914810Z'
   source_anchor: docs/atlas/learning-system.md#delivery-analytics
   created_by_type: agent
   created_by_id: planner
@@ -6326,7 +6430,7 @@ tickets:
   title: Organisational memory search (`atlas lessons search`)
   objective: Implement `atlas lessons search <query>` that searches ACTIVE lessons by tag and keyword match, returning ranked results for operator inspection of accumulated organisational memory.
   context: The implementation roadmap lists ATLAS-99 as 'Organisational memory search'. The learning-system.md defers embedding-based retrieval but the operator needs a way to inspect accumulated lessons beyond the review list. A keyword and tag-based search over ACTIVE lessons is the v1 implementation, consistent with ADR-0005 (deterministic code computes; no LLM in the search path) and the deferral of vector search noted in data-model §14.
-  status: needs_human_decision
+  status: done
   ticket_type: feature
   risk_level: low
   priority: 90
@@ -6371,9 +6475,10 @@ tickets:
   - cli
   component: atlas.learning
   linear_synced_at: '2026-07-04T18:05:38.538342Z'
-  last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
-  status_entered_at: '2026-07-05T15:53:13.776434Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-07-16T19:47:08.958866Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-16T19:47:08.958866Z'
   source_anchor: docs/atlas/implementation-roadmap.md#epic-organisational-learning
   created_by_type: agent
   created_by_id: planner
@@ -6387,7 +6492,7 @@ tickets:
   title: Continuous learning scheduler (`atlas lessons schedule`)
   objective: Implement the continuous learning scheduler that periodically triggers lesson extraction for recently completed and failed tickets, ensuring the learning loop runs without manual operator invocation.
   context: The implementation roadmap lists ATLAS-100 as 'Continuous learning scheduler'. The learning-system.md extraction triggers specify that extraction fires on ticket reaching done or rejected, and on PM failure-analysis events. The scheduler is the recurring loop that ensures these triggers are not missed — analogous to the PM Engine scheduler (ATLAS-50) but scoped to the learning system. It polls for recently completed/failed tickets that have not yet had extraction attempted and fires the extractor. Per ADR-0005, the scheduler logic is deterministic; only the extractor makes LLM calls.
-  status: needs_human_decision
+  status: done
   ticket_type: feature
   risk_level: medium
   priority: 85
@@ -6435,9 +6540,10 @@ tickets:
   - automation
   component: atlas.learning
   linear_synced_at: '2026-07-04T18:05:38.538342Z'
-  last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
-  status_entered_at: '2026-07-05T15:53:13.776434Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-07-14T13:59:57.044562Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T13:59:57.044562Z'
   source_anchor: docs/atlas/implementation-roadmap.md#epic-organisational-learning
   created_by_type: agent
   created_by_id: planner
@@ -6505,6 +6611,7 @@ tickets:
   last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
   status_entered_at: '2026-07-05T15:53:13.776434Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: null
   source_anchor: docs/decisions/0011-debtitem-denotes-delivery-anomalies.md#decision
   created_by_type: agent
   created_by_id: planner
@@ -6559,6 +6666,7 @@ tickets:
   last_observed_linear_state_id: 84207146-0b47-4821-a7e9-331abe38e77a
   status_entered_at: '2026-07-07T20:18:18.297299Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T14:00:07.671079Z'
   source_anchor: docs/atlas/implementation-roadmap.md#epic-evidence-driven-delivery
   created_by_type: agent
   created_by_id: planner
@@ -6599,6 +6707,7 @@ tickets:
   last_observed_linear_state_id: 84207146-0b47-4821-a7e9-331abe38e77a
   status_entered_at: '2026-07-07T20:18:18.297299Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T14:00:07.671079Z'
   source_anchor: docs/planning/inbox/processed/smoke-b-fixture.md#smoke-b-fixture-add-a-delivery-loop-smoke-marker-to-the-readme
   created_by_type: agent
   created_by_id: planner
@@ -6640,6 +6749,7 @@ tickets:
   last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
   status_entered_at: '2026-07-05T18:43:47.240967Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T14:00:07.671079Z'
   source_anchor: docs/planning/inbox/processed/smoke-b-fixture-v2.md#smoke-b-fixture-v2-document-the-delivery-loop-under-docs
   created_by_type: agent
   created_by_id: planner
@@ -6697,6 +6807,7 @@ tickets:
   last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
   status_entered_at: '2026-07-08T21:26:29.298635Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: null
   source_anchor: docs/planning/inbox/processed/inbox-stub-op8-linear-client-hardening.md#linear-client-hardening-op-8
   created_by_type: agent
   created_by_id: planner
@@ -6758,6 +6869,7 @@ tickets:
   last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
   status_entered_at: '2026-07-08T21:26:29.298635Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: null
   source_anchor: docs/planning/inbox/processed/inbox-stub-op9-sync-request-budget.md#sync-request-budget-op-9
   created_by_type: agent
   created_by_id: planner
@@ -6803,6 +6915,7 @@ tickets:
   last_observed_linear_state_id: 84207146-0b47-4821-a7e9-331abe38e77a
   status_entered_at: '2026-07-08T21:26:29.298635Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T14:00:07.671079Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-op8-linear-client-hardening.md#linear-client-hardening-op-8
   created_by_type: agent
   created_by_id: planner
@@ -6848,6 +6961,7 @@ tickets:
   last_observed_linear_state_id: 84207146-0b47-4821-a7e9-331abe38e77a
   status_entered_at: '2026-07-08T21:26:29.298635Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T14:00:07.671079Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-op9-sync-request-budget.md#sync-request-budget-op-9
   created_by_type: agent
   created_by_id: planner
@@ -6905,6 +7019,7 @@ tickets:
   last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
   status_entered_at: '2026-07-12T07:16:20.400709Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: null
   source_anchor: docs/planning/inbox/processed/inbox-stub-f4-promotion-dedup.md#promotion-dedup-f-4
   created_by_type: agent
   created_by_id: planner
@@ -6960,6 +7075,7 @@ tickets:
   last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
   status_entered_at: '2026-07-12T07:16:20.400709Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: null
   source_anchor: docs/planning/inbox/processed/inbox-stub-retire-on-reject-scope.md#retire-on-reject-scope
   created_by_type: agent
   created_by_id: planner
@@ -7018,6 +7134,7 @@ tickets:
   last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
   status_entered_at: '2026-07-13T07:27:08.805795Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T14:00:07.671079Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-stubs-only-plan-mode.md#stubs-only-plan-mode
   created_by_type: agent
   created_by_id: planner
@@ -7068,6 +7185,7 @@ tickets:
   last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
   status_entered_at: '2026-07-12T07:16:20.400709Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: null
   source_anchor: docs/planning/inbox/processed/inbox-stub-accepted-types-spelling.md#accepted-types-spelling
   created_by_type: agent
   created_by_id: planner
@@ -7110,6 +7228,7 @@ tickets:
   last_observed_linear_state_id: cd8e7c95-8a25-48ad-b0ef-19e00f000e70
   status_entered_at: '2026-07-12T07:16:20.400709Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T14:00:07.671079Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-accepted-types-spelling.md#accepted-types-spelling
   created_by_type: agent
   created_by_id: planner
@@ -7153,6 +7272,7 @@ tickets:
   last_observed_linear_state_id: cd8e7c95-8a25-48ad-b0ef-19e00f000e70
   status_entered_at: '2026-07-12T07:16:20.400709Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T14:00:07.671079Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-f4-promotion-dedup.md#promotion-dedup-f-4
   created_by_type: agent
   created_by_id: planner
@@ -7196,6 +7316,7 @@ tickets:
   last_observed_linear_state_id: cd8e7c95-8a25-48ad-b0ef-19e00f000e70
   status_entered_at: '2026-07-12T07:16:20.400709Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T14:00:07.671079Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-retire-on-reject-scope.md#retire-on-reject-scope
   created_by_type: agent
   created_by_id: planner
@@ -7241,6 +7362,7 @@ tickets:
   last_observed_linear_state_id: cd8e7c95-8a25-48ad-b0ef-19e00f000e70
   status_entered_at: '2026-07-12T07:16:20.400709Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T14:00:07.671079Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-stubs-only-plan-mode.md#stubs-only-plan-mode
   created_by_type: agent
   created_by_id: planner
@@ -7284,6 +7406,7 @@ tickets:
   last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
   status_entered_at: '2026-07-13T07:27:08.805795Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: null
   source_anchor: docs/planning/inbox/processed/inbox-stub-durable-stub-anchors.md#durable-stub-anchors
   created_by_type: agent
   created_by_id: planner
@@ -7327,6 +7450,7 @@ tickets:
   last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
   status_entered_at: '2026-07-13T07:27:08.805795Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: null
   source_anchor: docs/planning/inbox/processed/inbox-stub-meta-label-discipline.md#meta-label-discipline
   created_by_type: agent
   created_by_id: planner
@@ -7368,6 +7492,7 @@ tickets:
   last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
   status_entered_at: '2026-07-13T14:03:24.951679Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T14:00:07.671079Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-collapse-anchor-normalization.md#collapse-anchor-normalization
   created_by_type: agent
   created_by_id: planner
@@ -7409,6 +7534,7 @@ tickets:
   last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
   status_entered_at: '2026-07-13T07:37:51.626861Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T14:00:07.671079Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-pack-processed-anchors.md#packs-see-processed-stubs
   created_by_type: agent
   created_by_id: planner
@@ -7450,6 +7576,7 @@ tickets:
   last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
   status_entered_at: '2026-07-13T14:12:12.067559Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T14:00:07.671079Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-retirement-collision.md#retirement-collision-handling
   created_by_type: agent
   created_by_id: planner
@@ -7494,6 +7621,7 @@ tickets:
   last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
   status_entered_at: '2026-07-13T07:37:51.626861Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T14:00:07.671079Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-pack-embedding.md#pack-embedding
   created_by_type: agent
   created_by_id: planner
@@ -7535,6 +7663,7 @@ tickets:
   last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
   status_entered_at: '2026-07-13T14:20:08.439614Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T14:00:07.671079Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-relevant-docs-repair.md#relevantdocs-spelling-repair
   created_by_type: agent
   created_by_id: planner
@@ -7577,6 +7706,7 @@ tickets:
   last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
   status_entered_at: '2026-07-13T18:56:42.801067Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T14:00:07.671079Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-agentrun-reconstruction.md#agentrun-reconstruction
   created_by_type: agent
   created_by_id: planner
@@ -7618,6 +7748,7 @@ tickets:
   last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
   status_entered_at: '2026-07-13T17:44:11.879620Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T14:00:07.671079Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-draft-lessons.md#draft-lessons-from-anomalies
   created_by_type: agent
   created_by_id: planner
@@ -7631,7 +7762,7 @@ tickets:
   title: 'Rebase-onto-fresh-main before PR open and before every push (the #188 conflict class)'
   objective: Dispatched agents integrate their branch against current origin/main before opening a PR, before every subsequent push, and before the Review Required handoff — so merge conflicts are resolved by the agent at authoring time, not discovered by the operator at merge time, and every verification verdict pins to a head that is current against main at handoff.
   context: 'Phase 8 carry-forward (closure report §5, the #188 conflict class): each agent clones at dispatch and goes stale as sibling PRs land; the operator inherits the conflict at merge. The engineer''s discipline — fetch and rebase locally before pushing — is the fix. Pre-ruled decisions: D-1 no Symphony code changes — Symphony''s SPEC already provides hooks.before_run (runs before every attempt, failure aborts the attempt), and the contract body is Atlas-owned; the whole change is WORKFLOW.md front matter plus contract body, delivered as a normal PR against this repository. D-2 hooks.before_run gains a freshness step (git fetch origin main) so every attempt, including Changes Requested resumes, starts with current refs; conflict RESOLUTION stays in the contract body because it requires judgement a hook cannot exercise. D-3 the contract body gains a binding integration rule: immediately before opening the PR, before every push, and before moving to Review Required, run git fetch origin main && git rebase origin/main; conflicts touching only files inside the pack''s scope are resolved by the agent and noted in the PR description; any conflict touching a file outside pack scope is a blocker — comment and move to Needs Human, never improvise. D-4 ordering is binding under ADR-0008: rebase precedes push precedes CI, so system-tier evidence pins to the final head; an agent never rebases after entering Review Required — post-verdict staleness (a sibling PR merged first) is routed by the operator through Changes Requested, where the same discipline reapplies and CI re-runs on the new head (L-6 stale-verdict lesson). D-5 after_create drops --depth 1 (full clone): a depth-1 clone can lack the merge base after a later fetch, making git rebase fail fatally; the repository is small and determinism beats seconds. (Rejected alternative, recorded: keep depth 1 and fetch --unshallow in the sync step — more moving parts for no benefit at current repo size.) D-6 max_concurrent_agents stays 1 in this ticket; raising it is a separate operator knob exercised only after this lands. D-7 GitHub merge queue / auto-merge branch-update is explicitly out of scope v1; noted in symphony-integration.md as the platform-level answer if concurrency outgrows agent-side rebasing.'
-  status: ready_for_agent
+  status: done
   ticket_type: infrastructure
   risk_level: low
   priority: 50
@@ -7657,9 +7788,10 @@ tickets:
   tags: []
   component: null
   linear_synced_at: '2026-07-13T20:20:45.360832Z'
-  last_observed_linear_state_id: df1ebd92-7c41-4585-a15b-29b9e73f840f
-  status_entered_at: '2026-07-13T20:21:54.893973Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-07-14T08:14:36.134527Z'
   review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T14:00:07.671079Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-rebase-before-pr.md#rebase-before-pr
   created_by_type: agent
   created_by_id: planner
@@ -7673,7 +7805,7 @@ tickets:
   title: Degraded definition-only push must not advance the sync cursor; repair pack-absent pushed tickets
   objective: A push degraded to definition-only by an enumerated pack-render failure leaves the sync cursor unstamped so the embed retries on the next tick once the condition clears; a one-shot repair path re-embeds already-stamped tickets whose Linear description lacks the pack header — converting transient render failures back into transient states.
   context: 'Live bite, 2026-07-13, PlanRun 5fd330e1: `atlas apply` retired an inbox stub to processed/ uncommitted; the tick''s pack loader correctly refused (DirtyInputError, ADR-0006 committed-only) and degraded ATLAS-168''s push to definition-only — but the degraded push still stamped the cursor via mark_definition_pushed, and inbound status changes deliberately never bump updated_at (repositories.py cursor-directionality rule), so no future tick re-embeds: a one-tick dirty tree became a permanently pack-less ticket. This closes the deferred pack-freshness carry-forward (Phase 8 closure §5, pointer at the ATLAS-164 gate record). Pre-ruled decisions: D-1 on an enumerated degradation (the D-2 render-failure classes in sync.py) the definition IS still pushed (Linear must not show a stale definition) but mark_definition_pushed is NOT called — updated_at stays ahead of linear_synced_at and the next tick retries the full embed; the retry is naturally bounded because it fires only while the cursor is unstamped. D-2 non-enumerated failures keep their existing semantics unchanged. D-3 repair path: a sweep over pushable tickets with external_linear_id set whose current Linear description lacks the `ATLAS CONTEXT PACK v1` header re-renders and re-pushes the full embed, stamping normally on success — exposed as `atlas pm sync --repair-packs` (or the house-preferred flag spelling), idempotent, zero writes when every description carries the header. D-4 detection reads the description already fetched by the batched pull where possible; the repair must not blow the per-tick request budget (ATLAS-148) — if a dedicated fetch is unavoidable it is repair-mode-only, never on the plain tick. D-5 the degradation log line additionally names the ticket as cursor-unstamped, so `atlas pm report`''s anomaly section can count still-degraded tickets. D-6 no changes to the fail-closed loader, the DirtyInputError contract, or the D-2 enumeration itself — this ticket changes only what happens AFTER a correct refusal.'
-  status: planned
+  status: done
   ticket_type: bug
   risk_level: low
   priority: 50
@@ -7694,6 +7826,49 @@ tickets:
   definition_of_done:
   - All acceptance criteria evidenced by named tests; full gate sweep green; ATLAS-168's live repair is performed by the operator post-merge via the new flag and recorded on the ticket; PR title carries the minted key.
   estimated_effort: null
+  external_linear_id: b6eb24bb-7ffe-4b7b-8300-74f06601a012
+  external_github_issue_id: null
+  tags: []
+  component: null
+  linear_synced_at: '2026-07-14T06:11:26.843190Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-07-14T07:30:27.174098Z'
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-14T14:00:07.671079Z'
+  source_anchor: docs/planning/inbox/processed/inbox-stub-degraded-embed-cursor.md#degraded-embeds-retry-stamped-victims-get-repaired
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-14T06:11:26.843190Z'
+  updated_at: '2026-07-14T06:11:26.843190Z'
+  completed_at: null
+- id: 29eb4a86-8169-4f0f-b5fa-dceeb8163f2c
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 4d034c8b-0752-4089-8ff9-2fd43f51c6f4
+  key: ATLAS-170
+  title: 'One-shot CLI commands print nothing on success: counters and skip reasons to stdout'
+  objective: Every operator-invoked one-shot command reports what it did on stdout — counters for work performed, and named reasons for candidates it declined — so success is distinguishable from a hang, a no-op, and a silent skip without reading the source or querying the store.
+  context: 'Live findings across Phase 8 and 9; this gap cost operator certainty at least four separate times in one session. `atlas/cli.py` never calls `logging.basicConfig`, so Python''s default drops INFO and prints only WARNING+; every happy-path line in `atlas/pm/sync.py` and `atlas/learning/scheduler.py` is `logger.info`. Observed consequences: (1) `atlas pm sync` with no flags is the recurring loop and prints nothing — indistinguishable from a hang; (2) `atlas pm sync --repair-packs` completed a repair and printed nothing, so the operator could not tell whether the sweep had run, found nothing, or silently skipped; (3) the same sweep silently skipped its only target because the ticket sat in a non-pushable status, one of six unannounced `continue` branches in the selection loop — the operator lost 20 minutes to a command that declined every candidate without a word; (4) `atlas lessons schedule` (no `--once`) ran an unbounded backfill of ~18 LLM calls in silence and was killed mid-sweep because it looked hung. An operator-invoked, one-shot command that prints nothing on success is a sharper defect than a silent daemon: there is no observable to check and no second signal. Pre-ruled decisions: D-1 one-shot modes print a result summary to STDOUT (not the log): `atlas pm sync --once`, `atlas pm sync --repair-packs`, `atlas lessons schedule --once`. The summary is the command''s own result object rendered — counters already exist on `SyncResult`/the scheduler result; this ticket surfaces them, it does not invent metrics. D-2 selection loops that decline candidates name the reason per declined candidate (status not pushable, no external id, cursor already stamped, header already present, ...) — a skip is a result, not silence. D-3 a `--verbose`/`-v` flag enables INFO-level logging for the invocation; the default stays quiet-except-warnings so recurring loops do not spam. D-4 recurring (non-`--once`) modes are out of scope for stdout summaries — they keep logging semantics; `-v` covers them. D-5 no change to WARNING behaviour, to any counter''s meaning, or to exit codes. D-6 the runbook''s silence-discipline paragraph (`pr-acceptance.md`, when it lands) is amended in the same change to point at the new output instead of prescribing observable-checking.'
+  status: planned
+  ticket_type: bug
+  risk_level: low
+  priority: 50
+  relevant_docs:
+  - docs/planning/inbox/processed/inbox-stub-cli-output.md
+  acceptance_criteria:
+  - '`atlas pm sync --once` prints a result summary to stdout naming pushes, embeds, status pulls, anomalies logged, and unmapped observations; a no-op tick says so explicitly rather than printing nothing.'
+  - '`atlas pm sync --repair-packs` prints `packs_repaired` and, for every candidate it declined, one line naming the ticket and the reason (a fixture with one repairable and one non-pushable ticket produces exactly one repair line and one named skip line).'
+  - '`atlas lessons schedule --once` prints attempted / extracted / declined-as-not-notable / failed counts.'
+  - '`-v`/`--verbose` enables INFO logging for the invocation; without it, stdout summaries still print and INFO stays suppressed (seed the probe with `assert 1 == 2`, B011).'
+  - 'Negative: WARNING output, exit codes, and every counter''s computed value are unchanged — existing sync/scheduler tests pass unmodified.'
+  non_goals:
+  - No structured/JSON logging framework. No stdout summaries for recurring loop modes. No new counters or metrics. No change to what any command does, only to what it says. No progress bars.
+  implementation_notes: []
+  test_requirements:
+  - Fixture-driven with captured stdout, `ATLAS_LIVE_TESTS=0`; seeded defects use `assert 1 == 2` (B011); enumeration pins hold.
+  documentation_requirements: []
+  definition_of_done:
+  - All acceptance criteria evidenced by named tests; full gate sweep green; PR title carries the minted key.
+  estimated_effort: null
   external_linear_id: null
   external_github_issue_id: null
   tags: []
@@ -7702,9 +7877,312 @@ tickets:
   last_observed_linear_state_id: null
   status_entered_at: null
   review_cycle_count: 0
-  source_anchor: docs/planning/inbox/processed/inbox-stub-degraded-embed-cursor.md#degraded-embeds-retry-stamped-victims-get-repaired
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/inbox-stub-cli-output.md#silence-is-not-success
   created_by_type: agent
   created_by_id: planner
-  created_at: '2026-07-14T06:11:26.843190Z'
-  updated_at: '2026-07-14T06:11:26.843190Z'
+  created_at: '2026-07-17T18:09:03.267173Z'
+  updated_at: '2026-07-17T18:09:03.267173Z'
+  completed_at: null
+- id: 46e9dd0d-4a56-4183-96fb-2027412ad0bc
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 4d034c8b-0752-4089-8ff9-2fd43f51c6f4
+  key: ATLAS-171
+  title: 'An agent can complete verified work and lose it at the push: probe GitHub write access in before_run'
+  objective: A dispatched agent's attempt aborts in seconds when its session cannot push to the repository, instead of building for an hour and stranding verified work in a workspace behind a 403.
+  context: 'Live incident, 2026-07-16, ATLAS-102. The agent rebased onto current main, resolved a duplicate-delivery conflict correctly, ran the full gate sweep green (1869 passed), and then could not hand off: `git push --force-with-lease` returned HTTP 403 `Permission to derekrivers/atlas.git denied to derekrivers`, and `gh` PR-body updates returned 403 `Resource not accessible by personal access token`. An hour of correct, verified work existed only as commit 286dc9a in `~/code/atlas-workspaces/ATL-250`, recoverable only because `workspace.before_remove: true` and the root is not `/tmp`. The agent handled it as well as the contract allows — it reported precisely, named the commit, and asked for a human — but the contract has no defined behaviour for ''work done, push denied'', and ATLAS-168''s ordering (rebase -> push -> CI -> Review Required) assumes the push succeeds. Root cause is structural, not accidental: WORKFLOW.md dispatches Codex with `shell_environment_policy.inherit=core`, which strips the operator''s exported `GITHUB_TOKEN`; the session therefore authenticates with whatever on-disk git credential the sandbox can reach, which is a DIFFERENT token from the operator''s and may carry different scopes. The operator''s own `atlas preflight` cannot detect this — it would probe the operator''s token, not the agent''s. The check must run inside the agent''s session, which means the hook. Pre-ruled decisions: D-1 `hooks.before_run` gains a write-access probe that runs in the agent''s own environment, after the existing `git fetch origin main` freshness step (ATLAS-168). Symphony''s `before_run` failure aborts the attempt — that is exactly the desired semantic, and it costs seconds. D-2 the probe is read-only and non-mutating: `git push --dry-run` against the current HEAD (or an equivalent that exercises the credential without creating a ref). It must not create branches, tags, or refs on the remote. D-3 the failure message names the cause in the agent''s transcript — no write credential for `<repo>`, session env is `inherit=core`, the operator''s exported GITHUB_TOKEN is not visible here — so the operator diagnoses in one read instead of an hour. D-4 no token, credential, or secret value appears in WORKFLOW.md, in any committed file, or in the probe''s output; WORKFLOW.md is public. Injecting a token via `shell_environment_policy.set` is REJECTED for exactly this reason. D-5 this is a contract change (WORKFLOW.md front matter + symphony-integration.md), delivered as a normal PR against this repository; NO Symphony code changes (the ATLAS-168 D-1 precedent). D-6 the operator-side credential facts (two auth channels: Atlas reads `GITHUB_TOKEN`; agents use on-disk credentials via the gh credential helper) belong in `operator-environment.md`, not the repository — out of scope here, recorded as an operator action.'
+  status: planned
+  ticket_type: infrastructure
+  risk_level: low
+  priority: 50
+  relevant_docs:
+  - docs/planning/inbox/processed/inbox-stub-github-write-preflight.md
+  acceptance_criteria:
+  - WORKFLOW.md `hooks.before_run` contains a non-mutating write-access probe that runs after the origin/main fetch; the front matter remains parseable by `yaml.safe_load` and existing workflow-contract assertions pass unmodified.
+  - 'The probe creates no remote ref: a documented probe or fixture demonstrates it exercises the credential without writing (seed the probe with `assert 1 == 2`, B011).'
+  - 'The failure path is documented in symphony-integration.md: what the message says, why `inherit=core` means the agent''s credential differs from the operator''s, and that a failed probe aborts the attempt before any work is done.'
+  - symphony-integration.md records the stranded-work incident as the motivating evidence trail (ATLAS-102 / commit 286dc9a, 2026-07-16) and states that a failed handoff leaves work only in the workspace.
+  - 'Negative: no token or credential value appears anywhere in WORKFLOW.md or any committed file; the two per-product knobs remain the only per-product values per the canonical-contract header.'
+  non_goals:
+  - No Symphony code changes. No token injection into the agent environment via shell_environment_policy.set or any other mechanism. No change to the rebase/push/CI ordering (ATLAS-168 stands). No new atlas CLI check — the operator's token is not the agent's token, so an atlas-side probe would prove the wrong thing. No workspace-recovery automation.
+  implementation_notes: []
+  test_requirements:
+  - WORKFLOW.md front matter parses; existing workflow-contract tests pass unmodified; `ATLAS_LIVE_TESTS=0`; seeded defects use `assert 1 == 2` (B011).
+  documentation_requirements: []
+  definition_of_done:
+  - All acceptance criteria evidenced by named tests or named doc anchors; the probe is exercised by at least one real dispatch and the operator records the result on the ticket; full gate sweep green; PR title carries the minted key.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags: []
+  component: null
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/inbox-stub-github-write-preflight.md#fail-in-five-seconds-not-in-an-hour
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-17T18:09:03.267173Z'
+  updated_at: '2026-07-17T18:09:03.267173Z'
+  completed_at: null
+- id: 3bd8003b-7119-4437-be4d-0b70ec5ca8ab
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 5a486514-1761-45a8-8094-9a0e8282c3d4
+  key: ATLAS-172
+  title: 'Lesson.related_ticket_ids conflates provenance with citation: merge corrupts the source, the citation metric is permanently off by one'
+  objective: A lesson's source ticket and its citation history are distinct stored fields, so provenance survives `lessons merge`, the citation count means what the report says it means, and the `--stale` and citation signals are computed from usage rather than from usage-plus-self.
+  context: 'Live finding, 2026-07-17, during Phase 9 closure smoke. `atlas lessons report` displayed `Active lesson citations | Enforce ACTIVE-only lesson retrieval... | 1 | c41c0a43-...` for a lesson that has never been cited by any pack — c41c0a43 is ATLAS-65, the lesson''s own SOURCE ticket. The field carries three meanings by position and no invariant protects any of them: (1) `atlas/learning/extractor.py:376` seeds `related_ticket_ids: [ticket.id]` at extraction — index 0 is PROVENANCE; (2) `atlas/pm/sync.py`''s `_record_lesson_citation_feedback` (ATLAS-101) APPENDS completing tickets — indices 1..N are USAGE; (3) `atlas/cli.py:2512` `_source_ticket_label` reads `related_ticket_ids[0]` and labels it `source=` — correct only by positional luck; (4) `atlas/learning/report.py:182` computes `citation_count=len(lesson.related_ticket_ids)` — so every ACTIVE lesson is born with a phantom citation of itself, permanently; (5) `atlas lessons merge` (ATLAS-100) UNIONS the two lists — after any merge, index 0 is whichever lesson won and the other lesson''s source silently becomes a ''citation''. Provenance is destroyed by a supported operation. The pending 153/158 merge ruling is exactly that case. learning-system.md is itself ambiguous and must be fixed with the code: its extraction section says a lesson is produced with `related_ticket_ids` populated, while its retrieval-interplay section says citation ADDS the completing ticket to `related_ticket_ids` — one field, two documented purposes. Pre-ruled decisions: D-1 add `Lesson.source_ticket_id: UUID` (single, immutable, set at extraction) and redefine `related_ticket_ids` as citations-only; the extractor stops seeding it. D-2 migration (next number in sequence) backfills `source_ticket_id = related_ticket_ids[0]` for every existing row and removes that element from `related_ticket_ids`, so the 18 backfilled lessons keep correct provenance and drop their phantom citation; the migration is data-preserving and reversible in the usual house form. D-3 `_source_ticket_label` reads `source_ticket_id`; the `source=` display is unchanged for the operator. D-4 `report.py`''s citation count becomes `len(related_ticket_ids)` under the new definition — an uncited ACTIVE lesson reports 0. D-5 `lessons merge` preserves the TARGET''s `source_ticket_id` unchanged and unions only citations; the merged-away lesson''s source is recorded in the merge''s audit trail, not silently promoted to a citation. D-6 `--stale` (ATLAS-100) and any pack-count signal are recomputed against citations-only; confirm no other consumer reads the field positionally. D-7 learning-system.md''s extraction and retrieval-interplay sections are corrected in the same change to name the two fields separately; the schema export and its enumeration pin are updated as a named change.'
+  status: planned
+  ticket_type: bug
+  risk_level: low
+  priority: 50
+  relevant_docs:
+  - docs/planning/inbox/processed/inbox-stub-lesson-provenance.md
+  acceptance_criteria:
+  - '`Lesson` carries `source_ticket_id` (set once at extraction) and `related_ticket_ids` (citations only); the extractor no longer seeds `related_ticket_ids`, and a freshly extracted lesson reports zero citations.'
+  - The migration backfills `source_ticket_id` from `related_ticket_ids[0]` and removes that element for every pre-existing row; a fixture store built at the old schema migrates with provenance intact and citation counts reduced by exactly one per lesson.
+  - '`atlas lessons merge <draft> --into <active>` leaves the target''s `source_ticket_id` unchanged and unions citations only; a fixture proves the merged-away lesson''s source ticket does NOT appear as a citation (seed the probe with `assert 1 == 2`, B011).'
+  - '`atlas lessons report` shows 0 citations for an ACTIVE lesson that has never appeared in a completed ticket''s pack, and 1 after one citation-feedback event.'
+  - '`source=` in `atlas lessons review` renders from `source_ticket_id` and is unchanged for the operator; `--stale` is computed from citations-only.'
+  - learning-system.md names the two fields distinctly in both the extraction and retrieval-interplay sections; schemas export and its enumeration pin updated as a named change.
+  non_goals:
+  - No change to the citation trigger condition or to when feedback fires (ATLAS-101's behaviour stands). No confidence-decay work. No new CLI surface. No change to ADR-0009 or the promotion gate.
+  implementation_notes: []
+  test_requirements:
+  - Fixture-driven, `ATLAS_LIVE_TESTS=0`; migration tested up and down against a fixture store carrying the old shape; seeded defects use `assert 1 == 2` (B011); enumeration pins named.
+  documentation_requirements: []
+  definition_of_done:
+  - All acceptance criteria evidenced by named tests; `alembic upgrade head` applied against the live store and the operator confirms `atlas lessons report` shows 0 citations for both currently-ACTIVE lessons; full gate sweep green; PR title carries the minted key.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags: []
+  component: null
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/inbox-stub-lesson-provenance.md#one-field-three-meanings-no-invariant
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-17T18:09:03.267173Z'
+  updated_at: '2026-07-17T18:09:03.267173Z'
+  completed_at: null
+- id: b4eb662f-6c1a-4591-821f-e5b3903020e3
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 5a486514-1761-45a8-8094-9a0e8282c3d4
+  key: ATLAS-173
+  title: 'atlas lessons show: the promotion gate cannot read what it rules on'
+  objective: '`atlas lessons show <LESSON_ID>` prints a lesson''s full stored record — title, category, status, confidence, tags, problem, solution, outcome, provenance and citations, timestamps — so the operator can read a lesson before promoting it, with `--json` for machine consumers.'
+  context: 'Live finding, 2026-07-17, during the first promotion session in Atlas history. `atlas lessons review` and `atlas lessons review --json` emit only `id`, `title`, `source_ticket`, `created_at`, `status` (`_lesson_review_row`, atlas/cli.py). There is no other read surface. ADR-0009 makes promotion the single human gate between agent-authored experience and future agent context — and the CLI asks that gate to rule on a title. Reading a lesson body during the closure session required `sqlite3 -line .atlas/atlas.db "SELECT problem, solution, outcome FROM lessons WHERE id=..."` — raw SQL against the store, with dashes stripped from the UUID. Two consequences observed live: (1) the operator cannot exercise the design doc''s documented `edit then promote` path without hand-writing UPDATE statements; (2) an operator who promotes without reading is promoting a model''s unreviewed text into every future agent''s context pack, which is precisely the leak ADR-0009 exists to prevent — the gate is nominal if it cannot see. This is a governance gap, not a UX nit. Pre-ruled decisions: D-1 `show` is the detail view; `review` stays a scannable list — do NOT bloat `review` with bodies. D-2 `show` prints every stored field an operator needs to rule: title, category, status, confidence (or `-` when null), tags, problem, solution, outcome, related_adr_ids, provenance/citation ticket keys resolved to ATLAS-NN where resolvable, created_by, created_at, updated_at. D-3 `--json` emits the same record machine-readably. D-4 house error contract: a non-UUID id, an unknown id, and a cold/never-migrated database are each a clean one-line `EXIT_PRECONDITION`, never a traceback (the ATLAS-108 lesson, and the pattern `atlas evidence show` already follows). D-5 pure reader: no writes, no LLM calls, no Linear calls. D-6 accepts the UUID in canonical dashed form as printed by `review` — the operator must never have to strip dashes.'
+  status: planned
+  ticket_type: feature
+  risk_level: low
+  priority: 50
+  relevant_docs:
+  - docs/planning/inbox/processed/inbox-stub-lessons-show.md
+  acceptance_criteria:
+  - '`atlas lessons show <id>` prints title, category, status, confidence, tags, problem, solution, outcome, related_adr_ids, ticket keys, created_by, created_at, updated_at for a stored lesson; the dashed UUID printed by `atlas lessons review` is accepted verbatim.'
+  - '`--json` emits the same record as machine-readable JSON with the same field coverage.'
+  - 'Negative: a non-UUID id, an unknown-but-valid UUID, and a cold database each produce a clean one-line error on stderr and EXIT_PRECONDITION — no traceback (seed the probe with `assert 1 == 2`, B011).'
+  - A lesson with `confidence` null renders a placeholder rather than `None`; a lesson with empty tags/adr ids renders cleanly.
+  - 'The command performs no writes: a fixture asserts the store is byte-identical before and after.'
+  non_goals:
+  - No change to `atlas lessons review`'s row shape. No edit/update subcommand (editing before promotion stays operator-owned; see the separate provenance ticket for schema work). No new fields. No LLM calls. No pager or formatting framework.
+  implementation_notes: []
+  test_requirements:
+  - Fixture-driven, `ATLAS_LIVE_TESTS=0`; seeded defects use `assert 1 == 2` (B011); enumeration pins hold; full gate sweep green.
+  documentation_requirements: []
+  definition_of_done:
+  - All acceptance criteria evidenced by named tests; learning-system.md's promotion-workflow section names `show` as the read surface the gate uses; full gate sweep green; PR title carries the minted key.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags: []
+  component: null
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/inbox-stub-lessons-show.md#the-gate-must-see-its-cargo
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-17T18:09:03.267173Z'
+  updated_at: '2026-07-17T18:09:03.267173Z'
+  completed_at: null
+- id: d663af53-573a-4fcc-8b11-75b971d690ce
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 4d034c8b-0752-4089-8ff9-2fd43f51c6f4
+  key: ATLAS-174
+  title: 'Schema drift surfaces as a raw OperationalError mid-tick: check alembic head parity as a named precondition'
+  objective: A command that needs the store fails fast with a named, actionable error when the database is behind the code's migration head, instead of crashing mid-work with a raw SQLAlchemy OperationalError or writing a partial result.
+  context: 'Two live failures, 2026-07-14, both caused by a merged migration not yet applied to the operator''s store. (1) After ATLAS-99 (#195) merged migration 0018 (lessons.confidence nullable), the sync tick''s extraction ran the full LLM call, produced a valid DRAFT lesson, and then died at the write: `sqlite3.IntegrityError: NOT NULL constraint failed: lessons.confidence` — the model spend was incurred and thrown away. (2) After ATLAS-106 (#197) merged migration 0019 (tickets.lesson_extraction_attempted_at), every sync tick crashed: `sqlite3.OperationalError: no such column: tickets.lesson_extraction_attempted_at`, recorded as a TickFailure and blocking the loop until the operator diagnosed it by reading the SQL in the traceback. The unit suite cannot catch this class: tests build fresh databases at head, so parity always holds under test and only the live store drifts. The runbook fix (`alembic upgrade head` after merging a migration-carrying PR) is a missing sentence, and a sentence is not a gate. Pre-ruled decisions: D-1 a shared precondition helper compares the store''s stamped alembic revision against the code''s head and raises a typed, named error identifying both revisions and naming the fix command (`uv run alembic upgrade head`). D-2 it is called by the commands that do expensive or stateful work — `atlas pm sync` (both modes), `atlas lessons schedule`, `atlas lessons extract`, `atlas plan`, `atlas apply` — BEFORE any model call, any Linear call, and any write. Placing it in `Database.__init__` is REJECTED: fixtures construct stores directly and the blast radius is the whole suite for no gain. D-3 the CLI maps the typed error to a clean one-line `EXIT_PRECONDITION`, consistent with the cold-database contract (ATLAS-130) and the ATLAS-108 lesson. D-4 an unstamped/cold database keeps its existing cold-database behaviour — this ticket adds the DRIFT case, it does not re-litigate the cold case. D-5 read-only reporters (`atlas pm report`, `atlas lessons report`, `atlas lessons review`) are out of scope: they already fail cleanly and blocking a read on drift helps nobody. D-6 no auto-upgrade. Atlas never migrates the operator''s store as a side effect of another command — the error names the command, the operator runs it.'
+  status: planned
+  ticket_type: bug
+  risk_level: low
+  priority: 50
+  relevant_docs:
+  - docs/planning/inbox/processed/inbox-stub-migration-preflight.md
+  acceptance_criteria:
+  - A fixture store stamped one revision behind head causes `atlas pm sync --once` to exit EXIT_PRECONDITION with a one-line message naming the store's revision, the code's head, and `alembic upgrade head` — before any Linear call or model call is made (assert the fakes recorded zero calls).
+  - '`atlas lessons schedule --once` and `atlas lessons extract <KEY>` fail the same way on a drifted store, with no LLM call made — the ATLAS-99 incident (spend incurred then discarded) cannot recur.'
+  - '`atlas plan` and `atlas apply` fail the same way on a drifted store before any write.'
+  - 'Negative: a store at head runs unchanged — every existing sync/scheduler/plan test passes unmodified; a cold/never-migrated store keeps its current cold-database error, not the new drift error (seed the probe with `assert 1 == 2`, B011).'
+  - 'Read-only reporters are unaffected: `atlas pm report` on a drifted store behaves exactly as today.'
+  non_goals:
+  - No automatic migration. No change to cold-database behaviour. No check inside Database.__init__. No new migration. No change to any command's success path.
+  implementation_notes: []
+  test_requirements:
+  - Fixture-driven, `ATLAS_LIVE_TESTS=0`; drift simulated by stamping a fixture store at a prior revision; seeded defects use `assert 1 == 2` (B011); enumeration pins hold.
+  documentation_requirements: []
+  definition_of_done:
+  - All acceptance criteria evidenced by named tests; local-development.md or the acceptance runbook names the drift error and its fix in the same change; full gate sweep green; PR title carries the minted key.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags: []
+  component: null
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/inbox-stub-migration-preflight.md#fail-before-the-spend-not-after
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-17T18:09:03.267173Z'
+  updated_at: '2026-07-17T18:09:03.267173Z'
+  completed_at: null
+- id: 8e7882ed-d2b7-4c25-bd61-ff7a04b83099
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 5a486514-1761-45a8-8094-9a0e8282c3d4
+  key: ATLAS-175
+  title: 'Playbooks are canon that no manifest can see: recurse the MANIFEST check and stop blocking on untracked files'
+  objective: A generated playbook is registered in `docs/MANIFEST.md` like every other canonical document, the doc linter enforces that for canonical docs at any depth, and the clean-worktree guard blocks on uncommitted tracked changes rather than on harmless untracked files.
+  context: 'Two live findings, 2026-07-17, from the first playbook Atlas ever generated (`docs/atlas/playbooks/linear-sync.md`, branch `playbook/linear-sync-20260717T174341Z`). FINDING 1 — the guard is over-strict: `_ensure_clean_worktree` (atlas/learning/playbook.py) runs `git status --porcelain`, whose output includes UNTRACKED files, so five operator scratch scripts in `scripts/` blocked the command entirely (`git worktree must be clean before drafting a playbook`, exit 2). The guard''s actual purpose is to stop `git switch -c` stranding uncommitted TRACKED modifications on the new branch; untracked files carry across a switch untouched and cannot cause that. The command is unusable without a stash dance in exactly the state an operator''s workspace is normally in. FINDING 2 — playbooks escape doc governance: `atlas/tools/doc_linter.py` declares `docs/atlas` a CANONICAL_DIR and its module docstring promises ''every canonical doc ... is listed'' in the MANIFEST, but the MAN005 check globs `(root / directory).glob(''*.md'')` — NON-RECURSIVE. `docs/atlas/playbooks/*.md` is therefore never seen. Verified live: a generated playbook placed at that path passes `doc-linter: clean` while unlisted. This was never a deliberate exemption — before ATLAS-103 no canonical directory had ANY subdirectory (confirmed: zero `.md` files exist at depth 2+ under docs/atlas, docs/architecture, docs/decisions, docs/runbooks), so the glob''s depth was an untested assumption that the playbook feature invalidated. Because `docs/MANIFEST.md` is the source-of-truth-hierarchy resolver (ADR-0006, and the reviewer-session protocol''s conflict rule), an unregistered canonical doc has no position in the hierarchy: if a playbook contradicts `pm-engine-and-linear-sync.md`, nothing says which wins. Phase 9 shipped a feature that mass-produces exactly that. ATLAS-103''s AC-6 (''the playbook passes the doc linter'') is technically satisfied today only because the check has a blind spot. Operator ruling OP-B(a), 2026-07-17: playbooks ARE canon; recurse the check and register them — the alternative (exempting `docs/atlas/playbooks/` as generated content) was rejected as declaring canon the hierarchy cannot see. Pre-ruled decisions: D-1 MAN005 recurses (`rglob`) over CANONICAL_DIRS; every canonical `.md` at any depth must be MANIFEST-listed. D-2 `atlas lessons playbook` writes the MANIFEST entry onto the review branch alongside the playbook file — otherwise the feature''s happy path lands a PR that fails CI, which is a feature that does not work. It still never commits (ATLAS-103 D-2 stands): the operator reviews both edits in the PR. D-3 `docs/MANIFEST.md` gains a playbooks section so generated entries have a stable, predictable home rather than being appended arbitrarily. D-4 `_ensure_clean_worktree` uses `git status --porcelain --untracked-files=no`; untracked files no longer block. D-5 an untracked file at the playbook''s OWN target path is still a hard refuse — that is the one untracked file that can genuinely collide; it fails with a message naming the path. D-6 no change to ATLAS-103''s branch naming, provenance section, ACTIVE-only selection, or never-commit contract.'
+  status: planned
+  ticket_type: bug
+  risk_level: low
+  priority: 50
+  relevant_docs:
+  - docs/planning/inbox/processed/inbox-stub-playbook-canon.md
+  acceptance_criteria:
+  - 'MAN005 recurses: a fixture canonical doc at `docs/atlas/<subdir>/x.md` that is absent from the MANIFEST is flagged, and the same file listed in the MANIFEST is clean (seed the probe with `assert 1 == 2`, B011 — the current non-recursive glob must fail this test).'
+  - 'Negative: every existing canonical doc still passes; the repository''s current MANIFEST is clean under the recursive check with no doc additions beyond the playbooks section.'
+  - '`atlas lessons playbook <tag>` writes both the playbook file and its `docs/MANIFEST.md` entry on the review branch, commits neither, and the resulting worktree passes the doc linter.'
+  - '`_ensure_clean_worktree` permits untracked files: a fixture repo with untracked files drafts successfully, while a fixture repo with a MODIFIED TRACKED file still refuses with the existing error.'
+  - An untracked file already at `docs/atlas/playbooks/<tag>.md` causes a clean refusal naming that path (EXIT_PRECONDITION), not a silent overwrite.
+  non_goals:
+  - No exemption for docs/atlas/playbooks/. No change to ATLAS-103's branch naming, never-commit contract, provenance section, or ACTIVE-only selection. No automatic PR creation. No new linter rules beyond MAN005's depth. No changes to other CANONICAL_DIRS' contents.
+  implementation_notes: []
+  test_requirements:
+  - Fixture-driven, `ATLAS_LIVE_TESTS=0`; seeded defects use `assert 1 == 2` (B011); enumeration pins hold; full gate sweep green including `python -m atlas.tools.doc_linter`.
+  documentation_requirements: []
+  definition_of_done:
+  - All acceptance criteria evidenced by named tests; the doc linter's module docstring matches its actual behaviour; MANIFEST carries the playbooks section; full gate sweep green; PR title carries the minted key.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags: []
+  component: null
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/inbox-stub-playbook-canon.md#a-canonical-doc-the-manifest-cannot-see
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-17T18:09:03.267173Z'
+  updated_at: '2026-07-17T18:09:03.267173Z'
+  completed_at: null
+- id: e09e9a16-47c0-47eb-a451-3455fea651f6
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 4d034c8b-0752-4089-8ff9-2fd43f51c6f4
+  key: ATLAS-176
+  title: 'REJECTED is unmappable on a live Linear board: widen the accepted-type allowlist and fix the fixtures that hid it'
+  objective: '`_ACCEPTED_TYPES[REJECTED]` admits every terminal-negative Linear state type the live board actually reports, so an operator can map Canceled and Duplicate; the preflight fixtures assert the live vocabulary rather than the vocabulary the code wants, so the suite can never again be green while the live board fails; and the documented known-gap paragraph is resolved in the same change.'
+  context: 'Live finding, 2026-07-17, during Phase 9 closure smoke: `atlas preflight` C2 FAILED — `LINEAR_STATE_MAP maps state ''cd8e7c95-...'' (Linear type ''duplicate'') to ''rejected'', which only accepts Linear type(s) [''cancelled'']` — blocking dispatch. Root cause: `atlas/linear/ownership.py` pins `TicketStatus.REJECTED: frozenset({''cancelled''})` (British), while the live board reports `canceled` (US) for its Canceled state and `duplicate` for its Duplicate state. Consequence chain, verified at `fa97b8c`: (1) neither terminal-negative state can be mapped to `rejected`, so REJECTED is unreachable on a real board; (2) preflight C3 only demands uniqueness for `_WRITTEN_STATUSES`, which excludes REJECTED, so the ABSENCE of a rejected mapping is never flagged — only the attempt to add one is punished; (3) `sync.py` extracts lessons on DONE, and the `rejected` extraction path depends on tickets already holding `rejected` status, which a board-side cancellation can never produce — so one of the Learning System''s four extraction triggers (learning-system.md §Extraction triggers, trigger 2) is unreachable in the live environment. Why the 1885-test suite is green while the board fails: `tests/test_preflight.py` builds its fixtures as `WorkflowState(''state-canceled'', ''Canceled'', ''cancelled'')` and `WorkflowState(''state-duplicate'', ''Duplicate'', ''cancelled'')` — every terminal-negative state faked to the spelling the code demands — while `tests/test_pm_sync.py:105` uses `type=''canceled''`. Two test files disagree about the external system''s vocabulary and the preflight suite asserts the fiction. This gap was flagged during ATLAS-148 and carried; ATLAS-155 scoped the fix and was REJECTED before implementation. Its extracted lesson (af5799f7, promoted ACTIVE at confidence 1.0 on 2026-07-17) states the generalisation that came true: validation allowlists hardcoding a single spelling variant of an external system''s enum will silently diverge from the live system and block dependent workflows; known gaps flagged for follow-up but not resolved accumulate into blocking defects. Pre-ruled decisions: D-1 widen `_ACCEPTED_TYPES[REJECTED]` to `frozenset({''canceled'', ''duplicate''})` — VERIFIED against the live board on 2026-07-17 via `workflowStates { name type }`, which returns exactly `Canceled -> ''canceled''` and `Duplicate -> ''duplicate''` on every team in the workspace; the existing `''cancelled''` (British) entry is dropped, not retained: no Linear instance has ever emitted it, it is the unverified guess that caused this defect, and keeping it would preserve the fiction the ticket exists to delete (OP-x if the operator prefers retention for other trackers — the fork is recorded, the recommendation is deletion). Do not widen any other status''s row. D-2 the fixture lie is the root cause and is fixed in the same change: `tests/test_preflight.py` fixtures assert the LIVE spellings, not the convenient ones; if a fixture and the live board disagree, the fixture is wrong. D-3 the two test files share one vocabulary — reconcile `test_pm_sync.py` and `test_preflight.py` on the same type strings. D-4 `_ACCEPTED_TYPES` remains a contradiction check, not a 1:1 oracle (its existing docstring contract is unchanged); this ticket widens one row, it does not redesign the mechanism. D-5 the `Known gap, flagged for follow-up` paragraph in `pm-engine-and-linear-sync.md` is resolved in this change, documenting the admitted spellings and why. D-6 REJECTED is NOT added to `_WRITTEN_STATUSES` — Atlas never writes it (ADR-0006 status direction); C3''s scope is unchanged.'
+  status: planned
+  ticket_type: bug
+  risk_level: low
+  priority: 50
+  relevant_docs:
+  - docs/planning/inbox/processed/inbox-stub-rejected-accepted-types.md
+  acceptance_criteria:
+  - '`_ACCEPTED_TYPES[REJECTED]` is exactly `frozenset({''canceled'', ''duplicate''})`, and `validate_against_states` passes for a Canceled-state entry (`type=''canceled''`) and a Duplicate-state entry (`type=''duplicate''`) mapped to `rejected`.'
+  - 'Negative retained: a `completed`-type or `started`-type state mapped to `rejected` still raises `LinearStatusMapError` — the contradiction check still bites.'
+  - '`tests/test_preflight.py` fixtures use the live type spellings; the fixture change alone, applied against the unfixed allowlist, makes the preflight suite FAIL (prove the fixtures were hiding the defect — seed the probe with `assert 1 == 2`, B011).'
+  - '`tests/test_pm_sync.py` and `tests/test_preflight.py` use the same type strings for the same Linear state kinds; no other status row''s accepted set changes.'
+  - '`pm-engine-and-linear-sync.md`''s known-gap paragraph is resolved in the same change, naming the admitted spellings and the reason.'
+  non_goals:
+  - No redesign of `_ACCEPTED_TYPES` or of the contradiction-check contract. No change to C3's `_WRITTEN_STATUSES` (Atlas never writes REJECTED). No change to the status direction or ADR-0006. No new preflight check. No changes to the extraction triggers themselves — trigger-2 reachability is a consequence of this fix, not scope.
+  implementation_notes: []
+  test_requirements:
+  - Fixture-driven, `ATLAS_LIVE_TESTS=0`; seeded defects use `assert 1 == 2` (B011); enumeration pins hold; full gate sweep green.
+  documentation_requirements: []
+  definition_of_done:
+  - All acceptance criteria evidenced by named tests; `atlas preflight` passes C2 against a live map containing the Duplicate entry (operator-verified post-merge and recorded on the ticket); full gate sweep green; PR title carries the minted key.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags: []
+  component: null
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/inbox-stub-rejected-accepted-types.md#the-allowlist-that-could-never-match-reality
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-17T18:09:03.267173Z'
+  updated_at: '2026-07-17T18:09:03.267173Z'
+  completed_at: null
+- id: 2c525ca5-d301-4047-b80b-58a68d2f86cb
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 5a486514-1761-45a8-8094-9a0e8282c3d4
+  key: ATLAS-177
+  title: 'Free-form extractor tags make lessons unreachable and pattern detection unable to fire: anchor tags to the source ticket''s vocabulary'
+  objective: The extractor draws a lesson's tags from its source ticket's own tags and component, with a bounded allowance for novel tags, so every lesson is retrievable by construction for work like the work it came from, and lessons from similarly-tagged tickets cluster densely enough for pattern detection to function.
+  context: 'Live finding, 2026-07-17, measured against the first real corpus (18 backfilled DRAFT lessons). `atlas/learning/prompts/lesson-extractor-v1.0.0.md.j2` lists `tags` as an allowed output key with NO vocabulary guidance of any kind — no instruction to reuse the ticket''s tags, no controlled list, nothing. The model invents tags freely, and two distinct failures follow. FAILURE 1, reachability: retrieval matches a lesson only when its tags intersect the ticket''s facets (`ticket.tags` + `ticket_type`, per `atlas/context/lesson_retrieval.py`). Lesson c629cfb5 (''Degraded sync push must not advance the cursor'') carries tags `sync, linear, cursor, pack-embed, degraded-push, idempotency, repair, dirty-input, adr-0006` and intersects ZERO tickets in the store — it could be promoted at confidence 1.0 and reach nobody, forever. Others are near-unreachable: 4b2db698 matches 1 ticket, b1c4282e matches 2, 04fb6342 (the rebase discipline) matches 3. Meanwhile generic tags over-match: `planning` hits 39 tickets, `cli` hits 29. The distribution is bimodal and nobody designed it that way. FAILURE 2, pattern detection: `detect_pattern_candidates` requires the same tag across >=3 DRAFT-or-ACTIVE FAILURE_PATTERN lessons (`PATTERN_THRESHOLD`). Across the 9 failure-pattern lessons in the corpus, the maximum recurrence of any tag is 2 (`deduplication`, `reconciler`, `tech-debt`, `linear-sync`, `inbox-stubs`, `retirement` each reach exactly 2). `atlas lessons report` prints ''No pattern candidates detected'' — and will do so indefinitely regardless of how many lessons accumulate, because ~110 distinct tags across 18 lessons means three extractions will essentially never agree on a term. That is a design ceiling, not a null result. Both failures share one root cause: a lesson''s tags describe the model''s free association rather than the work the lesson came from. Operator ruling OP-A(a), 2026-07-17: fix it at the prompt — rejected alternatives recorded: a controlled vocabulary enforced at write (brittle; needs a vocabulary source of truth that does not exist), widening the matching rule to component/title tokens (helps reachability only, changes retrieval semantics), and lowering PATTERN_THRESHOLD 3->2 (arbitrary; fixes neither reachability nor the entropy). Pre-ruled decisions: D-1 a new versioned prompt template `lesson-extractor-v1.1.0.md.j2`; the version constant moves to it and v1.0.0 is retained on disk as the record of what produced the existing corpus. D-2 the prompt instructs: draw tags primarily from the source ticket''s `tags` and `component`, which are supplied in the rendered prompt; at most 2 novel tags may be added when the lesson genuinely concerns something the ticket''s vocabulary does not name. D-3 the ticket''s tags and component are rendered INTO the prompt explicitly — the model cannot reuse a vocabulary it was never shown; this is the mechanical half of the fix and the testable one. D-4 acceptance is structural, not behavioural: assert the rendered prompt contains the source ticket''s tags, its component, and the tag-guidance instruction. An LLM''s output distribution cannot be pinned deterministically and this ticket will not pretend otherwise; the live check is the operator''s, post-merge. D-5 PATTERN_THRESHOLD is unchanged at 3 — this ticket makes the threshold reachable rather than moving the goalposts. D-6 the existing 18 lessons are NOT retagged by this ticket: re-extraction costs model spend and the attempt cursor blocks it without `--force`. Operator ruling of record: they are retagged by hand at promotion via the documented edit-then-promote path, since the operator reads each lesson at the gate anyway. D-7 learning-system.md''s extraction section states the tag-vocabulary rule so the constraint is documented where the design lives, not only in a template.'
+  status: planned
+  ticket_type: bug
+  risk_level: low
+  priority: 50
+  relevant_docs:
+  - docs/planning/inbox/processed/inbox-stub-tag-vocabulary.md
+  acceptance_criteria:
+  - '`lesson-extractor-v1.1.0.md.j2` exists, is the version the extractor loads, and v1.0.0 remains on disk unmodified as the record of the existing corpus''s provenance.'
+  - The rendered prompt contains the source ticket's `tags` and `component` verbatim, and the instruction to draw tags primarily from them with at most 2 novel tags (assert on the rendered string for a fixture ticket; seed the probe with `assert 1 == 2`, B011).
+  - A fixture ticket with no tags and no component renders a well-formed prompt that does not instruct the model to reuse an empty vocabulary.
+  - 'Negative: the prompt still forbids `status`, `confidence`, `related_ticket_ids`, identity fields, and timestamps as output keys (ADR-0005 holds); the allowed-keys list is otherwise unchanged.'
+  - learning-system.md's extraction-triggers section states the tag-vocabulary rule and names the reachability and pattern-density reasons for it.
+  non_goals:
+  - No change to PATTERN_THRESHOLD. No controlled-vocabulary enforcement at write. No change to the retrieval matching rule (tags + ticket_type intersection stands). No re-extraction or retagging of the existing 18 lessons. No behavioural assertion on live model output. No change to the Lesson schema.
+  implementation_notes: []
+  test_requirements:
+  - Fixture-driven prompt-rendering assertions, `ATLAS_LIVE_TESTS=0`; no live model call in the suite; seeded defects use `assert 1 == 2` (B011); enumeration pins hold.
+  documentation_requirements: []
+  definition_of_done:
+  - All acceptance criteria evidenced by named tests; full gate sweep green; post-merge the operator runs one live `atlas lessons extract <KEY>` and records on the ticket whether the produced tags intersect the source ticket's facets; PR title carries the minted key.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags: []
+  component: null
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/inbox-stub-tag-vocabulary.md#tags-should-describe-the-work-not-the-models-mood
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-17T18:09:03.267173Z'
+  updated_at: '2026-07-17T18:09:03.267173Z'
   completed_at: null
