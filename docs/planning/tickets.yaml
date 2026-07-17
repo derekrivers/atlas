@@ -1,7 +1,7 @@
 # Render written only by `atlas apply` (ADR-0006/0007); do not hand-edit.
-# plan_run_id: 9f735fc4-15a6-4366-9caf-043b344caaf9
+# plan_run_id: 2cdad1a4-383b-4abb-9a5d-4a128c54c4a5
 # prompt_version: stubs-only
-# ticket_key_high_water: 177
+# ticket_key_high_water: 178
 # epic_key_high_water: 11
 tickets:
 - id: 06701bee-33ed-44e6-b735-52dfd7c5edc8
@@ -7848,7 +7848,7 @@ tickets:
   title: 'One-shot CLI commands print nothing on success: counters and skip reasons to stdout'
   objective: Every operator-invoked one-shot command reports what it did on stdout — counters for work performed, and named reasons for candidates it declined — so success is distinguishable from a hang, a no-op, and a silent skip without reading the source or querying the store.
   context: 'Live findings across Phase 8 and 9; this gap cost operator certainty at least four separate times in one session. `atlas/cli.py` never calls `logging.basicConfig`, so Python''s default drops INFO and prints only WARNING+; every happy-path line in `atlas/pm/sync.py` and `atlas/learning/scheduler.py` is `logger.info`. Observed consequences: (1) `atlas pm sync` with no flags is the recurring loop and prints nothing — indistinguishable from a hang; (2) `atlas pm sync --repair-packs` completed a repair and printed nothing, so the operator could not tell whether the sweep had run, found nothing, or silently skipped; (3) the same sweep silently skipped its only target because the ticket sat in a non-pushable status, one of six unannounced `continue` branches in the selection loop — the operator lost 20 minutes to a command that declined every candidate without a word; (4) `atlas lessons schedule` (no `--once`) ran an unbounded backfill of ~18 LLM calls in silence and was killed mid-sweep because it looked hung. An operator-invoked, one-shot command that prints nothing on success is a sharper defect than a silent daemon: there is no observable to check and no second signal. Pre-ruled decisions: D-1 one-shot modes print a result summary to STDOUT (not the log): `atlas pm sync --once`, `atlas pm sync --repair-packs`, `atlas lessons schedule --once`. The summary is the command''s own result object rendered — counters already exist on `SyncResult`/the scheduler result; this ticket surfaces them, it does not invent metrics. D-2 selection loops that decline candidates name the reason per declined candidate (status not pushable, no external id, cursor already stamped, header already present, ...) — a skip is a result, not silence. D-3 a `--verbose`/`-v` flag enables INFO-level logging for the invocation; the default stays quiet-except-warnings so recurring loops do not spam. D-4 recurring (non-`--once`) modes are out of scope for stdout summaries — they keep logging semantics; `-v` covers them. D-5 no change to WARNING behaviour, to any counter''s meaning, or to exit codes. D-6 the runbook''s silence-discipline paragraph (`pr-acceptance.md`, when it lands) is amended in the same change to point at the new output instead of prescribing observable-checking.'
-  status: planned
+  status: done
   ticket_type: bug
   risk_level: low
   priority: 50
@@ -7869,15 +7869,15 @@ tickets:
   definition_of_done:
   - All acceptance criteria evidenced by named tests; full gate sweep green; PR title carries the minted key.
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: 841c06dc-4807-4846-8b21-9bc6dad4b30e
   external_github_issue_id: null
   tags: []
   component: null
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-07-17T18:09:03.267173Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-07-17T19:17:33.423672Z'
   review_cycle_count: 0
-  lesson_extraction_attempted_at: null
+  lesson_extraction_attempted_at: '2026-07-17T19:17:33.423672Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-cli-output.md#silence-is-not-success
   created_by_type: agent
   created_by_id: planner
@@ -7891,7 +7891,7 @@ tickets:
   title: 'An agent can complete verified work and lose it at the push: probe GitHub write access in before_run'
   objective: A dispatched agent's attempt aborts in seconds when its session cannot push to the repository, instead of building for an hour and stranding verified work in a workspace behind a 403.
   context: 'Live incident, 2026-07-16, ATLAS-102. The agent rebased onto current main, resolved a duplicate-delivery conflict correctly, ran the full gate sweep green (1869 passed), and then could not hand off: `git push --force-with-lease` returned HTTP 403 `Permission to derekrivers/atlas.git denied to derekrivers`, and `gh` PR-body updates returned 403 `Resource not accessible by personal access token`. An hour of correct, verified work existed only as commit 286dc9a in `~/code/atlas-workspaces/ATL-250`, recoverable only because `workspace.before_remove: true` and the root is not `/tmp`. The agent handled it as well as the contract allows — it reported precisely, named the commit, and asked for a human — but the contract has no defined behaviour for ''work done, push denied'', and ATLAS-168''s ordering (rebase -> push -> CI -> Review Required) assumes the push succeeds. Root cause is structural, not accidental: WORKFLOW.md dispatches Codex with `shell_environment_policy.inherit=core`, which strips the operator''s exported `GITHUB_TOKEN`; the session therefore authenticates with whatever on-disk git credential the sandbox can reach, which is a DIFFERENT token from the operator''s and may carry different scopes. The operator''s own `atlas preflight` cannot detect this — it would probe the operator''s token, not the agent''s. The check must run inside the agent''s session, which means the hook. Pre-ruled decisions: D-1 `hooks.before_run` gains a write-access probe that runs in the agent''s own environment, after the existing `git fetch origin main` freshness step (ATLAS-168). Symphony''s `before_run` failure aborts the attempt — that is exactly the desired semantic, and it costs seconds. D-2 the probe is read-only and non-mutating: `git push --dry-run` against the current HEAD (or an equivalent that exercises the credential without creating a ref). It must not create branches, tags, or refs on the remote. D-3 the failure message names the cause in the agent''s transcript — no write credential for `<repo>`, session env is `inherit=core`, the operator''s exported GITHUB_TOKEN is not visible here — so the operator diagnoses in one read instead of an hour. D-4 no token, credential, or secret value appears in WORKFLOW.md, in any committed file, or in the probe''s output; WORKFLOW.md is public. Injecting a token via `shell_environment_policy.set` is REJECTED for exactly this reason. D-5 this is a contract change (WORKFLOW.md front matter + symphony-integration.md), delivered as a normal PR against this repository; NO Symphony code changes (the ATLAS-168 D-1 precedent). D-6 the operator-side credential facts (two auth channels: Atlas reads `GITHUB_TOKEN`; agents use on-disk credentials via the gh credential helper) belong in `operator-environment.md`, not the repository — out of scope here, recorded as an operator action.'
-  status: planned
+  status: review_required
   ticket_type: infrastructure
   risk_level: low
   priority: 50
@@ -7912,13 +7912,13 @@ tickets:
   definition_of_done:
   - All acceptance criteria evidenced by named tests or named doc anchors; the probe is exercised by at least one real dispatch and the operator records the result on the ticket; full gate sweep green; PR title carries the minted key.
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: 22450400-ba93-4315-8693-3de1c28b74e7
   external_github_issue_id: null
   tags: []
   component: null
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-07-17T18:09:03.267173Z'
+  last_observed_linear_state_id: cf16f7da-6193-4dbf-b8fd-fa75dc9a16d7
+  status_entered_at: '2026-07-17T19:41:52.254398Z'
   review_cycle_count: 0
   lesson_extraction_attempted_at: null
   source_anchor: docs/planning/inbox/processed/inbox-stub-github-write-preflight.md#fail-in-five-seconds-not-in-an-hour
@@ -7934,7 +7934,7 @@ tickets:
   title: 'Lesson.related_ticket_ids conflates provenance with citation: merge corrupts the source, the citation metric is permanently off by one'
   objective: A lesson's source ticket and its citation history are distinct stored fields, so provenance survives `lessons merge`, the citation count means what the report says it means, and the `--stale` and citation signals are computed from usage rather than from usage-plus-self.
   context: 'Live finding, 2026-07-17, during Phase 9 closure smoke. `atlas lessons report` displayed `Active lesson citations | Enforce ACTIVE-only lesson retrieval... | 1 | c41c0a43-...` for a lesson that has never been cited by any pack — c41c0a43 is ATLAS-65, the lesson''s own SOURCE ticket. The field carries three meanings by position and no invariant protects any of them: (1) `atlas/learning/extractor.py:376` seeds `related_ticket_ids: [ticket.id]` at extraction — index 0 is PROVENANCE; (2) `atlas/pm/sync.py`''s `_record_lesson_citation_feedback` (ATLAS-101) APPENDS completing tickets — indices 1..N are USAGE; (3) `atlas/cli.py:2512` `_source_ticket_label` reads `related_ticket_ids[0]` and labels it `source=` — correct only by positional luck; (4) `atlas/learning/report.py:182` computes `citation_count=len(lesson.related_ticket_ids)` — so every ACTIVE lesson is born with a phantom citation of itself, permanently; (5) `atlas lessons merge` (ATLAS-100) UNIONS the two lists — after any merge, index 0 is whichever lesson won and the other lesson''s source silently becomes a ''citation''. Provenance is destroyed by a supported operation. The pending 153/158 merge ruling is exactly that case. learning-system.md is itself ambiguous and must be fixed with the code: its extraction section says a lesson is produced with `related_ticket_ids` populated, while its retrieval-interplay section says citation ADDS the completing ticket to `related_ticket_ids` — one field, two documented purposes. Pre-ruled decisions: D-1 add `Lesson.source_ticket_id: UUID` (single, immutable, set at extraction) and redefine `related_ticket_ids` as citations-only; the extractor stops seeding it. D-2 migration (next number in sequence) backfills `source_ticket_id = related_ticket_ids[0]` for every existing row and removes that element from `related_ticket_ids`, so the 18 backfilled lessons keep correct provenance and drop their phantom citation; the migration is data-preserving and reversible in the usual house form. D-3 `_source_ticket_label` reads `source_ticket_id`; the `source=` display is unchanged for the operator. D-4 `report.py`''s citation count becomes `len(related_ticket_ids)` under the new definition — an uncited ACTIVE lesson reports 0. D-5 `lessons merge` preserves the TARGET''s `source_ticket_id` unchanged and unions only citations; the merged-away lesson''s source is recorded in the merge''s audit trail, not silently promoted to a citation. D-6 `--stale` (ATLAS-100) and any pack-count signal are recomputed against citations-only; confirm no other consumer reads the field positionally. D-7 learning-system.md''s extraction and retrieval-interplay sections are corrected in the same change to name the two fields separately; the schema export and its enumeration pin are updated as a named change.'
-  status: planned
+  status: done
   ticket_type: bug
   risk_level: low
   priority: 50
@@ -7956,15 +7956,15 @@ tickets:
   definition_of_done:
   - All acceptance criteria evidenced by named tests; `alembic upgrade head` applied against the live store and the operator confirms `atlas lessons report` shows 0 citations for both currently-ACTIVE lessons; full gate sweep green; PR title carries the minted key.
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: 08043640-ce7f-4e10-8e43-6f46269db222
   external_github_issue_id: null
   tags: []
   component: null
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-07-17T18:09:03.267173Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-07-17T19:41:52.254398Z'
   review_cycle_count: 0
-  lesson_extraction_attempted_at: null
+  lesson_extraction_attempted_at: '2026-07-17T19:41:52.254398Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-lesson-provenance.md#one-field-three-meanings-no-invariant
   created_by_type: agent
   created_by_id: planner
@@ -7978,7 +7978,7 @@ tickets:
   title: 'atlas lessons show: the promotion gate cannot read what it rules on'
   objective: '`atlas lessons show <LESSON_ID>` prints a lesson''s full stored record — title, category, status, confidence, tags, problem, solution, outcome, provenance and citations, timestamps — so the operator can read a lesson before promoting it, with `--json` for machine consumers.'
   context: 'Live finding, 2026-07-17, during the first promotion session in Atlas history. `atlas lessons review` and `atlas lessons review --json` emit only `id`, `title`, `source_ticket`, `created_at`, `status` (`_lesson_review_row`, atlas/cli.py). There is no other read surface. ADR-0009 makes promotion the single human gate between agent-authored experience and future agent context — and the CLI asks that gate to rule on a title. Reading a lesson body during the closure session required `sqlite3 -line .atlas/atlas.db "SELECT problem, solution, outcome FROM lessons WHERE id=..."` — raw SQL against the store, with dashes stripped from the UUID. Two consequences observed live: (1) the operator cannot exercise the design doc''s documented `edit then promote` path without hand-writing UPDATE statements; (2) an operator who promotes without reading is promoting a model''s unreviewed text into every future agent''s context pack, which is precisely the leak ADR-0009 exists to prevent — the gate is nominal if it cannot see. This is a governance gap, not a UX nit. Pre-ruled decisions: D-1 `show` is the detail view; `review` stays a scannable list — do NOT bloat `review` with bodies. D-2 `show` prints every stored field an operator needs to rule: title, category, status, confidence (or `-` when null), tags, problem, solution, outcome, related_adr_ids, provenance/citation ticket keys resolved to ATLAS-NN where resolvable, created_by, created_at, updated_at. D-3 `--json` emits the same record machine-readably. D-4 house error contract: a non-UUID id, an unknown id, and a cold/never-migrated database are each a clean one-line `EXIT_PRECONDITION`, never a traceback (the ATLAS-108 lesson, and the pattern `atlas evidence show` already follows). D-5 pure reader: no writes, no LLM calls, no Linear calls. D-6 accepts the UUID in canonical dashed form as printed by `review` — the operator must never have to strip dashes.'
-  status: planned
+  status: in_progress
   ticket_type: feature
   risk_level: low
   priority: 50
@@ -7999,13 +7999,13 @@ tickets:
   definition_of_done:
   - All acceptance criteria evidenced by named tests; learning-system.md's promotion-workflow section names `show` as the read surface the gate uses; full gate sweep green; PR title carries the minted key.
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: af7d0bbc-cff6-4237-a7a3-13e36e858820
   external_github_issue_id: null
   tags: []
   component: null
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-07-17T18:09:03.267173Z'
+  last_observed_linear_state_id: 381b59b4-7ffe-4247-9cd8-6a11585203ea
+  status_entered_at: '2026-07-17T19:48:18.608142Z'
   review_cycle_count: 0
   lesson_extraction_attempted_at: null
   source_anchor: docs/planning/inbox/processed/inbox-stub-lessons-show.md#the-gate-must-see-its-cargo
@@ -8021,7 +8021,7 @@ tickets:
   title: 'Schema drift surfaces as a raw OperationalError mid-tick: check alembic head parity as a named precondition'
   objective: A command that needs the store fails fast with a named, actionable error when the database is behind the code's migration head, instead of crashing mid-work with a raw SQLAlchemy OperationalError or writing a partial result.
   context: 'Two live failures, 2026-07-14, both caused by a merged migration not yet applied to the operator''s store. (1) After ATLAS-99 (#195) merged migration 0018 (lessons.confidence nullable), the sync tick''s extraction ran the full LLM call, produced a valid DRAFT lesson, and then died at the write: `sqlite3.IntegrityError: NOT NULL constraint failed: lessons.confidence` — the model spend was incurred and thrown away. (2) After ATLAS-106 (#197) merged migration 0019 (tickets.lesson_extraction_attempted_at), every sync tick crashed: `sqlite3.OperationalError: no such column: tickets.lesson_extraction_attempted_at`, recorded as a TickFailure and blocking the loop until the operator diagnosed it by reading the SQL in the traceback. The unit suite cannot catch this class: tests build fresh databases at head, so parity always holds under test and only the live store drifts. The runbook fix (`alembic upgrade head` after merging a migration-carrying PR) is a missing sentence, and a sentence is not a gate. Pre-ruled decisions: D-1 a shared precondition helper compares the store''s stamped alembic revision against the code''s head and raises a typed, named error identifying both revisions and naming the fix command (`uv run alembic upgrade head`). D-2 it is called by the commands that do expensive or stateful work — `atlas pm sync` (both modes), `atlas lessons schedule`, `atlas lessons extract`, `atlas plan`, `atlas apply` — BEFORE any model call, any Linear call, and any write. Placing it in `Database.__init__` is REJECTED: fixtures construct stores directly and the blast radius is the whole suite for no gain. D-3 the CLI maps the typed error to a clean one-line `EXIT_PRECONDITION`, consistent with the cold-database contract (ATLAS-130) and the ATLAS-108 lesson. D-4 an unstamped/cold database keeps its existing cold-database behaviour — this ticket adds the DRIFT case, it does not re-litigate the cold case. D-5 read-only reporters (`atlas pm report`, `atlas lessons report`, `atlas lessons review`) are out of scope: they already fail cleanly and blocking a read on drift helps nobody. D-6 no auto-upgrade. Atlas never migrates the operator''s store as a side effect of another command — the error names the command, the operator runs it.'
-  status: planned
+  status: in_progress
   ticket_type: bug
   risk_level: low
   priority: 50
@@ -8042,13 +8042,13 @@ tickets:
   definition_of_done:
   - All acceptance criteria evidenced by named tests; local-development.md or the acceptance runbook names the drift error and its fix in the same change; full gate sweep green; PR title carries the minted key.
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: ccdfbb15-6496-41aa-8910-72a5aaf8e410
   external_github_issue_id: null
   tags: []
   component: null
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-07-17T18:09:03.267173Z'
+  last_observed_linear_state_id: 381b59b4-7ffe-4247-9cd8-6a11585203ea
+  status_entered_at: '2026-07-17T19:41:52.254398Z'
   review_cycle_count: 0
   lesson_extraction_attempted_at: null
   source_anchor: docs/planning/inbox/processed/inbox-stub-migration-preflight.md#fail-before-the-spend-not-after
@@ -8064,7 +8064,7 @@ tickets:
   title: 'Playbooks are canon that no manifest can see: recurse the MANIFEST check and stop blocking on untracked files'
   objective: A generated playbook is registered in `docs/MANIFEST.md` like every other canonical document, the doc linter enforces that for canonical docs at any depth, and the clean-worktree guard blocks on uncommitted tracked changes rather than on harmless untracked files.
   context: 'Two live findings, 2026-07-17, from the first playbook Atlas ever generated (`docs/atlas/playbooks/linear-sync.md`, branch `playbook/linear-sync-20260717T174341Z`). FINDING 1 — the guard is over-strict: `_ensure_clean_worktree` (atlas/learning/playbook.py) runs `git status --porcelain`, whose output includes UNTRACKED files, so five operator scratch scripts in `scripts/` blocked the command entirely (`git worktree must be clean before drafting a playbook`, exit 2). The guard''s actual purpose is to stop `git switch -c` stranding uncommitted TRACKED modifications on the new branch; untracked files carry across a switch untouched and cannot cause that. The command is unusable without a stash dance in exactly the state an operator''s workspace is normally in. FINDING 2 — playbooks escape doc governance: `atlas/tools/doc_linter.py` declares `docs/atlas` a CANONICAL_DIR and its module docstring promises ''every canonical doc ... is listed'' in the MANIFEST, but the MAN005 check globs `(root / directory).glob(''*.md'')` — NON-RECURSIVE. `docs/atlas/playbooks/*.md` is therefore never seen. Verified live: a generated playbook placed at that path passes `doc-linter: clean` while unlisted. This was never a deliberate exemption — before ATLAS-103 no canonical directory had ANY subdirectory (confirmed: zero `.md` files exist at depth 2+ under docs/atlas, docs/architecture, docs/decisions, docs/runbooks), so the glob''s depth was an untested assumption that the playbook feature invalidated. Because `docs/MANIFEST.md` is the source-of-truth-hierarchy resolver (ADR-0006, and the reviewer-session protocol''s conflict rule), an unregistered canonical doc has no position in the hierarchy: if a playbook contradicts `pm-engine-and-linear-sync.md`, nothing says which wins. Phase 9 shipped a feature that mass-produces exactly that. ATLAS-103''s AC-6 (''the playbook passes the doc linter'') is technically satisfied today only because the check has a blind spot. Operator ruling OP-B(a), 2026-07-17: playbooks ARE canon; recurse the check and register them — the alternative (exempting `docs/atlas/playbooks/` as generated content) was rejected as declaring canon the hierarchy cannot see. Pre-ruled decisions: D-1 MAN005 recurses (`rglob`) over CANONICAL_DIRS; every canonical `.md` at any depth must be MANIFEST-listed. D-2 `atlas lessons playbook` writes the MANIFEST entry onto the review branch alongside the playbook file — otherwise the feature''s happy path lands a PR that fails CI, which is a feature that does not work. It still never commits (ATLAS-103 D-2 stands): the operator reviews both edits in the PR. D-3 `docs/MANIFEST.md` gains a playbooks section so generated entries have a stable, predictable home rather than being appended arbitrarily. D-4 `_ensure_clean_worktree` uses `git status --porcelain --untracked-files=no`; untracked files no longer block. D-5 an untracked file at the playbook''s OWN target path is still a hard refuse — that is the one untracked file that can genuinely collide; it fails with a message naming the path. D-6 no change to ATLAS-103''s branch naming, provenance section, ACTIVE-only selection, or never-commit contract.'
-  status: planned
+  status: review_required
   ticket_type: bug
   risk_level: low
   priority: 50
@@ -8085,13 +8085,13 @@ tickets:
   definition_of_done:
   - All acceptance criteria evidenced by named tests; the doc linter's module docstring matches its actual behaviour; MANIFEST carries the playbooks section; full gate sweep green; PR title carries the minted key.
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: 2f53fc08-ffca-4bc1-9107-1ea7794cb49a
   external_github_issue_id: null
   tags: []
   component: null
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-07-17T18:09:03.267173Z'
+  last_observed_linear_state_id: cf16f7da-6193-4dbf-b8fd-fa75dc9a16d7
+  status_entered_at: '2026-07-17T19:41:52.254398Z'
   review_cycle_count: 0
   lesson_extraction_attempted_at: null
   source_anchor: docs/planning/inbox/processed/inbox-stub-playbook-canon.md#a-canonical-doc-the-manifest-cannot-see
@@ -8107,7 +8107,7 @@ tickets:
   title: 'REJECTED is unmappable on a live Linear board: widen the accepted-type allowlist and fix the fixtures that hid it'
   objective: '`_ACCEPTED_TYPES[REJECTED]` admits every terminal-negative Linear state type the live board actually reports, so an operator can map Canceled and Duplicate; the preflight fixtures assert the live vocabulary rather than the vocabulary the code wants, so the suite can never again be green while the live board fails; and the documented known-gap paragraph is resolved in the same change.'
   context: 'Live finding, 2026-07-17, during Phase 9 closure smoke: `atlas preflight` C2 FAILED — `LINEAR_STATE_MAP maps state ''cd8e7c95-...'' (Linear type ''duplicate'') to ''rejected'', which only accepts Linear type(s) [''cancelled'']` — blocking dispatch. Root cause: `atlas/linear/ownership.py` pins `TicketStatus.REJECTED: frozenset({''cancelled''})` (British), while the live board reports `canceled` (US) for its Canceled state and `duplicate` for its Duplicate state. Consequence chain, verified at `fa97b8c`: (1) neither terminal-negative state can be mapped to `rejected`, so REJECTED is unreachable on a real board; (2) preflight C3 only demands uniqueness for `_WRITTEN_STATUSES`, which excludes REJECTED, so the ABSENCE of a rejected mapping is never flagged — only the attempt to add one is punished; (3) `sync.py` extracts lessons on DONE, and the `rejected` extraction path depends on tickets already holding `rejected` status, which a board-side cancellation can never produce — so one of the Learning System''s four extraction triggers (learning-system.md §Extraction triggers, trigger 2) is unreachable in the live environment. Why the 1885-test suite is green while the board fails: `tests/test_preflight.py` builds its fixtures as `WorkflowState(''state-canceled'', ''Canceled'', ''cancelled'')` and `WorkflowState(''state-duplicate'', ''Duplicate'', ''cancelled'')` — every terminal-negative state faked to the spelling the code demands — while `tests/test_pm_sync.py:105` uses `type=''canceled''`. Two test files disagree about the external system''s vocabulary and the preflight suite asserts the fiction. This gap was flagged during ATLAS-148 and carried; ATLAS-155 scoped the fix and was REJECTED before implementation. Its extracted lesson (af5799f7, promoted ACTIVE at confidence 1.0 on 2026-07-17) states the generalisation that came true: validation allowlists hardcoding a single spelling variant of an external system''s enum will silently diverge from the live system and block dependent workflows; known gaps flagged for follow-up but not resolved accumulate into blocking defects. Pre-ruled decisions: D-1 widen `_ACCEPTED_TYPES[REJECTED]` to `frozenset({''canceled'', ''duplicate''})` — VERIFIED against the live board on 2026-07-17 via `workflowStates { name type }`, which returns exactly `Canceled -> ''canceled''` and `Duplicate -> ''duplicate''` on every team in the workspace; the existing `''cancelled''` (British) entry is dropped, not retained: no Linear instance has ever emitted it, it is the unverified guess that caused this defect, and keeping it would preserve the fiction the ticket exists to delete (OP-x if the operator prefers retention for other trackers — the fork is recorded, the recommendation is deletion). Do not widen any other status''s row. D-2 the fixture lie is the root cause and is fixed in the same change: `tests/test_preflight.py` fixtures assert the LIVE spellings, not the convenient ones; if a fixture and the live board disagree, the fixture is wrong. D-3 the two test files share one vocabulary — reconcile `test_pm_sync.py` and `test_preflight.py` on the same type strings. D-4 `_ACCEPTED_TYPES` remains a contradiction check, not a 1:1 oracle (its existing docstring contract is unchanged); this ticket widens one row, it does not redesign the mechanism. D-5 the `Known gap, flagged for follow-up` paragraph in `pm-engine-and-linear-sync.md` is resolved in this change, documenting the admitted spellings and why. D-6 REJECTED is NOT added to `_WRITTEN_STATUSES` — Atlas never writes it (ADR-0006 status direction); C3''s scope is unchanged.'
-  status: planned
+  status: in_progress
   ticket_type: bug
   risk_level: low
   priority: 50
@@ -8128,13 +8128,13 @@ tickets:
   definition_of_done:
   - All acceptance criteria evidenced by named tests; `atlas preflight` passes C2 against a live map containing the Duplicate entry (operator-verified post-merge and recorded on the ticket); full gate sweep green; PR title carries the minted key.
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: 21d9318c-645f-4c82-9441-6fdaeae3e37b
   external_github_issue_id: null
   tags: []
   component: null
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-07-17T18:09:03.267173Z'
+  last_observed_linear_state_id: 381b59b4-7ffe-4247-9cd8-6a11585203ea
+  status_entered_at: '2026-07-17T19:41:52.254398Z'
   review_cycle_count: 0
   lesson_extraction_attempted_at: null
   source_anchor: docs/planning/inbox/processed/inbox-stub-rejected-accepted-types.md#the-allowlist-that-could-never-match-reality
@@ -8150,7 +8150,7 @@ tickets:
   title: 'Free-form extractor tags make lessons unreachable and pattern detection unable to fire: anchor tags to the source ticket''s vocabulary'
   objective: The extractor draws a lesson's tags from its source ticket's own tags and component, with a bounded allowance for novel tags, so every lesson is retrievable by construction for work like the work it came from, and lessons from similarly-tagged tickets cluster densely enough for pattern detection to function.
   context: 'Live finding, 2026-07-17, measured against the first real corpus (18 backfilled DRAFT lessons). `atlas/learning/prompts/lesson-extractor-v1.0.0.md.j2` lists `tags` as an allowed output key with NO vocabulary guidance of any kind — no instruction to reuse the ticket''s tags, no controlled list, nothing. The model invents tags freely, and two distinct failures follow. FAILURE 1, reachability: retrieval matches a lesson only when its tags intersect the ticket''s facets (`ticket.tags` + `ticket_type`, per `atlas/context/lesson_retrieval.py`). Lesson c629cfb5 (''Degraded sync push must not advance the cursor'') carries tags `sync, linear, cursor, pack-embed, degraded-push, idempotency, repair, dirty-input, adr-0006` and intersects ZERO tickets in the store — it could be promoted at confidence 1.0 and reach nobody, forever. Others are near-unreachable: 4b2db698 matches 1 ticket, b1c4282e matches 2, 04fb6342 (the rebase discipline) matches 3. Meanwhile generic tags over-match: `planning` hits 39 tickets, `cli` hits 29. The distribution is bimodal and nobody designed it that way. FAILURE 2, pattern detection: `detect_pattern_candidates` requires the same tag across >=3 DRAFT-or-ACTIVE FAILURE_PATTERN lessons (`PATTERN_THRESHOLD`). Across the 9 failure-pattern lessons in the corpus, the maximum recurrence of any tag is 2 (`deduplication`, `reconciler`, `tech-debt`, `linear-sync`, `inbox-stubs`, `retirement` each reach exactly 2). `atlas lessons report` prints ''No pattern candidates detected'' — and will do so indefinitely regardless of how many lessons accumulate, because ~110 distinct tags across 18 lessons means three extractions will essentially never agree on a term. That is a design ceiling, not a null result. Both failures share one root cause: a lesson''s tags describe the model''s free association rather than the work the lesson came from. Operator ruling OP-A(a), 2026-07-17: fix it at the prompt — rejected alternatives recorded: a controlled vocabulary enforced at write (brittle; needs a vocabulary source of truth that does not exist), widening the matching rule to component/title tokens (helps reachability only, changes retrieval semantics), and lowering PATTERN_THRESHOLD 3->2 (arbitrary; fixes neither reachability nor the entropy). Pre-ruled decisions: D-1 a new versioned prompt template `lesson-extractor-v1.1.0.md.j2`; the version constant moves to it and v1.0.0 is retained on disk as the record of what produced the existing corpus. D-2 the prompt instructs: draw tags primarily from the source ticket''s `tags` and `component`, which are supplied in the rendered prompt; at most 2 novel tags may be added when the lesson genuinely concerns something the ticket''s vocabulary does not name. D-3 the ticket''s tags and component are rendered INTO the prompt explicitly — the model cannot reuse a vocabulary it was never shown; this is the mechanical half of the fix and the testable one. D-4 acceptance is structural, not behavioural: assert the rendered prompt contains the source ticket''s tags, its component, and the tag-guidance instruction. An LLM''s output distribution cannot be pinned deterministically and this ticket will not pretend otherwise; the live check is the operator''s, post-merge. D-5 PATTERN_THRESHOLD is unchanged at 3 — this ticket makes the threshold reachable rather than moving the goalposts. D-6 the existing 18 lessons are NOT retagged by this ticket: re-extraction costs model spend and the attempt cursor blocks it without `--force`. Operator ruling of record: they are retagged by hand at promotion via the documented edit-then-promote path, since the operator reads each lesson at the gate anyway. D-7 learning-system.md''s extraction section states the tag-vocabulary rule so the constraint is documented where the design lives, not only in a template.'
-  status: planned
+  status: done
   ticket_type: bug
   risk_level: low
   priority: 50
@@ -8171,6 +8171,49 @@ tickets:
   definition_of_done:
   - All acceptance criteria evidenced by named tests; full gate sweep green; post-merge the operator runs one live `atlas lessons extract <KEY>` and records on the ticket whether the produced tags intersect the source ticket's facets; PR title carries the minted key.
   estimated_effort: null
+  external_linear_id: 13d3583e-9500-4cf1-839b-9de62f37f21c
+  external_github_issue_id: null
+  tags: []
+  component: null
+  linear_synced_at: '2026-07-17T18:09:03.267173Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-07-17T19:41:52.254398Z'
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-17T19:41:52.254398Z'
+  source_anchor: docs/planning/inbox/processed/inbox-stub-tag-vocabulary.md#tags-should-describe-the-work-not-the-models-mood
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-17T18:09:03.267173Z'
+  updated_at: '2026-07-17T18:09:03.267173Z'
+  completed_at: null
+- id: b90b1c21-d9bf-4b83-8679-9f73095e65ad
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 4d034c8b-0752-4089-8ff9-2fd43f51c6f4
+  key: ATLAS-178
+  title: 'Skip itemisation floods the tick output: aggregate routine non-candidates, itemise only exceptional declines'
+  objective: A sync tick reports the skips an operator can act on and aggregates the ones they cannot, so the summary stays readable on a full board and a genuine decline is visible rather than buried.
+  context: 'Live finding, 2026-07-17, on the first tick after ATLAS-170 (#205) merged. A no-op sync printed its summary — `pm sync: completed; pushes=0 ... status_unchanged=58 push_skipped=141` — followed by 141 itemised lines, every one of the form `push skipped ATLAS-N: status not pushable (done)` / `(needs_human_decision)` / `(rejected)`. The tick did nothing and said so in 142 lines. This is a spec defect in ATLAS-170''s D-2, authored by the reviewer, not an implementation error: the decision said ''selection loops that decline candidates name the reason per declined candidate'', and the agent implemented exactly that. The spec conflated two loops with different shapes. In the REPAIR sweep the candidate set is small and targeted, and one silent skip cost the operator 20 minutes of diagnosis — itemising is correct there. In the PUSH loop the ''candidate set'' is the entire board, of which ~95% is permanently outside the working set (done, rejected, needs_human_decision). Those are not declined candidates; they were never candidates. The consequence is worse than the silence ATLAS-170 replaced: 141 lines of noise per tick trains the operator to ignore the output, which defeats the ticket''s purpose — and the one genuinely diagnostic skip, if it ever occurs, arrives buried in the flood. Note the same flood will recur under a different reason as the board fills: once many tickets sit in pushable states with unchanged definitions, `cursor already stamped` becomes the new 141. Pre-ruled decisions: D-1 `SyncDecision` gains a classification distinguishing ROUTINE skips (expected states of a healthy board) from NOTABLE ones (a ticket that reached the working set and was then declined). D-2 ROUTINE is exactly: `status not pushable (<status>)`, `cursor already stamped`, and repair mode''s `header already present`. These are structural filters, not decisions about a candidate. D-3 NOTABLE is everything else — `no external id`, `updated earlier in this tick`, `definition cursor is stale`, `external id not found in project pull`, `context pack render failed` — each itemised one line, as today. These are rare, diagnostic, and are the lines ATLAS-170 existed to surface. D-4 ROUTINE skips are aggregated into the summary by reason with counts and never itemised by default: `push_skipped=141 (not pushable: done=71, needs_human_decision=54, rejected=8, in_progress=3, review_required=2)`. Grouping by the reason string yields this for free — the status is already in the text. D-5 `-v/--verbose` itemises ROUTINE skips too; the information is never lost, only defaulted away. D-6 `--repair-packs` keeps its repair lines exactly as ATLAS-169/170 deliver them; only its `header already present` skips become routine. D-7 no counter''s value, no exit code, and no WARNING behaviour changes — this ticket changes what is printed, not what is done or measured.'
+  status: planned
+  ticket_type: bug
+  risk_level: low
+  priority: 50
+  relevant_docs:
+  - docs/planning/inbox/processed/inbox-stub-skip-itemisation.md
+  acceptance_criteria:
+  - A no-op tick over a fixture board of terminal-status tickets prints exactly one summary line, zero itemised skip lines, and an aggregated routine breakdown naming each reason with its count (seed the probe with `assert 1 == 2`, B011).
+  - A tick containing one NOTABLE skip (`no external id`) over a board of many routine skips prints exactly one itemised skip line — that one — proving the diagnostic signal is no longer buried.
+  - '`-v/--verbose` itemises routine skips as well; the per-ticket information remains reachable.'
+  - '`cursor already stamped` is classified routine: a fixture board of pushable tickets with unchanged definitions prints no itemised skip lines (the flood does not recur under a new reason as the board fills).'
+  - 'Negative: `push_skipped` and every other counter keep their current values; exit codes and WARNING output are unchanged; existing sync, pack-embedding, and scheduler tests pass unmodified.'
+  non_goals:
+  - No change to what any tick does — only to what it prints. No new counters. No change to the repair sweep's repair lines or to lessons schedule --once output. No log-level or logging-framework changes beyond the existing -v flag. No change to SyncDecision's phase/ticket_key/outcome fields.
+  implementation_notes: []
+  test_requirements:
+  - Fixture-driven with captured stdout, `ATLAS_LIVE_TESTS=0`; seeded defects use `assert 1 == 2` (B011); enumeration pins hold.
+  documentation_requirements: []
+  definition_of_done:
+  - All acceptance criteria evidenced by named tests; full gate sweep green; the operator runs one live `atlas pm sync --once` post-merge and records the summary line on the ticket; PR title carries the minted key.
+  estimated_effort: null
   external_linear_id: null
   external_github_issue_id: null
   tags: []
@@ -8180,9 +8223,9 @@ tickets:
   status_entered_at: null
   review_cycle_count: 0
   lesson_extraction_attempted_at: null
-  source_anchor: docs/planning/inbox/processed/inbox-stub-tag-vocabulary.md#tags-should-describe-the-work-not-the-models-mood
+  source_anchor: docs/planning/inbox/processed/inbox-stub-skip-itemisation.md#itemise-the-exceptional-aggregate-the-routine
   created_by_type: agent
   created_by_id: planner
-  created_at: '2026-07-17T18:09:03.267173Z'
-  updated_at: '2026-07-17T18:09:03.267173Z'
+  created_at: '2026-07-17T20:00:52.650318Z'
+  updated_at: '2026-07-17T20:00:52.650318Z'
   completed_at: null
