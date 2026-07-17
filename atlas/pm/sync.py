@@ -88,6 +88,7 @@ import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from enum import StrEnum
 from pathlib import Path
 from uuid import uuid4
 
@@ -308,6 +309,13 @@ class _PackInputLoader:
         return retrieve_lessons(ticket, self._db)
 
 
+class SyncDecisionClassification(StrEnum):
+    """CLI presentation class for per-ticket sync decisions."""
+
+    ROUTINE = "routine"
+    NOTABLE = "notable"
+
+
 @dataclass(frozen=True)
 class SyncDecision:
     """One per-ticket decision for CLI presentation; not a persisted metric."""
@@ -316,6 +324,7 @@ class SyncDecision:
     ticket_key: str
     outcome: str
     reason: str
+    classification: SyncDecisionClassification = SyncDecisionClassification.NOTABLE
 
 
 @dataclass
@@ -1094,6 +1103,7 @@ def _push(
                 ticket_key=ticket.key,
                 outcome="skipped",
                 reason=f"status not pushable ({ticket.status.value})",
+                classification=SyncDecisionClassification.ROUTINE,
             )
         )
         return None
@@ -1105,6 +1115,7 @@ def _push(
                 ticket_key=ticket.key,
                 outcome="skipped",
                 reason="cursor already stamped",
+                classification=SyncDecisionClassification.ROUTINE,
             )
         )
         return None
@@ -1249,6 +1260,7 @@ def _repair_pack_absent_descriptions(
                     ticket_key=ticket.key,
                     outcome="skipped",
                     reason="header already present",
+                    classification=SyncDecisionClassification.ROUTINE,
                 )
             )
             continue
