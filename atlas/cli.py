@@ -125,6 +125,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import signal
 import sys
@@ -191,6 +192,7 @@ from atlas.learning import (
     DEFAULT_LESSON_SCHEDULER_INTERVAL_SECONDS,
     ExtractionTrigger,
     LessonSchedulerConfig,
+    LessonSchedulerResult,
     NoActiveLessonsForTagError,
     PlaybookGenerationError,
     PlaybookGitError,
@@ -253,6 +255,7 @@ from atlas.planning.reconciler import DEFAULT_SIMILARITY_THRESHOLD, PlanDiff
 from atlas.planning.staged import StagedProposalGenerator, TemplateStagedGenerator
 from atlas.pm import (
     DEFAULT_INTERVAL_SECONDS,
+    SyncResult,
     TickConfig,
     build_delivery_report,
     render_markdown,
@@ -294,10 +297,116 @@ EXIT_RECORDED_FAILURE = 1
 EXIT_PRECONDITION = 2
 
 
+def _add_verbose_flag(
+    parser: argparse.ArgumentParser, *, default: bool | object = argparse.SUPPRESS
+) -> None:
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        default=default,
+        help="enable INFO logging for this invocation",
+    )
+
+
+def _configure_logging(verbose: bool) -> None:
+    if not verbose:
+        return
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(levelname)s:%(name)s:%(message)s",
+    )
+    logging.getLogger().setLevel(logging.INFO)
+
+
+def _sync_result_is_empty(result: SyncResult) -> bool:
+    counters = [
+        result.status_pulled,
+        result.status_unchanged,
+        result.unmapped,
+        result.anomalies_logged,
+        result.pushed_created,
+        result.pushed_updated,
+        result.push_skipped,
+        result.packs_embedded,
+        result.packs_truncated,
+        result.pack_render_failures,
+        result.packs_repaired,
+        result.agent_runs_reconstructed,
+        result.agent_runs_updated,
+        result.promoted,
+        result.completed,
+        result.follow_ups_stubbed,
+        result.dwell_breaches,
+        result.routed_to_human,
+        result.review_cycles_logged,
+        result.stale_blocks,
+        result.draft_lessons_filed,
+    ]
+    return all(counter == 0 for counter in counters)
+
+
+def _format_sync_result(result: SyncResult) -> str:
+    pushes = result.pushed_created + result.pushed_updated
+    prefix = "no work performed" if _sync_result_is_empty(result) else "completed"
+    lines = [
+        (
+            f"pm sync: {prefix}; "
+            f"pushes={pushes} "
+            f"pushed_created={result.pushed_created} "
+            f"pushed_updated={result.pushed_updated} "
+            f"embeds={result.packs_embedded} "
+            f"status_pulls={result.status_pulled} "
+            f"status_unchanged={result.status_unchanged} "
+            f"anomalies_logged={result.anomalies_logged} "
+            f"unmapped_observations={result.unmapped} "
+            f"push_skipped={result.push_skipped}"
+        )
+    ]
+    for decision in result.push_decisions:
+        lines.append(
+            f"{decision.phase} {decision.outcome} {decision.ticket_key}: "
+            f"{decision.reason}"
+        )
+    return "\n".join(lines)
+
+
+def _format_repair_pack_result(result: SyncResult) -> str:
+    if result.packs_repaired == 0 and not result.repair_pack_decisions:
+        prefix = "no repair candidates"
+    elif result.packs_repaired == 0:
+        prefix = "no packs repaired"
+    else:
+        prefix = "completed"
+    lines = [f"pm sync repair-packs: {prefix}; packs_repaired={result.packs_repaired}"]
+    for decision in result.repair_pack_decisions:
+        lines.append(
+            f"{decision.phase} {decision.outcome} {decision.ticket_key}: "
+            f"{decision.reason}"
+        )
+    return "\n".join(lines)
+
+
+def _format_lesson_scheduler_result(result: LessonSchedulerResult | None) -> str:
+    attempted = 0 if result is None else result.attempted
+    extracted = 0 if result is None else result.extracted
+    declined = 0 if result is None else result.declined_as_not_notable
+    failed = 0 if result is None else result.failed
+    prefix = "no work performed" if attempted == 0 else "completed"
+    return (
+        f"lessons schedule: {prefix}; "
+        f"attempted={attempted} "
+        f"extracted={extracted} "
+        f"declined-as-not-notable={declined} "
+        f"failed={failed}"
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="atlas", description="Atlas planning engine CLI"
     )
+    _add_verbose_flag(parser, default=False)
     subcommands = parser.add_subparsers(dest="command", required=True)
     plan = subcommands.add_parser(
         "plan",
@@ -461,6 +570,7 @@ def _add_pm_parser(subcommands: argparse._SubParsersAction) -> None:  # type: ig
         "sync",
         help="Run the recurring Linear sync loop (--once runs a single tick)",
     )
+    _add_verbose_flag(sync)
     sync.add_argument("--db", default=None, help="database URL")
     sync.add_argument(
         "--once",
@@ -1253,12 +1363,16 @@ def _pm_sync(args: argparse.Namespace, resolved_db: Database) -> int:
 
     shutdown = threading.Event()
     _install_shutdown_handlers(shutdown)
-    run_scheduler(
+    result = run_scheduler(
         config,
         interval=args.interval,
         once=args.once or args.repair_packs,
         shutdown=shutdown,
     )
+    if args.repair_packs:
+        print(_format_repair_pack_result(result or SyncResult()))
+    elif args.once:
+        print(_format_sync_result(result or SyncResult()))
     return EXIT_OK
 
 
@@ -2413,6 +2527,7 @@ def _add_lessons_parser(subcommands: argparse._SubParsersAction) -> None:  # typ
         "schedule",
         help="Run the recurring lesson extraction scheduler",
     )
+    _add_verbose_flag(schedule)
     schedule.add_argument("--db", default=None, help="database URL")
     schedule.add_argument(
         "--once",
@@ -2595,7 +2710,7 @@ def _lessons_extract_or_schedule(
     if args.lessons_command == "schedule":
         shutdown = threading.Event()
         _install_shutdown_handlers(shutdown)
-        run_lesson_scheduler(
+        result = run_lesson_scheduler(
             LessonSchedulerConfig(
                 db=resolved_db,
                 tickets=TicketRepo(resolved_db),
@@ -2606,6 +2721,8 @@ def _lessons_extract_or_schedule(
             once=args.once,
             shutdown=shutdown,
         )
+        if args.once:
+            print(_format_lesson_scheduler_result(result))
         return EXIT_OK
     ticket = TicketRepo(resolved_db).get_by_key(args.key)
     if ticket is None:
@@ -2761,6 +2878,7 @@ def main(
     tests; production builds them from the environment (and the C6 model probe
     shells out to Codex)."""
     args = build_parser().parse_args(argv)
+    _configure_logging(bool(getattr(args, "verbose", False)))
     if args.command == "plan":
         return _plan_command(
             args,

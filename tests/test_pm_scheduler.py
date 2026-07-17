@@ -26,6 +26,7 @@ shutdown-handler wiring, and the missing-creds precondition exit).
 
 from __future__ import annotations
 
+import logging
 import signal
 import threading
 from datetime import UTC, datetime, timedelta
@@ -490,6 +491,7 @@ def test_sync_subparser_parses_flags() -> None:
         [
             "pm",
             "sync",
+            "-v",
             "--once",
             "--repair-packs",
             "--interval",
@@ -502,6 +504,7 @@ def test_sync_subparser_parses_flags() -> None:
     )
     assert args.command == "pm"
     assert args.pm_command == "sync"
+    assert args.verbose is True
     assert args.once is True
     assert args.repair_packs is True
     assert args.interval == 30
@@ -511,6 +514,7 @@ def test_sync_subparser_parses_flags() -> None:
 
 def test_sync_flag_defaults() -> None:
     args = build_parser().parse_args(["pm", "sync"])
+    assert args.verbose is False
     assert args.once is False
     assert args.repair_packs is False
     assert args.interval == DEFAULT_INTERVAL_SECONDS
@@ -627,8 +631,33 @@ def test_sync_missing_project_id_is_clean_precondition(
     assert code == EXIT_PRECONDITION  # clean precondition, no traceback
 
 
-def test_sync_once_clean_path_no_network(
-    db: Database, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+def _isolate_root_logging() -> tuple[int, list[logging.Handler]]:
+    root = logging.getLogger()
+    original_level = root.level
+    original_handlers = list(root.handlers)
+    for handler in original_handlers:
+        root.removeHandler(handler)
+    root.setLevel(logging.WARNING)
+    return original_level, original_handlers
+
+
+def _restore_root_logging(
+    original_level: int, original_handlers: list[logging.Handler]
+) -> None:
+    root = logging.getLogger()
+    for handler in list(root.handlers):
+        root.removeHandler(handler)
+        handler.close()
+    for handler in original_handlers:
+        root.addHandler(handler)
+    root.setLevel(original_level)
+
+
+def test_sync_once_clean_path_prints_noop_summary_without_info_logs(
+    db: Database,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     # A full --once run through the CLI with an EMPTY backlog: sync_tick iterates
     # zero tickets and makes no Linear call, so the live client is never dialled.
@@ -636,11 +665,53 @@ def test_sync_once_clean_path_no_network(
     _live_env(monkeypatch)
     monkeypatch.setattr("atlas.cli._install_shutdown_handlers", lambda event: None)
     args = ["pm", "sync", "--once", "--inbox-dir", str(tmp_path / "inbox")]
+    original_level, original_handlers = _isolate_root_logging()
+    try:
+        code = main(args, database=db)
+    finally:
+        _restore_root_logging(original_level, original_handlers)
 
-    code = main(args, database=db)
+    captured = capsys.readouterr()
 
     assert code == EXIT_OK
+    assert "pm sync: no work performed" in captured.out
+    assert "pushes=0" in captured.out
+    assert "embeds=0" in captured.out
+    assert "status_pulls=0" in captured.out
+    assert "anomalies_logged=0" in captured.out
+    assert "unmapped_observations=0" in captured.out
+    assert "INFO:atlas.pm.scheduler" not in captured.err
     assert TickFailureRepo(db).list() == []  # a clean tick recorded nothing
+
+
+def test_verbose_sync_invocation_enables_info_logging(
+    db: Database,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _live_env(monkeypatch)
+    monkeypatch.setattr("atlas.cli._install_shutdown_handlers", lambda event: None)
+    original_level, original_handlers = _isolate_root_logging()
+    try:
+        code = main(
+            [
+                "pm",
+                "sync",
+                "--once",
+                "-v",
+                "--inbox-dir",
+                str(tmp_path / "inbox"),
+            ],
+            database=db,
+        )
+    finally:
+        _restore_root_logging(original_level, original_handlers)
+
+    captured = capsys.readouterr()
+
+    assert code == EXIT_OK
+    assert "INFO:atlas.pm.scheduler:pm-scheduler: starting" in captured.err
 
 
 def test_install_shutdown_handlers_sets_event_on_signal() -> None:

@@ -63,7 +63,7 @@ from atlas.core.models.tick_failure import TickFailure
 from atlas.learning import LessonModelClient
 from atlas.linear.client import LinearClient, LinearRateLimitError
 from atlas.linear.ownership import LinearStatusMap
-from atlas.pm.sync import sync_tick
+from atlas.pm.sync import SyncResult, sync_tick
 from atlas.storage.db import Database
 from atlas.storage.repositories import TicketRepo, TickFailureRepo
 
@@ -175,7 +175,11 @@ def _record_crash(failures: TickFailureRepo, exc: Exception, now: datetime) -> b
 
 
 def run_tick(
-    config: TickConfig, failures: TickFailureRepo, *, now: datetime
+    config: TickConfig,
+    failures: TickFailureRepo,
+    *,
+    now: datetime,
+    result_sink: Callable[[SyncResult], None] | None = None,
 ) -> Exception | None:
     """Run exactly one sync tick. The single-tick body shared by ``--once`` and
     the loop.
@@ -189,58 +193,24 @@ def run_tick(
     the crash ever escaping."""
 
     try:
-        if config.lesson_client is not None and config.repair_packs:
-            sync_tick(
-                tickets=config.tickets,
-                db=config.db,
-                client=config.client,
-                status_map=config.status_map,
-                team_id=config.team_id,
-                project_id=config.project_id,
-                inbox_dir=config.inbox_dir,
-                documents=config.documents,
-                now=now,
-                repair_packs=True,
-                lesson_client=config.lesson_client,
-            )
-        elif config.lesson_client is not None:
-            sync_tick(
-                tickets=config.tickets,
-                db=config.db,
-                client=config.client,
-                status_map=config.status_map,
-                team_id=config.team_id,
-                project_id=config.project_id,
-                inbox_dir=config.inbox_dir,
-                documents=config.documents,
-                now=now,
-                lesson_client=config.lesson_client,
-            )
-        elif config.repair_packs:
-            sync_tick(
-                tickets=config.tickets,
-                db=config.db,
-                client=config.client,
-                status_map=config.status_map,
-                team_id=config.team_id,
-                project_id=config.project_id,
-                inbox_dir=config.inbox_dir,
-                documents=config.documents,
-                now=now,
-                repair_packs=True,
-            )
-        else:
-            sync_tick(
-                tickets=config.tickets,
-                db=config.db,
-                client=config.client,
-                status_map=config.status_map,
-                team_id=config.team_id,
-                project_id=config.project_id,
-                inbox_dir=config.inbox_dir,
-                documents=config.documents,
-                now=now,
-            )
+        tick_kwargs: dict[str, object] = {
+            "tickets": config.tickets,
+            "db": config.db,
+            "client": config.client,
+            "status_map": config.status_map,
+            "team_id": config.team_id,
+            "project_id": config.project_id,
+            "inbox_dir": config.inbox_dir,
+            "documents": config.documents,
+            "now": now,
+        }
+        if config.repair_packs:
+            tick_kwargs["repair_packs"] = True
+        if config.lesson_client is not None:
+            tick_kwargs["lesson_client"] = config.lesson_client
+        result = sync_tick(**tick_kwargs)  # type: ignore[arg-type]
+        if result_sink is not None:
+            result_sink(result)
     except Exception as exc:  # create-on-crash: a tick crash never kills the loop
         _record_crash(failures, exc, now)
         return exc
@@ -255,7 +225,7 @@ def run_scheduler(
     now: Callable[[], datetime] = _utcnow,
     shutdown: threading.Event | None = None,
     sleep: Callable[[float], bool] | None = None,
-) -> None:
+) -> SyncResult | None:
     """Drive ``sync_tick`` on a cadence until shutdown (or once, with ``--once``).
 
     The loop body is thin: run one tick (:func:`run_tick`, which absorbs a crash),
@@ -282,20 +252,25 @@ def run_scheduler(
     shutdown = shutdown if shutdown is not None else threading.Event()
     interruptible_sleep = sleep if sleep is not None else shutdown.wait
     failures = TickFailureRepo(config.db)
+    last_result: SyncResult | None = None
+
+    def remember_result(result: SyncResult) -> None:
+        nonlocal last_result
+        last_result = result
 
     logger.info(
         "pm-scheduler: starting (%s)",
         "single tick (--once)" if once else f"interval {interval}s",
     )
     while True:
-        crash = run_tick(config, failures, now=now())
+        crash = run_tick(config, failures, now=now(), result_sink=remember_result)
         if once:
-            return
+            return last_result
         if shutdown.is_set():
             # The signal arrived during the tick we just finished: stop now,
             # after the in-flight tick, never mid-write.
             logger.info("pm-scheduler: shutdown signalled; stopping after this tick")
-            return
+            return last_result
         wait = interval
         if isinstance(crash, LinearRateLimitError):
             reset = crash.reset_after_seconds
@@ -315,4 +290,4 @@ def run_scheduler(
         if interruptible_sleep(wait):
             # Woken early by the shutdown signal: stop without another tick.
             logger.info("pm-scheduler: shutdown signalled during sleep; stopping")
-            return
+            return last_result

@@ -213,11 +213,12 @@ def test_run_scheduler_once_exits_after_one_cycle(db: Database) -> None:
 
 def test_parser_exposes_lessons_schedule_flags() -> None:
     args = build_parser().parse_args(
-        ["lessons", "schedule", "--once", "--interval", "42"]
+        ["lessons", "schedule", "-v", "--once", "--interval", "42"]
     )
 
     assert args.command == "lessons"
     assert args.lessons_command == "schedule"
+    assert args.verbose is True
     assert args.once is True
     assert args.interval == 42
 
@@ -230,8 +231,10 @@ def test_parser_defaults_lessons_schedule_interval() -> None:
 
 def test_cli_lessons_schedule_once_triggers_extraction_for_fixture_tickets(
     db: Database,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     repo = TicketRepo(db)
+    declined = repo.add(make_ticket("ATLAS-269", status=TicketStatus.DONE))
     eligible = repo.add(make_ticket("ATLAS-270", status=TicketStatus.REJECTED))
     skipped = repo.add(
         make_ticket(
@@ -250,9 +253,16 @@ def test_cli_lessons_schedule_once_triggers_extraction_for_fixture_tickets(
 
     assert code == EXIT_OK
     assert len(client.prompts) == 1
+    out = capsys.readouterr().out
+    assert "lessons schedule: completed" in out
+    assert "attempted=2" in out
+    assert "extracted=1" in out
+    assert "declined-as-not-notable=1" in out
+    assert "failed=0" in out
     lessons = LessonRepo(db).list()
     assert len(lessons) == 1
     assert lessons[0].related_ticket_ids == [eligible.id]
+    assert repo.get(declined.id).lesson_extraction_attempted_at is not None  # type: ignore[union-attr]
     assert repo.get(eligible.id).lesson_extraction_attempted_at is not None  # type: ignore[union-attr]
     assert repo.get(skipped.id).lesson_extraction_attempted_at == (  # type: ignore[union-attr]
         NOW - timedelta(minutes=5)

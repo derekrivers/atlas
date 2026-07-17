@@ -58,12 +58,14 @@ from test_pm_sync import (
     EARLIER,
     LATER,
     PROJECT_ID,
+    STARTED,
     TEAM_ID,
     CountingClient,
     RecordingClient,
     status_map,
 )
 
+from atlas.cli import EXIT_OK, main
 from atlas.core.anchors import SourceDocument
 from atlas.core.enums import ActorType
 from atlas.core.models import AnomalyType, Ticket
@@ -81,6 +83,7 @@ from atlas.planning.ingestion import (
     collect_processed_documents,
 )
 from atlas.pm import SyncResult, sync_tick
+from atlas.pm.scheduler import TickConfig
 from atlas.pm.sync import CREATED_BY
 from atlas.storage import Database, DebtItemRepo, TicketRepo
 
@@ -613,6 +616,58 @@ def test_repair_packs_reembeds_one_pack_absent_stamped_ticket(
     assert second.packs_repaired == 0
     assert second.pushed_updated == 0
     assert len(client.updates) == 1
+
+
+def test_repair_packs_cli_prints_repair_and_named_skip_lines(
+    db: Database,
+    repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    client = RecordingClient()
+    repairable = seed(db, client, key="ATLAS-923", linear_synced_at=NOW)
+    non_pushable = seed(
+        db,
+        client,
+        key="ATLAS-924",
+        status=TicketStatus.IN_PROGRESS,
+        linear_synced_at=NOW,
+    )
+    assert non_pushable.external_linear_id is not None
+    client.simulate_linear_state(non_pushable.external_linear_id, STARTED)
+
+    def fake_config(_args: object, resolved_db: Database) -> TickConfig:
+        return TickConfig(
+            tickets=TicketRepo(resolved_db),
+            db=resolved_db,
+            client=client,
+            status_map=status_map(),
+            team_id=TEAM_ID,
+            project_id=PROJECT_ID,
+            inbox_dir=Path(tempfile.mkdtemp()),
+            documents=collector_pair(repo),
+            repair_packs=True,
+        )
+
+    monkeypatch.setattr("atlas.cli._build_tick_config", fake_config)
+    monkeypatch.setattr("atlas.cli._install_shutdown_handlers", lambda event: None)
+
+    code = main(["pm", "sync", "--repair-packs"], database=db)
+
+    lines = capsys.readouterr().out.strip().splitlines()
+
+    assert code == EXIT_OK
+    assert lines[0] == "pm sync repair-packs: completed; packs_repaired=1"
+    repair_lines = [line for line in lines if line.startswith("pack repair ")]
+    assert len(repair_lines) == 2
+    assert (
+        f"pack repair repaired {repairable.key}: embedded pack header restored"
+        in repair_lines
+    )
+    assert (
+        f"pack repair skipped {non_pushable.key}: status not pushable (in_progress)"
+        in repair_lines
+    )
 
 
 # --- AC-5: request budget on a push tick -------------------------------------

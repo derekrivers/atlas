@@ -49,6 +49,7 @@ from atlas.learning.scheduler import (
 )
 from atlas.learning.scheduler import (
     LessonSchedulerConfig,
+    LessonSchedulerResult,
     ScheduledExtraction,
     find_tickets_needing_extraction,
     run_poll_cycle,
@@ -78,6 +79,7 @@ __all__ = [
     "LessonExtractionError",
     "LessonModelClient",
     "LessonSchedulerConfig",
+    "LessonSchedulerResult",
     "LessonSearchResult",
     "LessonSummary",
     "LessonsReport",
