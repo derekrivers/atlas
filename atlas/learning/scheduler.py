@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import logging
 import threading
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Protocol
@@ -28,9 +28,10 @@ from atlas.learning.extractor import (
     ExtractionTrigger,
     LessonModelClient,
     extract_lesson_for_ticket,
+    notable_done_ticket,
 )
 from atlas.storage.db import Database
-from atlas.storage.repositories import DebtItemRepo, TicketRepo
+from atlas.storage.repositories import DebtItemRepo, TicketRepo, VerificationCheckRepo
 
 logger = logging.getLogger("atlas.learning.scheduler")
 
@@ -90,6 +91,27 @@ class ScheduledExtraction:
     failure_event: DebtItem | None = None
 
 
+@dataclass(frozen=True)
+class LessonSchedulerResult:
+    """Per-poll extraction outcome for CLI presentation.
+
+    Iteration intentionally yields ``work`` so existing callers that treated
+    ``run_poll_cycle`` as the attempted-work list keep working.
+    """
+
+    work: tuple[ScheduledExtraction, ...]
+    extracted: int = 0
+    declined_as_not_notable: int = 0
+    failed: int = 0
+
+    @property
+    def attempted(self) -> int:
+        return len(self.work)
+
+    def __iter__(self) -> Iterator[ScheduledExtraction]:
+        return iter(self.work)
+
+
 def _latest_pm_failure_event(
     ticket: Ticket, debt_items: Sequence[DebtItem]
 ) -> DebtItem | None:
@@ -145,9 +167,23 @@ def find_tickets_needing_extraction(
     return work
 
 
+def _is_declined_as_not_notable(
+    item: ScheduledExtraction, config: LessonSchedulerConfig
+) -> bool:
+    if item.trigger is not ExtractionTrigger.DONE:
+        return False
+    return not notable_done_ticket(
+        item.ticket,
+        tickets=config.tickets.list(),
+        verification_checks=VerificationCheckRepo(config.db).list_for_ticket(
+            item.ticket.id
+        ),
+    )
+
+
 def run_poll_cycle(
     config: LessonSchedulerConfig, *, now: datetime
-) -> list[ScheduledExtraction]:
+) -> LessonSchedulerResult:
     """Run exactly one learning-scheduler poll cycle.
 
     A failed extraction for one ticket is logged and isolated; the extractor
@@ -157,12 +193,15 @@ def run_poll_cycle(
     """
 
     attempted: list[ScheduledExtraction] = []
+    extracted = 0
+    declined_as_not_notable = 0
+    failed = 0
     work = find_tickets_needing_extraction(
         config.tickets.list(), config.debt_items.list()
     )
     for item in work:
         try:
-            config.extractor(
+            lesson = config.extractor(
                 item.ticket,
                 db=config.db,
                 client=config.client,
@@ -172,12 +211,20 @@ def run_poll_cycle(
                 force=item.trigger is ExtractionTrigger.PM_FAILURE_ANALYSIS,
             )
         except Exception as error:
+            failed += 1
             logger.warning(
                 "lesson-scheduler: extraction failed for %s (%s): %s",
                 item.ticket.key,
                 type(error).__name__,
                 error,
             )
+        else:
+            if lesson is not None:
+                extracted += 1
+            elif _is_declined_as_not_notable(item, config):
+                declined_as_not_notable += 1
+            else:
+                failed += 1
         finally:
             current = config.tickets.get(item.ticket.id)
             attempted_at = (
@@ -188,7 +235,12 @@ def run_poll_cycle(
                     item.ticket.key, attempted_at=now
                 )
         attempted.append(item)
-    return attempted
+    return LessonSchedulerResult(
+        work=tuple(attempted),
+        extracted=extracted,
+        declined_as_not_notable=declined_as_not_notable,
+        failed=failed,
+    )
 
 
 def run_scheduler(
@@ -199,7 +251,7 @@ def run_scheduler(
     now: Callable[[], datetime] = _utcnow,
     shutdown: threading.Event | None = None,
     sleep: Callable[[float], bool] | None = None,
-) -> None:
+) -> LessonSchedulerResult | None:
     """Drive lesson extraction polling on a cadence until shutdown.
 
     ``--once`` runs one poll cycle and exits. Otherwise the loop checks the
@@ -210,20 +262,21 @@ def run_scheduler(
 
     shutdown = shutdown if shutdown is not None else threading.Event()
     interruptible_sleep = sleep if sleep is not None else shutdown.wait
+    last_result: LessonSchedulerResult | None = None
 
     logger.info(
         "lesson-scheduler: starting (%s)",
         "single poll (--once)" if once else f"interval {interval}s",
     )
     while True:
-        run_poll_cycle(config, now=now())
+        last_result = run_poll_cycle(config, now=now())
         if once:
-            return
+            return last_result
         if shutdown.is_set():
             logger.info(
                 "lesson-scheduler: shutdown signalled; stopping after this cycle"
             )
-            return
+            return last_result
         if interruptible_sleep(interval):
             logger.info("lesson-scheduler: shutdown signalled during sleep; stopping")
-            return
+            return last_result

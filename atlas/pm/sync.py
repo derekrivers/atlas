@@ -86,7 +86,7 @@ import logging
 import os
 import re
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
@@ -308,6 +308,16 @@ class _PackInputLoader:
         return retrieve_lessons(ticket, self._db)
 
 
+@dataclass(frozen=True)
+class SyncDecision:
+    """One per-ticket decision for CLI presentation; not a persisted metric."""
+
+    phase: str
+    ticket_key: str
+    outcome: str
+    reason: str
+
+
 @dataclass
 class SyncResult:
     """Per-tick counters — the structured observability D2 asks for. Pure
@@ -353,7 +363,9 @@ class SyncResult:
     completion/failure transitions and newly logged review-cycle or dwell-breach
     failure-analysis events. ``packs_repaired`` (ATLAS-169) counts
     operator-invoked repair-mode updates that re-embedded a full context pack
-    into an already-stamped Linear description that lacked the pack header."""
+    into an already-stamped Linear description that lacked the pack header.
+    ``push_decisions`` and ``repair_pack_decisions`` are per-ticket presentation
+    details for one-shot CLI output; they do not change the counter meanings."""
 
     status_pulled: int = 0
     status_unchanged: int = 0
@@ -376,6 +388,8 @@ class SyncResult:
     review_cycles_logged: int = 0
     stale_blocks: int = 0
     draft_lessons_filed: int = 0
+    push_decisions: list[SyncDecision] = field(default_factory=list)
+    repair_pack_decisions: list[SyncDecision] = field(default_factory=list)
 
 
 def _definition_changed(ticket: Ticket) -> bool:
@@ -1072,8 +1086,27 @@ def _push(
     (the project is set once, at creation); the ``update_issue`` re-push below never
     carries it -- a project move is not a definition update."""
 
-    if ticket.status not in PUSHABLE_STATUSES or not _definition_changed(ticket):
+    if ticket.status not in PUSHABLE_STATUSES:
         result.push_skipped += 1
+        result.push_decisions.append(
+            SyncDecision(
+                phase="push",
+                ticket_key=ticket.key,
+                outcome="skipped",
+                reason=f"status not pushable ({ticket.status.value})",
+            )
+        )
+        return None
+    if not _definition_changed(ticket):
+        result.push_skipped += 1
+        result.push_decisions.append(
+            SyncDecision(
+                phase="push",
+                ticket_key=ticket.key,
+                outcome="skipped",
+                reason="cursor already stamped",
+            )
+        )
         return None
     definition = definition_payload(ticket)
     embedded = _render_embedded_description(ticket, pack_inputs, debt, result, now)
@@ -1159,15 +1192,65 @@ def _repair_pack_absent_descriptions(
     for ticket in tickets.list():
         issue_id = ticket.external_linear_id
         if issue_id is None:
+            result.repair_pack_decisions.append(
+                SyncDecision(
+                    phase="pack repair",
+                    ticket_key=ticket.key,
+                    outcome="skipped",
+                    reason="no external id",
+                )
+            )
             continue
         if issue_id in skipped_issue_ids:
+            result.repair_pack_decisions.append(
+                SyncDecision(
+                    phase="pack repair",
+                    ticket_key=ticket.key,
+                    outcome="skipped",
+                    reason="updated earlier in this tick",
+                )
+            )
             continue
         if ticket.status not in PUSHABLE_STATUSES:
+            result.repair_pack_decisions.append(
+                SyncDecision(
+                    phase="pack repair",
+                    ticket_key=ticket.key,
+                    outcome="skipped",
+                    reason=f"status not pushable ({ticket.status.value})",
+                )
+            )
             continue
         if _definition_changed(ticket):
+            result.repair_pack_decisions.append(
+                SyncDecision(
+                    phase="pack repair",
+                    ticket_key=ticket.key,
+                    outcome="skipped",
+                    reason="definition cursor is stale",
+                )
+            )
             continue
         issue = issues_by_id.get(issue_id)
-        if issue is None or _has_context_pack_header(issue.description):
+        if issue is None:
+            result.repair_pack_decisions.append(
+                SyncDecision(
+                    phase="pack repair",
+                    ticket_key=ticket.key,
+                    outcome="skipped",
+                    reason="external id not found in project pull",
+                )
+            )
+            continue
+        if _has_context_pack_header(issue.description):
+            result.repair_pack_decisions.append(
+                SyncDecision(
+                    phase="pack repair",
+                    ticket_key=ticket.key,
+                    outcome="skipped",
+                    reason="header already present",
+                )
+            )
             continue
 
         embedded = _render_embedded_description(
@@ -1179,6 +1262,14 @@ def _repair_pack_absent_descriptions(
             failure_posture="repair",
         )
         if embedded is None:
+            result.repair_pack_decisions.append(
+                SyncDecision(
+                    phase="pack repair",
+                    ticket_key=ticket.key,
+                    outcome="skipped",
+                    reason="context pack render failed",
+                )
+            )
             continue
 
         definition = definition_payload(ticket)
@@ -1187,6 +1278,14 @@ def _repair_pack_absent_descriptions(
         tickets.mark_definition_pushed(ticket.key, synced_at=ticket.updated_at)
         result.pushed_updated += 1
         result.packs_repaired += 1
+        result.repair_pack_decisions.append(
+            SyncDecision(
+                phase="pack repair",
+                ticket_key=ticket.key,
+                outcome="repaired",
+                reason="embedded pack header restored",
+            )
+        )
         logger.info(
             "linear-sync: repaired missing embedded context pack for %s",
             ticket.key,
