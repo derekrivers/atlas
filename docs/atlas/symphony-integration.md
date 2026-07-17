@@ -193,6 +193,49 @@ agent-side rebasing stops scaling, but it is deferred from v1. This workflow
 keeps `max_concurrent_agents: 1`; raising concurrency or configuring merge
 queue belongs to a separate operator decision.
 
+### GitHub write-access probe
+
+`hooks.before_run` also probes GitHub write access immediately after
+`git fetch origin main`, before the agent receives the ticket prompt. The
+probe runs inside the dispatched Codex session with that session's actual Git
+credential path, so it tests the credential that will later publish the PR
+branch. It uses `GIT_TERMINAL_PROMPT=0 git push --dry-run origin
+"HEAD:${probe_ref}"` against a generated `refs/heads/atlas-write-access-probe-*`
+destination. The dry run exercises GitHub's receive-pack permission path while
+leaving no branch, tag, or other remote ref behind.
+
+On failure, the hook exits non-zero, and Symphony aborts the attempt before
+any implementation work starts. The diagnostic is intentionally short and
+secret-free:
+
+```text
+Atlas before_run failed: GitHub write-access probe failed for <repo>.
+Git output:
+<git push --dry-run stderr/stdout>
+This Codex session runs with shell_environment_policy.inherit=core, so the operator's exported GITHUB_TOKEN is not visible here.
+The most likely cause is that the agent session's on-disk GitHub credential lacks write access for <repo>; the Git output above is the evidence for the exact failure.
+The non-mutating GitHub write-access probe failed before agent work began; fix the agent session's credential path or repository access and dispatch again.
+```
+
+That wording names the credential boundary that matters for Atlas dispatch:
+Atlas operator commands may read the operator's exported `GITHUB_TOKEN`, but
+`WORKFLOW.md` starts Codex with `shell_environment_policy.inherit=core`, so
+that exported token is stripped from the agent. The agent instead authenticates
+Git operations with whatever on-disk Git credential helper is visible in its
+session. An operator-side `atlas preflight` would therefore test the wrong
+auth channel; the check has to live in `before_run`.
+
+The motivating evidence trail is ATLAS-102 on 2026-07-16. The agent rebased
+onto current `main`, resolved the duplicate-delivery conflict correctly, and
+ran the full gate sweep green, but `git push --force-with-lease` failed with
+HTTP 403 and the PR-body update via `gh` also returned 403. Verified work was
+left only in the preserved workspace as commit `286dc9a` in
+`~/code/atlas-workspaces/ATL-250`; recovery depended on
+`workspace.before_remove: true` and the workspace root not being `/tmp`. The
+failed handoff left work only in the workspace. The probe moves that failure
+to the start of the attempt instead of discovering it after a completed
+handoff.
+
 ## Ticket transitions: one writer per state edge
 
 To prevent races between the PM Engine and agents:

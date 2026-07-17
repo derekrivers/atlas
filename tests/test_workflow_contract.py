@@ -16,6 +16,7 @@ renaming a state in either the doc or ``WORKFLOW.md`` breaks the tie.
 from __future__ import annotations
 
 import re
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -201,10 +202,77 @@ def _integration_section() -> str:
 def test_atlas_168_hooks_fetch_current_main_and_full_clone() -> None:
     front, _ = _split()
     hooks = front["hooks"]
-    assert hooks["before_run"].strip() == "git fetch origin main"
+    before_run = hooks["before_run"]
+    before_run_lines = [
+        line.strip() for line in before_run.splitlines() if line.strip()
+    ]
+    assert before_run_lines[0] == "git fetch origin main"
     assert "git clone https://github.com/derekrivers/atlas ." in hooks["after_create"]
     assert "--depth" not in hooks["after_create"]
-    assert "https://github.com/derekrivers/atlas" not in hooks["before_run"]
+    assert "https://github.com/derekrivers/atlas" not in before_run
+
+
+def test_atlas_171_before_run_probe_runs_after_origin_main_fetch() -> None:
+    front, _ = _split()
+    before_run = front["hooks"]["before_run"]
+    assert before_run.index("git fetch origin main") < before_run.index(
+        "git push --dry-run origin"
+    )
+    assert "GIT_TERMINAL_PROMPT=0 git push --dry-run origin" in before_run
+    assert 'probe_ref="refs/heads/atlas-write-access-probe-${head_short}"' in before_run
+    assert '"HEAD:${probe_ref}"' in before_run
+    assert "git rev-parse --short=12 HEAD" in before_run
+
+
+def test_atlas_171_before_run_failure_message_names_credential_boundary() -> None:
+    front, _ = _split()
+    before_run = front["hooks"]["before_run"]
+    assert "GitHub write-access probe failed for ${repo_for_message}" in before_run
+    assert 'cat "${probe_output}" >&2' in before_run
+    assert before_run.index('cat "${probe_output}" >&2') < before_run.index(
+        'rm -f "${probe_output}"'
+    )
+    assert "shell_environment_policy.inherit=core" in before_run
+    assert "operator's exported GITHUB_TOKEN is not visible here" in before_run
+    assert "The most likely cause is" in before_run
+    assert "on-disk GitHub credential lacks write access" in before_run
+    assert (
+        "non-mutating GitHub write-access probe failed before agent work began"
+        in before_run
+    )
+    assert "shell_environment_policy.set" not in before_run
+
+
+def _git(args: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["git", *args],
+        cwd=cwd,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+
+
+def test_atlas_171_git_push_dry_run_fixture_creates_no_remote_ref(
+    tmp_path: Path,
+) -> None:
+    remote = tmp_path / "remote.git"
+    work = tmp_path / "work"
+    probe_ref = "refs/heads/atlas-write-access-probe-fixture"
+
+    _git(["init", "--bare", str(remote)], cwd=tmp_path)
+    _git(["init", str(work)], cwd=tmp_path)
+    _git(["config", "user.email", "atlas@example.invalid"], cwd=work)
+    _git(["config", "user.name", "Atlas Test"], cwd=work)
+    (work / "README.md").write_text("probe fixture\n", encoding="utf-8")
+    _git(["add", "README.md"], cwd=work)
+    _git(["commit", "-m", "probe fixture"], cwd=work)
+    _git(["remote", "add", "origin", str(remote)], cwd=work)
+
+    _git(["push", "--dry-run", "origin", f"HEAD:{probe_ref}"], cwd=work)
+
+    refs = _git(["for-each-ref", "--format=%(refname)", probe_ref], cwd=remote)
+    assert refs.stdout == ""
 
 
 def test_atlas_168_contract_rebases_before_pr_push_and_handoff() -> None:
@@ -240,6 +308,21 @@ def test_atlas_168_symphony_doc_records_design_rationale() -> None:
     assert "#188 conflict class" in doc
     assert "GitHub merge queue" in doc
     assert "deferred from v1" in doc
+
+
+def test_atlas_171_symphony_doc_records_probe_failure_path() -> None:
+    doc = _read(SYMPHONY_DOC)
+    flowed = " ".join(doc.split())
+    assert "### GitHub write-access probe" in doc
+    assert "GitHub write-access probe failed for <repo>" in doc
+    assert "<git push --dry-run stderr/stdout>" in doc
+    assert "the Git output above is the evidence for the exact failure" in doc
+    assert "shell_environment_policy.inherit=core" in doc
+    assert "operator's exported GITHUB_TOKEN is not visible here" in doc
+    assert "Symphony aborts the attempt before any implementation work starts" in flowed
+    assert "ATLAS-102 on 2026-07-16" in doc
+    assert "commit `286dc9a`" in doc
+    assert "failed handoff left work only in the workspace" in doc
 
 
 # --- F2 (ATLAS-136): the agent's inherited environment is narrowed ------------
