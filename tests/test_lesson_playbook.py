@@ -188,9 +188,92 @@ def test_cli_lessons_playbook_writes_markdown_on_new_branch_and_lints(
     assert "# handoff Playbook" in text
     assert str(lesson.id) in text
     assert "Use small PR branches" in text
+    manifest = (repo / "docs" / "MANIFEST.md").read_text(encoding="utf-8")
+    assert "- `docs/atlas/playbooks/handoff.md`" in manifest
     assert "branch " + branch in output
     assert "operator review and merge" in output
+    status = git(repo, "status", "--porcelain", "--untracked-files=all")
+    assert "docs/MANIFEST.md" in status
+    assert "?? docs/atlas/playbooks/handoff.md" in status
+    assert git(repo, "rev-list", "--count", "HEAD") == "1"
     assert lint_repo(repo) == []
+
+
+def test_cli_lessons_playbook_allows_untracked_non_target_files(
+    tmp_path: Path,
+    db: Database,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    build_good_repo(repo)
+    initialise_git_repo(repo)
+    write_scratch = repo / "scripts" / "operator-note.py"
+    write_scratch.parent.mkdir(parents=True)
+    write_scratch.write_text("print('scratch')\n", encoding="utf-8")
+    seed_lessons(db, [make_lesson(title="Tolerate scratch files", tags=["handoff"])])
+
+    code = main(
+        ["lessons", "playbook", "handoff", "--repo", str(repo)],
+        database=db,
+        client=FakePlaybookClient(),
+    )
+
+    assert code == EXIT_OK
+    assert write_scratch.read_text(encoding="utf-8") == "print('scratch')\n"
+    assert (repo / "docs" / "atlas" / "playbooks" / "handoff.md").is_file()
+
+
+def test_cli_lessons_playbook_refuses_modified_tracked_files(
+    tmp_path: Path,
+    db: Database,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    build_good_repo(repo)
+    initialise_git_repo(repo)
+    (repo / "README.md").write_text("# Test repo\n\nModified.\n", encoding="utf-8")
+    seed_lessons(db, [make_lesson(title="Tracked dirty refusal", tags=["handoff"])])
+
+    code = main(
+        ["lessons", "playbook", "handoff", "--repo", str(repo)],
+        database=db,
+        client=FakePlaybookClient(),
+    )
+    err = capsys.readouterr().err
+
+    assert code == EXIT_PRECONDITION
+    assert "git worktree must be clean before drafting a playbook" in err
+    assert not git(repo, "branch", "--show-current").startswith("playbook/handoff-")
+    assert not (repo / "docs" / "atlas" / "playbooks" / "handoff.md").exists()
+
+
+def test_cli_lessons_playbook_refuses_untracked_target_path(
+    tmp_path: Path,
+    db: Database,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    build_good_repo(repo)
+    initialise_git_repo(repo)
+    target = repo / "docs" / "atlas" / "playbooks" / "handoff.md"
+    target.parent.mkdir(parents=True)
+    target.write_text("# Operator draft\n", encoding="utf-8")
+    seed_lessons(db, [make_lesson(title="Target collision refusal", tags=["handoff"])])
+
+    code = main(
+        ["lessons", "playbook", "handoff", "--repo", str(repo)],
+        database=db,
+        client=FakePlaybookClient(),
+    )
+    err = capsys.readouterr().err
+
+    assert code == EXIT_PRECONDITION
+    assert "untracked playbook target already exists" in err
+    assert "docs/atlas/playbooks/handoff.md" in err
+    assert not git(repo, "branch", "--show-current").startswith("playbook/handoff-")
+    assert target.read_text(encoding="utf-8") == "# Operator draft\n"
 
 
 def test_cli_lessons_playbook_cleanly_fails_without_active_lessons(

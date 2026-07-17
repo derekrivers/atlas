@@ -29,7 +29,9 @@ from atlas.storage.repositories import LessonRepo
 
 PROMPTS_DIR = Path(__file__).parent / "prompts"
 PLAYBOOK_PROMPT_VERSION = "lesson-playbook-v1.0.0"
+MANIFEST_PATH = Path("docs") / "MANIFEST.md"
 PLAYBOOKS_DIR = Path("docs") / "atlas" / "playbooks"
+PLAYBOOKS_MANIFEST_HEADING = "Playbooks (generated canonical docs):"
 
 _VERSION_RE = re.compile(r"^lesson-playbook-v\d+\.\d+\.\d+$")
 _FRONT_MATTER_RE = re.compile(r"^---\n(.*?)\n---\n", re.S)
@@ -291,9 +293,72 @@ def _git_toplevel(repo_root: Path) -> Path:
 
 
 def _ensure_clean_worktree(git_root: Path) -> None:
-    status = _run_git(git_root, "status", "--porcelain").stdout.strip()
+    status = _run_git(
+        git_root, "status", "--porcelain", "--untracked-files=no"
+    ).stdout.strip()
     if status:
         raise PlaybookGitError("git worktree must be clean before drafting a playbook")
+
+
+def _ensure_no_untracked_playbook_target(git_root: Path, relative_path: Path) -> None:
+    tracked = _run_git(git_root, "ls-files", "--", relative_path.as_posix()).stdout
+    if tracked.strip():
+        return
+    if (git_root / relative_path).exists():
+        raise PlaybookGitError(
+            f"untracked playbook target already exists: {relative_path.as_posix()}"
+        )
+
+
+def _manifest_section_heading(line: str) -> bool:
+    return bool(
+        line
+        and line == line.lstrip()
+        and line.endswith(":")
+        and not line.startswith(("#", "-", "`"))
+    )
+
+
+def _write_manifest_playbook_entry(
+    git_root: Path, tag: str, relative_path: Path
+) -> None:
+    manifest = git_root / MANIFEST_PATH
+    if not manifest.is_file():
+        raise PlaybookGenerationError(f"{MANIFEST_PATH.as_posix()} is missing")
+
+    entry = f"- `{relative_path.as_posix()}` — generated playbook for {tag} lessons"
+    text = manifest.read_text(encoding="utf-8")
+    if f"`{relative_path.as_posix()}`" in text:
+        return
+
+    lines = text.splitlines()
+    try:
+        heading_index = lines.index(PLAYBOOKS_MANIFEST_HEADING)
+    except ValueError as error:
+        raise PlaybookGenerationError(
+            f"{MANIFEST_PATH.as_posix()} has no {PLAYBOOKS_MANIFEST_HEADING!r} section"
+        ) from error
+
+    section_start = heading_index + 1
+    while section_start < len(lines) and not lines[section_start].strip():
+        section_start += 1
+    section_end = section_start
+    while section_end < len(lines) and not _manifest_section_heading(
+        lines[section_end]
+    ):
+        section_end += 1
+
+    insertion = section_end
+    while insertion > section_start and not lines[insertion - 1].strip():
+        insertion -= 1
+
+    updated = lines[:insertion]
+    if insertion == section_start and (not updated or updated[-1].strip()):
+        updated.append("")
+    updated.append(entry)
+    updated.append("")
+    updated.extend(lines[section_end:])
+    manifest.write_text("\n".join(updated).rstrip() + "\n", encoding="utf-8")
 
 
 def _branch_name(tag: str, now: datetime) -> str:
@@ -313,14 +378,16 @@ def draft_playbook_branch(
 
     generated = generate_playbook_for_tag(lesson_repo.list(), tag, client=client)
     git_root = _git_toplevel(repo_root)
+    relative_path = PLAYBOOKS_DIR / f"{generated.tag}.md"
     _ensure_clean_worktree(git_root)
+    _ensure_no_untracked_playbook_target(git_root, relative_path)
     branch_name = _branch_name(generated.tag, now)
     _run_git(git_root, "switch", "-c", branch_name)
 
-    relative_path = PLAYBOOKS_DIR / f"{generated.tag}.md"
     target = git_root / relative_path
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(generated.markdown, encoding="utf-8")
+    _write_manifest_playbook_entry(git_root, generated.tag, relative_path)
     return PlaybookDraftResult(
         tag=generated.tag,
         branch_name=branch_name,
