@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 from datetime import UTC, datetime, timedelta
@@ -20,6 +21,7 @@ from atlas.core.enums import ActorType, EvidenceStatus, RiskLevel
 from atlas.core.models.agent_run import AgentRun
 from atlas.core.models.debt_item import AnomalyType, DebtItem
 from atlas.core.models.evidence import Evidence
+from atlas.core.models.lesson import Lesson
 from atlas.core.models.ticket import Ticket, TicketStatus, TicketType
 from atlas.core.models.verification_check import VerificationCheck
 from atlas.learning import (
@@ -27,10 +29,27 @@ from atlas.learning import (
     assemble_evidence_bundle,
     extract_lesson_for_ticket,
 )
+from atlas.learning.extractor import (
+    LESSON_EXTRACTOR_VERSION,
+    PROMPTS_DIR,
+    render_extraction_prompt,
+)
 from atlas.storage import Database, LessonRepo, TicketRepo, VerificationCheckRepo
 from atlas.verification import required_checks
 
 NOW = datetime(2026, 7, 14, 10, tzinfo=UTC)
+LESSON_EXTRACTOR_V1_0_SHA256 = (
+    "e669d91334d267024389306d663af5ca3cdecb4c61653bca080cffa2ede86179"
+)
+LESSON_ALLOWED_OUTPUT_KEYS = [
+    "category",
+    "title",
+    "problem",
+    "solution",
+    "outcome",
+    "related_adr_ids",
+    "tags",
+]
 
 
 class FakeLessonClient:
@@ -73,6 +92,7 @@ def make_ticket(
     created_at: datetime = NOW - timedelta(hours=6),
     status_entered_at: datetime | None = None,
     tags: list[str] | None = None,
+    component: str | None = None,
     review_cycle_count: int = 0,
 ) -> Ticket:
     return Ticket(
@@ -88,9 +108,48 @@ def make_ticket(
             "updated_at": created_at,
             "status_entered_at": status_entered_at,
             "tags": tags or [],
+            "component": component,
             "review_cycle_count": review_cycle_count,
         }
     )
+
+
+def render_prompt_for_ticket(ticket: Ticket) -> str:
+    bundle = assemble_evidence_bundle(
+        ticket=ticket,
+        agent_runs=[],
+        pr_review_history=[],
+        verification_checks=[],
+        trigger=ExtractionTrigger.OPERATOR_REQUEST,
+    )
+    rendered = render_extraction_prompt(
+        {
+            "trigger": ExtractionTrigger.OPERATOR_REQUEST.value,
+            "ticket_key": ticket.key,
+            "raw_diff_size_cap_bytes": 8192,
+            "source_ticket_tags_json": json.dumps(ticket.tags),
+            "source_ticket_component_json": json.dumps(ticket.component),
+            "source_ticket_has_tag_vocabulary": bool(ticket.tags or ticket.component),
+            "lesson_json_schema": json.dumps(
+                Lesson.model_json_schema(),
+                indent=2,
+                sort_keys=True,
+                default=str,
+            ),
+            "evidence_bundle_json": json.dumps(
+                bundle,
+                indent=2,
+                sort_keys=True,
+                default=str,
+            ),
+        }
+    )
+    return rendered.text
+
+
+def allowed_output_keys(prompt: str) -> list[str]:
+    section = prompt.split("Allowed output keys:\n\n", 1)[1].split("\n\n", 1)[0]
+    return [line.removeprefix("- `").removesuffix("`") for line in section.splitlines()]
 
 
 def seed_ticket(db: Database, ticket: Ticket) -> Ticket:
@@ -174,6 +233,73 @@ def test_evidence_bundle_includes_expected_fields_and_excludes_oversized_diff() 
     raw_payload = bundle["pr_review_history"][0]["raw_payload"]
     assert raw_payload["diff"]["_excluded"] is True
     assert "x" * 1000 not in json.dumps(bundle)
+
+
+def test_default_extractor_loads_v1_1_and_preserves_v1_0_template() -> None:
+    ticket = make_ticket("ATLAS-270")
+    prompt = render_extraction_prompt(
+        {
+            "trigger": ExtractionTrigger.OPERATOR_REQUEST.value,
+            "ticket_key": ticket.key,
+            "raw_diff_size_cap_bytes": 8192,
+            "source_ticket_tags_json": json.dumps(ticket.tags),
+            "source_ticket_component_json": json.dumps(ticket.component),
+            "source_ticket_has_tag_vocabulary": bool(ticket.tags or ticket.component),
+            "lesson_json_schema": "{}",
+            "evidence_bundle_json": "{}",
+        }
+    )
+
+    v1_0_template = PROMPTS_DIR / "lesson-extractor-v1.0.0.md.j2"
+    assert LESSON_EXTRACTOR_VERSION == "lesson-extractor-v1.1.0"
+    assert prompt.prompt_version == "lesson-extractor-v1.1.0"
+    assert (PROMPTS_DIR / "lesson-extractor-v1.1.0.md.j2").is_file()
+    assert hashlib.sha256(v1_0_template.read_bytes()).hexdigest() == (
+        LESSON_EXTRACTOR_V1_0_SHA256
+    )
+
+
+def test_prompt_renders_source_ticket_vocabulary_and_tag_guidance() -> None:
+    ticket = make_ticket(
+        "ATLAS-270",
+        tags=["learning-system", "linear-sync"],
+        component="lesson-extractor",
+    )
+
+    prompt = render_prompt_for_ticket(ticket)
+
+    assert json.dumps(ticket.tags) in prompt
+    assert json.dumps(ticket.component) in prompt
+    assert (
+        "draw tags primarily from the source ticket's `tags` and `component`" in prompt
+    )
+    assert "Add at most 2 novel tags" in prompt
+
+
+def test_prompt_without_ticket_vocabulary_does_not_reuse_empty_facets() -> None:
+    ticket = make_ticket("ATLAS-270", tags=[], component=None)
+
+    prompt = render_prompt_for_ticket(ticket)
+    flat = " ".join(prompt.split())
+    source_vocabulary_guidance = (
+        "draw tags primarily from the source ticket's `tags` and `component`"
+    )
+
+    assert "Source ticket tag vocabulary: none supplied" in prompt
+    assert "`tags` is [] and `component` is null" in flat
+    assert source_vocabulary_guidance not in prompt
+    assert "without pretending there is source ticket vocabulary to reuse" in flat
+
+
+def test_prompt_preserves_lesson_output_key_contract() -> None:
+    prompt = render_prompt_for_ticket(make_ticket("ATLAS-270"))
+    flat = " ".join(prompt.split())
+
+    assert allowed_output_keys(prompt) == LESSON_ALLOWED_OUTPUT_KEYS
+    assert (
+        "Do not output `status`, `confidence`, `related_ticket_ids`, identity "
+        "fields, or timestamps."
+    ) in flat
 
 
 def test_done_ticket_without_prior_failures_is_not_extracted(db: Database) -> None:

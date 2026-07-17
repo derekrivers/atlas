@@ -47,7 +47,7 @@ from atlas.verification.completion import ticket_verdict_from_checks
 logger = logging.getLogger("atlas.learning.extractor")
 
 PROMPTS_DIR = Path(__file__).parent / "prompts"
-LESSON_EXTRACTOR_VERSION = "lesson-extractor-v1.0.0"
+LESSON_EXTRACTOR_VERSION = "lesson-extractor-v1.1.0"
 DEFAULT_RAW_DIFF_SIZE_CAP_BYTES = 8192
 MAX_AGENT_RUNS = 10
 MAX_PR_REVIEWS = 20
@@ -179,6 +179,14 @@ def assemble_evidence_bundle(
         ],
         "verification_verdicts": [_model_dump(check) for check in ordered_checks],
         "failure_event": None if failure_event is None else _model_dump(failure_event),
+    }
+
+
+def _source_ticket_tag_vocabulary(ticket: Ticket) -> dict[str, object]:
+    return {
+        "source_ticket_tags_json": json.dumps(ticket.tags),
+        "source_ticket_component_json": json.dumps(ticket.component),
+        "source_ticket_has_tag_vocabulary": bool(ticket.tags or ticket.component),
     }
 
 
@@ -442,6 +450,7 @@ def extract_lesson_for_ticket(
                 "trigger": trigger.value,
                 "ticket_key": ticket.key,
                 "raw_diff_size_cap_bytes": raw_diff_size_cap_bytes,
+                **_source_ticket_tag_vocabulary(ticket),
                 "lesson_json_schema": json.dumps(
                     Lesson.model_json_schema(),
                     indent=2,

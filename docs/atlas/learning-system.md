@@ -32,8 +32,15 @@ extractor failures are logged and do not stop the rest of the poll cycle.
 The extractor is an LLM call over a bounded evidence bundle (ticket, agent
 runs, PR review history, verification verdicts — not raw diffs beyond a
 size cap), producing a schema-valid Lesson with `status: DRAFT`,
-`confidence` left null, and `related_ticket_ids` populated. Extraction
-failures are logged, never retried into noise.
+`confidence` left null, and `related_ticket_ids` populated. Lesson tags are
+anchored to the source ticket vocabulary: the prompt shows the ticket's
+`tags` and `component`, asks the model to draw lesson `tags` primarily from
+those facets, and permits at most two novel tags when the lesson genuinely
+concerns something the ticket vocabulary does not name. This keeps promoted
+lessons reachable through the existing tag/ticket_type retrieval rule and
+keeps failure-pattern tags dense enough for the deterministic pattern detector
+to cross its recurrence threshold. Extraction failures are logged, never
+retried into noise.
 
 ## Promotion workflow
 
