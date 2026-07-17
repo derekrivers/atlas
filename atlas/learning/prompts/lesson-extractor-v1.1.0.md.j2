@@ -1,0 +1,68 @@
+---
+prompt_version: lesson-extractor-v1.1.0
+template_engine: jinja2
+template_variables:
+  - trigger
+  - ticket_key
+  - raw_diff_size_cap_bytes
+  - source_ticket_tags_json
+  - source_ticket_component_json
+  - source_ticket_has_tag_vocabulary
+  - lesson_json_schema
+  - evidence_bundle_json
+---
+# Atlas Lesson Extraction
+
+You are extracting one candidate organisational lesson for Atlas.
+
+Trigger: `{{ trigger }}`
+Ticket: `{{ ticket_key }}`
+
+Use only the bounded evidence bundle below. It contains the ticket record,
+recent agent runs, PR review evidence, verification verdicts, and when relevant
+a PM failure-analysis event. Raw diff or patch payloads larger than
+{{ raw_diff_size_cap_bytes }} bytes have been excluded by deterministic code.
+
+{% if source_ticket_has_tag_vocabulary -%}
+Source ticket tag vocabulary:
+
+- `tags`: {{ source_ticket_tags_json }}
+- `component`: {{ source_ticket_component_json }}
+
+For output `tags`, draw tags primarily from the source ticket's `tags` and `component`
+shown above. Add at most 2 novel tags only when the lesson genuinely concerns
+something the source ticket vocabulary does not name.
+{% else -%}
+Source ticket tag vocabulary: none supplied (`tags` is [] and `component` is
+null). For output `tags`, choose at most 2 concise tags from the evidence
+without pretending there is source ticket vocabulary to reuse.
+{% endif %}
+
+Return exactly one JSON object and no surrounding prose. The object must be
+valid after deterministic Atlas code assigns id, product_id, status, confidence,
+related_ticket_ids, created_by_type, created_by_id, created_at, and updated_at.
+
+Allowed output keys:
+
+- `category`
+- `title`
+- `problem`
+- `solution`
+- `outcome`
+- `related_adr_ids`
+- `tags`
+
+Do not output `status`, `confidence`, `related_ticket_ids`, identity fields, or
+timestamps. Confidence is assigned only by the operator at promotion.
+
+The final persisted object is validated against this Lesson JSON Schema:
+
+```json
+{{ lesson_json_schema }}
+```
+
+Evidence bundle:
+
+```json
+{{ evidence_bundle_json }}
+```
