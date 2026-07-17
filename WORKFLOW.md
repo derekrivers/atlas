@@ -37,6 +37,28 @@ hooks:
     git clone https://github.com/derekrivers/atlas .
   before_run: |
     git fetch origin main
+
+    remote_url="$(git remote get-url origin)"
+    repo_for_message="$(printf '%s\n' "${remote_url}" | sed -E 's#^(https?://)[^/@]+@#\1#; s#^git@github.com:#https://github.com/#')"
+    head_short="$(git rev-parse --short=12 HEAD)"
+    probe_ref="refs/heads/atlas-write-access-probe-${head_short}"
+    probe_output="$(mktemp)"
+    if ! GIT_TERMINAL_PROMPT=0 git push --dry-run origin "HEAD:${probe_ref}" >"${probe_output}" 2>&1; then
+      cat >&2 <<EOF
+    Atlas before_run failed: GitHub write-access probe failed for ${repo_for_message}.
+    Git output:
+    EOF
+      cat "${probe_output}" >&2
+      printf '\n' >&2
+      rm -f "${probe_output}"
+      cat >&2 <<EOF
+    This Codex session runs with shell_environment_policy.inherit=core, so the operator's exported GITHUB_TOKEN is not visible here.
+    The most likely cause is that the agent session's on-disk GitHub credential lacks write access for ${repo_for_message}; the Git output above is the evidence for the exact failure.
+    The non-mutating GitHub write-access probe failed before agent work began; fix the agent session's credential path or repository access and dispatch again.
+    EOF
+      exit 1
+    fi
+    rm -f "${probe_output}"
   before_remove: |
     true
 agent:
