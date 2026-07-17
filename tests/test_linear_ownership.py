@@ -22,6 +22,7 @@ from atlas.linear.client import (
     reject_unowned_keys,
 )
 from atlas.linear.ownership import (
+    _ACCEPTED_TYPES,
     OWNED_LINEAR_INPUT_KEYS,
     LinearStatusMap,
     LinearStatusMapError,
@@ -435,6 +436,47 @@ def test_validate_is_permissive_many_statuses_one_started_type() -> None:
         WorkflowState(id=f"s{i}", name=f"S{i}", type="started") for i in range(1, 5)
     ]
     smap.validate_against_states(states)  # does not raise
+
+
+def test_accepted_types_pin_live_rejected_state_types_only() -> None:
+    expected = {
+        TicketStatus.BACKLOG: frozenset({"backlog", "triage"}),
+        TicketStatus.PLANNED: frozenset({"backlog", "unstarted", "triage"}),
+        TicketStatus.BLOCKED: frozenset({"backlog", "unstarted", "triage"}),
+        TicketStatus.READY_FOR_AGENT: frozenset({"unstarted", "backlog"}),
+        TicketStatus.IN_PROGRESS: frozenset({"started"}),
+        TicketStatus.PR_OPEN: frozenset({"started"}),
+        TicketStatus.REVIEW_REQUIRED: frozenset({"started"}),
+        TicketStatus.CHANGES_REQUESTED: frozenset({"started"}),
+        TicketStatus.DONE: frozenset({"completed"}),
+        TicketStatus.REJECTED: frozenset({"canceled", "duplicate"}),
+        TicketStatus.NEEDS_HUMAN_DECISION: frozenset(
+            {"started", "unstarted", "backlog", "triage"}
+        ),
+    }
+    assert expected == _ACCEPTED_TYPES
+
+
+def test_validate_accepts_live_rejected_state_types() -> None:
+    smap = LinearStatusMap(
+        {
+            "state-canceled": TicketStatus.REJECTED,
+            "state-duplicate": TicketStatus.REJECTED,
+        }
+    )
+    states = [
+        WorkflowState(id="state-canceled", name="Canceled", type="canceled"),
+        WorkflowState(id="state-duplicate", name="Duplicate", type="duplicate"),
+    ]
+    smap.validate_against_states(states)  # does not raise
+
+
+@pytest.mark.parametrize("linear_type", ["completed", "started"])
+def test_validate_rejects_rejected_type_contradictions(linear_type: str) -> None:
+    smap = LinearStatusMap({"state-bad": TicketStatus.REJECTED})
+    states = [WorkflowState(id="state-bad", name="Bad Rejected", type=linear_type)]
+    with pytest.raises(LinearStatusMapError, match="only accepts"):
+        smap.validate_against_states(states)
 
 
 def test_validate_rejects_type_contradiction() -> None:

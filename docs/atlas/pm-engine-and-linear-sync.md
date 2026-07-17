@@ -116,13 +116,13 @@ Atlas team states (nine; Linear `type` in parentheses):
 
 The operator adds the `Duplicate` entry to `LINEAR_STATE_MAP` from the
 UUID documented above after this change merges — the change itself edits
-no environment configuration. Known gap, flagged for follow-up rather
-than folded into this change: `validate_against_states`' accepted-types
-table admits only `cancelled` for `rejected`, while the live board
-reports type `canceled` (US spelling) for the Canceled state and type
-`duplicate` for the Duplicate state — so preflight C2 will fail on the
-`rejected` mappings until the accepted-types row learns both live
-spellings. The sync tick itself does not run that validation and is
+no environment configuration. The `rejected` mappings are intentionally
+admitted by the accepted-types table: Linear reports type `canceled` (US
+spelling) for the Canceled state and type `duplicate` for the Duplicate
+state, and Atlas accepts exactly those two live spellings for
+`rejected`. Preflight C2 therefore permits both terminal-negative
+mappings while still rejecting `completed` or `started` states mapped to
+`rejected`; the sync tick itself does not run that validation and is
 unaffected.
 
 Sibling team states (grouped): the workspace's second team carries nine

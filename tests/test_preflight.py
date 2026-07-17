@@ -46,9 +46,8 @@ _BASELINE_STATES: tuple[WorkflowState, ...] = (
     WorkflowState("state-review", "Review Required", "started"),
     WorkflowState("state-needshuman", "Needs Human", "started"),
     WorkflowState("state-done", "Done", "completed"),
-    WorkflowState("state-cancelled", "Cancelled", "cancelled"),
-    WorkflowState("state-canceled", "Canceled", "cancelled"),
-    WorkflowState("state-duplicate", "Duplicate", "cancelled"),
+    WorkflowState("state-canceled", "Canceled", "canceled"),
+    WorkflowState("state-duplicate", "Duplicate", "duplicate"),
 )
 
 _BASELINE_MAP: dict[str, TicketStatus] = {
@@ -59,6 +58,8 @@ _BASELINE_MAP: dict[str, TicketStatus] = {
     "state-review": TicketStatus.REVIEW_REQUIRED,
     "state-needshuman": TicketStatus.NEEDS_HUMAN_DECISION,
     "state-done": TicketStatus.DONE,
+    "state-canceled": TicketStatus.REJECTED,
+    "state-duplicate": TicketStatus.REJECTED,
 }
 
 
@@ -84,7 +85,6 @@ def _workflow_md(
         "    - Changes Requested\n"
         "  terminal_states:\n"
         "    - Done\n"
-        "    - Cancelled\n"
         "    - Canceled\n"
         "    - Duplicate\n"
         f"{codex_block}"
