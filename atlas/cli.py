@@ -280,6 +280,7 @@ from atlas.storage import (
     TickFailureRepo,
     VerificationCheckRepo,
 )
+from atlas.storage.preconditions import SchemaDriftError, assert_schema_at_head
 from atlas.verification import (
     CheckOutcome,
     PRVerification,
@@ -854,6 +855,11 @@ def _make_confirm(
 def _apply_command(args: argparse.Namespace, *, database: Database | None) -> int:
     resolved_db = database if database is not None else Database(args.db)
     try:
+        assert_schema_at_head(resolved_db)
+    except SchemaDriftError as error:
+        print(error, file=sys.stderr)
+        return EXIT_PRECONDITION
+    try:
         result = run_apply(
             repo_root=Path(args.repo).resolve(),
             database=resolved_db,
@@ -925,6 +931,11 @@ def _plan_command(
     staged_generator: StagedProposalGenerator | None = None,
 ) -> int:
     resolved_db = database if database is not None else Database(args.db)
+    try:
+        assert_schema_at_head(resolved_db)
+    except SchemaDriftError as error:
+        print(error, file=sys.stderr)
+        return EXIT_PRECONDITION
 
     # --stubs-only invokes no PlannerClient (ATLAS-153): the client — and
     # with it ANTHROPIC_API_KEY — is neither constructed nor required, so
@@ -1356,8 +1367,12 @@ def _pm_sync(args: argparse.Namespace, resolved_db: Database) -> int:
     tick) and returns EXIT_OK."""
 
     try:
+        assert_schema_at_head(resolved_db)
         config = _build_tick_config(args, resolved_db)
     except (MissingLinearTokenError, LinearStatusMapError, PlannerClientError) as error:
+        print(error, file=sys.stderr)
+        return EXIT_PRECONDITION
+    except SchemaDriftError as error:
         print(error, file=sys.stderr)
         return EXIT_PRECONDITION
 
@@ -2697,6 +2712,12 @@ def _lessons_extract_or_schedule(
     client: PlannerClient | None,
 ) -> int:
     """Route lesson extraction and the recurring extraction scheduler."""
+    try:
+        assert_schema_at_head(resolved_db)
+    except SchemaDriftError as error:
+        print(error, file=sys.stderr)
+        return EXIT_PRECONDITION
+
     lesson_client = client
     if lesson_client is None:
         try:

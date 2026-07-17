@@ -7,6 +7,7 @@ failure, 2 clean-exit precondition) and that `python -m atlas` resolves.
 
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -14,6 +15,13 @@ from uuid import uuid4
 
 import pytest
 from planner_fakes import FAKE_IDENTITY, FakePlannerClient, RaisingPlannerClient
+from schema_drift_helpers import (
+    alembic_head_and_parent,
+    assert_schema_drift_message,
+    drifted_database,
+    stamp_database,
+)
+from sqlalchemy.exc import OperationalError
 from test_apply import (
     _add_proposed_plan_run,
     _epic_model_kwargs,
@@ -40,6 +48,7 @@ from atlas.cli import (
 from atlas.core.models import Epic, Ticket, TicketDependency
 from atlas.planning.pipeline import run_plan
 from atlas.storage import (
+    Database,
     EpicRepo,
     PlanRunRepo,
     ProductRepo,
@@ -67,6 +76,26 @@ def test_plan_success_returns_zero(
     out = capsys.readouterr().out
     assert "Plan diff:" in out
     assert "persisted at status proposed" in out
+    assert len(PlanRunRepo(database).list()) == 1
+
+
+def test_plan_store_stamped_at_head_runs_unchanged(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo = fixture_repo(tmp_path)
+    database = fresh_db(tmp_path)
+    head, _parent = alembic_head_and_parent()
+    stamp_database(database, head)
+
+    code = main(
+        plan_argv(repo),
+        database=database,
+        client=FakePlannerClient(proposal_json()),
+        identity=FAKE_IDENTITY,
+    )
+
+    assert code == EXIT_OK
+    assert "Plan diff:" in capsys.readouterr().out
     assert len(PlanRunRepo(database).list()) == 1
 
 
@@ -108,6 +137,30 @@ def test_model_error_returns_two(tmp_path: Path) -> None:
     )
     assert code == EXIT_PRECONDITION
     assert PlanRunRepo(database).list() == []
+
+
+def test_plan_drift_exits_before_model_or_write(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = fixture_repo(tmp_path)
+    database = fresh_db(tmp_path)
+    client = FakePlannerClient(proposal_json())
+    head, parent = drifted_database(database)
+
+    code = main(
+        plan_argv(repo),
+        database=database,
+        client=client,
+        identity=FAKE_IDENTITY,
+    )
+
+    assert code == EXIT_PRECONDITION
+    assert client.last_prompt is None
+    assert PlanRunRepo(database).list() == []
+    assert_schema_drift_message(
+        capsys.readouterr(), store_revision=parent, code_head=head
+    )
 
 
 def test_similarity_threshold_flag_forwarded(tmp_path: Path) -> None:
@@ -274,6 +327,46 @@ def test_apply_no_proposed_plan_refused(tmp_path: Path) -> None:
     database = fresh_db(tmp_path)
     code = main(["apply", "--repo", str(repo), "--yes"], database=database)
     assert code == EXIT_PRECONDITION
+
+
+def test_apply_drift_exits_before_render_or_finalise(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = fixture_repo(tmp_path)
+    database = fresh_db(tmp_path)
+    product = ProductRepo(database).get_by_key("ATLAS")
+    assert product is not None
+    _add_proposed_plan_run(database, repo, product.id, json.loads(proposal_json()))
+    head, parent = drifted_database(database)
+
+    code = main(["apply", "--repo", str(repo), "--yes"], database=database)
+
+    assert code == EXIT_PRECONDITION
+    (plan_run,) = PlanRunRepo(database).list()
+    assert plan_run.status.value == "proposed"
+    assert not (repo / "docs" / "planning").exists()
+    assert_schema_drift_message(
+        capsys.readouterr(), store_revision=parent, code_head=head
+    )
+
+
+def test_plan_cold_database_keeps_existing_error_not_drift(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = fixture_repo(tmp_path)
+    database = Database(f"sqlite:///{tmp_path}/cold.db")
+
+    with pytest.raises(OperationalError):
+        main(
+            plan_argv(repo),
+            database=database,
+            client=FakePlannerClient(proposal_json()),
+            identity=FAKE_IDENTITY,
+        )
+
+    assert "SCHEMA_DRIFT" not in capsys.readouterr().err
 
 
 def test_python_m_atlas_resolves() -> None:

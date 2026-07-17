@@ -10,9 +10,10 @@ from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
+from schema_drift_helpers import assert_schema_drift_message, drifted_database
 from test_models_validation import ticket_kwargs
 
-from atlas.cli import EXIT_OK, build_parser, main
+from atlas.cli import EXIT_OK, EXIT_PRECONDITION, build_parser, main
 from atlas.core.enums import ActorType, RiskLevel
 from atlas.core.models.debt_item import AnomalyType, DebtItem
 from atlas.core.models.ticket import Ticket, TicketStatus, TicketType
@@ -267,4 +268,30 @@ def test_cli_lessons_schedule_once_triggers_extraction_for_fixture_tickets(
     assert repo.get(eligible.id).lesson_extraction_attempted_at is not None  # type: ignore[union-attr]
     assert repo.get(skipped.id).lesson_extraction_attempted_at == (  # type: ignore[union-attr]
         NOW - timedelta(minutes=5)
+    )
+
+
+def test_lessons_schedule_drift_exits_before_llm_or_write(
+    db: Database,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = TicketRepo(db)
+    eligible = repo.add(make_ticket("ATLAS-270", status=TicketStatus.REJECTED))
+    client = FakeLessonClient()
+    head, parent = drifted_database(db)
+
+    code = main(
+        ["lessons", "schedule", "--once"],
+        database=db,
+        client=client,
+    )
+
+    assert code == EXIT_PRECONDITION
+    assert client.prompts == []
+    assert LessonRepo(db).list() == []
+    stored = repo.get(eligible.id)
+    assert stored is not None
+    assert stored.lesson_extraction_attempted_at is None
+    assert_schema_drift_message(
+        capsys.readouterr(), store_revision=parent, code_head=head
     )

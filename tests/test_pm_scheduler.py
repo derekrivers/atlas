@@ -35,6 +35,7 @@ from typing import Any
 
 import pytest
 from linear_fakes import InMemoryLinearClient
+from schema_drift_helpers import assert_schema_drift_message, drifted_database
 
 from atlas.cli import (
     EXIT_OK,
@@ -629,6 +630,42 @@ def test_sync_missing_project_id_is_clean_precondition(
     monkeypatch.delenv(PROJECT_ID_ENV, raising=False)
     code = main(["pm", "sync", "--once"], database=db)
     assert code == EXIT_PRECONDITION  # clean precondition, no traceback
+
+
+def test_pm_sync_drift_exits_before_linear_or_model_setup(
+    db: Database,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    head, parent = drifted_database(db)
+    config_calls: list[str] = []
+    scheduler_calls: list[str] = []
+
+    def fake_build_tick_config(args: Any, resolved_db: Database) -> TickConfig:
+        config_calls.append("called")
+        raise AssertionError("pm sync built live clients before schema parity")
+
+    def fake_run_scheduler(
+        config: TickConfig,
+        *,
+        interval: float,
+        once: bool,
+        shutdown: threading.Event,
+    ) -> None:
+        scheduler_calls.append("called")
+
+    monkeypatch.setattr("atlas.cli._build_tick_config", fake_build_tick_config)
+    monkeypatch.setattr("atlas.cli.run_scheduler", fake_run_scheduler)
+
+    code = main(["pm", "sync", "--once"], database=db)
+
+    assert code == EXIT_PRECONDITION
+    assert config_calls == []
+    assert scheduler_calls == []
+    assert TickFailureRepo(db).list() == []
+    assert_schema_drift_message(
+        capsys.readouterr(), store_revision=parent, code_head=head
+    )
 
 
 def _isolate_root_logging() -> tuple[int, list[logging.Handler]]:
