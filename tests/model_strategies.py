@@ -197,6 +197,7 @@ STRATEGIES: dict[type[BaseModel], st.SearchStrategy[BaseModel]] = {
         solution=texts,
         outcome=texts,
         confidence=unit_floats,
+        source_ticket_id=uuids,
         related_ticket_ids=uuid_lists,
         related_adr_ids=uuid_lists,
         tags=text_lists,

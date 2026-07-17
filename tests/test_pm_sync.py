@@ -415,7 +415,8 @@ def test_done_transition_extracts_lesson_when_notable(db: Database) -> None:
     assert result.draft_lessons_filed == 1
     assert len(lessons) == 1
     assert lessons[0].confidence is None
-    assert lessons[0].related_ticket_ids == [ticket.id]
+    assert lessons[0].source_ticket_id == ticket.id
+    assert lessons[0].related_ticket_ids == []
     assert "ATLAS-199" in lesson_client.prompts[0]
 
 
@@ -460,6 +461,7 @@ def test_done_transition_records_citation_feedback_for_latest_pack(
     assert pulled is not None and pulled.status == TicketStatus.DONE
     assert result.status_pulled == 1
     assert cited is not None
+    assert cited.source_ticket_id == lesson.source_ticket_id
     assert cited.related_ticket_ids == [ticket.id]
 
 
@@ -482,7 +484,8 @@ def test_rejected_transition_extracts_lesson(db: Database) -> None:
     assert result.draft_lessons_filed == 1
     assert len(lessons) == 1
     assert lessons[0].confidence is None
-    assert lessons[0].related_ticket_ids == [ticket.id]
+    assert lessons[0].source_ticket_id == ticket.id
+    assert lessons[0].related_ticket_ids == []
     assert "ATLAS-197" in lesson_client.prompts[0]
 
 
@@ -832,7 +835,8 @@ def test_dwell_breach_files_one_draft_lesson_and_second_tick_dedupes(
     assert second.draft_lessons_filed == 0
     assert len(lessons) == 1  # wrong answer: duplicate DRAFT on re-tick
     (lesson,) = lessons
-    assert lesson.related_ticket_ids == [ticket.id]
+    assert lesson.source_ticket_id == ticket.id
+    assert lesson.related_ticket_ids == []
     assert lesson.confidence is None
     assert "dwell_breach" in lesson.tags
     assert ticket.key in lesson_client.prompts[0]
@@ -1267,7 +1271,8 @@ def test_review_cycle_breach_files_one_draft_lesson_and_second_tick_dedupes(
     assert second.draft_lessons_filed == 0
     assert len(lessons) == 1  # wrong answer: duplicate DRAFT on re-tick
     (lesson,) = lessons
-    assert lesson.related_ticket_ids == [ticket.id]
+    assert lesson.source_ticket_id == ticket.id
+    assert lesson.related_ticket_ids == []
     assert lesson.confidence is None
     assert "review_cycle" in lesson.tags
     assert ticket.key in lesson_client.prompts[0]

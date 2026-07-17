@@ -32,15 +32,16 @@ extractor failures are logged and do not stop the rest of the poll cycle.
 The extractor is an LLM call over a bounded evidence bundle (ticket, agent
 runs, PR review history, verification verdicts — not raw diffs beyond a
 size cap), producing a schema-valid Lesson with `status: DRAFT`,
-`confidence` left null, and `related_ticket_ids` populated. Lesson tags are
-anchored to the source ticket vocabulary: the prompt shows the ticket's
-`tags` and `component`, asks the model to draw lesson `tags` primarily from
-those facets, and permits at most two novel tags when the lesson genuinely
-concerns something the ticket vocabulary does not name. This keeps promoted
-lessons reachable through the existing tag/ticket_type retrieval rule and
-keeps failure-pattern tags dense enough for the deterministic pattern detector
-to cross its recurrence threshold. Extraction failures are logged, never
-retried into noise.
+`confidence` left null, `source_ticket_id` set to the source ticket, and
+`related_ticket_ids` left empty because citations are recorded only from later
+pack usage. Lesson tags are anchored to the source ticket vocabulary: the prompt
+shows the ticket's `tags` and `component`, asks the model to draw lesson `tags`
+primarily from those facets, and permits at most two novel tags when the lesson
+genuinely concerns something the ticket vocabulary does not name. This keeps
+promoted lessons reachable through the existing tag/ticket_type retrieval rule
+and keeps failure-pattern tags dense enough for the deterministic pattern
+detector to cross its recurrence threshold. Extraction failures are logged,
+never retried into noise.
 
 ## Promotion workflow
 
@@ -63,8 +64,9 @@ confidence then recency). Two feedback signals are recorded to keep memory
 honest:
 
 - **Citation:** when a ticket whose pack included lesson L completes
-  successfully, L's `related_ticket_ids` gains the ticket — usage
-  evidence.
+  successfully, L's `related_ticket_ids` gains the completing ticket as usage
+  evidence. The lesson's immutable `source_ticket_id` remains separate
+  provenance.
 - **Staleness review:** lessons included in ≥10 packs with zero
   subsequent operator re-confirmation surface in `atlas lessons review
   --stale` for re-promotion or archive. (Automatic confidence decay is
@@ -92,10 +94,10 @@ closing the loop Docs → Delivery → Lessons → Docs.
 ## Delivery analytics
 
 `atlas lessons report`: lessons by category/status and tag, ACTIVE citation
-counts from `related_ticket_ids`, deterministic pattern candidates, promotion
-backlog age, and dwell-breach rows. Markdown is the default CLI output;
-`--json` emits the same data for machine consumers. The command is a pure
-reader with no writes and no LLM calls.
+counts from citations-only `related_ticket_ids`, deterministic pattern
+candidates, promotion backlog age, and dwell-breach rows. Markdown is the
+default CLI output; `--json` emits the same data for machine consumers. The
+command is a pure reader with no writes and no LLM calls.
 
 ## Open items
 

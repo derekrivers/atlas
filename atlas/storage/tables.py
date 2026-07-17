@@ -211,6 +211,7 @@ class LessonRow(Base):
     solution: Mapped[str] = mapped_column(sa.Text)
     outcome: Mapped[str] = mapped_column(sa.Text)
     confidence: Mapped[float | None] = mapped_column(sa.Numeric(4, 3, asdecimal=False))
+    source_ticket_id: Mapped[UUID] = mapped_column(sa.Uuid)
     related_ticket_ids: Mapped[list[str]] = mapped_column(
         JSONB, server_default=_EMPTY_LIST
     )

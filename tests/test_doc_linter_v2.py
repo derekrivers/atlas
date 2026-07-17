@@ -36,6 +36,7 @@ FULL_LESSON_BODY = """\
   "solution": "Split them.",
   "outcome": "Higher success rate.",
   "confidence": 0.5,
+  "source_ticket_id": "1dbac66f-d21a-4531-b071-71d286ccf75b",
   "related_ticket_ids": [],
   "related_adr_ids": [],
   "tags": ["planning"],

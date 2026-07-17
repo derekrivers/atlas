@@ -581,6 +581,7 @@ class Lesson(BaseModel):
     solution: str
     outcome: str
     confidence: float | None = Field(default=None, ge=0, le=1)
+    source_ticket_id: UUID
     related_ticket_ids: list[UUID] = Field(default_factory=list)
     related_adr_ids: list[UUID] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)
@@ -603,6 +604,7 @@ CREATE TABLE lessons (
     solution TEXT NOT NULL,
     outcome TEXT NOT NULL,
     confidence NUMERIC(4,3) CHECK (confidence >= 0 AND confidence <= 1),
+    source_ticket_id UUID NOT NULL,
     related_ticket_ids JSONB NOT NULL DEFAULT '[]',
     related_adr_ids JSONB NOT NULL DEFAULT '[]',
     tags JSONB NOT NULL DEFAULT '[]',

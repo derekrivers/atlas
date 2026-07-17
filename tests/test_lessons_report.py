@@ -129,6 +129,54 @@ def test_active_citation_counts_use_related_ticket_id_length(db: Database) -> No
     ] == [("Cited active lesson", 2, ticket_ids)]
 
 
+def test_cli_report_counts_citation_feedback_not_source_ticket(
+    db: Database, capsys: pytest.CaptureFixture[str]
+) -> None:
+    source_ticket_id = uuid4()
+    completing_ticket_id = uuid4()
+    lesson = make_lesson(
+        status="active",
+        title="Uncited active lesson",
+        source_ticket_id=source_ticket_id,
+        related_ticket_ids=[],
+    )
+    LessonRepo(db).add(lesson)
+
+    code = main(["lessons", "report", "--json"], database=db)
+    decoded = json.loads(capsys.readouterr().out)
+
+    assert code == EXIT_OK
+    assert decoded["active_citation_counts"] == [
+        {
+            "lesson_id": str(lesson.id),
+            "title": "Uncited active lesson",
+            "citation_count": 0,
+            "ticket_ids": [],
+        }
+    ]
+
+    LessonRepo(db).record_ticket_citation(
+        lesson_ids=[lesson.id],
+        ticket_id=completing_ticket_id,
+    )
+
+    code = main(["lessons", "report", "--json"], database=db)
+    decoded = json.loads(capsys.readouterr().out)
+
+    assert code == EXIT_OK
+    assert decoded["active_citation_counts"] == [
+        {
+            "lesson_id": str(lesson.id),
+            "title": "Uncited active lesson",
+            "citation_count": 1,
+            "ticket_ids": [str(completing_ticket_id)],
+        }
+    ]
+    assert (
+        str(source_ticket_id) not in decoded["active_citation_counts"][0]["ticket_ids"]
+    )
+
+
 def test_promotion_backlog_age_uses_oldest_draft(db: Database) -> None:
     seed_lessons(
         db,
