@@ -46,7 +46,9 @@ never retried into noise.
 ## Promotion workflow
 
 `atlas lessons review` lists DRAFTs; `atlas lessons review --stale` lists
-ACTIVE lessons due for review. Per lesson the operator can **promote** with
+ACTIVE lessons due for review. The gate reads the full stored lesson with
+`atlas lessons show <LESSON_ID>` before any ruling; `--json` emits the same
+record for machine consumers. Per lesson the operator can **promote** with
 `atlas lessons promote <LESSON_ID> --confidence <0.0-1.0>` (sets ACTIVE,
 operator assigns confidence at promotion — confidence is an operator
 judgement, not a model output), **edit then promote** by manually editing the

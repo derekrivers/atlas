@@ -89,15 +89,18 @@ never a traceback; no token is ever printed. `evidence` exit codes: 0 success; 2
 precondition. NOTE: `pull --repo` is the GitHub `OWNER/REPO` slug, not the
 repo-root path that `plan`/`context` `--repo` mean.
 
-`lessons report` and `lessons search <query>` are the Learning System's pure
-read side. `report` renders lesson analytics (category/status and tag grouping,
-ACTIVE citation counts, pattern candidates, DRAFT promotion backlog age, and
-dwell-breach rows) as markdown or JSON. `search` scans ACTIVE Lessons by title
-and tag tokens, with optional tag filtering, for deterministic organisational
-memory lookup. They write nothing and make no LLM call. `lessons extract <KEY>`
-remains the explicit operator-request write side for generating one DRAFT lesson.
-`lessons playbook <tag>` drafts canonical-doc Markdown from ACTIVE lessons under
-one tag onto a new review branch, with no commit or automatic PR creation.
+`lessons report`, `lessons search <query>`, and `lessons show <LESSON_ID>` are
+the Learning System's pure read side. `report` renders lesson analytics
+(category/status and tag grouping, ACTIVE citation counts, pattern candidates,
+DRAFT promotion backlog age, and dwell-breach rows) as markdown or JSON.
+`search` scans ACTIVE Lessons by title and tag tokens, with optional tag
+filtering, for deterministic organisational memory lookup. `show` prints the
+full stored lesson record the operator reads before ruling at the promotion
+gate, with `--json` for machine consumers. They write nothing and make no LLM
+call. `lessons extract <KEY>` remains the explicit operator-request write side
+for generating one DRAFT lesson. `lessons playbook <tag>` drafts canonical-doc
+Markdown from ACTIVE lessons under one tag onto a new review branch, with no
+commit or automatic PR creation.
 
 `verify` (ATLAS-80) is the Phase 7 entry point that makes the verification engine
 usable: `verify --pr N --repo OWNER/REPO` verifies every ticket the PR closes,
@@ -2415,7 +2418,7 @@ def _add_lessons_parser(subcommands: argparse._SubParsersAction) -> None:  # typ
     lessons = subcommands.add_parser(
         "lessons",
         help=(
-            "Learning System: report, search, extract, playbook, review, "
+            "Learning System: report, search, extract, playbook, review, show, "
             "and promote lessons"
         ),
     )
@@ -2462,6 +2465,14 @@ def _add_lessons_parser(subcommands: argparse._SubParsersAction) -> None:  # typ
         "--json", action="store_true", help="emit machine-readable JSON"
     )
     review.add_argument("--db", default=None, help="database URL")
+
+    show = lessons_sub.add_parser(
+        "show",
+        help="Show one stored lesson record",
+    )
+    show.add_argument("lesson_id", help="lesson UUID to show")
+    show.add_argument("--db", default=None, help="database URL")
+    show.add_argument("--json", action="store_true", help="emit machine-readable JSON")
 
     promote = lessons_sub.add_parser(
         "promote",
@@ -2576,6 +2587,8 @@ def _lessons_command(
         return EXIT_OK
     if args.lessons_command == "review":
         return _lessons_review(args, resolved_db)
+    if args.lessons_command == "show":
+        return _lessons_show(args, resolved_db)
     if args.lessons_command == "playbook":
         return _lessons_playbook(args, resolved_db, client=client)
     if args.lessons_command in {"extract", "schedule"}:
@@ -2623,6 +2636,101 @@ def _lessons_command(
 
 def _source_ticket_label(lesson: Lesson, ticket_keys_by_id: dict[UUID, str]) -> str:
     return ticket_keys_by_id.get(lesson.source_ticket_id, str(lesson.source_ticket_id))
+
+
+def _ticket_labels(
+    ticket_ids: list[UUID], ticket_keys_by_id: dict[UUID, str]
+) -> list[str]:
+    return [
+        ticket_keys_by_id.get(ticket_id, str(ticket_id)) for ticket_id in ticket_ids
+    ]
+
+
+def _lesson_show_record(
+    lesson: Lesson, ticket_keys_by_id: dict[UUID, str]
+) -> dict[str, object]:
+    return {
+        "id": str(lesson.id),
+        "title": lesson.title,
+        "category": lesson.category.value,
+        "status": lesson.status.value,
+        "confidence": lesson.confidence,
+        "tags": list(lesson.tags),
+        "problem": lesson.problem,
+        "solution": lesson.solution,
+        "outcome": lesson.outcome,
+        "source_ticket": _source_ticket_label(lesson, ticket_keys_by_id),
+        "related_tickets": _ticket_labels(lesson.related_ticket_ids, ticket_keys_by_id),
+        "related_adr_ids": [str(adr_id) for adr_id in lesson.related_adr_ids],
+        "created_by": f"{lesson.created_by_type.value}:{lesson.created_by_id}",
+        "created_at": lesson.created_at.isoformat(),
+        "updated_at": lesson.updated_at.isoformat(),
+    }
+
+
+def _lesson_show_value(value: object) -> str:
+    if value is None:
+        return "-"
+    if isinstance(value, list):
+        return ", ".join(str(item) for item in value) if value else "-"
+    return str(value)
+
+
+def _lesson_show_text(record: dict[str, object]) -> str:
+    fields = [
+        "id",
+        "title",
+        "category",
+        "status",
+        "confidence",
+        "tags",
+        "problem",
+        "solution",
+        "outcome",
+        "source_ticket",
+        "related_tickets",
+        "related_adr_ids",
+        "created_by",
+        "created_at",
+        "updated_at",
+    ]
+    return "\n".join(
+        f"{field + ':':<17} {_lesson_show_value(record[field])}" for field in fields
+    )
+
+
+def _lessons_show(args: argparse.Namespace, resolved_db: Database) -> int:
+    """Show one stored lesson for the ADR-0009 promotion gate.
+
+    The operator-facing id is the canonical dashed UUID printed by
+    ``lessons review``. Bad ids, unknown ids, and never-migrated databases are
+    clean preconditions, mirroring ``evidence show``.
+    """
+    try:
+        lesson_id = UUID(args.lesson_id)
+    except ValueError:
+        print(f"not a valid lesson id: {args.lesson_id!r}", file=sys.stderr)
+        return EXIT_PRECONDITION
+
+    try:
+        lesson = LessonRepo(resolved_db).get(lesson_id)
+        if lesson is None:
+            print(f"no lesson with id {lesson_id}", file=sys.stderr)
+            return EXIT_PRECONDITION
+        ticket_keys_by_id = {
+            ticket.id: ticket.key for ticket in TicketRepo(resolved_db).list()
+        }
+    except OperationalError:
+        print(
+            "database is not initialised (no such table); run the database "
+            "migrations before using `atlas lessons show`.",
+            file=sys.stderr,
+        )
+        return EXIT_PRECONDITION
+
+    record = _lesson_show_record(lesson, ticket_keys_by_id)
+    _emit(record, _lesson_show_text(record), as_json=args.json)
+    return EXIT_OK
 
 
 def _lesson_review_row(

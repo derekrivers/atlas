@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -72,6 +73,13 @@ def seed_lesson(db: Database, lesson: Lesson) -> Lesson:
 
 def seed_ticket(db: Database, ticket: Ticket) -> Ticket:
     return TicketRepo(db).add(ticket)
+
+
+def sqlite_store_snapshot(db_path: Path) -> dict[str, bytes]:
+    return {
+        path.name: path.read_bytes()
+        for path in sorted(db_path.parent.glob(f"{db_path.name}*"))
+    }
 
 
 def make_pack(
@@ -202,6 +210,209 @@ def test_cli_review_lists_only_draft_lessons_with_source_ticket(
     assert "ATLAS-270" in out
     assert draft.created_at.isoformat() in out
     assert "Already promoted" not in out
+
+
+def test_cli_show_prints_full_lesson_record_with_resolved_ticket_keys(
+    db: Database, capsys: pytest.CaptureFixture[str]
+) -> None:
+    source = seed_ticket(db, make_ticket("ATLAS-270"))
+    citation = seed_ticket(db, make_ticket("ATLAS-271"))
+    unresolved_ticket_id = uuid4()
+    adr_id = uuid4()
+    lesson = seed_lesson(
+        db,
+        make_lesson(
+            title="Show me before promotion",
+            category="delivery",
+            problem="The gate could only see a title.",
+            solution="Expose the full stored lesson record.",
+            outcome="The operator can rule on the body.",
+            source_ticket_id=source.id,
+            related_ticket_ids=[citation.id, unresolved_ticket_id],
+            related_adr_ids=[adr_id],
+            tags=["learning-system", "promotion-gate"],
+            confidence=0.625,
+            created_by_id="codex",
+        ),
+    )
+
+    assert main(["lessons", "review"], database=db) == EXIT_OK
+    review_out = capsys.readouterr().out
+    assert str(lesson.id) in review_out
+
+    code = main(["lessons", "show", str(lesson.id)], database=db)
+    out = capsys.readouterr().out
+
+    assert code == EXIT_OK
+    for expected in [
+        "id:",
+        str(lesson.id),
+        "title:",
+        "Show me before promotion",
+        "category:",
+        "delivery",
+        "status:",
+        "draft",
+        "confidence:",
+        "0.625",
+        "tags:",
+        "learning-system, promotion-gate",
+        "problem:",
+        "The gate could only see a title.",
+        "solution:",
+        "Expose the full stored lesson record.",
+        "outcome:",
+        "The operator can rule on the body.",
+        "source_ticket:",
+        "ATLAS-270",
+        "related_tickets:",
+        "ATLAS-271",
+        str(unresolved_ticket_id),
+        "related_adr_ids:",
+        str(adr_id),
+        "created_by:",
+        "agent:codex",
+        "created_at:",
+        lesson.created_at.isoformat(),
+        "updated_at:",
+        lesson.updated_at.isoformat(),
+    ]:
+        assert expected in out
+    assert str(source.id) not in out
+    assert str(citation.id) not in out
+
+
+def test_cli_show_json_emits_same_record_field_coverage(
+    db: Database, capsys: pytest.CaptureFixture[str]
+) -> None:
+    source = seed_ticket(db, make_ticket("ATLAS-280"))
+    citation = seed_ticket(db, make_ticket("ATLAS-281"))
+    adr_id = uuid4()
+    lesson = seed_lesson(
+        db,
+        make_lesson(
+            title="Structured lesson detail",
+            source_ticket_id=source.id,
+            related_ticket_ids=[citation.id],
+            related_adr_ids=[adr_id],
+            tags=["json", "gate"],
+            confidence=0.75,
+        ),
+    )
+
+    code = main(["lessons", "show", str(lesson.id), "--json"], database=db)
+    payload = json.loads(capsys.readouterr().out)
+
+    assert code == EXIT_OK
+    assert payload == {
+        "id": str(lesson.id),
+        "title": "Structured lesson detail",
+        "category": "failure_pattern",
+        "status": "draft",
+        "confidence": 0.75,
+        "tags": ["json", "gate"],
+        "problem": "Large tickets caused broad, hard-to-review changes.",
+        "solution": "Split into narrow, dependency-aware units.",
+        "outcome": "Agent PRs became easier to review.",
+        "source_ticket": "ATLAS-280",
+        "related_tickets": ["ATLAS-281"],
+        "related_adr_ids": [str(adr_id)],
+        "created_by": "agent:claude",
+        "created_at": lesson.created_at.isoformat(),
+        "updated_at": lesson.updated_at.isoformat(),
+    }
+
+
+def test_cli_show_non_uuid_id_is_clean_precondition(
+    db: Database, capsys: pytest.CaptureFixture[str]
+) -> None:
+    code = main(["lessons", "show", "not-a-uuid"], database=db)
+    captured = capsys.readouterr()
+
+    assert code == EXIT_PRECONDITION
+    assert captured.out == ""
+    assert captured.err.strip().splitlines() == ["not a valid lesson id: 'not-a-uuid'"]
+    assert "Traceback" not in captured.err
+
+
+def test_cli_show_unknown_uuid_is_clean_precondition(
+    db: Database, capsys: pytest.CaptureFixture[str]
+) -> None:
+    unknown_id = uuid4()
+
+    code = main(["lessons", "show", str(unknown_id)], database=db)
+    captured = capsys.readouterr()
+
+    assert code == EXIT_PRECONDITION
+    assert captured.out == ""
+    assert captured.err.strip().splitlines() == [f"no lesson with id {unknown_id}"]
+    assert "Traceback" not in captured.err
+
+
+def test_cli_show_cold_database_is_clean_precondition(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    cold_db = Database(f"sqlite:///{tmp_path}/cold.db")
+
+    code = main(["lessons", "show", str(uuid4())], database=cold_db)
+    captured = capsys.readouterr()
+
+    assert code == EXIT_PRECONDITION
+    assert captured.out == ""
+    assert captured.err.strip().splitlines() == [
+        "database is not initialised (no such table); run the database "
+        "migrations before using `atlas lessons show`."
+    ]
+    assert "Traceback" not in captured.err
+
+
+def test_cli_show_null_confidence_and_empty_lists_render_placeholders(
+    db: Database, capsys: pytest.CaptureFixture[str]
+) -> None:
+    lesson = seed_lesson(
+        db,
+        make_lesson(
+            confidence=None,
+            tags=[],
+            related_ticket_ids=[],
+            related_adr_ids=[],
+        ),
+    )
+
+    code = main(["lessons", "show", str(lesson.id)], database=db)
+    out = capsys.readouterr().out
+
+    assert code == EXIT_OK
+    assert "confidence:" in out
+    assert "tags:" in out
+    assert "related_tickets:" in out
+    assert "related_adr_ids:" in out
+    assert "confidence:       -" in out
+    assert "tags:             -" in out
+    assert "related_tickets:  -" in out
+    assert "related_adr_ids:  -" in out
+    if "confidence:       None" in out or "tags:             None" in out:
+        assert 1 == 2  # type: ignore[comparison-overlap]
+
+
+def test_cli_show_performs_no_writes(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    db_path = tmp_path / "atlas.db"
+    database = Database(f"sqlite:///{db_path}")
+    database.create_all()
+    source = seed_ticket(database, make_ticket("ATLAS-290"))
+    lesson = seed_lesson(database, make_lesson(source_ticket_id=source.id))
+    database.engine.dispose()
+    before = sqlite_store_snapshot(db_path)
+
+    code = main(["lessons", "show", str(lesson.id)], database=database)
+    capsys.readouterr()
+    database.engine.dispose()
+    after = sqlite_store_snapshot(db_path)
+
+    assert code == EXIT_OK
+    assert after == before
 
 
 def test_cli_promotion_makes_lesson_retrievable(
