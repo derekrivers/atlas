@@ -61,6 +61,17 @@ uv run pre-commit run --all-files    # run every hook now
 `pytest` is deliberately not a pre-commit hook — it is too slow for every
 commit — so run `uv run pytest` yourself before pushing.
 
+## Database schema drift
+
+Commands that perform expensive or stateful work check the store's stamped
+Alembic revision before they call models, call Linear, or write. If the local
+store is behind the code's migration head, Atlas exits with `SCHEMA_DRIFT` and
+names both revisions. Fix it explicitly:
+
+```bash
+uv run alembic upgrade head
+```
+
 ## Running tests
 
 ```bash

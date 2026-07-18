@@ -33,6 +33,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
+from schema_drift_helpers import drifted_database
 from test_debt_item_model import debt_item_kwargs
 from test_lesson_model import lesson_kwargs
 from test_models_validation import ticket_kwargs
@@ -194,6 +195,19 @@ def test_report_markdown_has_all_five_sections(
     assert "## Dwell breaches" in out
     assert "## Draft lessons" in out
     assert "## Agent runs" in out
+
+
+def test_pm_report_runs_unchanged_on_drifted_store(
+    db: Database, capsys: pytest.CaptureFixture[str]
+) -> None:
+    drifted_database(db)
+
+    code = main(["pm", "report"], database=db)
+    captured = capsys.readouterr()
+
+    assert code == EXIT_OK
+    assert "# Delivery metrics" in captured.out
+    assert "SCHEMA_DRIFT" not in captured.err
 
 
 def test_report_json_parses_to_the_same_data(

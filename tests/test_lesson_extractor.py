@@ -11,11 +11,12 @@ from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
+from schema_drift_helpers import assert_schema_drift_message, drifted_database
 from test_agent_run_model import agent_run_kwargs
 from test_evidence_model import evidence_kwargs
 from test_models_validation import ticket_kwargs
 
-from atlas.cli import EXIT_OK, EXIT_RECORDED_FAILURE, main
+from atlas.cli import EXIT_OK, EXIT_PRECONDITION, EXIT_RECORDED_FAILURE, main
 from atlas.context import select_lessons
 from atlas.core.enums import ActorType, EvidenceStatus, RiskLevel
 from atlas.core.models.agent_run import AgentRun
@@ -445,6 +446,31 @@ def test_cli_lessons_extract_persists_draft_with_null_confidence(
     assert lesson.confidence is None
     assert lesson.source_ticket_id == ticket.id
     assert lesson.related_ticket_ids == []
+
+
+def test_lessons_extract_drift_exits_before_llm_or_write(
+    db: Database,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    ticket = seed_ticket(db, make_ticket("ATLAS-270"))
+    client = FakeLessonClient()
+    head, parent = drifted_database(db)
+
+    code = main(
+        ["lessons", "extract", "ATLAS-270"],
+        database=db,
+        client=client,
+    )
+
+    assert code == EXIT_PRECONDITION
+    assert client.prompts == []
+    assert LessonRepo(db).list() == []
+    stored = TicketRepo(db).get(ticket.id)
+    assert stored is not None
+    assert stored.lesson_extraction_attempted_at is None
+    assert_schema_drift_message(
+        capsys.readouterr(), store_revision=parent, code_head=head
+    )
 
 
 def test_failed_llm_call_logs_warning_and_persists_no_partial(
