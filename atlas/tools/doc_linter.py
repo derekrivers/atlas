@@ -9,9 +9,9 @@ Checks, per the implementation roadmap and ADR-0006/0007:
   non-empty Status / Context / Decision / Rationale / Consequences /
   Alternatives considered sections.
 - MANIFEST: every path referenced in docs/MANIFEST.md exists, and every
-  canonical doc (docs/atlas/, docs/architecture/, docs/decisions/,
-  docs/runbooks/) is listed. Stub directories the MANIFEST declares as
-  awaiting content (docs/product/, docs/tech-debt/) are not yet
+  canonical doc at any depth under docs/atlas/, docs/architecture/,
+  docs/decisions/, and docs/runbooks/ is listed. Stub directories the MANIFEST
+  declares as awaiting content (docs/product/, docs/tech-debt/) are not yet
   required to be listed.
 - LEGACY: retired v1/v2/v3 document names are banned outside
   docs/archive/ — ``*-v[123].md`` forms, ``ATLAS_V[123]``, ``_V[123]_``
@@ -80,7 +80,8 @@ ARCHIVE_DIR = "docs/archive"
 INBOX_DIR = f"{PLANNING_DIR}/inbox"
 PROCESSED_INBOX_DIR = f"{INBOX_DIR}/processed"
 
-# Directories whose *.md files must all be listed in the MANIFEST.
+# Directories whose Markdown files at any depth must all be listed in the
+# MANIFEST.
 CANONICAL_DIRS = (
     "docs/atlas",
     "docs/architecture",
@@ -314,7 +315,7 @@ def check_manifest(root: Path) -> list[Finding]:
             )
 
     for directory in CANONICAL_DIRS:
-        for path in sorted((root / directory).glob("*.md")):
+        for path in sorted((root / directory).rglob("*.md")):
             rel = _rel(root, path)
             if rel in referenced:
                 continue

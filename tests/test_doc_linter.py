@@ -47,6 +47,8 @@ Strategy and specification (`docs/atlas/`):
 
 - `sample-plan.md`
 
+Playbooks (generated canonical docs):
+
 Architecture (`docs/architecture/`):
 
 - `docs/architecture/arch.md`
@@ -140,6 +142,33 @@ def test_canonical_runbook_not_listed_fails(tmp_path: Path) -> None:
     findings = lint_repo(tmp_path)
     assert "MAN005" in codes(findings)
     assert any("new-runbook.md" in finding.path for finding in findings)
+
+
+def test_manifest_check_recurses_into_canonical_subdirectories(
+    tmp_path: Path,
+) -> None:
+    # Seeded red first with `assert 1 == 2` (B011); the regression was the old
+    # non-recursive glob never seeing this file.
+    build_good_repo(tmp_path)
+    nested = "docs/atlas/probes/x.md"
+    write(tmp_path, nested, "# Nested canonical doc\n\nContent.\n")
+
+    findings = lint_repo(tmp_path)
+
+    assert "MAN005" in codes(findings)
+    assert any(finding.path == nested for finding in findings)
+
+    manifest = (tmp_path / "docs/MANIFEST.md").read_text(encoding="utf-8")
+    write(
+        tmp_path,
+        "docs/MANIFEST.md",
+        manifest.replace(
+            "- `sample-plan.md`\n\n",
+            f"- `sample-plan.md`\n- `{nested}` — fixture nested canonical doc\n\n",
+        ),
+    )
+
+    assert lint_repo(tmp_path) == []
 
 
 def test_legacy_historic_name_in_active_doc_fails(tmp_path: Path) -> None:

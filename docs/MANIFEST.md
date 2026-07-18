@@ -44,6 +44,8 @@ Phase design documents (one per engine; phase-readiness rule below):
 - `docs/atlas/learning-system.md` — Phase 9: extraction triggers,
   promotion workflow, playbooks
 
+Playbooks (generated canonical docs):
+
 Architecture (`docs/architecture/`):
 
 - `technical-architecture.md` — detailed engineering architecture
