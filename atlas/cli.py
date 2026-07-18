@@ -133,7 +133,8 @@ import os
 import signal
 import sys
 import threading
-from collections.abc import Callable
+from collections import Counter
+from collections.abc import Callable, Iterable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal, NamedTuple, Protocol, runtime_checkable
@@ -258,6 +259,7 @@ from atlas.planning.reconciler import DEFAULT_SIMILARITY_THRESHOLD, PlanDiff
 from atlas.planning.staged import StagedProposalGenerator, TemplateStagedGenerator
 from atlas.pm import (
     DEFAULT_INTERVAL_SECONDS,
+    SyncDecisionClassification,
     SyncResult,
     TickConfig,
     build_delivery_report,
@@ -265,6 +267,7 @@ from atlas.pm import (
     report_json,
     run_scheduler,
 )
+from atlas.pm.sync import SyncDecision
 from atlas.storage import (
     ADRRepo,
     AgentRunRepo,
@@ -350,7 +353,53 @@ def _sync_result_is_empty(result: SyncResult) -> bool:
     return all(counter == 0 for counter in counters)
 
 
-def _format_sync_result(result: SyncResult) -> str:
+def _routine_skip_breakdown(decisions: Iterable[SyncDecision]) -> str:
+    status_counts: Counter[str] = Counter()
+    reason_counts: Counter[str] = Counter()
+    prefix = "status not pushable ("
+    for decision in decisions:
+        if (
+            decision.classification != SyncDecisionClassification.ROUTINE
+            or decision.outcome != "skipped"
+        ):
+            continue
+        reason = decision.reason
+        if reason.startswith(prefix) and reason.endswith(")"):
+            status_counts[reason[len(prefix) : -1]] += 1
+        else:
+            reason_counts[reason] += 1
+
+    parts: list[str] = []
+    if status_counts:
+        statuses = ", ".join(
+            f"{reason}={count}"
+            for reason, count in sorted(
+                status_counts.items(), key=lambda item: (-item[1], item[0])
+            )
+        )
+        parts.append(f"not pushable: {statuses}")
+    parts.extend(
+        f"{reason}={count}"
+        for reason, count in sorted(
+            reason_counts.items(), key=lambda item: (-item[1], item[0])
+        )
+    )
+    return "; ".join(parts)
+
+
+def _format_push_skipped(result: SyncResult) -> str:
+    formatted = f"push_skipped={result.push_skipped}"
+    breakdown = _routine_skip_breakdown(result.push_decisions)
+    if breakdown:
+        formatted = f"{formatted} ({breakdown})"
+    return formatted
+
+
+def _decision_is_visible(decision: SyncDecision, *, verbose: bool) -> bool:
+    return verbose or decision.classification != SyncDecisionClassification.ROUTINE
+
+
+def _format_sync_result(result: SyncResult, *, verbose: bool = False) -> str:
     pushes = result.pushed_created + result.pushed_updated
     prefix = "no work performed" if _sync_result_is_empty(result) else "completed"
     lines = [
@@ -364,10 +413,12 @@ def _format_sync_result(result: SyncResult) -> str:
             f"status_unchanged={result.status_unchanged} "
             f"anomalies_logged={result.anomalies_logged} "
             f"unmapped_observations={result.unmapped} "
-            f"push_skipped={result.push_skipped}"
+            f"{_format_push_skipped(result)}"
         )
     ]
     for decision in result.push_decisions:
+        if not _decision_is_visible(decision, verbose=verbose):
+            continue
         lines.append(
             f"{decision.phase} {decision.outcome} {decision.ticket_key}: "
             f"{decision.reason}"
@@ -375,15 +426,21 @@ def _format_sync_result(result: SyncResult) -> str:
     return "\n".join(lines)
 
 
-def _format_repair_pack_result(result: SyncResult) -> str:
+def _format_repair_pack_result(result: SyncResult, *, verbose: bool = False) -> str:
     if result.packs_repaired == 0 and not result.repair_pack_decisions:
         prefix = "no repair candidates"
     elif result.packs_repaired == 0:
         prefix = "no packs repaired"
     else:
         prefix = "completed"
-    lines = [f"pm sync repair-packs: {prefix}; packs_repaired={result.packs_repaired}"]
+    summary = f"pm sync repair-packs: {prefix}; packs_repaired={result.packs_repaired}"
+    breakdown = _routine_skip_breakdown(result.repair_pack_decisions)
+    if breakdown:
+        summary = f"{summary} ({breakdown})"
+    lines = [summary]
     for decision in result.repair_pack_decisions:
+        if not _decision_is_visible(decision, verbose=verbose):
+            continue
         lines.append(
             f"{decision.phase} {decision.outcome} {decision.ticket_key}: "
             f"{decision.reason}"
@@ -1388,9 +1445,17 @@ def _pm_sync(args: argparse.Namespace, resolved_db: Database) -> int:
         shutdown=shutdown,
     )
     if args.repair_packs:
-        print(_format_repair_pack_result(result or SyncResult()))
+        print(
+            _format_repair_pack_result(
+                result or SyncResult(), verbose=bool(getattr(args, "verbose", False))
+            )
+        )
     elif args.once:
-        print(_format_sync_result(result or SyncResult()))
+        print(
+            _format_sync_result(
+                result or SyncResult(), verbose=bool(getattr(args, "verbose", False))
+            )
+        )
     return EXIT_OK
 
 

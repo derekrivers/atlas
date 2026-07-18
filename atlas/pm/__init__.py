@@ -44,7 +44,12 @@ from atlas.pm.scheduler import (
     run_scheduler,
     run_tick,
 )
-from atlas.pm.sync import PUSHABLE_STATUSES, SyncResult, sync_tick
+from atlas.pm.sync import (
+    PUSHABLE_STATUSES,
+    SyncDecisionClassification,
+    SyncResult,
+    sync_tick,
+)
 
 __all__ = [
     "CRASH_DEDUP_WINDOW",
@@ -57,6 +62,7 @@ __all__ = [
     "DeliveryReport",
     "DraftLesson",
     "DwellBreach",
+    "SyncDecisionClassification",
     "SyncResult",
     "ThroughputBucket",
     "TickConfig",
