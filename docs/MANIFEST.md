@@ -46,6 +46,8 @@ Phase design documents (one per engine; phase-readiness rule below):
 
 Playbooks (generated canonical docs):
 
+- `docs/atlas/playbooks/linear-sync.md` — generated playbook for linear-sync lessons
+
 Architecture (`docs/architecture/`):
 
 - `technical-architecture.md` — detailed engineering architecture
