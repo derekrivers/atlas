@@ -272,7 +272,7 @@ _ACCEPTED_TYPES: dict[TicketStatus, frozenset[str]] = {
     TicketStatus.REVIEW_REQUIRED: frozenset({"started"}),
     TicketStatus.CHANGES_REQUESTED: frozenset({"started"}),
     TicketStatus.DONE: frozenset({"completed"}),
-    TicketStatus.REJECTED: frozenset({"cancelled"}),
+    TicketStatus.REJECTED: frozenset({"canceled", "duplicate"}),
     TicketStatus.NEEDS_HUMAN_DECISION: frozenset(
         {"started", "unstarted", "backlog", "triage"}
     ),

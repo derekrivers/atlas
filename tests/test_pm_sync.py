@@ -102,7 +102,7 @@ NEEDS_HUMAN = WorkflowState(id="state-needs-human", name="Needs Human", type="st
 # via set_state. sync_tick resolves state_id_for(DONE) up front every tick (the
 # load-time guard), so the shared status map must carry it.
 DONE_STATE = WorkflowState(id="state-done", name="Done", type="completed")
-REJECTED_STATE = WorkflowState(id="state-rejected", name="Rejected", type="canceled")
+REJECTED_STATE = WorkflowState(id="state-canceled", name="Canceled", type="canceled")
 TEAM_ID = "team-1"
 # The Linear project (id/UUID) issue creation is scoped to (ATLAS-135). Threaded
 # through sync_tick exactly like TEAM_ID; the RecordingClient records it per create
