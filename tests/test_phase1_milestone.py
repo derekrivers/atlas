@@ -31,7 +31,7 @@ def test_milestone_every_entity_round_trips_through_yaml(
         assert load_entity(model_cls, dump_entity(original)) == original
 
 
-@settings(max_examples=20, deadline=None)
+@settings(max_examples=20)
 @given(data=st.data())
 def test_milestone_every_entity_round_trips_through_database(
     data: st.DataObject,
