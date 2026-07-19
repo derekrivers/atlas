@@ -98,6 +98,7 @@ name = "Atlas layer spine"
 type = "layers"
 layers = [
     "atlas.cli",
+    "atlas.orchestration",
     "atlas.planning",
     "atlas.pm",
     "atlas.learning",

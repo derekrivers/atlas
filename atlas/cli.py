@@ -137,7 +137,7 @@ from collections import Counter
 from collections.abc import Callable, Iterable
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Literal, NamedTuple, Protocol, runtime_checkable
+from typing import Literal, Protocol, runtime_checkable
 from uuid import UUID, uuid4
 
 import networkx as nx
@@ -148,15 +148,12 @@ from atlas.context import (
     ContextBudgetExceededError,
     ContextPackValidation,
     build_context_pack,
-    retrieve_lessons,
     validate_context_pack,
 )
 from atlas.core.anchors import IngestionError, SourceDocument
 from atlas.core.models import PlanRunStatus
-from atlas.core.models.adr import ADRStatus, ArchitectureDecisionRecord
 from atlas.core.models.context_pack import ContextPack
 from atlas.core.models.evidence import Evidence
-from atlas.core.models.lesson import Lesson
 from atlas.core.models.ticket import Ticket
 from atlas.dependencies import (
     BlockedResult,
@@ -221,6 +218,11 @@ from atlas.linear.client import (
 )
 from atlas.linear.ownership import LinearStatusMap, LinearStatusMapError
 from atlas.linear.preflight import ModelProbe, PreflightReport, run_preflight
+from atlas.orchestration import (
+    ContextInputs,
+    ContextNotFoundError,
+    load_context_inputs,
+)
 from atlas.planning.apply import (
     ApplyDecision,
     ApplyError,
@@ -241,7 +243,6 @@ from atlas.planning.ingestion import (
     collect_processed_documents,
 )
 from atlas.planning.pipeline import (
-    DEFAULT_INBOX_DIR,
     PRODUCT_KEY,
     PlanPreconditionError,
     PlanResult,
@@ -271,7 +272,6 @@ from atlas.pm import (
 )
 from atlas.pm.sync import SyncDecision
 from atlas.storage import (
-    ADRRepo,
     AgentRunRepo,
     Database,
     DebtItemRepo,
@@ -1323,7 +1323,7 @@ def _build_tick_config(args: argparse.Namespace, resolved_db: Database) -> TickC
 
     The `documents` provider is the ATLAS-162 collector pair over `--repo` — the
     §2.1 corpus plus the committed `processed/` stubs under `--inbox-dir`, exactly
-    what `_load_context_inputs` feeds `atlas context render`. It is built HERE
+    what `load_context_inputs` feeds `atlas context render`. It is built HERE
     because the import spine places `atlas.pm` below `atlas.planning`: the tick
     cannot import the collectors, so the CLI (which may) injects the closure, and
     the tick invokes it lazily — only when a push will actually embed, so its
@@ -1432,71 +1432,7 @@ def _pm_command(args: argparse.Namespace, *, database: Database | None) -> int:
     return EXIT_PRECONDITION  # unreachable: pm subparser is required
 
 
-class _ContextNotFoundError(Exception):
-    """A bare ``<KEY>`` that resolves to no stored ticket (D2/D6).
-
-    A clean CLI precondition — the loader raises it instead of returning
-    ``None``, so the command surfaces a one-line message and exits
-    ``EXIT_PRECONDITION`` rather than dereferencing ``None`` into a traceback.
-    """
-
-
-class _ContextInputs(NamedTuple):
-    """The five already-loaded inputs the pure ``atlas.context`` builder and
-    validator take (D2). Loaded once per invocation by ``_load_context_inputs``;
-    the three commands are thin wrappers over this tuple. ``lessons`` is the
-    renderer's ACTIVE-only retrieval result; ``validation_lessons`` is the full
-    catalogue so a tampered pack can identify a DRAFT/ARCHIVED lesson by status
-    instead of treating it as dangling."""
-
-    ticket: Ticket
-    graph: nx.DiGraph[str]
-    documents: list[SourceDocument]
-    accepted_adrs: list[ArchitectureDecisionRecord]
-    lessons: list[Lesson]
-    validation_lessons: list[Lesson]
-
-
-def _load_context_inputs(key: str, repo_root: Path, db: Database) -> _ContextInputs:
-    """Turn a bare ``<KEY>`` into the five inputs ``build_context_pack`` /
-    ``validate_context_pack`` consume (D2). This is the substance of ATLAS-58;
-    the commands are thin wrappers.
-
-    - ``ticket`` from ``TicketRepo.get_by_key``; a missing key raises
-      ``_ContextNotFoundError`` (never a ``None`` dereference).
-    - ``graph`` is the GLOBAL dependency projection over the full backlog
-      (``build_dependency_graph`` = ``project_graph`` over the four repos); the
-      retrievers select from it.
-    - ``documents`` are re-ingested from HEAD every invocation: the §2.1 corpus
-      (``collect_input_documents``) plus the committed retired stubs
-      (``collect_processed_documents``, ATLAS-162) so a stub-minted ticket's
-      durable ``inbox/processed/`` anchor resolves for the pack exactly as it
-      does at gate 4; live re-ingestion keeps staleness real, and a
-      dirty/untracked file in either set raises ``DirtyInputError``.
-    - ``accepted_adrs`` is ``ADRRepo.list()`` filtered to ACCEPTED.
-    - ``lessons`` is ``retrieve_lessons(ticket, db)``: the DB-backed retriever
-      filters to ACTIVE in SQL, then applies the v1 tag/ticket_type match.
-    - ``validation_lessons`` is the full lesson catalogue for the defensive
-      validator's no-DRAFT check against externally/tampered packs.
-    """
-    ticket = TicketRepo(db).get_by_key(key)
-    if ticket is None:
-        raise _ContextNotFoundError(f"no ticket with key {key!r}")
-    graph = build_dependency_graph(db)
-    documents = collect_input_documents(repo_root) + collect_processed_documents(
-        repo_root, DEFAULT_INBOX_DIR
-    )
-    accepted_adrs = [
-        adr for adr in ADRRepo(db).list() if adr.status == ADRStatus.ACCEPTED
-    ]
-    lessons = retrieve_lessons(ticket, db)
-    validation_lessons = LessonRepo(db).list()
-    return _ContextInputs(
-        ticket, graph, documents, accepted_adrs, lessons, validation_lessons
-    )
-
-
-def _build_pack(inputs: _ContextInputs, *, budget: int) -> ContextPack:
+def _build_pack(inputs: ContextInputs, *, budget: int) -> ContextPack:
     """Build the (transient) pack from the loaded inputs. A thin pass-through to
     the pure builder; its ``ContextBudgetExceededError`` / ``IngestionError``
     (an unresolvable ``source_anchor``) propagate to ``_context_command``, which
@@ -1511,7 +1447,7 @@ def _build_pack(inputs: _ContextInputs, *, budget: int) -> ContextPack:
     )
 
 
-def _context_render(inputs: _ContextInputs, args: argparse.Namespace) -> int:
+def _context_render(inputs: ContextInputs, args: argparse.Namespace) -> int:
     """`render <KEY> [--budget N] [--json]` (D3): build the pack and print its
     ``rendered_markdown`` (default) or the full ``ContextPack`` as JSON."""
     pack = _build_pack(inputs, budget=args.budget)
@@ -1528,7 +1464,7 @@ def _validation_text(result: ContextPackValidation) -> str:
     return "\n".join(lines)
 
 
-def _context_validate(inputs: _ContextInputs, args: argparse.Namespace) -> int:
+def _context_validate(inputs: ContextInputs, args: argparse.Namespace) -> int:
     """`validate <KEY>` (D4): build the pack, run the slug-level validator (the
     CLI has the ticket), print the result, and exit non-zero when invalid so the
     command is scriptable as a gate."""
@@ -1594,7 +1530,7 @@ def _show_summary_text(pack: ContextPack) -> str:
     )
 
 
-def _context_show(inputs: _ContextInputs, args: argparse.Namespace) -> int:
+def _context_show(inputs: ContextInputs, args: argparse.Namespace) -> int:
     """`show <KEY>` (D5): build the pack and print a human summary (not the raw
     markdown). ``--json`` mirrors render's full dump."""
     pack = _build_pack(inputs, budget=DEFAULT_TOKEN_BUDGET)
@@ -1610,7 +1546,7 @@ def _context_command(args: argparse.Namespace, *, database: Database | None) -> 
     resolved_db = database if database is not None else Database(args.db)
     repo_root = Path(args.repo).resolve()
     try:
-        inputs = _load_context_inputs(args.key, repo_root, resolved_db)
+        inputs = load_context_inputs(args.key, repo_root, resolved_db)
         if args.context_command == "render":
             return _context_render(inputs, args)
         if args.context_command == "validate":
@@ -1618,7 +1554,7 @@ def _context_command(args: argparse.Namespace, *, database: Database | None) -> 
         if args.context_command == "show":
             return _context_show(inputs, args)
     except (
-        _ContextNotFoundError,
+        ContextNotFoundError,
         DirtyInputError,
         ContextBudgetExceededError,
         IngestionError,
