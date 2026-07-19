@@ -64,6 +64,12 @@ from atlas.learning.search import (
     render_lesson_search_results,
     search_lessons,
 )
+from atlas.learning.views import (
+    lesson_review_row,
+    lesson_show_record,
+    source_ticket_label,
+    ticket_labels,
+)
 
 __all__ = [
     "DEFAULT_LESSON_SCHEDULER_INTERVAL_SECONDS",
@@ -103,7 +109,9 @@ __all__ = [
     "extract_lesson_for_ticket",
     "find_tickets_needing_extraction",
     "generate_playbook_for_tag",
+    "lesson_review_row",
     "lesson_search_results_json",
+    "lesson_show_record",
     "lessons_report_json",
     "notable_done_ticket",
     "render_extraction_prompt",
@@ -113,5 +121,7 @@ __all__ = [
     "run_lesson_scheduler",
     "run_poll_cycle",
     "search_lessons",
+    "source_ticket_label",
+    "ticket_labels",
     "validate_playbook_tag",
 ]
