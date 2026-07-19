@@ -54,6 +54,13 @@ from atlas.dependencies.validation import (
     TERMINAL_STATUSES,
     validate_graph,
 )
+from atlas.dependencies.views import (
+    blocked_payload,
+    critical_path_payload,
+    high_risk_blockers_payload,
+    unlocks_payload,
+    violation_json,
+)
 
 __all__ = [
     "READY_STATUSES",
@@ -80,14 +87,19 @@ __all__ = [
     "adr_key",
     "analyse_graph",
     "blocked",
+    "blocked_payload",
     "build_dependency_graph",
     "critical_path",
+    "critical_path_payload",
     "high_risk_blockers",
+    "high_risk_blockers_payload",
     "is_ready",
     "project_graph",
     "ready_tickets",
     "render_graph",
     "render_graph_json",
     "unlocks",
+    "unlocks_payload",
     "validate_graph",
+    "violation_json",
 ]
