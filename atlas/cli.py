@@ -161,7 +161,6 @@ from atlas.core.models.ticket import Ticket
 from atlas.dependencies import (
     BlockedResult,
     CriticalPath,
-    GraphValidationError,
     GraphValidationFailed,
     HighRiskBlocker,
     ReadinessResult,
@@ -175,6 +174,13 @@ from atlas.dependencies import (
     render_graph_json,
     unlocks,
     validate_graph,
+)
+from atlas.dependencies.views import (
+    blocked_payload,
+    critical_path_payload,
+    high_risk_blockers_payload,
+    unlocks_payload,
+    violation_json,
 )
 from atlas.evidence import (
     build_merge_evidence,
@@ -1070,13 +1076,6 @@ def _print_plan_result(result: PlanResult) -> int:
     return EXIT_OK
 
 
-def _violation_json(violation: GraphValidationError) -> dict[str, str]:
-    """A stable JSON form of one typed validation violation: its class name
-    and its message (the message names the offending nodes — a cycle's full
-    path, a dangling target's sources)."""
-    return {"type": type(violation).__name__, "message": str(violation)}
-
-
 def _print_violations(error: GraphValidationFailed) -> None:
     """Print every typed violation to stderr (collect-all, mirroring the
     aggregate). Used by both the validate-first guard and `validate`."""
@@ -1098,16 +1097,6 @@ def _deps_ready(graph: nx.DiGraph[str], *, as_json: bool) -> int:
     return EXIT_OK
 
 
-def _blocked_payload(result: BlockedResult) -> dict[str, object]:
-    return {
-        "key": result.key,
-        "is_blocked": result.is_blocked,
-        "targets": [
-            {"key": target.key, "code": target.code.value} for target in result.targets
-        ],
-    }
-
-
 def _blocked_text(result: BlockedResult) -> str:
     if not result.is_blocked:
         return f"{result.key} is not blocked."
@@ -1121,15 +1110,7 @@ def _deps_blocked(
 ) -> int:
     if args.high_risk:
         report: tuple[HighRiskBlocker, ...] = high_risk_blockers(graph)
-        payload = [
-            {
-                "target": blocker.target,
-                "risk_level": blocker.risk_level,
-                "blocks": list(blocker.blocks),
-                "blocked_count": blocker.blocked_count,
-            }
-            for blocker in report
-        ]
+        payload = high_risk_blockers_payload(report)
         if report:
             text = "\n".join(
                 f"{blocker.target} ({blocker.risk_level}) blocks "
@@ -1143,7 +1124,7 @@ def _deps_blocked(
 
     if args.key is not None:
         result = blocked(graph, args.key)
-        _emit(_blocked_payload(result), _blocked_text(result), as_json=as_json)
+        _emit(blocked_payload(result), _blocked_text(result), as_json=as_json)
         return EXIT_OK
 
     # No KEY: every blocked ticket in the graph, key-ordered.
@@ -1153,7 +1134,7 @@ def _deps_blocked(
         if data.get("node_type") == "ticket" and data.get("present", True)
     ]
     blocked_only = [result for result in all_blocked if result.is_blocked]
-    payload = [_blocked_payload(result) for result in blocked_only]
+    payload = [blocked_payload(result) for result in blocked_only]
     text = (
         "\n".join(_blocked_text(result) for result in blocked_only)
         if blocked_only
@@ -1165,18 +1146,7 @@ def _deps_blocked(
 
 def _deps_critical_path(graph: nx.DiGraph[str], *, as_json: bool) -> int:
     path: CriticalPath = critical_path(graph)
-    payload = {
-        "keys": list(path.keys),
-        "steps": [
-            {
-                "key": step.key,
-                "effort": step.effort,
-                "cumulative_effort": step.cumulative_effort,
-            }
-            for step in path.steps
-        ],
-        "total_effort": path.total_effort,
-    }
+    payload = critical_path_payload(path)
     if path.steps:
         lines = [
             f"  {step.key}  effort={step.effort}  cumulative={step.cumulative_effort}"
@@ -1193,11 +1163,7 @@ def _deps_critical_path(graph: nx.DiGraph[str], *, as_json: bool) -> int:
 
 def _deps_unlocks(graph: nx.DiGraph[str], key: str, *, as_json: bool) -> int:
     result: UnlocksResult = unlocks(graph, key)
-    payload = {
-        "key": result.key,
-        "dependents": list(result.dependents),
-        "count": result.count,
-    }
+    payload = unlocks_payload(result)
     if result.count:
         text = f"{result.key} unlocks {result.count}: {', '.join(result.dependents)}"
     else:
@@ -1218,7 +1184,7 @@ def _deps_validate(graph: nx.DiGraph[str], *, as_json: bool) -> int:
                     {
                         "ok": False,
                         "violations": [
-                            _violation_json(violation) for violation in error.violations
+                            violation_json(violation) for violation in error.violations
                         ],
                     }
                 )
