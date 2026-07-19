@@ -40,10 +40,11 @@ from github_fakes import (
 )
 from test_models_validation import product_kwargs
 
-from atlas.cli import EXIT_OK, EXIT_PRECONDITION, _drive_evidence_pull, main
+from atlas.cli import EXIT_OK, EXIT_PRECONDITION, main
 from atlas.core.enums import ActorType
 from atlas.core.models import Product
 from atlas.core.models.evidence import EvidenceType
+from atlas.evidence.pull import drive_evidence_pull
 from atlas.storage import Database, EvidenceRepo, ProductRepo
 
 # The recorded PR's head SHA (pull_request.json) and the reviews' own commit
@@ -244,7 +245,7 @@ def test_drive_pull_is_offline_under_fake(seeded_db: Database) -> None:
     product = ProductRepo(seeded_db).get_by_key("ATLAS")
     assert product is not None
 
-    result = _drive_evidence_pull(
+    result = drive_evidence_pull(
         fake,
         "cli",
         "cli",
