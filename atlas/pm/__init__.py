@@ -48,6 +48,7 @@ from atlas.pm.sync import (
     PUSHABLE_STATUSES,
     SyncDecisionClassification,
     SyncResult,
+    sync_result_is_empty,
     sync_tick,
 )
 
@@ -75,5 +76,6 @@ __all__ = [
     "report_json",
     "run_scheduler",
     "run_tick",
+    "sync_result_is_empty",
     "sync_tick",
 ]

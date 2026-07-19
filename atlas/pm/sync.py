@@ -401,6 +401,33 @@ class SyncResult:
     repair_pack_decisions: list[SyncDecision] = field(default_factory=list)
 
 
+def sync_result_is_empty(result: SyncResult) -> bool:
+    counters = [
+        result.status_pulled,
+        result.status_unchanged,
+        result.unmapped,
+        result.anomalies_logged,
+        result.pushed_created,
+        result.pushed_updated,
+        result.push_skipped,
+        result.packs_embedded,
+        result.packs_truncated,
+        result.pack_render_failures,
+        result.packs_repaired,
+        result.agent_runs_reconstructed,
+        result.agent_runs_updated,
+        result.promoted,
+        result.completed,
+        result.follow_ups_stubbed,
+        result.dwell_breaches,
+        result.routed_to_human,
+        result.review_cycles_logged,
+        result.stale_blocks,
+        result.draft_lessons_filed,
+    ]
+    return all(counter == 0 for counter in counters)
+
+
 def _definition_changed(ticket: Ticket) -> bool:
     """Has the definition changed since the last confirmed push? The cursor
     rule: never synced -> push; otherwise push only while ``updated_at`` is
