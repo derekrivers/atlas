@@ -179,11 +179,7 @@ from atlas.dependencies.views import (
     unlocks_payload,
     violation_json,
 )
-from atlas.evidence import (
-    build_merge_evidence,
-    drive_evidence_pull,
-    evidence_summary,
-)
+from atlas.evidence import drive_evidence_pull, evidence_summary
 from atlas.github import (
     GitHubAPIError,
     GitHubClient,
@@ -223,6 +219,15 @@ from atlas.orchestration import (
     ContextNotFoundError,
     build_tick_config,
     load_context_inputs,
+    resolve_github_client,
+    resolve_pr_context,
+    run_verify,
+)
+from atlas.orchestration.pr_context import (
+    parse_tickets_flag as _parse_tickets_flag,
+)
+from atlas.orchestration.pr_context import (
+    pr_file_paths as _verify_pr_file_paths,
 )
 from atlas.planning.apply import (
     ApplyDecision,
@@ -283,7 +288,6 @@ from atlas.storage import (
     TicketRepo,
     TicketStatusTransitionRepo,
     TickFailureRepo,
-    VerificationCheckRepo,
 )
 from atlas.storage.preconditions import SchemaDriftError, assert_schema_at_head
 from atlas.verification import (
@@ -292,10 +296,9 @@ from atlas.verification import (
     build_acceptance_confirmation,
     build_blanket_approval,
     build_scope_decision,
-    evaluate_pr,
     parse_close_set,
     pending_capture,
-    verification_checks_for,
+    pr_verification_json,
 )
 
 EXIT_OK = 0
@@ -1663,67 +1666,6 @@ def _evidence_command(
     return EXIT_PRECONDITION  # unreachable: evidence subparser is required
 
 
-def _verify_pr_file_paths(files: list[dict[str, object]]) -> list[str]:
-    """Extract the changed-file paths from a raw `fetch_pr_files` response (D3).
-
-    Reads each entry's ``filename`` defensively (the D5 "never traceback" spirit
-    applies to input extraction, not just the evaluators): an entry without a
-    non-blank ``str`` filename is skipped rather than raising KeyError on odd
-    GitHub data. The order is preserved; the scope evaluator distincts internally.
-    """
-    paths: list[str] = []
-    for entry in files:
-        filename = entry.get("filename")
-        if isinstance(filename, str) and filename.strip():
-            paths.append(filename)
-    return paths
-
-
-def _parse_tickets_flag(raw: str) -> tuple[str, ...]:
-    """Normalise a `--tickets` override to canonical uppercase keys (D1).
-
-    Splits on commas, strips and uppercases each entry, drops blanks, and dedupes
-    order-preserving — so `atlas-72, ATLAS-72 ,ATLAS-73` -> ``("ATLAS-72",
-    "ATLAS-73")``. The same canonical form `parse_close_set` emits, so both feed
-    `get_by_key` identically."""
-    keys: list[str] = []
-    seen: set[str] = set()
-    for part in raw.split(","):
-        key = part.strip().upper()
-        if key and key not in seen:
-            seen.add(key)
-            keys.append(key)
-    return tuple(keys)
-
-
-def _pr_verification_json(pr: PRVerification) -> dict[str, object]:
-    """The serialised PRVerification for `--json` (D4): head_commit, status, and
-    tickets[] with each ticket_id, status, and checks[] {check_type, required,
-    status, evidence_ids, reason}. Deterministic — tickets are already key-ordered
-    and checks in resolver order."""
-    return {
-        "head_commit": pr.head_commit,
-        "status": pr.status.value,
-        "tickets": [
-            {
-                "ticket_id": str(tv.ticket_id),
-                "status": tv.status.value,
-                "checks": [
-                    {
-                        "check_type": outcome.check_type.value,
-                        "required": outcome.required,
-                        "status": outcome.status.value,
-                        "evidence_ids": [str(eid) for eid in outcome.evidence_ids],
-                        "reason": outcome.reason,
-                    }
-                    for outcome in tv.checks
-                ],
-            }
-            for tv in pr.tickets
-        ],
-    }
-
-
 def _verify_check_text(outcome: CheckOutcome) -> str:
     """One per-check line in the human report (D4): status, type, gating flag,
     evidence ids, and the evaluator's reason (which already reads e.g. 'awaiting
@@ -1804,18 +1746,14 @@ def _verify_command(
         print("--repo must be OWNER/REPO (e.g. acme/atlas).", file=sys.stderr)
         return EXIT_PRECONDITION
 
-    client = github_client
-    if client is None:
-        try:
-            client = GitHubRESTClient()  # reads GITHUB_TOKEN at construction
-        except MissingGitHubTokenError as error:
-            print(error, file=sys.stderr)
-            return EXIT_PRECONDITION
+    try:
+        client = resolve_github_client(github_client)
+    except MissingGitHubTokenError as error:
+        print(error, file=sys.stderr)
+        return EXIT_PRECONDITION
 
     try:
-        pull_request = client.fetch_pull_request(owner, repo, args.pr)
-        head_commit = str(pull_request["head"]["sha"])
-        pr_files = _verify_pr_file_paths(client.fetch_pr_files(owner, repo, args.pr))
+        context = resolve_pr_context(args.repo, args.pr, client)
     except GitHubAPIError as error:
         print(error, file=sys.stderr)
         return EXIT_PRECONDITION
@@ -1824,53 +1762,12 @@ def _verify_command(
     if args.tickets is not None:
         close_set = _parse_tickets_flag(args.tickets)
     else:
-        close_set = parse_close_set(pull_request.get("title"), pull_request.get("body"))
-
-    try:
-        ticket_repo = TicketRepo(resolved_db)
-        tickets: list[Ticket] = []
-        key_by_id: dict[UUID, str] = {}
-        unknown_keys: list[str] = []
-        for key in close_set:
-            ticket = ticket_repo.get_by_key(key)
-            if ticket is None:
-                unknown_keys.append(key)
-                continue
-            tickets.append(ticket)
-            key_by_id[ticket.id] = ticket.key
-
-        evidence = EvidenceRepo(resolved_db).list()
-        pr = evaluate_pr(
-            tickets,
-            pr_files=pr_files,
-            head_commit=head_commit,
-            evidence=evidence,
+        close_set = parse_close_set(
+            context.pull_request.get("title"), context.pull_request.get("body")
         )
 
-        # OP-B: persist one append-only VerificationCheck per check. One clock and
-        # the uuid4 factory are injected so the pure mapping is deterministic.
-        rows = verification_checks_for(pr, now=datetime.now(UTC), new_id=uuid4)
-        check_repo = VerificationCheckRepo(resolved_db)
-        for row in rows:
-            check_repo.add(row)
-
-        # ATLAS-134: record the merge as system-tier, commit-pinned evidence per
-        # close-set ticket when the PR is merged. The Done gate (pm.complete_verified)
-        # reads this; verify only OBSERVES the operator's out-of-band merge. Append-only
-        # and idempotent: a re-run on a still-merged PR appends an identical-commit
-        # record (harmless). The builder returns None for an unmerged PR -> no record.
-        evidence_repo = EvidenceRepo(resolved_db)
-        for ticket in tickets:
-            merge_record = build_merge_evidence(
-                pull_request,
-                head_commit=head_commit,
-                ticket_id=ticket.id,
-                product_id=ticket.product_id,
-                evidence_id=uuid4(),
-                now=datetime.now(UTC),
-            )
-            if merge_record is not None:
-                evidence_repo.add(merge_record)
+    try:
+        result = run_verify(context, close_set, resolved_db)
     except OperationalError:
         print(
             "database is not initialised (no such table); run the database "
@@ -1879,13 +1776,13 @@ def _verify_command(
         )
         return EXIT_PRECONDITION
 
-    payload = _pr_verification_json(pr)
+    payload = pr_verification_json(result.verification)
     text = _verify_report_text(
-        pr,
-        key_by_id,
-        repo=f"{owner}/{repo}",
+        result.verification,
+        result.key_by_id,
+        repo=f"{context.owner}/{context.repo}",
         pr_number=args.pr,
-        unknown_keys=unknown_keys,
+        unknown_keys=result.unknown_keys,
     )
     _emit(payload, text, as_json=args.json)
     return EXIT_OK
