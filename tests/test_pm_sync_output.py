@@ -81,7 +81,7 @@ def _run_sync_cli(
             repair_packs=bool(getattr(parsed_args, "repair_packs", False)),
         )
 
-    monkeypatch.setattr("atlas.cli._build_tick_config", fake_config)
+    monkeypatch.setattr("atlas.cli.build_tick_config", fake_config)
     monkeypatch.setattr("atlas.cli._install_shutdown_handlers", lambda event: None)
     original_level, original_handlers = _isolate_root_logging()
     try:

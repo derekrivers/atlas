@@ -150,7 +150,7 @@ from atlas.context import (
     build_context_pack,
     validate_context_pack,
 )
-from atlas.core.anchors import IngestionError, SourceDocument
+from atlas.core.anchors import IngestionError
 from atlas.core.models import PlanRunStatus
 from atlas.core.models.context_pack import ContextPack
 from atlas.core.models.evidence import Evidence
@@ -221,6 +221,7 @@ from atlas.linear.preflight import ModelProbe, PreflightReport, run_preflight
 from atlas.orchestration import (
     ContextInputs,
     ContextNotFoundError,
+    build_tick_config,
     load_context_inputs,
 )
 from atlas.planning.apply import (
@@ -237,11 +238,7 @@ from atlas.planning.client import (
     PlannerClient,
     PlannerClientError,
 )
-from atlas.planning.ingestion import (
-    DirtyInputError,
-    collect_input_documents,
-    collect_processed_documents,
-)
+from atlas.planning.ingestion import DirtyInputError
 from atlas.planning.pipeline import (
     PRODUCT_KEY,
     PlanPreconditionError,
@@ -264,11 +261,11 @@ from atlas.pm import (
     DEFAULT_INTERVAL_SECONDS,
     SyncDecisionClassification,
     SyncResult,
-    TickConfig,
     build_delivery_report,
     render_markdown,
     report_json,
     run_scheduler,
+    sync_result_is_empty,
 )
 from atlas.pm.sync import SyncDecision
 from atlas.storage import (
@@ -328,33 +325,6 @@ def _configure_logging(verbose: bool) -> None:
     logging.getLogger().setLevel(logging.INFO)
 
 
-def _sync_result_is_empty(result: SyncResult) -> bool:
-    counters = [
-        result.status_pulled,
-        result.status_unchanged,
-        result.unmapped,
-        result.anomalies_logged,
-        result.pushed_created,
-        result.pushed_updated,
-        result.push_skipped,
-        result.packs_embedded,
-        result.packs_truncated,
-        result.pack_render_failures,
-        result.packs_repaired,
-        result.agent_runs_reconstructed,
-        result.agent_runs_updated,
-        result.promoted,
-        result.completed,
-        result.follow_ups_stubbed,
-        result.dwell_breaches,
-        result.routed_to_human,
-        result.review_cycles_logged,
-        result.stale_blocks,
-        result.draft_lessons_filed,
-    ]
-    return all(counter == 0 for counter in counters)
-
-
 def _routine_skip_breakdown(decisions: Iterable[SyncDecision]) -> str:
     status_counts: Counter[str] = Counter()
     reason_counts: Counter[str] = Counter()
@@ -403,7 +373,7 @@ def _decision_is_visible(decision: SyncDecision, *, verbose: bool) -> bool:
 
 def _format_sync_result(result: SyncResult, *, verbose: bool = False) -> str:
     pushes = result.pushed_created + result.pushed_updated
-    prefix = "no work performed" if _sync_result_is_empty(result) else "completed"
+    prefix = "no work performed" if sync_result_is_empty(result) else "completed"
     lines = [
         (
             f"pm sync: {prefix}; "
@@ -1304,68 +1274,6 @@ def _pm_report(resolved_db: Database, *, as_json: bool) -> int:
     return EXIT_OK
 
 
-def _build_tick_config(args: argparse.Namespace, resolved_db: Database) -> TickConfig:
-    """Build the real `sync_tick` injection from config (D3): the live
-    `LinearGraphQLClient` (creds from env), the env-configured `LinearStatusMap`,
-    the team id from `LINEAR_TEAM_ID`, the project id from `LINEAR_PROJECT_ID`,
-    the inbox dir from `--inbox-dir`, the pack-inputs documents provider from
-    `--repo` (ATLAS-164), and the operator-invoked `--repair-packs` flag
-    (ATLAS-169). Each boundary fails loud on a missing
-    precondition — `LinearGraphQLClient()` raises `MissingLinearTokenError` without
-    a key, `from_env()` raises `LinearStatusMapError` on a missing/malformed map,
-    and an unset team id OR project id raises `MissingLinearTokenError` — so a
-    misconfigured live path exits cleanly (the caller maps these to
-    EXIT_PRECONDITION) rather than crashing mid-loop. The project id (ATLAS-135) is
-    the project's UUID, NOT its slug, and scopes issue creation so created issues
-    are visible to Symphony's project-scoped poll. Reads the environment only; it
-    makes no network call, so it is testable with fake creds set in the
-    environment.
-
-    The `documents` provider is the ATLAS-162 collector pair over `--repo` — the
-    §2.1 corpus plus the committed `processed/` stubs under `--inbox-dir`, exactly
-    what `load_context_inputs` feeds `atlas context render`. It is built HERE
-    because the import spine places `atlas.pm` below `atlas.planning`: the tick
-    cannot import the collectors, so the CLI (which may) injects the closure, and
-    the tick invokes it lazily — only when a push will actually embed, so its
-    dirty-tree `DirtyInputError` fail-closed contract surfaces per embedding tick,
-    never at config-build time."""
-
-    client = LinearGraphQLClient()  # raises MissingLinearTokenError without a key
-    status_map = LinearStatusMap.from_env()  # raises LinearStatusMapError if unset
-    team_id = os.environ.get(TEAM_ID_ENV)
-    if not team_id:
-        raise MissingLinearTokenError(
-            f"{TEAM_ID_ENV} is not set; the scheduler needs the Linear team id to "
-            "create issues"
-        )
-    project_id = os.environ.get(PROJECT_ID_ENV)
-    if not project_id:
-        raise MissingLinearTokenError(
-            f"{PROJECT_ID_ENV} is not set; the scheduler needs the Linear project "
-            "id (a UUID, not the slug) to create issues Symphony can see"
-        )
-    repo_root = Path(args.repo)
-    inbox_dir = Path(args.inbox_dir)
-
-    def documents() -> list[SourceDocument]:
-        return collect_input_documents(repo_root) + collect_processed_documents(
-            repo_root, inbox_dir
-        )
-
-    return TickConfig(
-        tickets=TicketRepo(resolved_db),
-        db=resolved_db,
-        client=client,
-        status_map=status_map,
-        team_id=team_id,
-        project_id=project_id,
-        inbox_dir=inbox_dir,
-        documents=documents,
-        repair_packs=args.repair_packs,
-        lesson_client=AnthropicPlannerClient(),
-    )
-
-
 def _install_shutdown_handlers(shutdown: threading.Event) -> None:
     """Install graceful-shutdown handlers (GAP 1). SIGTERM/SIGINT set the event;
     `run_scheduler` consults it only AFTER the in-flight tick returns, so a signal
@@ -1390,7 +1298,7 @@ def _pm_sync(args: argparse.Namespace, resolved_db: Database) -> int:
 
     try:
         assert_schema_at_head(resolved_db)
-        config = _build_tick_config(args, resolved_db)
+        config = build_tick_config(args, resolved_db)
     except (MissingLinearTokenError, LinearStatusMapError, PlannerClientError) as error:
         print(error, file=sys.stderr)
         return EXIT_PRECONDITION

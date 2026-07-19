@@ -40,7 +40,6 @@ from schema_drift_helpers import assert_schema_drift_message, drifted_database
 from atlas.cli import (
     EXIT_OK,
     EXIT_PRECONDITION,
-    _build_tick_config,
     _install_shutdown_handlers,
     build_parser,
     main,
@@ -55,6 +54,7 @@ from atlas.linear.client import (
     LinearRateLimitError,
 )
 from atlas.linear.ownership import STATE_MAP_ENV, LinearStatusMap
+from atlas.orchestration import build_tick_config
 from atlas.pm import SyncResult
 from atlas.pm.scheduler import (
     CRASH_DEDUP_WINDOW,
@@ -545,7 +545,7 @@ def test_build_tick_config_wires_from_env(
     _live_env(monkeypatch)
     args = build_parser().parse_args(["pm", "sync", "--inbox-dir", str(tmp_path)])
 
-    config = _build_tick_config(args, db)
+    config = build_tick_config(args, db)
 
     assert config.db is db
     assert isinstance(config.client, LinearGraphQLClient)
@@ -654,7 +654,7 @@ def test_pm_sync_drift_exits_before_linear_or_model_setup(
     ) -> None:
         scheduler_calls.append("called")
 
-    monkeypatch.setattr("atlas.cli._build_tick_config", fake_build_tick_config)
+    monkeypatch.setattr("atlas.cli.build_tick_config", fake_build_tick_config)
     monkeypatch.setattr("atlas.cli.run_scheduler", fake_run_scheduler)
 
     code = main(["pm", "sync", "--once"], database=db)

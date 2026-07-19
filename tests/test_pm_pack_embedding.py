@@ -2,7 +2,7 @@
 
 Emulator/fixture-driven, ATLAS_LIVE_TESTS=0 — the in-memory Linear fake and a
 committed git fixture repo whose corpus the REAL ATLAS-162 collector pair
-ingests (exactly the documents provider ``_build_tick_config`` injects), no
+ingests (exactly the documents provider ``build_tick_config`` injects), no
 network, no secrets. Seeded failing first per B011; each seed was replaced by
 its real assertion as the behaviour landed.
 
@@ -115,7 +115,7 @@ def repo(tmp_path: Path) -> Path:
 
 
 def collector_pair(repo: Path) -> Callable[[], list[SourceDocument]]:
-    """EXACTLY the documents provider ``_build_tick_config`` injects (the
+    """EXACTLY the documents provider ``build_tick_config`` injects (the
     ATLAS-162 pair): the §2.1 corpus plus the committed ``processed/`` stubs,
     both from HEAD, fail-closed on a dirty tree."""
 
@@ -649,7 +649,7 @@ def test_repair_packs_cli_prints_repair_and_named_skip_lines(
             repair_packs=True,
         )
 
-    monkeypatch.setattr("atlas.cli._build_tick_config", fake_config)
+    monkeypatch.setattr("atlas.cli.build_tick_config", fake_config)
     monkeypatch.setattr("atlas.cli._install_shutdown_handlers", lambda event: None)
 
     code = main(["pm", "sync", "--repair-packs"], database=db)
