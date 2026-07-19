@@ -210,6 +210,7 @@ from atlas.learning import (
     run_lesson_scheduler,
     search_lessons,
 )
+from atlas.learning.views import lesson_review_row, lesson_show_record
 from atlas.linear.client import (
     PROJECT_ID_ENV,
     TEAM_ID_ENV,
@@ -2714,40 +2715,6 @@ def _lessons_command(
     return EXIT_PRECONDITION
 
 
-def _source_ticket_label(lesson: Lesson, ticket_keys_by_id: dict[UUID, str]) -> str:
-    return ticket_keys_by_id.get(lesson.source_ticket_id, str(lesson.source_ticket_id))
-
-
-def _ticket_labels(
-    ticket_ids: list[UUID], ticket_keys_by_id: dict[UUID, str]
-) -> list[str]:
-    return [
-        ticket_keys_by_id.get(ticket_id, str(ticket_id)) for ticket_id in ticket_ids
-    ]
-
-
-def _lesson_show_record(
-    lesson: Lesson, ticket_keys_by_id: dict[UUID, str]
-) -> dict[str, object]:
-    return {
-        "id": str(lesson.id),
-        "title": lesson.title,
-        "category": lesson.category.value,
-        "status": lesson.status.value,
-        "confidence": lesson.confidence,
-        "tags": list(lesson.tags),
-        "problem": lesson.problem,
-        "solution": lesson.solution,
-        "outcome": lesson.outcome,
-        "source_ticket": _source_ticket_label(lesson, ticket_keys_by_id),
-        "related_tickets": _ticket_labels(lesson.related_ticket_ids, ticket_keys_by_id),
-        "related_adr_ids": [str(adr_id) for adr_id in lesson.related_adr_ids],
-        "created_by": f"{lesson.created_by_type.value}:{lesson.created_by_id}",
-        "created_at": lesson.created_at.isoformat(),
-        "updated_at": lesson.updated_at.isoformat(),
-    }
-
-
 def _lesson_show_value(value: object) -> str:
     if value is None:
         return "-"
@@ -2808,28 +2775,9 @@ def _lessons_show(args: argparse.Namespace, resolved_db: Database) -> int:
         )
         return EXIT_PRECONDITION
 
-    record = _lesson_show_record(lesson, ticket_keys_by_id)
+    record = lesson_show_record(lesson, ticket_keys_by_id)
     _emit(record, _lesson_show_text(record), as_json=args.json)
     return EXIT_OK
-
-
-def _lesson_review_row(
-    lesson: Lesson,
-    ticket_keys_by_id: dict[UUID, str],
-    *,
-    context_pack_count: int | None = None,
-) -> dict[str, object]:
-    row: dict[str, object] = {
-        "id": str(lesson.id),
-        "title": lesson.title,
-        "source_ticket": _source_ticket_label(lesson, ticket_keys_by_id),
-        "created_at": lesson.created_at.isoformat(),
-        "status": lesson.status.value,
-    }
-    if context_pack_count is not None:
-        row["context_pack_count"] = context_pack_count
-        row["last_operator_action_at"] = lesson.updated_at.isoformat()
-    return row
 
 
 def _review_line(row: dict[str, object]) -> str:
@@ -2852,7 +2800,7 @@ def _lessons_review(args: argparse.Namespace, resolved_db: Database) -> int:
     if args.stale:
         reviews = repo.list_stale_active()
         rows = [
-            _lesson_review_row(
+            lesson_review_row(
                 review.lesson,
                 ticket_keys_by_id,
                 context_pack_count=review.context_pack_count,
@@ -2868,7 +2816,7 @@ def _lessons_review(args: argparse.Namespace, resolved_db: Database) -> int:
         return EXIT_OK
 
     drafts = repo.list_drafts()
-    rows = [_lesson_review_row(lesson, ticket_keys_by_id) for lesson in drafts]
+    rows = [lesson_review_row(lesson, ticket_keys_by_id) for lesson in drafts]
     text = (
         "\n".join(["DRAFT lessons:", *[_review_line(row) for row in rows]])
         if rows
