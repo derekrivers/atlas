@@ -137,7 +137,7 @@ from collections import Counter
 from collections.abc import Callable, Iterable
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Literal, Protocol, runtime_checkable
+from typing import Literal
 from uuid import UUID, uuid4
 
 import networkx as nx
@@ -215,9 +215,11 @@ from atlas.linear.client import (
 from atlas.linear.ownership import LinearStatusMap, LinearStatusMapError
 from atlas.linear.preflight import ModelProbe, PreflightReport, run_preflight
 from atlas.orchestration import (
+    ConfirmPrompts,
     ContextInputs,
     ContextNotFoundError,
     build_tick_config,
+    capture_ticket,
     load_context_inputs,
     resolve_github_client,
     resolve_pr_context,
@@ -225,9 +227,6 @@ from atlas.orchestration import (
 )
 from atlas.orchestration.pr_context import (
     parse_tickets_flag as _parse_tickets_flag,
-)
-from atlas.orchestration.pr_context import (
-    pr_file_paths as _verify_pr_file_paths,
 )
 from atlas.planning.apply import (
     ApplyDecision,
@@ -293,11 +292,7 @@ from atlas.storage.preconditions import SchemaDriftError, assert_schema_at_head
 from atlas.verification import (
     CheckOutcome,
     PRVerification,
-    build_acceptance_confirmation,
-    build_blanket_approval,
-    build_scope_decision,
     parse_close_set,
-    pending_capture,
     pr_verification_json,
 )
 
@@ -1788,30 +1783,6 @@ def _verify_command(
     return EXIT_OK
 
 
-@runtime_checkable
-class ConfirmPrompts(Protocol):
-    """The interactive seam `atlas confirm` walks the operator through (D-3).
-
-    Three methods, one per pending decision kind, each returning the operator's
-    ruling as DATA the command routes to an OP-3.1 builder — never the record
-    shape itself. Tests inject a scripted fake (no TTY, deterministic); production
-    uses :func:`_make_confirm_prompts`, the stdin default. The seam is the ONLY
-    place a human is consulted, so a no-prompt / no-TTY run can refuse cleanly
-    rather than auto-confirm (D-4)."""
-
-    def acceptance(self, criterion: str) -> bool:
-        """Confirm this acceptance criterion at ``C`` (``True``) or skip it."""
-        ...
-
-    def scope(self, path: str) -> Literal["waive", "fail", "skip"]:
-        """Rule on this out-of-scope file: waive it, fail it, or skip it."""
-        ...
-
-    def approval(self) -> Literal["approve", "reject", "skip"]:
-        """Rule on the blanket PR approval: approve, reject, or skip it."""
-        ...
-
-
 def _make_confirm_prompts() -> ConfirmPrompts:
     """The stdin :class:`ConfirmPrompts` default (production, D-3).
 
@@ -1909,18 +1880,14 @@ def _confirm_command(
             return EXIT_PRECONDITION
         prompts = _make_confirm_prompts()
 
-    client = github_client
-    if client is None:
-        try:
-            client = GitHubRESTClient()  # reads GITHUB_TOKEN at construction
-        except MissingGitHubTokenError as error:
-            print(error, file=sys.stderr)
-            return EXIT_PRECONDITION
+    try:
+        client = resolve_github_client(github_client)
+    except MissingGitHubTokenError as error:
+        print(error, file=sys.stderr)
+        return EXIT_PRECONDITION
 
     try:
-        pull_request = client.fetch_pull_request(owner, repo, args.pr)
-        head_commit = str(pull_request["head"]["sha"])
-        pr_files = _verify_pr_file_paths(client.fetch_pr_files(owner, repo, args.pr))
+        context = resolve_pr_context(args.repo, args.pr, client)
     except GitHubAPIError as error:
         print(error, file=sys.stderr)
         return EXIT_PRECONDITION
@@ -1929,7 +1896,9 @@ def _confirm_command(
     if args.tickets is not None:
         close_set = _parse_tickets_flag(args.tickets)
     else:
-        close_set = parse_close_set(pull_request.get("title"), pull_request.get("body"))
+        close_set = parse_close_set(
+            context.pull_request.get("title"), context.pull_request.get("body")
+        )
 
     clock = now if now is not None else datetime.now(UTC)
     mint = new_id if new_id is not None else uuid4
@@ -1958,11 +1927,11 @@ def _confirm_command(
         evidence = evidence_repo.list()  # snapshot at C; loaded once (mirrors verify)
         recorded = 0
         for ticket in tickets:
-            recorded += _capture_ticket(
+            recorded += capture_ticket(
                 ticket,
                 prompts=prompts,
-                head_commit=head_commit,
-                pr_files=pr_files,
+                head_commit=context.head_commit,
+                pr_files=context.pr_files,
                 evidence=evidence,
                 product_id=product.id,
                 operator_id=operator_id,
@@ -1979,90 +1948,12 @@ def _confirm_command(
         return EXIT_PRECONDITION
 
     print(
-        f"Recorded {recorded} operator confirmation(s) for {owner}/{repo} "
-        f"PR #{args.pr} at {head_commit}."
+        f"Recorded {recorded} operator confirmation(s) for "
+        f"{context.owner}/{context.repo} PR #{args.pr} at {context.head_commit}."
     )
     if unknown_keys:
         print("  Skipped (no such ticket in the database): " + ", ".join(unknown_keys))
     return EXIT_OK
-
-
-def _capture_ticket(
-    ticket: Ticket,
-    *,
-    prompts: ConfirmPrompts,
-    head_commit: str,
-    pr_files: list[str],
-    evidence: list[Evidence],
-    product_id: UUID,
-    operator_id: str,
-    evidence_repo: EvidenceRepo,
-    now: datetime,
-    new_id: Callable[[], UUID],
-) -> int:
-    """Prompt the operator for one ticket's pending items and persist the rulings.
-
-    Calls OP-3.1's :func:`pending_capture` (the inverse view of the three human
-    evaluators at ``C``) and, for each returned item, routes the operator's answer
-    to the matching builder (D-2): a confirmed criterion →
-    :func:`build_acceptance_confirmation`; a waived/failed scope file →
-    :func:`build_scope_decision`; an approved/rejected blanket →
-    :func:`build_blanket_approval`. A skip persists nothing. Returns the number of
-    records written so the command can summarise the session."""
-    pending = pending_capture(
-        ticket, head_commit=head_commit, pr_files=pr_files, evidence=evidence
-    )
-    recorded = 0
-
-    for prompt in pending.unconfirmed_criteria:
-        if prompts.acceptance(prompt.criterion):
-            evidence_repo.add(
-                build_acceptance_confirmation(
-                    prompt.criterion,
-                    ticket_id=ticket.id,
-                    head_commit=head_commit,
-                    product_id=product_id,
-                    operator_id=operator_id,
-                    evidence_id=new_id(),
-                    now=now,
-                )
-            )
-            recorded += 1
-
-    for path in pending.undecided_scope_files:
-        scope_decision = prompts.scope(path)
-        if scope_decision in ("waive", "fail"):
-            evidence_repo.add(
-                build_scope_decision(
-                    path,
-                    waive=scope_decision == "waive",
-                    ticket_id=ticket.id,
-                    head_commit=head_commit,
-                    product_id=product_id,
-                    operator_id=operator_id,
-                    evidence_id=new_id(),
-                    now=now,
-                )
-            )
-            recorded += 1
-
-    if pending.human_approval_required_and_missing:
-        approval_decision = prompts.approval()
-        if approval_decision in ("approve", "reject"):
-            evidence_repo.add(
-                build_blanket_approval(
-                    approved=approval_decision == "approve",
-                    ticket_id=ticket.id,
-                    head_commit=head_commit,
-                    product_id=product_id,
-                    operator_id=operator_id,
-                    evidence_id=new_id(),
-                    now=now,
-                )
-            )
-            recorded += 1
-
-    return recorded
 
 
 def _add_preflight_parser(subcommands: argparse._SubParsersAction) -> None:  # type: ignore[type-arg]
