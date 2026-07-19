@@ -34,9 +34,11 @@ lower layer must never import a higher one. Ordered high → low:
 
 ```text
 atlas.cli           # CLI entry point and command wiring
+atlas.orchestration # cross-layer assembly for front-end-shared orchestration
 atlas.planning      # plan/apply pipeline, reconciler, renderer
 atlas.pm            # Phase 4 PM Engine: Linear sync loop (sync_tick)
 atlas.learning      # Phase 8 Learning System: lesson extraction
+atlas.verification  # verification evaluators and PR-level orchestration
 atlas.context       # Phase 5 Context Renderer: per-ticket retrieval
 atlas.dependencies  # dependency-graph projection and analyses
 atlas.evidence      # Phase 6 evidence mappers: normalised CI -> Evidence

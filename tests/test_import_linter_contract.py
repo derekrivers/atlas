@@ -1,12 +1,14 @@
 """ATLAS-114: the import-linter layer-spine contract is a live sensor.
 
-Two falsifiable guards for the architecture-fitness contract declared in
+Three falsifiable guards for the architecture-fitness contract declared in
 pyproject [tool.importlinter]:
 
 1. The contract is KEPT on the current tree (it must pass, not be vacuous).
 2. The contract demonstrably FIRES: seeding the forbidden
    ``dependencies -> planning`` edge (the inversion ATLAS-113 removed) makes
    ``lint-imports`` exit non-zero and name the offending import.
+3. The CLI stays below its operator-approved size ceiling, preventing reusable
+   logic from silently re-accreting in the presentation layer.
 
 Guard 2 is the point of the ticket — a contract that never fails proves
 nothing. It writes a throwaway module under atlas/dependencies/ and removes
@@ -24,6 +26,8 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 # project venv), so we find it without depending on PATH.
 LINT_IMPORTS = Path(sys.executable).parent / "lint-imports"
 SEEDED_MODULE = REPO_ROOT / "atlas" / "dependencies" / "_seeded_violation.py"
+CLI_PATH = REPO_ROOT / "atlas" / "cli.py"
+CLI_LINE_CEILING = 2650
 
 
 def _run_lint_imports() -> subprocess.CompletedProcess[str]:
@@ -64,3 +68,13 @@ def test_contract_fires_on_dependencies_to_planning_edge() -> None:
     # The report must name the forbidden import, not just fail opaquely.
     assert "atlas.dependencies._seeded_violation" in result.stdout
     assert "atlas.planning" in result.stdout
+
+
+def test_cli_remains_a_thin_presentation_layer() -> None:
+    line_count = len(CLI_PATH.read_text(encoding="utf-8").splitlines())
+    assert line_count <= CLI_LINE_CEILING, (
+        f"atlas/cli.py has {line_count} lines; ceiling is {CLI_LINE_CEILING}. "
+        "Reusable logic belongs in services or atlas.orchestration, not the CLI. "
+        "A legitimate ceiling increase requires operator sign-off, not a "
+        "reflexive bump."
+    )
