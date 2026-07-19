@@ -21,10 +21,15 @@ from atlas.evidence.mapping import (
     map_docs_to_evidence,
     map_review_to_evidence,
 )
+from atlas.evidence.pull import PullResult, drive_evidence_pull
+from atlas.evidence.views import evidence_summary
 
 __all__ = [
     "GITHUB_ACTIONS_ACTOR_ID",
+    "PullResult",
     "build_merge_evidence",
+    "drive_evidence_pull",
+    "evidence_summary",
     "evidence_type_for_job",
     "ingest_checks",
     "ingest_docs",

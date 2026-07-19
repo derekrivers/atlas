@@ -184,19 +184,14 @@ from atlas.dependencies.views import (
 )
 from atlas.evidence import (
     build_merge_evidence,
-    ingest_checks,
-    ingest_docs,
-    ingest_reviews,
+    drive_evidence_pull,
+    evidence_summary,
 )
 from atlas.github import (
     GitHubAPIError,
     GitHubClient,
     GitHubRESTClient,
     MissingGitHubTokenError,
-    normalise_check_runs,
-    normalise_pr_files,
-    normalise_reviews,
-    normalise_workflow_runs,
 )
 from atlas.learning import (
     DEFAULT_LESSON_SCHEDULER_INTERVAL_SECONDS,
@@ -1633,67 +1628,6 @@ def _context_command(args: argparse.Namespace, *, database: Database | None) -> 
     return EXIT_PRECONDITION  # unreachable: context subparser is required
 
 
-class _PullResult(NamedTuple):
-    """The per-source records one `evidence pull` persisted (D1). Returned by
-    the Protocol-typed driver so the command can print a per-source count and
-    tests can assert the persisted rows."""
-
-    checks: list[Evidence]
-    reviews: list[Evidence]
-    docs: list[Evidence]
-
-
-def _drive_evidence_pull(
-    client: GitHubClient,
-    owner: str,
-    repo: str,
-    pr_number: int,
-    *,
-    evidence_repo: EvidenceRepo,
-    product_id: UUID,
-    now: datetime,
-) -> _PullResult:
-    """Fetch -> normalise -> ingest all three evidence sources for one PR (D1/D3).
-
-    Protocol-typed in ``client`` (any ``GitHubClient``) so it runs fully offline
-    under the fake -- no network, no concrete client wired in. Resolves the head
-    SHA ONCE from the pull-request object (``["head"]["sha"]``) and threads it
-    into the CI/docs normalisers, while reviews and files are fetched by
-    ``pr_number`` (D3). ``now`` is captured once by the caller (D6) and passed to
-    every ``ingest_*`` so the run's records share a creation time. Persistence is
-    the append-only ``EvidenceRepo``; the ATLAS-61 system-tier pinning guard runs
-    inside its ``add``.
-
-    A 404 (unknown PR) or any transport failure surfaces as ``GitHubAPIError``
-    for the caller to map to a clean precondition -- never a traceback.
-    """
-    pull_request = client.fetch_pull_request(owner, repo, pr_number)
-    head_sha = str(pull_request["head"]["sha"])
-
-    checks = [
-        *normalise_workflow_runs(
-            client.fetch_workflow_runs(owner, repo, head_sha), head_sha=head_sha
-        ),
-        *normalise_check_runs(
-            client.fetch_check_runs(owner, repo, head_sha), head_sha=head_sha
-        ),
-    ]
-    reviews = normalise_reviews(client.fetch_pr_reviews(owner, repo, pr_number))
-    docs = normalise_pr_files(
-        client.fetch_pr_files(owner, repo, pr_number), head_sha=head_sha
-    )
-
-    return _PullResult(
-        checks=ingest_checks(
-            checks, repo=evidence_repo, product_id=product_id, now=now
-        ),
-        reviews=ingest_reviews(
-            reviews, repo=evidence_repo, product_id=product_id, now=now
-        ),
-        docs=ingest_docs(docs, repo=evidence_repo, product_id=product_id, now=now),
-    )
-
-
 def _evidence_pull(
     args: argparse.Namespace,
     resolved_db: Database,
@@ -1728,7 +1662,7 @@ def _evidence_pull(
             return EXIT_PRECONDITION
 
     try:
-        result = _drive_evidence_pull(
+        result = drive_evidence_pull(
             client,
             owner,
             repo,
@@ -1762,20 +1696,6 @@ def _evidence_pull(
     return EXIT_OK
 
 
-def _evidence_summary(record: Evidence) -> dict[str, object]:
-    """A concise per-row projection for `evidence list` (D4/D7): the identifying
-    and triage fields, NOT the verbatim ``raw_payload`` (which `show` carries).
-    Keeps a list of many rows readable and its JSON small."""
-    return {
-        "id": str(record.id),
-        "evidence_type": record.evidence_type.value,
-        "status": record.status.value,
-        "commit_sha": record.commit_sha,
-        "summary": record.summary,
-        "created_at": record.created_at.isoformat(),
-    }
-
-
 def _evidence_row_text(record: Evidence) -> str:
     """One human-readable `evidence list` row: id, type, status, short SHA, summary."""
     short_sha = (record.commit_sha or "")[:12]
@@ -1797,7 +1717,7 @@ def _evidence_list(args: argparse.Namespace, resolved_db: Database) -> int:
         rows = [record for record in rows if record.evidence_type.value == args.type]
     rows = sorted(rows, key=lambda record: (record.created_at, str(record.id)))
 
-    payload = [_evidence_summary(record) for record in rows]
+    payload = [evidence_summary(record) for record in rows]
     text = (
         "\n".join(_evidence_row_text(record) for record in rows)
         if rows
