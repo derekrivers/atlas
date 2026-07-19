@@ -428,32 +428,71 @@ and DRAFT-lesson filing (ATLAS-167), with the verified-completion gate
 # Phase 9 — Learning System
 
 Design doc: docs/atlas/learning-system.md (governance: ADR-0009).
+Status: CLOSED 2026-07-18 — see docs/closure/phase-9-closure-report.md.
 
-## Epic: Organisational Learning
+## Epic: Organisational Learning (E11)
 
-ATLAS-91 Lesson extraction (DRAFT status, ADR-0009)
-ATLAS-92 Failure pattern detection
-ATLAS-93 Success pattern detection
-ATLAS-94 Playbook generation
-ATLAS-95 Knowledge enrichment
-ATLAS-96 Delivery analytics
-ATLAS-97 Lesson promotion CLI (operator gate)
-ATLAS-99 Organisational memory search
-ATLAS-100 Continuous learning scheduler
-ATLAS-117 Code-quality debt register — distinct entity, NOT DebtItem and
+Delivered E11 tickets (store keys; these collide in the roadmap namespace
+with the Phase 2.5 planner tickets of the same numbers — a known
+identity-contract issue recorded as a Phase 10 carry-forward, closure
+report §6). Listed fenced so the enumeration parser does not double-count
+them against their planner-ticket namesakes; the coverage sensor still
+resolves every key:
+
+```
+ATLAS-99  Lesson extraction on ticket completion/failure     — #195
+ATLAS-65  Historical lesson retrieval (ACTIVE-only)          — #196
+ATLAS-100 Lesson promotion CLI (operator gate)               — #199
+ATLAS-101 Lesson retrieval integration + citation feedback   — #201
+ATLAS-102 Failure/success pattern detection                  — #200
+ATLAS-103 Playbook generation                                — #203
+ATLAS-104 Delivery analytics (atlas lessons report)          — #198
+ATLAS-105 Organisational memory search                       — #202
+ATLAS-106 Continuous learning scheduler                      — #197
+
+Phase 9 closure findings (delivered; closure report §4):
+ATLAS-170 One-shot CLI result surfacing                       — #205
+ATLAS-171 GitHub write-access preflight probe                 — #207
+ATLAS-172 Lesson provenance/citation split                    — #206
+ATLAS-173 atlas lessons show detail view                      — #210
+ATLAS-174 Schema-drift precondition guard                     — #209
+ATLAS-175 Playbook MANIFEST registration                      — #208
+ATLAS-176 Live rejected-type acceptance (ATLAS-155 lesson)    — #211
+ATLAS-177 Extractor tag anchoring                             — #204
+ATLAS-178 Routine sync-skip aggregation                       — #212
+
+Incident references (closure report §5): ATLAS-155, ATLAS-169,
+and the reconciled seed-collision keys ATLAS-91, ATLAS-97.
+```
+
+Deferred (fenced: the store's Phase 9 ATLAS-107 collides in the roadmap
+namespace with the Phase 2.5 planner ATLAS-107 — Phase 10 carry-forward,
+closure §6):
+
+```
+ATLAS-107 Code-quality debt register — distinct entity, NOT DebtItem and
          NOT table debt_items (ADR-0011 D2); gated on the first
          debt-RECORDING sensor (one that persists code-quality debt rows,
          e.g. mutation/coverage, duplication or large-file, KB-freshness),
          not a pass/fail CI gate — ATLAS-114's import-linter already
          shipped and does NOT count, as it gates rather than records;
-         consumed by Phase 9 debt-pattern detection
+         consumed by debt-pattern detection.
+```
 
-Retired: ATLAS-98 (Learning dashboard), Learning API.
+Carried forward (closure report §6):
+- Success pattern detection — extend detect_pattern_candidates to
+  SUCCESS_PATTERN; explicit low priority (success recurrence is a weaker
+  signal than failure recurrence).
+
+Retired: Knowledge enrichment (never scoped into E11); Learning
+dashboard; Learning API.
 
 Milestone test: a completed fixture ticket produces a DRAFT lesson; the
-lesson appears in context packs only after operator promotion.
-
----
+lesson appears in context packs only after operator promotion. PASSED
+live 2026-07-17 (closure report §2) — proven as a controlled experiment
+on ATLAS-63, historical_lessons [] → ['30cec9d0-…'] across a single
+operator promotion, with the full Docs→Delivery→Lessons→Docs loop closed
+by the linear-sync playbook (#213).
 
 # Critical Success Criteria
 

@@ -655,7 +655,14 @@ def test_enumeration_pins_real_roadmap_count() -> None:
     #   atlas/pm/promotion.py, ATLAS-34/42) and ATLAS-87 (subsumed by the
     #   follow-up producer ATLAS-45 + consumer ATLAS-122) into the Phase-8
     #   Retired line, so both drop their standalone ticket lines: 114 -> 112.
-    assert len(tickets) == 112
+    # - ATLAS-029M (Phase 9 closure) fences the delivered E11 list, the
+    #   closure-findings list, and the deferred ATLAS-107 block: those keys
+    #   (65/99/100/101-107) collide in the roadmap namespace with the Phase
+    #   2.5 planner tickets of the same numbers, and the pin's uniqueness
+    #   assert forbids double-defining them. Fencing keeps them coverage-
+    #   visible without the enumerator counting them: 112 -> 102. The
+    #   roadmap/store identity collision is a Phase 10 carry-forward.
+    assert len(tickets) == 102
     keys = [t.key for t in tickets]
     assert len(keys) == len(set(keys))  # unique
     assert "ATLAS-20" not in keys  # retired lines are not tickets

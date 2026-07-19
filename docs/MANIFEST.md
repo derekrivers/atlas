@@ -130,6 +130,14 @@ Runbooks (`docs/runbooks/`):
   suite, reproducing the CI gates, pre-commit, the shape of the suite,
   and the operator-run live tests
 - Stubs awaiting content: `docs/runbooks/troubleshooting.md`
+- `docs/runbooks/pr-acceptance.md` — operator acceptance protocol from
+  agent PR to board Done: the spine (evidence/confirm/verify/merge), Done
+  is a hand motion, migration parity, silence discipline, planning-side
+  ordering.
+- `docs/runbooks/operator-environment.md` — local-environment facts Atlas
+  depends on but does not control: the two GitHub credential channels, the
+  Codex runtime and version-pinned connector patch, the database path and
+  edit-then-promote SQL hazards, board-operation rules.
 
 Phase closure reports (`docs/closure/`):
 
@@ -155,6 +163,9 @@ Phase closure reports (`docs/closure/`):
   base case) closure: milestone evidence, harness ledger, carry-forwards
 - `docs/closure/smoke-b-closeout.md` — Smoke B Phase 7 machine capture
   (evidence appendix to the closure report)
+- `docs/closure/phase-9-closure-report.md` — Phase 9 (Learning System)
+  closure: milestone evidence, seed disposition, findings batch, incident
+  ledger, carry-forwards, criteria self-assessment.
 
 Stubs awaiting content: `docs/product/`. `docs/tech-debt/` holds the
 debt register (`docs/tech-debt/debt-register.md`), a hand-maintained,
