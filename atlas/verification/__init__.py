@@ -119,6 +119,7 @@ from atlas.verification.scope_check import (
     evaluate_scope,
     out_of_scope_paths,
 )
+from atlas.verification.views import pr_verification_json
 
 __all__ = [
     "MACHINE_CHECK_EVIDENCE",
@@ -150,6 +151,7 @@ __all__ = [
     "out_of_scope_paths",
     "parse_close_set",
     "pending_capture",
+    "pr_verification_json",
     "proof_evidence_ids",
     "required_checks",
     "ticket_verdict_from_checks",
