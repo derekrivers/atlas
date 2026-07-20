@@ -36,6 +36,11 @@ def _assert_empty_count(response: Any) -> None:
     assert response.json() == {"count": 0}
 
 
+def _assert_empty_tickets(response: Any) -> None:
+    assert response.status_code == 200
+    assert response.json() == {"tickets": []}
+
+
 def _assert_empty_reviews(response: Any) -> None:
     assert response.status_code == 200
     assert response.json() == {"reviews": []}
@@ -44,6 +49,7 @@ def _assert_empty_reviews(response: Any) -> None:
 # This is executable inventory: every entry is issued by test_every_api_route,
 # and test_every_registered_route_has_an_executable_case requires exact parity.
 API_ROUTE_CASES: dict[tuple[str, str], RouteAssertion] = {
+    ("GET", "/api/tickets"): _assert_empty_tickets,
     ("GET", "/api/tickets/count"): _assert_empty_count,
     ("GET", "/api/reviews"): _assert_empty_reviews,
 }
@@ -95,6 +101,122 @@ def test_ticket_count_reflects_stored_tickets(database: Database) -> None:
 
     assert response.status_code == 200
     assert response.json() == {"count": 1}
+
+
+def test_ticket_board_returns_key_ordered_lean_cards(database: Database) -> None:
+    product = ProductRepo(database).get_by_key("ATLAS")
+    assert product is not None
+    epic = Epic(**_epic_model_kwargs(product.id, key="ATLAS-E1"))
+    tickets = [
+        Ticket(
+            **(
+                _ticket_model_kwargs(product.id, epic.id, key=key)
+                | {
+                    "id": uuid4(),
+                    "title": title,
+                    "status": status,
+                    "priority": priority,
+                    "risk_level": risk_level,
+                }
+            )
+        )
+        for key, title, status, priority, risk_level in [
+            (
+                "ATLAS-192",
+                "Later human decision",
+                TicketStatus.NEEDS_HUMAN_DECISION,
+                30,
+                "high",
+            ),
+            ("ATLAS-190", "Board endpoint", TicketStatus.PLANNED, 10, "medium"),
+            (
+                "ATLAS-191",
+                "Earlier human decision",
+                TicketStatus.NEEDS_HUMAN_DECISION,
+                20,
+                "critical",
+            ),
+        ]
+    ]
+    EpicRepo(database).add(epic)
+    ticket_repo = TicketRepo(database)
+    for ticket in tickets:
+        ticket_repo.add(ticket)
+
+    with TestClient(create_app(database=database)) as client:
+        response = client.get("/api/tickets")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "tickets": [
+            {
+                "key": ticket.key,
+                "title": ticket.title,
+                "status": ticket.status.value,
+                "ticket_type": ticket.ticket_type.value,
+                "priority": ticket.priority,
+                "risk_level": ticket.risk_level.value,
+            }
+            for ticket in sorted(tickets, key=lambda ticket: ticket.key)
+        ]
+    }
+
+
+def test_ticket_board_filters_status_and_preserves_key_order(
+    database: Database,
+) -> None:
+    product = ProductRepo(database).get_by_key("ATLAS")
+    assert product is not None
+    epic = Epic(**_epic_model_kwargs(product.id, key="ATLAS-E1"))
+    tickets = [
+        Ticket(
+            **(
+                _ticket_model_kwargs(product.id, epic.id, key=key)
+                | {
+                    "id": uuid4(),
+                    "title": title,
+                    "status": status,
+                }
+            )
+        )
+        for key, title, status in [
+            (
+                "ATLAS-192",
+                "Later human decision",
+                TicketStatus.NEEDS_HUMAN_DECISION,
+            ),
+            ("ATLAS-190", "Board endpoint", TicketStatus.PLANNED),
+            (
+                "ATLAS-191",
+                "Earlier human decision",
+                TicketStatus.NEEDS_HUMAN_DECISION,
+            ),
+        ]
+    ]
+    EpicRepo(database).add(epic)
+    ticket_repo = TicketRepo(database)
+    for ticket in tickets:
+        ticket_repo.add(ticket)
+
+    with TestClient(create_app(database=database)) as client:
+        response = client.get("/api/tickets?status=needs_human_decision")
+
+    assert response.status_code == 200
+    assert [ticket["key"] for ticket in response.json()["tickets"]] == [
+        "ATLAS-191",
+        "ATLAS-192",
+    ]
+    assert all(
+        ticket["status"] == "needs_human_decision"
+        for ticket in response.json()["tickets"]
+    )
+
+
+def test_ticket_board_rejects_invalid_status(database: Database) -> None:
+    with TestClient(create_app(database=database)) as client:
+        response = client.get("/api/tickets?status=not_a_status")
+
+    assert response.status_code == 422
 
 
 def test_review_queue_serialises_persisted_review_state(database: Database) -> None:

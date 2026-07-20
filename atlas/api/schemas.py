@@ -9,6 +9,23 @@ class TicketCountResponse(BaseModel):
     count: int
 
 
+class TicketBoardItemSchema(BaseModel):
+    """One lean ticket card on the operator board."""
+
+    key: str
+    title: str
+    status: str
+    ticket_type: str
+    priority: int
+    risk_level: str
+
+
+class TicketBoardResponse(BaseModel):
+    """Lean tickets displayed on the operator board."""
+
+    tickets: list[TicketBoardItemSchema]
+
+
 class ReviewCheckSchema(BaseModel):
     """One persisted verification outcome in a review item."""
 
