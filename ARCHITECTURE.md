@@ -33,6 +33,7 @@ The `atlas` package is layered. Higher layers may import lower ones; a
 lower layer must never import a higher one. Ordered high → low:
 
 ```text
+atlas.api           # HTTP entry point and route wiring
 atlas.cli           # CLI entry point and command wiring
 atlas.orchestration # cross-layer assembly for front-end-shared orchestration
 atlas.planning      # plan/apply pipeline, reconciler, renderer
