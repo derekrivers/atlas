@@ -252,6 +252,12 @@ class TicketRepo(_KeyedRepo[Ticket]):
     def __init__(self, db: Database) -> None:
         super().__init__(db, Ticket, TicketRow)
 
+    def count(self) -> int:
+        """Return the number of stored tickets without loading their records."""
+        with self._db.session() as session:
+            statement = sa.select(sa.func.count()).select_from(TicketRow)
+            return int(session.scalar(statement))
+
     def set_estimated_effort(self, key: str, effort: int | None) -> Ticket:
         """Set ``estimated_effort`` on the stored ticket ``key`` (ATLAS-32).
 

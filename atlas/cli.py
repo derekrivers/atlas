@@ -141,6 +141,7 @@ from typing import Literal
 from uuid import UUID, uuid4
 
 import networkx as nx
+import uvicorn
 from sqlalchemy.exc import OperationalError
 
 from atlas.context import (
@@ -508,7 +509,23 @@ def build_parser() -> argparse.ArgumentParser:
     _add_confirm_parser(subcommands)
     _add_preflight_parser(subcommands)
     _add_lessons_parser(subcommands)
+    _add_api_parser(subcommands)
     return parser
+
+
+def _add_api_parser(subcommands: argparse._SubParsersAction) -> None:  # type: ignore[type-arg]
+    """The local HTTP adapter launch command."""
+    api = subcommands.add_parser("api", help="Run the Atlas HTTP API")
+    api_sub = api.add_subparsers(dest="api_command", required=True)
+    serve = api_sub.add_parser("serve", help="Serve the API on localhost")
+    serve.add_argument("--host", default="127.0.0.1", help="bind host")
+    serve.add_argument("--port", type=int, default=8000, help="bind port")
+
+
+def _api_command(args: argparse.Namespace) -> int:
+    """Launch by import string, preserving the cli/api sibling boundary."""
+    uvicorn.run("atlas.api.app:app", host=args.host, port=args.port)
+    return EXIT_OK
 
 
 def _add_deps_parser(subcommands: argparse._SubParsersAction) -> None:  # type: ignore[type-arg]
@@ -2564,6 +2581,8 @@ def main(
         )
     if args.command == "lessons":
         return _lessons_command(args, database=database, client=client)
+    if args.command == "api":
+        return _api_command(args)
     return EXIT_PRECONDITION  # unreachable: subparser is required
 
 
