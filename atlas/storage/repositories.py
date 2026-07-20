@@ -258,6 +258,16 @@ class TicketRepo(_KeyedRepo[Ticket]):
             statement = sa.select(sa.func.count()).select_from(TicketRow)
             return int(session.scalar(statement))
 
+    def list_by_status(self, status: TicketStatus) -> list[Ticket]:
+        """Return tickets in ``status``, ordered by key."""
+        with self._db.session() as session:
+            rows = session.scalars(
+                sa.select(TicketRow)
+                .where(TicketRow.status == status.value)
+                .order_by(TicketRow.key, TicketRow.id)
+            )
+            return [self._to_model(row) for row in rows]
+
     def set_estimated_effort(self, key: str, effort: int | None) -> Ticket:
         """Set ``estimated_effort`` on the stored ticket ``key`` (ATLAS-32).
 
@@ -823,6 +833,16 @@ class EvidenceRepo(_Repo[Evidence]):
                 update={"raw_payload": _raw_payload_marker(model, size)}
             )
         return super().add(model)
+
+    def list_for_ticket(self, ticket_id: UUID) -> list[Evidence]:
+        """Return one ticket's evidence, oldest record first."""
+        with self._db.session() as session:
+            rows = session.scalars(
+                sa.select(EvidenceRow)
+                .where(EvidenceRow.ticket_id == ticket_id)
+                .order_by(EvidenceRow.created_at, EvidenceRow.id)
+            )
+            return [self._to_model(row) for row in rows]
 
 
 class DebtItemRepo(_Repo[DebtItem]):

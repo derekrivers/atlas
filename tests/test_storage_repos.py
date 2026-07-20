@@ -45,7 +45,7 @@ def public_methods(cls: type) -> set[str]:
 
 
 def test_evidence_repo_exposes_add_and_queries_only() -> None:
-    assert public_methods(EvidenceRepo) == {"add", "get", "list"}
+    assert public_methods(EvidenceRepo) == {"add", "get", "list", "list_for_ticket"}
 
 
 def test_plan_run_repo_exposes_documented_surface_only() -> None:
