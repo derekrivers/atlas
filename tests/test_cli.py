@@ -36,6 +36,7 @@ from test_plan_pipeline import (
     fixture_repo,
     fixture_repo_with_inbox,
     fresh_db,
+    git,
     proposal_json,
 )
 
@@ -45,7 +46,7 @@ from atlas.cli import (
     EXIT_RECORDED_FAILURE,
     main,
 )
-from atlas.core.models import Epic, Ticket, TicketDependency
+from atlas.core.models import Epic, PlanRunStatus, Ticket, TicketDependency
 from atlas.planning.pipeline import run_plan
 from atlas.storage import (
     Database,
@@ -513,3 +514,63 @@ def test_apply_rejection_returns_recorded_failure(
 
     assert code == EXIT_RECORDED_FAILURE
     assert not (repo / "docs" / "planning" / "tickets.yaml").exists()
+
+
+def test_apply_reject_stale_cli_rejects_a_stranded_proposed_plan(
+    tmp_path: Path,
+) -> None:
+    # ATLAS-195: the normal apply path reproduces the AT-5 stranding first; the
+    # explicit stale-disposition flag then finalises the same proposed run.
+    repo = fixture_repo(tmp_path)
+    database = fresh_db(tmp_path)
+    main(
+        plan_argv(repo),
+        database=database,
+        client=FakePlannerClient(proposal_json()),
+        identity=FAKE_IDENTITY,
+    )
+    (repo / "PRODUCT.md").write_text("# Atlas\n\n## Vision\n\nChanged.\n", "utf-8")
+    git(repo, "commit", "-aqm", "stale input")
+
+    stranded = main(["apply", "--repo", str(repo), "--yes"], database=database)
+    assert stranded == EXIT_PRECONDITION
+    assert PlanRunRepo(database).latest_proposed() is not None
+
+    code = main(
+        ["apply", "--repo", str(repo), "--reject-stale", "--yes"],
+        database=database,
+    )
+
+    assert code == EXIT_RECORDED_FAILURE
+    (plan_run,) = PlanRunRepo(database).list()
+    assert plan_run.status is PlanRunStatus.REJECTED
+    assert TicketRepo(database).list() == []
+    assert not (repo / "docs" / "planning" / "tickets.yaml").exists()
+
+
+def test_apply_reject_stale_cli_refuses_current_plan_and_normal_apply_still_works(
+    tmp_path: Path,
+) -> None:
+    # ATLAS-195: --reject-stale is not a hidden alternate reject path for current
+    # proposals. A non-stale run stays proposed for ordinary apply.
+    repo = fixture_repo(tmp_path)
+    database = fresh_db(tmp_path)
+    main(
+        plan_argv(repo),
+        database=database,
+        client=FakePlannerClient(proposal_json()),
+        identity=FAKE_IDENTITY,
+    )
+
+    rejected = main(
+        ["apply", "--repo", str(repo), "--reject-stale", "--yes"],
+        database=database,
+    )
+    assert rejected == EXIT_PRECONDITION
+    assert PlanRunRepo(database).list()[0].status is PlanRunStatus.PROPOSED
+
+    applied = main(["apply", "--repo", str(repo), "--yes"], database=database)
+
+    assert applied == EXIT_OK
+    assert PlanRunRepo(database).list()[0].status is PlanRunStatus.APPLIED
+    assert (repo / "docs" / "planning" / "tickets.yaml").exists()

@@ -11,9 +11,9 @@ database and make zero real API calls.
 2 clean-exit precondition (dirty tree, missing product/key, model error; in
 --stubs-only also an empty inbox or a malformed committed stub, ATLAS-153).
 
-`apply` exit codes: 0 applied; 1 operator rejected (PlanRun rejected); 2
-refusal/precondition (no proposed plan, stale plan, dirty tree,
-unsupported diff/CONFLICT, or no way to confirm).
+`apply` exit codes: 0 applied; 1 operator rejected (PlanRun rejected, including
+explicit stale PlanRun disposition); 2 refusal/precondition (no proposed plan,
+stale plan, dirty tree, unsupported diff/CONFLICT, or no way to confirm).
 
 `deps` (ATLAS-39, ATLAS-37) is a thin read-mostly surface over the Phase 3
 dependency functions: `ready`, `blocked`, `critical-path`, `unlocks`,
@@ -152,7 +152,7 @@ from atlas.context import (
     validate_context_pack,
 )
 from atlas.core.anchors import IngestionError
-from atlas.core.models import PlanRunStatus
+from atlas.core.models import PlanRun, PlanRunStatus
 from atlas.core.models.context_pack import ContextPack
 from atlas.core.models.evidence import Evidence
 from atlas.core.models.ticket import Ticket
@@ -234,6 +234,7 @@ from atlas.planning.apply import (
     ApplyError,
     is_existing_dependency_add,
     run_apply,
+    run_reject_stale_plan,
 )
 from atlas.planning.client import (
     ANTHROPIC_IDENTITY,
@@ -494,6 +495,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="apply ADD entries only; skip MODIFY and PROPOSE_ARCHIVE entries "
         "(CONFLICT still refuses). Leaves the existing backlog untouched.",
+    )
+    apply.add_argument(
+        "--reject-stale",
+        action="store_true",
+        help="reject the latest proposed PlanRun only if it is stale; writes no "
+        "renders and does not retire inbox stubs",
     )
     apply.add_argument("--db", default=None, help="database URL")
     apply.add_argument(
@@ -899,6 +906,25 @@ def _make_confirm(
     return confirm
 
 
+def _make_stale_rejection_confirm(assume_yes: bool) -> Callable[[PlanRun], bool]:
+    """Confirmation policy for the explicit stale PlanRun disposition path."""
+
+    def confirm(plan_run: PlanRun) -> bool:
+        if assume_yes:
+            return True
+        if not sys.stdin.isatty():
+            print(
+                "stale rejection needs confirmation: re-run with --yes "
+                "(no TTY available).",
+                file=sys.stderr,
+            )
+            return False
+        answer = input(f"Reject stale PlanRun {plan_run.id}? [y/N] ").strip().lower()
+        return answer == "y"
+
+    return confirm
+
+
 def _apply_command(args: argparse.Namespace, *, database: Database | None) -> int:
     resolved_db = database if database is not None else Database(args.db)
     try:
@@ -906,7 +932,26 @@ def _apply_command(args: argparse.Namespace, *, database: Database | None) -> in
     except SchemaDriftError as error:
         print(error, file=sys.stderr)
         return EXIT_PRECONDITION
+    if args.reject_stale and args.add_only:
+        print("--reject-stale cannot be combined with --add-only", file=sys.stderr)
+        return EXIT_PRECONDITION
     try:
+        if args.reject_stale:
+            stale_result = run_reject_stale_plan(
+                repo_root=Path(args.repo).resolve(),
+                database=resolved_db,
+                confirm=_make_stale_rejection_confirm(args.yes),
+            )
+            if stale_result.outcome == "rejected":
+                print(
+                    "Stale PlanRun "
+                    f"{stale_result.plan_run.id} finalised to rejected; "
+                    "inbox stubs left active.",
+                    file=sys.stderr,
+                )
+                return EXIT_RECORDED_FAILURE
+            print("Stale rejection not confirmed; no changes made.", file=sys.stderr)
+            return EXIT_PRECONDITION
         result = run_apply(
             repo_root=Path(args.repo).resolve(),
             database=resolved_db,

@@ -333,9 +333,14 @@ only through plan/apply (ADR-0007), never as direct ticket creation.
   which follow-ups become plan inputs — surfacing a follow-up is mechanical;
   admitting it to the backlog is a deliberate act.
 - The **consumer** (ATLAS-122) closes the loop: `atlas plan` reads the committed
-  inbox as the separate input source above, and `atlas apply` moves applied or
-  rejected stubs to `docs/planning/inbox/processed/`. ATLAS-45 does **not** wire
-  either side.
+  inbox as the separate input source above, and the normal `atlas apply` path
+  moves applied or operator-rejected stubs to
+  `docs/planning/inbox/processed/`. The stale-proposal disposition path
+  (`atlas apply --reject-stale`) finalises only the stale `PlanRun`; it does not
+  retire stubs, because the proposal was not considered on its merits. The
+  accepted failure mode is deliberate re-reading of any still-active stub by the
+  next fresh plan unless the operator removes or edits it. ATLAS-45 does
+  **not** wire either side.
 
 **Dedup.** The scan sees the same tagged comment on every tick, so each stub is
 made self-identifying by recording its **source comment id** as the dedup key: a
