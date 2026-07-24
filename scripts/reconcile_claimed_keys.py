@@ -60,6 +60,7 @@ MINT_PLAN_RUN_ID = uuid5(NAMESPACE_URL, "atlas:namespace-reconciliation:mint:187
 RENDER_PLAN_RUN_ID = uuid5(
     NAMESPACE_URL, "atlas:namespace-reconciliation:render:187-192"
 )
+AUTHORIZED_STALE_PLAN_RUN_ID = UUID("bede6227-ec14-4b74-8bb7-e101d2474b66")
 MINT_PROMPT_VERSION = "key-reconciliation-mint-v1"
 RENDER_PROMPT_VERSION = "key-reconciliation-render-v1"
 CREATED_BY = "operator-key-reconciliation"
@@ -481,6 +482,21 @@ def _add_plan_run(
     return run
 
 
+def _dispose_authorized_stale_run(database: Database) -> bool:
+    """A-6: reject the one stale PlanRun whose CLI reject path is unreachable."""
+    runs = PlanRunRepo(database)
+    stale = runs.get(AUTHORIZED_STALE_PLAN_RUN_ID)
+    if stale is None:
+        return False
+    if stale.status is not PlanRunStatus.PROPOSED:
+        raise ReconciliationError(
+            f"authorized stale PlanRun {stale.id} is {stale.status.value!r}, "
+            "not 'proposed'"
+        )
+    runs.finalize(stale.id, PlanRunStatus.REJECTED)
+    return True
+
+
 def _run_or_resume_apply(
     repo_root: Path,
     database: Database,
@@ -556,6 +572,7 @@ def reconcile_claimed_keys(
     if mint_run is None:
         assert_no_unrelated_render_drift(repo_root, database)
         _validate_claimed_identity(database)
+        _dispose_authorized_stale_run(database)
         marks = KeyCounterRepo(database).high_water_marks()
         current = marks.get(TICKET_PREFIX, 0)
         if current > PRE_ASSIGN_HIGH_WATER:

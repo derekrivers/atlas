@@ -17,11 +17,15 @@ from atlas.planning.pipeline import _next_key_hint
 from atlas.storage import Database, KeyCounterRepo, PlanRunRepo, ProductRepo, TicketRepo
 from atlas.tools.doc_linter import check_planning_renders
 from scripts.reconcile_claimed_keys import (
+    AUTHORIZED_STALE_PLAN_RUN_ID,
     CLAIMED_KEYS,
     MINT_PLAN_RUN_ID,
     MINT_PROMPT_VERSION,
     ExistingRecordMismatchError,
+    ReconciliationError,
     RenderDriftError,
+    _add_plan_run,
+    _dispose_authorized_stale_run,
     _mint_proposal,
     _run_or_resume_apply,
     assert_no_unrelated_render_drift,
@@ -168,6 +172,26 @@ def test_unrelated_store_render_drift_fails_closed(tmp_path: Path) -> None:
     with pytest.raises(RenderDriftError, match=r"outside ATLAS-187\.\.192"):
         assert_no_unrelated_render_drift(repo, database)
     assert KeyCounterRepo(database).high_water_marks()["ATLAS"] == 178
+
+
+def test_a6_disposes_only_the_authorized_proposed_run(tmp_path: Path) -> None:
+    repo = fixture_repo(tmp_path)
+    database = fixture_database(tmp_path)
+    _add_plan_run(
+        repo,
+        database,
+        NOW,
+        run_id=AUTHORIZED_STALE_PLAN_RUN_ID,
+        prompt_version="stale-test",
+        proposal=_mint_proposal(),
+    )
+
+    assert _dispose_authorized_stale_run(database) is True
+    stored = PlanRunRepo(database).get(AUTHORIZED_STALE_PLAN_RUN_ID)
+    assert stored is not None
+    assert stored.status.value == "rejected"
+    with pytest.raises(ReconciliationError, match="not 'proposed'"):
+        _dispose_authorized_stale_run(database)
 
 
 def test_fixture_starts_clean_and_committed(tmp_path: Path) -> None:
