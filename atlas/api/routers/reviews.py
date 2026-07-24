@@ -5,7 +5,7 @@ from fastapi import APIRouter
 from atlas.api.dependencies import ReviewQueueDependency
 from atlas.api.schemas import ReviewQueueResponse
 
-router = APIRouter(prefix="/api/reviews", tags=["reviews"])
+router = APIRouter(prefix="/reviews", tags=["reviews"])
 
 
 @router.get("", response_model=ReviewQueueResponse)

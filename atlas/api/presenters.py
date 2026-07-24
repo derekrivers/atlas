@@ -23,10 +23,10 @@ def present_ticket_board(tickets: Sequence[Ticket]) -> TicketBoardResponse:
             TicketBoardItemSchema(
                 key=ticket.key,
                 title=ticket.title,
-                status=ticket.status.value,
-                ticket_type=ticket.ticket_type.value,
+                status=ticket.status,
+                ticket_type=ticket.ticket_type,
                 priority=ticket.priority,
-                risk_level=ticket.risk_level.value,
+                risk_level=ticket.risk_level,
             )
             for ticket in ordered
         ]
@@ -42,13 +42,13 @@ def present_review_queue(
             ReviewQueueItemSchema(
                 key=state.key,
                 title=state.title,
-                status=state.status.value,
-                ticket_type=state.ticket_type.value,
-                verdict=state.verdict.value,
+                status=state.status,
+                ticket_type=state.ticket_type,
+                verdict=state.verdict,
                 checks=[
                     ReviewCheckSchema(
-                        check_type=check.check_type.value,
-                        status=check.status.value,
+                        check_type=check.check_type,
+                        status=check.status,
                     )
                     for check in state.checks
                 ],

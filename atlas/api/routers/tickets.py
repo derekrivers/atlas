@@ -5,7 +5,7 @@ from fastapi import APIRouter
 from atlas.api.dependencies import TicketBoardDependency, TicketRepoDependency
 from atlas.api.schemas import TicketBoardResponse, TicketCountResponse
 
-router = APIRouter(prefix="/api/tickets", tags=["tickets"])
+router = APIRouter(prefix="/tickets", tags=["tickets"])
 
 
 @router.get("", response_model=TicketBoardResponse)
