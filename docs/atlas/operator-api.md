@@ -51,8 +51,9 @@ satisfied.
 
 The HTTP contract is versioned under /api/v1. The version represents the HTTP contract, not the Atlas package version. Response schema fields with a closed value set are typed with the canonical domain StrEnums directly — no parallel API enum copies. A duplicated enum is a maintained copy on a drift timer.
 
-`create_app` mounts API&#95;V1&#95;PREFIX (`/api/v1`) exactly once. Each router
-then adds its resource-local prefix:
+`create_app` mounts the version prefix (`/api/v1`) exactly once, as a
+module-level constant in `atlas/api/app.py`. Each router then adds its
+resource-local prefix:
 
 | Method | Path                    | Input            | Response                  |
 | ------ | ----------------------- | ---------------- | ------------------------- |
