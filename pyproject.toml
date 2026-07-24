@@ -114,3 +114,15 @@ layers = [
     "atlas.github",
     "atlas.core",
 ]
+
+[[tool.importlinter.contracts]]
+name = "Storage must not import Linear adapter"
+type = "forbidden"
+source_modules = ["atlas.storage"]
+forbidden_modules = ["atlas.linear"]
+
+[[tool.importlinter.contracts]]
+name = "Storage must not import GitHub adapter"
+type = "forbidden"
+source_modules = ["atlas.storage"]
+forbidden_modules = ["atlas.github"]
