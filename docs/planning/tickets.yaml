@@ -1,7 +1,7 @@
 # Render written only by `atlas apply` (ADR-0006/0007); do not hand-edit.
-# plan_run_id: a236edbe-2ebf-59a4-a12d-ccfdad6e9f29
-# prompt_version: store-anchor-repair-render-v1
-# ticket_key_high_water: 192
+# plan_run_id: 921b1b47-7c4a-4876-be65-decd26d11eea
+# prompt_version: stubs-only
+# ticket_key_high_water: 193
 # epic_key_high_water: 12
 tickets:
 - id: 06701bee-33ed-44e6-b735-52dfd7c5edc8
@@ -8492,3 +8492,45 @@ tickets:
   created_at: '2026-07-24T06:37:37Z'
   updated_at: '2026-07-24T06:37:37Z'
   completed_at: '2026-07-24T06:37:37Z'
+- id: b25515cf-0fb2-4278-a970-d6465f20b407
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 9e0a7ff0-b3da-4504-8e3c-d090a253f343
+  key: ATLAS-193
+  title: 'Forbidden import contracts: storage must not import the Linear or GitHub adapters'
+  objective: 'Close a permitted edge in the layer spine mechanically: the single layers contract places atlas.storage above atlas.linear and atlas.github, so persistence code is currently allowed to import the external-service adapters. No such import exists today; make the absence a live sensor before one appears.'
+  context: 'Surfaced by the API-phase external assessment and verified against the tree: the layers contract permits storage -> linear and storage -> github edges that would invert the desired ports-and-adapters relationship. Pre-ruled decisions: D-1 exactly two [[tool.importlinter.contracts]] entries of type ''forbidden'' — ''Storage must not import Linear adapter'' (source atlas.storage, forbidden atlas.linear) and ''Storage must not import GitHub adapter'' (source atlas.storage, forbidden atlas.github) — added after the layers contract; the spine order itself is untouched. D-2 tests/test_import_linter_contract.py is extended following its own ATLAS-114 pattern: a kept-on-current-tree guard and a demonstrably-fires guard per new contract, so a contract that never fails cannot count as a sensor. D-3 no ports/adapters restructuring, no atlas.ports package, no code moves — contract-only. D-4 no further forbidden contracts beyond the two named; other candidates are either already enforced by the layers stack or belong to future phases.'
+  status: planned
+  ticket_type: tech_debt
+  risk_level: low
+  priority: 50
+  relevant_docs:
+  - docs/planning/inbox/processed/inbox-stub-forbidden-storage-adapter-imports.md
+  acceptance_criteria:
+  - '`uv run lint-imports` passes with both new contracts named in its output alongside the layer spine.'
+  - 'Seeded probe per contract: a temporary `from atlas.linear import ...` (then `from atlas.github import ...`) in a module under atlas/storage/ makes lint-imports fail naming the new contract; seeds are removed before the final commit and the fires-guard tests reproduce the probe permanently.'
+  - The diff is limited to pyproject.toml and tests/test_import_linter_contract.py.
+  - Full gate sweep green with ATLAS_LIVE_TESTS=0; enumeration pins unchanged.
+  non_goals:
+  - No changes to the layers contract or spine order. No ports package. No code moves. No contracts beyond the two named.
+  implementation_notes: []
+  test_requirements:
+  - Follows the ATLAS-114 three-guard pattern; seeded defects use assert 1 == 2 (B011) where applicable; ATLAS_LIVE_TESTS=0.
+  documentation_requirements: []
+  definition_of_done:
+  - All acceptance criteria evidenced by named tests; full gate sweep green; PR title carries the minted key.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags: []
+  component: null
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/inbox-stub-forbidden-storage-adapter-imports.md#a-permitted-edge-is-a-pending-import
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-24T09:23:05.876678Z'
+  updated_at: '2026-07-24T09:23:05.876678Z'
+  completed_at: null
