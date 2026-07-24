@@ -1,7 +1,7 @@
 # Render written only by `atlas apply` (ADR-0006/0007); do not hand-edit.
-# plan_run_id: 921b1b47-7c4a-4876-be65-decd26d11eea
+# plan_run_id: b112245b-7e9b-47b0-837e-b756f7484bde
 # prompt_version: stubs-only
-# ticket_key_high_water: 193
+# ticket_key_high_water: 198
 # epic_key_high_water: 12
 dependencies:
 - id: 1d4aafed-6d6a-4f61-97d9-5af5c9a4f88e
@@ -1084,6 +1084,15 @@ dependencies:
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-07-04T18:05:38.538342Z'
+- id: 0dea2e91-98b6-4ac9-a744-4636f4ed2bc7
+  source_ticket_id: a73dbca3-f3a8-4726-b7c8-6efeaabb49e5
+  target_entity_type: ticket
+  target_entity_id: 2fab98ba-1dff-4085-85a8-ab6350a3bb93
+  dependency_type: depends_on
+  reason: declared by the stub's depends_on front-matter (ATLAS-153)
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-24T13:21:40.255739Z'
 - id: a5e29199-ad31-4867-9a24-9097328f939d
   source_ticket_id: a754e9ab-fb8b-4bae-af60-dbabcc07de56
   target_entity_type: ticket

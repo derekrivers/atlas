@@ -1,7 +1,7 @@
 # Render written only by `atlas apply` (ADR-0006/0007); do not hand-edit.
-# plan_run_id: 921b1b47-7c4a-4876-be65-decd26d11eea
+# plan_run_id: b112245b-7e9b-47b0-837e-b756f7484bde
 # prompt_version: stubs-only
-# ticket_key_high_water: 193
+# ticket_key_high_water: 198
 # epic_key_high_water: 12
 tickets:
 - id: 06701bee-33ed-44e6-b735-52dfd7c5edc8
@@ -8499,7 +8499,7 @@ tickets:
   title: 'Forbidden import contracts: storage must not import the Linear or GitHub adapters'
   objective: 'Close a permitted edge in the layer spine mechanically: the single layers contract places atlas.storage above atlas.linear and atlas.github, so persistence code is currently allowed to import the external-service adapters. No such import exists today; make the absence a live sensor before one appears.'
   context: 'Surfaced by the API-phase external assessment and verified against the tree: the layers contract permits storage -> linear and storage -> github edges that would invert the desired ports-and-adapters relationship. Pre-ruled decisions: D-1 exactly two [[tool.importlinter.contracts]] entries of type ''forbidden'' — ''Storage must not import Linear adapter'' (source atlas.storage, forbidden atlas.linear) and ''Storage must not import GitHub adapter'' (source atlas.storage, forbidden atlas.github) — added after the layers contract; the spine order itself is untouched. D-2 tests/test_import_linter_contract.py is extended following its own ATLAS-114 pattern: a kept-on-current-tree guard and a demonstrably-fires guard per new contract, so a contract that never fails cannot count as a sensor. D-3 no ports/adapters restructuring, no atlas.ports package, no code moves — contract-only. D-4 no further forbidden contracts beyond the two named; other candidates are either already enforced by the layers stack or belong to future phases.'
-  status: planned
+  status: done
   ticket_type: tech_debt
   risk_level: low
   priority: 50
@@ -8519,18 +8519,228 @@ tickets:
   definition_of_done:
   - All acceptance criteria evidenced by named tests; full gate sweep green; PR title carries the minted key.
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: c381532b-074f-4f5a-ba6e-8aee7c7c80ef
   external_github_issue_id: null
   tags: []
   component: null
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-07-24T09:23:05.876678Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-07-24T10:16:46.187129Z'
   review_cycle_count: 0
-  lesson_extraction_attempted_at: null
+  lesson_extraction_attempted_at: '2026-07-24T10:16:46.187129Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-forbidden-storage-adapter-imports.md#a-permitted-edge-is-a-pending-import
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-07-24T09:23:05.876678Z'
   updated_at: '2026-07-24T09:23:05.876678Z'
+  completed_at: null
+- id: c8b817fa-f6d6-4de7-b783-c002fc530028
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 86fe8167-7b99-45fd-ac96-3d0f4d3a0f53
+  key: ATLAS-194
+  title: 'API contract: /api/v1 prefix and canonical StrEnum response schemas'
+  objective: 'Move the HTTP surface under a versioned /api/v1 prefix and replace plain-string enum fields in the response schemas with the canonical domain StrEnums, so the OpenAPI document publishes allowed values. Both changes alter every response path: landing them together breaks the contract exactly once, while the client count is zero.'
+  context: 'Pre-ruled decisions (operator-ratified in reviewer session 2026-07-24; land them, do not relitigate): D-1 prefix placement: routers declare resource-local prefixes (''/tickets'', ''/reviews''); create_app() mounts them via include_router(..., prefix=''/api/v1''). The version lives in exactly one place. D-2 enum single-sourcing: schema fields with a closed value set are annotated with the canonical StrEnum directly (e.g. status: TicketStatus). Presenters stop calling .value - they pass the enum member and pydantic serialises. No parallel API enum is defined for any field; if a field''s backing type is not a StrEnum, halt and flag rather than inventing one. A duplicated enum is a maintained copy on a drift timer. D-3 contract visibility: the OpenAPI document must publish allowed values for every enum-typed field - this is the point of the ticket and a test proves it. D-4 spine legality: atlas.api importing atlas.core and atlas.verification is legal (api is top of spine); lint-imports remains the arbiter and no contract edits belong in this ticket. Canonical enum homes: atlas/core/models/ticket.py (TicketStatus, TicketType), atlas/core/enums.py (RiskLevel), and the verification enums backing verdict/check_type/check status - locate them, do not redefine them.'
+  status: done
+  ticket_type: feature
+  risk_level: low
+  priority: 50
+  relevant_docs:
+  - docs/planning/inbox/processed/inbox-stub-api-v1-typed-enums.md
+  acceptance_criteria:
+  - All routes serve under /api/v1/...; requests to the former unversioned paths return 404, asserted by test.
+  - The executable route inventory test covers the new paths and passes; no registered operation lacks a test.
+  - Every closed-value schema field is typed with its canonical StrEnum; no enum .value serialisation remains in atlas/api/presenters.py for those fields.
+  - A test asserts the OpenAPI schema publishes the enum members for status, ticket_type, risk_level, verdict and check_type.
+  - A test asserts an invalid status query parameter is still rejected with 422 under the new typing.
+  non_goals:
+  - 'No new endpoints. No pagination, filtering, health routes or error-model work. No back-compatibility for the old unversioned paths: no redirects, no dual registration. No new enum types - this ticket reuses canonical domain StrEnums and never defines an API-side copy. No changes to atlas/orchestration, atlas/storage or domain models.'
+  implementation_notes: []
+  test_requirements:
+  - Fixture-driven, ATLAS_LIVE_TESTS=0; seeded defects use assert 1 == 2 (B011); enumeration pins unchanged.
+  documentation_requirements: []
+  definition_of_done:
+  - All acceptance criteria evidenced by named tests; full gate sweep green; diff limited to atlas/api/ and tests/ (plus docs/atlas/operator-api.md only if a stated endpoint path there must change with the code); PR title carries the ticket key.
+  estimated_effort: null
+  external_linear_id: 2b408d0d-a7d4-4ab8-afe1-3209aa78b3b4
+  external_github_issue_id: null
+  tags: []
+  component: api
+  linear_synced_at: null
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-07-24T10:52:28.471770Z'
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-24T10:52:28.471770Z'
+  source_anchor: docs/planning/inbox/processed/inbox-stub-api-v1-typed-enums.md#api-contract-apiv1-prefix-and-canonical-strenum-response-schemas
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-24T10:16:42.554092Z'
+  updated_at: '2026-07-24T10:16:42.554092Z'
+  completed_at: null
+- id: 5c468311-1abc-4d92-adaf-a20861e0b8b5
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 5bd967eb-98c0-42a6-bec3-042a34145078
+  key: ATLAS-195
+  title: CLI disposition path for a stale proposed PlanRun
+  objective: Give the operator a sanctioned way to reject a proposed PlanRun that has gone stale, so a stranded proposal never requires one-shot incident code to clear.
+  context: 'Proposed by the ATLAS-029M agent and hit twice in one session: AT-5 staleness fires in run_apply BEFORE the confirm/decision callback, so a stale proposed PlanRun can never reach the reject path that would finalise it to REJECTED. PlanRun bede6227 (2026-07-08) sat stranded and had to be dispositioned by hard-coded repository code under gate amendment A-6. Pre-ruled decisions (operator-ratified in reviewer session 2026-07-24; land them, do not relitigate): D-1 the new path preserves explicit operator intent - it never disposes a run implicitly as a side effect of another command. D-2 the ticket must define and document inbox-stub retirement semantics for this path: apply.py currently retires stubs on BOTH applied and rejected outcomes because both mean ''considered''. Staleness arguably means the proposal was never evaluated on its merits, so the reviewer''s non-binding view is that stale-rejection should NOT retire stubs; the agent proposes the rule with its failure modes at the plan gate, and the chosen rule is documented in the owning canonical doc in the same change. D-3 no change to AT-5 staleness detection itself, and no automatic re-planning.'
+  status: done
+  ticket_type: feature
+  risk_level: low
+  priority: 50
+  relevant_docs:
+  - docs/planning/inbox/processed/inbox-stub-stale-planrun-disposition.md
+  acceptance_criteria:
+  - A stale proposed PlanRun can be dispositioned to rejected through the CLI with explicit operator intent, evidenced by a fixture test that reproduces the AT-5 stranding first.
+  - The chosen stub-retirement rule is enforced by test in both directions and documented in the owning canonical doc in the same change.
+  - A non-stale proposed run is unaffected by the new path; the normal apply flow is unchanged.
+  non_goals:
+  - No change to staleness detection or the apply sequence. No automatic disposition of stale runs. No bulk/sweep disposition of historical runs. No re-planning trigger.
+  implementation_notes: []
+  test_requirements:
+  - Fixture-driven; ATLAS_LIVE_TESTS=0; seeded defects use assert 1 == 2 (B011).
+  documentation_requirements: []
+  definition_of_done:
+  - All acceptance criteria evidenced by named tests; full gate sweep green; PR title carries the ticket key.
+  estimated_effort: null
+  external_linear_id: b310e189-df0c-415f-9d0c-be0345495847
+  external_github_issue_id: null
+  tags: []
+  component: planning
+  linear_synced_at: null
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-07-24T11:00:16.053563Z'
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: '2026-07-24T11:00:16.053563Z'
+  source_anchor: docs/planning/inbox/processed/inbox-stub-stale-planrun-disposition.md#cli-disposition-path-for-a-stale-proposed-planrun
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-24T10:16:42.554092Z'
+  updated_at: '2026-07-24T10:16:42.554092Z'
+  completed_at: null
+- id: a73dbca3-f3a8-4726-b7c8-6efeaabb49e5
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: aa0a9535-cf03-4a01-a6d3-313520606d0d
+  key: ATLAS-196
+  title: 'Anchor-integrity sensor: store and render source_anchors must resolve'
+  objective: 'Make dangling source_anchors detectable before a plan run fails on them: every anchor recorded in the store and the planning renders must resolve to a heading in the corpus at HEAD.'
+  context: 'ATLAS-031M repaired four store anchors that had silently died - the Phase 9 closure PR renamed a roadmap heading, and ATLAS-192''s record anchored to README.md, which is not in the section 2.1 planner corpus (_ROOT_DOCS in atlas/planning/ingestion.py). Neither was detectable until `atlas plan --stubs-only` failed gate 4 on the backlog echo, blocking all minting until repaired. Gate 4 is the enforcement point but it fires only at plan time, so a heading rename between plan runs snaps pins invisibly. Pre-ruled decisions (operator-ratified in reviewer session 2026-07-24; land them, do not relitigate): D-1 the check reuses the existing anchor machinery (atlas.core.anchors parse_headings/slugify and the corpus definition in atlas/planning/ingestion.py) and never reimplements slugging or corpus rules. D-2 an anchor naming a document outside the indexed input set is a distinct finding from an anchor naming an indexed document with no matching heading - both fail, with different codes. D-3 the sensor''s home (doc-linter check family versus a standalone CI step) is proposed at the plan gate, with the deciding constraint that it must run without a database when reading renders.'
+  status: planned
+  ticket_type: tech_debt
+  risk_level: low
+  priority: 50
+  relevant_docs:
+  - docs/planning/inbox/processed/inbox-stub-anchor-integrity-sensor.md
+  acceptance_criteria:
+  - The sensor passes on the current tree.
+  - 'Seeded fixtures prove it bites: an anchor to a renamed heading fires; an anchor to a document outside the indexed input set fires with the distinct code.'
+  - The exact four anchors ATLAS-031M repaired are reproduced as a regression fixture and fire before repair.
+  non_goals:
+  - No repairs of live data - the sensor reports. No changes to gate 4, the corpus definition (_ROOT_DOCS) or the slug algorithm. No new anchor syntax.
+  implementation_notes: []
+  test_requirements:
+  - Fixture-driven; ATLAS_LIVE_TESTS=0; seeded defects use assert 1 == 2 (B011).
+  documentation_requirements: []
+  definition_of_done:
+  - All acceptance criteria evidenced by named tests; full gate sweep green; PR title carries the ticket key.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags: []
+  component: tooling
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/inbox-stub-anchor-integrity-sensor.md#anchor-integrity-sensor-store-and-render-sourceanchors-must-resolve
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-24T13:21:40.255739Z'
+  updated_at: '2026-07-24T13:21:40.255739Z'
+  completed_at: null
+- id: 78522b3a-fb37-46a0-9ddf-6fdda6484080
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 86fe8167-7b99-45fd-ac96-3d0f4d3a0f53
+  key: ATLAS-197
+  title: Enforce the API no-logic rule mechanically in the architecture test
+  objective: 'Turn the operator-ratified route rule into a sensor: a route dependency in atlas/api/ makes exactly one service or repository call, so coordination cannot creep into the HTTP adapter unnoticed.'
+  context: 'The rule is canonical in docs/atlas/operator-api.md (D-2): ''The API contains no logic: a route dependency makes exactly one service or repository call, then presents. Anything requiring more than one call, a branch on domain state, or cross-layer assembly moves to atlas.orchestration.'' A documented rule with no sensor is a wish; get_ticket_board() in atlas/api/dependencies.py already branches on repo selection, which is the first millimetre of the leak the rule exists to prevent. Pre-ruled decisions (operator-ratified in reviewer session 2026-07-24; land them, do not relitigate): D-1 the check is AST-level in tests/test_api_architecture.py, following the existing test_cli_remains_a_thin_presentation_layer pattern in tests/test_import_linter_contract.py. D-2 the sensor must demonstrably fire: a seeded second service call in a route dependency fails it, reproduced as a permanent guard test. D-3 if an existing dependency function violates the rule, the plan gate decides - either the ticket includes moving it to atlas.orchestration, or it is carved out with a named follow-up; the agent proposes and does not decide silently. RATIFIED CARVE-OUT (operator ruling, ATLAS-033M gate OP-1; land it, do not relitigate): docs/atlas/operator-api.md records that the ticket board''s optional `status` query parameter selecting between `list_by_status` and `list`, and the count route''s single `count` call, are transport-level operation selections, not domain decisions. The sensor MUST allow parameter-driven selection between repository operations on the same resource. It must still fire on genuine coordination: two different services or repositories called in one dependency, a branch on domain state (status values, verdicts, readiness), or cross-layer assembly. A sensor that cannot distinguish these two cases is not ready — state how yours does at the plan gate.'
+  status: planned
+  ticket_type: tech_debt
+  risk_level: low
+  priority: 50
+  relevant_docs:
+  - docs/planning/inbox/processed/inbox-stub-api-one-call-route-sensor.md
+  acceptance_criteria:
+  - The sensor passes on the current tree (after any carve-out or move approved at the plan gate).
+  - The sensor demonstrably fires on a seeded extra service call in a route dependency, reproduced as a permanent guard test.
+  - The rule's canonical wording in docs/atlas/operator-api.md is cited in the test docstring.
+  - 'The carve-out is proven both ways: the existing get_ticket_board parameter-driven selection passes, while a seeded dependency calling two different repositories, and one branching on a domain status value, both fire.'
+  non_goals:
+  - No new endpoints or behaviour changes. No refactor of atlas/orchestration. No import-linter contract changes.
+  implementation_notes: []
+  test_requirements:
+  - AST-based, fixture-free where possible; ATLAS_LIVE_TESTS=0; seeded defects use assert 1 == 2 (B011).
+  documentation_requirements: []
+  definition_of_done:
+  - All acceptance criteria evidenced by named tests; full gate sweep green; PR title carries the ticket key.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags: []
+  component: api
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/inbox-stub-api-one-call-route-sensor.md#enforce-the-api-no-logic-rule-mechanically-in-the-architecture-test
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-24T13:21:40.255739Z'
+  updated_at: '2026-07-24T13:21:40.255739Z'
+  completed_at: null
+- id: 2fab98ba-1dff-4085-85a8-ab6350a3bb93
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: aa0a9535-cf03-4a01-a6d3-313520606d0d
+  key: ATLAS-198
+  title: 'Doc-linter v3: PATH and PHASE documentation-integrity checks'
+  objective: 'Extend atlas/tools/doc_linter.py with two check families that make documentation integrity executable: PATH (backticked repository-path references in active canonical docs must resolve) and PHASE (phase-status consistency between the roadmap, closure reports and ROADMAP.md).'
+  context: 'The v2 LINK check validates only relative .md link targets, which is how README.md''s dead backticked path `tools/run_planner.py` survived nine phases until ATLAS-192 removed it by hand. v3 closes that class. Pre-ruled decisions (operator-ratified in reviewer session 2026-07-24; land them, do not relitigate): D-1 PATH: backticked spans that parse as repository paths must resolve at HEAD. The heuristic and its carve-outs (module dotted paths, command lines, glob patterns, docs/archive/, the inbox carve-outs the LEGACY check established) are proposed at the plan gate; default constraint is fail closed on anything that parses as a path, with an explicit carve-out list rather than cleverness. BINDING CARVE-OUT, not open to proposal: files under docs/closure/ are terminal records and are fully exempt from PATH - they legitimately reference retired artefacts (phase-2-closure-report.md records the retired run_planner.py harness), the same semantics as roadmap ''Retired:'' lines. PHASE still reads docs/closure/; only PATH exempts it. D-2 PHASE: every roadmap phase section marked CLOSED has a closure report under docs/closure/, every closure report has a roadmap section marked CLOSED, and ROADMAP.md''s current-phase claim names a phase section that exists. Parse anchors (what counts as a phase heading, a status line, how fractional phases such as 2.5/3.5 map to filenames, and that smoke-b reports are not phase closures) are proposed at the plan gate; an unrecognised status line fails closed with a PHS code. D-3 house conventions: follow the existing Finding dataclass, check-function and finding-code patterns (PTH00x / PHS00x continuing JSN00x / GEN001). Validators return findings and never raise. The Phase 10 roadmap section now exists (ATLAS-034M, #238) with ''Status: IN PROGRESS.'', so the PHASE check has a live in-progress section as well as nine closed ones to reason about; an in-progress phase has no closure report and must not be treated as a violation.'
+  status: planned
+  ticket_type: feature
+  risk_level: medium
+  priority: 50
+  relevant_docs:
+  - docs/planning/inbox/processed/inbox-stub-doc-linter-v3-integrity.md
+  acceptance_criteria:
+  - '`uv run python -m atlas.tools.doc_linter` exits 0 on the current tree; any true findings beyond seeded fixtures are reported as follow-ups, never fixed in this diff.'
+  - 'Negative fixtures prove each new code bites: a backticked path to a missing file fires PATH; a CLOSED phase without a closure report fires PHASE; a closure report without a CLOSED section fires PHASE; an unrecognised status line fails closed.'
+  - 'The originating incident is pinned: a fixture doc containing a backticked tools/run_planner.py reference fires PATH.'
+  - 'The terminal-record carve-out is proven both ways: identical dead-path content does NOT fire under a simulated docs/closure/ and DOES fire outside it - the carve-out is directory-scoped, never a global suppression.'
+  - Existing check families produce byte-identical findings on the existing fixtures.
+  non_goals:
+  - 'No repairs: the linter reports; repairing drift is a separate ticket (the ATLAS-4/ATLAS-5 split). No changes to existing check families beyond what registering the new ones requires. No CI workflow changes - the linter already runs via pre-commit. No fragment/anchor validation (deferred to the heading-anchor index).'
+  implementation_notes: []
+  test_requirements:
+  - Fixture-based negative tests in the established style; ATLAS_LIVE_TESTS=0; seeded defects use assert 1 == 2 (B011).
+  documentation_requirements: []
+  definition_of_done:
+  - All acceptance criteria evidenced by named tests; full gate sweep green; PR title carries the ticket key.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags: []
+  component: tooling
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/inbox-stub-doc-linter-v3-integrity.md#doc-linter-v3-path-and-phase-documentation-integrity-checks
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-24T13:21:40.255739Z'
+  updated_at: '2026-07-24T13:21:40.255739Z'
   completed_at: null
