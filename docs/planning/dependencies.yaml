@@ -1,8 +1,8 @@
 # Render written only by `atlas apply` (ADR-0006/0007); do not hand-edit.
-# plan_run_id: 2cdad1a4-383b-4abb-9a5d-4a128c54c4a5
-# prompt_version: stubs-only
-# ticket_key_high_water: 178
-# epic_key_high_water: 11
+# plan_run_id: a435456d-cd11-5ca7-a125-6ae02f5d95f7
+# prompt_version: key-reconciliation-render-v1
+# ticket_key_high_water: 192
+# epic_key_high_water: 12
 dependencies:
 - id: 1d4aafed-6d6a-4f61-97d9-5af5c9a4f88e
   source_ticket_id: 06325eba-2b26-4118-bb92-fab6f4eeaed7

@@ -137,13 +137,37 @@ def test_non_positive_count_rejected(db: Database, count: int) -> None:
     assert repo.high_water_marks() == {}
 
 
+def test_advance_to_is_monotonic_idempotent_and_transactional(db: Database) -> None:
+    repo = KeyCounterRepo(db)
+    assert repo.advance_to("ATLAS", 192) == 192
+    assert repo.advance_to("ATLAS", 192) == 192
+    assert repo.advance_to("ATLAS", 178) == 192
+    assert repo.high_water_marks() == {"ATLAS": 192}
+
+
+def test_advance_to_rejects_negative_mark(db: Database) -> None:
+    repo = KeyCounterRepo(db)
+    with pytest.raises(KeyCounterError, match="non-negative"):
+        repo.advance_to("ATLAS", -1)
+    assert repo.high_water_marks() == {}
+
+
 # --- append-only surface (no out-of-band mutator) ---------------------------
 
 
 def test_surface_is_read_and_reserve_only() -> None:
-    assert public_methods(KeyCounterRepo) == {"high_water_marks", "reserve"}
+    assert public_methods(KeyCounterRepo) == {
+        "advance_to",
+        "high_water_marks",
+        "reserve",
+    }
 
 
 def test_reserve_takes_a_caller_supplied_session() -> None:
     parameters = list(inspect.signature(KeyCounterRepo.reserve).parameters)
     assert parameters == ["self", "session", "prefix", "count"]
+
+
+def test_advance_to_owns_its_transaction() -> None:
+    parameters = list(inspect.signature(KeyCounterRepo.advance_to).parameters)
+    assert parameters == ["self", "prefix", "high_water"]

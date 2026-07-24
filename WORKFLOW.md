@@ -118,6 +118,10 @@ Ticket description:
 No description provided — treat this as a blocker (see Hard limits).
 {% endif %}
 
+## Ticket key identity
+
+Store keys are issued only by the key authority (KeyCounterRepo high-water marks). No work — hand-dispatched or agent-dispatched — may claim a key ahead of the counter. Hand-dispatched work either mints first (inbox stub → atlas apply → assigned key) or carries a non-key meta label. A claimed-ahead key is a namespace incident requiring counter reconciliation; ATLAS-111..146 and ATLAS-187..192 are the recorded costs.
+
 ## Integration discipline
 
 Immediately before opening the PR, before every push (including the initial
