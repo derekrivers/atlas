@@ -1,8 +1,8 @@
 # Render written only by `atlas apply` (ADR-0006/0007); do not hand-edit.
-# plan_run_id: 2cdad1a4-383b-4abb-9a5d-4a128c54c4a5
-# prompt_version: stubs-only
-# ticket_key_high_water: 178
-# epic_key_high_water: 11
+# plan_run_id: a435456d-cd11-5ca7-a125-6ae02f5d95f7
+# prompt_version: key-reconciliation-render-v1
+# ticket_key_high_water: 192
+# epic_key_high_water: 12
 epics:
 - id: aa0a9535-cf03-4a01-a6d3-313520606d0d
   product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
@@ -168,4 +168,19 @@ epics:
   created_by_id: planner
   created_at: '2026-07-04T18:05:38.538342Z'
   updated_at: '2026-07-04T18:05:38.538342Z'
+  completed_at: null
+- id: 86fe8167-7b99-45fd-ac96-3d0f4d3a0f53
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  key: ATLAS-E12
+  title: Operator API (Read Surface)
+  description: Read-only HTTP projection surface over the review queue and ticket board; opened retroactively by the ATLAS-187..192 key reconciliation.
+  objective: Read-only HTTP projection surface over the review queue and ticket board; opened retroactively by the ATLAS-187..192 key reconciliation.
+  status: in_progress
+  priority: 0
+  risk_level: low
+  source_anchor: ROADMAP.md#roadmapmd
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-24T07:43:43.817537Z'
+  updated_at: '2026-07-24T07:43:43.817537Z'
   completed_at: null

@@ -115,6 +115,24 @@ def test_six_done_records_have_exact_pr_mapping_and_no_linear_join(
     assert check_planning_renders(repo) == []
 
 
+def test_mint_proposal_order_pins_key_to_pr_mapping() -> None:
+    proposal = _mint_proposal()
+    assert [ticket.title for ticket in proposal.tickets] == [
+        "atlas.api skeleton and base infrastructure",
+        "review-queue coordinating service",
+        "GET /api/reviews endpoint",
+        "GET /api/tickets board endpoint",
+        "extract HTTP presenters",
+        "reconcile root documentation pointers",
+    ]
+    assert [
+        f"PR #{pr}" in ticket.context
+        for pr, ticket in zip(
+            (223, 224, 225, 226, 227, 228), proposal.tickets, strict=True
+        )
+    ] == [True] * 6
+
+
 def test_running_twice_leaves_identical_store_and_renders(tmp_path: Path) -> None:
     repo = fixture_repo(tmp_path)
     database = fixture_database(tmp_path)
