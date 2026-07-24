@@ -46,6 +46,7 @@ Root control documents:
 Strategy and specification (`docs/atlas/`):
 
 - `sample-plan.md`
+- `implementation-roadmap.md`
 
 Playbooks (generated canonical docs):
 
@@ -58,6 +59,38 @@ Decisions (`docs/decisions/`):
 - ADR-0001 Test decision
 """
 
+GOOD_ROOT_ROADMAP = """\
+# ROADMAP.md
+
+The canonical roadmap lives at
+`docs/atlas/implementation-roadmap.md`. Phase closure is recorded
+in `docs/closure/` — Phase 1 is closed.
+
+Current work: the operator API phase — a read-only HTTP projection surface.
+"""
+
+GOOD_IMPLEMENTATION_ROADMAP = """\
+# Atlas Implementation Roadmap
+
+# Phase 1 — Knowledge Core
+
+Milestone test: closed.
+
+---
+
+# Phase 2 — Operator API
+
+Status: IN PROGRESS.
+
+Milestone test: underway.
+"""
+
+GOOD_PHASE_1_CLOSURE = """\
+# Phase 1 Closure Report — Knowledge Core
+
+Status: CLOSED, 2026-06-12.
+"""
+
 
 def write(root: Path, rel: str, text: str) -> Path:
     path = root / rel
@@ -68,10 +101,13 @@ def write(root: Path, rel: str, text: str) -> Path:
 
 def build_good_repo(root: Path) -> None:
     write(root, "README.md", "# Test repo\n")
+    write(root, "ROADMAP.md", GOOD_ROOT_ROADMAP)
     write(root, "docs/MANIFEST.md", GOOD_MANIFEST)
     write(root, "docs/atlas/sample-plan.md", "# Sample plan\n\nIntent.\n")
+    write(root, "docs/atlas/implementation-roadmap.md", GOOD_IMPLEMENTATION_ROADMAP)
     write(root, "docs/architecture/arch.md", "# Architecture\n\nDetail.\n")
     write(root, "docs/decisions/0001-test-decision.md", GOOD_ADR)
+    write(root, "docs/closure/phase-1-closure-report.md", GOOD_PHASE_1_CLOSURE)
     write(root, "docs/planning/.gitkeep", "")
     # Linter v2's regeneration check (GEN001) requires real generated
     # schemas in any clean fixture repo.
@@ -163,8 +199,9 @@ def test_manifest_check_recurses_into_canonical_subdirectories(
         tmp_path,
         "docs/MANIFEST.md",
         manifest.replace(
-            "- `sample-plan.md`\n\n",
-            f"- `sample-plan.md`\n- `{nested}` — fixture nested canonical doc\n\n",
+            "- `implementation-roadmap.md`\n\n",
+            "- `implementation-roadmap.md`\n"
+            f"- `{nested}` — fixture nested canonical doc\n\n",
         ),
     )
 

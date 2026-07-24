@@ -1,4 +1,4 @@
-"""Doc linter (v1: ATLAS-4; v2: ATLAS-16): mechanical validation of the
+"""Doc linter (v1: ATLAS-4; v2: ATLAS-16; v3: ATLAS-198): mechanical validation of the
 canonical doc set.
 
 Checks, per the implementation roadmap and ADR-0006/0007:
@@ -51,6 +51,18 @@ v2 (ATLAS-16) adds, per knowledge-core.md "JSON Schema generation":
 - GENERATED: docs/generated/schemas/ must byte-match an in-memory
   regeneration from the canonical models (GEN001) — the hand-edit ban on
   docs/generated/ is mechanical, same rule as docs/planning/.
+- PATH: backticked spans in active docs that parse as concrete repository
+  paths must resolve at HEAD (PTH001). Explicit carve-outs cover module dotted
+  paths, command lines, glob or templated paths, docs/archive/, docs/planning/
+  inbox records, and local/runtime paths rather than committed repo paths.
+  docs/closure/ files are terminal records and are fully exempt as PATH
+  sources; PHASE still reads them.
+- PHASE: roadmap phase closure state is mechanically consistent between
+  ROADMAP.md, docs/atlas/implementation-roadmap.md, and docs/closure/. CLOSED
+  phases require phase closure reports (PHS001), phase closure reports require
+  CLOSED roadmap phase sections (PHS002), ROADMAP.md's current-work claim must
+  name an existing phase section (PHS003), and unrecognised roadmap status
+  lines fail closed (PHS004).
 
 Exit status: 0 when the doc set is clean, 1 when there are findings.
 This linter only reports; repairing drift is ATLAS-5.
@@ -71,9 +83,12 @@ from typing import Any
 from atlas.tools.schemas_export import SCHEMAS_DIR, expected_schemas
 
 MANIFEST_PATH = "docs/MANIFEST.md"
+ROOT_ROADMAP_PATH = "ROADMAP.md"
+IMPLEMENTATION_ROADMAP_PATH = "docs/atlas/implementation-roadmap.md"
 DECISIONS_DIR = "docs/decisions"
 PLANNING_DIR = "docs/planning"
 ARCHIVE_DIR = "docs/archive"
+CLOSURE_DIR = "docs/closure"
 # The committed follow-up inbox (ADR-0007 carve-out): operator-authored stub
 # names live in a different namespace from retired canonical-doc generations,
 # so the legacy-NAME check exempts them (D-1/D-2). Every other check still runs.
@@ -106,7 +121,45 @@ ADR_TITLE_RE = re.compile(r"^# ADR-(\d{4}): \S")
 ADR_REF_RE = re.compile(r"^\s*-\s+ADR-(\d{4})\b")
 
 BACKTICK_RE = re.compile(r"`([^`]+)`")
-PATH_SUFFIXES = (".md", ".j2", ".py", ".yaml", ".yml", ".mmd", ".html")
+PATH_SUFFIXES = (
+    ".cfg",
+    ".db",
+    ".html",
+    ".j2",
+    ".json",
+    ".md",
+    ".mmd",
+    ".py",
+    ".sh",
+    ".toml",
+    ".txt",
+    ".yaml",
+    ".yml",
+)
+REPO_PATH_PREFIXES = (
+    ".github/",
+    "atlas/",
+    "docs/",
+    "scripts/",
+    "tests/",
+    "tools/",
+)
+PATH_TARGET_CARVEOUT_PREFIXES = (
+    f"{ARCHIVE_DIR}/",
+    f"{INBOX_DIR}/",
+    ".atlas/",
+    "docs/domain/",
+)
+BARE_PATH_DIRS = (
+    "",
+    "docs/atlas",
+    "docs/architecture",
+    "docs/runbooks",
+    "docs/planning",
+    "docs/closure",
+    "docs/generated/schemas",
+    "atlas/planning/prompts",
+)
 
 LEGACY_RES = (
     re.compile(r"-v[123]\.md\b", re.IGNORECASE),
@@ -117,6 +170,25 @@ LEGACY_RES = (
 RETIREMENT_RE = re.compile(r"retired", re.IGNORECASE)
 
 MD_LINK_RE = re.compile(r"\[[^\]]*\]\(([^)\s]+)\)")
+MODULE_PATH_RE = re.compile(r"^[A-Za-z_][\w]*(\.[A-Za-z_][\w]*)+$")
+PHASE_HEADING_RE = re.compile(
+    r"^# Phase (?P<phase>\d+(?:\.\d+)?)\s+[—-]\s+(?P<title>.+)$"
+)
+FRACTIONAL_PHASE_RE = re.compile(r"^Phase (?P<phase>\d+\.\d+)\b")
+PHASE_STATUS_RE = re.compile(r"^Status:\s*(?P<status>.+)$")
+ROOT_CLOSED_RANGE_RE = re.compile(
+    r"\bPhases?\s+(?P<start>\d+(?:\.\d+)?)\s+through\s+"
+    r"(?P<end>\d+(?:\.\d+)?)\s+are\s+closed\b",
+    re.IGNORECASE,
+)
+ROOT_CLOSED_SINGLE_RE = re.compile(
+    r"\bPhase\s+(?P<phase>\d+(?:\.\d+)?)\s+(?:is\s+)?closed\b",
+    re.IGNORECASE,
+)
+CURRENT_WORK_RE = re.compile(r"^Current work:\s*(?P<claim>.+)$", re.IGNORECASE)
+PHASE_CLOSURE_REPORT_RE = re.compile(
+    r"^phase-(?P<phase>\d+(?:\.\d+)?)-closure-report\.md$"
+)
 
 # ``.codex`` holds vendored Symphony skill files (e.g. .codex/skills/linear),
 # which follow Symphony's own conventions and are adapted-not-forked (ATLAS-136
@@ -136,6 +208,15 @@ class Finding:
         return f"{self.path}:{self.line}: {self.code} {self.message}"
 
 
+@dataclass(frozen=True)
+class PhaseSection:
+    phase: str
+    line: int
+    title: str
+    status: str | None = None
+    status_line: int | None = None
+
+
 def _rel(root: Path, path: Path) -> str:
     return path.relative_to(root).as_posix()
 
@@ -147,6 +228,17 @@ def _active_md_files(root: Path) -> list[Path]:
         rel = _rel(root, path)
         parts = set(Path(rel).parts)
         if parts & SKIP_DIRS or rel.startswith(f"{ARCHIVE_DIR}/"):
+            continue
+        files.append(path)
+    return files
+
+
+def _path_checked_md_files(root: Path) -> list[Path]:
+    """Active Markdown files whose backticked path spans are live references."""
+    files = []
+    for path in _active_md_files(root):
+        rel = _rel(root, path)
+        if rel.startswith(f"{CLOSURE_DIR}/") or rel.startswith(f"{INBOX_DIR}/"):
             continue
         files.append(path)
     return files
@@ -411,6 +503,76 @@ def check_intra_doc_links(root: Path) -> list[Finding]:
     return findings
 
 
+def _is_path_candidate(token: str) -> bool:
+    if (
+        not token
+        or any(char.isspace() for char in token)
+        or "://" in token
+        or token.startswith(("#", "$", "~/"))
+        or token in PATH_SUFFIXES
+        or any(char in token for char in "*?[]{}<>")
+        or "…" in token
+        or token.startswith("docs/...")
+        or token.startswith("inbox-stub-")
+    ):
+        return False
+    target = token.lstrip("/").split("#", 1)[0]
+    if not target or target in PATH_SUFFIXES:
+        return False
+    if any(target.startswith(prefix) for prefix in PATH_TARGET_CARVEOUT_PREFIXES):
+        return False
+    if token.startswith("/") and not target.startswith(REPO_PATH_PREFIXES):
+        return False
+    if target == ".app.json":
+        return False
+    if MODULE_PATH_RE.match(target) and not target.endswith(PATH_SUFFIXES):
+        return False
+    if target.startswith(REPO_PATH_PREFIXES):
+        return True
+    return target.endswith(PATH_SUFFIXES)
+
+
+def _resolve_path_reference(root: Path, source: Path, token: str) -> Path | None:
+    target = token.lstrip("/").split("#", 1)[0]
+    if target.startswith(("./", "../")):
+        candidate = (source.parent / target).resolve()
+        try:
+            candidate.relative_to(root)
+        except ValueError:
+            return None
+        return candidate if candidate.exists() else None
+    if "/" in target:
+        candidate = root / target
+        return candidate if candidate.exists() else None
+    for directory in BARE_PATH_DIRS:
+        candidate = root / directory / target if directory else root / target
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def check_backticked_paths(root: Path) -> list[Finding]:
+    findings = []
+    for path in _path_checked_md_files(root):
+        rel = _rel(root, path)
+        lines = _blank_fenced_blocks(path.read_text(encoding="utf-8").splitlines())
+        for lineno, line in enumerate(lines, start=1):
+            for match in BACKTICK_RE.finditer(line):
+                token = match.group(1).strip()
+                if not _is_path_candidate(token):
+                    continue
+                if _resolve_path_reference(root, path, token) is None:
+                    findings.append(
+                        Finding(
+                            rel,
+                            lineno,
+                            "PTH001",
+                            f"backticked repository path does not resolve: {token}",
+                        )
+                    )
+    return findings
+
+
 def check_planning_renders(root: Path) -> list[Finding]:
     planning = root / PLANNING_DIR
     if not planning.is_dir():
@@ -440,6 +602,211 @@ def check_planning_renders(root: Path) -> list[Finding]:
                     "ADR-0007)",
                 )
             )
+    return findings
+
+
+def _recognise_phase_status(raw: str) -> str | None:
+    status = re.sub(r"[*`]", "", raw).strip().upper().rstrip(".")
+    if status.startswith("CLOSED"):
+        return "CLOSED"
+    if status.startswith("IN PROGRESS"):
+        return "IN PROGRESS"
+    return None
+
+
+def _parse_implementation_phases(
+    root: Path,
+) -> tuple[dict[str, PhaseSection], list[Finding]]:
+    roadmap = root / IMPLEMENTATION_ROADMAP_PATH
+    if not roadmap.is_file():
+        return (
+            {},
+            [
+                Finding(
+                    IMPLEMENTATION_ROADMAP_PATH,
+                    1,
+                    "PHS003",
+                    "implementation roadmap is missing",
+                )
+            ],
+        )
+    sections: dict[str, PhaseSection] = {}
+    findings = []
+    current: str | None = None
+    for lineno, line in enumerate(
+        roadmap.read_text(encoding="utf-8").splitlines(), start=1
+    ):
+        heading = PHASE_HEADING_RE.match(line)
+        fractional = FRACTIONAL_PHASE_RE.match(line)
+        if heading:
+            phase = heading.group("phase")
+            sections[phase] = PhaseSection(
+                phase=phase, line=lineno, title=heading.group("title").strip()
+            )
+            current = phase
+            continue
+        if fractional and fractional.group("phase") not in sections:
+            phase = fractional.group("phase")
+            sections[phase] = PhaseSection(
+                phase=phase,
+                line=lineno,
+                title=line.removesuffix(":").strip(),
+            )
+            current = phase
+            continue
+        status = PHASE_STATUS_RE.match(line)
+        if not status or current is None:
+            continue
+        recognised = _recognise_phase_status(status.group("status"))
+        if recognised is None:
+            findings.append(
+                Finding(
+                    IMPLEMENTATION_ROADMAP_PATH,
+                    lineno,
+                    "PHS004",
+                    f"unrecognised roadmap phase status: {status.group('status')}",
+                )
+            )
+            continue
+        section = sections[current]
+        sections[current] = PhaseSection(
+            phase=section.phase,
+            line=section.line,
+            title=section.title,
+            status=recognised,
+            status_line=lineno,
+        )
+    return sections, findings
+
+
+def _phase_number(phase: str) -> float:
+    return float(phase)
+
+
+def _closed_phases_from_root_roadmap(
+    root: Path, sections: dict[str, PhaseSection]
+) -> tuple[set[str], Finding | None]:
+    roadmap = root / ROOT_ROADMAP_PATH
+    if not roadmap.is_file():
+        return set(), Finding(ROOT_ROADMAP_PATH, 1, "PHS003", "ROADMAP.md is missing")
+    closed: set[str] = set()
+    for line in roadmap.read_text(encoding="utf-8").splitlines():
+        for match in ROOT_CLOSED_RANGE_RE.finditer(line):
+            start = _phase_number(match.group("start"))
+            end = _phase_number(match.group("end"))
+            closed.update(
+                phase
+                for phase in sections
+                if start <= _phase_number(phase) <= end and phase != "0"
+            )
+        for match in ROOT_CLOSED_SINGLE_RE.finditer(line):
+            phase = match.group("phase")
+            if phase in sections:
+                closed.add(phase)
+    return closed, None
+
+
+def _phase_closure_reports(root: Path) -> dict[str, str]:
+    closure = root / CLOSURE_DIR
+    if not closure.is_dir():
+        return {}
+    reports = {}
+    for path in sorted(closure.glob("*.md")):
+        match = PHASE_CLOSURE_REPORT_RE.match(path.name)
+        if match:
+            reports[match.group("phase")] = _rel(root, path)
+    return reports
+
+
+def _current_work_claim(root: Path) -> tuple[int, str] | None:
+    roadmap = root / ROOT_ROADMAP_PATH
+    if not roadmap.is_file():
+        return None
+    for lineno, line in enumerate(
+        roadmap.read_text(encoding="utf-8").splitlines(), start=1
+    ):
+        match = CURRENT_WORK_RE.match(line)
+        if match:
+            return lineno, match.group("claim")
+    return None
+
+
+def _normalised_words(text: str) -> set[str]:
+    return {
+        word
+        for word in re.findall(r"[A-Za-z0-9]+", text.lower())
+        if word not in {"a", "an", "and", "current", "phase", "the", "work"}
+    }
+
+
+def _current_claim_matches_section(
+    claim: str, sections: dict[str, PhaseSection]
+) -> bool:
+    explicit_phase = re.search(r"\bPhase\s+(?P<phase>\d+(?:\.\d+)?)\b", claim)
+    if explicit_phase:
+        return explicit_phase.group("phase") in sections
+    summary = claim.split("—", 1)[0].split("-", 1)[0]
+    words = _normalised_words(summary)
+    if not words:
+        return False
+    return any(
+        words <= _normalised_words(section.title) for section in sections.values()
+    )
+
+
+def check_phase_status(root: Path) -> list[Finding]:
+    sections, findings = _parse_implementation_phases(root)
+    root_closed, root_finding = _closed_phases_from_root_roadmap(root, sections)
+    if root_finding is not None:
+        findings.append(root_finding)
+    closed = root_closed | {
+        phase for phase, section in sections.items() if section.status == "CLOSED"
+    }
+    reports = _phase_closure_reports(root)
+
+    for phase in sorted(closed, key=_phase_number):
+        if phase not in reports:
+            section = sections[phase]
+            findings.append(
+                Finding(
+                    IMPLEMENTATION_ROADMAP_PATH,
+                    section.status_line or section.line,
+                    "PHS001",
+                    f"Phase {phase} is CLOSED but {CLOSURE_DIR}/"
+                    f"phase-{phase}-closure-report.md is missing",
+                )
+            )
+    for phase, path in sorted(reports.items(), key=lambda item: _phase_number(item[0])):
+        if phase not in closed:
+            findings.append(
+                Finding(
+                    path,
+                    1,
+                    "PHS002",
+                    "phase closure report has no CLOSED roadmap section: "
+                    f"Phase {phase}",
+                )
+            )
+
+    claim = _current_work_claim(root)
+    if claim is None:
+        findings.append(
+            Finding(
+                ROOT_ROADMAP_PATH,
+                1,
+                "PHS003",
+                "ROADMAP.md has no current-work phase claim",
+            )
+        )
+    elif not _current_claim_matches_section(claim[1], sections):
+        findings.append(
+            Finding(
+                ROOT_ROADMAP_PATH,
+                claim[0],
+                "PHS003",
+                f"current-work phase claim names no roadmap phase section: {claim[1]}",
+            )
+        )
     return findings
 
 
@@ -781,7 +1148,9 @@ def lint_repo(root: Path) -> list[Finding]:
         *check_manifest(root),
         *check_legacy_names(root),
         *check_intra_doc_links(root),
+        *check_backticked_paths(root),
         *check_planning_renders(root),
+        *check_phase_status(root),
         *check_json_examples(root),
         *check_generated_schemas(root),
     ]
@@ -790,7 +1159,8 @@ def lint_repo(root: Path) -> list[Finding]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        prog="doc_linter", description="Atlas doc linter (ATLAS-4 v1, ATLAS-16 v2)"
+        prog="doc_linter",
+        description="Atlas doc linter (ATLAS-4 v1, ATLAS-16 v2, ATLAS-198 v3)",
     )
     parser.add_argument(
         "--repo", default=".", help="repository root (default: current directory)"
