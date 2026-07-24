@@ -494,6 +494,54 @@ on ATLAS-63, historical_lessons [] → ['30cec9d0-…'] across a single
 operator promotion, with the full Docs→Delivery→Lessons→Docs loop closed
 by the linear-sync playbook (#213).
 
+---
+
+# Phase 10 — Operator API (Read Surface)
+
+Design doc: docs/atlas/operator-api.md.
+Status: IN PROGRESS.
+
+## Epic: Operator API (Read Surface) (E12)
+
+Delivered E12 tickets (store keys):
+
+```
+ATLAS-187 atlas.api skeleton and base infrastructure                        — #223
+ATLAS-188 review-queue coordinating service                                 — #224
+ATLAS-189 GET /api/reviews endpoint                                         — #225
+ATLAS-190 GET /api/tickets board endpoint                                   — #226
+ATLAS-191 extract HTTP presenters                                           — #227
+ATLAS-192 reconcile root documentation pointers                             — #228
+ATLAS-194 API contract: /api/v1 prefix and canonical StrEnum response schemas — #236
+```
+
+Phase 10 cross-epic deliveries (delivered):
+
+```
+ATLAS-193 Forbidden import contracts: storage must not import the Linear
+          or GitHub adapters — E5, Layer Spine — #233
+ATLAS-195 CLI disposition path for a stale proposed PlanRun
+          — E3, Generative Planning with Deterministic Reconciliation — #235
+```
+
+Carried in from Phase 9 (closure §6):
+
+```
+Roadmap/store ticket-identity collision — operational half delivered via
+ATLAS-029M (#229): the key counter was reconciled through ATLAS-192,
+delivered records were backfilled, and the binding key-authority rule landed
+in WORKFLOW.md under "Ticket key identity". The roadmap-namespace ruling for
+the ATLAS-91/97/107 collision class remains open — not in scope of the
+read-surface epic.
+
+ATLAS-107 Code-quality debt register — deferred — not in scope of the
+read-surface epic.
+```
+
+Milestone test: an operator can read the review queue and ticket board over
+HTTP at /api/v1 with no direct database or CLI query, with the API
+contains-no-logic rule mechanically enforced.
+
 # Critical Success Criteria
 
 1. Atlas generates its own backlog through plan/apply with stable identity
