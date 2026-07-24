@@ -2,6 +2,9 @@
 
 from pydantic import BaseModel
 
+from atlas.core.enums import EvidenceStatus, RiskLevel
+from atlas.core.models import TicketStatus, TicketType, VerificationCheckType
+
 
 class TicketCountResponse(BaseModel):
     """Number of tickets in the Atlas store."""
@@ -14,10 +17,10 @@ class TicketBoardItemSchema(BaseModel):
 
     key: str
     title: str
-    status: str
-    ticket_type: str
+    status: TicketStatus
+    ticket_type: TicketType
     priority: int
-    risk_level: str
+    risk_level: RiskLevel
 
 
 class TicketBoardResponse(BaseModel):
@@ -29,8 +32,8 @@ class TicketBoardResponse(BaseModel):
 class ReviewCheckSchema(BaseModel):
     """One persisted verification outcome in a review item."""
 
-    check_type: str
-    status: str
+    check_type: VerificationCheckType
+    status: EvidenceStatus
 
 
 class ReviewQueueItemSchema(BaseModel):
@@ -38,9 +41,9 @@ class ReviewQueueItemSchema(BaseModel):
 
     key: str
     title: str
-    status: str
-    ticket_type: str
-    verdict: str
+    status: TicketStatus
+    ticket_type: TicketType
+    verdict: EvidenceStatus
     checks: list[ReviewCheckSchema]
     has_system_evidence: bool
     has_pr_merged_evidence: bool

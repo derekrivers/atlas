@@ -1,5 +1,6 @@
 """Unit tests for pure HTTP response presenters."""
 
+from pathlib import Path
 from uuid import uuid4
 
 from test_apply import _ticket_model_kwargs
@@ -12,7 +13,7 @@ from atlas.api.schemas import (
     TicketBoardItemSchema,
     TicketBoardResponse,
 )
-from atlas.core.enums import EvidenceStatus
+from atlas.core.enums import EvidenceStatus, RiskLevel
 from atlas.core.models import (
     Ticket,
     TicketStatus,
@@ -20,6 +21,14 @@ from atlas.core.models import (
     VerificationCheckType,
 )
 from atlas.orchestration import ReviewCheckState, TicketReviewState
+
+
+def test_presenters_do_not_serialise_enums_to_values() -> None:
+    source = (
+        Path(__file__).resolve().parents[1] / "atlas" / "api" / "presenters.py"
+    ).read_text(encoding="utf-8")
+
+    assert ".value" not in source
 
 
 def test_present_ticket_board_sorts_by_key_and_maps_tickets() -> None:
@@ -57,18 +66,18 @@ def test_present_ticket_board_sorts_by_key_and_maps_tickets() -> None:
             TicketBoardItemSchema(
                 key="ATLAS-190",
                 title="Earlier ticket",
-                status="in_progress",
-                ticket_type="bug",
+                status=TicketStatus.IN_PROGRESS,
+                ticket_type=TicketType.BUG,
                 priority=10,
-                risk_level="medium",
+                risk_level=RiskLevel.MEDIUM,
             ),
             TicketBoardItemSchema(
                 key="ATLAS-192",
                 title="Later ticket",
-                status=later.status.value,
-                ticket_type=later.ticket_type.value,
+                status=later.status,
+                ticket_type=later.ticket_type,
                 priority=20,
-                risk_level="high",
+                risk_level=RiskLevel.HIGH,
             ),
         ]
     )
@@ -98,13 +107,13 @@ def test_present_review_queue_maps_nested_review_state() -> None:
             ReviewQueueItemSchema(
                 key="ATLAS-191",
                 title="Extract HTTP presenters",
-                status="review_required",
-                ticket_type="tech_debt",
-                verdict="failed",
+                status=TicketStatus.REVIEW_REQUIRED,
+                ticket_type=TicketType.TECH_DEBT,
+                verdict=EvidenceStatus.FAILED,
                 checks=[
                     ReviewCheckSchema(
-                        check_type="tests",
-                        status="passed",
+                        check_type=VerificationCheckType.TESTS,
+                        status=EvidenceStatus.PASSED,
                     )
                 ],
                 has_system_evidence=True,
