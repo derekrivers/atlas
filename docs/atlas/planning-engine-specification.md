@@ -203,18 +203,32 @@ failure would (§6).
 6. Finalize the `PlanRun` to `status: applied` with `approved_by: operator`
    — the single permitted finalising transition (§6).
 
-Rejecting a diff sets `status: rejected`. Apply is the only legal writer of
-planning renders (ADR-0006); the doc linter flags out-of-band edits.
+Rejecting a diff through the normal confirmation gate sets `status: rejected`.
+Apply is the only legal writer of planning renders (ADR-0006);
+the doc linter flags out-of-band edits.
 
-On both the applied and the rejected outcome — both mean "considered" —
-apply retires the inbox stubs that fed the plan to
+`atlas apply --reject-stale` is the sanctioned stale-proposal disposition
+path. It loads the latest proposed `PlanRun`, runs the same step 2 fresh
+input SHA comparison, refuses if the proposal is still current, and
+finalises a stale proposal to `status: rejected` only after explicit
+operator confirmation (`--yes` or an interactive `y`). It does not display
+or reconcile the stale diff, assign keys, write renders, retire inbox
+stubs, or trigger a new plan.
+
+On both the normal applied and the normal rejected outcome — both mean
+"considered" — apply retires the inbox stubs that fed the plan to
 `docs/planning/inbox/processed/`. A missing source is an idempotent
 already-moved skip, but a present active stub whose same-named
 `processed/` target already exists is a typed apply-time refusal before
 confirmation, symmetric with the ATLAS-159 plan-time collision check. The
 staleness re-check in step 2 folds the inbox AND the `processed/` subdir
 into the fresh SHA set (ATLAS-159), so a stub change — active or retired
-— between plan and apply reads as stale. The mechanism is owned by
+— between plan and apply reads as stale. Stale rejection is different:
+because the proposal was not considered on its merits, the current inbox
+tree is left untouched. The accepted failure mode is that an active stub
+remains admitted input and may be re-read by the next fresh plan unless the
+operator removes or edits it deliberately; a stub already moved or deleted
+also stays in its current tree state. The mechanism is owned by
 pm-engine-and-linear-sync.md "Follow-up ingestion".
 
 Atomicity. The DB commit (counter increment + backlog rows + the

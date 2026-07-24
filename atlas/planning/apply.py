@@ -50,6 +50,7 @@ from enum import Enum, auto
 from pathlib import Path, PurePosixPath
 from uuid import UUID, uuid4
 
+from atlas.core.anchors import SourceDocument
 from atlas.core.enums import ActorType
 from atlas.core.models import (
     Epic,
@@ -139,6 +140,10 @@ class StalePlanError(ApplyError):
     """Fresh ingestion no longer matches the recorded input_doc_shas."""
 
 
+class NonStalePlanError(ApplyError):
+    """The proposed PlanRun is current, so the stale-only disposition refuses."""
+
+
 class UnsupportedDiffError(ApplyError):
     """The diff contains MODIFY entries; MODIFY-apply is a follow-up."""
 
@@ -219,6 +224,18 @@ class ApplyResult:
         return tuple(e for e in self.diff.entries if is_existing_dependency_add(e))
 
 
+@dataclass(frozen=True)
+class FreshPlanInputs:
+    inbox_documents: list[SourceDocument]
+    shas: dict[str, str]
+
+
+@dataclass(frozen=True)
+class StalePlanDispositionResult:
+    outcome: str  # "rejected" | "unconfirmed"
+    plan_run: PlanRun
+
+
 def _planning_dir(repo_root: Path, planning_dir: Path | None) -> Path:
     return planning_dir if planning_dir is not None else repo_root / "docs" / "planning"
 
@@ -247,6 +264,19 @@ def _recover_pending_renders(planning_dir: Path, database: Database) -> None:
             os.replace(temp, planning_dir / final_name)  # finish the move
         else:
             temp.unlink()  # commit never happened: discard
+
+
+def _fresh_plan_inputs(repo_root: Path, inbox_dir: Path) -> FreshPlanInputs:
+    fresh_inbox = collect_inbox_documents(repo_root, inbox_dir)
+    fresh_documents = (
+        collect_input_documents(repo_root)
+        + fresh_inbox
+        + collect_processed_documents(repo_root, inbox_dir)
+    )
+    return FreshPlanInputs(
+        inbox_documents=fresh_inbox,
+        shas={doc.path: doc.sha for doc in fresh_documents},
+    )
 
 
 def _materialise(
@@ -449,14 +479,8 @@ def run_apply(
     # a narrower fresh set would always mismatch and refuse every apply. An
     # added, removed, or changed stub — active or retired — between plan and
     # apply correctly reads as stale.
-    fresh_inbox = collect_inbox_documents(repo_root, inbox_dir)
-    fresh_documents = (
-        collect_input_documents(repo_root)
-        + fresh_inbox
-        + collect_processed_documents(repo_root, inbox_dir)
-    )
-    fresh_shas = {doc.path: doc.sha for doc in fresh_documents}
-    if fresh_shas != plan_run.input_doc_shas:
+    fresh_inputs = _fresh_plan_inputs(repo_root, inbox_dir)
+    if fresh_inputs.shas != plan_run.input_doc_shas:
         raise StalePlanError(
             "the plan is stale: input documents changed since planning; "
             "re-run `atlas plan` (AT-5)"
@@ -482,7 +506,10 @@ def run_apply(
     # this diff collapse model re-emissions exactly as plan's did, and puts
     # the collapse lines in front of the operator at the confirm gate.
     promotion_indices = frozenset(
-        range(len(proposal.tickets) - len(fresh_inbox), len(proposal.tickets))
+        range(
+            len(proposal.tickets) - len(fresh_inputs.inbox_documents),
+            len(proposal.tickets),
+        )
     )
     diff = reconcile(
         proposal,
@@ -623,3 +650,38 @@ def run_apply(
     # Retire the inbox stubs that fed this plan, post-commit (ATLAS-122).
     _retire_inbox_stubs(repo_root, inbox_dir, plan_run)
     return ApplyResult("applied", applied, diff, add_only=add_only)
+
+
+def run_reject_stale_plan(
+    *,
+    repo_root: Path,
+    database: Database,
+    confirm: Callable[[PlanRun], bool],
+    inbox_dir: Path = DEFAULT_INBOX_DIR,
+) -> StalePlanDispositionResult:
+    """Explicitly reject the latest proposed PlanRun, but only if AT-5 says
+    it is stale.
+
+    This is a disposition path, not an alternate apply sequence: it performs
+    the same fresh input SHA comparison as ``run_apply``, refuses a current
+    proposal, asks for explicit operator intent through ``confirm``, finalises
+    stale proposals to ``rejected``, and writes no renders or inbox moves.
+    """
+    plan_run = PlanRunRepo(database).latest_proposed()
+    if plan_run is None:
+        raise NoProposedPlanError(
+            "no proposed PlanRun to reject; run `atlas plan` first"
+        )
+
+    fresh_inputs = _fresh_plan_inputs(repo_root, inbox_dir)
+    if fresh_inputs.shas == plan_run.input_doc_shas:
+        raise NonStalePlanError(
+            "the latest proposed PlanRun is not stale; use `atlas apply` to "
+            "confirm or reject it through the normal apply flow"
+        )
+
+    if not confirm(plan_run):
+        return StalePlanDispositionResult("unconfirmed", plan_run)
+
+    rejected = PlanRunRepo(database).finalize(plan_run.id, PlanRunStatus.REJECTED)
+    return StalePlanDispositionResult("rejected", rejected)

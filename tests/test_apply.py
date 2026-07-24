@@ -49,10 +49,12 @@ from atlas.planning.apply import (
     ApplyResult,
     ConflictRefusalError,
     InboxRetirementCollisionError,
+    NonStalePlanError,
     NoProposedPlanError,
     StalePlanError,
     UnsupportedDiffError,
     run_apply,
+    run_reject_stale_plan,
 )
 from atlas.planning.ingestion import (
     InboxCollisionError,
@@ -259,6 +261,85 @@ def test_stale_plan_refused_before_confirmation(tmp_path: Path) -> None:
         )
     assert confirmed_called is False  # never confirmed a stale plan
     assert PlanRunRepo(database).latest_proposed() is not None  # untouched
+
+
+def test_stale_plan_can_be_explicitly_rejected_after_at5_strands_it(
+    tmp_path: Path,
+) -> None:
+    # ATLAS-195: normal apply still hits AT-5 before the decision callback, then
+    # the stale-only disposition path gives the operator an explicit rejection
+    # without changing the apply sequence.
+    repo, database = plan_then(tmp_path)
+    reject_called = False
+
+    def reject_at_apply(diff: object) -> ApplyDecision:
+        nonlocal reject_called
+        reject_called = True
+        return ApplyDecision.REJECTED
+
+    (repo / "PRODUCT.md").write_text("# Atlas\n\n## Vision\n\nChanged.\n", "utf-8")
+    git(repo, "commit", "-aqm", "stale input")
+
+    with pytest.raises(StalePlanError):
+        run_apply(
+            repo_root=repo,
+            database=database,
+            now=APPLY_NOW,
+            confirm=reject_at_apply,
+            planning_dir=planning_dir(tmp_path),
+        )
+    assert reject_called is False
+    assert PlanRunRepo(database).latest_proposed() is not None
+
+    result = run_reject_stale_plan(
+        repo_root=repo,
+        database=database,
+        confirm=lambda plan_run: True,
+    )
+
+    assert result.outcome == "rejected"
+    (plan_run,) = PlanRunRepo(database).list()
+    assert plan_run.status is PlanRunStatus.REJECTED
+    assert PlanRunRepo(database).latest_proposed() is None
+    assert not planning_dir(tmp_path).exists()
+
+
+def test_stale_disposition_requires_explicit_confirmation(tmp_path: Path) -> None:
+    # ATLAS-195 D-1: even after AT-5 proves staleness, the disposition path never
+    # finalises implicitly.
+    repo, database = plan_then(tmp_path)
+    (repo / "PRODUCT.md").write_text("# Atlas\n\n## Vision\n\nChanged.\n", "utf-8")
+    git(repo, "commit", "-aqm", "stale input")
+
+    result = run_reject_stale_plan(
+        repo_root=repo,
+        database=database,
+        confirm=lambda plan_run: False,
+    )
+
+    assert result.outcome == "unconfirmed"
+    assert PlanRunRepo(database).list()[0].status is PlanRunStatus.PROPOSED
+
+
+def test_stale_disposition_refuses_a_current_plan_so_normal_apply_is_unchanged(
+    tmp_path: Path,
+) -> None:
+    # ATLAS-195: the disposition path is stale-only. A current proposal remains
+    # available for the unchanged normal apply flow.
+    repo, database = plan_then(tmp_path)
+
+    with pytest.raises(NonStalePlanError):
+        run_reject_stale_plan(
+            repo_root=repo,
+            database=database,
+            confirm=lambda plan_run: True,
+        )
+    assert PlanRunRepo(database).latest_proposed() is not None
+
+    result = apply(repo, database, planning_dir(tmp_path))
+
+    assert result.outcome == "applied"
+    assert PlanRunRepo(database).list()[0].status is PlanRunStatus.APPLIED
 
 
 # --- AT-4: frozen CONFLICT not applied --------------------------------------
@@ -634,6 +715,27 @@ def test_apply_retires_stubs_on_rejected(tmp_path: Path) -> None:
     assert result.outcome == "rejected"
     assert not (inbox / "ATLAS-9-1.md").exists()
     assert (inbox / "processed" / "ATLAS-9-1.md").exists()
+
+
+def test_stale_rejection_keeps_inbox_stubs_active(tmp_path: Path) -> None:
+    # ATLAS-195: stale rejection is not a merits decision on the proposal, so it
+    # finalises only the PlanRun. The admitted follow-up remains active for the
+    # next fresh plan instead of being retired as "considered."
+    repo, database = plan_then_with_inbox(tmp_path)
+    inbox = repo / "docs" / "planning" / "inbox"
+    (repo / "PRODUCT.md").write_text("# Atlas\n\n## Vision\n\nChanged.\n", "utf-8")
+    git(repo, "commit", "-aqm", "stale input")
+
+    result = run_reject_stale_plan(
+        repo_root=repo,
+        database=database,
+        confirm=lambda plan_run: True,
+    )
+
+    assert result.outcome == "rejected"
+    assert (inbox / "ATLAS-9-1.md").exists()
+    assert not (inbox / "processed" / "ATLAS-9-1.md").exists()
+    assert PlanRunRepo(database).list()[0].status is PlanRunStatus.REJECTED
 
 
 def test_retire_is_idempotent_for_already_moved_source(tmp_path: Path) -> None:
