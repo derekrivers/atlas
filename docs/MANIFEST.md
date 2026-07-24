@@ -43,6 +43,8 @@ Phase design documents (one per engine; phase-readiness rule below):
   evaluation semantics, verdicts
 - `docs/atlas/learning-system.md` — Phase 9: extraction triggers,
   promotion workflow, playbooks
+- `docs/atlas/operator-api.md` — Phase 10: read-only HTTP contract, route
+  boundaries, binding constraints, deferred capabilities
 
 Playbooks (generated canonical docs):
 
