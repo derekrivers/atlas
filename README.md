@@ -17,4 +17,3 @@ Start here:
 Canonical deep docs live in `docs/atlas/` and `docs/architecture/`.
 Governing decisions live in `docs/decisions/`.
 The planner prompt template lives in `atlas/planning/prompts/`.
-A dry-run harness for the planner lives in `tools/run_planner.py`.
