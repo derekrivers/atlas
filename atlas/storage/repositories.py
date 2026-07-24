@@ -36,6 +36,7 @@ from atlas.core.models import (
     ContextPack,
     DebtItem,
     Epic,
+    EpicStatus,
     Evidence,
     Lesson,
     PlanRun,
@@ -247,6 +248,15 @@ class EpicRepo(_KeyedRepo[Epic]):
     def __init__(self, db: Database) -> None:
         super().__init__(db, Epic, EpicRow)
 
+    def set_status(self, key: str, status: EpicStatus) -> Epic:
+        """Set an epic's operational lifecycle status without changing its key."""
+        with self._db.session() as session, session.begin():
+            row = session.scalars(sa.select(EpicRow).where(EpicRow.key == key)).first()
+            if row is None:
+                raise ValueError(f"no epic with key {key!r}")
+            row.status = status.value
+            return self._to_model(row)
+
 
 class TicketRepo(_KeyedRepo[Ticket]):
     def __init__(self, db: Database) -> None:
@@ -257,6 +267,28 @@ class TicketRepo(_KeyedRepo[Ticket]):
         with self._db.session() as session:
             statement = sa.select(sa.func.count()).select_from(TicketRow)
             return int(session.scalar(statement))
+
+    def reconcile_claimed_record(self, ticket: Ticket) -> Ticket:
+        """Replace one already-minted ticket with an exact incident record.
+
+        ATLAS-029M uses this only after normal apply has atomically assigned the
+        claimed key and epic relationship. Identity must already match; the
+        method cannot insert a key or retarget an existing key to another row.
+        Repeating the same replacement is an exact no-op at the model boundary.
+        """
+        _reject_naive(ticket)
+        with self._db.session() as session, session.begin():
+            row = session.scalars(
+                sa.select(TicketRow).where(TicketRow.key == ticket.key)
+            ).first()
+            if row is None:
+                raise TicketNotFoundError(f"no ticket with key {ticket.key!r}")
+            if row.id != ticket.id:
+                raise ValueError(
+                    f"ticket {ticket.key!r} has id {row.id}, not {ticket.id}"
+                )
+            session.merge(self._to_row(ticket))
+        return ticket
 
     def list_by_status(self, status: TicketStatus) -> list[Ticket]:
         """Return tickets in ``status``, ordered by key."""
@@ -1166,7 +1198,8 @@ class KeyCounterRepo:
     """Monotonic per-prefix key counter (ATLAS-25, knowledge-core "Key
     counter"; contract data-model §3.12).
 
-    Surface is exactly read + reserve. No setter and no decrement exist,
+    Surface is read + reserve + incident-only monotonic advance. No setter and
+    no decrement exist,
     so no-reuse — including across archived keys — is structural: the
     value only advances and is decoupled from backlog membership (AT-6).
 
@@ -1186,6 +1219,26 @@ class KeyCounterRepo:
         with self._db.session() as session:
             rows = session.scalars(sa.select(KeyCounterRow))
             return {row.prefix: row.high_water for row in rows}
+
+    def advance_to(self, prefix: str, high_water: int) -> int:
+        """Raise ``prefix`` to at least ``high_water`` in one transaction.
+
+        This is the namespace-incident repair seam (ATLAS-029M), not ordinary
+        allocation: it never returns assigned keys and never lowers a counter.
+        Repeating the same repair is therefore an exact no-op.
+        """
+        if high_water < 0:
+            raise KeyCounterError(
+                f"advance_to requires a non-negative high-water mark; got {high_water}"
+            )
+        with self._db.session() as session, session.begin():
+            row = session.get(KeyCounterRow, prefix)
+            if row is None:
+                session.add(KeyCounterRow(prefix=prefix, high_water=high_water))
+                return high_water
+            if row.high_water < high_water:
+                row.high_water = high_water
+            return row.high_water
 
     def reserve(self, session: Session, prefix: str, count: int) -> Reservation:
         """Advance `prefix` by `count` inside the caller's transaction and
