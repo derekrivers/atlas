@@ -182,7 +182,13 @@ Pull-based, consistent with ADR-0008 (no webhooks before hosting):
    `updated_at` remains ahead of `linear_synced_at`, so the next tick retries
    the full embed until the render condition clears. A first-sync degraded
    create records only the Linear join key, never the cursor, so the retry
-   updates the same issue instead of creating a duplicate.
+   updates the same issue instead of creating a duplicate. On first sync only,
+   immediately after a successful `create_issue`, the PM Engine resolves the
+   Linear workflow state mapped to the ticket's current Atlas status and asserts
+   it via `LinearClient.set_state`; the update path never writes workflow state.
+   If that create-time assertion fails after the issue is created, the join key
+   remains recorded and the tick logs/counts the failed assertion as an anomaly,
+   so the issue is never orphaned.
 
    `atlas pm sync --repair-packs` adds an operator-invoked, one-shot repair
    sweep after this normal push pass. The sweep examines only descriptions
@@ -198,11 +204,11 @@ Pull-based, consistent with ADR-0008 (no webhooks before hosting):
    PM Engine's dedicated state-write path (`LinearClient.set_state`). The
    definition (title/labels and human-readable summary) is already mirrored by
    step 2's push, which is reused — step 3 adds only the state transition. The
-   PM Engine is the **sole writer** into this state, and this is the **one
-   sanctioned outbound status write** Atlas → Linear: it cannot carry a
-   definition field, the general allow-list is unchanged (`stateId` stays out
-   of it), and every other status write Atlas → Linear remains mechanically
-   impossible. The write is Linear-only: Atlas's own `ready_for_agent` is
+   PM Engine is the **sole writer** into this state. Like the create-time
+   assertion, it cannot carry a definition field, the general allow-list is
+   unchanged (`stateId` stays out of it), and definition updates remain
+   mechanically unable to write workflow state. The write is Linear-only:
+   Atlas's own `ready_for_agent` is
    reconciled by step 1's next pull, which keeps the pull the single writer of
    Atlas status (one tick of latency). The write is idempotent — setting the
    already-set state is a no-op — so an interrupted or repeated promotion is

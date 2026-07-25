@@ -58,10 +58,11 @@ the ticket's rendered context pack at push time, still the same single owned
 key) and the client rejects any unowned key. So a
 Linear-side edit of an Atlas-owned field is never pulled, and an Atlas status
 change is mechanically incapable of being pushed *through the definition path*.
-The one exception is step 3's readiness promotion, which writes the ``Ready
-for Agent`` state through the dedicated :meth:`LinearClient.set_state` (never
-the definition push) and only that one state -- a narrow, sanctioned path that
-leaves ``OWNED_LINEAR_INPUT_KEYS`` unchanged.
+Sanctioned workflow writes go through :meth:`LinearClient.set_state` only:
+create-time state assertion for newly minted issues, readiness promotion,
+verified completion, and review-cycling's route to Needs Human. None of those
+adds ``stateId`` to the owned definition payload, and the update path never
+writes workflow state.
 
 Idempotency rests on the sync cursor ``Ticket.linear_synced_at``: a definition
 is re-pushed only while ``updated_at > linear_synced_at`` (or it has never
@@ -351,7 +352,10 @@ class SyncResult:
     stranded in ``blocked`` with its structural blockers cleared across N ticks
     increments it once, not once per tick. Report-only, like ``dwell_breaches``;
     no route counter accompanies it because the stale-block pass never moves a
-    ticket. ``completed`` (ATLAS-131) counts every ``set_state(Done)`` route this
+    ticket. Create-state assertion failures count as anomalies too: the issue is
+    already created and joined, so the tick logs the failed assertion and
+    continues without adding a DebtItem enum member. ``completed`` (ATLAS-131)
+    counts every ``set_state(Done)`` route this
     tick -- the verified-completion step moves a ``review_required`` ticket whose
     persisted verdict is PASSED to ``Done``. Like ``promoted`` and
     ``routed_to_human`` it counts route attempts: the route fires idempotently each
@@ -1098,6 +1102,7 @@ def _push(
     client: LinearClient,
     team_id: str,
     project_id: str,
+    status_map: LinearStatusMap,
     pack_inputs: _PackInputLoader,
     debt: DebtItemRepo,
     result: SyncResult,
@@ -1120,7 +1125,11 @@ def _push(
     a first-sync create places the issue in the configured Linear project so it is
     visible to Symphony's project-scoped poll. It is used ONLY on the create path
     (the project is set once, at creation); the ``update_issue`` re-push below never
-    carries it -- a project move is not a definition update."""
+    carries it -- a project move is not a definition update.
+
+    On first sync, creation also asserts the Linear workflow state mapped to the
+    ticket's current Atlas status. That assertion is create-only: updates never
+    write state, preserving Linear/operator ownership after the issue exists."""
 
     if ticket.status not in PUSHABLE_STATUSES:
         result.push_skipped += 1
@@ -1155,6 +1164,7 @@ def _push(
         # IS the unwidened definition_payload above.
         definition["description"] = embedded
     if ticket.external_linear_id is None:
+        target_state_id = status_map.state_id_for(ticket.status)
         # First sync: create the issue and write back the join key. A full embed
         # stamps immediately after the confirmed create to shrink the
         # non-idempotent create-retry window (tracked in
@@ -1180,6 +1190,37 @@ def _push(
         else:
             logger.info(
                 "linear-sync: created Linear issue %s for %s", issue.id, ticket.key
+            )
+        try:
+            client.set_state(issue.id, target_state_id)
+        except Exception as error:
+            result.anomalies_logged += 1
+            result.push_decisions.append(
+                SyncDecision(
+                    phase="push",
+                    ticket_key=ticket.key,
+                    outcome="state assertion failed",
+                    reason=(
+                        f"created Linear issue {issue.id} but could not assert "
+                        f"{ticket.status.value} state {target_state_id!r}: {error}"
+                    ),
+                )
+            )
+            logger.exception(
+                "linear-sync: created Linear issue %s for %s but failed to "
+                "assert mapped %s state %s; join key retained",
+                issue.id,
+                ticket.key,
+                ticket.status.value,
+                target_state_id,
+            )
+        else:
+            logger.info(
+                "linear-sync: asserted mapped %s state %s for new Linear issue %s (%s)",
+                ticket.status.value,
+                target_state_id,
+                issue.id,
+                ticket.key,
             )
         return issue.id
     # update_issue is idempotent, so a stamp lost to a crash only re-pushes the
@@ -1496,6 +1537,7 @@ def sync_tick(
             client,
             team_id,
             project_id,
+            status_map,
             pack_inputs,
             debt,
             result,
