@@ -10,6 +10,7 @@ from atlas.api.schemas import (
     ReviewQueueResponse,
     TicketBoardItemSchema,
     TicketBoardResponse,
+    TicketDetailResponse,
 )
 from atlas.core.models import Ticket
 from atlas.orchestration import TicketReviewState
@@ -30,6 +31,36 @@ def present_ticket_board(tickets: Sequence[Ticket]) -> TicketBoardResponse:
             )
             for ticket in ordered
         ]
+    )
+
+
+def present_ticket_detail(ticket: Ticket) -> TicketDetailResponse:
+    """Present one stored ticket without deriving cross-resource state."""
+    return TicketDetailResponse(
+        key=ticket.key,
+        title=ticket.title,
+        objective=ticket.objective,
+        context=ticket.context,
+        status=ticket.status,
+        ticket_type=ticket.ticket_type,
+        risk_level=ticket.risk_level,
+        priority=ticket.priority,
+        estimated_effort=ticket.estimated_effort,
+        relevant_docs=ticket.relevant_docs,
+        acceptance_criteria=ticket.acceptance_criteria,
+        non_goals=ticket.non_goals,
+        implementation_notes=ticket.implementation_notes,
+        test_requirements=ticket.test_requirements,
+        documentation_requirements=ticket.documentation_requirements,
+        definition_of_done=ticket.definition_of_done,
+        tags=ticket.tags,
+        component=ticket.component,
+        external_linear_id=ticket.external_linear_id,
+        external_github_issue_id=ticket.external_github_issue_id,
+        source_anchor=ticket.source_anchor,
+        created_at=ticket.created_at,
+        updated_at=ticket.updated_at,
+        completed_at=ticket.completed_at,
     )
 
 

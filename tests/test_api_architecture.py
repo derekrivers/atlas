@@ -161,6 +161,24 @@ def _is_none_presence_check(test: ast.expr, parameter_names: set[str]) -> bool:
     return (left_is_param and right_is_none) or (left_is_none and right_is_param)
 
 
+def _operation_result_names(
+    function: ast.FunctionDef | ast.AsyncFunctionDef,
+    calls: dict[int, _OperationCall],
+) -> set[str]:
+    """Names assigned directly from one lower-layer operation result."""
+    names: set[str] = set()
+    for node in ast.walk(function):
+        if (
+            isinstance(node, ast.Assign)
+            and len(node.targets) == 1
+            and isinstance(node.targets[0], ast.Name)
+            and isinstance(node.value, ast.Call)
+            and id(node.value) in calls
+        ):
+            names.add(node.targets[0].id)
+    return names
+
+
 def _operation_ids_in(
     nodes: ast.AST | list[ast.AST],
     calls: dict[int, _OperationCall],
@@ -265,11 +283,16 @@ def _api_no_logic_violations(path: Path, source: str) -> list[_ApiNoLogicViolati
         )
         branch_operation_ids: set[int] = set()
         branch_units: list[_OperationUnit] = []
+        presence_check_names = set(
+            _parameter_names(function)
+        ) | _operation_result_names(
+            function,
+            calls,
+        )
         for branch in (
             node for node in ast.walk(function) if isinstance(node, ast.If | ast.IfExp)
         ):
-            parameter_names = set(_parameter_names(function))
-            if not _is_none_presence_check(branch.test, parameter_names):
+            if not _is_none_presence_check(branch.test, presence_check_names):
                 violations.append(
                     _ApiNoLogicViolation(
                         path=path,
@@ -452,6 +475,42 @@ def test_api_no_logic_sensor_fires_on_seeded_extra_service_call() -> None:
             total = tickets.count()
             assert 1 == 2  # type: ignore[comparison-overlap]
             return present_ticket_board(selected)
+        """
+    )
+
+    assert any("must make exactly one" in violation.reason for violation in violations)
+
+
+def test_api_no_logic_sensor_allows_single_read_not_found_mapping() -> None:
+    """A keyed read may map its absent result to the transport-level 404."""
+    source = DEPENDENCIES_PATH.read_text(encoding="utf-8")
+    violations = [
+        violation
+        for violation in _api_no_logic_violations(DEPENDENCIES_PATH, source)
+        if violation.function_name == "get_ticket_detail"
+    ]
+
+    assert violations == []
+
+
+def test_api_no_logic_sensor_fires_on_seeded_ticket_detail_second_call() -> None:
+    violations = _dependency_violations_for(
+        """
+        from fastapi import HTTPException
+
+        from atlas.api.dependencies import TicketRepoDependency
+        from atlas.api.presenters import present_ticket_detail
+        from atlas.api.schemas import TicketDetailResponse
+
+        def get_seeded_ticket_detail(
+            key: str,
+            tickets: TicketRepoDependency,
+        ) -> TicketDetailResponse:
+            ticket = tickets.get_by_key(key)
+            tickets.count()
+            if ticket is None:
+                raise HTTPException(status_code=404)
+            return present_ticket_detail(ticket)
         """
     )
 

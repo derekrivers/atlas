@@ -4,10 +4,18 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import Depends, Request
+from fastapi import Depends, HTTPException, Request, status
 
-from atlas.api.presenters import present_review_queue, present_ticket_board
-from atlas.api.schemas import ReviewQueueResponse, TicketBoardResponse
+from atlas.api.presenters import (
+    present_review_queue,
+    present_ticket_board,
+    present_ticket_detail,
+)
+from atlas.api.schemas import (
+    ReviewQueueResponse,
+    TicketBoardResponse,
+    TicketDetailResponse,
+)
 from atlas.core.models import TicketStatus
 from atlas.orchestration import review_queue
 from atlas.storage import Database, TicketRepo
@@ -40,6 +48,26 @@ def get_ticket_board(
 
 
 TicketBoardDependency = Annotated[TicketBoardResponse, Depends(get_ticket_board)]
+
+
+def get_ticket_detail(
+    key: str,
+    tickets: TicketRepoDependency,
+) -> TicketDetailResponse:
+    """Read and serialise one ticket, mapping an absent key to HTTP 404."""
+    ticket = tickets.get_by_key(key)
+    if ticket is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Ticket {key} not found",
+        )
+    return present_ticket_detail(ticket)
+
+
+TicketDetailDependency = Annotated[
+    TicketDetailResponse,
+    Depends(get_ticket_detail),
+]
 
 
 def get_review_queue(database: DatabaseDependency) -> ReviewQueueResponse:
