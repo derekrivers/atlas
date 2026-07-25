@@ -11,9 +11,11 @@ from atlas.api.schemas import (
     TicketBoardItemSchema,
     TicketBoardResponse,
     TicketDetailResponse,
+    TicketEvidenceItemSchema,
+    TicketEvidenceResponse,
 )
 from atlas.core.models import Ticket
-from atlas.orchestration import TicketReviewState
+from atlas.orchestration import TicketEvidenceRecordState, TicketReviewState
 
 
 def present_ticket_board(tickets: Sequence[Ticket]) -> TicketBoardResponse:
@@ -61,6 +63,23 @@ def present_ticket_detail(ticket: Ticket) -> TicketDetailResponse:
         created_at=ticket.created_at,
         updated_at=ticket.updated_at,
         completed_at=ticket.completed_at,
+    )
+
+
+def present_ticket_evidence(
+    records: tuple[TicketEvidenceRecordState, ...],
+) -> TicketEvidenceResponse:
+    """Present one ticket's stored evidence without exposing raw payloads."""
+    return TicketEvidenceResponse(
+        evidence=[
+            TicketEvidenceItemSchema(
+                type=record.evidence_type,
+                tier=record.trust_level,
+                status=record.status,
+                has_system_pin_triple=record.has_system_pin_triple,
+            )
+            for record in records
+        ]
     )
 
 

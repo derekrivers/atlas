@@ -17,6 +17,10 @@ from atlas.orchestration.review_queue import (
     review_queue,
 )
 from atlas.orchestration.tick_config import build_tick_config
+from atlas.orchestration.ticket_evidence import (
+    TicketEvidenceRecordState,
+    ticket_evidence,
+)
 from atlas.orchestration.verify import VerifyResult, run_verify
 
 __all__ = [
@@ -25,6 +29,7 @@ __all__ = [
     "ContextNotFoundError",
     "PRContext",
     "ReviewCheckState",
+    "TicketEvidenceRecordState",
     "TicketReviewState",
     "VerifyResult",
     "build_tick_config",
@@ -34,4 +39,5 @@ __all__ = [
     "resolve_pr_context",
     "review_queue",
     "run_verify",
+    "ticket_evidence",
 ]

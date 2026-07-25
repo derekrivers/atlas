@@ -517,6 +517,32 @@ def test_api_no_logic_sensor_fires_on_seeded_ticket_detail_second_call() -> None
     assert any("must make exactly one" in violation.reason for violation in violations)
 
 
+def test_api_no_logic_sensor_fires_on_seeded_ticket_evidence_extra_call() -> None:
+    violations = _dependency_violations_for(
+        """
+        from fastapi import HTTPException
+
+        from atlas.api.dependencies import DatabaseDependency
+        from atlas.api.presenters import present_ticket_evidence
+        from atlas.api.schemas import TicketEvidenceResponse
+        from atlas.orchestration import review_queue, ticket_evidence
+
+        def get_seeded_ticket_evidence(
+            key: str,
+            database: DatabaseDependency,
+        ) -> TicketEvidenceResponse:
+            evidence = ticket_evidence(database, key)
+            review_queue(database)
+            assert 1 == 2  # type: ignore[comparison-overlap]
+            if evidence is None:
+                raise HTTPException(status_code=404)
+            return present_ticket_evidence(evidence)
+        """
+    )
+
+    assert any("must make exactly one" in violation.reason for violation in violations)
+
+
 def test_api_no_logic_sensor_fires_on_seeded_two_repositories() -> None:
     # Seeded red first with `assert 1 == 2` (B011); the wrong answer was
     # cross-repository assembly inside the API dependency.

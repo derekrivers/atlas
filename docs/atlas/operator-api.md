@@ -8,8 +8,9 @@ work that follows it.
 
 The operator API exposes Atlas operational state to a local operator through a
 small, versioned HTTP contract. Its current resources are the ticket board,
-ticket count, and review queue. It is a projection of existing state, not a new
-source of truth and not a second place to implement domain behaviour.
+ticket count, ticket detail, ticket evidence, and review queue. It is a
+projection of existing state, not a new source of truth and not a second place
+to implement domain behaviour.
 
 The operator API is a read-only projection surface in this phase. It serves GET endpoints only. Writeable actions are a future phase and do not begin until authentication, actor context, and a threat model land together in the same phase.
 
@@ -66,9 +67,11 @@ resource-local prefix:
 | GET    | `/api/v1/tickets`       | optional `status` query parameter | `TicketBoardResponse` |
 | GET    | `/api/v1/tickets/count` | none             | `TicketCountResponse`     |
 | GET    | `/api/v1/tickets/{key}` | ticket key       | `TicketDetailResponse`    |
+| GET    | `/api/v1/tickets/{key}/evidence` | ticket key | `TicketEvidenceResponse`  |
 | GET    | `/api/v1/reviews`       | none             | `ReviewQueueResponse`     |
 
 There are no other v1 routes in this phase. Ticket results are ordered by key.
+Ticket evidence results preserve the oldest-first order returned by storage.
 Review results preserve the order established by the orchestration operation.
 
 `GET /api/v1/tickets/{key}` returns the stored operator-facing definition and
@@ -76,11 +79,15 @@ execution state for one ticket. It is a single-repository projection over
 `TicketRepo.get_by_key`; it does not assemble evidence, verification,
 dependency, lesson, or epic state.
 
+`GET /api/v1/tickets/{key}/evidence` returns one ticket's stored evidence
+records with evidence type, trust tier, status, and a derived system pin-triple
+completeness flag; it never exposes raw evidence payloads.
+
 Closed-value response fields use the canonical domain `StrEnum` types directly:
-`TicketStatus`, `TicketType`, `RiskLevel`, `VerificationCheckType`, and
-`EvidenceStatus`. FastAPI's OpenAPI document publishes the members of those
-canonical enums as the allowed HTTP values; this contract was delivered by
-ATLAS-194.
+`TicketStatus`, `TicketType`, `RiskLevel`, `EvidenceType`, `ActorType`,
+`VerificationCheckType`, and `EvidenceStatus`. FastAPI's OpenAPI document
+publishes the members of those canonical enums as the allowed HTTP values; this
+contract was delivered by ATLAS-194 and extended by ATLAS-200.
 
 A keyed v1 resource that does not exist returns `404 Not Found` using FastAPI's
 native error body: `{"detail": "<Resource> <key> not found"}`. Collection routes
