@@ -461,6 +461,18 @@ def test_api_no_logic_sensor_allows_ticket_board_parameter_selection() -> None:
     assert violations == []
 
 
+def test_api_no_logic_sensor_allows_lessons_parameter_selection() -> None:
+    """Existing get_lessons may select list_by_status or list by parameter."""
+    source = DEPENDENCIES_PATH.read_text(encoding="utf-8")
+    violations = [
+        violation
+        for violation in _api_no_logic_violations(DEPENDENCIES_PATH, source)
+        if violation.function_name == "get_lessons"
+    ]
+
+    assert violations == []
+
+
 def test_api_no_logic_sensor_fires_on_seeded_extra_service_call() -> None:
     # Seeded red first with `assert 1 == 2` (B011); the wrong answer was a
     # dependency quietly making a second lower-layer operation call.
@@ -475,6 +487,34 @@ def test_api_no_logic_sensor_fires_on_seeded_extra_service_call() -> None:
             total = tickets.count()
             assert 1 == 2  # type: ignore[comparison-overlap]
             return present_ticket_board(selected)
+        """
+    )
+
+    assert any("must make exactly one" in violation.reason for violation in violations)
+
+
+def test_api_no_logic_sensor_fires_on_seeded_lessons_extra_call() -> None:
+    # Seeded red first with `assert 1 == 2` (B011); the wrong answer was a
+    # lessons dependency quietly making a second repository operation call.
+    violations = _dependency_violations_for(
+        """
+        from atlas.api.dependencies import LessonRepoDependency
+        from atlas.api.presenters import present_lessons
+        from atlas.api.schemas import LessonsResponse
+        from atlas.core.enums import EntityStatus
+
+        def get_seeded_lessons(
+            lessons: LessonRepoDependency,
+            status: EntityStatus | None = None,
+        ) -> LessonsResponse:
+            selected = (
+                lessons.list_by_status(status)
+                if status is not None
+                else lessons.list()
+            )
+            lessons.list_drafts()
+            assert 1 == 2  # type: ignore[comparison-overlap]
+            return present_lessons(selected)
         """
     )
 

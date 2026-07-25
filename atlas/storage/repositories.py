@@ -512,6 +512,16 @@ class LessonRepo(_Repo[Lesson]):
     def __init__(self, db: Database) -> None:
         super().__init__(db, Lesson, LessonRow)
 
+    def list_by_status(self, status: EntityStatus) -> list[Lesson]:
+        """Return lessons in ``status``, ordered by creation time."""
+        with self._db.session() as session:
+            rows = session.scalars(
+                sa.select(LessonRow)
+                .where(LessonRow.status == status.value)
+                .order_by(LessonRow.created_at, LessonRow.id)
+            )
+            return [self._to_model(row) for row in rows]
+
     def list_drafts(self) -> list[Lesson]:
         """Lessons waiting for the ADR-0009 operator promotion gate."""
         with self._db.session() as session:
