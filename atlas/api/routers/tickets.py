@@ -5,12 +5,14 @@ from fastapi import APIRouter
 from atlas.api.dependencies import (
     TicketBoardDependency,
     TicketDetailDependency,
+    TicketEvidenceDependency,
     TicketRepoDependency,
 )
 from atlas.api.schemas import (
     TicketBoardResponse,
     TicketCountResponse,
     TicketDetailResponse,
+    TicketEvidenceResponse,
 )
 
 router = APIRouter(prefix="/tickets", tags=["tickets"])
@@ -29,3 +31,10 @@ def ticket_count(tickets: TicketRepoDependency) -> TicketCountResponse:
 @router.get("/{key}", response_model=TicketDetailResponse)
 def ticket_detail(detail: TicketDetailDependency) -> TicketDetailResponse:
     return detail
+
+
+@router.get("/{key}/evidence", response_model=TicketEvidenceResponse)
+def ticket_evidence_records(
+    evidence: TicketEvidenceDependency,
+) -> TicketEvidenceResponse:
+    return evidence

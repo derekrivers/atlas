@@ -21,10 +21,13 @@ from atlas.api.schemas import (
     ReviewQueueItemSchema,
     TicketBoardItemSchema,
     TicketDetailResponse,
+    TicketEvidenceItemSchema,
 )
-from atlas.core.enums import EvidenceStatus, RiskLevel
+from atlas.core.enums import ActorType, EvidenceStatus, RiskLevel
 from atlas.core.models import (
     Epic,
+    Evidence,
+    EvidenceType,
     Ticket,
     TicketStatus,
     TicketType,
@@ -34,6 +37,7 @@ from atlas.core.models import (
 from atlas.storage import (
     Database,
     EpicRepo,
+    EvidenceRepo,
     ProductRepo,
     TicketRepo,
     VerificationCheckRepo,
@@ -64,12 +68,18 @@ def _assert_missing_ticket(response: Any) -> None:
     assert response.json() == {"detail": "Ticket ATLAS-MISSING not found"}
 
 
+def _assert_missing_ticket_evidence(response: Any) -> None:
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Ticket ATLAS-MISSING not found"}
+
+
 # This is executable inventory: every entry is issued by test_every_api_route,
 # and test_every_registered_route_has_an_executable_case requires exact parity.
 API_ROUTE_CASES: dict[tuple[str, str], RouteAssertion] = {
     ("GET", "/api/v1/tickets"): _assert_empty_tickets,
     ("GET", "/api/v1/tickets/count"): _assert_empty_count,
     ("GET", "/api/v1/tickets/{key}"): _assert_missing_ticket,
+    ("GET", "/api/v1/tickets/{key}/evidence"): _assert_missing_ticket_evidence,
     ("GET", "/api/v1/reviews"): _assert_empty_reviews,
 }
 
@@ -128,6 +138,10 @@ def test_response_schema_closed_fields_use_canonical_enums() -> None:
     assert TicketDetailResponse.model_fields["status"].annotation is TicketStatus
     assert TicketDetailResponse.model_fields["ticket_type"].annotation is TicketType
     assert TicketDetailResponse.model_fields["risk_level"].annotation is RiskLevel
+    assert TicketEvidenceItemSchema.model_fields["type"].annotation is EvidenceType
+    assert TicketEvidenceItemSchema.model_fields["trust_level"].annotation is ActorType
+    assert TicketEvidenceItemSchema.model_fields["trust_level"].alias == "tier"
+    assert TicketEvidenceItemSchema.model_fields["status"].annotation is EvidenceStatus
     assert ReviewQueueItemSchema.model_fields["status"].annotation is TicketStatus
     assert ReviewQueueItemSchema.model_fields["ticket_type"].annotation is TicketType
     assert ReviewQueueItemSchema.model_fields["verdict"].annotation is EvidenceStatus
@@ -157,6 +171,9 @@ def _component_for_field(
         ("TicketDetailResponse", "status", TicketStatus),
         ("TicketDetailResponse", "ticket_type", TicketType),
         ("TicketDetailResponse", "risk_level", RiskLevel),
+        ("TicketEvidenceItemSchema", "type", EvidenceType),
+        ("TicketEvidenceItemSchema", "tier", ActorType),
+        ("TicketEvidenceItemSchema", "status", EvidenceStatus),
         ("ReviewQueueItemSchema", "status", TicketStatus),
         ("ReviewQueueItemSchema", "ticket_type", TicketType),
         ("ReviewQueueItemSchema", "verdict", EvidenceStatus),
@@ -380,6 +397,110 @@ def test_ticket_detail_returns_native_404_for_unknown_key(
 ) -> None:
     with TestClient(create_app(database=database)) as client:
         response = client.get("/api/v1/tickets/ATLAS-404")
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Ticket ATLAS-404 not found"}
+
+
+def _evidence(
+    ticket: Ticket,
+    *,
+    created_by_type: ActorType,
+    evidence_type: EvidenceType = EvidenceType.TEST_RESULT,
+    status: EvidenceStatus = EvidenceStatus.PASSED,
+    raw_payload: dict[str, Any] | None = None,
+    offset: int = 0,
+) -> Evidence:
+    is_system = created_by_type is ActorType.SYSTEM
+    return Evidence(
+        id=uuid4(),
+        product_id=ticket.product_id,
+        ticket_id=ticket.id,
+        evidence_type=evidence_type,
+        status=status,
+        summary=evidence_type.value,
+        commit_sha="abc123" if is_system else None,
+        external_run_id="run-123" if is_system else None,
+        payload_hash="hash-123" if is_system else None,
+        raw_payload=raw_payload or {},
+        created_by_type=created_by_type,
+        created_by_id="api-test",
+        created_at=datetime(2026, 7, 25, 9, offset, tzinfo=UTC),
+    )
+
+
+def test_ticket_evidence_returns_type_tier_status_and_pin_completeness(
+    database: Database,
+) -> None:
+    product = ProductRepo(database).get_by_key("ATLAS")
+    assert product is not None
+    epic = Epic(**_epic_model_kwargs(product.id, key="ATLAS-E1"))
+    ticket = Ticket(**_ticket_model_kwargs(product.id, epic.id, key="ATLAS-200"))
+    EpicRepo(database).add(epic)
+    TicketRepo(database).add(ticket)
+    EvidenceRepo(database).add(
+        _evidence(
+            ticket,
+            created_by_type=ActorType.SYSTEM,
+            evidence_type=EvidenceType.TEST_RESULT,
+            raw_payload={"secret": "do-not-expose"},
+        )
+    )
+    EvidenceRepo(database).add(
+        _evidence(
+            ticket,
+            created_by_type=ActorType.HUMAN,
+            evidence_type=EvidenceType.MANUAL_APPROVAL,
+            offset=1,
+        )
+    )
+
+    with TestClient(create_app(database=database)) as client:
+        response = client.get("/api/v1/tickets/ATLAS-200/evidence")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "evidence": [
+            {
+                "type": "test_result",
+                "tier": "system",
+                "status": "passed",
+                "has_system_pin_triple": True,
+            },
+            {
+                "type": "manual_approval",
+                "tier": "human",
+                "status": "passed",
+                "has_system_pin_triple": False,
+            },
+        ]
+    }
+    assert "raw_payload" not in response.text
+    assert "do-not-expose" not in response.text
+
+
+def test_ticket_evidence_returns_empty_collection_for_known_ticket_without_evidence(
+    database: Database,
+) -> None:
+    product = ProductRepo(database).get_by_key("ATLAS")
+    assert product is not None
+    epic = Epic(**_epic_model_kwargs(product.id, key="ATLAS-E1"))
+    ticket = Ticket(**_ticket_model_kwargs(product.id, epic.id, key="ATLAS-201"))
+    EpicRepo(database).add(epic)
+    TicketRepo(database).add(ticket)
+
+    with TestClient(create_app(database=database)) as client:
+        response = client.get("/api/v1/tickets/ATLAS-201/evidence")
+
+    assert response.status_code == 200
+    assert response.json() == {"evidence": []}
+
+
+def test_ticket_evidence_returns_native_404_for_unknown_key(
+    database: Database,
+) -> None:
+    with TestClient(create_app(database=database)) as client:
+        response = client.get("/api/v1/tickets/ATLAS-404/evidence")
 
     assert response.status_code == 404
     assert response.json() == {"detail": "Ticket ATLAS-404 not found"}

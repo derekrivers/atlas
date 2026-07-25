@@ -2,10 +2,15 @@
 
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
-from atlas.core.enums import EvidenceStatus, RiskLevel
-from atlas.core.models import TicketStatus, TicketType, VerificationCheckType
+from atlas.core.enums import ActorType, EvidenceStatus, RiskLevel
+from atlas.core.models import (
+    EvidenceType,
+    TicketStatus,
+    TicketType,
+    VerificationCheckType,
+)
 
 
 class TicketCountResponse(BaseModel):
@@ -58,6 +63,23 @@ class TicketDetailResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     completed_at: datetime | None
+
+
+class TicketEvidenceItemSchema(BaseModel):
+    """One stored evidence row exposed without raw payload material."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    type: EvidenceType
+    trust_level: ActorType = Field(alias="tier")
+    status: EvidenceStatus
+    has_system_pin_triple: bool
+
+
+class TicketEvidenceResponse(BaseModel):
+    """Stored evidence for one ticket."""
+
+    evidence: list[TicketEvidenceItemSchema]
 
 
 class ReviewCheckSchema(BaseModel):

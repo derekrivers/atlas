@@ -10,14 +10,16 @@ from atlas.api.presenters import (
     present_review_queue,
     present_ticket_board,
     present_ticket_detail,
+    present_ticket_evidence,
 )
 from atlas.api.schemas import (
     ReviewQueueResponse,
     TicketBoardResponse,
     TicketDetailResponse,
+    TicketEvidenceResponse,
 )
 from atlas.core.models import TicketStatus
-from atlas.orchestration import review_queue
+from atlas.orchestration import review_queue, ticket_evidence
 from atlas.storage import Database, TicketRepo
 
 
@@ -67,6 +69,26 @@ def get_ticket_detail(
 TicketDetailDependency = Annotated[
     TicketDetailResponse,
     Depends(get_ticket_detail),
+]
+
+
+def get_ticket_evidence(
+    key: str,
+    database: DatabaseDependency,
+) -> TicketEvidenceResponse:
+    """Read and serialise one ticket's evidence, mapping absent key to 404."""
+    evidence = ticket_evidence(database, key)
+    if evidence is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Ticket {key} not found",
+        )
+    return present_ticket_evidence(evidence)
+
+
+TicketEvidenceDependency = Annotated[
+    TicketEvidenceResponse,
+    Depends(get_ticket_evidence),
 ]
 
 

@@ -5,22 +5,33 @@ from uuid import uuid4
 
 from test_apply import _ticket_model_kwargs
 
-from atlas.api.presenters import present_review_queue, present_ticket_board
+from atlas.api.presenters import (
+    present_review_queue,
+    present_ticket_board,
+    present_ticket_evidence,
+)
 from atlas.api.schemas import (
     ReviewCheckSchema,
     ReviewQueueItemSchema,
     ReviewQueueResponse,
     TicketBoardItemSchema,
     TicketBoardResponse,
+    TicketEvidenceItemSchema,
+    TicketEvidenceResponse,
 )
-from atlas.core.enums import EvidenceStatus, RiskLevel
+from atlas.core.enums import ActorType, EvidenceStatus, RiskLevel
 from atlas.core.models import (
+    EvidenceType,
     Ticket,
     TicketStatus,
     TicketType,
     VerificationCheckType,
 )
-from atlas.orchestration import ReviewCheckState, TicketReviewState
+from atlas.orchestration import (
+    ReviewCheckState,
+    TicketEvidenceRecordState,
+    TicketReviewState,
+)
 
 
 def test_presenters_do_not_serialise_enums_to_values() -> None:
@@ -81,6 +92,36 @@ def test_present_ticket_board_sorts_by_key_and_maps_tickets() -> None:
             ),
         ]
     )
+
+
+def test_present_ticket_evidence_maps_records_without_payload_fields() -> None:
+    response = present_ticket_evidence(
+        (
+            TicketEvidenceRecordState(
+                evidence_type=EvidenceType.TEST_RESULT,
+                trust_level=ActorType.SYSTEM,
+                status=EvidenceStatus.PASSED,
+                has_system_pin_triple=True,
+            ),
+        )
+    )
+
+    assert response == TicketEvidenceResponse(
+        evidence=[
+            TicketEvidenceItemSchema(
+                type=EvidenceType.TEST_RESULT,
+                tier=ActorType.SYSTEM,
+                status=EvidenceStatus.PASSED,
+                has_system_pin_triple=True,
+            )
+        ]
+    )
+    assert set(response.evidence[0].model_dump(by_alias=True)) == {
+        "type",
+        "tier",
+        "status",
+        "has_system_pin_triple",
+    }
 
 
 def test_present_review_queue_maps_nested_review_state() -> None:
