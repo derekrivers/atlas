@@ -15,6 +15,7 @@ from atlas.api.schemas import (
     ReviewCheckSchema,
     ReviewQueueItemSchema,
     ReviewQueueResponse,
+    SystemStatusResponse,
     TicketBoardItemSchema,
     TicketBoardResponse,
     TicketDependenciesResponse,
@@ -31,6 +32,7 @@ from atlas.dependencies.views import (
     unlocks_payload,
 )
 from atlas.orchestration import (
+    SystemStatus,
     TicketDependencyState,
     TicketEvidenceRecordState,
     TicketReviewState,
@@ -223,4 +225,16 @@ def present_review_queue(
             )
             for state in states
         ]
+    )
+
+
+def present_system_status(state: SystemStatus) -> SystemStatusResponse:
+    """Present the singleton operator system snapshot."""
+    return SystemStatusResponse(
+        package_version=state.package_version,
+        schema_revision=state.schema_revision,
+        ticket_count=state.ticket_count,
+        evidence_count=state.evidence_count,
+        last_linear_sync_at=state.last_linear_sync_at,
+        last_evidence_pull_at=state.last_evidence_pull_at,
     )

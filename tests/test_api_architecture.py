@@ -630,6 +630,27 @@ def test_api_no_logic_sensor_fires_on_seeded_critical_path_extra_call() -> None:
     assert any("must make exactly one" in violation.reason for violation in violations)
 
 
+def test_api_no_logic_sensor_fires_on_seeded_system_status_extra_call() -> None:
+    violations = _dependency_violations_for(
+        """
+        from atlas.api.dependencies import DatabaseDependency
+        from atlas.api.presenters import present_system_status
+        from atlas.api.schemas import SystemStatusResponse
+        from atlas.orchestration import review_queue, system_status
+
+        def get_seeded_system_status(
+            database: DatabaseDependency,
+        ) -> SystemStatusResponse:
+            state = system_status(database)
+            review_queue(database)
+            assert 1 == 2  # type: ignore[comparison-overlap]
+            return present_system_status(state)
+        """
+    )
+
+    assert any("must make exactly one" in violation.reason for violation in violations)
+
+
 def test_api_no_logic_sensor_fires_on_seeded_two_repositories() -> None:
     # Seeded red first with `assert 1 == 2` (B011); the wrong answer was
     # cross-repository assembly inside the API dependency.

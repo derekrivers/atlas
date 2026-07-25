@@ -21,7 +21,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Generic, TypeVar
+from typing import Any, Generic, TypeVar, cast
 from uuid import UUID, uuid4
 
 import sqlalchemy as sa
@@ -267,6 +267,12 @@ class TicketRepo(_KeyedRepo[Ticket]):
         with self._db.session() as session:
             statement = sa.select(sa.func.count()).select_from(TicketRow)
             return int(session.scalar(statement))
+
+    def latest_linear_synced_at(self) -> datetime | None:
+        """Return the newest Linear definition-sync cursor across tickets."""
+        with self._db.session() as session:
+            statement = sa.select(sa.func.max(TicketRow.linear_synced_at))
+            return cast(datetime | None, session.scalar(statement))
 
     def reconcile_claimed_record(self, ticket: Ticket) -> Ticket:
         """Replace one already-minted ticket with an exact incident record.
@@ -840,6 +846,12 @@ class EvidenceRepo(_Repo[Evidence]):
     def __init__(self, db: Database) -> None:
         super().__init__(db, Evidence, EvidenceRow)
 
+    def count(self) -> int:
+        """Return the number of stored evidence records without loading them."""
+        with self._db.session() as session:
+            statement = sa.select(sa.func.count()).select_from(EvidenceRow)
+            return int(session.scalar(statement))
+
     def add(self, model: Evidence) -> Evidence:
         if (
             evidence_tier(model.created_by_type) == "agent"
@@ -885,6 +897,14 @@ class EvidenceRepo(_Repo[Evidence]):
                 .order_by(EvidenceRow.created_at, EvidenceRow.id)
             )
             return [self._to_model(row) for row in rows]
+
+    def latest_system_created_at(self) -> datetime | None:
+        """Return the newest system-tier evidence timestamp."""
+        with self._db.session() as session:
+            statement = sa.select(sa.func.max(EvidenceRow.created_at)).where(
+                EvidenceRow.created_by_type == ActorType.SYSTEM.value
+            )
+            return cast(datetime | None, session.scalar(statement))
 
 
 class DebtItemRepo(_Repo[DebtItem]):

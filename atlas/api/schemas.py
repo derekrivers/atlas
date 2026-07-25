@@ -185,3 +185,14 @@ class ReviewQueueResponse(BaseModel):
     """Operator review queue."""
 
     reviews: list[ReviewQueueItemSchema]
+
+
+class SystemStatusResponse(BaseModel):
+    """Singleton operator-facing Atlas instance status."""
+
+    package_version: str
+    schema_revision: str | None
+    ticket_count: int
+    evidence_count: int
+    last_linear_sync_at: datetime | None
+    last_evidence_pull_at: datetime | None

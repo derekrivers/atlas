@@ -1,5 +1,6 @@
 """Unit tests for pure HTTP response presenters."""
 
+from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
@@ -8,6 +9,7 @@ from test_apply import _ticket_model_kwargs
 from atlas.api.presenters import (
     present_dependency_critical_path,
     present_review_queue,
+    present_system_status,
     present_ticket_board,
     present_ticket_dependencies,
     present_ticket_evidence,
@@ -20,6 +22,7 @@ from atlas.api.schemas import (
     ReviewCheckSchema,
     ReviewQueueItemSchema,
     ReviewQueueResponse,
+    SystemStatusResponse,
     TicketBoardItemSchema,
     TicketBoardResponse,
     TicketDependenciesResponse,
@@ -47,6 +50,7 @@ from atlas.dependencies import (
 )
 from atlas.orchestration import (
     ReviewCheckState,
+    SystemStatus,
     TicketDependencyState,
     TicketEvidenceRecordState,
     TicketReviewState,
@@ -264,4 +268,29 @@ def test_present_review_queue_maps_nested_review_state() -> None:
                 has_pr_merged_evidence=False,
             )
         ]
+    )
+
+
+def test_present_system_status_maps_snapshot_fields() -> None:
+    last_sync = datetime(2026, 7, 25, 10, tzinfo=UTC)
+    last_pull = datetime(2026, 7, 25, 11, tzinfo=UTC)
+
+    response = present_system_status(
+        SystemStatus(
+            package_version="0.1.0",
+            schema_revision="0020",
+            ticket_count=12,
+            evidence_count=34,
+            last_linear_sync_at=last_sync,
+            last_evidence_pull_at=last_pull,
+        )
+    )
+
+    assert response == SystemStatusResponse(
+        package_version="0.1.0",
+        schema_revision="0020",
+        ticket_count=12,
+        evidence_count=34,
+        last_linear_sync_at=last_sync,
+        last_evidence_pull_at=last_pull,
     )

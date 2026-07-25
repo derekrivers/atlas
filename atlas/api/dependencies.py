@@ -10,6 +10,7 @@ from atlas.api.presenters import (
     present_dependency_critical_path,
     present_lessons,
     present_review_queue,
+    present_system_status,
     present_ticket_board,
     present_ticket_dependencies,
     present_ticket_detail,
@@ -19,6 +20,7 @@ from atlas.api.schemas import (
     DependencyCriticalPathResponse,
     LessonsResponse,
     ReviewQueueResponse,
+    SystemStatusResponse,
     TicketBoardResponse,
     TicketDependenciesResponse,
     TicketDetailResponse,
@@ -29,6 +31,7 @@ from atlas.core.models import TicketStatus
 from atlas.orchestration import (
     dependency_critical_path,
     review_queue,
+    system_status,
     ticket_dependencies,
     ticket_evidence,
 )
@@ -165,3 +168,12 @@ def get_review_queue(database: DatabaseDependency) -> ReviewQueueResponse:
 
 
 ReviewQueueDependency = Annotated[ReviewQueueResponse, Depends(get_review_queue)]
+
+
+def get_system_status(database: DatabaseDependency) -> SystemStatusResponse:
+    """Build the serialised singleton operator status snapshot."""
+    state = system_status(database)
+    return present_system_status(state)
+
+
+SystemStatusDependency = Annotated[SystemStatusResponse, Depends(get_system_status)]
