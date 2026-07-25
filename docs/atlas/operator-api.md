@@ -9,8 +9,9 @@ work that follows it.
 The operator API exposes Atlas operational state to a local operator through a
 small, versioned HTTP contract. Its current resources are the ticket board,
 ticket count, ticket detail, ticket evidence, lessons, dependency readiness,
-critical path, and review queue. It is a projection of existing state, not a new
-source of truth and not a second place to implement domain behaviour.
+critical path, review queue, and system status. It is a projection of existing
+state, not a new source of truth and not a second place to implement domain
+behaviour.
 
 The operator API is a read-only projection surface in this phase. It serves GET endpoints only. Writeable actions are a future phase and do not begin until authentication, actor context, and a threat model land together in the same phase.
 
@@ -80,6 +81,7 @@ resource-local prefix:
 | GET    | `/api/v1/lessons`       | optional `status` query parameter | `LessonsResponse` |
 | GET    | `/api/v1/dependencies/critical-path` | none | `DependencyCriticalPathResponse` |
 | GET    | `/api/v1/reviews`       | none             | `ReviewQueueResponse`     |
+| GET    | `/api/v1/status`        | none             | `SystemStatusResponse`    |
 
 There are no other v1 routes in this phase. Ticket results are ordered by key.
 Ticket evidence results preserve the oldest-first order returned by storage.
@@ -107,6 +109,10 @@ the dependency projection.
 
 `GET /api/v1/dependencies/critical-path` returns the graph-wide critical path
 in execution order with per-step and total effort.
+
+`GET /api/v1/status` returns the singleton operator system snapshot: package
+version, store schema revision, ticket and evidence counts, and the latest
+Linear-sync and evidence-pull timestamps.
 
 Closed-value response fields use the canonical domain `StrEnum` types directly:
 `TicketStatus`, `TicketType`, `RiskLevel`, `EvidenceType`, `ActorType`,

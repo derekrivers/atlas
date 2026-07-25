@@ -9,14 +9,20 @@ from typing import Any, cast
 from uuid import UUID, uuid4
 
 import pytest
+import sqlalchemy as sa
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from schema_drift_helpers import drifted_database
+from schema_drift_helpers import (
+    alembic_head_and_parent,
+    drifted_database,
+    stamp_database,
+)
 from test_apply import _epic_model_kwargs, _ticket_model_kwargs
 from test_lesson_model import lesson_kwargs
 from test_models_validation import dependency_kwargs
 from test_plan_pipeline import fresh_db
 
+from atlas import __version__
 from atlas.api.app import create_app
 from atlas.api.schemas import (
     CriticalPathStepSchema,
@@ -27,6 +33,7 @@ from atlas.api.schemas import (
     NotReadyReasonSchema,
     ReviewCheckSchema,
     ReviewQueueItemSchema,
+    SystemStatusResponse,
     TicketBoardItemSchema,
     TicketDetailResponse,
     TicketEvidenceItemSchema,
@@ -103,6 +110,18 @@ def _assert_empty_critical_path(response: Any) -> None:
     assert response.json() == {"keys": [], "steps": [], "total_effort": 0}
 
 
+def _assert_empty_status(response: Any) -> None:
+    assert response.status_code == 200
+    assert response.json() == {
+        "package_version": __version__,
+        "schema_revision": None,
+        "ticket_count": 0,
+        "evidence_count": 0,
+        "last_linear_sync_at": None,
+        "last_evidence_pull_at": None,
+    }
+
+
 # This is executable inventory: every entry is issued by test_every_api_route,
 # and test_every_registered_route_has_an_executable_case requires exact parity.
 API_ROUTE_CASES: dict[tuple[str, str], RouteAssertion] = {
@@ -117,6 +136,7 @@ API_ROUTE_CASES: dict[tuple[str, str], RouteAssertion] = {
     ("GET", "/api/v1/lessons"): _assert_empty_lessons,
     ("GET", "/api/v1/dependencies/critical-path"): _assert_empty_critical_path,
     ("GET", "/api/v1/reviews"): _assert_empty_reviews,
+    ("GET", "/api/v1/status"): _assert_empty_status,
 }
 
 FORMER_UNVERSIONED_PATHS = (
@@ -262,6 +282,137 @@ def test_ticket_count_reflects_stored_tickets(database: Database) -> None:
 
     assert response.status_code == 200
     assert response.json() == {"count": 1}
+
+
+def test_status_returns_operator_system_snapshot(database: Database) -> None:
+    head, _parent = alembic_head_and_parent()
+    stamp_database(database, head)
+    product = ProductRepo(database).get_by_key("ATLAS")
+    assert product is not None
+    epic = Epic(**_epic_model_kwargs(product.id, key="ATLAS-E1"))
+    older_sync = datetime(2026, 7, 24, 16, tzinfo=UTC)
+    latest_sync = datetime(2026, 7, 25, 10, tzinfo=UTC)
+    older_evidence_pull = datetime(2026, 7, 25, 8, tzinfo=UTC)
+    latest_evidence_pull = datetime(2026, 7, 25, 11, tzinfo=UTC)
+    tickets = [
+        Ticket(
+            **(
+                _ticket_model_kwargs(product.id, epic.id, key="ATLAS-202")
+                | {
+                    "id": uuid4(),
+                    "linear_synced_at": older_sync,
+                }
+            )
+        ),
+        Ticket(
+            **(
+                _ticket_model_kwargs(product.id, epic.id, key="ATLAS-203")
+                | {
+                    "id": uuid4(),
+                    "linear_synced_at": latest_sync,
+                }
+            )
+        ),
+        Ticket(
+            **(
+                _ticket_model_kwargs(product.id, epic.id, key="ATLAS-204")
+                | {
+                    "id": uuid4(),
+                    "linear_synced_at": None,
+                }
+            )
+        ),
+    ]
+    EpicRepo(database).add(epic)
+    ticket_repo = TicketRepo(database)
+    for ticket in tickets:
+        ticket_repo.add(ticket)
+    evidence_repo = EvidenceRepo(database)
+    evidence_repo.add(
+        _evidence(
+            tickets[0],
+            created_by_type=ActorType.SYSTEM,
+            created_at=older_evidence_pull,
+        )
+    )
+    evidence_repo.add(
+        _evidence(
+            tickets[1],
+            created_by_type=ActorType.SYSTEM,
+            created_at=latest_evidence_pull,
+        )
+    )
+
+    with TestClient(create_app(database=database)) as client:
+        response = client.get("/api/v1/status")
+
+    assert response.status_code == 200
+    assert response.json() == SystemStatusResponse(
+        package_version=__version__,
+        schema_revision=head,
+        ticket_count=3,
+        evidence_count=2,
+        last_linear_sync_at=latest_sync,
+        last_evidence_pull_at=latest_evidence_pull,
+    ).model_dump(mode="json")
+
+
+def test_status_response_excludes_environment_secret_values(
+    database: Database,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    hidden_values = {
+        "LINEAR_API_KEY": "linear-token-secret-value",
+        "GITHUB_TOKEN": "github-token-secret-value",
+        "ATLAS_DATABASE_URL": "sqlite:////tmp/atlas-secret-status-store.db",
+        "ATLAS_CREDENTIAL_FILE": "/tmp/atlas-secret-credential-file",
+    }
+    for key, value in hidden_values.items():
+        monkeypatch.setenv(key, value)
+
+    with TestClient(create_app(database=database)) as client:
+        response = client.get("/api/v1/status")
+
+    assert response.status_code == 200
+    for value in hidden_values.values():
+        assert value not in response.text
+
+
+def test_status_route_performs_no_database_writes(database: Database) -> None:
+    statements: list[str] = []
+    write_verbs = {
+        "ALTER",
+        "CREATE",
+        "DELETE",
+        "DROP",
+        "INSERT",
+        "REPLACE",
+        "TRUNCATE",
+        "UPDATE",
+    }
+
+    def capture_write(
+        conn: object,
+        cursor: object,
+        statement: str,
+        parameters: object,
+        context: object,
+        executemany: bool,
+    ) -> None:
+        del conn, cursor, parameters, context, executemany
+        first_token = statement.lstrip().split(maxsplit=1)[0].upper()
+        if first_token in write_verbs:
+            statements.append(statement)
+
+    sa.event.listen(database.engine, "before_cursor_execute", capture_write)
+    try:
+        with TestClient(create_app(database=database)) as client:
+            response = client.get("/api/v1/status")
+    finally:
+        sa.event.remove(database.engine, "before_cursor_execute", capture_write)
+
+    assert response.status_code == 200
+    assert statements == []
 
 
 def test_ticket_board_returns_key_ordered_lean_cards(database: Database) -> None:
@@ -625,6 +776,7 @@ def _evidence(
     evidence_type: EvidenceType = EvidenceType.TEST_RESULT,
     status: EvidenceStatus = EvidenceStatus.PASSED,
     raw_payload: dict[str, Any] | None = None,
+    created_at: datetime | None = None,
     offset: int = 0,
 ) -> Evidence:
     is_system = created_by_type is ActorType.SYSTEM
@@ -641,7 +793,7 @@ def _evidence(
         raw_payload=raw_payload or {},
         created_by_type=created_by_type,
         created_by_id="api-test",
-        created_at=datetime(2026, 7, 25, 9, offset, tzinfo=UTC),
+        created_at=created_at or datetime(2026, 7, 25, 9, offset, tzinfo=UTC),
     )
 
 

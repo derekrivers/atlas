@@ -35,6 +35,18 @@ def _alembic_config() -> Config:
     return config
 
 
+def _database_schema_heads(database: Database) -> tuple[str, ...]:
+    with database.engine.connect() as connection:
+        context = MigrationContext.configure(connection)
+        return tuple(context.get_current_heads())
+
+
+def database_schema_revision(database: Database) -> str | None:
+    """Return the Alembic revision stamped on the store, if any."""
+    store_heads = _database_schema_heads(database)
+    return ", ".join(store_heads) if store_heads else None
+
+
 def assert_schema_at_head(database: Database) -> None:
     """Fail when a stamped store is behind the migration head.
 
@@ -43,10 +55,7 @@ def assert_schema_at_head(database: Database) -> None:
     stamp. Both cases intentionally fall through so their existing command
     contracts remain unchanged; this helper owns only the stamped-drift case.
     """
-    with database.engine.connect() as connection:
-        context = MigrationContext.configure(connection)
-        store_heads = tuple(context.get_current_heads())
-
+    store_heads = _database_schema_heads(database)
     if not store_heads:
         return
 
