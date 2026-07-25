@@ -543,6 +543,53 @@ def test_api_no_logic_sensor_fires_on_seeded_ticket_evidence_extra_call() -> Non
     assert any("must make exactly one" in violation.reason for violation in violations)
 
 
+def test_api_no_logic_sensor_fires_on_seeded_ticket_dependencies_extra_call() -> None:
+    violations = _dependency_violations_for(
+        """
+        from fastapi import HTTPException
+
+        from atlas.api.dependencies import DatabaseDependency
+        from atlas.api.presenters import present_ticket_dependencies
+        from atlas.api.schemas import TicketDependenciesResponse
+        from atlas.orchestration import review_queue, ticket_dependencies
+
+        def get_seeded_ticket_dependencies(
+            key: str,
+            database: DatabaseDependency,
+        ) -> TicketDependenciesResponse:
+            dependencies = ticket_dependencies(database, key)
+            review_queue(database)
+            assert 1 == 2  # type: ignore[comparison-overlap]
+            if dependencies is None:
+                raise HTTPException(status_code=404)
+            return present_ticket_dependencies(dependencies)
+        """
+    )
+
+    assert any("must make exactly one" in violation.reason for violation in violations)
+
+
+def test_api_no_logic_sensor_fires_on_seeded_critical_path_extra_call() -> None:
+    violations = _dependency_violations_for(
+        """
+        from atlas.api.dependencies import DatabaseDependency
+        from atlas.api.presenters import present_dependency_critical_path
+        from atlas.api.schemas import DependencyCriticalPathResponse
+        from atlas.orchestration import dependency_critical_path, review_queue
+
+        def get_seeded_dependency_critical_path(
+            database: DatabaseDependency,
+        ) -> DependencyCriticalPathResponse:
+            path = dependency_critical_path(database)
+            review_queue(database)
+            assert 1 == 2  # type: ignore[comparison-overlap]
+            return present_dependency_critical_path(path)
+        """
+    )
+
+    assert any("must make exactly one" in violation.reason for violation in violations)
+
+
 def test_api_no_logic_sensor_fires_on_seeded_two_repositories() -> None:
     # Seeded red first with `assert 1 == 2` (B011); the wrong answer was
     # cross-repository assembly inside the API dependency.

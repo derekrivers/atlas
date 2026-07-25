@@ -4,6 +4,7 @@ from fastapi import APIRouter
 
 from atlas.api.dependencies import (
     TicketBoardDependency,
+    TicketDependenciesDependency,
     TicketDetailDependency,
     TicketEvidenceDependency,
     TicketRepoDependency,
@@ -11,6 +12,7 @@ from atlas.api.dependencies import (
 from atlas.api.schemas import (
     TicketBoardResponse,
     TicketCountResponse,
+    TicketDependenciesResponse,
     TicketDetailResponse,
     TicketEvidenceResponse,
 )
@@ -38,3 +40,10 @@ def ticket_evidence_records(
     evidence: TicketEvidenceDependency,
 ) -> TicketEvidenceResponse:
     return evidence
+
+
+@router.get("/{key}/dependencies", response_model=TicketDependenciesResponse)
+def ticket_dependency_state(
+    dependencies: TicketDependenciesDependency,
+) -> TicketDependenciesResponse:
+    return dependencies

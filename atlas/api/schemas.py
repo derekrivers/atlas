@@ -11,6 +11,7 @@ from atlas.core.models import (
     TicketType,
     VerificationCheckType,
 )
+from atlas.dependencies import NotReadyCode
 
 
 class TicketCountResponse(BaseModel):
@@ -80,6 +81,54 @@ class TicketEvidenceResponse(BaseModel):
     """Stored evidence for one ticket."""
 
     evidence: list[TicketEvidenceItemSchema]
+
+
+class DependencyBlockerSchema(BaseModel):
+    """One dependency target currently blocking a ticket."""
+
+    key: str
+    code: NotReadyCode
+
+
+class NotReadyReasonSchema(BaseModel):
+    """One readiness condition that is not satisfied."""
+
+    code: NotReadyCode
+    message: str
+    target: str | None
+    status: str | None
+
+
+class TicketReadinessSchema(BaseModel):
+    """Readiness verdict for one ticket."""
+
+    ready: bool
+    reasons: list[NotReadyReasonSchema]
+
+
+class TicketDependenciesResponse(BaseModel):
+    """Dependency readiness and reverse dependency state for one ticket."""
+
+    key: str
+    blockers: list[DependencyBlockerSchema]
+    blocked_by: list[str]
+    readiness: TicketReadinessSchema
+
+
+class CriticalPathStepSchema(BaseModel):
+    """One ticket on the graph-wide critical path."""
+
+    key: str
+    effort: int
+    cumulative_effort: int
+
+
+class DependencyCriticalPathResponse(BaseModel):
+    """Graph-wide critical path in execution order."""
+
+    keys: list[str]
+    steps: list[CriticalPathStepSchema]
+    total_effort: int
 
 
 class ReviewCheckSchema(BaseModel):

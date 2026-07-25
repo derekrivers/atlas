@@ -3,19 +3,47 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from typing import TypedDict, cast
 
 from atlas.api.schemas import (
+    CriticalPathStepSchema,
+    DependencyBlockerSchema,
+    DependencyCriticalPathResponse,
+    NotReadyReasonSchema,
     ReviewCheckSchema,
     ReviewQueueItemSchema,
     ReviewQueueResponse,
     TicketBoardItemSchema,
     TicketBoardResponse,
+    TicketDependenciesResponse,
     TicketDetailResponse,
     TicketEvidenceItemSchema,
     TicketEvidenceResponse,
+    TicketReadinessSchema,
 )
 from atlas.core.models import Ticket
-from atlas.orchestration import TicketEvidenceRecordState, TicketReviewState
+from atlas.dependencies import CriticalPath, NotReadyCode
+from atlas.dependencies.views import (
+    blocked_payload,
+    critical_path_payload,
+    unlocks_payload,
+)
+from atlas.orchestration import (
+    TicketDependencyState,
+    TicketEvidenceRecordState,
+    TicketReviewState,
+)
+
+
+class _BlockerPayloadTarget(TypedDict):
+    key: str
+    code: str
+
+
+class _CriticalPathPayloadStep(TypedDict):
+    key: str
+    effort: int
+    cumulative_effort: int
 
 
 def present_ticket_board(tickets: Sequence[Ticket]) -> TicketBoardResponse:
@@ -80,6 +108,64 @@ def present_ticket_evidence(
             )
             for record in records
         ]
+    )
+
+
+def present_ticket_dependencies(
+    state: TicketDependencyState,
+) -> TicketDependenciesResponse:
+    """Present one ticket's dependency state."""
+    blocker_payload = blocked_payload(state.blockers)
+    blocked_by_payload = unlocks_payload(state.blocked_by)
+    blocker_targets = cast(
+        list[_BlockerPayloadTarget],
+        blocker_payload["targets"],
+    )
+    blocked_by = cast(list[str], blocked_by_payload["dependents"])
+    return TicketDependenciesResponse(
+        key=state.key,
+        blockers=[
+            DependencyBlockerSchema(
+                key=target["key"],
+                code=NotReadyCode(target["code"]),
+            )
+            for target in blocker_targets
+        ],
+        blocked_by=blocked_by,
+        readiness=TicketReadinessSchema(
+            ready=state.readiness.ready,
+            reasons=[
+                NotReadyReasonSchema(
+                    code=reason.code,
+                    message=reason.message,
+                    target=reason.target,
+                    status=reason.status,
+                )
+                for reason in state.readiness.reasons
+            ],
+        ),
+    )
+
+
+def present_dependency_critical_path(
+    path: CriticalPath,
+) -> DependencyCriticalPathResponse:
+    """Present the graph-wide dependency critical path."""
+    payload = critical_path_payload(path)
+    keys = cast(list[str], payload["keys"])
+    steps = cast(list[_CriticalPathPayloadStep], payload["steps"])
+    total_effort = cast(int, payload["total_effort"])
+    return DependencyCriticalPathResponse(
+        keys=keys,
+        steps=[
+            CriticalPathStepSchema(
+                key=step["key"],
+                effort=step["effort"],
+                cumulative_effort=step["cumulative_effort"],
+            )
+            for step in steps
+        ],
+        total_effort=total_effort,
     )
 
 
