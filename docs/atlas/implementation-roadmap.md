@@ -499,7 +499,7 @@ by the linear-sync playbook (#213).
 # Phase 10 — Operator API (Read Surface)
 
 Design doc: docs/atlas/operator-api.md.
-Status: IN PROGRESS.
+Status: CLOSED.
 
 ## Epic: Operator API (Read Surface) (E12)
 
@@ -513,6 +513,11 @@ ATLAS-190 GET /api/tickets board endpoint                                   — 
 ATLAS-191 extract HTTP presenters                                           — #227
 ATLAS-192 reconcile root documentation pointers                             — #228
 ATLAS-194 API contract: /api/v1 prefix and canonical StrEnum response schemas — #236
+ATLAS-197 API contains-no-logic architecture sensor                          — #241
+ATLAS-199 GET /api/v1/tickets/{key}/dependencies and critical path           — #251
+ATLAS-200 GET /api/v1/tickets/{key}/evidence                                 — #249
+ATLAS-201 GET /api/v1/lessons                                                — #252
+ATLAS-202 GET /api/v1/status                                                 — #254
 ```
 
 Phase 10 cross-epic deliveries (delivered):
@@ -522,6 +527,28 @@ ATLAS-193 Forbidden import contracts: storage must not import the Linear
           or GitHub adapters — E5, Layer Spine — #233
 ATLAS-195 CLI disposition path for a stale proposed PlanRun
           — E3, Generative Planning with Deterministic Reconciliation — #235
+ATLAS-196 Source-anchor integrity sensor — E1, Harness Foundation — #245
+ATLAS-198 Doc-linter PATH and PHASE checks — E1, Harness Foundation — #242
+ATLAS-203 Assert mapped Linear state on issue creation — E6, PM Engine — #248
+```
+
+Phase 10 hand-delivered meta work (not store tickets):
+
+```
+ATLAS-029M claimed-key namespace reconciliation — #229
+ATLAS-030M forbidden-import stub — #230
+ATLAS-031M dangling-anchor repair — #231
+ATLAS-032M API-v1 and stale-PlanRun stubs — #234
+ATLAS-033M Operator API design — #237
+ATLAS-034M Operator API roadmap phase — #238
+ATLAS-035M second sensor-wave seed and stub retirement — #240
+ATLAS-036M render catch-up and stub retirement — #243
+ATLAS-037M ticket detail projection — #244
+ATLAS-038M final API-wave and Linear-state stubs — #246
+ATLAS-039M ATLAS-199..203 mint — #247
+ATLAS-040M acceptance-chain driver — #250
+ATLAS-041M Symphony workflow amendments — #253
+ATLAS-042M operator-environment incident record — #255
 ```
 
 Carried in from Phase 9 (closure §6):
