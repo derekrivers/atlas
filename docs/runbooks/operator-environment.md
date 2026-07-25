@@ -68,6 +68,12 @@ Consequences to internalise:
   silently ceases to apply. Re-apply it after any Codex plugin update, or
   expect the connector's required-approval gate to reappear. (Observed: a
   0.1.8 github-plugin bump ate an earlier patch.)
+- **A foreign `atlas` binary can shadow the project on PATH.** If
+  `atlas <subcommand>` prints a usage line offering flags Atlas does
+  not have (`--git`, `--info`, `--init`), you are running someone
+  else's tool. Always invoke through `uv run atlas ...` from the repo
+  root — every runbook, agent prompt, and gate sweep already does.
+  Identify the impostor with `which atlas`.
 
 ## Database
 
@@ -90,15 +96,65 @@ Consequences to internalise:
   the WHERE clause; confirm the id with `SELECT quote(id) …` first. (A
   supported `atlas lessons edit` command is a carry-forward.)
 
+## Minting: apply writes to two places
+
+`atlas apply` writes the SQLite store AND the working tree. The store
+is durable. The working-tree half — the four `docs/planning/` renders
+plus the consumed stubs moved into `inbox/processed/` — exists only
+until you commit it.
+
+- **Never `git reset --hard` (or `git checkout -- .`, or switch
+  branches discarding changes) after `atlas apply` until the mint is
+  committed and pushed.** Doing so destroys the renders and the stub
+  retirements while the store marches on with the minted tickets. The
+  loop keeps working, because Symphony and the CLI read the store —
+  so the divergence is silent until something reads the *committed*
+  tree.
+- Two things read the committed tree and will surface it, late and
+  confusingly: `atlas plan --stubs-only` re-promotes any stub still
+  sitting in `inbox/`, minting DUPLICATE tickets for delivered work;
+  and the context-pack indexer resolves ticket `source_anchor`s
+  against committed `processed/` stubs, so a pack render fails with
+  `UnknownDocumentError` and the ticket is pushed to Symphony
+  definition-only, without its context.
+- The habit that prevents all of it: after `apply`, immediately
+  `git add -A docs/planning/` (the `-A` matters — retired stubs land
+  untracked in `processed/`), commit, and PR before running anything
+  else. Reconciling later means a hand-authored stub-retirement PR,
+  because the only regeneration path is another `apply`, which against
+  an un-retired inbox re-mints.
+- Symptom-to-cause: committed renders whose header
+  `ticket_key_high_water` is lower than the highest key in the store
+  means one or more mints were never committed.
+
 ## Board operation
 
 - Status is operator-owned (ADR-0006). Dragging a card to Done is a manual
   act no `atlas` command performs; `atlas pm sync --once` records it after.
 - A ticket in **Needs Human** is invisible to the dispatcher and to the
-  sync's repair/push passes. Use it deliberately to hold a dependent
-  ticket until its prerequisite merges (there is no dependency-edge
-  mechanism for stub-minted tickets yet).
+  sync's repair/push passes. Prefer the stub's `depends_on`
+  front-matter to hold a dependent ticket: it names sibling stubs in
+  the same batch (by filename) or existing keys, `atlas apply`
+  materialises the edges, and `promote_ready` withholds the ticket
+  until every blocker is Done. `Needs Human` remains the manual hold
+  for cases no edge expresses.
 - Follow-up inbox stubs (`docs/planning/inbox/<KEY>-<n>.md`) are written by
   the sync's comment scanner from `atlas:proposed-follow-up`-tagged Linear
   comments. They are untracked working-tree files; the next `atlas plan`
-  consumes them. Triage before planning, or they mint tickets unattended.
+  consumes them. Operator-authored stubs are different: they must be
+  COMMITTED before planning (ADR-0006 refuses a dirty or untracked
+  input), so they ride a PR to `main` like any other content. Triage
+  before planning, or they mint tickets unattended.
+- **Meta labels are read from PR titles, not commit subjects.**
+  Squash-merge takes the commit subject, so a PR titled
+  `... (ATLAS-036M)` can land as a commit carrying no label at all.
+  Reconstructing the meta ledger from `git log` therefore
+  under-counts and collides. The PR title is authoritative.
+- The acceptance chain for a merged PR is one command:
+  `uv run python scripts/close_ticket.py <pr>` (ATLAS-040M). It pulls
+  evidence, hands over to interactive `confirm`, pauses for the
+  manual merge, independently verifies the merge with GitHub before
+  running `verify`, ticks twice, and reports each ticket's status
+  read from the store. Run it only after CI is green on the final
+  head: evidence is commit-pinned, so updating a branch invalidates
+  evidence pulled at the old SHA.
