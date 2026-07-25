@@ -26,6 +26,12 @@ queue already follows that boundary: the API calls the orchestration operation
 once and presents its `TicketReviewState` results. The ticket board and count
 are single-repository projections and therefore do not require orchestration.
 
+A read projection stays a single-source repository read wherever its field set
+allows. A field requiring a second source moves the whole projection into an
+atlas.orchestration coordinating service, as the review queue already is.
+Ticket detail is single-source and therefore carries no epic, evidence,
+verification or dependency state.
+
 The API contains no logic: a route dependency makes exactly one service or repository call, then presents. Anything requiring more than one call, a branch on domain state, or cross-layer assembly moves to atlas.orchestration.
 
 For the existing ticket board, the optional `status` query parameter selects
@@ -59,16 +65,27 @@ resource-local prefix:
 | ------ | ----------------------- | ---------------- | ------------------------- |
 | GET    | `/api/v1/tickets`       | optional `status` query parameter | `TicketBoardResponse` |
 | GET    | `/api/v1/tickets/count` | none             | `TicketCountResponse`     |
+| GET    | `/api/v1/tickets/{key}` | ticket key       | `TicketDetailResponse`    |
 | GET    | `/api/v1/reviews`       | none             | `ReviewQueueResponse`     |
 
 There are no other v1 routes in this phase. Ticket results are ordered by key.
 Review results preserve the order established by the orchestration operation.
+
+`GET /api/v1/tickets/{key}` returns the stored operator-facing definition and
+execution state for one ticket. It is a single-repository projection over
+`TicketRepo.get_by_key`; it does not assemble evidence, verification,
+dependency, lesson, or epic state.
 
 Closed-value response fields use the canonical domain `StrEnum` types directly:
 `TicketStatus`, `TicketType`, `RiskLevel`, `VerificationCheckType`, and
 `EvidenceStatus`. FastAPI's OpenAPI document publishes the members of those
 canonical enums as the allowed HTTP values; this contract was delivered by
 ATLAS-194.
+
+A keyed v1 resource that does not exist returns `404 Not Found` using FastAPI's
+native error body: `{"detail": "<Resource> <key> not found"}`. Collection routes
+continue to return successful empty collections. Atlas does not define a
+bespoke error envelope in this phase.
 
 ## Deferred capabilities
 

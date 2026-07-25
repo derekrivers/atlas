@@ -20,6 +20,7 @@ from atlas.api.schemas import (
     ReviewCheckSchema,
     ReviewQueueItemSchema,
     TicketBoardItemSchema,
+    TicketDetailResponse,
 )
 from atlas.core.enums import EvidenceStatus, RiskLevel
 from atlas.core.models import (
@@ -58,11 +59,17 @@ def _assert_empty_reviews(response: Any) -> None:
     assert response.json() == {"reviews": []}
 
 
+def _assert_missing_ticket(response: Any) -> None:
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Ticket ATLAS-MISSING not found"}
+
+
 # This is executable inventory: every entry is issued by test_every_api_route,
 # and test_every_registered_route_has_an_executable_case requires exact parity.
 API_ROUTE_CASES: dict[tuple[str, str], RouteAssertion] = {
     ("GET", "/api/v1/tickets"): _assert_empty_tickets,
     ("GET", "/api/v1/tickets/count"): _assert_empty_count,
+    ("GET", "/api/v1/tickets/{key}"): _assert_missing_ticket,
     ("GET", "/api/v1/reviews"): _assert_empty_reviews,
 }
 
@@ -93,8 +100,9 @@ def test_every_api_route(
     path: str,
     assert_response: RouteAssertion,
 ) -> None:
+    request_path = path.replace("{key}", "ATLAS-MISSING")
     with TestClient(app) as client:
-        assert_response(client.request(method, path))
+        assert_response(client.request(method, request_path))
 
 
 def test_every_registered_route_has_an_executable_case(app: FastAPI) -> None:
@@ -117,6 +125,9 @@ def test_response_schema_closed_fields_use_canonical_enums() -> None:
     assert TicketBoardItemSchema.model_fields["status"].annotation is TicketStatus
     assert TicketBoardItemSchema.model_fields["ticket_type"].annotation is TicketType
     assert TicketBoardItemSchema.model_fields["risk_level"].annotation is RiskLevel
+    assert TicketDetailResponse.model_fields["status"].annotation is TicketStatus
+    assert TicketDetailResponse.model_fields["ticket_type"].annotation is TicketType
+    assert TicketDetailResponse.model_fields["risk_level"].annotation is RiskLevel
     assert ReviewQueueItemSchema.model_fields["status"].annotation is TicketStatus
     assert ReviewQueueItemSchema.model_fields["ticket_type"].annotation is TicketType
     assert ReviewQueueItemSchema.model_fields["verdict"].annotation is EvidenceStatus
@@ -143,6 +154,9 @@ def _component_for_field(
         ("TicketBoardItemSchema", "status", TicketStatus),
         ("TicketBoardItemSchema", "ticket_type", TicketType),
         ("TicketBoardItemSchema", "risk_level", RiskLevel),
+        ("TicketDetailResponse", "status", TicketStatus),
+        ("TicketDetailResponse", "ticket_type", TicketType),
+        ("TicketDetailResponse", "risk_level", RiskLevel),
         ("ReviewQueueItemSchema", "status", TicketStatus),
         ("ReviewQueueItemSchema", "ticket_type", TicketType),
         ("ReviewQueueItemSchema", "verdict", EvidenceStatus),
@@ -291,6 +305,94 @@ def test_ticket_board_rejects_invalid_status(database: Database) -> None:
         response = client.get("/api/v1/tickets?status=not_a_status")
 
     assert response.status_code == 422
+
+
+def test_ticket_detail_returns_operator_facing_stored_state(
+    database: Database,
+) -> None:
+    product = ProductRepo(database).get_by_key("ATLAS")
+    assert product is not None
+    epic = Epic(**_epic_model_kwargs(product.id, key="ATLAS-E1"))
+    ticket = Ticket(
+        **(
+            _ticket_model_kwargs(product.id, epic.id, key="ATLAS-037M")
+            | {
+                "title": "Expose ticket detail",
+                "objective": "Give the operator one complete ticket definition.",
+                "context": "The board card is intentionally lean.",
+                "status": TicketStatus.IN_PROGRESS,
+                "ticket_type": TicketType.FEATURE,
+                "risk_level": RiskLevel.MEDIUM,
+                "priority": 37,
+                "estimated_effort": 5,
+                "relevant_docs": ["docs/atlas/operator-api.md"],
+                "acceptance_criteria": ["Known keys return detail."],
+                "non_goals": ["Evidence projection."],
+                "implementation_notes": ["Keep the read single-source."],
+                "test_requirements": ["Exercise the HTTP route."],
+                "documentation_requirements": ["Record the 404 convention."],
+                "definition_of_done": ["The full gate sweep passes."],
+                "tags": ["api", "projection"],
+                "component": "operator-api",
+                "external_linear_id": "linear-037m",
+                "external_github_issue_id": "237",
+                "source_anchor": "operator-api#the-v1-contract",
+            }
+        )
+    )
+    EpicRepo(database).add(epic)
+    TicketRepo(database).add(ticket)
+
+    with TestClient(create_app(database=database)) as client:
+        response = client.get("/api/v1/tickets/ATLAS-037M")
+
+    assert response.status_code == 200
+    assert response.json() == TicketDetailResponse(
+        key=ticket.key,
+        title=ticket.title,
+        objective=ticket.objective,
+        context=ticket.context,
+        status=ticket.status,
+        ticket_type=ticket.ticket_type,
+        risk_level=ticket.risk_level,
+        priority=ticket.priority,
+        estimated_effort=ticket.estimated_effort,
+        relevant_docs=ticket.relevant_docs,
+        acceptance_criteria=ticket.acceptance_criteria,
+        non_goals=ticket.non_goals,
+        implementation_notes=ticket.implementation_notes,
+        test_requirements=ticket.test_requirements,
+        documentation_requirements=ticket.documentation_requirements,
+        definition_of_done=ticket.definition_of_done,
+        tags=ticket.tags,
+        component=ticket.component,
+        external_linear_id=ticket.external_linear_id,
+        external_github_issue_id=ticket.external_github_issue_id,
+        source_anchor=ticket.source_anchor,
+        created_at=ticket.created_at,
+        updated_at=ticket.updated_at,
+        completed_at=ticket.completed_at,
+    ).model_dump(mode="json")
+
+
+def test_ticket_detail_returns_native_404_for_unknown_key(
+    database: Database,
+) -> None:
+    with TestClient(create_app(database=database)) as client:
+        response = client.get("/api/v1/tickets/ATLAS-404")
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Ticket ATLAS-404 not found"}
+
+
+def test_ticket_count_static_route_precedes_ticket_key_route(
+    database: Database,
+) -> None:
+    with TestClient(create_app(database=database)) as client:
+        response = client.get("/api/v1/tickets/count")
+
+    assert response.status_code == 200
+    assert response.json() == {"count": 0}
 
 
 def test_review_queue_serialises_persisted_review_state(database: Database) -> None:
