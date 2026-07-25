@@ -8,9 +8,9 @@ work that follows it.
 
 The operator API exposes Atlas operational state to a local operator through a
 small, versioned HTTP contract. Its current resources are the ticket board,
-ticket count, ticket detail, ticket evidence, dependency readiness, critical
-path, and review queue. It is a projection of existing state, not a new source
-of truth and not a second place to implement domain behaviour.
+ticket count, ticket detail, ticket evidence, lessons, dependency readiness,
+critical path, and review queue. It is a projection of existing state, not a new
+source of truth and not a second place to implement domain behaviour.
 
 The operator API is a read-only projection surface in this phase. It serves GET endpoints only. Writeable actions are a future phase and do not begin until authentication, actor context, and a threat model land together in the same phase.
 
@@ -24,8 +24,9 @@ operation; presenters translate returned domain values into response schemas.
 
 `atlas.orchestration` is the home for front-end-shared assembly. The review
 queue already follows that boundary: the API calls the orchestration operation
-once and presents its `TicketReviewState` results. The ticket board and count
-are single-repository projections and therefore do not require orchestration.
+once and presents its `TicketReviewState` results. The ticket board, count, and
+lessons collection are single-repository projections and therefore do not
+require orchestration.
 
 A read projection stays a single-source repository read wherever its field set
 allows. A field requiring a second source moves the whole projection into an
@@ -40,6 +41,13 @@ one of two single repository operations (`list_by_status` or `list`) before the
 result is presented. The count route receives one repository dependency and
 calls `count` once. These are transport-level operation selections, not domain
 decisions.
+
+The lessons collection follows the same single-source pattern: the optional
+`status` query parameter selects either `LessonRepo.list_by_status` or
+`LessonRepo.list`, and the dependency still makes exactly one repository call.
+Its response exposes stored `Lesson` fields only. It does not resolve lesson
+ticket UUIDs to ticket keys; that would require `TicketRepo` as a second source
+and move the whole projection into `atlas.orchestration`.
 
 ## Ruled constraints
 
@@ -69,12 +77,15 @@ resource-local prefix:
 | GET    | `/api/v1/tickets/{key}` | ticket key       | `TicketDetailResponse`    |
 | GET    | `/api/v1/tickets/{key}/evidence` | ticket key | `TicketEvidenceResponse`  |
 | GET    | `/api/v1/tickets/{key}/dependencies` | ticket key | `TicketDependenciesResponse` |
+| GET    | `/api/v1/lessons`       | optional `status` query parameter | `LessonsResponse` |
 | GET    | `/api/v1/dependencies/critical-path` | none | `DependencyCriticalPathResponse` |
 | GET    | `/api/v1/reviews`       | none             | `ReviewQueueResponse`     |
 
 There are no other v1 routes in this phase. Ticket results are ordered by key.
 Ticket evidence results preserve the oldest-first order returned by storage.
 Review results preserve the order established by the orchestration operation.
+Lesson results preserve repository order; status-filtered lesson results are
+creation-ordered by `LessonRepo.list_by_status`.
 
 `GET /api/v1/tickets/{key}` returns the stored operator-facing definition and
 execution state for one ticket. It is a single-repository projection over
@@ -85,6 +96,11 @@ dependency, lesson, or epic state.
 records with evidence type, trust tier, status, and a derived system pin-triple
 completeness flag; it never exposes raw evidence payloads.
 
+`GET /api/v1/lessons` returns stored lesson records, optionally filtered by the
+canonical `EntityStatus`. It is a single-repository projection over
+`LessonRepo.list` or `LessonRepo.list_by_status`; it is read-only and never
+promotes, rejects, archives, or merges a lesson.
+
 `GET /api/v1/tickets/{key}/dependencies` returns one ticket's dependency
 blockers, reverse dependency readiness impact, and all readiness reasons from
 the dependency projection.
@@ -94,10 +110,10 @@ in execution order with per-step and total effort.
 
 Closed-value response fields use the canonical domain `StrEnum` types directly:
 `TicketStatus`, `TicketType`, `RiskLevel`, `EvidenceType`, `ActorType`,
-`VerificationCheckType`, `EvidenceStatus`, and `NotReadyCode`. FastAPI's
-OpenAPI document publishes the members of those canonical enums as the allowed
-HTTP values; this contract was delivered by ATLAS-194 and extended by
-ATLAS-200 and ATLAS-199.
+`EntityStatus`, `LessonCategory`, `VerificationCheckType`, `EvidenceStatus`, and
+`NotReadyCode`. FastAPI's OpenAPI document publishes the members of those
+canonical enums as the allowed HTTP values; this contract was delivered by
+ATLAS-194 and extended by ATLAS-200, ATLAS-199, and ATLAS-201.
 
 A keyed v1 resource that does not exist returns `404 Not Found` using FastAPI's
 native error body: `{"detail": "<Resource> <key> not found"}`. Collection routes

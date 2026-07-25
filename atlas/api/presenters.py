@@ -9,6 +9,8 @@ from atlas.api.schemas import (
     CriticalPathStepSchema,
     DependencyBlockerSchema,
     DependencyCriticalPathResponse,
+    LessonItemSchema,
+    LessonsResponse,
     NotReadyReasonSchema,
     ReviewCheckSchema,
     ReviewQueueItemSchema,
@@ -21,7 +23,7 @@ from atlas.api.schemas import (
     TicketEvidenceResponse,
     TicketReadinessSchema,
 )
-from atlas.core.models import Ticket
+from atlas.core.models import Lesson, Ticket
 from atlas.dependencies import CriticalPath, NotReadyCode
 from atlas.dependencies.views import (
     blocked_payload,
@@ -107,6 +109,34 @@ def present_ticket_evidence(
                 has_system_pin_triple=record.has_system_pin_triple,
             )
             for record in records
+        ]
+    )
+
+
+def present_lessons(lessons: Sequence[Lesson]) -> LessonsResponse:
+    """Present stored lessons without cross-resource assembly."""
+    return LessonsResponse(
+        lessons=[
+            LessonItemSchema(
+                id=lesson.id,
+                product_id=lesson.product_id,
+                status=lesson.status,
+                category=lesson.category,
+                title=lesson.title,
+                problem=lesson.problem,
+                solution=lesson.solution,
+                outcome=lesson.outcome,
+                confidence=lesson.confidence,
+                source_ticket_id=lesson.source_ticket_id,
+                related_ticket_ids=lesson.related_ticket_ids,
+                related_adr_ids=lesson.related_adr_ids,
+                tags=lesson.tags,
+                created_by_type=lesson.created_by_type,
+                created_by_id=lesson.created_by_id,
+                created_at=lesson.created_at,
+                updated_at=lesson.updated_at,
+            )
+            for lesson in lessons
         ]
     )
 

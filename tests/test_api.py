@@ -6,13 +6,14 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from schema_drift_helpers import drifted_database
 from test_apply import _epic_model_kwargs, _ticket_model_kwargs
+from test_lesson_model import lesson_kwargs
 from test_models_validation import dependency_kwargs
 from test_plan_pipeline import fresh_db
 
@@ -21,6 +22,8 @@ from atlas.api.schemas import (
     CriticalPathStepSchema,
     DependencyBlockerSchema,
     DependencyCriticalPathResponse,
+    LessonItemSchema,
+    LessonsResponse,
     NotReadyReasonSchema,
     ReviewCheckSchema,
     ReviewQueueItemSchema,
@@ -29,11 +32,13 @@ from atlas.api.schemas import (
     TicketEvidenceItemSchema,
     TicketReadinessSchema,
 )
-from atlas.core.enums import ActorType, EvidenceStatus, RiskLevel
+from atlas.core.enums import ActorType, EntityStatus, EvidenceStatus, RiskLevel
 from atlas.core.models import (
     Epic,
     Evidence,
     EvidenceType,
+    Lesson,
+    LessonCategory,
     Ticket,
     TicketDependency,
     TicketStatus,
@@ -46,6 +51,7 @@ from atlas.storage import (
     Database,
     EpicRepo,
     EvidenceRepo,
+    LessonRepo,
     ProductRepo,
     TicketDependencyRepo,
     TicketRepo,
@@ -70,6 +76,11 @@ def _assert_empty_tickets(response: Any) -> None:
 def _assert_empty_reviews(response: Any) -> None:
     assert response.status_code == 200
     assert response.json() == {"reviews": []}
+
+
+def _assert_empty_lessons(response: Any) -> None:
+    assert response.status_code == 200
+    assert response.json() == {"lessons": []}
 
 
 def _assert_missing_ticket(response: Any) -> None:
@@ -103,6 +114,7 @@ API_ROUTE_CASES: dict[tuple[str, str], RouteAssertion] = {
         "GET",
         "/api/v1/tickets/{key}/dependencies",
     ): _assert_missing_ticket_dependencies,
+    ("GET", "/api/v1/lessons"): _assert_empty_lessons,
     ("GET", "/api/v1/dependencies/critical-path"): _assert_empty_critical_path,
     ("GET", "/api/v1/reviews"): _assert_empty_reviews,
 }
@@ -148,6 +160,16 @@ def test_every_registered_route_has_an_executable_case(app: FastAPI) -> None:
     assert registered == set(API_ROUTE_CASES)
 
 
+def test_lessons_api_registers_only_read_route(app: FastAPI) -> None:
+    lesson_operations = {
+        (method.upper(), path)
+        for path, operations in app.openapi()["paths"].items()
+        if path.startswith("/api/v1/lessons")
+        for method in operations
+    }
+    assert lesson_operations == {("GET", "/api/v1/lessons")}
+
+
 def test_former_unversioned_api_paths_return_404(app: FastAPI) -> None:
     with TestClient(app) as client:
         for path in FORMER_UNVERSIONED_PATHS:
@@ -168,6 +190,9 @@ def test_response_schema_closed_fields_use_canonical_enums() -> None:
     assert TicketEvidenceItemSchema.model_fields["status"].annotation is EvidenceStatus
     assert DependencyBlockerSchema.model_fields["code"].annotation is NotReadyCode
     assert NotReadyReasonSchema.model_fields["code"].annotation is NotReadyCode
+    assert LessonItemSchema.model_fields["status"].annotation is EntityStatus
+    assert LessonItemSchema.model_fields["category"].annotation is LessonCategory
+    assert LessonItemSchema.model_fields["created_by_type"].annotation is ActorType
     assert ReviewQueueItemSchema.model_fields["status"].annotation is TicketStatus
     assert ReviewQueueItemSchema.model_fields["ticket_type"].annotation is TicketType
     assert ReviewQueueItemSchema.model_fields["verdict"].annotation is EvidenceStatus
@@ -202,6 +227,9 @@ def _component_for_field(
         ("TicketEvidenceItemSchema", "status", EvidenceStatus),
         ("DependencyBlockerSchema", "code", NotReadyCode),
         ("NotReadyReasonSchema", "code", NotReadyCode),
+        ("LessonItemSchema", "status", EntityStatus),
+        ("LessonItemSchema", "category", LessonCategory),
+        ("LessonItemSchema", "created_by_type", ActorType),
         ("ReviewQueueItemSchema", "status", TicketStatus),
         ("ReviewQueueItemSchema", "ticket_type", TicketType),
         ("ReviewQueueItemSchema", "verdict", EvidenceStatus),
@@ -350,6 +378,166 @@ def test_ticket_board_rejects_invalid_status(database: Database) -> None:
         response = client.get("/api/v1/tickets?status=not_a_status")
 
     assert response.status_code == 422
+
+
+def _lesson(
+    product_id: UUID,
+    *,
+    lesson_id: UUID,
+    title: str,
+    status: EntityStatus = EntityStatus.DRAFT,
+    category: LessonCategory = LessonCategory.DELIVERY,
+    created_at: datetime = datetime(2026, 7, 25, 10, tzinfo=UTC),
+    updated_at: datetime = datetime(2026, 7, 25, 10, tzinfo=UTC),
+    **overrides: Any,
+) -> Lesson:
+    return Lesson(
+        **lesson_kwargs()
+        | {
+            "id": lesson_id,
+            "product_id": product_id,
+            "status": status,
+            "category": category,
+            "title": title,
+            "created_at": created_at,
+            "updated_at": updated_at,
+        }
+        | overrides
+    )
+
+
+def _lesson_item_json(lesson: Lesson) -> dict[str, Any]:
+    return LessonItemSchema(
+        id=lesson.id,
+        product_id=lesson.product_id,
+        status=lesson.status,
+        category=lesson.category,
+        title=lesson.title,
+        problem=lesson.problem,
+        solution=lesson.solution,
+        outcome=lesson.outcome,
+        confidence=lesson.confidence,
+        source_ticket_id=lesson.source_ticket_id,
+        related_ticket_ids=lesson.related_ticket_ids,
+        related_adr_ids=lesson.related_adr_ids,
+        tags=lesson.tags,
+        created_by_type=lesson.created_by_type,
+        created_by_id=lesson.created_by_id,
+        created_at=lesson.created_at,
+        updated_at=lesson.updated_at,
+    ).model_dump(mode="json")
+
+
+def test_lessons_returns_stored_lesson_projection(database: Database) -> None:
+    product = ProductRepo(database).get_by_key("ATLAS")
+    assert product is not None
+    lessons = [
+        _lesson(
+            product.id,
+            lesson_id=UUID("00000000-0000-0000-0000-000000000002"),
+            title="Later stored lesson",
+            status=EntityStatus.ACTIVE,
+            category=LessonCategory.TESTING,
+            confidence=0.8,
+            source_ticket_id=uuid4(),
+            related_ticket_ids=[uuid4()],
+            related_adr_ids=[uuid4()],
+            tags=["api", "lessons"],
+            created_by_type=ActorType.SYSTEM,
+            created_by_id="atlas",
+        ),
+        _lesson(
+            product.id,
+            lesson_id=UUID("00000000-0000-0000-0000-000000000001"),
+            title="Earlier stored lesson",
+            confidence=None,
+            source_ticket_id=uuid4(),
+            related_ticket_ids=[],
+            related_adr_ids=[],
+            tags=[],
+        ),
+    ]
+    lesson_repo = LessonRepo(database)
+    for lesson in lessons:
+        lesson_repo.add(lesson)
+
+    with TestClient(create_app(database=database)) as client:
+        response = client.get("/api/v1/lessons")
+
+    assert response.status_code == 200
+    assert response.json() == LessonsResponse(
+        lessons=[
+            LessonItemSchema(**_lesson_item_json(lesson))
+            for lesson in sorted(lessons, key=lambda record: record.id)
+        ]
+    ).model_dump(mode="json")
+
+
+def test_lessons_filters_status_and_preserves_repository_order(
+    database: Database,
+) -> None:
+    product = ProductRepo(database).get_by_key("ATLAS")
+    assert product is not None
+    older_active = _lesson(
+        product.id,
+        lesson_id=UUID("00000000-0000-0000-0000-000000000010"),
+        title="Older active lesson",
+        status=EntityStatus.ACTIVE,
+        created_at=datetime(2026, 7, 25, 9, tzinfo=UTC),
+    )
+    draft = _lesson(
+        product.id,
+        lesson_id=UUID("00000000-0000-0000-0000-000000000011"),
+        title="Draft lesson",
+        status=EntityStatus.DRAFT,
+        confidence=None,
+    )
+    newer_active = _lesson(
+        product.id,
+        lesson_id=UUID("00000000-0000-0000-0000-000000000012"),
+        title="Newer active lesson",
+        status=EntityStatus.ACTIVE,
+        created_at=datetime(2026, 7, 25, 11, tzinfo=UTC),
+    )
+    lesson_repo = LessonRepo(database)
+    for lesson in (newer_active, draft, older_active):
+        lesson_repo.add(lesson)
+
+    with TestClient(create_app(database=database)) as client:
+        response = client.get("/api/v1/lessons?status=active")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "lessons": [_lesson_item_json(older_active), _lesson_item_json(newer_active)]
+    }
+
+
+def test_lessons_rejects_invalid_status(database: Database) -> None:
+    with TestClient(create_app(database=database)) as client:
+        response = client.get("/api/v1/lessons?status=not_a_status")
+
+    assert response.status_code == 422
+
+
+def test_lessons_route_performs_no_lesson_state_writes(database: Database) -> None:
+    product = ProductRepo(database).get_by_key("ATLAS")
+    assert product is not None
+    lesson = _lesson(
+        product.id,
+        lesson_id=UUID("00000000-0000-0000-0000-000000000020"),
+        title="Read-only lesson",
+        confidence=None,
+    )
+    lesson_repo = LessonRepo(database)
+    lesson_repo.add(lesson)
+    before = lesson_repo.get(lesson.id)
+
+    with TestClient(create_app(database=database)) as client:
+        response = client.get("/api/v1/lessons?status=draft")
+
+    assert response.status_code == 200
+    after = lesson_repo.get(lesson.id)
+    assert after == before
 
 
 def test_ticket_detail_returns_operator_facing_stored_state(

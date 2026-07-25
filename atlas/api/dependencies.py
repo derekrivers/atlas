@@ -8,6 +8,7 @@ from fastapi import Depends, HTTPException, Request, status
 
 from atlas.api.presenters import (
     present_dependency_critical_path,
+    present_lessons,
     present_review_queue,
     present_ticket_board,
     present_ticket_dependencies,
@@ -16,12 +17,14 @@ from atlas.api.presenters import (
 )
 from atlas.api.schemas import (
     DependencyCriticalPathResponse,
+    LessonsResponse,
     ReviewQueueResponse,
     TicketBoardResponse,
     TicketDependenciesResponse,
     TicketDetailResponse,
     TicketEvidenceResponse,
 )
+from atlas.core.enums import EntityStatus
 from atlas.core.models import TicketStatus
 from atlas.orchestration import (
     dependency_critical_path,
@@ -29,7 +32,7 @@ from atlas.orchestration import (
     ticket_dependencies,
     ticket_evidence,
 )
-from atlas.storage import Database, TicketRepo
+from atlas.storage import Database, LessonRepo, TicketRepo
 
 
 def get_database(request: Request) -> Database:
@@ -47,6 +50,14 @@ def get_ticket_repo(database: DatabaseDependency) -> TicketRepo:
 
 
 TicketRepoDependency = Annotated[TicketRepo, Depends(get_ticket_repo)]
+
+
+def get_lesson_repo(database: DatabaseDependency) -> LessonRepo:
+    """Build the single-domain lesson service over the shared database."""
+    return LessonRepo(database)
+
+
+LessonRepoDependency = Annotated[LessonRepo, Depends(get_lesson_repo)]
 
 
 def get_ticket_board(
@@ -99,6 +110,18 @@ TicketEvidenceDependency = Annotated[
     TicketEvidenceResponse,
     Depends(get_ticket_evidence),
 ]
+
+
+def get_lessons(
+    lessons: LessonRepoDependency,
+    status: EntityStatus | None = None,
+) -> LessonsResponse:
+    """Read and serialise the requested stored lesson collection."""
+    selected = lessons.list_by_status(status) if status is not None else lessons.list()
+    return present_lessons(selected)
+
+
+LessonsDependency = Annotated[LessonsResponse, Depends(get_lessons)]
 
 
 def get_ticket_dependencies(

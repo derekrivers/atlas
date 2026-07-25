@@ -1,12 +1,14 @@
 """Pydantic response schemas exposed by the HTTP adapter."""
 
 from datetime import datetime
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from atlas.core.enums import ActorType, EvidenceStatus, RiskLevel
+from atlas.core.enums import ActorType, EntityStatus, EvidenceStatus, RiskLevel
 from atlas.core.models import (
     EvidenceType,
+    LessonCategory,
     TicketStatus,
     TicketType,
     VerificationCheckType,
@@ -81,6 +83,34 @@ class TicketEvidenceResponse(BaseModel):
     """Stored evidence for one ticket."""
 
     evidence: list[TicketEvidenceItemSchema]
+
+
+class LessonItemSchema(BaseModel):
+    """One stored lesson exposed as a read-only projection."""
+
+    id: UUID
+    product_id: UUID
+    status: EntityStatus
+    category: LessonCategory
+    title: str
+    problem: str
+    solution: str
+    outcome: str
+    confidence: float | None
+    source_ticket_id: UUID
+    related_ticket_ids: list[UUID]
+    related_adr_ids: list[UUID]
+    tags: list[str]
+    created_by_type: ActorType
+    created_by_id: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class LessonsResponse(BaseModel):
+    """Stored lessons for the operator."""
+
+    lessons: list[LessonItemSchema]
 
 
 class DependencyBlockerSchema(BaseModel):
