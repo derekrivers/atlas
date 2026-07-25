@@ -122,9 +122,14 @@ def test_ac1_no_symphony_default_states() -> None:
 # --- AC-2: serialized concurrency ---------------------------------------------
 
 
-def test_ac2_max_concurrent_agents_is_one() -> None:
+def test_ac2_max_concurrent_agents_matches_ruling() -> None:
+    """AC-2 originally pinned serialized concurrency at 1. ATLAS-041M
+    raised it to 3 by operator ruling: the bound is review
+    throughput, not agent capacity. The pin moves with the ruling;
+    the original value is recorded here, not erased.
+    """
     front, _ = _split()
-    assert front["agent"]["max_concurrent_agents"] == 1
+    assert front["agent"]["max_concurrent_agents"] == 3
 
 
 # --- AC-3: ADR-0007 — no agent-created tickets --------------------------------
@@ -293,8 +298,9 @@ def test_atlas_168_contract_pins_adr0008_ordering() -> None:
     assert "rebase precedes push precedes CI" in section
     assert "system-tier evidence pins to a head" in section
     assert "After entering `Review Required`, never rebase on your own" in section
-    assert "verification verdict becomes stale" in section
+    assert "update the branch directly" in section
     assert "`Changes Requested`" in section
+    assert "falls behind" in section
     assert "rerun CI on the new head" in section
 
 
