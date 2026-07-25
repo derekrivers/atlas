@@ -176,8 +176,12 @@ ADR-0008 fixes the ordering: rebase precedes push precedes CI, so
 system-tier evidence pins to the final head that is current against
 `origin/main` at handoff. The agent never rebases after entering
 `Review Required`. If a sibling PR merges first and makes the verdict stale,
-the operator routes the ticket through `Changes Requested`; the resumed agent
-rebases, pushes, and reruns CI on the new head.
+the operator either updates the branch directly (using GitHub's update-branch
+control or an equivalent rebase and force-push), or routes the ticket through
+`Changes Requested`. Either route changes the head commit, so evidence is
+re-pulled against the new head before the acceptance chain continues; on a
+`Changes Requested` resume, the agent rebases, pushes, and reruns CI on the new
+head.
 
 `hooks.after_create` performs a full clone, not `git clone --depth 1`. A
 depth-1 clone can lack the merge base after a later fetch, which makes
@@ -189,9 +193,11 @@ conflict class is the Phase 8 closure report §5 carry-forward, "WORKFLOW:
 rebase-onto-fresh-main-before-PR (the #188 conflict class)".
 
 GitHub merge queue or auto-merge branch update is the platform-level answer if
-agent-side rebasing stops scaling, but it is deferred from v1. This workflow
-keeps `max_concurrent_agents: 1`; raising concurrency or configuring merge
-queue belongs to a separate operator decision.
+agent-side rebasing stops scaling, but it is deferred from v1.
+This workflow sets `max_concurrent_agents: 3` (ATLAS-041M); the
+bound is review throughput rather than agent capacity, and raising
+it further or configuring a merge queue remains a separate
+operator decision.
 
 ### GitHub write-access probe
 
@@ -245,7 +251,8 @@ To prevent races between the PM Engine and agents:
   `review_required → changes_requested` (operator verdict relay), and any
   administrative archive/reject.
 - **The agent writes:** `ready_for_agent → in_progress → pr_open →
-  review_required`, and `changes_requested → in_progress`.
+  review_required`, `changes_requested → in_progress`, and any active state →
+  `needs_human_decision` when the workflow requires a human gate.
 - The PM Engine treats any observed transition outside this ownership as a
   reconciliation anomaly: it logs it, records a `DebtItem` if recurring,
   and never silently reverts a running agent's state.

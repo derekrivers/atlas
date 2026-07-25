@@ -61,8 +61,14 @@ hooks:
     rm -f "${probe_output}"
   before_remove: |
     true
+# Concurrency is bounded by REVIEW throughput, not agent capacity:
+# every PR needs a reviewer pass plus the operator's acceptance
+# chain, and concurrent branches in Review Required stale each
+# other as siblings merge. Dependency chains already serialise
+# most work, so a small number is honest headroom for genuinely
+# independent tickets. Raise deliberately, not aspirationally.
 agent:
-  max_concurrent_agents: 1
+  max_concurrent_agents: 3
   max_turns: 20
 # ─────────────────────────────────────────────────────────────────────────
 # Codex model requirement — read before editing `codex.command` below.
@@ -118,6 +124,21 @@ Ticket description:
 No description provided — treat this as a blocker (see Hard limits).
 {% endif %}
 
+## Named design gaps
+
+Some tickets name design gaps for you to resolve — decisions the
+contract deliberately leaves open, as distinct from ambiguities
+in it. Do not resolve a named gap silently. Post one Linear
+comment stating, for each gap: your proposed resolution, its
+failure modes, and what you would do differently if it were
+rejected. Then move the ticket to `Needs Human` and stop.
+
+The operator ratifies or amends your proposal and returns the
+ticket to an active state; resume in the same workspace and
+execute the ratified resolution. Resolving a named gap without
+ratification is out of scope however reasonable your answer —
+the gate exists because these decisions outlive the ticket.
+
 ## Ticket key identity
 
 Store keys are issued only by the key authority (KeyCounterRepo high-water marks). No work — hand-dispatched or agent-dispatched — may claim a key ahead of the counter. Hand-dispatched work either mints first (inbox stub → atlas apply → assigned key) or carries a non-key meta label. A claimed-ahead key is a namespace incident requiring counter reconciliation; ATLAS-111..146 and ATLAS-187..192 are the recorded costs.
@@ -141,9 +162,14 @@ ticket to `Needs Human`, and do not improvise.
 Under ADR-0008, this ordering is binding: rebase precedes push precedes CI, so
 system-tier evidence pins to a head that is current against `origin/main` at
 handoff. After entering `Review Required`, never rebase on your own. If a
-sibling PR merges first and the verification verdict becomes stale, the operator
-routes the ticket through `Changes Requested`; on that resume, apply this same
-discipline and rerun CI on the new head.
+sibling PR merges first and your branch falls behind
+`origin/main`, the operator chooses the route: they may update
+the branch directly (GitHub's update-branch control, or an
+equivalent rebase and force-push), or route the ticket through
+`Changes Requested` for you to resume. Either route changes the
+head commit, so evidence is re-pulled against the new head
+before the acceptance chain continues. On a `Changes Requested`
+resume, apply this same discipline and rerun CI on the new head.
 
 ## How to move the ticket (you perform every transition)
 
