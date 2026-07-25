@@ -63,6 +63,10 @@ v2 (ATLAS-16) adds, per knowledge-core.md "JSON Schema generation":
   CLOSED roadmap phase sections (PHS002), ROADMAP.md's current-work claim must
   name an existing phase section (PHS003), and unrecognised roadmap status
   lines fail closed (PHS004).
+- SOURCE: every ``source_anchor`` recorded in planning renders, and in a store
+  when a caller supplies one, resolves through the same ``AnchorIndex`` and
+  planner corpus that gate 4 uses. A path outside the indexed input set is
+  SRC001; an indexed path with no matching heading is SRC002.
 
 Exit status: 0 when the doc set is clean, 1 when there are findings.
 This linter only reports; repairing drift is ATLAS-5.
@@ -71,16 +75,43 @@ This linter only reports; repairing drift is ATLAS-5.
 from __future__ import annotations
 
 import argparse
+import fnmatch
 import json
 import re
+import subprocess
 import sys
 import uuid
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
+import yaml
+
+from atlas.core.anchors import (
+    AnchorIndex,
+    IngestionError,
+    MalformedAnchorError,
+    SourceDocument,
+    UnknownAnchorError,
+    UnknownDocumentError,
+)
+from atlas.planning.ingestion import (
+    _GLOBS,
+    _ROOT_DOCS,
+    _is_accepted_adr,
+    _matches_inbox,
+    _matches_processed,
+    collect_inbox_documents,
+    collect_input_documents,
+    collect_processed_documents,
+    durable_alias_documents,
+)
 from atlas.tools.schemas_export import SCHEMAS_DIR, expected_schemas
+
+if TYPE_CHECKING:
+    from atlas.storage import Database
 
 MANIFEST_PATH = "docs/MANIFEST.md"
 ROOT_ROADMAP_PATH = "ROADMAP.md"
@@ -189,6 +220,8 @@ CURRENT_WORK_RE = re.compile(r"^Current work:\s*(?P<claim>.+)$", re.IGNORECASE)
 PHASE_CLOSURE_REPORT_RE = re.compile(
     r"^phase-(?P<phase>\d+(?:\.\d+)?)-closure-report\.md$"
 )
+SOURCE_ANCHOR_RE = re.compile(r"^\s*source_anchor:\s*(?P<value>.*)$")
+ENTITY_KEY_RE = re.compile(r"^\s*(?:-\s*)?key:\s*(?P<value>.+?)\s*$")
 
 # ``.codex`` holds vendored Symphony skill files (e.g. .codex/skills/linear),
 # which follow Symphony's own conventions and are adapted-not-forked (ATLAS-136
@@ -215,6 +248,16 @@ class PhaseSection:
     title: str
     status: str | None = None
     status_line: int | None = None
+
+
+@dataclass(frozen=True)
+class SourceAnchorRecord:
+    """One persisted or rendered source_anchor occurrence."""
+
+    path: str
+    line: int
+    anchor: str
+    label: str
 
 
 def _rel(root: Path, path: Path) -> str:
@@ -810,6 +853,226 @@ def check_phase_status(root: Path) -> list[Finding]:
     return findings
 
 
+# --- source_anchor integrity (ATLAS-196) ------------------------------------
+
+
+def _is_git_worktree(root: Path) -> bool:
+    result = subprocess.run(
+        ["git", "rev-parse", "--is-inside-work-tree"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+    )
+    return result.returncode == 0 and result.stdout.strip() == "true"
+
+
+def _worktree_markdown_paths(root: Path) -> list[str]:
+    return sorted(_rel(root, path) for path in root.rglob("*.md") if path.is_file())
+
+
+def _worktree_document(root: Path, rel: str) -> SourceDocument:
+    return SourceDocument(
+        path=rel,
+        sha="working-tree",
+        content=(root / rel).read_text(encoding="utf-8"),
+    )
+
+
+def _worktree_input_documents(root: Path) -> list[SourceDocument]:
+    """Fixture fallback for non-git repos, using ingestion's corpus constants."""
+    paths = _worktree_markdown_paths(root)
+    documents = [
+        _worktree_document(root, path) for path in _ROOT_DOCS if (root / path).is_file()
+    ]
+    for pattern in _GLOBS:
+        for path in (path for path in paths if fnmatch.fnmatch(path, pattern)):
+            document = _worktree_document(root, path)
+            if path.startswith(f"{DECISIONS_DIR}/") and not _is_accepted_adr(
+                document.content
+            ):
+                continue
+            documents.append(document)
+    return documents
+
+
+def _worktree_inbox_documents(root: Path) -> list[SourceDocument]:
+    return [
+        _worktree_document(root, path)
+        for path in _worktree_markdown_paths(root)
+        if _matches_inbox(path, INBOX_DIR)
+    ]
+
+
+def _worktree_processed_documents(root: Path) -> list[SourceDocument]:
+    return [
+        _worktree_document(root, path)
+        for path in _worktree_markdown_paths(root)
+        if _matches_processed(path, INBOX_DIR)
+    ]
+
+
+def _source_anchor_index(root: Path) -> tuple[AnchorIndex | None, Finding | None]:
+    try:
+        if _is_git_worktree(root):
+            documents = collect_input_documents(root)
+            inbox_documents = collect_inbox_documents(root, Path(INBOX_DIR))
+            processed_documents = collect_processed_documents(root, Path(INBOX_DIR))
+        else:
+            documents = _worktree_input_documents(root)
+            inbox_documents = _worktree_inbox_documents(root)
+            processed_documents = _worktree_processed_documents(root)
+        index_documents = (
+            documents
+            + inbox_documents
+            + processed_documents
+            + durable_alias_documents(inbox_documents, processed_documents)
+        )
+        return AnchorIndex.build(index_documents), None
+    except IngestionError as error:
+        return (
+            None,
+            Finding(
+                ".",
+                1,
+                "SRC000",
+                f"source_anchor corpus cannot be indexed: {error}",
+            ),
+        )
+
+
+def _yaml_scalar(raw: str) -> str:
+    try:
+        value = yaml.safe_load(raw)
+    except yaml.YAMLError:
+        return raw.strip()
+    if value is None:
+        return ""
+    return str(value)
+
+
+def _render_anchor_records(root: Path) -> list[SourceAnchorRecord]:
+    planning = root / PLANNING_DIR
+    if not planning.is_dir():
+        return []
+    inbox = planning / "inbox"
+    records = []
+    for path in sorted(planning.rglob("*")):
+        if not path.is_file() or path.suffix not in {".yaml", ".yml"}:
+            continue
+        if path == inbox or inbox in path.parents:
+            continue
+        rel = _rel(root, path)
+        current_key = rel
+        for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            key_match = ENTITY_KEY_RE.match(line)
+            if key_match:
+                current_key = _yaml_scalar(key_match.group("value"))
+                continue
+            anchor_match = SOURCE_ANCHOR_RE.match(line)
+            if not anchor_match:
+                continue
+            records.append(
+                SourceAnchorRecord(
+                    path=rel,
+                    line=lineno,
+                    anchor=_yaml_scalar(anchor_match.group("value")),
+                    label=f"render {current_key}",
+                )
+            )
+    return records
+
+
+def _anchor_failure(record: SourceAnchorRecord, error: IngestionError) -> Finding:
+    if isinstance(error, UnknownDocumentError):
+        return Finding(
+            record.path,
+            record.line,
+            "SRC001",
+            f"{record.label} source_anchor document is outside indexed input set: "
+            f"{record.anchor}",
+        )
+    if isinstance(error, UnknownAnchorError):
+        return Finding(
+            record.path,
+            record.line,
+            "SRC002",
+            f"{record.label} source_anchor heading does not resolve: {record.anchor}",
+        )
+    if isinstance(error, MalformedAnchorError):
+        return Finding(
+            record.path,
+            record.line,
+            "SRC003",
+            f"{record.label} source_anchor is not <path>#<slug>: {record.anchor}",
+        )
+    return Finding(
+        record.path,
+        record.line,
+        "SRC000",
+        f"{record.label} source_anchor could not be checked: {error}",
+    )
+
+
+def check_source_anchor_records(
+    root: Path, records: Iterable[SourceAnchorRecord]
+) -> list[Finding]:
+    records = list(records)
+    if not records:
+        return []
+    index, index_finding = _source_anchor_index(root)
+    if index_finding is not None:
+        return [index_finding]
+    assert index is not None
+
+    findings = []
+    for record in records:
+        try:
+            index.resolve(record.anchor)
+        except IngestionError as error:
+            findings.append(_anchor_failure(record, error))
+    return findings
+
+
+def check_render_source_anchors(root: Path) -> list[Finding]:
+    """Validate source_anchor fields in docs/planning renders without a database."""
+    return check_source_anchor_records(root, _render_anchor_records(root))
+
+
+def check_store_source_anchors(root: Path, database: Database) -> list[Finding]:
+    """Validate source_anchor fields in the operational store."""
+    from atlas.storage import EpicRepo, TicketRepo
+
+    try:
+        records = [
+            SourceAnchorRecord(
+                path="store/epics",
+                line=index,
+                anchor=epic.source_anchor,
+                label=f"store epic {epic.key}",
+            )
+            for index, epic in enumerate(EpicRepo(database).list(), start=1)
+        ]
+        records.extend(
+            SourceAnchorRecord(
+                path="store/tickets",
+                line=index,
+                anchor=ticket.source_anchor,
+                label=f"store ticket {ticket.key}",
+            )
+            for index, ticket in enumerate(TicketRepo(database).list(), start=1)
+        )
+    except Exception as error:
+        return [
+            Finding(
+                "store",
+                1,
+                "SRC000",
+                f"store source_anchor scan failed: {error}",
+            )
+        ]
+    return check_source_anchor_records(root, records)
+
+
 # --- v2 (ATLAS-16): JSON examples and generated-schema integrity ----------
 
 # Annotation keys carry no validation semantics; everything else the
@@ -1142,7 +1405,7 @@ def check_generated_schemas(root: Path) -> list[Finding]:
     return findings
 
 
-def lint_repo(root: Path) -> list[Finding]:
+def lint_repo(root: Path, database: Database | None = None) -> list[Finding]:
     findings = [
         *check_adrs(root),
         *check_manifest(root),
@@ -1151,9 +1414,12 @@ def lint_repo(root: Path) -> list[Finding]:
         *check_backticked_paths(root),
         *check_planning_renders(root),
         *check_phase_status(root),
+        *check_render_source_anchors(root),
         *check_json_examples(root),
         *check_generated_schemas(root),
     ]
+    if database is not None:
+        findings.extend(check_store_source_anchors(root, database))
     return sorted(findings, key=lambda f: (f.path, f.line, f.code))
 
 
@@ -1165,9 +1431,19 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--repo", default=".", help="repository root (default: current directory)"
     )
+    parser.add_argument(
+        "--db",
+        default=None,
+        help="optional database URL for checking store source_anchor rows",
+    )
     args = parser.parse_args(argv)
     root = Path(args.repo).resolve()
-    findings = lint_repo(root)
+    database = None
+    if args.db is not None:
+        from atlas.storage import Database
+
+        database = Database(args.db)
+    findings = lint_repo(root, database=database)
     for finding in findings:
         print(finding.render())
     print(
