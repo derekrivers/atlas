@@ -32,5 +32,5 @@ def system_status(db: Database) -> SystemStatus:
         ticket_count=tickets.count(),
         evidence_count=evidence.count(),
         last_linear_sync_at=tickets.latest_linear_synced_at(),
-        last_evidence_pull_at=evidence.latest_created_at(),
+        last_evidence_pull_at=evidence.latest_system_created_at(),
     )

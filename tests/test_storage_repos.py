@@ -49,7 +49,7 @@ def test_evidence_repo_exposes_add_and_queries_only() -> None:
         "add",
         "count",
         "get",
-        "latest_created_at",
+        "latest_system_created_at",
         "list",
         "list_for_ticket",
     }

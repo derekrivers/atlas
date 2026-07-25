@@ -342,6 +342,14 @@ def test_status_returns_operator_system_snapshot(database: Database) -> None:
             created_at=latest_evidence_pull,
         )
     )
+    evidence_repo.add(
+        _evidence(
+            tickets[2],
+            created_by_type=ActorType.HUMAN,
+            evidence_type=EvidenceType.MANUAL_APPROVAL,
+            created_at=datetime(2026, 7, 25, 12, tzinfo=UTC),
+        )
+    )
 
     with TestClient(create_app(database=database)) as client:
         response = client.get("/api/v1/status")
@@ -351,7 +359,7 @@ def test_status_returns_operator_system_snapshot(database: Database) -> None:
         package_version=__version__,
         schema_revision=head,
         ticket_count=3,
-        evidence_count=2,
+        evidence_count=3,
         last_linear_sync_at=latest_sync,
         last_evidence_pull_at=latest_evidence_pull,
     ).model_dump(mode="json")

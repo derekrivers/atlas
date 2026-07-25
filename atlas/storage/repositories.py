@@ -898,10 +898,12 @@ class EvidenceRepo(_Repo[Evidence]):
             )
             return [self._to_model(row) for row in rows]
 
-    def latest_created_at(self) -> datetime | None:
-        """Return the newest stored evidence timestamp."""
+    def latest_system_created_at(self) -> datetime | None:
+        """Return the newest system-tier evidence timestamp."""
         with self._db.session() as session:
-            statement = sa.select(sa.func.max(EvidenceRow.created_at))
+            statement = sa.select(sa.func.max(EvidenceRow.created_at)).where(
+                EvidenceRow.created_by_type == ActorType.SYSTEM.value
+            )
             return cast(datetime | None, session.scalar(statement))
 
 
