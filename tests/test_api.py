@@ -13,15 +13,21 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from schema_drift_helpers import drifted_database
 from test_apply import _epic_model_kwargs, _ticket_model_kwargs
+from test_models_validation import dependency_kwargs
 from test_plan_pipeline import fresh_db
 
 from atlas.api.app import create_app
 from atlas.api.schemas import (
+    CriticalPathStepSchema,
+    DependencyBlockerSchema,
+    DependencyCriticalPathResponse,
+    NotReadyReasonSchema,
     ReviewCheckSchema,
     ReviewQueueItemSchema,
     TicketBoardItemSchema,
     TicketDetailResponse,
     TicketEvidenceItemSchema,
+    TicketReadinessSchema,
 )
 from atlas.core.enums import ActorType, EvidenceStatus, RiskLevel
 from atlas.core.models import (
@@ -29,16 +35,19 @@ from atlas.core.models import (
     Evidence,
     EvidenceType,
     Ticket,
+    TicketDependency,
     TicketStatus,
     TicketType,
     VerificationCheck,
     VerificationCheckType,
 )
+from atlas.dependencies import NotReadyCode
 from atlas.storage import (
     Database,
     EpicRepo,
     EvidenceRepo,
     ProductRepo,
+    TicketDependencyRepo,
     TicketRepo,
     VerificationCheckRepo,
 )
@@ -73,6 +82,16 @@ def _assert_missing_ticket_evidence(response: Any) -> None:
     assert response.json() == {"detail": "Ticket ATLAS-MISSING not found"}
 
 
+def _assert_missing_ticket_dependencies(response: Any) -> None:
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Ticket ATLAS-MISSING not found"}
+
+
+def _assert_empty_critical_path(response: Any) -> None:
+    assert response.status_code == 200
+    assert response.json() == {"keys": [], "steps": [], "total_effort": 0}
+
+
 # This is executable inventory: every entry is issued by test_every_api_route,
 # and test_every_registered_route_has_an_executable_case requires exact parity.
 API_ROUTE_CASES: dict[tuple[str, str], RouteAssertion] = {
@@ -80,6 +99,11 @@ API_ROUTE_CASES: dict[tuple[str, str], RouteAssertion] = {
     ("GET", "/api/v1/tickets/count"): _assert_empty_count,
     ("GET", "/api/v1/tickets/{key}"): _assert_missing_ticket,
     ("GET", "/api/v1/tickets/{key}/evidence"): _assert_missing_ticket_evidence,
+    (
+        "GET",
+        "/api/v1/tickets/{key}/dependencies",
+    ): _assert_missing_ticket_dependencies,
+    ("GET", "/api/v1/dependencies/critical-path"): _assert_empty_critical_path,
     ("GET", "/api/v1/reviews"): _assert_empty_reviews,
 }
 
@@ -142,6 +166,8 @@ def test_response_schema_closed_fields_use_canonical_enums() -> None:
     assert TicketEvidenceItemSchema.model_fields["trust_level"].annotation is ActorType
     assert TicketEvidenceItemSchema.model_fields["trust_level"].alias == "tier"
     assert TicketEvidenceItemSchema.model_fields["status"].annotation is EvidenceStatus
+    assert DependencyBlockerSchema.model_fields["code"].annotation is NotReadyCode
+    assert NotReadyReasonSchema.model_fields["code"].annotation is NotReadyCode
     assert ReviewQueueItemSchema.model_fields["status"].annotation is TicketStatus
     assert ReviewQueueItemSchema.model_fields["ticket_type"].annotation is TicketType
     assert ReviewQueueItemSchema.model_fields["verdict"].annotation is EvidenceStatus
@@ -174,6 +200,8 @@ def _component_for_field(
         ("TicketEvidenceItemSchema", "type", EvidenceType),
         ("TicketEvidenceItemSchema", "tier", ActorType),
         ("TicketEvidenceItemSchema", "status", EvidenceStatus),
+        ("DependencyBlockerSchema", "code", NotReadyCode),
+        ("NotReadyReasonSchema", "code", NotReadyCode),
         ("ReviewQueueItemSchema", "status", TicketStatus),
         ("ReviewQueueItemSchema", "ticket_type", TicketType),
         ("ReviewQueueItemSchema", "verdict", EvidenceStatus),
@@ -504,6 +532,159 @@ def test_ticket_evidence_returns_native_404_for_unknown_key(
 
     assert response.status_code == 404
     assert response.json() == {"detail": "Ticket ATLAS-404 not found"}
+
+
+def _dependency(source: Ticket, target: Ticket) -> TicketDependency:
+    return TicketDependency(
+        **(
+            dependency_kwargs()
+            | {
+                "id": uuid4(),
+                "source_ticket_id": source.id,
+                "target_entity_type": "ticket",
+                "target_entity_id": target.id,
+            }
+        )
+    )
+
+
+def test_ticket_dependencies_returns_blockers_blocked_by_and_readiness(
+    database: Database,
+) -> None:
+    product = ProductRepo(database).get_by_key("ATLAS")
+    assert product is not None
+    epic = Epic(**_epic_model_kwargs(product.id, key="ATLAS-E1"))
+    blocker = Ticket(
+        **(
+            _ticket_model_kwargs(product.id, epic.id, key="ATLAS-200")
+            | {"id": uuid4(), "status": TicketStatus.IN_PROGRESS}
+        )
+    )
+    ticket = Ticket(
+        **(
+            _ticket_model_kwargs(product.id, epic.id, key="ATLAS-199")
+            | {
+                "id": uuid4(),
+                "status": TicketStatus.IN_PROGRESS,
+                "acceptance_criteria": [],
+            }
+        )
+    )
+    dependent = Ticket(
+        **(_ticket_model_kwargs(product.id, epic.id, key="ATLAS-201") | {"id": uuid4()})
+    )
+    EpicRepo(database).add(epic)
+    ticket_repo = TicketRepo(database)
+    for record in (blocker, ticket, dependent):
+        ticket_repo.add(record)
+    dependency_repo = TicketDependencyRepo(database)
+    dependency_repo.add(_dependency(ticket, blocker))
+    dependency_repo.add(_dependency(dependent, ticket))
+
+    with TestClient(create_app(database=database)) as client:
+        response = client.get("/api/v1/tickets/ATLAS-199/dependencies")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "key": "ATLAS-199",
+        "blockers": [
+            {"key": "ATLAS-200", "code": "dependency_not_done"},
+        ],
+        "blocked_by": ["ATLAS-201"],
+        "readiness": TicketReadinessSchema(
+            ready=False,
+            reasons=[
+                NotReadyReasonSchema(
+                    code=NotReadyCode.WRONG_STATUS,
+                    message="status 'in_progress' is not one of ['backlog', 'planned']",
+                    target=None,
+                    status="in_progress",
+                ),
+                NotReadyReasonSchema(
+                    code=NotReadyCode.DEPENDENCY_NOT_DONE,
+                    message="depends_on ticket 'ATLAS-200' has status "
+                    "'in_progress', not 'done'",
+                    target="ATLAS-200",
+                    status="in_progress",
+                ),
+                NotReadyReasonSchema(
+                    code=NotReadyCode.NO_ACCEPTANCE_CRITERIA,
+                    message="ticket has no acceptance criteria",
+                    target=None,
+                    status=None,
+                ),
+            ],
+        ).model_dump(mode="json"),
+    }
+
+
+def test_ticket_dependencies_returns_native_404_for_unknown_key(
+    database: Database,
+) -> None:
+    with TestClient(create_app(database=database)) as client:
+        response = client.get("/api/v1/tickets/ATLAS-404/dependencies")
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Ticket ATLAS-404 not found"}
+
+
+def test_dependency_critical_path_returns_ordered_existing_projection(
+    database: Database,
+) -> None:
+    product = ProductRepo(database).get_by_key("ATLAS")
+    assert product is not None
+    epic = Epic(**_epic_model_kwargs(product.id, key="ATLAS-E1"))
+    last = Ticket(
+        **(
+            _ticket_model_kwargs(product.id, epic.id, key="ATLAS-201")
+            | {"id": uuid4(), "estimated_effort": 5}
+        )
+    )
+    middle = Ticket(
+        **(
+            _ticket_model_kwargs(product.id, epic.id, key="ATLAS-202")
+            | {"id": uuid4(), "estimated_effort": 3}
+        )
+    )
+    first = Ticket(
+        **(
+            _ticket_model_kwargs(product.id, epic.id, key="ATLAS-203")
+            | {"id": uuid4(), "estimated_effort": 2}
+        )
+    )
+    EpicRepo(database).add(epic)
+    ticket_repo = TicketRepo(database)
+    for record in (last, middle, first):
+        ticket_repo.add(record)
+    dependency_repo = TicketDependencyRepo(database)
+    dependency_repo.add(_dependency(last, middle))
+    dependency_repo.add(_dependency(middle, first))
+
+    with TestClient(create_app(database=database)) as client:
+        response = client.get("/api/v1/dependencies/critical-path")
+
+    assert response.status_code == 200
+    assert response.json() == DependencyCriticalPathResponse(
+        keys=["ATLAS-203", "ATLAS-202", "ATLAS-201"],
+        steps=[
+            CriticalPathStepSchema(
+                key="ATLAS-203",
+                effort=2,
+                cumulative_effort=2,
+            ),
+            CriticalPathStepSchema(
+                key="ATLAS-202",
+                effort=3,
+                cumulative_effort=5,
+            ),
+            CriticalPathStepSchema(
+                key="ATLAS-201",
+                effort=5,
+                cumulative_effort=10,
+            ),
+        ],
+        total_effort=10,
+    ).model_dump(mode="json")
 
 
 def test_ticket_count_static_route_precedes_ticket_key_route(

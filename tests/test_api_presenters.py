@@ -6,18 +6,26 @@ from uuid import uuid4
 from test_apply import _ticket_model_kwargs
 
 from atlas.api.presenters import (
+    present_dependency_critical_path,
     present_review_queue,
     present_ticket_board,
+    present_ticket_dependencies,
     present_ticket_evidence,
 )
 from atlas.api.schemas import (
+    CriticalPathStepSchema,
+    DependencyBlockerSchema,
+    DependencyCriticalPathResponse,
+    NotReadyReasonSchema,
     ReviewCheckSchema,
     ReviewQueueItemSchema,
     ReviewQueueResponse,
     TicketBoardItemSchema,
     TicketBoardResponse,
+    TicketDependenciesResponse,
     TicketEvidenceItemSchema,
     TicketEvidenceResponse,
+    TicketReadinessSchema,
 )
 from atlas.core.enums import ActorType, EvidenceStatus, RiskLevel
 from atlas.core.models import (
@@ -27,8 +35,19 @@ from atlas.core.models import (
     TicketType,
     VerificationCheckType,
 )
+from atlas.dependencies import (
+    BlockedResult,
+    BlockedTarget,
+    CriticalPath,
+    CriticalPathStep,
+    NotReadyCode,
+    NotReadyReason,
+    ReadinessResult,
+    UnlocksResult,
+)
 from atlas.orchestration import (
     ReviewCheckState,
+    TicketDependencyState,
     TicketEvidenceRecordState,
     TicketReviewState,
 )
@@ -122,6 +141,90 @@ def test_present_ticket_evidence_maps_records_without_payload_fields() -> None:
         "status",
         "has_system_pin_triple",
     }
+
+
+def test_present_ticket_dependencies_maps_blockers_blocked_by_and_reasons() -> None:
+    response = present_ticket_dependencies(
+        TicketDependencyState(
+            key="ATLAS-199",
+            blockers=BlockedResult(
+                "ATLAS-199",
+                (BlockedTarget("ATLAS-200", NotReadyCode.DEPENDENCY_NOT_DONE),),
+            ),
+            blocked_by=UnlocksResult("ATLAS-199", ("ATLAS-201",)),
+            readiness=ReadinessResult(
+                "ATLAS-199",
+                (
+                    NotReadyReason(
+                        code=NotReadyCode.DEPENDENCY_NOT_DONE,
+                        message="depends_on ticket 'ATLAS-200' has status 'planned'",
+                        target="ATLAS-200",
+                        status="planned",
+                    ),
+                    NotReadyReason(
+                        code=NotReadyCode.NO_ACCEPTANCE_CRITERIA,
+                        message="ticket has no acceptance criteria",
+                    ),
+                ),
+            ),
+        )
+    )
+
+    assert response == TicketDependenciesResponse(
+        key="ATLAS-199",
+        blockers=[
+            DependencyBlockerSchema(
+                key="ATLAS-200",
+                code=NotReadyCode.DEPENDENCY_NOT_DONE,
+            )
+        ],
+        blocked_by=["ATLAS-201"],
+        readiness=TicketReadinessSchema(
+            ready=False,
+            reasons=[
+                NotReadyReasonSchema(
+                    code=NotReadyCode.DEPENDENCY_NOT_DONE,
+                    message="depends_on ticket 'ATLAS-200' has status 'planned'",
+                    target="ATLAS-200",
+                    status="planned",
+                ),
+                NotReadyReasonSchema(
+                    code=NotReadyCode.NO_ACCEPTANCE_CRITERIA,
+                    message="ticket has no acceptance criteria",
+                    target=None,
+                    status=None,
+                ),
+            ],
+        ),
+    )
+
+
+def test_present_dependency_critical_path_reuses_dependency_payload_shape() -> None:
+    response = present_dependency_critical_path(
+        CriticalPath(
+            (
+                CriticalPathStep("ATLAS-203", effort=2, cumulative_effort=2),
+                CriticalPathStep("ATLAS-202", effort=3, cumulative_effort=5),
+            )
+        )
+    )
+
+    assert response == DependencyCriticalPathResponse(
+        keys=["ATLAS-203", "ATLAS-202"],
+        steps=[
+            CriticalPathStepSchema(
+                key="ATLAS-203",
+                effort=2,
+                cumulative_effort=2,
+            ),
+            CriticalPathStepSchema(
+                key="ATLAS-202",
+                effort=3,
+                cumulative_effort=5,
+            ),
+        ],
+        total_effort=5,
+    )
 
 
 def test_present_review_queue_maps_nested_review_state() -> None:

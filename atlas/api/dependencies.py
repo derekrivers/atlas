@@ -7,19 +7,28 @@ from typing import Annotated
 from fastapi import Depends, HTTPException, Request, status
 
 from atlas.api.presenters import (
+    present_dependency_critical_path,
     present_review_queue,
     present_ticket_board,
+    present_ticket_dependencies,
     present_ticket_detail,
     present_ticket_evidence,
 )
 from atlas.api.schemas import (
+    DependencyCriticalPathResponse,
     ReviewQueueResponse,
     TicketBoardResponse,
+    TicketDependenciesResponse,
     TicketDetailResponse,
     TicketEvidenceResponse,
 )
 from atlas.core.models import TicketStatus
-from atlas.orchestration import review_queue, ticket_evidence
+from atlas.orchestration import (
+    dependency_critical_path,
+    review_queue,
+    ticket_dependencies,
+    ticket_evidence,
+)
 from atlas.storage import Database, TicketRepo
 
 
@@ -89,6 +98,40 @@ def get_ticket_evidence(
 TicketEvidenceDependency = Annotated[
     TicketEvidenceResponse,
     Depends(get_ticket_evidence),
+]
+
+
+def get_ticket_dependencies(
+    key: str,
+    database: DatabaseDependency,
+) -> TicketDependenciesResponse:
+    """Read and serialise one ticket's dependency projection, mapping 404."""
+    dependencies = ticket_dependencies(database, key)
+    if dependencies is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Ticket {key} not found",
+        )
+    return present_ticket_dependencies(dependencies)
+
+
+TicketDependenciesDependency = Annotated[
+    TicketDependenciesResponse,
+    Depends(get_ticket_dependencies),
+]
+
+
+def get_dependency_critical_path(
+    database: DatabaseDependency,
+) -> DependencyCriticalPathResponse:
+    """Build the serialised graph-wide dependency critical path."""
+    path = dependency_critical_path(database)
+    return present_dependency_critical_path(path)
+
+
+DependencyCriticalPathDependency = Annotated[
+    DependencyCriticalPathResponse,
+    Depends(get_dependency_critical_path),
 ]
 
 

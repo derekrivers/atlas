@@ -6,6 +6,11 @@ from atlas.orchestration.context_inputs import (
     ContextNotFoundError,
     load_context_inputs,
 )
+from atlas.orchestration.dependency_projection import (
+    TicketDependencyState,
+    dependency_critical_path,
+    ticket_dependencies,
+)
 from atlas.orchestration.pr_context import (
     PRContext,
     resolve_github_client,
@@ -29,15 +34,18 @@ __all__ = [
     "ContextNotFoundError",
     "PRContext",
     "ReviewCheckState",
+    "TicketDependencyState",
     "TicketEvidenceRecordState",
     "TicketReviewState",
     "VerifyResult",
     "build_tick_config",
     "capture_ticket",
+    "dependency_critical_path",
     "load_context_inputs",
     "resolve_github_client",
     "resolve_pr_context",
     "review_queue",
     "run_verify",
+    "ticket_dependencies",
     "ticket_evidence",
 ]
