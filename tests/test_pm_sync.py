@@ -37,6 +37,7 @@ Deterministic: the in-memory fake, no network, no secrets.
 from __future__ import annotations
 
 import json
+import logging
 import tempfile
 from collections.abc import Mapping
 from datetime import datetime, timedelta
@@ -142,6 +143,7 @@ class RecordingClient(InMemoryLinearClient):
         self.create_scopes: list[tuple[str, str]] = []
         self.updates: list[tuple[str, dict[str, Any]]] = []
         self.state_writes: list[tuple[str, str]] = []
+        self.write_events: list[tuple[str, ...]] = []
         # The issue ids fetch_comments was called for (ATLAS-148): the comment
         # scan is request-budgeted, so tests assert WHO was scanned, not just
         # what got stubbed — a skipped ticket must cost zero requests.
@@ -156,15 +158,40 @@ class RecordingClient(InMemoryLinearClient):
     ) -> LinearIssue:
         self.creates.append(dict(definition))
         self.create_scopes.append((team_id, project_id))
-        return super().create_issue(definition, team_id=team_id, project_id=project_id)
+        issue = super().create_issue(definition, team_id=team_id, project_id=project_id)
+        self.write_events.append(("create_issue", issue.id))
+        return issue
 
     def update_issue(self, issue_id: str, definition: Mapping[str, Any]) -> LinearIssue:
         self.updates.append((issue_id, dict(definition)))
         return super().update_issue(issue_id, definition)
 
     def set_state(self, issue_id: str, state_id: str) -> LinearIssue:
+        self.write_events.append(("set_state", issue_id, state_id))
         self.state_writes.append((issue_id, state_id))
         return super().set_state(issue_id, state_id)
+
+
+class NeedsHumanDefaultClient(RecordingClient):
+    """A fake workspace whose team default state is Needs Human."""
+
+    def create_issue(
+        self, definition: Mapping[str, Any], *, team_id: str, project_id: str
+    ) -> LinearIssue:
+        issue = super().create_issue(definition, team_id=team_id, project_id=project_id)
+        self.simulate_linear_state(issue.id, NEEDS_HUMAN)
+        defaulted = self.fetch_issue(issue.id)
+        assert defaulted is not None
+        return defaulted
+
+
+class FailingStateAssertionClient(RecordingClient):
+    """Records the create-time state assertion, then fails it."""
+
+    def set_state(self, issue_id: str, state_id: str) -> LinearIssue:
+        self.write_events.append(("set_state", issue_id, state_id))
+        self.state_writes.append((issue_id, state_id))
+        raise RuntimeError("state assertion unavailable")
 
 
 def status_map() -> LinearStatusMap:
@@ -227,6 +254,7 @@ def seed_ticket(
     status_entered_at: datetime | None = None,
     review_cycle_count: int = 0,
     title: str = "Atlas Title",
+    acceptance_criteria: list[str] | None = None,
     priority: int = 10,
     with_issue: bool = True,
     issue_state: WorkflowState | None = None,
@@ -256,6 +284,7 @@ def seed_ticket(
             "status": status,
             "title": title,
             "priority": priority,
+            "acceptance_criteria": acceptance_criteria or [],
             "external_linear_id": external_id,
             "created_at": updated_at,
             "updated_at": updated_at,
@@ -269,6 +298,7 @@ def seed_ticket(
     client.create_scopes.clear()
     client.updates.clear()
     client.state_writes.clear()
+    client.write_events.clear()
     client.comment_scans.clear()
     return ticket
 
@@ -636,6 +666,160 @@ def test_first_sync_create_carries_the_configured_project(db: Database) -> None:
 
     assert result.pushed_created == 1
     assert client.create_scopes == [(TEAM_ID, PROJECT_ID)]  # team AND project crossed
+
+
+def test_first_sync_create_asserts_mapped_state_in_order(db: Database) -> None:
+    client = RecordingClient()
+    seed_ticket(
+        db,
+        client,
+        key="ATLAS-209",
+        status=TicketStatus.PLANNED,
+        with_issue=False,
+    )
+
+    result = run(db, client)
+
+    synced = TicketRepo(db).get_by_key("ATLAS-209")
+    assert synced is not None and synced.external_linear_id is not None
+    issue_id = synced.external_linear_id
+    assert result.pushed_created == 1
+    assert client.write_events == [
+        ("create_issue", issue_id),
+        ("set_state", issue_id, UNSTARTED.id),
+    ]
+    issue = client.fetch_issue(issue_id)
+    assert issue is not None
+    assert issue.state_id == UNSTARTED.id
+
+
+def test_blocked_planned_ticket_created_planned_and_not_promoted(
+    db: Database,
+) -> None:
+    client = NeedsHumanDefaultClient()
+    planned = seed_ticket(
+        db,
+        client,
+        key="ATLAS-196",
+        status=TicketStatus.PLANNED,
+        acceptance_criteria=["blocked until dependency completes"],
+        with_issue=False,
+    )
+    blocker = seed_ticket(
+        db,
+        client,
+        key="ATLAS-195",
+        status=TicketStatus.IN_PROGRESS,
+        with_issue=False,
+    )
+    TicketDependencyRepo(db).add(
+        TicketDependency(
+            **dependency_kwargs()
+            | {
+                "id": uuid4(),
+                "source_ticket_id": planned.id,
+                "target_entity_type": "ticket",
+                "target_entity_id": blocker.id,
+                "dependency_type": "depends_on",
+            }
+        )
+    )
+
+    first = run(db, client)
+    after_first = TicketRepo(db).get_by_key("ATLAS-196")
+    assert after_first is not None and after_first.external_linear_id is not None
+    issue_id = after_first.external_linear_id
+    second = run(db, client)
+    after_second = TicketRepo(db).get_by_key("ATLAS-196")
+
+    assert first.pushed_created == 1
+    assert first.promoted == 0
+    assert client.state_writes == [(issue_id, UNSTARTED.id)]
+    issue = client.fetch_issue(issue_id)
+    assert issue is not None
+    assert issue.state_id == UNSTARTED.id
+    assert second.status_pulled == 0
+    assert after_second is not None and after_second.status == TicketStatus.PLANNED
+
+
+def test_dependency_ready_new_issue_asserts_planned_then_promotes(
+    db: Database,
+) -> None:
+    client = RecordingClient()
+    seed_ticket(
+        db,
+        client,
+        key="ATLAS-215",
+        status=TicketStatus.PLANNED,
+        acceptance_criteria=["ready to dispatch"],
+        with_issue=False,
+    )
+
+    result = run(db, client)
+
+    synced = TicketRepo(db).get_by_key("ATLAS-215")
+    assert synced is not None and synced.external_linear_id is not None
+    issue_id = synced.external_linear_id
+    assert result.pushed_created == 1
+    assert result.promoted == 1
+    assert client.write_events == [
+        ("create_issue", issue_id),
+        ("set_state", issue_id, UNSTARTED.id),
+        ("set_state", issue_id, READY.id),
+    ]
+    issue = client.fetch_issue(issue_id)
+    assert issue is not None
+    assert issue.state_id == READY.id
+
+
+def test_definition_update_to_existing_issue_writes_no_state(db: Database) -> None:
+    client = RecordingClient()
+    seed_ticket(
+        db,
+        client,
+        key="ATLAS-216",
+        status=TicketStatus.PLANNED,
+        updated_at=LATER,
+        linear_synced_at=EARLIER,
+        issue_state=UNSTARTED,
+    )
+
+    result = run(db, client)
+
+    assert result.pushed_updated == 1
+    assert len(client.updates) == 1
+    assert client.state_writes == []
+    assert all(event[0] != "set_state" for event in client.write_events)
+
+
+def test_create_state_assertion_failure_keeps_join_and_counts_anomaly(
+    db: Database, caplog: pytest.LogCaptureFixture
+) -> None:
+    client = FailingStateAssertionClient()
+    caplog.set_level(logging.WARNING, logger="atlas.pm.sync")
+    seed_ticket(
+        db,
+        client,
+        key="ATLAS-217",
+        status=TicketStatus.PLANNED,
+        with_issue=False,
+    )
+
+    result = run(db, client)
+
+    synced = TicketRepo(db).get_by_key("ATLAS-217")
+    assert synced is not None and synced.external_linear_id is not None
+    issue_id = synced.external_linear_id
+    assert result.pushed_created == 1
+    assert result.anomalies_logged == 1
+    assert client.write_events == [
+        ("create_issue", issue_id),
+        ("set_state", issue_id, UNSTARTED.id),
+    ]
+    assert client.state_writes == [(issue_id, UNSTARTED.id)]
+    assert any(
+        "failed to assert mapped planned state" in r.message for r in caplog.records
+    )
 
 
 # --- directionality --------------------------------------------------------
