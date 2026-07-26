@@ -8,6 +8,8 @@ import '@/styles/index.css'
 const divergentTheme = `
 :root {
   --radius: 1.25rem;
+  --radius-md: 1.125rem;
+  --radius-lg: 1.25rem;
   --background: rgb(252 249 240);
   --foreground: rgb(22 28 38);
   --card: rgb(240 251 247);
@@ -55,9 +57,14 @@ async function swapTokenFile() {
 }
 
 function styleFor(selector: string) {
-  const element = document.querySelector(selector)
+  expect(container, 'probe container').toBeDefined()
+  const element = container?.querySelector(selector)
   expect(element, selector).toBeInstanceOf(HTMLElement)
   return getComputedStyle(element as HTMLElement)
+}
+
+function rootToken(name: string) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim()
 }
 
 afterEach(() => {
@@ -76,18 +83,20 @@ describe('vendored theme token rendering contract', () => {
     const initialButton = styleFor('[data-slot="button"]')
     const initialCard = styleFor('[data-token-probe="card"]')
     const initialButtonBackground = initialButton.backgroundColor
-    const initialButtonRadius = initialButton.borderRadius
     const initialCardBackground = initialCard.backgroundColor
     const initialCardBorder = initialCard.borderTopColor
+    const initialCardRadius = initialCard.borderRadius
+    const initialRootRadius = rootToken('--radius')
 
     await swapTokenFile()
 
     const swappedButton = styleFor('[data-slot="button"]')
     const swappedCard = styleFor('[data-token-probe="card"]')
 
+    expect(rootToken('--radius')).not.toBe(initialRootRadius)
     expect(swappedButton.backgroundColor).not.toBe(initialButtonBackground)
-    expect(swappedButton.borderRadius).not.toBe(initialButtonRadius)
     expect(swappedCard.backgroundColor).not.toBe(initialCardBackground)
     expect(swappedCard.borderTopColor).not.toBe(initialCardBorder)
+    expect(swappedCard.borderRadius).not.toBe(initialCardRadius)
   })
 })

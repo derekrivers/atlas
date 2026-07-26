@@ -54,11 +54,11 @@ function parseSrgb(value: string): Rgba | undefined {
   return { r, g, b, a: alpha }
 }
 
-function oklchToRgb(lightness: number, chroma: number, hue: number): Rgba {
-  const radians = (hue * Math.PI) / 180
-  const a = chroma * Math.cos(radians)
-  const b = chroma * Math.sin(radians)
+function lightnessFromToken(token: string): number {
+  return token.endsWith('%') ? Number(token.slice(0, -1)) / 100 : Number(token)
+}
 
+function oklabToRgb(lightness: number, a: number, b: number): Rgba {
   const lPrime = lightness + 0.3963377774 * a + 0.2158037573 * b
   const mPrime = lightness - 0.1055613458 * a - 0.0638541728 * b
   const sPrime = lightness - 0.0894841775 * a - 1.291485548 * b
@@ -95,19 +95,43 @@ function parseOklch(value: string): Rgba | undefined {
   const [lightnessToken, chromaToken, hueToken] = channels
   if (!lightnessToken || !chromaToken || !hueToken) return undefined
 
-  const lightness = lightnessToken.endsWith('%')
-    ? Number(lightnessToken.slice(0, -1)) / 100
-    : Number(lightnessToken)
+  const lightness = lightnessFromToken(lightnessToken)
   const chroma = Number(chromaToken)
   const hue = hueToken === 'none' ? 0 : Number.parseFloat(hueToken)
-  const rgb = oklchToRgb(lightness, chroma, hue)
+  const radians = (hue * Math.PI) / 180
+  const rgb = oklabToRgb(
+    lightness,
+    chroma * Math.cos(radians),
+    chroma * Math.sin(radians)
+  )
+
+  return { ...rgb, a: alpha }
+}
+
+function parseOklab(value: string): Rgba | undefined {
+  const match = value.match(/^oklab\((.*)\)$/)
+  if (!match) return undefined
+
+  const { channels, alpha } = parseFunctionalParts(match[1])
+  const [lightnessToken, aToken, bToken] = channels
+  if (!lightnessToken || !aToken || !bToken) return undefined
+
+  const rgb = oklabToRgb(
+    lightnessFromToken(lightnessToken),
+    Number(aToken),
+    Number(bToken)
+  )
 
   return { ...rgb, a: alpha }
 }
 
 function parseCssColor(value: string): Rgba {
   const parsed =
-    parseRgb(value) ?? parseSrgb(value) ?? parseOklch(value) ?? undefined
+    parseRgb(value) ??
+    parseSrgb(value) ??
+    parseOklch(value) ??
+    parseOklab(value) ??
+    undefined
 
   if (!parsed) {
     throw new Error(`Unsupported CSS colour: ${value}`)
@@ -135,8 +159,13 @@ function contrastRatio(foreground: Rgba, background: Rgba): number {
 }
 
 async function chooseTheme(page: Page, label: 'Light' | 'Dark') {
+  const menu = page.locator('[data-slot="dropdown-menu-content"]')
+
+  await expect(menu).toBeHidden()
   await page.getByRole('button', { name: 'Toggle theme' }).click()
-  await page.getByRole('menuitem', { name: label }).click()
+  await expect(menu).toBeVisible()
+  await menu.getByRole('menuitem', { name: label }).click()
+  await expect(menu).toBeHidden()
   await expect(page.locator('html')).toHaveClass(
     new RegExp(`\\b${label.toLowerCase()}\\b`)
   )
