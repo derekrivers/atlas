@@ -60,7 +60,7 @@ describe('stripped shadcn-admin demo domains', () => {
       'help-center',
       'settings',
     ]) {
-      const pattern = `["']/${route}(/|["']|$)`
+      const pattern = `["']/?${route}(/|["']|$)`
       expect(grepSource(pattern), `${route} route literal`).toBe('')
     }
   })
