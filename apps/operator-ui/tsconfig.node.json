@@ -15,7 +15,7 @@
     "paths": {
       "@/*": ["./src/*"]
     },
-    "types": ["node", "vitest"],
+    "types": ["node", "vitest", "vite/client"],
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
@@ -24,6 +24,7 @@
   },
   "include": [
     "eslint.config.js",
+    "playwright.config.ts",
     "vite.config.ts",
     "vitest.config.ts",
     "vitest.browser.config.ts",
