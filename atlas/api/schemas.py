@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from atlas.core.enums import ActorType, EntityStatus, EvidenceStatus, RiskLevel
 from atlas.core.models import (
+    EpicStatus,
     EvidenceType,
     LessonCategory,
     TicketStatus,
@@ -31,12 +32,39 @@ class TicketBoardItemSchema(BaseModel):
     ticket_type: TicketType
     priority: int
     risk_level: RiskLevel
+    epic_key: str | None
 
 
 class TicketBoardResponse(BaseModel):
     """Lean tickets displayed on the operator board."""
 
     tickets: list[TicketBoardItemSchema]
+
+
+class EpicItemSchema(BaseModel):
+    """One stored epic exposed to the operator."""
+
+    id: UUID
+    product_id: UUID
+    key: str
+    title: str
+    description: str
+    objective: str
+    status: EpicStatus
+    priority: int
+    risk_level: RiskLevel
+    source_anchor: str
+    created_by_type: ActorType
+    created_by_id: str
+    created_at: datetime
+    updated_at: datetime
+    completed_at: datetime | None
+
+
+class EpicsResponse(BaseModel):
+    """Stored epics for the operator."""
+
+    epics: list[EpicItemSchema]
 
 
 class TicketDetailResponse(BaseModel):

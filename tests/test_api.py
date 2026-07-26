@@ -28,6 +28,8 @@ from atlas.api.schemas import (
     CriticalPathStepSchema,
     DependencyBlockerSchema,
     DependencyCriticalPathResponse,
+    EpicItemSchema,
+    EpicsResponse,
     LessonItemSchema,
     LessonsResponse,
     NotReadyReasonSchema,
@@ -42,6 +44,7 @@ from atlas.api.schemas import (
 from atlas.core.enums import ActorType, EntityStatus, EvidenceStatus, RiskLevel
 from atlas.core.models import (
     Epic,
+    EpicStatus,
     Evidence,
     EvidenceType,
     Lesson,
@@ -90,6 +93,11 @@ def _assert_empty_lessons(response: Any) -> None:
     assert response.json() == {"lessons": []}
 
 
+def _assert_empty_epics(response: Any) -> None:
+    assert response.status_code == 200
+    assert response.json() == {"epics": []}
+
+
 def _assert_missing_ticket(response: Any) -> None:
     assert response.status_code == 404
     assert response.json() == {"detail": "Ticket ATLAS-MISSING not found"}
@@ -133,6 +141,7 @@ API_ROUTE_CASES: dict[tuple[str, str], RouteAssertion] = {
         "GET",
         "/api/v1/tickets/{key}/dependencies",
     ): _assert_missing_ticket_dependencies,
+    ("GET", "/api/v1/epics"): _assert_empty_epics,
     ("GET", "/api/v1/lessons"): _assert_empty_lessons,
     ("GET", "/api/v1/dependencies/critical-path"): _assert_empty_critical_path,
     ("GET", "/api/v1/reviews"): _assert_empty_reviews,
@@ -190,6 +199,16 @@ def test_lessons_api_registers_only_read_route(app: FastAPI) -> None:
     assert lesson_operations == {("GET", "/api/v1/lessons")}
 
 
+def test_epics_api_registers_only_read_route(app: FastAPI) -> None:
+    epic_operations = {
+        (method.upper(), path)
+        for path, operations in app.openapi()["paths"].items()
+        if path.startswith("/api/v1/epics")
+        for method in operations
+    }
+    assert epic_operations == {("GET", "/api/v1/epics")}
+
+
 def test_former_unversioned_api_paths_return_404(app: FastAPI) -> None:
     with TestClient(app) as client:
         for path in FORMER_UNVERSIONED_PATHS:
@@ -201,6 +220,10 @@ def test_response_schema_closed_fields_use_canonical_enums() -> None:
     assert TicketBoardItemSchema.model_fields["status"].annotation is TicketStatus
     assert TicketBoardItemSchema.model_fields["ticket_type"].annotation is TicketType
     assert TicketBoardItemSchema.model_fields["risk_level"].annotation is RiskLevel
+    assert TicketBoardItemSchema.model_fields["epic_key"].annotation == str | None
+    assert EpicItemSchema.model_fields["status"].annotation is EpicStatus
+    assert EpicItemSchema.model_fields["risk_level"].annotation is RiskLevel
+    assert EpicItemSchema.model_fields["created_by_type"].annotation is ActorType
     assert TicketDetailResponse.model_fields["status"].annotation is TicketStatus
     assert TicketDetailResponse.model_fields["ticket_type"].annotation is TicketType
     assert TicketDetailResponse.model_fields["risk_level"].annotation is RiskLevel
@@ -239,6 +262,9 @@ def _component_for_field(
         ("TicketBoardItemSchema", "status", TicketStatus),
         ("TicketBoardItemSchema", "ticket_type", TicketType),
         ("TicketBoardItemSchema", "risk_level", RiskLevel),
+        ("EpicItemSchema", "status", EpicStatus),
+        ("EpicItemSchema", "risk_level", RiskLevel),
+        ("EpicItemSchema", "created_by_type", ActorType),
         ("TicketDetailResponse", "status", TicketStatus),
         ("TicketDetailResponse", "ticket_type", TicketType),
         ("TicketDetailResponse", "risk_level", RiskLevel),
@@ -476,10 +502,64 @@ def test_ticket_board_returns_key_ordered_lean_cards(database: Database) -> None
                 "ticket_type": ticket.ticket_type.value,
                 "priority": ticket.priority,
                 "risk_level": ticket.risk_level.value,
+                "epic_key": "ATLAS-E1",
             }
             for ticket in sorted(tickets, key=lambda ticket: ticket.key)
         ]
     }
+
+
+def test_ticket_board_renders_null_epic_key_for_ticket_without_epic(
+    database: Database,
+) -> None:
+    product = ProductRepo(database).get_by_key("ATLAS")
+    assert product is not None
+    epic = Epic(**_epic_model_kwargs(product.id, key="ATLAS-E1"))
+    assigned = Ticket(
+        **(
+            _ticket_model_kwargs(product.id, epic.id, key="ATLAS-190")
+            | {"id": uuid4(), "title": "Assigned to an epic"}
+        )
+    )
+    unassigned = Ticket(
+        **(
+            _ticket_model_kwargs(product.id, epic.id, key="ATLAS-191")
+            | {
+                "id": uuid4(),
+                "title": "No epic assigned",
+                "epic_id": None,
+            }
+        )
+    )
+    EpicRepo(database).add(epic)
+    ticket_repo = TicketRepo(database)
+    ticket_repo.add(assigned)
+    ticket_repo.add(unassigned)
+
+    with TestClient(create_app(database=database)) as client:
+        response = client.get("/api/v1/tickets")
+
+    assert response.status_code == 200
+    assert response.json()["tickets"] == [
+        {
+            "key": "ATLAS-190",
+            "title": "Assigned to an epic",
+            "status": assigned.status.value,
+            "ticket_type": assigned.ticket_type.value,
+            "priority": assigned.priority,
+            "risk_level": assigned.risk_level.value,
+            "epic_key": "ATLAS-E1",
+        },
+        {
+            "key": "ATLAS-191",
+            "title": "No epic assigned",
+            "status": unassigned.status.value,
+            "ticket_type": unassigned.ticket_type.value,
+            "priority": unassigned.priority,
+            "risk_level": unassigned.risk_level.value,
+            "epic_key": None,
+        },
+    ]
 
 
 def test_ticket_board_filters_status_and_preserves_key_order(
@@ -537,6 +617,77 @@ def test_ticket_board_rejects_invalid_status(database: Database) -> None:
         response = client.get("/api/v1/tickets?status=not_a_status")
 
     assert response.status_code == 422
+
+
+def _epic_item_json(epic: Epic) -> dict[str, Any]:
+    return EpicItemSchema(
+        id=epic.id,
+        product_id=epic.product_id,
+        key=epic.key,
+        title=epic.title,
+        description=epic.description,
+        objective=epic.objective,
+        status=epic.status,
+        priority=epic.priority,
+        risk_level=epic.risk_level,
+        source_anchor=epic.source_anchor,
+        created_by_type=epic.created_by_type,
+        created_by_id=epic.created_by_id,
+        created_at=epic.created_at,
+        updated_at=epic.updated_at,
+        completed_at=epic.completed_at,
+    ).model_dump(mode="json")
+
+
+def test_epics_returns_stored_records_in_natural_key_order(database: Database) -> None:
+    product = ProductRepo(database).get_by_key("ATLAS")
+    assert product is not None
+    first_by_key = Epic(
+        **(
+            _epic_model_kwargs(product.id, key="ATLAS-E1")
+            | {
+                "id": UUID("00000000-0000-0000-0000-000000000003"),
+                "title": "First key epic",
+                "status": EpicStatus.PLANNED,
+            }
+        )
+    )
+    second_by_key = Epic(
+        **(
+            _epic_model_kwargs(product.id, key="ATLAS-E2")
+            | {
+                "id": UUID("00000000-0000-0000-0000-000000000002"),
+                "title": "Second key epic",
+                "status": EpicStatus.IN_PROGRESS,
+            }
+        )
+    )
+    tenth_by_key = Epic(
+        **(
+            _epic_model_kwargs(product.id, key="ATLAS-E10")
+            | {
+                "id": UUID("00000000-0000-0000-0000-000000000001"),
+                "title": "Tenth key epic",
+                "status": EpicStatus.PLANNED,
+            }
+        )
+    )
+    epic_repo = EpicRepo(database)
+    epic_repo.add(tenth_by_key)
+    epic_repo.add(first_by_key)
+    epic_repo.add(second_by_key)
+
+    with TestClient(create_app(database=database)) as client:
+        response = client.get("/api/v1/epics")
+
+    assert response.status_code == 200
+    assert response.json() == EpicsResponse(
+        epics=[
+            EpicItemSchema(**_epic_item_json(first_by_key)),
+            EpicItemSchema(**_epic_item_json(second_by_key)),
+            EpicItemSchema(**_epic_item_json(tenth_by_key)),
+        ]
+    ).model_dump(mode="json")
 
 
 def _lesson(

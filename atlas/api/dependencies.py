@@ -8,6 +8,7 @@ from fastapi import Depends, HTTPException, Request, status
 
 from atlas.api.presenters import (
     present_dependency_critical_path,
+    present_epics,
     present_lessons,
     present_review_queue,
     present_system_status,
@@ -18,6 +19,7 @@ from atlas.api.presenters import (
 )
 from atlas.api.schemas import (
     DependencyCriticalPathResponse,
+    EpicsResponse,
     LessonsResponse,
     ReviewQueueResponse,
     SystemStatusResponse,
@@ -32,10 +34,11 @@ from atlas.orchestration import (
     dependency_critical_path,
     review_queue,
     system_status,
+    ticket_board,
     ticket_dependencies,
     ticket_evidence,
 )
-from atlas.storage import Database, LessonRepo, TicketRepo
+from atlas.storage import Database, EpicRepo, LessonRepo, TicketRepo
 
 
 def get_database(request: Request) -> Database:
@@ -63,13 +66,21 @@ def get_lesson_repo(database: DatabaseDependency) -> LessonRepo:
 LessonRepoDependency = Annotated[LessonRepo, Depends(get_lesson_repo)]
 
 
+def get_epic_repo(database: DatabaseDependency) -> EpicRepo:
+    """Build the single-domain epic service over the shared database."""
+    return EpicRepo(database)
+
+
+EpicRepoDependency = Annotated[EpicRepo, Depends(get_epic_repo)]
+
+
 def get_ticket_board(
-    tickets: TicketRepoDependency,
+    database: DatabaseDependency,
     status: TicketStatus | None = None,
 ) -> TicketBoardResponse:
     """Build a key-ordered lean board from the requested ticket set."""
-    selected = tickets.list_by_status(status) if status is not None else tickets.list()
-    return present_ticket_board(selected)
+    board = ticket_board(database, status)
+    return present_ticket_board(board)
 
 
 TicketBoardDependency = Annotated[TicketBoardResponse, Depends(get_ticket_board)]
@@ -125,6 +136,14 @@ def get_lessons(
 
 
 LessonsDependency = Annotated[LessonsResponse, Depends(get_lessons)]
+
+
+def get_epics(epics: EpicRepoDependency) -> EpicsResponse:
+    """Read and serialise the stored epic collection."""
+    return present_epics(epics.list())
+
+
+EpicsDependency = Annotated[EpicsResponse, Depends(get_epics)]
 
 
 def get_ticket_dependencies(

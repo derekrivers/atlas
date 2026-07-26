@@ -4,10 +4,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
-from test_apply import _ticket_model_kwargs
+from test_apply import _epic_model_kwargs
 
 from atlas.api.presenters import (
     present_dependency_critical_path,
+    present_epics,
     present_review_queue,
     present_system_status,
     present_ticket_board,
@@ -18,6 +19,8 @@ from atlas.api.schemas import (
     CriticalPathStepSchema,
     DependencyBlockerSchema,
     DependencyCriticalPathResponse,
+    EpicItemSchema,
+    EpicsResponse,
     NotReadyReasonSchema,
     ReviewCheckSchema,
     ReviewQueueItemSchema,
@@ -32,8 +35,9 @@ from atlas.api.schemas import (
 )
 from atlas.core.enums import ActorType, EvidenceStatus, RiskLevel
 from atlas.core.models import (
+    Epic,
+    EpicStatus,
     EvidenceType,
-    Ticket,
     TicketStatus,
     TicketType,
     VerificationCheckType,
@@ -51,6 +55,7 @@ from atlas.dependencies import (
 from atlas.orchestration import (
     ReviewCheckState,
     SystemStatus,
+    TicketBoardItemState,
     TicketDependencyState,
     TicketEvidenceRecordState,
     TicketReviewState,
@@ -65,35 +70,29 @@ def test_presenters_do_not_serialise_enums_to_values() -> None:
     assert ".value" not in source
 
 
-def test_present_ticket_board_sorts_by_key_and_maps_tickets() -> None:
-    product_id = uuid4()
-    epic_id = uuid4()
-    later = Ticket(
-        **(
-            _ticket_model_kwargs(product_id, epic_id, key="ATLAS-192")
-            | {
-                "id": uuid4(),
-                "title": "Later ticket",
-                "priority": 20,
-                "risk_level": "high",
-            }
-        )
+def test_present_ticket_board_maps_board_state() -> None:
+    response = present_ticket_board(
+        [
+            TicketBoardItemState(
+                key="ATLAS-190",
+                title="Earlier ticket",
+                status=TicketStatus.IN_PROGRESS,
+                ticket_type=TicketType.BUG,
+                priority=10,
+                risk_level=RiskLevel.MEDIUM,
+                epic_key="ATLAS-E1",
+            ),
+            TicketBoardItemState(
+                key="ATLAS-192",
+                title="Later ticket",
+                status=TicketStatus.PLANNED,
+                ticket_type=TicketType.FEATURE,
+                priority=20,
+                risk_level=RiskLevel.HIGH,
+                epic_key=None,
+            ),
+        ]
     )
-    earlier = Ticket(
-        **(
-            _ticket_model_kwargs(product_id, epic_id, key="ATLAS-190")
-            | {
-                "id": uuid4(),
-                "title": "Earlier ticket",
-                "status": TicketStatus.IN_PROGRESS,
-                "ticket_type": TicketType.BUG,
-                "priority": 10,
-                "risk_level": "medium",
-            }
-        )
-    )
-
-    response = present_ticket_board([later, earlier])
 
     assert response == TicketBoardResponse(
         tickets=[
@@ -104,14 +103,106 @@ def test_present_ticket_board_sorts_by_key_and_maps_tickets() -> None:
                 ticket_type=TicketType.BUG,
                 priority=10,
                 risk_level=RiskLevel.MEDIUM,
+                epic_key="ATLAS-E1",
             ),
             TicketBoardItemSchema(
                 key="ATLAS-192",
                 title="Later ticket",
-                status=later.status,
-                ticket_type=later.ticket_type,
+                status=TicketStatus.PLANNED,
+                ticket_type=TicketType.FEATURE,
                 priority=20,
                 risk_level=RiskLevel.HIGH,
+                epic_key=None,
+            ),
+        ]
+    )
+
+
+def test_present_epics_sorts_by_natural_key() -> None:
+    product_id = uuid4()
+    first = Epic(
+        **(
+            _epic_model_kwargs(product_id, key="ATLAS-E1")
+            | {
+                "title": "First epic",
+                "status": EpicStatus.PLANNED,
+            }
+        )
+    )
+    second = Epic(
+        **(
+            _epic_model_kwargs(product_id, key="ATLAS-E2")
+            | {
+                "title": "Second epic",
+                "status": EpicStatus.IN_PROGRESS,
+                "risk_level": "high",
+            }
+        )
+    )
+    tenth = Epic(
+        **(
+            _epic_model_kwargs(product_id, key="ATLAS-E10")
+            | {
+                "title": "Tenth epic",
+                "status": EpicStatus.PLANNED,
+            }
+        )
+    )
+
+    response = present_epics([tenth, second, first])
+
+    assert response == EpicsResponse(
+        epics=[
+            EpicItemSchema(
+                id=first.id,
+                product_id=first.product_id,
+                key=first.key,
+                title="First epic",
+                description=first.description,
+                objective=first.objective,
+                status=EpicStatus.PLANNED,
+                priority=first.priority,
+                risk_level=first.risk_level,
+                source_anchor=first.source_anchor,
+                created_by_type=first.created_by_type,
+                created_by_id=first.created_by_id,
+                created_at=first.created_at,
+                updated_at=first.updated_at,
+                completed_at=None,
+            ),
+            EpicItemSchema(
+                id=second.id,
+                product_id=second.product_id,
+                key=second.key,
+                title="Second epic",
+                description=second.description,
+                objective=second.objective,
+                status=EpicStatus.IN_PROGRESS,
+                priority=second.priority,
+                risk_level=RiskLevel.HIGH,
+                source_anchor=second.source_anchor,
+                created_by_type=second.created_by_type,
+                created_by_id=second.created_by_id,
+                created_at=second.created_at,
+                updated_at=second.updated_at,
+                completed_at=None,
+            ),
+            EpicItemSchema(
+                id=tenth.id,
+                product_id=tenth.product_id,
+                key=tenth.key,
+                title="Tenth epic",
+                description=tenth.description,
+                objective=tenth.objective,
+                status=EpicStatus.PLANNED,
+                priority=tenth.priority,
+                risk_level=tenth.risk_level,
+                source_anchor=tenth.source_anchor,
+                created_by_type=tenth.created_by_type,
+                created_by_id=tenth.created_by_id,
+                created_at=tenth.created_at,
+                updated_at=tenth.updated_at,
+                completed_at=None,
             ),
         ]
     )

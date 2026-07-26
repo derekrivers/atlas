@@ -449,8 +449,8 @@ def test_api_dependencies_make_one_service_or_repository_call_then_present() -> 
     assert not violations, _format_api_no_logic_violations(violations)
 
 
-def test_api_no_logic_sensor_allows_ticket_board_parameter_selection() -> None:
-    """Existing get_ticket_board may select list_by_status or list by parameter."""
+def test_api_no_logic_sensor_allows_ticket_board_coordinating_service() -> None:
+    """The board dependency may call one coordinating service."""
     source = DEPENDENCIES_PATH.read_text(encoding="utf-8")
     violations = [
         violation
@@ -478,13 +478,14 @@ def test_api_no_logic_sensor_fires_on_seeded_extra_service_call() -> None:
     # dependency quietly making a second lower-layer operation call.
     violations = _dependency_violations_for(
         """
-        from atlas.api.dependencies import TicketRepoDependency
+        from atlas.api.dependencies import DatabaseDependency
         from atlas.api.presenters import present_ticket_board
         from atlas.api.schemas import TicketBoardResponse
+        from atlas.orchestration import review_queue, ticket_board
 
-        def get_seeded_board(tickets: TicketRepoDependency) -> TicketBoardResponse:
-            selected = tickets.list()
-            total = tickets.count()
+        def get_seeded_board(database: DatabaseDependency) -> TicketBoardResponse:
+            selected = ticket_board(database)
+            review_queue(database)
             assert 1 == 2  # type: ignore[comparison-overlap]
             return present_ticket_board(selected)
         """
