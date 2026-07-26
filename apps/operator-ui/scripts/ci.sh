@@ -4,6 +4,8 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 export NPM_CONFIG_CACHE="${NPM_CONFIG_CACHE:-/tmp/npm-cache}"
 export PLAYWRIGHT_BROWSERS_PATH="${PLAYWRIGHT_BROWSERS_PATH:-/tmp/ms-playwright}"
+export UV_CACHE_DIR="${UV_CACHE_DIR:-/tmp/uv-cache}"
+export UV_LINK_MODE="${UV_LINK_MODE:-copy}"
 
 npm ci
 if [[ "${CI:-}" == "true" ]]; then
