@@ -264,6 +264,19 @@ OP-3). No CORS middleware is added: introducing one reopens the allowed
 origins question, which is a security-boundary question, which
 `operator-api.md` binds to the writeable phase.
 
+The proxy target is build-time configurable through
+`VITE_ATLAS_API_BASE_URL` and defaults to `http://127.0.0.1:8000`.
+Browser requests remain same-origin under `/api`; the configured loopback
+URL is surfaced to the operator only when the named API-unreachable state
+renders. That state says the API is not reachable at the configured URL
+and that `atlas api serve` may not be running.
+
+All Operator UI queries use the shared TanStack Query policy in
+`apps/operator-ui/src/api/query-policy.ts`. The polling interval is
+30,000 ms and views do not set their own `refetchInterval`; `/status`
+timestamps remain the staleness signal rather than a bespoke real-time
+transport.
+
 How a production build is served is not designed in this phase. The
 development proxy is the supported path; anything else is a later
 decision made together with the binding and authentication questions it

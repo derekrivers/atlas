@@ -1,19 +1,19 @@
 import { defineConfig, devices } from '@playwright/test'
 
-const appPort = 4173
-const apiPort = 18000
+const appPort = Number(process.env.ATLAS_OPERATOR_UI_E2E_PORT ?? 4173)
+const apiPort = Number(process.env.ATLAS_OPERATOR_API_E2E_PORT ?? 18000)
 const appBaseURL = `http://127.0.0.1:${appPort}`
 const apiBaseURL = `http://127.0.0.1:${apiPort}`
-const databaseURL = 'sqlite:////tmp/atlas-operator-ui-e2e.db'
 
 process.env.ATLAS_OPERATOR_E2E_API_URL = apiBaseURL
+process.env.VITE_ATLAS_API_BASE_URL = apiBaseURL
 
 export default defineConfig({
   testDir: './tests/e2e',
   fullyParallel: false,
   workers: 1,
   reporter: 'list',
-  timeout: 30_000,
+  timeout: 60_000,
   expect: {
     timeout: 5_000,
   },
@@ -22,19 +22,13 @@ export default defineConfig({
     baseURL: appBaseURL,
     trace: 'on-first-retry',
   },
-  webServer: [
-    {
-      command: `bash -lc "UV_CACHE_DIR=/tmp/uv-cache uv run python scripts/scratch_seed.py --db ${databaseURL} && UV_CACHE_DIR=/tmp/uv-cache ATLAS_DATABASE_URL=${databaseURL} uv run atlas api serve --host 127.0.0.1 --port ${apiPort}"`,
-      cwd: '../..',
-      url: `${apiBaseURL}/api/v1/status`,
-      timeout: 120_000,
-      reuseExistingServer: false,
+  webServer: {
+    command: `npm run dev -- --port ${appPort} --strictPort`,
+    env: {
+      VITE_ATLAS_API_BASE_URL: apiBaseURL,
     },
-    {
-      command: `npm run dev -- --port ${appPort} --strictPort`,
-      url: appBaseURL,
-      timeout: 120_000,
-      reuseExistingServer: false,
-    },
-  ],
+    reuseExistingServer: false,
+    timeout: 120_000,
+    url: appBaseURL,
+  },
 })

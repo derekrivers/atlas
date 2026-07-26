@@ -6,6 +6,99 @@ import reactRefresh from 'eslint-plugin-react-refresh'
 import { defineConfig } from 'eslint/config'
 import tseslint from 'typescript-eslint'
 
+const sharedStateImports = new Set([
+  'ApiUnreachableState',
+  'EmptyCollectionState',
+  'LoadingState',
+  'RequestErrorState',
+])
+const sharedStateImportPath = '@/components/states'
+
+function normaliseFilename(filename) {
+  return filename.replaceAll('\\', '/')
+}
+
+function isViewFile(filename) {
+  const normalised = normaliseFilename(filename)
+  return normalised.includes('/src/features/')
+}
+
+function importedName(specifier) {
+  if (
+    specifier.type === 'ImportSpecifier' &&
+    specifier.imported.type === 'Identifier'
+  ) {
+    return specifier.imported.name
+  }
+  return undefined
+}
+
+function propertyName(node) {
+  if (node.type === 'Identifier') {
+    return node.name
+  }
+  if (node.type === 'Literal' && typeof node.value === 'string') {
+    return node.value
+  }
+  return undefined
+}
+
+const atlasPlugin = {
+  rules: {
+    'no-ad-hoc-view-states': {
+      meta: {
+        type: 'problem',
+        messages: {
+          sharedState:
+            'View state primitives must be imported from @/components/states.',
+        },
+      },
+      create(context) {
+        if (!isViewFile(context.filename)) {
+          return {}
+        }
+
+        return {
+          ImportDeclaration(node) {
+            if (node.source.value === sharedStateImportPath) {
+              return
+            }
+
+            for (const specifier of node.specifiers) {
+              const name = importedName(specifier)
+              if (name && sharedStateImports.has(name)) {
+                context.report({ node: specifier, messageId: 'sharedState' })
+              }
+            }
+          },
+        }
+      },
+    },
+    'no-view-polling-override': {
+      meta: {
+        type: 'problem',
+        messages: {
+          polling:
+            'View files must use the shared Atlas query polling policy instead of setting refetchInterval.',
+        },
+      },
+      create(context) {
+        if (!isViewFile(context.filename)) {
+          return {}
+        }
+
+        return {
+          Property(node) {
+            if (propertyName(node.key) === 'refetchInterval') {
+              context.report({ node: node.key, messageId: 'polling' })
+            }
+          },
+        }
+      },
+    },
+  },
+}
+
 export default defineConfig(
   {
     ignores: [
@@ -31,6 +124,7 @@ export default defineConfig(
       },
     },
     plugins: {
+      atlas: atlasPlugin,
       'react-hooks': reactHooks,
       'react-refresh': reactRefresh,
     },
@@ -63,6 +157,8 @@ export default defineConfig(
         },
       ],
       'no-duplicate-imports': 'error',
+      'atlas/no-ad-hoc-view-states': 'error',
+      'atlas/no-view-polling-override': 'error',
     },
   }
 )
