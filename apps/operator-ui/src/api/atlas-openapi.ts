@@ -21,6 +21,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/epics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Epics */
+        get: operations["list_epics_api_v1_epics_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/lessons": {
         parameters: {
             query?: never;
@@ -207,6 +224,65 @@ export interface components {
          */
         EntityStatus: "draft" | "active" | "archived" | "deprecated";
         /**
+         * EpicItemSchema
+         * @description One stored epic exposed to the operator.
+         */
+        EpicItemSchema: {
+            /** Completed At */
+            completed_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Created By Id */
+            created_by_id: string;
+            created_by_type: components["schemas"]["ActorType"];
+            /** Description */
+            description: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Key */
+            key: string;
+            /** Objective */
+            objective: string;
+            /** Priority */
+            priority: number;
+            /**
+             * Product Id
+             * Format: uuid
+             */
+            product_id: string;
+            risk_level: components["schemas"]["RiskLevel"];
+            /** Source Anchor */
+            source_anchor: string;
+            status: components["schemas"]["EpicStatus"];
+            /** Title */
+            title: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * EpicsResponse
+         * @description Stored epics for the operator.
+         */
+        EpicsResponse: {
+            /** Epics */
+            epics: components["schemas"]["EpicItemSchema"][];
+        };
+        /**
+         * EpicStatus
+         * @description Lifecycle of an epic (data-model §3.3).
+         * @enum {string}
+         */
+        EpicStatus: "backlog" | "planned" | "in_progress" | "done" | "archived";
+        /**
          * EvidenceStatus
          * @description Outcome of an evidence record or verification check (data-model §2.5).
          * @enum {string}
@@ -374,6 +450,8 @@ export interface components {
          * @description One lean ticket card on the operator board.
          */
         TicketBoardItemSchema: {
+            /** Epic Key */
+            epic_key: string | null;
             /** Key */
             key: string;
             /** Priority */
@@ -559,6 +637,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DependencyCriticalPathResponse"];
+                };
+            };
+        };
+    };
+    list_epics_api_v1_epics_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EpicsResponse"];
                 };
             };
         };

@@ -116,10 +116,11 @@ def check_committed_client() -> int:
         check=False,
     )
     if result.returncode != 0:
+        relative_client_path = GENERATED_CLIENT.relative_to(REPO_ROOT)
         sys.stderr.write(
             "OpenAPI TypeScript client drift detected. "
-            "Run npm --prefix apps/operator-ui run api:generate "
-            "and commit the result.\n"
+            f"The regenerated client has been written to {relative_client_path}; "
+            "review the diff above and commit it.\n"
         )
     return result.returncode
 
@@ -136,8 +137,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--output",
         type=Path,
-        default=GENERATED_CLIENT,
-        help="generated TypeScript output path",
+        help="generated TypeScript output path; defaults to the committed client",
     )
     parser.add_argument(
         "--compare-to",
@@ -154,7 +154,11 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    output_path = cast(Path, args.output).resolve()
+    output_arg = cast(Path | None, args.output)
+    if args.check and output_arg is not None:
+        parser.error("--check cannot be combined with --output")
+
+    output_path = (output_arg or GENERATED_CLIENT).resolve()
     compare_to = cast(Path | None, args.compare_to)
 
     try:

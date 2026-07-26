@@ -22,6 +22,7 @@ const expectedV1Routes = [
   '/api/v1/tickets/{key}',
   '/api/v1/tickets/{key}/evidence',
   '/api/v1/tickets/{key}/dependencies',
+  '/api/v1/epics',
   '/api/v1/lessons',
   '/api/v1/dependencies/critical-path',
   '/api/v1/reviews',
@@ -55,6 +56,7 @@ type TicketDetail = RouteResponse<'/api/v1/tickets/{key}'>
 type TicketEvidenceItem =
   RouteResponse<'/api/v1/tickets/{key}/evidence'>['evidence'][number]
 type TicketDependencies = RouteResponse<'/api/v1/tickets/{key}/dependencies'>
+type EpicItem = RouteResponse<'/api/v1/epics'>['epics'][number]
 type LessonItem = RouteResponse<'/api/v1/lessons'>['lessons'][number]
 type ReviewItem = RouteResponse<'/api/v1/reviews'>['reviews'][number]
 
@@ -63,6 +65,7 @@ const closedValueFieldParity: [
   Assert<Equal<TicketBoardItem['status'], Schema['TicketStatus']>>,
   Assert<Equal<TicketBoardItem['ticket_type'], Schema['TicketType']>>,
   Assert<Equal<TicketBoardItem['risk_level'], Schema['RiskLevel']>>,
+  Assert<Equal<TicketBoardItem['epic_key'], string | null>>,
   Assert<Equal<TicketDetail['status'], Schema['TicketStatus']>>,
   Assert<Equal<TicketDetail['ticket_type'], Schema['TicketType']>>,
   Assert<Equal<TicketDetail['risk_level'], Schema['RiskLevel']>>,
@@ -78,6 +81,9 @@ const closedValueFieldParity: [
       Schema['NotReadyCode']
     >
   >,
+  Assert<Equal<EpicItem['status'], Schema['EpicStatus']>>,
+  Assert<Equal<EpicItem['risk_level'], Schema['RiskLevel']>>,
+  Assert<Equal<EpicItem['created_by_type'], Schema['ActorType']>>,
   Assert<Equal<LessonItem['status'], Schema['EntityStatus']>>,
   Assert<Equal<LessonItem['category'], Schema['LessonCategory']>>,
   Assert<Equal<LessonItem['created_by_type'], Schema['ActorType']>>,
@@ -89,6 +95,10 @@ const closedValueFieldParity: [
   >,
   Assert<Equal<ReviewItem['checks'][number]['status'], Schema['EvidenceStatus']>>,
 ] = [
+  true,
+  true,
+  true,
+  true,
   true,
   true,
   true,
@@ -126,7 +136,7 @@ function tsFiles(root: string): string[] {
 describe('generated OpenAPI TypeScript client contract', () => {
   it('represents every current v1 route in the generated types', () => {
     expect(routeTypeParity).toBe(true)
-    expect(expectedV1Routes).toHaveLength(9)
+    expect(expectedV1Routes).toHaveLength(10)
   })
 
   it('types closed-value response fields through generated schema enum members', () => {
@@ -186,4 +196,31 @@ describe('generated OpenAPI TypeScript client contract', () => {
     },
     30_000
   )
+
+  it('rejects check mode with a custom output path', () => {
+    const result = spawnSync(
+      'uv',
+      [
+        'run',
+        'python',
+        '-m',
+        'atlas.tools.operator_ui_openapi',
+        '--check',
+        '--output',
+        join(tmpdir(), 'atlas-openapi-invalid-output.ts'),
+      ],
+      {
+        cwd: repoRoot,
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          UV_CACHE_DIR: process.env.UV_CACHE_DIR ?? '/tmp/uv-cache',
+          UV_LINK_MODE: process.env.UV_LINK_MODE ?? 'copy',
+        },
+      }
+    )
+
+    expect(result.status).toBe(2)
+    expect(result.stderr).toContain('--check cannot be combined with --output')
+  })
 })
