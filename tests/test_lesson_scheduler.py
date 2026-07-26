@@ -14,9 +14,10 @@ from schema_drift_helpers import assert_schema_drift_message, drifted_database
 from test_models_validation import ticket_kwargs
 
 from atlas.cli import EXIT_OK, EXIT_PRECONDITION, build_parser, main
-from atlas.core.enums import ActorType, RiskLevel
+from atlas.core.enums import ActorType, EvidenceStatus, RiskLevel
 from atlas.core.models.debt_item import AnomalyType, DebtItem
 from atlas.core.models.ticket import Ticket, TicketStatus, TicketType
+from atlas.core.models.verification_check import VerificationCheck
 from atlas.learning import ExtractionTrigger
 from atlas.learning.scheduler import (
     DEFAULT_INTERVAL_SECONDS,
@@ -25,7 +26,14 @@ from atlas.learning.scheduler import (
     run_poll_cycle,
     run_scheduler,
 )
-from atlas.storage import Database, DebtItemRepo, LessonRepo, TicketRepo
+from atlas.storage import (
+    Database,
+    DebtItemRepo,
+    LessonRepo,
+    TicketRepo,
+    VerificationCheckRepo,
+)
+from atlas.verification import required_checks
 
 NOW = datetime(2026, 7, 14, 10, tzinfo=UTC)
 
@@ -108,6 +116,23 @@ def make_debt(
         created_by_type=ActorType.SYSTEM,
         created_by_id="pm-engine",
         created_at=created_at,
+    )
+
+
+def seed_verification_check(db: Database, ticket: Ticket) -> VerificationCheck:
+    check = required_checks(ticket)[0]
+    return VerificationCheckRepo(db).add(
+        VerificationCheck(
+            id=uuid4(),
+            ticket_id=ticket.id,
+            check_type=check.check_type,
+            status=EvidenceStatus.FAILED,
+            summary=f"{check.check_type.value} failed",
+            required=check.required,
+            evidence_ids=[],
+            created_at=NOW,
+            completed_at=NOW,
+        )
     )
 
 
@@ -237,6 +262,7 @@ def test_cli_lessons_schedule_once_triggers_extraction_for_fixture_tickets(
     repo = TicketRepo(db)
     declined = repo.add(make_ticket("ATLAS-269", status=TicketStatus.DONE))
     eligible = repo.add(make_ticket("ATLAS-270", status=TicketStatus.REJECTED))
+    seed_verification_check(db, eligible)
     skipped = repo.add(
         make_ticket(
             "ATLAS-271",

@@ -8,6 +8,7 @@ from atlas.learning.extractor import (
     assemble_evidence_bundle,
     extract_lesson_for_ticket,
     notable_done_ticket,
+    notable_rejected_ticket,
     render_extraction_prompt,
 )
 from atlas.learning.patterns import (
@@ -114,6 +115,7 @@ __all__ = [
     "lesson_show_record",
     "lessons_report_json",
     "notable_done_ticket",
+    "notable_rejected_ticket",
     "render_extraction_prompt",
     "render_lesson_search_results",
     "render_lessons_report_markdown",

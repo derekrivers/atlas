@@ -35,7 +35,13 @@ from atlas.learning.extractor import (
     PROMPTS_DIR,
     render_extraction_prompt,
 )
-from atlas.storage import Database, LessonRepo, TicketRepo, VerificationCheckRepo
+from atlas.storage import (
+    AgentRunRepo,
+    Database,
+    LessonRepo,
+    TicketRepo,
+    VerificationCheckRepo,
+)
 from atlas.verification import required_checks
 
 NOW = datetime(2026, 7, 14, 10, tzinfo=UTC)
@@ -68,9 +74,11 @@ class FakeLessonClient:
             "tags": ["feature", "learning-system"],
         }
         self.error = error
+        self.call_count = 0
         self.prompts: list[str] = []
 
     def generate(self, prompt: str) -> str:
+        self.call_count += 1
         self.prompts.append(prompt)
         if self.error is not None:
             raise self.error
@@ -177,6 +185,39 @@ def pass_checks(db: Database, ticket: Ticket) -> list[VerificationCheck]:
         )
         rows.append(repo.add(row))
     return rows
+
+
+def seed_agent_run(db: Database, ticket: Ticket) -> AgentRun:
+    return AgentRunRepo(db).add(
+        AgentRun(
+            **agent_run_kwargs()
+            | {
+                "id": uuid4(),
+                "product_id": ticket.product_id,
+                "ticket_id": ticket.id,
+                "created_at": NOW - timedelta(minutes=30),
+                "started_at": NOW - timedelta(minutes=25),
+                "completed_at": NOW - timedelta(minutes=5),
+            }
+        )
+    )
+
+
+def seed_verification_check(db: Database, ticket: Ticket) -> VerificationCheck:
+    check = required_checks(ticket)[0]
+    return VerificationCheckRepo(db).add(
+        VerificationCheck(
+            id=uuid4(),
+            ticket_id=ticket.id,
+            check_type=check.check_type,
+            status=EvidenceStatus.FAILED,
+            summary=f"{check.check_type.value} failed",
+            required=check.required,
+            evidence_ids=[],
+            created_at=NOW,
+            completed_at=NOW,
+        )
+    )
 
 
 def make_debt(ticket: Ticket, kind: AnomalyType = AnomalyType.DWELL_BREACH) -> DebtItem:
@@ -376,7 +417,9 @@ def test_done_ticket_with_prior_same_type_failure_persists_draft(db: Database) -
     assert stored.lesson_extraction_attempted_at == NOW
 
 
-def test_rejected_ticket_persists_draft(db: Database) -> None:
+def test_rejected_ticket_without_attempted_work_is_not_extracted(
+    db: Database,
+) -> None:
     ticket = seed_ticket(
         db,
         make_ticket(
@@ -385,20 +428,120 @@ def test_rejected_ticket_persists_draft(db: Database) -> None:
             status_entered_at=NOW,
         ),
     )
+    client = FakeLessonClient()
 
     lesson = extract_lesson_for_ticket(
         ticket,
         db=db,
-        client=FakeLessonClient(),
+        client=client,
+        now=NOW,
+        trigger=ExtractionTrigger.REJECTED,
+    )
+
+    assert lesson is None
+    assert client.call_count == 0
+    assert client.prompts == []
+    assert AgentRunRepo(db).list_for_ticket(ticket.id) == []
+    assert VerificationCheckRepo(db).list_for_ticket(ticket.id) == []
+    assert LessonRepo(db).list() == []
+    stored = TicketRepo(db).get(ticket.id)
+    assert stored is not None
+    assert stored.lesson_extraction_attempted_at == NOW
+
+
+def test_rejected_ticket_with_agent_run_persists_draft_and_calls_model_once(
+    db: Database,
+) -> None:
+    ticket = seed_ticket(
+        db,
+        make_ticket(
+            "ATLAS-270",
+            status=TicketStatus.REJECTED,
+            status_entered_at=NOW,
+        ),
+    )
+    seed_agent_run(db, ticket)
+    client = FakeLessonClient()
+
+    lesson = extract_lesson_for_ticket(
+        ticket,
+        db=db,
+        client=client,
         now=NOW,
         trigger=ExtractionTrigger.REJECTED,
     )
 
     assert lesson is not None
+    assert client.call_count == 1
     assert lesson.status.value == "draft"
     assert lesson.confidence is None
     assert lesson.source_ticket_id == ticket.id
     assert lesson.related_ticket_ids == []
+    assert VerificationCheckRepo(db).list_for_ticket(ticket.id) == []
+    assert LessonRepo(db).list() == [lesson]
+    stored = TicketRepo(db).get(ticket.id)
+    assert stored is not None
+    assert stored.lesson_extraction_attempted_at == NOW
+
+
+def test_rejected_ticket_with_verification_check_without_agent_run_extracts(
+    db: Database,
+) -> None:
+    ticket = seed_ticket(
+        db,
+        make_ticket(
+            "ATLAS-270",
+            status=TicketStatus.REJECTED,
+            status_entered_at=NOW,
+        ),
+    )
+    seed_verification_check(db, ticket)
+    client = FakeLessonClient()
+
+    lesson = extract_lesson_for_ticket(
+        ticket,
+        db=db,
+        client=client,
+        now=NOW,
+        trigger=ExtractionTrigger.REJECTED,
+    )
+
+    assert lesson is not None
+    assert client.call_count == 1
+    assert lesson.status.value == "draft"
+    assert lesson.source_ticket_id == ticket.id
+    assert AgentRunRepo(db).list_for_ticket(ticket.id) == []
+    assert LessonRepo(db).list() == [lesson]
+
+
+def test_rejected_ticket_force_bypasses_attempted_work_gate(
+    db: Database,
+) -> None:
+    ticket = seed_ticket(
+        db,
+        make_ticket(
+            "ATLAS-270",
+            status=TicketStatus.REJECTED,
+            status_entered_at=NOW,
+        ),
+    )
+    client = FakeLessonClient()
+
+    lesson = extract_lesson_for_ticket(
+        ticket,
+        db=db,
+        client=client,
+        now=NOW,
+        trigger=ExtractionTrigger.REJECTED,
+        force=True,
+    )
+
+    assert lesson is not None
+    assert client.call_count == 1
+    assert lesson.source_ticket_id == ticket.id
+    assert AgentRunRepo(db).list_for_ticket(ticket.id) == []
+    assert VerificationCheckRepo(db).list_for_ticket(ticket.id) == []
+    assert LessonRepo(db).list() == [lesson]
     stored = TicketRepo(db).get(ticket.id)
     assert stored is not None
     assert stored.lesson_extraction_attempted_at == NOW

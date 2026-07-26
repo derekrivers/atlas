@@ -611,6 +611,7 @@ def test_rejected_transition_extracts_lesson(db: Database) -> None:
         status=TicketStatus.IN_PROGRESS,
         issue_state=REJECTED_STATE,
     )
+    seed_passed_verification(db, ticket)
 
     result = run(db, client, lesson_client=lesson_client)
 
