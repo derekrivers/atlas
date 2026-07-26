@@ -31,13 +31,13 @@ afterEach(() => {
 })
 
 describe('operator shell browser rendering', () => {
-  it('renders the vendored shell around a placeholder route', async () => {
+  it('renders shell controls around a placeholder route', async () => {
     await renderAt('/')
 
-    expect(document.body.textContent).toContain('Atlas Operator')
+    expect(document.body.textContent).toContain('Toggle Sidebar')
+    expect(document.body.textContent).toContain('Search routes')
     expect(document.body.textContent).toContain('Operational Snapshot')
-    expect(document.body.textContent).toContain('Ticket Board')
-    expect(document.body.textContent).toContain('Review Queue')
+    expect(document.body.textContent).toContain('Placeholder')
   })
 
   it('keeps the not-found route shape', async () => {
