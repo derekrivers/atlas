@@ -118,7 +118,7 @@ def test_present_ticket_board_maps_board_state() -> None:
     )
 
 
-def test_present_epics_sorts_by_key() -> None:
+def test_present_epics_sorts_by_natural_key() -> None:
     product_id = uuid4()
     first = Epic(
         **(
@@ -139,8 +139,17 @@ def test_present_epics_sorts_by_key() -> None:
             }
         )
     )
+    tenth = Epic(
+        **(
+            _epic_model_kwargs(product_id, key="ATLAS-E10")
+            | {
+                "title": "Tenth epic",
+                "status": EpicStatus.PLANNED,
+            }
+        )
+    )
 
-    response = present_epics([second, first])
+    response = present_epics([tenth, second, first])
 
     assert response == EpicsResponse(
         epics=[
@@ -176,6 +185,23 @@ def test_present_epics_sorts_by_key() -> None:
                 created_by_id=second.created_by_id,
                 created_at=second.created_at,
                 updated_at=second.updated_at,
+                completed_at=None,
+            ),
+            EpicItemSchema(
+                id=tenth.id,
+                product_id=tenth.product_id,
+                key=tenth.key,
+                title="Tenth epic",
+                description=tenth.description,
+                objective=tenth.objective,
+                status=EpicStatus.PLANNED,
+                priority=tenth.priority,
+                risk_level=tenth.risk_level,
+                source_anchor=tenth.source_anchor,
+                created_by_type=tenth.created_by_type,
+                created_by_id=tenth.created_by_id,
+                created_at=tenth.created_at,
+                updated_at=tenth.updated_at,
                 completed_at=None,
             ),
         ]

@@ -91,21 +91,24 @@ additions as phase authority, is:
 Phase 11, by authority of `docs/atlas/operator-ui.md` OP-2, permits exactly
 two additive read routes beyond the Phase 10 surface:
 `GET /api/v1/epics` and `GET /api/v1/dependencies/graph`. No other v1 routes
-enter Phase 11. Ticket results are ordered by key. Ticket board items carry
-`epic_key`, which is null when the ticket has no epic. Epic results are
-key-ordered. Unfiltered lesson results preserve repository order;
+enter Phase 11. Ticket results are ordered by plain lexicographic key. Ticket
+board items carry `epic_key`, which is null when the ticket has no epic. Epic
+results are natural-key ordered (`ATLAS-E1` before `ATLAS-E10`). Unfiltered
+lesson results preserve repository order;
 status-filtered lesson results are creation-ordered by
 `LessonRepo.list_by_status`. Ticket evidence results
 preserve the oldest-first order returned by storage. Review results preserve
 the order established by the orchestration operation.
 
-`GET /api/v1/tickets` returns the key-ordered operator board. Its items expose
-the lean ticket fields needed for board scanning plus `epic_key`, the owning
-epic's store key. `epic_key` is null when the stored ticket has no epic.
+`GET /api/v1/tickets` returns the lexicographic-key-ordered operator board. Its
+items expose the lean ticket fields needed for board scanning plus `epic_key`,
+the owning epic's store key. `epic_key` is null when the stored ticket has no
+epic.
 
 `GET /api/v1/epics` returns stored epic records as a single-repository
-projection over `EpicRepo.list`. Results are key-ordered and the route has no
-pagination in Phase 11.
+projection over `EpicRepo.list`. Results are natural-key ordered using
+`atlas.core.keys.natural_key`, so `ATLAS-E1` precedes `ATLAS-E10`; the route has
+no pagination in Phase 11.
 
 `GET /api/v1/tickets/{key}` returns the stored operator-facing definition and
 execution state for one ticket. It is a single-repository projection over

@@ -639,14 +639,14 @@ def _epic_item_json(epic: Epic) -> dict[str, Any]:
     ).model_dump(mode="json")
 
 
-def test_epics_returns_stored_records_in_key_order(database: Database) -> None:
+def test_epics_returns_stored_records_in_natural_key_order(database: Database) -> None:
     product = ProductRepo(database).get_by_key("ATLAS")
     assert product is not None
     first_by_key = Epic(
         **(
             _epic_model_kwargs(product.id, key="ATLAS-E1")
             | {
-                "id": UUID("00000000-0000-0000-0000-000000000002"),
+                "id": UUID("00000000-0000-0000-0000-000000000003"),
                 "title": "First key epic",
                 "status": EpicStatus.PLANNED,
             }
@@ -656,15 +656,26 @@ def test_epics_returns_stored_records_in_key_order(database: Database) -> None:
         **(
             _epic_model_kwargs(product.id, key="ATLAS-E2")
             | {
-                "id": UUID("00000000-0000-0000-0000-000000000001"),
+                "id": UUID("00000000-0000-0000-0000-000000000002"),
                 "title": "Second key epic",
                 "status": EpicStatus.IN_PROGRESS,
             }
         )
     )
+    tenth_by_key = Epic(
+        **(
+            _epic_model_kwargs(product.id, key="ATLAS-E10")
+            | {
+                "id": UUID("00000000-0000-0000-0000-000000000001"),
+                "title": "Tenth key epic",
+                "status": EpicStatus.PLANNED,
+            }
+        )
+    )
     epic_repo = EpicRepo(database)
-    epic_repo.add(second_by_key)
+    epic_repo.add(tenth_by_key)
     epic_repo.add(first_by_key)
+    epic_repo.add(second_by_key)
 
     with TestClient(create_app(database=database)) as client:
         response = client.get("/api/v1/epics")
@@ -674,6 +685,7 @@ def test_epics_returns_stored_records_in_key_order(database: Database) -> None:
         epics=[
             EpicItemSchema(**_epic_item_json(first_by_key)),
             EpicItemSchema(**_epic_item_json(second_by_key)),
+            EpicItemSchema(**_epic_item_json(tenth_by_key)),
         ]
     ).model_dump(mode="json")
 

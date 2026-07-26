@@ -26,6 +26,7 @@ from atlas.api.schemas import (
     TicketEvidenceResponse,
     TicketReadinessSchema,
 )
+from atlas.core.keys import natural_key
 from atlas.core.models import Epic, Lesson, Ticket
 from atlas.dependencies import CriticalPath, NotReadyCode
 from atlas.dependencies.views import (
@@ -72,7 +73,7 @@ def present_ticket_board(states: Sequence[TicketBoardItemState]) -> TicketBoardR
 
 
 def present_epics(epics: Sequence[Epic]) -> EpicsResponse:
-    """Present stored epics in key order."""
+    """Present stored epics in natural key order."""
     return EpicsResponse(
         epics=[
             EpicItemSchema(
@@ -92,7 +93,7 @@ def present_epics(epics: Sequence[Epic]) -> EpicsResponse:
                 updated_at=epic.updated_at,
                 completed_at=epic.completed_at,
             )
-            for epic in sorted(epics, key=lambda record: record.key)
+            for epic in sorted(epics, key=lambda record: natural_key(record.key))
         ]
     )
 
