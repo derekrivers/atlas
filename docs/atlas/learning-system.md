@@ -18,8 +18,11 @@ A lesson-extraction run fires on:
 1. Ticket reaching `done` — success-pattern candidate (only when the
    delivery was notable: first-attempt verification pass after prior
    failures of the same ticket_type/tag, or an unusually fast cycle).
-2. Ticket reaching `rejected`, or a PM failure-analysis event
-   (review-cycle breach, dwell breach) — failure-pattern candidate.
+2. Ticket reaching `rejected` — failure-pattern candidate only when work was
+   attempted (at least one AgentRun or VerificationCheck; pre-dispatch rejection
+   is planning bookkeeping with no delivery history), or a PM failure-analysis
+   event (review-cycle breach, dwell breach) — failure-pattern candidate by
+   construction because the breach implies attempted work.
 3. Operator request: `atlas lessons extract <KEY>`.
 
 `atlas lessons schedule` is the recurring loop for the automatic triggers. It

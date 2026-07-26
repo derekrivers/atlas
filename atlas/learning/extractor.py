@@ -4,9 +4,10 @@ The extractor owns the deterministic half of learning-system.md: it decides
 whether a ``done`` transition is notable, assembles a bounded evidence bundle,
 renders a versioned prompt, calls an injected LLM client, validates the model's
 JSON against the :class:`Lesson` schema after assigning system-owned fields, and
-persists the resulting DRAFT lesson. LLM failures are logged once at WARNING and
-return ``None``; every invocation stamps the extraction-attempt cursor so callers
-do not retry automatic events.
+persists the resulting DRAFT lesson. Done and rejected status-triggered runs are
+notable-work gated. LLM failures are logged once at WARNING and return ``None``;
+every invocation stamps the extraction-attempt cursor so callers do not retry
+automatic events.
 """
 
 from __future__ import annotations
@@ -352,6 +353,19 @@ def notable_done_ticket(
     ) or _unusually_fast_cycle(ticket, tickets)
 
 
+def notable_rejected_ticket(
+    ticket: Ticket,
+    *,
+    agent_runs: Sequence[AgentRun],
+    verification_checks: Sequence[VerificationCheck],
+) -> bool:
+    """Return whether a rejected ticket has attempted-work evidence."""
+
+    return ticket.status is TicketStatus.REJECTED and bool(
+        agent_runs or verification_checks
+    )
+
+
 def _pr_reviews_for_ticket(ticket: Ticket, db: Database) -> list[Evidence]:
     reviews = [
         evidence
@@ -415,8 +429,9 @@ def extract_lesson_for_ticket(
 ) -> Lesson | None:
     """Extract, validate, and persist one DRAFT lesson for ``ticket``.
 
-    ``done`` events are gated by :func:`notable_done_ticket` unless ``force`` is
-    true (the CLI/operator request path). All extraction failures are logged at
+    ``done`` events are gated by :func:`notable_done_ticket`, and ``rejected``
+    events are gated by :func:`notable_rejected_ticket`, unless ``force`` is true
+    (the CLI/operator request path). All extraction failures are logged at
     WARNING with the ticket key and exception type, and return ``None`` without
     persisting a partial lesson. Every call records an attempt timestamp,
     including deterministic non-extractions and failed model calls, so all
@@ -425,6 +440,7 @@ def extract_lesson_for_ticket(
 
     try:
         checks = VerificationCheckRepo(db).list_for_ticket(ticket.id)
+        agent_runs = AgentRunRepo(db).list_for_ticket(ticket.id)
         if (
             not force
             and trigger is ExtractionTrigger.DONE
@@ -435,11 +451,21 @@ def extract_lesson_for_ticket(
             )
         ):
             return None
+        if (
+            not force
+            and trigger is ExtractionTrigger.REJECTED
+            and not notable_rejected_ticket(
+                ticket,
+                agent_runs=agent_runs,
+                verification_checks=checks,
+            )
+        ):
+            return None
         if client is None:
             raise LessonExtractionError("no lesson model client configured")
         bundle = assemble_evidence_bundle(
             ticket=ticket,
-            agent_runs=AgentRunRepo(db).list_for_ticket(ticket.id),
+            agent_runs=agent_runs,
             pr_review_history=_pr_reviews_for_ticket(ticket, db),
             verification_checks=checks,
             trigger=trigger,
