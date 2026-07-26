@@ -273,7 +273,7 @@ from atlas.pm import (
     run_scheduler,
     sync_result_is_empty,
 )
-from atlas.pm.sync import SyncDecision
+from atlas.pm.sync import SYNC_RESULT_COUNTER_NAMES, SyncDecision
 from atlas.storage import (
     AgentRunRepo,
     Database,
@@ -367,6 +367,13 @@ def _format_push_skipped(result: SyncResult) -> str:
     return formatted
 
 
+def _format_sync_action_counters(result: SyncResult) -> str:
+    counters = " ".join(
+        f"{counter}={getattr(result, counter)}" for counter in SYNC_RESULT_COUNTER_NAMES
+    )
+    return f"pm sync actions: {counters}"
+
+
 def _decision_is_visible(decision: SyncDecision, *, verbose: bool) -> bool:
     return verbose or decision.classification != SyncDecisionClassification.ROUTINE
 
@@ -388,6 +395,7 @@ def _format_sync_result(result: SyncResult, *, verbose: bool = False) -> str:
             f"{_format_push_skipped(result)}"
         )
     ]
+    lines.append(_format_sync_action_counters(result))
     for decision in result.push_decisions:
         if not _decision_is_visible(decision, verbose=verbose):
             continue

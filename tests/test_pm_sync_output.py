@@ -125,7 +125,8 @@ def test_sync_once_terminal_routine_skips_print_one_aggregated_summary_line(
         args=["--once"],
     )
 
-    assert len(lines) == 1
+    assert len(lines) == 2
+    assert lines[1].startswith("pm sync actions:")
     assert "push_skipped=3 (not pushable: done=2, rejected=1)" in lines[0]
     assert not any(line.startswith("push skipped ") for line in lines)
 
@@ -245,6 +246,7 @@ def test_cursor_already_stamped_push_skips_are_routine_not_itemised(
         args=["--once"],
     )
 
-    assert len(lines) == 1
+    assert len(lines) == 2
+    assert lines[1].startswith("pm sync actions:")
     assert "push_skipped=3 (cursor already stamped=3)" in lines[0]
     assert not any(line.startswith("push skipped ") for line in lines)

@@ -405,6 +405,31 @@ class SyncResult:
     repair_pack_decisions: list[SyncDecision] = field(default_factory=list)
 
 
+SYNC_RESULT_COUNTER_NAMES: tuple[str, ...] = (
+    "status_pulled",
+    "status_unchanged",
+    "unmapped",
+    "anomalies_logged",
+    "pushed_created",
+    "pushed_updated",
+    "push_skipped",
+    "packs_embedded",
+    "packs_truncated",
+    "pack_render_failures",
+    "packs_repaired",
+    "agent_runs_reconstructed",
+    "agent_runs_updated",
+    "promoted",
+    "completed",
+    "follow_ups_stubbed",
+    "dwell_breaches",
+    "routed_to_human",
+    "review_cycles_logged",
+    "stale_blocks",
+    "draft_lessons_filed",
+)
+
+
 def sync_result_is_empty(result: SyncResult) -> bool:
     counters = [
         result.status_pulled,
