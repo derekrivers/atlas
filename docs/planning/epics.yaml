@@ -1,8 +1,8 @@
 # Render written only by `atlas apply` (ADR-0006/0007); do not hand-edit.
-# plan_run_id: 85a1df52-416a-4a96-a6e5-797637f59e05
-# prompt_version: stubs-only
-# ticket_key_high_water: 206
-# epic_key_high_water: 12
+# plan_run_id: 796772e5-d5ae-5c82-8783-4210caf73d81
+# prompt_version: operator-ui-phase-11-mint-v1
+# ticket_key_high_water: 227
+# epic_key_high_water: 13
 epics:
 - id: aa0a9535-cf03-4a01-a6d3-313520606d0d
   product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
@@ -183,4 +183,19 @@ epics:
   created_by_id: planner
   created_at: '2026-07-24T07:43:43.817537Z'
   updated_at: '2026-07-24T07:43:43.817537Z'
+  completed_at: null
+- id: 80047dd6-542c-4ad8-8213-a2372ab4e560
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  key: ATLAS-E13
+  title: Operator UI (Read Surface)
+  description: 'Read-only browser surface over the Phase 10 operator API: the ticket board and detail, the review queue, dependency readiness and the critical path, lessons, and system status. Read-only for this phase; writes, authentication and remote binding stay with the writeable API phase. Implements Phase 11 per docs/atlas/operator-ui.md.'
+  objective: Give the operator a browser instrument over Atlas operational state that reads the /api/v1 projections directly, so the review queue, ticket definitions, evidence, dependency readiness and the lesson draft queue are legible without a CLI query or a database read.
+  status: planned
+  priority: 0
+  risk_level: medium
+  source_anchor: docs/atlas/operator-ui.md#operator-ui-design-phase-11
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-26T18:32:14.708576Z'
+  updated_at: '2026-07-26T18:32:14.708576Z'
   completed_at: null

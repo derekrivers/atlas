@@ -26,3 +26,4 @@ scratch.db
 # Local secrets: Linear token / state map and any other env-sourced creds
 # are injected at the client boundary and never committed (ATLAS-41).
 .env
+*:Zone.Identifier

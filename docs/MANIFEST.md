@@ -45,6 +45,8 @@ Phase design documents (one per engine; phase-readiness rule below):
   promotion workflow, playbooks
 - `docs/atlas/operator-api.md` — Phase 10: read-only HTTP contract, route
   boundaries, binding constraints, deferred capabilities
+- `docs/atlas/operator-ui.md` — Phase 11: operator UI views, framework
+  adoption boundary, additive v1 read routes, testing contract
 
 Playbooks (generated canonical docs):
 
