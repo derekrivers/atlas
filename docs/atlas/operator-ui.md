@@ -245,7 +245,9 @@ and are never conflated; a component suite that passes is not acceptance.
   are all invisible to a suite that mocks its own expectations.
 - **Contract drift** is caught by regenerating the TypeScript client from
   the running application's OpenAPI document in CI and failing on any
-  diff against the committed output.
+  diff against the committed output. The single regeneration command is
+  `npm --prefix apps/operator-ui run api:generate` from the repository
+  root; the generated file is committed and never hand-edited.
 - Every view ticket carries at least one end-to-end specification as an
   acceptance criterion. A view without a spec is not delivered.
 

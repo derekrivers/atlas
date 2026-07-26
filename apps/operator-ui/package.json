@@ -7,11 +7,13 @@
     "dev": "vite --host 127.0.0.1",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
+    "api:generate": "cd ../.. && UV_CACHE_DIR=${UV_CACHE_DIR:-/tmp/uv-cache} UV_LINK_MODE=${UV_LINK_MODE:-copy} uv run python -m atlas.tools.operator_ui_openapi",
+    "api:check": "cd ../.. && UV_CACHE_DIR=${UV_CACHE_DIR:-/tmp/uv-cache} UV_LINK_MODE=${UV_LINK_MODE:-copy} uv run python -m atlas.tools.operator_ui_openapi --check",
     "test": "npm run test:acceptance && npm run test:browser",
     "test:acceptance": "vitest run --config vitest.config.ts",
     "test:browser": "vitest run --config vitest.browser.config.ts",
     "typecheck": "tsc -b",
-    "verify": "npm run lint && npm run typecheck && npm run test && npm run build"
+    "verify": "npm run api:check && npm run lint && npm run typecheck && npm run test && npm run build"
   },
   "dependencies": {
     "@radix-ui/react-alert-dialog": "1.1.15",
@@ -53,10 +55,10 @@
   },
   "devDependencies": {
     "@eslint/js": "9.37.0",
+    "@tanstack/eslint-plugin-query": "5.91.0",
     "@types/node": "24.7.0",
     "@types/react": "19.2.2",
     "@types/react-dom": "19.2.1",
-    "@tanstack/eslint-plugin-query": "5.91.0",
     "@vitejs/plugin-react-swc": "4.1.0",
     "@vitest/browser": "4.1.10",
     "@vitest/browser-playwright": "4.1.10",
@@ -64,6 +66,7 @@
     "eslint-plugin-react-hooks": "7.0.0",
     "eslint-plugin-react-refresh": "0.4.23",
     "globals": "16.4.0",
+    "openapi-typescript": "7.13.0",
     "playwright": "1.62.0",
     "typescript": "5.9.3",
     "typescript-eslint": "8.46.0",
