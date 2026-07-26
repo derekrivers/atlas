@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from atlas.core.enums import ActorType, EntityStatus, EvidenceStatus, RiskLevel
 from atlas.core.models import (
+    DependencyType,
     EpicStatus,
     EvidenceType,
     LessonCategory,
@@ -187,6 +188,29 @@ class DependencyCriticalPathResponse(BaseModel):
     keys: list[str]
     steps: list[CriticalPathStepSchema]
     total_effort: int
+
+
+class DependencyGraphNodeSchema(BaseModel):
+    """One node in the projected dependency graph."""
+
+    key: str
+    status: str
+    node_type: str
+
+
+class DependencyGraphEdgeSchema(BaseModel):
+    """One depends_on edge in the projected dependency graph."""
+
+    source: str
+    target: str
+    dependency_type: DependencyType
+
+
+class DependencyGraphResponse(BaseModel):
+    """Whole projected dependency graph in deterministic order."""
+
+    nodes: list[DependencyGraphNodeSchema]
+    edges: list[DependencyGraphEdgeSchema]
 
 
 class ReviewCheckSchema(BaseModel):

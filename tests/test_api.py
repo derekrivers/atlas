@@ -19,7 +19,7 @@ from schema_drift_helpers import (
 )
 from test_apply import _epic_model_kwargs, _ticket_model_kwargs
 from test_lesson_model import lesson_kwargs
-from test_models_validation import dependency_kwargs
+from test_models_validation import adr_kwargs, dependency_kwargs
 from test_plan_pipeline import fresh_db
 
 from atlas import __version__
@@ -28,6 +28,9 @@ from atlas.api.schemas import (
     CriticalPathStepSchema,
     DependencyBlockerSchema,
     DependencyCriticalPathResponse,
+    DependencyGraphEdgeSchema,
+    DependencyGraphNodeSchema,
+    DependencyGraphResponse,
     EpicItemSchema,
     EpicsResponse,
     LessonItemSchema,
@@ -43,6 +46,8 @@ from atlas.api.schemas import (
 )
 from atlas.core.enums import ActorType, EntityStatus, EvidenceStatus, RiskLevel
 from atlas.core.models import (
+    ArchitectureDecisionRecord,
+    DependencyType,
     Epic,
     EpicStatus,
     Evidence,
@@ -56,8 +61,9 @@ from atlas.core.models import (
     VerificationCheck,
     VerificationCheckType,
 )
-from atlas.dependencies import NotReadyCode
+from atlas.dependencies import NotReadyCode, build_dependency_graph
 from atlas.storage import (
+    ADRRepo,
     Database,
     EpicRepo,
     EvidenceRepo,
@@ -118,6 +124,11 @@ def _assert_empty_critical_path(response: Any) -> None:
     assert response.json() == {"keys": [], "steps": [], "total_effort": 0}
 
 
+def _assert_empty_dependency_graph(response: Any) -> None:
+    assert response.status_code == 200
+    assert response.json() == {"nodes": [], "edges": []}
+
+
 def _assert_empty_status(response: Any) -> None:
     assert response.status_code == 200
     assert response.json() == {
@@ -144,6 +155,7 @@ API_ROUTE_CASES: dict[tuple[str, str], RouteAssertion] = {
     ("GET", "/api/v1/epics"): _assert_empty_epics,
     ("GET", "/api/v1/lessons"): _assert_empty_lessons,
     ("GET", "/api/v1/dependencies/critical-path"): _assert_empty_critical_path,
+    ("GET", "/api/v1/dependencies/graph"): _assert_empty_dependency_graph,
     ("GET", "/api/v1/reviews"): _assert_empty_reviews,
     ("GET", "/api/v1/status"): _assert_empty_status,
 }
@@ -233,6 +245,10 @@ def test_response_schema_closed_fields_use_canonical_enums() -> None:
     assert TicketEvidenceItemSchema.model_fields["status"].annotation is EvidenceStatus
     assert DependencyBlockerSchema.model_fields["code"].annotation is NotReadyCode
     assert NotReadyReasonSchema.model_fields["code"].annotation is NotReadyCode
+    assert (
+        DependencyGraphEdgeSchema.model_fields["dependency_type"].annotation
+        is DependencyType
+    )
     assert LessonItemSchema.model_fields["status"].annotation is EntityStatus
     assert LessonItemSchema.model_fields["category"].annotation is LessonCategory
     assert LessonItemSchema.model_fields["created_by_type"].annotation is ActorType
@@ -273,6 +289,7 @@ def _component_for_field(
         ("TicketEvidenceItemSchema", "status", EvidenceStatus),
         ("DependencyBlockerSchema", "code", NotReadyCode),
         ("NotReadyReasonSchema", "code", NotReadyCode),
+        ("DependencyGraphEdgeSchema", "dependency_type", DependencyType),
         ("LessonItemSchema", "status", EntityStatus),
         ("LessonItemSchema", "category", LessonCategory),
         ("LessonItemSchema", "created_by_type", ActorType),
@@ -1082,6 +1099,27 @@ def _dependency(source: Ticket, target: Ticket) -> TicketDependency:
     )
 
 
+def _dependency_to(
+    source: Ticket,
+    target_id: UUID,
+    *,
+    target_entity_type: str = "ticket",
+    dependency_type: DependencyType = DependencyType.DEPENDS_ON,
+) -> TicketDependency:
+    return TicketDependency(
+        **(
+            dependency_kwargs()
+            | {
+                "id": uuid4(),
+                "source_ticket_id": source.id,
+                "target_entity_type": target_entity_type,
+                "target_entity_id": target_id,
+                "dependency_type": dependency_type,
+            }
+        )
+    )
+
+
 def test_ticket_dependencies_returns_blockers_blocked_by_and_readiness(
     database: Database,
 ) -> None:
@@ -1219,6 +1257,116 @@ def test_dependency_critical_path_returns_ordered_existing_projection(
         ],
         total_effort=10,
     ).model_dump(mode="json")
+
+
+def test_dependency_graph_returns_seeded_projected_nodes_and_depends_on_edges(
+    database: Database,
+) -> None:
+    product = ProductRepo(database).get_by_key("ATLAS")
+    assert product is not None
+    epic = Epic(**_epic_model_kwargs(product.id, key="ATLAS-E1"))
+    adr = ArchitectureDecisionRecord(
+        **(adr_kwargs() | {"id": uuid4(), "product_id": product.id, "number": 8})
+    )
+    dependency_target = Ticket(
+        **(
+            _ticket_model_kwargs(product.id, epic.id, key="ATLAS-2")
+            | {"id": uuid4(), "status": TicketStatus.DONE}
+        )
+    )
+    adr_dependent = Ticket(
+        **(
+            _ticket_model_kwargs(product.id, epic.id, key="ATLAS-3")
+            | {"id": uuid4(), "status": TicketStatus.PLANNED}
+        )
+    )
+    ticket_dependent = Ticket(
+        **(
+            _ticket_model_kwargs(product.id, epic.id, key="ATLAS-10")
+            | {"id": uuid4(), "status": TicketStatus.IN_PROGRESS}
+        )
+    )
+    EpicRepo(database).add(epic)
+    ADRRepo(database).add(adr)
+    ticket_repo = TicketRepo(database)
+    for record in (ticket_dependent, dependency_target, adr_dependent):
+        ticket_repo.add(record)
+    dependency_repo = TicketDependencyRepo(database)
+    dependency_repo.add(_dependency_to(ticket_dependent, dependency_target.id))
+    dependency_repo.add(_dependency_to(adr_dependent, adr.id, target_entity_type="adr"))
+    dependency_repo.add(
+        _dependency_to(
+            dependency_target,
+            ticket_dependent.id,
+            dependency_type=DependencyType.RELATES_TO,
+        )
+    )
+
+    with TestClient(create_app(database=database)) as client:
+        first = client.get("/api/v1/dependencies/graph")
+        second = client.get("/api/v1/dependencies/graph")
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.content == second.content
+    assert first.json() == DependencyGraphResponse(
+        nodes=[
+            DependencyGraphNodeSchema(
+                key="ADR-0008",
+                status="accepted",
+                node_type="adr",
+            ),
+            DependencyGraphNodeSchema(
+                key="ATLAS-2",
+                status="done",
+                node_type="ticket",
+            ),
+            DependencyGraphNodeSchema(
+                key="ATLAS-3",
+                status="planned",
+                node_type="ticket",
+            ),
+            DependencyGraphNodeSchema(
+                key="ATLAS-10",
+                status="in_progress",
+                node_type="ticket",
+            ),
+            DependencyGraphNodeSchema(
+                key="ATLAS-E1",
+                status="planned",
+                node_type="epic",
+            ),
+        ],
+        edges=[
+            DependencyGraphEdgeSchema(
+                source="ATLAS-3",
+                target="ADR-0008",
+                dependency_type=DependencyType.DEPENDS_ON,
+            ),
+            DependencyGraphEdgeSchema(
+                source="ATLAS-10",
+                target="ATLAS-2",
+                dependency_type=DependencyType.DEPENDS_ON,
+            ),
+        ],
+    ).model_dump(mode="json")
+
+    projected = build_dependency_graph(database)
+    assert {
+        (node["key"], node["status"], node["node_type"])
+        for node in first.json()["nodes"]
+    } == {
+        (str(data["key"]), str(data["status"]), str(data["node_type"]))
+        for _key, data in projected.nodes(data=True)
+    }
+    assert {
+        (edge["source"], edge["target"], edge["dependency_type"])
+        for edge in first.json()["edges"]
+    } == {
+        (source, target, dep_type)
+        for source, target, dep_type in projected.edges(data="dependency_type")
+        if dep_type == DependencyType.DEPENDS_ON.value
+    }
 
 
 def test_ticket_count_static_route_precedes_ticket_key_route(

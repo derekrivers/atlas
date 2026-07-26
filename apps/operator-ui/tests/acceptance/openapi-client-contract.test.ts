@@ -25,6 +25,7 @@ const expectedV1Routes = [
   '/api/v1/epics',
   '/api/v1/lessons',
   '/api/v1/dependencies/critical-path',
+  '/api/v1/dependencies/graph',
   '/api/v1/reviews',
   '/api/v1/status',
 ] as const satisfies readonly (keyof paths)[]
@@ -56,6 +57,7 @@ type TicketDetail = RouteResponse<'/api/v1/tickets/{key}'>
 type TicketEvidenceItem =
   RouteResponse<'/api/v1/tickets/{key}/evidence'>['evidence'][number]
 type TicketDependencies = RouteResponse<'/api/v1/tickets/{key}/dependencies'>
+type DependencyGraph = RouteResponse<'/api/v1/dependencies/graph'>
 type EpicItem = RouteResponse<'/api/v1/epics'>['epics'][number]
 type LessonItem = RouteResponse<'/api/v1/lessons'>['lessons'][number]
 type ReviewItem = RouteResponse<'/api/v1/reviews'>['reviews'][number]
@@ -81,6 +83,12 @@ const closedValueFieldParity: [
       Schema['NotReadyCode']
     >
   >,
+  Assert<
+    Equal<
+      DependencyGraph['edges'][number]['dependency_type'],
+      Schema['DependencyType']
+    >
+  >,
   Assert<Equal<EpicItem['status'], Schema['EpicStatus']>>,
   Assert<Equal<EpicItem['risk_level'], Schema['RiskLevel']>>,
   Assert<Equal<EpicItem['created_by_type'], Schema['ActorType']>>,
@@ -95,6 +103,7 @@ const closedValueFieldParity: [
   >,
   Assert<Equal<ReviewItem['checks'][number]['status'], Schema['EvidenceStatus']>>,
 ] = [
+  true,
   true,
   true,
   true,
@@ -136,7 +145,7 @@ function tsFiles(root: string): string[] {
 describe('generated OpenAPI TypeScript client contract', () => {
   it('represents every current v1 route in the generated types', () => {
     expect(routeTypeParity).toBe(true)
-    expect(expectedV1Routes).toHaveLength(10)
+    expect(expectedV1Routes).toHaveLength(11)
   })
 
   it('types closed-value response fields through generated schema enum members', () => {

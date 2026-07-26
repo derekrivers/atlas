@@ -84,7 +84,7 @@ additions as phase authority, is:
 | GET    | `/api/v1/epics`         | none             | `EpicsResponse`           | Phase 11 OP-2 |
 | GET    | `/api/v1/lessons`       | optional `status` query parameter | `LessonsResponse` | Phase 10 |
 | GET    | `/api/v1/dependencies/critical-path` | none | `DependencyCriticalPathResponse` | Phase 10 |
-| GET    | `/api/v1/dependencies/graph` | none | `DependencyGraphResponse` | Phase 11 OP-2 — not yet implemented |
+| GET    | `/api/v1/dependencies/graph` | none | `DependencyGraphResponse` | Phase 11 OP-2 |
 | GET    | `/api/v1/reviews`       | none             | `ReviewQueueResponse`     | Phase 10 |
 | GET    | `/api/v1/status`        | none             | `SystemStatusResponse`    | Phase 10 |
 
@@ -98,7 +98,9 @@ lesson results preserve repository order;
 status-filtered lesson results are creation-ordered by
 `LessonRepo.list_by_status`. Ticket evidence results
 preserve the oldest-first order returned by storage. Review results preserve
-the order established by the orchestration operation.
+the order established by the orchestration operation. Dependency graph nodes
+are natural-key ordered; `depends_on` edges are ordered by source key, then
+target key, using the same natural-key ordering.
 
 `GET /api/v1/tickets` returns the lexicographic-key-ordered operator board. Its
 items expose the lean ticket fields needed for board scanning plus `epic_key`,
@@ -132,7 +134,12 @@ the dependency projection.
 in execution order with per-step and total effort.
 
 `GET /api/v1/dependencies/graph` is the second Phase 11 OP-2 additive read
-route, owned by its companion implementation ticket. It does not authorize any
+route. It returns the validated projected dependency graph in one response:
+nodes carry `key`, `status`, and `node_type`; edges carry `source`, `target`,
+and the canonical `DependencyType`. The graph is built and validated by
+`atlas.dependencies`, assembled by `atlas.orchestration`, and presented by the
+API. It returns `depends_on` edges only and does not include layout,
+coordinates, effort weighting, or rendering hints. It does not authorize any
 additional v1 route beyond the two OP-2 additions named here.
 
 `GET /api/v1/status` returns the singleton operator system snapshot: package
@@ -142,10 +149,10 @@ Linear-sync and evidence-pull timestamps.
 Closed-value response fields use the canonical domain `StrEnum` types directly:
 `TicketStatus`, `TicketType`, `RiskLevel`, `EvidenceType`, `ActorType`,
 `EpicStatus`, `EntityStatus`, `LessonCategory`, `VerificationCheckType`,
-`EvidenceStatus`, and `NotReadyCode`. FastAPI's OpenAPI document publishes the
-members of those canonical enums as the allowed HTTP values; this contract was
-delivered by ATLAS-194 and extended by ATLAS-200, ATLAS-199, ATLAS-201, and
-ATLAS-208.
+`EvidenceStatus`, `NotReadyCode`, and `DependencyType`. FastAPI's OpenAPI
+document publishes the members of those canonical enums as the allowed HTTP
+values; this contract was delivered by ATLAS-194 and extended by ATLAS-200,
+ATLAS-199, ATLAS-201, ATLAS-207, and ATLAS-208.
 
 A keyed v1 resource that does not exist returns `404 Not Found` using FastAPI's
 native error body: `{"detail": "<Resource> <key> not found"}`. Collection routes

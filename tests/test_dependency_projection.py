@@ -12,6 +12,7 @@ from test_models_validation import dependency_kwargs
 from test_plan_pipeline import fresh_db
 
 from atlas.core.models import Epic, Ticket, TicketDependency
+from atlas.core.models.dependency import DependencyType
 from atlas.dependencies import (
     BlockedResult,
     BlockedTarget,
@@ -23,8 +24,12 @@ from atlas.dependencies import (
     UnlocksResult,
 )
 from atlas.orchestration import (
+    DependencyGraphEdgeState,
+    DependencyGraphNodeState,
+    DependencyGraphState,
     TicketDependencyState,
     dependency_critical_path,
+    dependency_graph,
     dependency_projection,
     ticket_dependencies,
 )
@@ -233,3 +238,63 @@ def test_dependency_critical_path_calls_dependency_layer_functions(
 
     assert dependency_critical_path(db) == path
     assert calls == ["build_dependency_graph", "validate_graph", "critical_path"]
+
+
+def test_dependency_graph_calls_dependency_layer_builder_and_validator(
+    monkeypatch: pytest.MonkeyPatch,
+    store: tuple[Database, UUID, UUID],
+) -> None:
+    db, _, _ = store
+    graph: nx.DiGraph[str] = nx.DiGraph()
+    graph.add_node(
+        "ATLAS-10",
+        key="ATLAS-10",
+        status="planned",
+        node_type="ticket",
+        present=True,
+    )
+    graph.add_node(
+        "ATLAS-2",
+        key="ATLAS-2",
+        status="done",
+        node_type="ticket",
+        present=True,
+    )
+    graph.add_edge("ATLAS-10", "ATLAS-2", dependency_type="depends_on")
+    graph.add_edge("ATLAS-2", "ATLAS-10", dependency_type="relates_to")
+    calls: list[str] = []
+
+    def fake_build(database: Database) -> nx.DiGraph[str]:
+        assert database is db
+        calls.append("build_dependency_graph")
+        return graph
+
+    def fake_validate(candidate: nx.DiGraph[str]) -> None:
+        assert candidate is graph
+        calls.append("validate_graph")
+
+    monkeypatch.setattr(dependency_projection, "build_dependency_graph", fake_build)
+    monkeypatch.setattr(dependency_projection, "validate_graph", fake_validate)
+
+    assert dependency_graph(db) == DependencyGraphState(
+        nodes=(
+            DependencyGraphNodeState(
+                key="ATLAS-2",
+                status="done",
+                node_type="ticket",
+            ),
+            DependencyGraphNodeState(
+                key="ATLAS-10",
+                status="planned",
+                node_type="ticket",
+            ),
+        ),
+        edges=(
+            DependencyGraphEdgeState(
+                source="ATLAS-10",
+                target="ATLAS-2",
+                dependency_type=DependencyType.DEPENDS_ON,
+            ),
+        ),
+    )
+    assert calls == ["build_dependency_graph", "validate_graph"]
