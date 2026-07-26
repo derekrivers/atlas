@@ -10,6 +10,6 @@ generated through the plan/apply loop with stable ticket identity
 (AT-1..AT-7, `docs/atlas/planning-engine-specification.md`) — is
 proven and closed; see the closure reports.
 
-Current work: the operator API phase — a read-only HTTP projection
-surface (`atlas.api`) over the review queue and ticket board.
-Writeable API actions are deferred to a later phase.
+Current work: Phase 11 — Operator UI (Read Surface): a browser
+instrument over the Phase 10 read API. Read-only; writeable API
+actions and authentication are deferred to a later phase.

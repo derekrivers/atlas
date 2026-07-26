@@ -580,6 +580,91 @@ contains-no-logic rule mechanically enforced.
 
 ---
 
+# Phase 11 roadmap section — paste-ready
+
+Append to `docs/atlas/implementation-roadmap.md` after the Phase 10
+section and before `# Critical Success Criteria`. Ticket keys are left as
+`ATLAS-2NN` placeholders until `atlas apply` mints them; fill them in
+from the apply diff, do not claim them ahead of the counter
+(WORKFLOW.md, "Ticket key identity").
+
+Also update `ROADMAP.md`'s "Current work" paragraph, which still reads
+"the operator API phase", and add `docs/atlas/operator-ui.md` to
+`docs/MANIFEST.md` under "Phase design documents".
+
+---
+
+```markdown
+# Phase 11 — Operator UI (Read Surface)
+
+Design doc: docs/atlas/operator-ui.md.
+Status: IN PROGRESS.
+
+A browser instrument over the Phase 10 read API. Read-only: no writes,
+no authentication, loopback only. The UI lives at `apps/operator-ui/` in
+this repository and couples to Atlas through the `/api/v1` OpenAPI
+contract alone, with generated TypeScript types re-generated in CI and
+any drift failing the build.
+
+This phase adds exactly two v1 read routes — `GET /api/v1/epics` (with
+`epic_key` on the board item) and `GET /api/v1/dependencies/graph` — and
+no others. Both exist because a named view is otherwise unbuildable;
+`operator-api.md` is amended in the same change that adds them.
+
+## Epic: Operator UI (Read Surface) (E13)
+
+Foundation:
+
+    ATLAS-2NN  Scaffold apps/operator-ui and strip the template's demo domains
+    ATLAS-2NN  Theme token contract from the vendored theme.css
+    ATLAS-2NN  Generated OpenAPI TypeScript client with a CI drift guard
+    ATLAS-2NN  Query layer, dev proxy, and API-unreachable primitives
+    ATLAS-2NN  Application shell: navigation, theme toggle, command palette
+    ATLAS-2NN  Playwright end-to-end harness over a seeded live API
+    ATLAS-2NN  Operator UI CI pipeline
+
+Views:
+
+    ATLAS-2NN  Ticket board view
+    ATLAS-2NN  Ticket detail view: definition and metadata
+    ATLAS-2NN  Ticket detail: evidence tab
+    ATLAS-2NN  Ticket detail: dependencies and readiness tab
+    ATLAS-2NN  Review queue view
+    ATLAS-2NN  Critical path view
+    ATLAS-2NN  Lessons view with draft triage
+    ATLAS-2NN  Overview dashboard
+    ATLAS-2NN  Epic grouping on the board
+    ATLAS-2NN  Dependency graph view
+
+Close:
+
+    ATLAS-2NN  Accessibility and responsive pass
+    ATLAS-2NN  Open-source readiness
+
+Phase 11 cross-epic deliveries:
+
+    ATLAS-2NN  GET /api/v1/epics and epic_key on the board item
+               — E12, Operator API (Read Surface)
+    ATLAS-2NN  GET /api/v1/dependencies/graph
+               — E12, Operator API (Read Surface)
+
+Milestone test: an operator opens the UI in a browser against a running
+`atlas api serve`, reaches every ticket's definition, evidence and
+dependency readiness, the review queue with its acceptance gates, the
+critical path, and the lessons draft queue — with no CLI query and no
+database read — and the end-to-end suite proves each view against a
+seeded live API rather than against fixtures.
+
+Carried forward into this phase from Phase 10 (closure §6):
+
+    "GUI and browser review" — the question of whether an agent's review
+    includes a browser-based step. This phase delivers the browser
+    surface; it does not rule that question, which remains an operator
+    decision.
+```
+
+---
+
 # North Star
 
 The goal is not to build any single product.
