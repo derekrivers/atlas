@@ -24,6 +24,9 @@ Falsifiable, with the wrong answer named in each case:
   no-horizon status, and a NULL entry time each log nothing; when the status
   changes the episode advances and a new breach logs again. status_entered_at
   is stamped only on a real status change and never bumps updated_at.
+- Completion stamping (ATLAS-206): a real transition into done stamps
+  completed_at from the injected tick clock without bumping updated_at; a
+  repeated done observation and rejected transition do not stamp.
 - Review cycling (ATLAS-120): the counter fires only on changes_requested ->
   pr_open (no other transition; never bumps updated_at); over the threshold the
   step-5 pass routes to needs_human_decision via set_state and logs ONE
@@ -252,6 +255,7 @@ def seed_ticket(
     updated_at: datetime = EARLIER,
     linear_synced_at: datetime | None = None,
     status_entered_at: datetime | None = None,
+    completed_at: datetime | None = None,
     review_cycle_count: int = 0,
     title: str = "Atlas Title",
     acceptance_criteria: list[str] | None = None,
@@ -290,6 +294,7 @@ def seed_ticket(
             "updated_at": updated_at,
             "linear_synced_at": linear_synced_at,
             "status_entered_at": status_entered_at,
+            "completed_at": completed_at,
             "review_cycle_count": review_cycle_count,
         }
     )
@@ -411,6 +416,107 @@ def test_linear_status_change_lands_in_one_tick(db: Database) -> None:
     assert pulled is not None
     assert pulled.status == TicketStatus.IN_PROGRESS  # wrong answer: still planned
     assert result.status_pulled == 1
+
+
+def test_done_pull_stamps_completed_at_and_preserves_updated_at(
+    db: Database,
+) -> None:
+    client = RecordingClient()
+    ticket = seed_ticket(
+        db,
+        client,
+        key="ATLAS-206",
+        status=TicketStatus.REVIEW_REQUIRED,
+        updated_at=EARLIER,
+        status_entered_at=NOW,
+        issue_state=DONE_STATE,
+    )
+    completed_at = LATER
+
+    result = run(db, client, now=completed_at)
+
+    pulled = TicketRepo(db).get_by_key("ATLAS-206")
+    assert pulled is not None
+    assert result.status_pulled == 1
+    assert pulled.status == TicketStatus.DONE
+    assert pulled.completed_at == completed_at  # wrong answer: permanently NULL
+    assert pulled.updated_at == ticket.updated_at  # wrong answer: spurious re-push
+
+
+def test_done_reobservation_does_not_restamp_completed_at(db: Database) -> None:
+    client = RecordingClient()
+    seed_ticket(
+        db,
+        client,
+        key="ATLAS-207",
+        status=TicketStatus.IN_PROGRESS,
+        updated_at=EARLIER,
+        with_issue=False,
+    )
+    repo = TicketRepo(db)
+    first_done = LATER
+    later_done = LATER + timedelta(hours=3)
+
+    first = repo.apply_linear_status(
+        "ATLAS-207", TicketStatus.DONE, now=first_done, created_by_id=CREATED_BY
+    )
+    second = repo.apply_linear_status(
+        "ATLAS-207", TicketStatus.DONE, now=later_done, created_by_id=CREATED_BY
+    )
+
+    assert first.completed_at is not None
+    assert second.completed_at is not None
+    first_wire_value = first.completed_at.isoformat()
+    second_wire_value = second.completed_at.isoformat()
+    assert second_wire_value == first_wire_value  # wrong answer: restamped every pull
+    assert second.completed_at == first_done
+
+
+def test_rejected_transition_leaves_completed_at_null(db: Database) -> None:
+    client = RecordingClient()
+    seed_ticket(
+        db,
+        client,
+        key="ATLAS-208",
+        status=TicketStatus.IN_PROGRESS,
+        updated_at=EARLIER,
+        with_issue=False,
+    )
+
+    rejected = TicketRepo(db).apply_linear_status(
+        "ATLAS-208", TicketStatus.REJECTED, now=LATER, created_by_id=CREATED_BY
+    )
+
+    assert rejected.status == TicketStatus.REJECTED
+    assert rejected.completed_at is None  # wrong answer: rejection counted as delivery
+
+
+def test_existing_done_null_completed_at_survives_sync_tick(db: Database) -> None:
+    client = RecordingClient()
+    seed_ticket(
+        db,
+        client,
+        key="ATLAS-209",
+        status=TicketStatus.DONE,
+        completed_at=None,
+        issue_state=DONE_STATE,
+    )
+
+    result = run(db, client, now=LATER)
+
+    pulled = TicketRepo(db).get_by_key("ATLAS-209")
+    assert pulled is not None
+    assert result.status_pulled == 0
+    assert pulled.status == TicketStatus.DONE
+    assert pulled.completed_at is None  # wrong answer: retroactive backfill
+
+    same = TicketRepo(db).apply_linear_status(
+        "ATLAS-209",
+        TicketStatus.DONE,
+        now=LATER + timedelta(hours=1),
+        created_by_id=CREATED_BY,
+    )
+    assert same.completed_at is None  # wrong answer: set-to-same backfill
 
 
 def test_done_transition_extracts_lesson_when_notable(db: Database) -> None:

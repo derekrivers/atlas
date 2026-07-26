@@ -39,7 +39,12 @@ class TicketType(StrEnum):
 
 class Ticket(BaseModel):
     """The atomic unit of agent-executable work: small, scoped,
-    dependency-aware, and verifiable."""
+    dependency-aware, and verifiable.
+
+    ``completed_at`` is written by ``TicketRepo.apply_linear_status`` only on a
+    real transition into ``done``. That inbound observation follows the sibling
+    cursor fields' discipline and never bumps ``updated_at``.
+    """
 
     id: UUID
     product_id: UUID
@@ -114,4 +119,9 @@ class Ticket(BaseModel):
     created_by_id: str
     created_at: datetime
     updated_at: datetime
+    # Delivery completion clock (ATLAS-206): stamped by
+    # ``TicketRepo.apply_linear_status`` only on a real transition into ``done``.
+    # Repeated ``done`` observations and ``rejected`` closures leave it
+    # untouched. Like the sync/dwell cursor fields, it never bumps
+    # ``updated_at``.
     completed_at: datetime | None = None
