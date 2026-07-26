@@ -14,6 +14,9 @@ __pycache__/
 # Build artifacts
 dist/
 build/
+apps/operator-ui/dist/
+apps/operator-ui/node_modules/
+apps/operator-ui/coverage/
 
 # uv: uv.lock is committed deliberately — do not ignore it.
 
