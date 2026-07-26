@@ -84,7 +84,7 @@ additions as phase authority, is:
 | GET    | `/api/v1/epics`         | none             | `EpicsResponse`           | Phase 11 OP-2 |
 | GET    | `/api/v1/lessons`       | optional `status` query parameter | `LessonsResponse` | Phase 10 |
 | GET    | `/api/v1/dependencies/critical-path` | none | `DependencyCriticalPathResponse` | Phase 10 |
-| GET    | `/api/v1/dependencies/graph` | none | `DependencyGraphResponse` | Phase 11 OP-2, companion route |
+| GET    | `/api/v1/dependencies/graph` | none | `DependencyGraphResponse` | Phase 11 OP-2 — not yet implemented |
 | GET    | `/api/v1/reviews`       | none             | `ReviewQueueResponse`     | Phase 10 |
 | GET    | `/api/v1/status`        | none             | `SystemStatusResponse`    | Phase 10 |
 
@@ -92,9 +92,10 @@ Phase 11, by authority of `docs/atlas/operator-ui.md` OP-2, permits exactly
 two additive read routes beyond the Phase 10 surface:
 `GET /api/v1/epics` and `GET /api/v1/dependencies/graph`. No other v1 routes
 enter Phase 11. Ticket results are ordered by key. Ticket board items carry
-`epic_key`, which is null when the ticket has no epic. Epic and unfiltered
-lesson results preserve repository order; status-filtered lesson results are
-creation-ordered by `LessonRepo.list_by_status`. Ticket evidence results
+`epic_key`, which is null when the ticket has no epic. Epic results are
+key-ordered. Unfiltered lesson results preserve repository order;
+status-filtered lesson results are creation-ordered by
+`LessonRepo.list_by_status`. Ticket evidence results
 preserve the oldest-first order returned by storage. Review results preserve
 the order established by the orchestration operation.
 
@@ -103,8 +104,8 @@ the lean ticket fields needed for board scanning plus `epic_key`, the owning
 epic's store key. `epic_key` is null when the stored ticket has no epic.
 
 `GET /api/v1/epics` returns stored epic records as a single-repository
-projection over `EpicRepo.list`. Results preserve repository order and the
-route has no pagination in Phase 11.
+projection over `EpicRepo.list`. Results are key-ordered and the route has no
+pagination in Phase 11.
 
 `GET /api/v1/tickets/{key}` returns the stored operator-facing definition and
 execution state for one ticket. It is a single-repository projection over

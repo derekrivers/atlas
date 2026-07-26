@@ -72,7 +72,7 @@ def present_ticket_board(states: Sequence[TicketBoardItemState]) -> TicketBoardR
 
 
 def present_epics(epics: Sequence[Epic]) -> EpicsResponse:
-    """Present stored epics in repository order."""
+    """Present stored epics in key order."""
     return EpicsResponse(
         epics=[
             EpicItemSchema(
@@ -92,7 +92,7 @@ def present_epics(epics: Sequence[Epic]) -> EpicsResponse:
                 updated_at=epic.updated_at,
                 completed_at=epic.completed_at,
             )
-            for epic in epics
+            for epic in sorted(epics, key=lambda record: record.key)
         ]
     )
 

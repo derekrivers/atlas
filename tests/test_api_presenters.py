@@ -118,7 +118,7 @@ def test_present_ticket_board_maps_board_state() -> None:
     )
 
 
-def test_present_epics_preserves_repository_order() -> None:
+def test_present_epics_sorts_by_key() -> None:
     product_id = uuid4()
     first = Epic(
         **(
@@ -140,7 +140,7 @@ def test_present_epics_preserves_repository_order() -> None:
         )
     )
 
-    response = present_epics([first, second])
+    response = present_epics([second, first])
 
     assert response == EpicsResponse(
         epics=[

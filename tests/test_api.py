@@ -639,32 +639,32 @@ def _epic_item_json(epic: Epic) -> dict[str, Any]:
     ).model_dump(mode="json")
 
 
-def test_epics_returns_stored_records_in_repository_order(database: Database) -> None:
+def test_epics_returns_stored_records_in_key_order(database: Database) -> None:
     product = ProductRepo(database).get_by_key("ATLAS")
     assert product is not None
-    earlier = Epic(
+    first_by_key = Epic(
         **(
             _epic_model_kwargs(product.id, key="ATLAS-E1")
             | {
-                "id": UUID("00000000-0000-0000-0000-000000000001"),
-                "title": "Earlier repository epic",
+                "id": UUID("00000000-0000-0000-0000-000000000002"),
+                "title": "First key epic",
                 "status": EpicStatus.PLANNED,
             }
         )
     )
-    later = Epic(
+    second_by_key = Epic(
         **(
             _epic_model_kwargs(product.id, key="ATLAS-E2")
             | {
-                "id": UUID("00000000-0000-0000-0000-000000000002"),
-                "title": "Later repository epic",
+                "id": UUID("00000000-0000-0000-0000-000000000001"),
+                "title": "Second key epic",
                 "status": EpicStatus.IN_PROGRESS,
             }
         )
     )
     epic_repo = EpicRepo(database)
-    epic_repo.add(later)
-    epic_repo.add(earlier)
+    epic_repo.add(second_by_key)
+    epic_repo.add(first_by_key)
 
     with TestClient(create_app(database=database)) as client:
         response = client.get("/api/v1/epics")
@@ -672,8 +672,8 @@ def test_epics_returns_stored_records_in_repository_order(database: Database) ->
     assert response.status_code == 200
     assert response.json() == EpicsResponse(
         epics=[
-            EpicItemSchema(**_epic_item_json(earlier)),
-            EpicItemSchema(**_epic_item_json(later)),
+            EpicItemSchema(**_epic_item_json(first_by_key)),
+            EpicItemSchema(**_epic_item_json(second_by_key)),
         ]
     ).model_dump(mode="json")
 
