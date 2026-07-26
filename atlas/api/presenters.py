@@ -9,6 +9,8 @@ from atlas.api.schemas import (
     CriticalPathStepSchema,
     DependencyBlockerSchema,
     DependencyCriticalPathResponse,
+    EpicItemSchema,
+    EpicsResponse,
     LessonItemSchema,
     LessonsResponse,
     NotReadyReasonSchema,
@@ -24,7 +26,7 @@ from atlas.api.schemas import (
     TicketEvidenceResponse,
     TicketReadinessSchema,
 )
-from atlas.core.models import Lesson, Ticket
+from atlas.core.models import Epic, Lesson, Ticket
 from atlas.dependencies import CriticalPath, NotReadyCode
 from atlas.dependencies.views import (
     blocked_payload,
@@ -33,6 +35,7 @@ from atlas.dependencies.views import (
 )
 from atlas.orchestration import (
     SystemStatus,
+    TicketBoardItemState,
     TicketDependencyState,
     TicketEvidenceRecordState,
     TicketReviewState,
@@ -50,20 +53,46 @@ class _CriticalPathPayloadStep(TypedDict):
     cumulative_effort: int
 
 
-def present_ticket_board(tickets: Sequence[Ticket]) -> TicketBoardResponse:
-    """Present tickets as a key-ordered lean board."""
-    ordered = sorted(tickets, key=lambda ticket: ticket.key)
+def present_ticket_board(states: Sequence[TicketBoardItemState]) -> TicketBoardResponse:
+    """Present board state as lean ticket cards."""
     return TicketBoardResponse(
         tickets=[
             TicketBoardItemSchema(
-                key=ticket.key,
-                title=ticket.title,
-                status=ticket.status,
-                ticket_type=ticket.ticket_type,
-                priority=ticket.priority,
-                risk_level=ticket.risk_level,
+                key=state.key,
+                title=state.title,
+                status=state.status,
+                ticket_type=state.ticket_type,
+                priority=state.priority,
+                risk_level=state.risk_level,
+                epic_key=state.epic_key,
             )
-            for ticket in ordered
+            for state in states
+        ]
+    )
+
+
+def present_epics(epics: Sequence[Epic]) -> EpicsResponse:
+    """Present stored epics in repository order."""
+    return EpicsResponse(
+        epics=[
+            EpicItemSchema(
+                id=epic.id,
+                product_id=epic.product_id,
+                key=epic.key,
+                title=epic.title,
+                description=epic.description,
+                objective=epic.objective,
+                status=epic.status,
+                priority=epic.priority,
+                risk_level=epic.risk_level,
+                source_anchor=epic.source_anchor,
+                created_by_type=epic.created_by_type,
+                created_by_id=epic.created_by_id,
+                created_at=epic.created_at,
+                updated_at=epic.updated_at,
+                completed_at=epic.completed_at,
+            )
+            for epic in epics
         ]
     )
 

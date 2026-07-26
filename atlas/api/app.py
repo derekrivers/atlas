@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from atlas.api.routers import dependencies, lessons, reviews, status, tickets
+from atlas.api.routers import dependencies, epics, lessons, reviews, status, tickets
 from atlas.storage import Database
 from atlas.storage.db import resolve_url
 from atlas.storage.preconditions import assert_schema_at_head
@@ -35,6 +35,7 @@ def create_app(
 
     application = FastAPI(title="Atlas API", lifespan=lifespan)
     application.include_router(tickets.router, prefix=API_V1_PREFIX)
+    application.include_router(epics.router, prefix=API_V1_PREFIX)
     application.include_router(lessons.router, prefix=API_V1_PREFIX)
     application.include_router(dependencies.router, prefix=API_V1_PREFIX)
     application.include_router(reviews.router, prefix=API_V1_PREFIX)

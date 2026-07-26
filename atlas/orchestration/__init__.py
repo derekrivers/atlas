@@ -23,6 +23,7 @@ from atlas.orchestration.review_queue import (
 )
 from atlas.orchestration.system_status import SystemStatus, system_status
 from atlas.orchestration.tick_config import build_tick_config
+from atlas.orchestration.ticket_board import TicketBoardItemState, ticket_board
 from atlas.orchestration.ticket_evidence import (
     TicketEvidenceRecordState,
     ticket_evidence,
@@ -36,6 +37,7 @@ __all__ = [
     "PRContext",
     "ReviewCheckState",
     "SystemStatus",
+    "TicketBoardItemState",
     "TicketDependencyState",
     "TicketEvidenceRecordState",
     "TicketReviewState",
@@ -49,6 +51,7 @@ __all__ = [
     "review_queue",
     "run_verify",
     "system_status",
+    "ticket_board",
     "ticket_dependencies",
     "ticket_evidence",
 ]
