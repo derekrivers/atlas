@@ -361,6 +361,12 @@ class TicketRepo(_KeyedRepo[Ticket]):
         the definition cursor; stamping it never re-pushes. ``now`` is the
         injected tick clock and must be timezone-aware.
 
+        ``completed_at`` is stamped from the same tick clock ONLY on a real
+        transition into ``done``. Repeated observations of ``done`` leave the
+        first delivery timestamp intact, and ``rejected`` is a closure rather
+        than a delivery completion. Like the other inbound status-coupled
+        fields, writing it never bumps ``updated_at``.
+
         ``review_cycle_count`` (ATLAS-120) is incremented in the same real-change
         branch, but ONLY on a ``changes_requested -> pr_open`` transition (the
         round trip the review-cycling rule counts). Every other transition —
@@ -394,6 +400,8 @@ class TicketRepo(_KeyedRepo[Ticket]):
                 raise TicketNotFoundError(f"no ticket with key {key!r}")
             if row.status != status.value:
                 row.status_entered_at = now
+                if status == TicketStatus.DONE:
+                    row.completed_at = now
                 if (
                     row.status == TicketStatus.CHANGES_REQUESTED.value
                     and status == TicketStatus.PR_OPEN

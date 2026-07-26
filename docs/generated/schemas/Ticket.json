@@ -54,7 +54,7 @@
       "type": "string"
     }
   },
-  "description": "The atomic unit of agent-executable work: small, scoped,\ndependency-aware, and verifiable.",
+  "description": "The atomic unit of agent-executable work: small, scoped,\ndependency-aware, and verifiable.\n\n``completed_at`` is written by ``TicketRepo.apply_linear_status`` only on a\nreal transition into ``done``. That inbound observation follows the sibling\ncursor fields' discipline and never bumps ``updated_at``.",
   "properties": {
     "acceptance_criteria": {
       "items": {

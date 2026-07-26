@@ -767,6 +767,41 @@ def test_ticket_detail_returns_operator_facing_stored_state(
     ).model_dump(mode="json")
 
 
+def test_ticket_detail_returns_completed_at_from_status_writer(
+    database: Database,
+) -> None:
+    product = ProductRepo(database).get_by_key("ATLAS")
+    assert product is not None
+    epic = Epic(**_epic_model_kwargs(product.id, key="ATLAS-E2"))
+    ticket = Ticket(
+        **(
+            _ticket_model_kwargs(product.id, epic.id, key="ATLAS-206A")
+            | {
+                "status": TicketStatus.REVIEW_REQUIRED,
+            }
+        )
+    )
+    EpicRepo(database).add(epic)
+    ticket_repo = TicketRepo(database)
+    ticket_repo.add(ticket)
+    completed_at = datetime(2026, 7, 25, 12, tzinfo=UTC)
+    ticket_repo.apply_linear_status(
+        "ATLAS-206A",
+        TicketStatus.DONE,
+        now=completed_at,
+        created_by_id="pm-sync",
+    )
+
+    with TestClient(create_app(database=database)) as client:
+        response = client.get("/api/v1/tickets/ATLAS-206A")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "done"
+    assert payload["completed_at"] is not None  # wrong answer: API field stays null
+    assert payload["completed_at"] == completed_at.isoformat().replace("+00:00", "Z")
+
+
 def test_ticket_detail_returns_native_404_for_unknown_key(
     database: Database,
 ) -> None:
