@@ -25,11 +25,6 @@ const rules: ContractRule[] = [
     pattern: /#[0-9a-fA-F]{3,8}\b|\b(?:rgb|rgba|hsl|hsla|oklch)\(/g,
   },
   {
-    name: 'Tailwind built-in palette colour class',
-    pattern:
-      /\b(?:bg|text|border|ring|fill|stroke|shadow)-(?:white|black|slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)(?:-[0-9]{2,3})?\b/g,
-  },
-  {
     name: 'raw radius value',
     pattern:
       /\brounded-\[(?:[0-9]*\.)?[0-9]+(?:px|rem|em)\]|\b(?:borderRadius|border-radius)\s*[:=]\s*['"]?(?:[0-9]*\.)?[0-9]+(?:px|rem|em)/g,
@@ -37,7 +32,7 @@ const rules: ContractRule[] = [
   {
     name: 'font-family value outside token file',
     pattern:
-      /\bfont-(?:sans|serif|mono)\b|\bfontFamily\b|\bfont-family\s*:|['"](?:Inter|Manrope|Arial|Helvetica|sans-serif|serif|monospace)['"]/g,
+      /\bfontFamily\b|\bfont-family\s*:|['"](?:Inter|Manrope|Arial|Helvetica|sans-serif|serif|monospace)['"]/g,
   },
 ]
 

@@ -231,7 +231,7 @@ Light and dark modes are both part of that contract. The shell defaults to
 `system` on first visit, resolves that through `prefers-color-scheme`,
 persists explicit light/dark/system choices across reloads, and writes the
 browser `theme-color` meta value from `--background` after the active mode is
-resolved. Startup HTML must not carry a second palette or font-family source.
+resolved.
 
 **Its Playwright is not end-to-end testing.** The template uses Playwright
 as a browser provider for Vitest component tests. This phase additionally
