@@ -7,6 +7,8 @@ type ResolvedTheme = Exclude<Theme, 'system'>
 const DEFAULT_THEME = 'system'
 const THEME_COOKIE_NAME = 'vite-ui-theme'
 const THEME_COOKIE_MAX_AGE = 60 * 60 * 24 * 365 // 1 year
+const THEME_COLOR_TOKEN = '--background'
+const THEME_COLOR_META_SELECTOR = "meta[name='theme-color']"
 
 type ThemeProviderProps = {
   children: React.ReactNode
@@ -59,6 +61,14 @@ export function ThemeProvider({
     const applyTheme = (currentResolvedTheme: ResolvedTheme) => {
       root.classList.remove('light', 'dark') // Remove existing theme classes
       root.classList.add(currentResolvedTheme) // Add the new theme class
+
+      const themeColor = getComputedStyle(root)
+        .getPropertyValue(THEME_COLOR_TOKEN)
+        .trim()
+      const metaThemeColor = document.querySelector(THEME_COLOR_META_SELECTOR)
+      if (metaThemeColor && themeColor) {
+        metaThemeColor.setAttribute('content', themeColor)
+      }
     }
 
     const handleChange = () => {

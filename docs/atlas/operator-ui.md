@@ -227,6 +227,12 @@ vendored intact and becomes the single token contract: every colour,
 radius and font token lives in that file, and no component carries a
 hardcoded token value. There is no separate operator-supplied theme.
 
+Light and dark modes are both part of that contract. The shell defaults to
+`system` on first visit, resolves that through `prefers-color-scheme`,
+persists explicit light/dark/system choices across reloads, and writes the
+browser `theme-color` meta value from `--background` after the active mode is
+resolved.
+
 **Its Playwright is not end-to-end testing.** The template uses Playwright
 as a browser provider for Vitest component tests. This phase additionally
 requires `@playwright/test` end-to-end specs, which are a separate
