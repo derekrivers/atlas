@@ -22,12 +22,14 @@ export const ATLAS_QUERY_ROUTES = [
   '/api/v1/epics',
   '/api/v1/lessons',
   '/api/v1/dependencies/critical-path',
+  '/api/v1/dependencies/graph',
   '/api/v1/reviews',
   '/api/v1/status',
 ] as const satisfies readonly AtlasApiRoute[]
 
 export const atlasQueryKeys = {
   criticalPath: () => ['atlas', 'dependencies', 'critical-path'] as const,
+  dependencyGraph: () => ['atlas', 'dependencies', 'graph'] as const,
   epics: () => ['atlas', 'epics'] as const,
   lessons: (status?: Schema['EntityStatus'] | null) =>
     ['atlas', 'lessons', status ?? null] as const,
@@ -107,6 +109,13 @@ export function useDependencyCriticalPathQuery(): AtlasQueryResult<'/api/v1/depe
   return useQuery({
     queryKey: atlasQueryKeys.criticalPath(),
     queryFn: () => atlasGet('/api/v1/dependencies/critical-path'),
+  })
+}
+
+export function useDependencyGraphQuery(): AtlasQueryResult<'/api/v1/dependencies/graph'> {
+  return useQuery({
+    queryKey: atlasQueryKeys.dependencyGraph(),
+    queryFn: () => atlasGet('/api/v1/dependencies/graph'),
   })
 }
 

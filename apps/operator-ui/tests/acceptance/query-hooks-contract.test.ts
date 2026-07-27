@@ -6,6 +6,7 @@ import type { UseQueryResult } from '@tanstack/react-query'
 import {
   ATLAS_QUERY_ROUTES,
   type useDependencyCriticalPathQuery,
+  type useDependencyGraphQuery,
   type useEpicsQuery,
   type useLessonsQuery,
   type useReviewsQuery,
@@ -75,6 +76,12 @@ type HookResponseParity = [
     >
   >,
   Assert<
+    Equal<
+      HookData<typeof useDependencyGraphQuery>,
+      AtlasRouteResponse<'/api/v1/dependencies/graph'>
+    >
+  >,
+  Assert<
     Equal<HookData<typeof useReviewsQuery>, AtlasRouteResponse<'/api/v1/reviews'>>
   >,
   Assert<
@@ -90,12 +97,14 @@ type HookAnyGuard = [
   Assert<NotAny<HookData<typeof useEpicsQuery>>>,
   Assert<NotAny<HookData<typeof useLessonsQuery>>>,
   Assert<NotAny<HookData<typeof useDependencyCriticalPathQuery>>>,
+  Assert<NotAny<HookData<typeof useDependencyGraphQuery>>>,
   Assert<NotAny<HookData<typeof useReviewsQuery>>>,
   Assert<NotAny<HookData<typeof useSystemStatusQuery>>>,
 ]
 
 const routeCoverage: Assert<Equal<CoveredRoute, AtlasApiRoute>> = true
 const hookResponseParity: HookResponseParity = [
+  true,
   true,
   true,
   true,
@@ -118,12 +127,13 @@ const hookAnyGuard: HookAnyGuard = [
   true,
   true,
   true,
+  true,
 ]
 
 describe('typed Atlas query hooks', () => {
   it('covers every generated current v1 GET route', () => {
     expect(routeCoverage).toBe(true)
-    expect(ATLAS_QUERY_ROUTES).toHaveLength(10)
+    expect(ATLAS_QUERY_ROUTES).toHaveLength(11)
   })
 
   it('returns generated response types without authored any escapes', () => {
