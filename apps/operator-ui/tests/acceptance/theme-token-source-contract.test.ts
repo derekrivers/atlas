@@ -24,6 +24,12 @@ const rules: ContractRule[] = [
     name: 'colour function or hex literal',
     pattern: /#[0-9a-fA-F]{3,8}\b|\b(?:rgb|rgba|hsl|hsla|oklch)\(/g,
   },
+  // white and black are exempt scrim/on-destructive literals; theme.css has no token and D-1 forbids adding one.
+  {
+    name: 'Tailwind built-in palette colour class',
+    pattern:
+      /\b(?:bg|text|border|ring|fill|stroke|shadow)-(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)(?:-[0-9]{2,3})?\b/g,
+  },
   {
     name: 'raw radius value',
     pattern:
