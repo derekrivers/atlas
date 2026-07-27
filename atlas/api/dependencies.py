@@ -8,6 +8,7 @@ from fastapi import Depends, HTTPException, Request, status
 
 from atlas.api.presenters import (
     present_dependency_critical_path,
+    present_dependency_graph,
     present_epics,
     present_lessons,
     present_review_queue,
@@ -19,6 +20,7 @@ from atlas.api.presenters import (
 )
 from atlas.api.schemas import (
     DependencyCriticalPathResponse,
+    DependencyGraphResponse,
     EpicsResponse,
     LessonsResponse,
     ReviewQueueResponse,
@@ -32,6 +34,7 @@ from atlas.core.enums import EntityStatus
 from atlas.core.models import TicketStatus
 from atlas.orchestration import (
     dependency_critical_path,
+    dependency_graph,
     review_queue,
     system_status,
     ticket_board,
@@ -177,6 +180,20 @@ def get_dependency_critical_path(
 DependencyCriticalPathDependency = Annotated[
     DependencyCriticalPathResponse,
     Depends(get_dependency_critical_path),
+]
+
+
+def get_dependency_graph(
+    database: DatabaseDependency,
+) -> DependencyGraphResponse:
+    """Build the serialised whole dependency graph projection."""
+    graph = dependency_graph(database)
+    return present_dependency_graph(graph)
+
+
+DependencyGraphDependency = Annotated[
+    DependencyGraphResponse,
+    Depends(get_dependency_graph),
 ]
 
 

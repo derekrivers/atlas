@@ -21,6 +21,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/dependencies/graph": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Dependency Graph Route */
+        get: operations["dependency_graph_route_api_v1_dependencies_graph_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/epics": {
         parameters: {
             query?: never;
@@ -217,6 +234,44 @@ export interface components {
             /** Total Effort */
             total_effort: number;
         };
+        /**
+         * DependencyGraphEdgeSchema
+         * @description One depends_on edge in the projected dependency graph.
+         */
+        DependencyGraphEdgeSchema: {
+            dependency_type: components["schemas"]["DependencyType"];
+            /** Source */
+            source: string;
+            /** Target */
+            target: string;
+        };
+        /**
+         * DependencyGraphNodeSchema
+         * @description One node in the projected dependency graph.
+         */
+        DependencyGraphNodeSchema: {
+            /** Key */
+            key: string;
+            /** Node Type */
+            node_type: string;
+            /** Status */
+            status: string;
+        };
+        /**
+         * DependencyGraphResponse
+         * @description Whole projected dependency graph in deterministic order.
+         */
+        DependencyGraphResponse: {
+            /** Edges */
+            edges: components["schemas"]["DependencyGraphEdgeSchema"][];
+            /** Nodes */
+            nodes: components["schemas"]["DependencyGraphNodeSchema"][];
+        };
+        /**
+         * DependencyType
+         * @enum {string}
+         */
+        DependencyType: "depends_on" | "relates_to" | "implements" | "supersedes";
         /**
          * EntityStatus
          * @description Generic lifecycle status for knowledge entities (data-model §2.3).
@@ -637,6 +692,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DependencyCriticalPathResponse"];
+                };
+            };
+        };
+    };
+    dependency_graph_route_api_v1_dependencies_graph_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DependencyGraphResponse"];
                 };
             };
         };

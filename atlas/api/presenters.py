@@ -9,6 +9,9 @@ from atlas.api.schemas import (
     CriticalPathStepSchema,
     DependencyBlockerSchema,
     DependencyCriticalPathResponse,
+    DependencyGraphEdgeSchema,
+    DependencyGraphNodeSchema,
+    DependencyGraphResponse,
     EpicItemSchema,
     EpicsResponse,
     LessonItemSchema,
@@ -35,6 +38,7 @@ from atlas.dependencies.views import (
     unlocks_payload,
 )
 from atlas.orchestration import (
+    DependencyGraphState,
     SystemStatus,
     TicketBoardItemState,
     TicketDependencyState,
@@ -228,6 +232,30 @@ def present_dependency_critical_path(
             for step in steps
         ],
         total_effort=total_effort,
+    )
+
+
+def present_dependency_graph(
+    graph: DependencyGraphState,
+) -> DependencyGraphResponse:
+    """Present the whole projected dependency graph."""
+    return DependencyGraphResponse(
+        nodes=[
+            DependencyGraphNodeSchema(
+                key=node.key,
+                status=node.status,
+                node_type=node.node_type,
+            )
+            for node in graph.nodes
+        ],
+        edges=[
+            DependencyGraphEdgeSchema(
+                source=edge.source,
+                target=edge.target,
+                dependency_type=edge.dependency_type,
+            )
+            for edge in graph.edges
+        ],
     )
 
 

@@ -631,6 +631,27 @@ def test_api_no_logic_sensor_fires_on_seeded_critical_path_extra_call() -> None:
     assert any("must make exactly one" in violation.reason for violation in violations)
 
 
+def test_api_no_logic_sensor_fires_on_seeded_dependency_graph_extra_call() -> None:
+    violations = _dependency_violations_for(
+        """
+        from atlas.api.dependencies import DatabaseDependency
+        from atlas.api.presenters import present_dependency_graph
+        from atlas.api.schemas import DependencyGraphResponse
+        from atlas.orchestration import dependency_graph, review_queue
+
+        def get_seeded_dependency_graph(
+            database: DatabaseDependency,
+        ) -> DependencyGraphResponse:
+            graph = dependency_graph(database)
+            review_queue(database)
+            assert 1 == 2  # type: ignore[comparison-overlap]
+            return present_dependency_graph(graph)
+        """
+    )
+
+    assert any("must make exactly one" in violation.reason for violation in violations)
+
+
 def test_api_no_logic_sensor_fires_on_seeded_system_status_extra_call() -> None:
     violations = _dependency_violations_for(
         """

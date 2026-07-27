@@ -8,6 +8,7 @@ from test_apply import _epic_model_kwargs
 
 from atlas.api.presenters import (
     present_dependency_critical_path,
+    present_dependency_graph,
     present_epics,
     present_review_queue,
     present_system_status,
@@ -19,6 +20,9 @@ from atlas.api.schemas import (
     CriticalPathStepSchema,
     DependencyBlockerSchema,
     DependencyCriticalPathResponse,
+    DependencyGraphEdgeSchema,
+    DependencyGraphNodeSchema,
+    DependencyGraphResponse,
     EpicItemSchema,
     EpicsResponse,
     NotReadyReasonSchema,
@@ -35,6 +39,7 @@ from atlas.api.schemas import (
 )
 from atlas.core.enums import ActorType, EvidenceStatus, RiskLevel
 from atlas.core.models import (
+    DependencyType,
     Epic,
     EpicStatus,
     EvidenceType,
@@ -53,6 +58,9 @@ from atlas.dependencies import (
     UnlocksResult,
 )
 from atlas.orchestration import (
+    DependencyGraphEdgeState,
+    DependencyGraphNodeState,
+    DependencyGraphState,
     ReviewCheckState,
     SystemStatus,
     TicketBoardItemState,
@@ -319,6 +327,54 @@ def test_present_dependency_critical_path_reuses_dependency_payload_shape() -> N
             ),
         ],
         total_effort=5,
+    )
+
+
+def test_present_dependency_graph_maps_nodes_and_edges() -> None:
+    response = present_dependency_graph(
+        DependencyGraphState(
+            nodes=(
+                DependencyGraphNodeState(
+                    key="ATLAS-2",
+                    status="done",
+                    node_type="ticket",
+                ),
+                DependencyGraphNodeState(
+                    key="ADR-0008",
+                    status="accepted",
+                    node_type="adr",
+                ),
+            ),
+            edges=(
+                DependencyGraphEdgeState(
+                    source="ATLAS-2",
+                    target="ADR-0008",
+                    dependency_type=DependencyType.DEPENDS_ON,
+                ),
+            ),
+        )
+    )
+
+    assert response == DependencyGraphResponse(
+        nodes=[
+            DependencyGraphNodeSchema(
+                key="ATLAS-2",
+                status="done",
+                node_type="ticket",
+            ),
+            DependencyGraphNodeSchema(
+                key="ADR-0008",
+                status="accepted",
+                node_type="adr",
+            ),
+        ],
+        edges=[
+            DependencyGraphEdgeSchema(
+                source="ATLAS-2",
+                target="ADR-0008",
+                dependency_type=DependencyType.DEPENDS_ON,
+            ),
+        ],
     )
 
 

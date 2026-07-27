@@ -7,8 +7,12 @@ from atlas.orchestration.context_inputs import (
     load_context_inputs,
 )
 from atlas.orchestration.dependency_projection import (
+    DependencyGraphEdgeState,
+    DependencyGraphNodeState,
+    DependencyGraphState,
     TicketDependencyState,
     dependency_critical_path,
+    dependency_graph,
     ticket_dependencies,
 )
 from atlas.orchestration.pr_context import (
@@ -34,6 +38,9 @@ __all__ = [
     "ConfirmPrompts",
     "ContextInputs",
     "ContextNotFoundError",
+    "DependencyGraphEdgeState",
+    "DependencyGraphNodeState",
+    "DependencyGraphState",
     "PRContext",
     "ReviewCheckState",
     "SystemStatus",
@@ -45,6 +52,7 @@ __all__ = [
     "build_tick_config",
     "capture_ticket",
     "dependency_critical_path",
+    "dependency_graph",
     "load_context_inputs",
     "resolve_github_client",
     "resolve_pr_context",
