@@ -57,6 +57,7 @@ async function waitForApi(
         return
       }
     } catch (_error) {
+      // The API may not be listening yet; retry below.
     }
     await delay(250)
   }
