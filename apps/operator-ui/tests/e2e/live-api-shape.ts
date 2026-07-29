@@ -141,7 +141,7 @@ export function assertTicketBoardResponse(
   assertArray(value.tickets, 'TicketBoardResponse.tickets', assertTicketBoardItem)
 }
 
-function assertTicketDetailResponse(
+export function assertTicketDetailResponse(
   value: unknown
 ): asserts value is RouteResponse<'/api/v1/tickets/{key}'> {
   assertObject(value, 'TicketDetailResponse')

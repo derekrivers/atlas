@@ -97,8 +97,12 @@ test('smoke: shell loads against the live API and reaches every ratified route',
 
     await page.getByRole('link', { exact: true, name: surface.title }).click()
     await expect(page).toHaveURL(new RegExp(`${escapeRegExp(surface.href)}$`))
+    const expectedHeading =
+      surface.id === 'ticket-detail'
+        ? `Seeded ${OPERATOR_TICKET_DETAIL_PLACEHOLDER_KEY}`
+        : surface.placeholder.title
     await expect(
-      page.getByRole('heading', { exact: true, name: surface.placeholder.title })
+      page.getByRole('heading', { exact: true, name: expectedHeading })
     ).toBeVisible()
     await expectStatusFooter(page)
   }

@@ -253,9 +253,59 @@ def _seed_tickets(
                 "priority": _required(record, "priority", int),
                 "risk_level": RiskLevel(_required(record, "risk_level", str)),
                 "estimated_effort": _optional(record, "estimated_effort", int),
+                "relevant_docs": list(
+                    cast(
+                        Sequence[str],
+                        record.get("relevant_docs", defaults["relevant_docs"]),
+                    )
+                ),
                 "acceptance_criteria": record.get(
                     "acceptance_criteria", defaults["acceptance_criteria"]
                 ),
+                "non_goals": list(
+                    cast(Sequence[str], record.get("non_goals", defaults["non_goals"]))
+                ),
+                "implementation_notes": list(
+                    cast(
+                        Sequence[str],
+                        record.get(
+                            "implementation_notes",
+                            defaults["implementation_notes"],
+                        ),
+                    )
+                ),
+                "test_requirements": list(
+                    cast(
+                        Sequence[str],
+                        record.get("test_requirements", defaults["test_requirements"]),
+                    )
+                ),
+                "documentation_requirements": list(
+                    cast(
+                        Sequence[str],
+                        record.get(
+                            "documentation_requirements",
+                            defaults["documentation_requirements"],
+                        ),
+                    )
+                ),
+                "definition_of_done": list(
+                    cast(
+                        Sequence[str],
+                        record.get(
+                            "definition_of_done", defaults["definition_of_done"]
+                        ),
+                    )
+                ),
+                "tags": list(cast(Sequence[str], record.get("tags", defaults["tags"]))),
+                "component": _optional(record, "component", str)
+                if "component" in record
+                else defaults["component"],
+                "external_linear_id": _optional(record, "external_linear_id", str),
+                "external_github_issue_id": _optional(
+                    record, "external_github_issue_id", str
+                ),
+                "source_anchor": record.get("source_anchor", defaults["source_anchor"]),
                 "completed_at": timestamp
                 if status in {TicketStatus.DONE, TicketStatus.REJECTED}
                 else None,

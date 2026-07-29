@@ -1,11 +1,12 @@
 {
   "metadata": {
-    "description": "Deterministic operator-ui end-to-end seed for ATL-388.",
+    "description": "Deterministic operator-ui end-to-end seed for ATL-388 and ATL-389.",
     "expected_terminal_ticket_ratio": "16/17",
     "expected_lexicographic_precedes_natural": ["ATLAS-10", "ATLAS-2"],
     "expected_empty_review_queue": true,
     "expected_no_evidence_ticket": "ATLAS-10",
-    "expected_multi_reason_not_ready_ticket": "ATLAS-2"
+    "expected_multi_reason_not_ready_ticket": "ATLAS-2",
+    "expected_null_metadata_ticket": "ATLAS-10"
   },
   "timestamp": "2026-07-26T18:43:42+00:00",
   "product": {
@@ -34,7 +35,45 @@
     }
   ],
   "tickets": [
-    { "id": "00000000-0000-4000-8000-000000000001", "key": "ATLAS-1", "status": "done", "priority": 1, "risk_level": "low", "estimated_effort": 1 },
+    {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "key": "ATLAS-1",
+      "status": "done",
+      "priority": 1,
+      "risk_level": "low",
+      "estimated_effort": 1,
+      "relevant_docs": [
+        "docs/atlas/operator-ui.md",
+        "docs/atlas/operator-api.md"
+      ],
+      "acceptance_criteria": [
+        "ATLAS-1 renders the first seeded acceptance criterion without truncation.",
+        "ATLAS-1 renders the second seeded acceptance criterion in stored order."
+      ],
+      "non_goals": [
+        "Do not add writes to the operator UI.",
+        "Do not assemble ticket detail with other API resources."
+      ],
+      "implementation_notes": [
+        "Render stored definition arrays directly.",
+        "Keep ticket detail composition in the browser."
+      ],
+      "test_requirements": [
+        "Compare the rendered detail page with the live API response.",
+        "Assert unknown ticket keys show the native 404 body."
+      ],
+      "documentation_requirements": [
+        "Update canonical docs only when behavior diverges from them.",
+        "Do not write generated planning renders by hand."
+      ],
+      "definition_of_done": [
+        "Definition tab renders every stored definition field.",
+        "Metadata tab renders source and external identifiers."
+      ],
+      "external_linear_id": "LIN-seeded-atlas-1",
+      "external_github_issue_id": "GH-seeded-atlas-1",
+      "source_anchor": "docs/atlas/operator-ui.md#ticket-detail-ticketskey"
+    },
     { "id": "00000000-0000-4000-8000-000000000002", "key": "ATLAS-2", "status": "in_progress", "priority": 2, "risk_level": "high", "estimated_effort": 3, "acceptance_criteria": [] },
     { "id": "00000000-0000-4000-8000-000000000003", "key": "ATLAS-3", "status": "done", "priority": 3, "risk_level": "low", "estimated_effort": 1 },
     { "id": "00000000-0000-4000-8000-000000000004", "key": "ATLAS-4", "status": "rejected", "priority": 4, "risk_level": "medium", "estimated_effort": 1 },
@@ -43,7 +82,16 @@
     { "id": "00000000-0000-4000-8000-000000000007", "key": "ATLAS-7", "status": "rejected", "priority": 7, "risk_level": "medium", "estimated_effort": 1 },
     { "id": "00000000-0000-4000-8000-000000000008", "key": "ATLAS-8", "status": "done", "priority": 8, "risk_level": "low", "estimated_effort": 1 },
     { "id": "00000000-0000-4000-8000-000000000009", "key": "ATLAS-9", "status": "done", "priority": 9, "risk_level": "low", "estimated_effort": 1 },
-    { "id": "00000000-0000-4000-8000-000000000010", "key": "ATLAS-10", "status": "done", "priority": 10, "risk_level": "low", "estimated_effort": 1 },
+    {
+      "id": "00000000-0000-4000-8000-000000000010",
+      "key": "ATLAS-10",
+      "status": "done",
+      "priority": 10,
+      "risk_level": "low",
+      "estimated_effort": null,
+      "component": null,
+      "tags": []
+    },
     { "id": "00000000-0000-4000-8000-000000000011", "key": "ATLAS-11", "status": "rejected", "priority": 11, "risk_level": "medium", "estimated_effort": 1 },
     { "id": "00000000-0000-4000-8000-000000000012", "key": "ATLAS-12", "status": "done", "priority": 12, "risk_level": "low", "estimated_effort": 1 },
     { "id": "00000000-0000-4000-8000-000000000013", "key": "ATLAS-13", "status": "done", "priority": 13, "risk_level": "low", "estimated_effort": 1 },
