@@ -10,7 +10,10 @@ let mountedRoot: Root | undefined
 let container: HTMLDivElement | undefined
 let originalFetch: typeof window.fetch
 
-async function renderAt(path: string) {
+async function renderAt(
+  path: string,
+  options?: Parameters<typeof createOperatorRouter>[0]
+) {
   window.history.pushState({}, '', path)
   container = document.createElement('div')
   document.body.append(container)
@@ -19,7 +22,7 @@ async function renderAt(path: string) {
   await act(async () => {
     mountedRoot?.render(
       <AppProviders queryClient={createAtlasQueryClient()}>
-        <RouterProvider router={createOperatorRouter()} />
+        <RouterProvider router={createOperatorRouter(options)} />
       </AppProviders>
     )
   })
@@ -63,11 +66,21 @@ describe('operator shell browser rendering', () => {
     expect(document.body.textContent).toContain('Placeholder')
   })
 
-  it('keeps the not-found route shape', async () => {
+  it('keeps the not-found route inside the shell', async () => {
     await renderAt('/not-a-route')
 
+    expect(document.body.textContent).toContain('Toggle Sidebar')
+    expect(document.body.textContent).toContain('Search routes')
     expect(document.body.textContent).toContain('404')
     expect(document.body.textContent).toContain('Page Not Found')
     expect(document.body.textContent).toContain('Back to Home')
+  })
+
+  it('contains a throwing route with the route-level error boundary', async () => {
+    await renderAt('/__atlas-error-probe', { includeErrorProbe: true })
+
+    expect(document.body.textContent).toContain('Toggle Sidebar')
+    expect(document.body.textContent).toContain('Search routes')
+    expect(document.body.textContent).toContain('Something went wrong')
   })
 })

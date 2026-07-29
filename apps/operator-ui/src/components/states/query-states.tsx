@@ -1,5 +1,4 @@
 import { AlertCircle, Inbox, LoaderCircle, WifiOff } from 'lucide-react'
-import { Button } from '@/components/ui/button'
 import { ATLAS_API_BASE_URL } from '@/api/config'
 import { AtlasRequestError } from '@/api/client'
 
@@ -14,7 +13,6 @@ type EmptyCollectionStateProps = {
 
 type RequestErrorStateProps = {
   error: unknown
-  onRetry?: () => void
   title?: string
 }
 
@@ -74,7 +72,6 @@ export function EmptyCollectionState({
 
 export function RequestErrorState({
   error,
-  onRetry,
   title = 'Request failed',
 }: RequestErrorStateProps) {
   return (
@@ -94,11 +91,6 @@ export function RequestErrorState({
           </p>
         </div>
       </div>
-      {onRetry ? (
-        <Button type='button' variant='outline' className='mt-4' onClick={onRetry}>
-          Retry
-        </Button>
-      ) : null}
     </div>
   )
 }
