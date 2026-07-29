@@ -165,6 +165,22 @@ total. The view states that the critical path is advisory and never gates
 dispatch, because `atlas/dependencies/critical_path.py` is explicit that
 it does not, and a visualisation that omits that reads as authority.
 
+### Dependency graph — `/dependency-graph`
+
+Consumes `/dependencies/graph` and `/dependencies/critical-path`.
+
+The graph route renders the dependency projection as one client-laid-out
+SVG. The API supplies nodes and edges only; coordinates, rank, dimensions
+and rendering hints are computed in the browser. Ticket nodes link to
+ticket detail. The critical path returned by the dedicated critical-path
+route is highlighted in the graph, but the dedicated route remains the
+operator's linear path view.
+
+The default filter hides terminal ticket statuses, matching the board's
+default. Revealing terminal statuses is a local view toggle. The view
+does not cap, sample or paginate the projection; if a future render cap is
+introduced, the cap must be stated on screen.
+
 ### Lessons — `/lessons`
 
 Consumes `/lessons` unfiltered, with client-side `EntityStatus` facets.
@@ -196,7 +212,6 @@ page or a generic network error.
 
 - **Epic grouping on the board**, once `GET /api/v1/epics` and
   `epic_key` land.
-- **Dependency graph**, once `GET /api/v1/dependencies/graph` lands.
 
 ### Not buildable in this phase
 

@@ -6,6 +6,9 @@ import { playwright } from '@vitest/browser-playwright'
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  optimizeDeps: {
+    include: ['@radix-ui/react-tabs'],
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),

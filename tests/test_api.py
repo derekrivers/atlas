@@ -269,6 +269,26 @@ def test_response_schema_closed_fields_use_canonical_enums() -> None:
     assert ReviewCheckSchema.model_fields["status"].annotation is EvidenceStatus
 
 
+def test_dependency_graph_response_schema_contains_no_layout_coordinates() -> None:
+    forbidden_layout_fields = {
+        "coordinates",
+        "height",
+        "layout",
+        "position",
+        "rank",
+        "width",
+        "x",
+        "y",
+    }
+
+    assert (
+        forbidden_layout_fields & set(DependencyGraphNodeSchema.model_fields) == set()
+    )
+    assert (
+        forbidden_layout_fields & set(DependencyGraphEdgeSchema.model_fields) == set()
+    )
+
+
 def _component_for_field(
     openapi: dict[str, Any],
     schema: str,

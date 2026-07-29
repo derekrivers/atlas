@@ -422,7 +422,7 @@ function assertCriticalPathStep(
   assertInteger(value.cumulative_effort, `${path}.cumulative_effort`)
 }
 
-function assertDependencyCriticalPathResponse(
+export function assertDependencyCriticalPathResponse(
   value: unknown
 ): asserts value is RouteResponse<'/api/v1/dependencies/critical-path'> {
   assertObject(value, 'DependencyCriticalPathResponse')
@@ -462,7 +462,7 @@ function assertDependencyGraphEdge(
   assertString(value.dependency_type, `${path}.dependency_type`)
 }
 
-function assertDependencyGraphResponse(
+export function assertDependencyGraphResponse(
   value: unknown
 ): asserts value is RouteResponse<'/api/v1/dependencies/graph'> {
   assertObject(value, 'DependencyGraphResponse')
