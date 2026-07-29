@@ -33,8 +33,9 @@ Regenerate the OpenAPI TypeScript client from the live FastAPI application with:
 npm --prefix apps/operator-ui run api:generate
 ```
 
-The generated output is `apps/operator-ui/src/api/atlas-openapi.ts`. Do not edit
-that file by hand.
+The generated outputs are `apps/operator-ui/src/api/atlas-openapi.ts` and
+`apps/operator-ui/src/api/atlas-openapi-runtime.ts`. Do not edit those files by
+hand.
 
 The Vite development server proxies same-origin `/api` requests to the Atlas API
 URL configured by `VITE_ATLAS_API_BASE_URL`, defaulting to

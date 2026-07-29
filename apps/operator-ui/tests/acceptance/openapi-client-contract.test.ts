@@ -11,6 +11,7 @@ import { dirname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import type { components, paths } from '@/api/atlas-openapi'
+import { atlasOpenApiEnums } from '@/api/atlas-openapi-runtime'
 
 const appRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
 const repoRoot = join(appRoot, '..', '..')
@@ -161,6 +162,14 @@ describe('generated OpenAPI TypeScript client contract', () => {
         ).not.toMatch(enumDeclaration)
       }
     }
+  })
+
+  it('publishes runtime enum metadata for view matrices', () => {
+    const checkTypes: readonly Schema['VerificationCheckType'][] =
+      atlasOpenApiEnums.VerificationCheckType
+
+    expect(checkTypes).toHaveLength(7)
+    expect(new Set(checkTypes).size).toBe(checkTypes.length)
   })
 
   it(

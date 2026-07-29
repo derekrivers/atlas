@@ -1,0 +1,136 @@
+{
+  "metadata": {
+    "description": "Deterministic operator-ui end-to-end seed for ATL-385.",
+    "expected_review_queue": ["ATLAS-219", "ATLAS-220"],
+    "expected_review_check_types": 7
+  },
+  "timestamp": "2026-07-26T18:43:42+00:00",
+  "product": {
+    "id": "00000000-0000-4000-8000-000000000385",
+    "key": "ATLAS",
+    "name": "Atlas",
+    "description": "Seeded Atlas operator UI review queue product.",
+    "vision": "Exercise the live read API with deterministic review queue shapes."
+  },
+  "epics": [
+    {
+      "id": "00000000-0000-4000-8000-000000000e85",
+      "key": "ATLAS-E1",
+      "title": "Review queue e2e seed",
+      "status": "planned",
+      "priority": 1,
+      "risk_level": "medium"
+    }
+  ],
+  "adrs": [],
+  "tickets": [
+    {
+      "id": "00000000-0000-4000-8000-000000000220",
+      "key": "ATLAS-220",
+      "status": "review_required",
+      "priority": 2,
+      "risk_level": "low",
+      "estimated_effort": 2
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000219",
+      "key": "ATLAS-219",
+      "status": "review_required",
+      "priority": 1,
+      "risk_level": "low",
+      "estimated_effort": 1
+    }
+  ],
+  "dependencies": [],
+  "evidence": [
+    {
+      "id": "00000000-0000-4000-8000-00000000e219",
+      "ticket_key": "ATLAS-219",
+      "evidence_type": "test_result",
+      "status": "passed",
+      "summary": "Seeded system evidence for the passing review item.",
+      "commit_sha": "cccccccccccccccccccccccccccccccccccccccc",
+      "external_run_id": "seeded-run-385-tests",
+      "job_name": "test-operator-ui-review-queue",
+      "payload_hash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "source_uri": "https://example.invalid/atlas/operator-ui/e2e/seeded-run-385-tests"
+    },
+    {
+      "id": "00000000-0000-4000-8000-00000000e21a",
+      "ticket_key": "ATLAS-219",
+      "evidence_type": "pr_merged",
+      "status": "passed",
+      "summary": "Seeded PR merged evidence for the passing review item.",
+      "commit_sha": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "external_run_id": "seeded-run-385-pr-merged",
+      "job_name": "atlas-pr-merged",
+      "payload_hash": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "source_uri": "https://example.invalid/atlas/operator-ui/e2e/seeded-run-385-pr-merged"
+    }
+  ],
+  "verification_checks": [
+    {
+      "id": "00000000-0000-4000-8000-00000000c001",
+      "ticket_key": "ATLAS-219",
+      "check_type": "acceptance_criteria",
+      "status": "passed"
+    },
+    {
+      "id": "00000000-0000-4000-8000-00000000c002",
+      "ticket_key": "ATLAS-219",
+      "check_type": "tests",
+      "status": "passed"
+    },
+    {
+      "id": "00000000-0000-4000-8000-00000000c003",
+      "ticket_key": "ATLAS-219",
+      "check_type": "lint",
+      "status": "passed"
+    },
+    {
+      "id": "00000000-0000-4000-8000-00000000c004",
+      "ticket_key": "ATLAS-219",
+      "check_type": "documentation",
+      "status": "passed"
+    },
+    {
+      "id": "00000000-0000-4000-8000-00000000c005",
+      "ticket_key": "ATLAS-219",
+      "check_type": "scope",
+      "status": "passed"
+    },
+    {
+      "id": "00000000-0000-4000-8000-00000000c006",
+      "ticket_key": "ATLAS-219",
+      "check_type": "security",
+      "status": "not_applicable",
+      "required": false
+    },
+    {
+      "id": "00000000-0000-4000-8000-00000000c007",
+      "ticket_key": "ATLAS-219",
+      "check_type": "human_approval",
+      "status": "not_applicable",
+      "required": false
+    },
+    {
+      "id": "00000000-0000-4000-8000-00000000c008",
+      "ticket_key": "ATLAS-220",
+      "check_type": "tests",
+      "status": "failed"
+    },
+    {
+      "id": "00000000-0000-4000-8000-00000000c009",
+      "ticket_key": "ATLAS-220",
+      "check_type": "documentation",
+      "status": "not_applicable"
+    },
+    {
+      "id": "00000000-0000-4000-8000-00000000c00a",
+      "ticket_key": "ATLAS-220",
+      "check_type": "scope",
+      "status": "pending"
+    }
+  ],
+  "lessons": []
+}
