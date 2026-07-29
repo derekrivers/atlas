@@ -265,6 +265,13 @@ and are never conflated; a component suite that passes is not acceptance.
 - Every view ticket carries at least one end-to-end specification as an
   acceptance criterion. A view without a spec is not delivered.
 
+CI exposes the Operator UI contract as independent required checks:
+`lint-operator-ui-openapi`, `lint-operator-ui`, `lint-operator-ui-types`,
+`test-operator-ui-acceptance`, `test-operator-ui-components`,
+`build-operator-ui`, and `test-operator-ui-e2e`. The end-to-end job is a
+gate, not advisory, and runs with the Playwright package and Chromium browser
+metadata pinned by `apps/operator-ui/package-lock.json`.
+
 ## Development and serving
 
 The Vite development server proxies `/api` to the loopback API (ruled:

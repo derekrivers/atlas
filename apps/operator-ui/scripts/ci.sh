@@ -9,8 +9,13 @@ export UV_LINK_MODE="${UV_LINK_MODE:-copy}"
 
 npm ci
 if [[ "${CI:-}" == "true" ]]; then
-  npx playwright install --with-deps chromium
+  ./node_modules/.bin/playwright install --with-deps chromium
 else
-  npx playwright install chromium
+  ./node_modules/.bin/playwright install chromium
 fi
-npm run verify:core
+npm run api:check
+npm run lint
+npm run typecheck
+npm run test:acceptance
+npm run test:browser
+npm run build:bundle
