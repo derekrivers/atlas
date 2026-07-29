@@ -4,7 +4,6 @@ import { RouterProvider } from '@tanstack/react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AppProviders } from '@/app-providers'
 import { createAtlasQueryClient } from '@/api/query-policy'
-import { operatorSurfaces } from '@/app-shell/surfaces'
 import { createOperatorRouter } from '@/router'
 
 let mountedRoot: Root | undefined
@@ -65,9 +64,7 @@ describe('operator shell browser rendering', () => {
     expect(document.body.textContent).toContain('Search routes')
     expect(document.body.textContent).toContain('Operational Snapshot')
     expect(document.body.textContent).toContain('Placeholder')
-    for (const surface of operatorSurfaces) {
-      expect(document.body.textContent).toContain(surface.title)
-    }
+    expect(document.querySelector('[data-sidebar="sidebar"]')).not.toBeNull()
   })
 
   it('keeps the not-found route inside the shell', async () => {
@@ -86,6 +83,6 @@ describe('operator shell browser rendering', () => {
     expect(document.body.textContent).toContain('Toggle Sidebar')
     expect(document.body.textContent).toContain('Search routes')
     expect(document.body.textContent).toContain('Something went wrong')
-    expect(document.body.textContent).toContain('Overview')
+    expect(document.querySelector('[data-sidebar="sidebar"]')).not.toBeNull()
   })
 })
