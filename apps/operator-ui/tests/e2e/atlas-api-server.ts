@@ -108,11 +108,7 @@ export async function startAtlasApiServer({
     seedArgs.push('--seed', seedPath)
   }
 
-  runSeedCommand(
-    'uv',
-    seedArgs,
-    dbUrl
-  )
+  runSeedCommand('uv', seedArgs, dbUrl)
 
   let apiOutput = ''
   const apiProcess = spawn(

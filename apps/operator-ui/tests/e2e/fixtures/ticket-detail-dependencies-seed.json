@@ -1,0 +1,116 @@
+{
+  "metadata": {
+    "description": "Deterministic operator-ui dependency tab seed for ATL-393.",
+    "expected_multi_reason_not_ready_ticket": "ATLAS-2",
+    "expected_ready_ticket": "ATLAS-1",
+    "expected_blocker_link": "ATLAS-3",
+    "expected_blocked_by_link": "ATLAS-4",
+    "expected_dangling_target": "00000000-0000-4000-8000-00000000d393"
+  },
+  "timestamp": "2026-07-26T18:43:42+00:00",
+  "product": {
+    "id": "00000000-0000-4000-8000-000000000393",
+    "key": "ATLAS",
+    "name": "Atlas",
+    "description": "Seeded Atlas operator UI ticket dependencies product.",
+    "vision": "Exercise the ticket dependency detail view against live API data."
+  },
+  "epics": [
+    {
+      "id": "00000000-0000-4000-8000-000000000e93",
+      "key": "ATLAS-E1",
+      "title": "Ticket dependency detail seed",
+      "status": "planned",
+      "priority": 1,
+      "risk_level": "medium"
+    }
+  ],
+  "adrs": [
+    {
+      "id": "00000000-0000-4000-8000-000000000031",
+      "number": 31,
+      "title": "Seeded proposed ADR for dependency tab readiness",
+      "status": "proposed"
+    }
+  ],
+  "tickets": [
+    {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "key": "ATLAS-1",
+      "status": "planned",
+      "priority": 1,
+      "risk_level": "low",
+      "estimated_effort": 1,
+      "acceptance_criteria": [
+        "ATLAS-1 is ready in the dependency tab seed."
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000002",
+      "key": "ATLAS-2",
+      "status": "in_progress",
+      "priority": 2,
+      "risk_level": "high",
+      "estimated_effort": 3,
+      "acceptance_criteria": []
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000003",
+      "key": "ATLAS-3",
+      "status": "planned",
+      "priority": 3,
+      "risk_level": "medium",
+      "estimated_effort": 1,
+      "acceptance_criteria": [
+        "ATLAS-3 intentionally blocks ATLAS-2 until done."
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000004",
+      "key": "ATLAS-4",
+      "status": "planned",
+      "priority": 4,
+      "risk_level": "medium",
+      "estimated_effort": 1,
+      "acceptance_criteria": [
+        "ATLAS-4 is unlocked when ATLAS-2 is treated as done."
+      ]
+    }
+  ],
+  "dependencies": [
+    {
+      "id": "00000000-0000-4000-8000-00000000d001",
+      "source_ticket_key": "ATLAS-2",
+      "target_entity_type": "ticket",
+      "target_ref": "ATLAS-3",
+      "dependency_type": "depends_on",
+      "reason": "ATLAS-2 is intentionally blocked by a planned ticket."
+    },
+    {
+      "id": "00000000-0000-4000-8000-00000000d002",
+      "source_ticket_key": "ATLAS-2",
+      "target_entity_type": "adr",
+      "target_ref": "ADR-0031",
+      "dependency_type": "depends_on",
+      "reason": "ATLAS-2 is intentionally blocked by a proposed ADR."
+    },
+    {
+      "id": "00000000-0000-4000-8000-00000000d003",
+      "source_ticket_key": "ATLAS-2",
+      "target_entity_type": "ticket",
+      "target_entity_id": "00000000-0000-4000-8000-00000000d393",
+      "dependency_type": "depends_on",
+      "reason": "ATLAS-2 intentionally carries a dangling dependency target."
+    },
+    {
+      "id": "00000000-0000-4000-8000-00000000d004",
+      "source_ticket_key": "ATLAS-4",
+      "target_entity_type": "ticket",
+      "target_ref": "ATLAS-2",
+      "dependency_type": "depends_on",
+      "reason": "ATLAS-4 should be visible as blocked by ATLAS-2."
+    }
+  ],
+  "evidence": [],
+  "lessons": []
+}

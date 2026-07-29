@@ -8,10 +8,13 @@ import {
 } from '@/features/tickets/ticket-detail-view'
 
 type TicketDetail = components['schemas']['TicketDetailResponse']
+type TicketDependencies = components['schemas']['TicketDependenciesResponse']
 type TicketEvidenceItem = components['schemas']['TicketEvidenceItemSchema']
 
 let mountedRoot: Root | undefined
 let container: HTMLDivElement | undefined
+
+const danglingTarget = '00000000-0000-4000-8000-00000000d393'
 
 const baseTicket: TicketDetail = {
   acceptance_criteria: [
@@ -72,6 +75,62 @@ const evidenceRecords: TicketEvidenceItem[] = [
     type: 'test_result',
   },
 ]
+
+const readyDependencies: TicketDependencies = {
+  blocked_by: [],
+  blockers: [],
+  key: 'ATLAS-1',
+  readiness: {
+    ready: true,
+    reasons: [],
+  },
+}
+
+const multiReasonDependencies: TicketDependencies = {
+  blocked_by: ['ATLAS-4'],
+  blockers: [
+    { code: 'dependency_not_done', key: 'ATLAS-3' },
+    { code: 'adr_not_accepted', key: 'ADR-0031' },
+    { code: 'dangling_target', key: danglingTarget },
+  ],
+  key: 'ATLAS-2',
+  readiness: {
+    ready: false,
+    reasons: [
+      {
+        code: 'wrong_status',
+        message: "status 'in_progress' is not one of ['backlog', 'planned']",
+        status: 'in_progress',
+        target: null,
+      },
+      {
+        code: 'dependency_not_done',
+        message: "depends_on ticket 'ATLAS-3' has status 'planned', not 'done'",
+        status: 'planned',
+        target: 'ATLAS-3',
+      },
+      {
+        code: 'adr_not_accepted',
+        message:
+          "depends_on ADR 'ADR-0031' has status 'proposed', not 'accepted'",
+        status: 'proposed',
+        target: 'ADR-0031',
+      },
+      {
+        code: 'dangling_target',
+        message: `depends_on target '${danglingTarget}' is missing (dangling)`,
+        status: null,
+        target: danglingTarget,
+      },
+      {
+        code: 'no_acceptance_criteria',
+        message: 'ticket has no acceptance criteria',
+        status: null,
+        target: null,
+      },
+    ],
+  },
+}
 
 async function render(component: ReactNode) {
   container = document.createElement('div')
@@ -267,5 +326,60 @@ describe('ticket detail view rendering', () => {
     )
 
     expect(interactiveElements).toEqual([])
+  })
+
+  it('renders every not-ready reason, dependency links, and dangling defects', async () => {
+    await render(
+      <TicketDetailContent
+        dependencies={multiReasonDependencies}
+        ticket={{ ...baseTicket, key: 'ATLAS-2' }}
+      />
+    )
+
+    await selectTab('Dependencies')
+
+    expect(testText('ticket-detail-readiness-verdict')).toBe('Not ready')
+    expect(testTexts('ticket-detail-readiness-reason-code')).toEqual(
+      multiReasonDependencies.readiness.reasons.map((reason) => reason.code)
+    )
+    expect(testTexts('ticket-detail-readiness-reason-label')).toEqual([
+      'Wrong status',
+      'Dependency not done',
+      'ADR not accepted',
+      'Dangling target',
+      'No acceptance criteria',
+    ])
+    expect(testText('ticket-detail-dependencies-panel')).toContain('ATLAS-3')
+    expect(testText('ticket-detail-dependencies-panel')).toContain('planned')
+    expect(testText('ticket-detail-dependencies-panel')).toContain('ADR-0031')
+    expect(testText('ticket-detail-dependencies-panel')).toContain('proposed')
+    expect(testText('ticket-detail-dependencies-panel')).toContain(danglingTarget)
+    expect(testText('ticket-detail-blocker-defect-target')).toBe(danglingTarget)
+    expect(
+      document
+        .querySelector('[data-testid="ticket-detail-blocker-link"]')
+        ?.getAttribute('href')
+    ).toBe('/tickets/ATLAS-3')
+    expect(
+      document
+        .querySelector('[data-testid="ticket-detail-blocked-by-link"]')
+        ?.getAttribute('href')
+    ).toBe('/tickets/ATLAS-4')
+    expect(document.body.textContent).not.toMatch(/dispatch/i)
+  })
+
+  it('renders a ready verdict with no not-ready reason list', async () => {
+    await render(
+      <TicketDetailContent dependencies={readyDependencies} ticket={baseTicket} />
+    )
+
+    await selectTab('Dependencies')
+
+    expect(testText('ticket-detail-readiness-verdict')).toBe('Ready')
+    expect(
+      document.querySelector('[data-testid="ticket-detail-readiness-reasons"]')
+    ).toBeNull()
+    expect(testText('ticket-detail-blockers-empty')).toBe('None')
+    expect(testText('ticket-detail-blocked-by-empty')).toBe('None')
   })
 })
