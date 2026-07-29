@@ -364,6 +364,17 @@ def _seed_evidence(
 ) -> None:
     repo = EvidenceRepo(db)
     for record in records:
+        created_by_type = ActorType(
+            record.get("created_by_type", ActorType.SYSTEM.value)
+        )
+        created_by_id = record.get(
+            "created_by_id",
+            "github-actions"
+            if created_by_type is ActorType.SYSTEM
+            else "operator-ui-e2e-seed",
+        )
+        created_at_text = _optional(record, "created_at", str)
+        created_at = _dt(created_at_text) if created_at_text is not None else timestamp
         repo.add(
             Evidence(
                 id=_uuid(_required(record, "id", str)),
@@ -372,16 +383,16 @@ def _seed_evidence(
                 evidence_type=EvidenceType(_required(record, "evidence_type", str)),
                 status=EvidenceStatus(_required(record, "status", str)),
                 summary=_required(record, "summary", str),
-                commit_sha=_required(record, "commit_sha", str),
-                external_run_id=_required(record, "external_run_id", str),
-                job_name=_required(record, "job_name", str),
-                source_event_at=timestamp,
-                payload_hash=_required(record, "payload_hash", str),
-                source_uri=_required(record, "source_uri", str),
+                commit_sha=_optional(record, "commit_sha", str),
+                external_run_id=_optional(record, "external_run_id", str),
+                job_name=_optional(record, "job_name", str),
+                source_event_at=created_at,
+                payload_hash=_optional(record, "payload_hash", str),
+                source_uri=_optional(record, "source_uri", str),
                 raw_payload={"seed": "operator-ui-e2e"},
-                created_by_type=ActorType.SYSTEM,
-                created_by_id="github-actions",
-                created_at=timestamp,
+                created_by_type=created_by_type,
+                created_by_id=created_by_id,
+                created_at=created_at,
             )
         )
 

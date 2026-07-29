@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from atlas.core.enums import ActorType
 from atlas.core.keys import natural_key
+from atlas.core.models import EvidenceType
 from atlas.dependencies import NotReadyCode
 from atlas.dependencies.validation import TERMINAL_STATUSES
 from atlas.orchestration import review_queue, ticket_board, ticket_dependencies
@@ -36,6 +38,20 @@ def test_operator_ui_e2e_seed_reproduces_live_api_edge_shapes(tmp_path: Path) ->
         assert board_keys != sorted(board_keys, key=natural_key)
 
         assert review_queue(db) == ()
+        evidence = ticket_evidence(db, "ATLAS-1")
+        assert evidence is not None
+        assert [record.evidence_type for record in evidence] == [
+            EvidenceType.MANUAL_APPROVAL,
+            EvidenceType.TEST_RESULT,
+        ]
+        assert [record.trust_level for record in evidence] == [
+            ActorType.AGENT,
+            ActorType.SYSTEM,
+        ]
+        assert [record.has_system_pin_triple for record in evidence] == [
+            False,
+            True,
+        ]
         assert ticket_evidence(db, "ATLAS-10") == ()
 
         dependencies = ticket_dependencies(db, "ATLAS-2")

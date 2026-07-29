@@ -54,6 +54,21 @@ test('seeded live API exposes the operator edge-case data shapes', async ({
   assertTicketEvidenceResponse(noEvidence)
   expect(noEvidence.evidence).toEqual([])
 
+  const evidence = await getJson(request, '/api/v1/tickets/ATLAS-1/evidence')
+  assertTicketEvidenceResponse(evidence)
+  expect(evidence.evidence.map((record) => record.type)).toEqual([
+    'manual_approval',
+    'test_result',
+  ])
+  expect(evidence.evidence.map((record) => record.tier)).toEqual([
+    'agent',
+    'system',
+  ])
+  expect(evidence.evidence.map((record) => record.has_system_pin_triple)).toEqual([
+    false,
+    true,
+  ])
+
   const dependencies = await getJson(
     request,
     '/api/v1/tickets/ATLAS-2/dependencies'
