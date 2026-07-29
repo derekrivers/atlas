@@ -7,7 +7,7 @@ from atlas.dependencies import NotReadyCode
 from atlas.dependencies.validation import TERMINAL_STATUSES
 from atlas.orchestration import review_queue, ticket_board, ticket_dependencies
 from atlas.orchestration.ticket_evidence import ticket_evidence
-from atlas.storage import LessonRepo, TicketRepo
+from atlas.storage import EpicRepo, LessonRepo, TicketRepo
 from atlas.tools.operator_ui_e2e_seed import seed_store
 
 
@@ -17,13 +17,20 @@ def test_operator_ui_e2e_seed_reproduces_live_api_edge_shapes(tmp_path: Path) ->
         tickets = TicketRepo(db).list()
         board = ticket_board(db)
         board_keys = [item.key for item in board]
+        epic_keys = {epic.key for epic in EpicRepo(db).list()}
 
         terminal = [
             ticket for ticket in tickets if ticket.status.value in TERMINAL_STATUSES
         ]
         assert len(tickets) == 17
+        assert epic_keys == {"ATLAS-E1", "ATLAS-E2"}
         assert len(terminal) == 16
         assert len(terminal) / len(tickets) > 0.9
+        assert {item.epic_key for item in board} >= {
+            "ATLAS-E1",
+            "ATLAS-E2",
+            None,
+        }
 
         assert board_keys.index("ATLAS-10") < board_keys.index("ATLAS-2")
         assert board_keys != sorted(board_keys, key=natural_key)

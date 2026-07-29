@@ -7,9 +7,11 @@ import {
   Check,
   Eye,
   EyeOff,
+  ListTree,
   Search,
+  Table2,
 } from 'lucide-react'
-import { useTicketsQuery } from '@/api/query-hooks'
+import { useEpicsQuery, useTicketsQuery } from '@/api/query-hooks'
 import {
   AtlasRequestError,
   isApiUnreachableError,
@@ -47,12 +49,17 @@ import {
   createTicketBoardState,
   filterTickets,
   formatTicketBoardLabel,
+  groupTicketsByEpic,
   isTerminalTicketStatus,
   parseTicketBoardSearch,
   selectVisibleTickets,
+  uniqueTicketEpicValues,
   uniqueTicketValues,
   writeTicketBoardSearch,
+  UNASSIGNED_EPIC_FILTER_VALUE,
+  type EpicItem,
   type SortField,
+  type TicketBoardEpicGroup,
   type TicketBoardItem,
   type TicketBoardSort,
   type TicketBoardState,
@@ -68,8 +75,9 @@ const BOARD_COLUMNS = [
 ] as const satisfies readonly { field: SortField; label: string }[]
 
 type TicketBoardFilter = {
+  formatValue?: (value: string) => string
   label: string
-  param: 'riskLevels' | 'statuses' | 'ticketTypes'
+  param: 'epicKeys' | 'riskLevels' | 'statuses' | 'ticketTypes'
   title: string
   values: string[]
 }
@@ -80,6 +88,7 @@ type TicketBoardFilterMenuProps = Omit<TicketBoardFilter, 'param'> & {
 }
 
 type TicketBoardTableProps = {
+  framed?: boolean
   onSortChange: (sort: TicketBoardSort) => void
   sort: TicketBoardSort
   tickets: TicketBoardItem[]
@@ -87,9 +96,16 @@ type TicketBoardTableProps = {
 
 type TicketBoardToolbarProps = {
   allTickets: TicketBoardItem[]
+  epics: EpicItem[]
   onChange: (updater: (previous: TicketBoardState) => TicketBoardState) => void
   state: TicketBoardState
   visibleCount: number
+}
+
+type TicketBoardEpicGroupsProps = {
+  groups: TicketBoardEpicGroup[]
+  onSortChange: (sort: TicketBoardSort) => void
+  sort: TicketBoardSort
 }
 
 function filterLabel(count: number, label: string): string {
@@ -124,6 +140,7 @@ function sortIcon(sort: TicketBoardSort, field: SortField) {
 }
 
 function FilterMenu({
+  formatValue = formatTicketBoardLabel,
   label,
   onChange,
   selectedValues,
@@ -151,7 +168,7 @@ function FilterMenu({
             checked={selectedValues.includes(value)}
             onCheckedChange={() => onChange(toggleValue(selectedValues, value))}
           >
-            {formatTicketBoardLabel(value)}
+            {formatValue(value)}
           </DropdownMenuCheckboxItem>
         ))}
         {selectedValues.length > 0 ? (
@@ -170,11 +187,28 @@ function FilterMenu({
 
 function TicketBoardToolbar({
   allTickets,
+  epics,
   onChange,
   state,
   visibleCount,
 }: TicketBoardToolbarProps) {
+  const epicsByKey = new Map(epics.map((epic) => [epic.key, epic]))
+  const formatEpicFilterValue = (value: string): string => {
+    if (value === UNASSIGNED_EPIC_FILTER_VALUE) {
+      return 'Unassigned'
+    }
+    const epic = epicsByKey.get(value)
+    return epic ? `${epic.key} - ${epic.title}` : value
+  }
+
   const filterMenus: TicketBoardFilter[] = [
+    {
+      formatValue: formatEpicFilterValue,
+      label: 'Epic',
+      param: 'epicKeys',
+      title: 'Filter epic',
+      values: uniqueTicketEpicValues(allTickets),
+    },
     {
       label: 'Status',
       param: 'statuses',
@@ -226,6 +260,7 @@ function TicketBoardToolbar({
           {filterMenus.map((filter) => (
             <FilterMenu
               key={filter.param}
+              formatValue={filter.formatValue}
               label={filter.label}
               selectedValues={state[filter.param]}
               title={filter.title}
@@ -249,6 +284,28 @@ function TicketBoardToolbar({
         <p className='text-muted-foreground text-sm' aria-live='polite'>
           {visibleCount} of {allTickets.length}
         </p>
+        <Button
+          type='button'
+          aria-pressed={state.mode === 'epic'}
+          variant={state.mode === 'epic' ? 'secondary' : 'outline'}
+          size='sm'
+          className='h-8'
+          onClick={() => {
+            onChange((previous) =>
+              createTicketBoardState({
+                ...previous,
+                mode: previous.mode === 'epic' ? 'flat' : 'epic',
+              })
+            )
+          }}
+        >
+          {state.mode === 'epic' ? (
+            <Table2 aria-hidden='true' className='size-4' />
+          ) : (
+            <ListTree aria-hidden='true' className='size-4' />
+          )}
+          {state.mode === 'epic' ? 'Flat table' : 'Group by epic'}
+        </Button>
         <Button
           type='button'
           variant={state.includeTerminal ? 'secondary' : 'outline'}
@@ -281,12 +338,12 @@ function TicketBoardToolbar({
 }
 
 function TicketBoardTable({
+  framed = true,
   onSortChange,
   sort,
   tickets,
 }: TicketBoardTableProps) {
-  return (
-    <div className='border-border overflow-hidden rounded-lg border'>
+  const table = (
       <Table>
         <TableHeader>
           <TableRow className='bg-muted/50 hover:bg-muted/50'>
@@ -356,11 +413,97 @@ function TicketBoardTable({
           )}
         </TableBody>
       </Table>
+  )
+
+  if (!framed) {
+    return table
+  }
+
+  return (
+    <div className='border-border overflow-hidden rounded-lg border'>
+      {table}
     </div>
   )
 }
 
-export function TicketBoard({ tickets }: { tickets: TicketBoardItem[] }) {
+function TicketBoardEpicGroups({
+  groups,
+  onSortChange,
+  sort,
+}: TicketBoardEpicGroupsProps) {
+  if (groups.length === 0) {
+    return (
+      <TicketBoardTable
+        onSortChange={onSortChange}
+        sort={sort}
+        tickets={[]}
+      />
+    )
+  }
+
+  return (
+    <div className='space-y-4' data-testid='ticket-board-epic-groups'>
+      {groups.map((group) => (
+        <section
+          key={group.filterValue}
+          aria-labelledby={`ticket-board-epic-${group.filterValue}`}
+          className='border-border overflow-hidden rounded-lg border'
+          data-testid='ticket-board-epic-group'
+          data-epic-key={group.filterValue}
+        >
+          <div className='bg-muted/20 flex flex-col gap-3 border-b px-4 py-3 sm:flex-row sm:items-start sm:justify-between'>
+            <div className='min-w-0 space-y-1'>
+              <div className='flex flex-wrap items-center gap-2'>
+                <h2
+                  id={`ticket-board-epic-${group.filterValue}`}
+                  className='text-base font-semibold tracking-normal'
+                >
+                  {group.epicKey ?? 'Unassigned'}
+                </h2>
+                <Badge
+                  variant='outline'
+                  data-testid='ticket-board-epic-group-count'
+                >
+                  {group.tickets.length} tickets
+                </Badge>
+              </div>
+              <p className='text-muted-foreground text-sm'>
+                {group.epic ? group.label : 'Tickets without an epic'}
+              </p>
+            </div>
+            {group.epic ? (
+              <div className='flex flex-wrap items-center gap-2'>
+                <Badge variant='outline'>
+                  {formatTicketBoardLabel(group.epic.status)}
+                </Badge>
+                <Badge variant='secondary'>
+                  {formatTicketBoardLabel(group.epic.risk_level)}
+                </Badge>
+                <span className='text-muted-foreground text-sm'>
+                  P{group.epic.priority}
+                </span>
+              </div>
+            ) : null}
+          </div>
+          <TicketBoardTable
+            framed={false}
+            sort={sort}
+            tickets={group.tickets}
+            onSortChange={onSortChange}
+          />
+        </section>
+      ))}
+    </div>
+  )
+}
+
+export function TicketBoard({
+  epics,
+  tickets,
+}: {
+  epics: EpicItem[]
+  tickets: TicketBoardItem[]
+}) {
   const [boardState, setBoardState] = useState(() => parseTicketBoardSearch())
 
   useEffect(() => {
@@ -387,6 +530,18 @@ export function TicketBoard({ tickets }: { tickets: TicketBoardItem[] }) {
     () => filterTickets(tickets, boardState),
     [boardState, tickets]
   )
+  const epicGroups = useMemo(
+    () => groupTicketsByEpic(visibleTickets, epics),
+    [epics, visibleTickets]
+  )
+  const handleSortChange = (sort: TicketBoardSort) => {
+    updateBoardState((previous) =>
+      createTicketBoardState({
+        ...previous,
+        sort,
+      })
+    )
+  }
 
   return (
     <Main fluid>
@@ -404,28 +559,31 @@ export function TicketBoard({ tickets }: { tickets: TicketBoardItem[] }) {
         </div>
         <TicketBoardToolbar
           allTickets={tickets}
+          epics={epics}
           state={boardState}
           visibleCount={visibleTickets.length}
           onChange={updateBoardState}
         />
-        <TicketBoardTable
-          sort={boardState.sort}
-          tickets={visibleTickets}
-          onSortChange={(sort) => {
-            updateBoardState((previous) =>
-              createTicketBoardState({
-                ...previous,
-                sort,
-              })
-            )
-          }}
-        />
+        {boardState.mode === 'epic' ? (
+          <TicketBoardEpicGroups
+            groups={epicGroups}
+            sort={boardState.sort}
+            onSortChange={handleSortChange}
+          />
+        ) : (
+          <TicketBoardTable
+            sort={boardState.sort}
+            tickets={visibleTickets}
+            onSortChange={handleSortChange}
+          />
+        )}
       </div>
     </Main>
   )
 }
 
 export function TicketBoardRoute() {
+  const epicsQuery = useEpicsQuery()
   const ticketsQuery = useTicketsQuery()
 
   if (ticketsQuery.isPending) {
@@ -465,5 +623,10 @@ export function TicketBoardRoute() {
     )
   }
 
-  return <TicketBoard tickets={ticketsQuery.data.tickets} />
+  return (
+    <TicketBoard
+      epics={epicsQuery.data?.epics ?? []}
+      tickets={ticketsQuery.data.tickets}
+    />
+  )
 }

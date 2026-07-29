@@ -5,7 +5,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AppProviders } from '@/app-providers'
 import { createAtlasQueryClient } from '@/api/query-policy'
 import { createOperatorRouter } from '@/router'
-import type { TicketBoardItem } from '@/features/tickets/ticket-board-state'
+import type {
+  EpicItem,
+  TicketBoardItem,
+} from '@/features/tickets/ticket-board-state'
 
 let mountedRoot: Root | undefined
 let container: HTMLDivElement | undefined
@@ -13,7 +16,7 @@ let originalFetch: typeof window.fetch
 
 const tickets = [
   {
-    epic_key: 'ATLAS-E1',
+    epic_key: 'ATLAS-E2',
     key: 'ATLAS-1',
     priority: 1,
     risk_level: 'low',
@@ -40,7 +43,7 @@ const tickets = [
     title: 'Seeded ATLAS-2',
   },
   {
-    epic_key: 'ATLAS-E1',
+    epic_key: null,
     key: 'ATLAS-100',
     priority: 100,
     risk_level: 'critical',
@@ -49,6 +52,43 @@ const tickets = [
     title: 'Seeded ATLAS-100',
   },
 ] satisfies TicketBoardItem[]
+
+const epics = [
+  {
+    completed_at: null,
+    created_at: '2026-07-26T18:43:42Z',
+    created_by_id: 'operator-ui-e2e-seed',
+    created_by_type: 'system',
+    description: 'Seeded operator-ui e2e epic.',
+    id: '00000000-0000-4000-8000-000000000e01',
+    key: 'ATLAS-E1',
+    objective: 'Host active operator UI tickets.',
+    priority: 1,
+    product_id: '00000000-0000-4000-8000-000000000388',
+    risk_level: 'medium',
+    source_anchor: 'docs/atlas/operator-ui.md#testing-contract',
+    status: 'planned',
+    title: 'Operator UI e2e seed',
+    updated_at: '2026-07-26T18:43:42Z',
+  },
+  {
+    completed_at: null,
+    created_at: '2026-07-26T18:43:42Z',
+    created_by_id: 'operator-ui-e2e-seed',
+    created_by_type: 'system',
+    description: 'Second seeded operator-ui e2e epic.',
+    id: '00000000-0000-4000-8000-000000000e02',
+    key: 'ATLAS-E2',
+    objective: 'Host terminal operator UI tickets.',
+    priority: 2,
+    product_id: '00000000-0000-4000-8000-000000000388',
+    risk_level: 'low',
+    source_anchor: 'docs/atlas/operator-ui.md#testing-contract',
+    status: 'archived',
+    title: 'Terminal archive seed',
+    updated_at: '2026-07-26T18:43:42Z',
+  },
+] satisfies EpicItem[]
 
 function jsonResponse(body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -105,6 +145,30 @@ function rowKeys(): string[] {
     .filter(Boolean)
 }
 
+function groupKeys(epicKey: string): string[] {
+  const group = document.querySelector(
+    `[data-testid="ticket-board-epic-group"][data-epic-key="${epicKey}"]`
+  )
+  if (!group) {
+    throw new Error(`Epic group ${epicKey} not found`)
+  }
+  return Array.from(group.querySelectorAll('[data-testid="ticket-board-row"]'))
+    .map((row) => row.querySelector('td')?.textContent?.trim() ?? '')
+    .filter(Boolean)
+}
+
+function groupCounts(): number[] {
+  return Array.from(
+    document.querySelectorAll('[data-testid="ticket-board-epic-group-count"]')
+  ).map((count) => {
+    const value = count.textContent?.match(/\d+/)?.[0]
+    if (!value) {
+      throw new Error('Group count did not contain a number')
+    }
+    return Number(value)
+  })
+}
+
 function buttonByName(pattern: RegExp): HTMLButtonElement {
   const button = Array.from(document.querySelectorAll('button')).find((item) =>
     pattern.test(item.textContent ?? '')
@@ -131,6 +195,9 @@ beforeEach(() => {
     }
     if (path === '/api/v1/tickets') {
       return jsonResponse({ tickets })
+    }
+    if (path === '/api/v1/epics') {
+      return jsonResponse({ epics })
     }
     return new Response('Not found', { status: 404 })
   })
@@ -184,5 +251,40 @@ describe('ticket board browser rendering', () => {
       document.querySelector<HTMLInputElement>('input[aria-label="Search tickets"]')
         ?.value
     ).toBe('ATLAS-10')
+  })
+
+  it('groups visible rows by epic without resetting terminal defaults or natural key sort', async () => {
+    await renderAt('/tickets?mode=epic')
+
+    await waitFor(() => {
+      expect(groupKeys('ATLAS-E1')).toEqual(['ATLAS-2', 'ATLAS-10'])
+    })
+    expect(document.body.textContent).toContain('Operator UI e2e seed')
+    expect(document.body.textContent).not.toContain('ATLAS-100')
+  })
+
+  it('keeps unassigned tickets in an explicit group whose counts sum to the filtered rows', async () => {
+    await renderAt('/tickets?mode=epic&terminal=show')
+
+    await waitFor(() => {
+      expect(groupKeys('unassigned')).toEqual(['ATLAS-100'])
+    })
+
+    const counts = groupCounts()
+    expect(counts.reduce((sum, count) => sum + count, 0)).toBe(rowKeys().length)
+    expect(
+      document.querySelector('[data-epic-key="unassigned"]')?.textContent
+    ).toContain('Tickets without an epic')
+  })
+
+  it('filters grouped rows by epic from the URL', async () => {
+    await renderAt('/tickets?mode=epic&terminal=show&epic=unassigned')
+
+    await waitFor(() => {
+      expect(rowKeys()).toEqual(['ATLAS-100'])
+    })
+    expect(
+      document.querySelectorAll('[data-testid="ticket-board-epic-group"]')
+    ).toHaveLength(1)
   })
 })

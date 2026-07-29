@@ -2,7 +2,9 @@ import type { components } from '@/api/atlas-openapi'
 
 type Schema = components['schemas']
 
+export type EpicItem = Schema['EpicItemSchema']
 export type TicketBoardItem = Schema['TicketBoardItemSchema']
+export type TicketBoardMode = 'flat' | 'epic'
 export type SortDirection = 'asc' | 'desc'
 export type SortField =
   | 'key'
@@ -18,7 +20,9 @@ export type TicketBoardSort = {
 }
 
 export type TicketBoardState = {
+  epicKeys: string[]
   includeTerminal: boolean
+  mode: TicketBoardMode
   query: string
   riskLevels: string[]
   sort: TicketBoardSort
@@ -28,9 +32,23 @@ export type TicketBoardState = {
 
 export type TicketBoardSearchParams = Pick<
   TicketBoardState,
-  'includeTerminal' | 'query' | 'riskLevels' | 'statuses' | 'ticketTypes'
+  | 'epicKeys'
+  | 'includeTerminal'
+  | 'mode'
+  | 'query'
+  | 'riskLevels'
+  | 'statuses'
+  | 'ticketTypes'
 > & {
   sort?: TicketBoardSort
+}
+
+export type TicketBoardEpicGroup = {
+  epic: EpicItem | null
+  epicKey: string | null
+  filterValue: string
+  label: string
+  tickets: TicketBoardItem[]
 }
 
 export const DEFAULT_TICKET_BOARD_SORT: TicketBoardSort = {
@@ -38,9 +56,14 @@ export const DEFAULT_TICKET_BOARD_SORT: TicketBoardSort = {
   field: 'key',
 }
 
+export const DEFAULT_TICKET_BOARD_MODE: TicketBoardMode = 'flat'
 export const TERMINAL_TICKET_STATUSES = new Set<string>(['done', 'rejected'])
+export const UNASSIGNED_EPIC_FILTER_VALUE = 'unassigned'
+export const UNASSIGNED_EPIC_GROUP_LABEL = 'Unassigned'
 
 export const TICKET_BOARD_SEARCH_KEYS = [
+  'epic',
+  'mode',
   'q',
   'risk',
   'sort',
@@ -89,12 +112,18 @@ function parseSort(value: string | null): TicketBoardSort {
   }
 }
 
+function parseMode(value: string | null): TicketBoardMode {
+  return value === 'epic' ? 'epic' : DEFAULT_TICKET_BOARD_MODE
+}
+
 export function isTerminalTicketStatus(status: string): boolean {
   return TERMINAL_TICKET_STATUSES.has(status)
 }
 
 export function createTicketBoardState({
+  epicKeys,
   includeTerminal,
+  mode,
   query,
   riskLevels,
   sort = DEFAULT_TICKET_BOARD_SORT,
@@ -103,9 +132,11 @@ export function createTicketBoardState({
 }: TicketBoardSearchParams): TicketBoardState {
   const normalisedStatuses = uniqueSorted(statuses)
   return {
+    epicKeys: uniqueSorted(epicKeys),
     includeTerminal:
       includeTerminal ||
       normalisedStatuses.some((status) => isTerminalTicketStatus(status)),
+    mode,
     query: query.trim(),
     riskLevels: uniqueSorted(riskLevels),
     sort,
@@ -119,7 +150,9 @@ export function parseTicketBoardSearch(
 ): TicketBoardState {
   const params = new URLSearchParams(search)
   return createTicketBoardState({
+    epicKeys: paramsList(params, 'epic'),
     includeTerminal: params.get('terminal') === 'show',
+    mode: parseMode(params.get('mode')),
     query: params.get('q') ?? '',
     riskLevels: paramsList(params, 'risk'),
     sort: parseSort(params.get('sort')),
@@ -147,8 +180,14 @@ export function writeTicketBoardSearch(state: TicketBoardState): void {
   if (state.riskLevels.length > 0) {
     params.set('risk', state.riskLevels.join(','))
   }
+  if (state.epicKeys.length > 0) {
+    params.set('epic', state.epicKeys.join(','))
+  }
   if (state.includeTerminal) {
     params.set('terminal', 'show')
+  }
+  if (state.mode !== DEFAULT_TICKET_BOARD_MODE) {
+    params.set('mode', state.mode)
   }
   if (
     state.sort.field !== DEFAULT_TICKET_BOARD_SORT.field ||
@@ -241,6 +280,12 @@ export function filterTickets(
     ) {
       return false
     }
+    if (state.epicKeys.length > 0) {
+      const epicFilterValue = ticket.epic_key ?? UNASSIGNED_EPIC_FILTER_VALUE
+      if (!state.epicKeys.includes(epicFilterValue)) {
+        return false
+      }
+    }
     if (
       query &&
       !`${ticket.key} ${ticket.title}`.toLowerCase().includes(query)
@@ -263,6 +308,68 @@ export function uniqueTicketValues(
   field: 'risk_level' | 'status' | 'ticket_type'
 ): string[] {
   return uniqueSorted(tickets.map((ticket) => String(ticket[field])))
+}
+
+export function uniqueTicketEpicValues(
+  tickets: readonly TicketBoardItem[]
+): string[] {
+  const values = new Set<string>()
+  let hasUnassigned = false
+
+  for (const ticket of tickets) {
+    if (ticket.epic_key) {
+      values.add(ticket.epic_key)
+    } else {
+      hasUnassigned = true
+    }
+  }
+
+  const sorted = Array.from(values).sort(compareTicketKeys)
+  return hasUnassigned ? [...sorted, UNASSIGNED_EPIC_FILTER_VALUE] : sorted
+}
+
+export function groupTicketsByEpic(
+  tickets: readonly TicketBoardItem[],
+  epics: readonly EpicItem[]
+): TicketBoardEpicGroup[] {
+  const epicByKey = new Map(epics.map((epic) => [epic.key, epic]))
+  const grouped = new Map<string, TicketBoardItem[]>()
+
+  for (const ticket of tickets) {
+    const filterValue = ticket.epic_key ?? UNASSIGNED_EPIC_FILTER_VALUE
+    grouped.set(filterValue, [...(grouped.get(filterValue) ?? []), ticket])
+  }
+
+  return Array.from(grouped.entries())
+    .sort(([left], [right]) => {
+      if (left === UNASSIGNED_EPIC_FILTER_VALUE) {
+        return 1
+      }
+      if (right === UNASSIGNED_EPIC_FILTER_VALUE) {
+        return -1
+      }
+      return compareTicketKeys(left, right)
+    })
+    .map(([filterValue, groupTickets]) => {
+      if (filterValue === UNASSIGNED_EPIC_FILTER_VALUE) {
+        return {
+          epic: null,
+          epicKey: null,
+          filterValue,
+          label: UNASSIGNED_EPIC_GROUP_LABEL,
+          tickets: groupTickets,
+        }
+      }
+
+      const epic = epicByKey.get(filterValue) ?? null
+      return {
+        epic,
+        epicKey: filterValue,
+        filterValue,
+        label: epic ? epic.title : filterValue,
+        tickets: groupTickets,
+      }
+    })
 }
 
 export function formatTicketBoardLabel(value: string): string {

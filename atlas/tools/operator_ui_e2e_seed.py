@@ -245,12 +245,16 @@ def _seed_tickets(
         key = _required(record, "key", str)
         defaults = _ticket_defaults(key, timestamp)
         status = TicketStatus(_required(record, "status", str))
+        epic_key = record.get("epic_key", "ATLAS-E1")
+        if epic_key is not None and not isinstance(epic_key, str):
+            raise ValueError("epic_key must be str or null")
+        epic_id = epics[epic_key].id if epic_key is not None else None
         ticket = Ticket(
             **{
                 **defaults,
                 "id": _uuid(_required(record, "id", str)),
                 "product_id": product.id,
-                "epic_id": epics["ATLAS-E1"].id,
+                "epic_id": epic_id,
                 "key": key,
                 "status": status,
                 "priority": _required(record, "priority", int),

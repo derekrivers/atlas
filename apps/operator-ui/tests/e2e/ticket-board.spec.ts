@@ -27,6 +27,29 @@ async function firstBoardRowCells(page: Page): Promise<string[]> {
     .allInnerTexts()
 }
 
+async function groupKeys(page: Page, epicKey: string): Promise<string[]> {
+  return page
+    .locator(
+      `[data-testid="ticket-board-epic-group"][data-epic-key="${epicKey}"]`
+    )
+    .getByTestId('ticket-board-row')
+    .locator('td:first-child')
+    .allInnerTexts()
+}
+
+async function groupCounts(page: Page): Promise<number[]> {
+  const countLabels = await page
+    .getByTestId('ticket-board-epic-group-count')
+    .allInnerTexts()
+  return countLabels.map((label) => {
+    const value = label.match(/\d+/)?.[0]
+    if (!value) {
+      throw new Error(`Group count did not include a number: ${label}`)
+    }
+    return Number(value)
+  })
+}
+
 async function openColdPage(browser: Browser, url: string): Promise<Page> {
   const page = await browser.newPage()
   await page.goto(url)
@@ -137,4 +160,67 @@ test('issues exactly one board request per page load', async ({ page }) => {
   await page.getByRole('button', { name: /Show terminal/ }).click()
   await expect(page.getByTestId('ticket-board-row')).toHaveCount(1)
   expect(boardRequests).toBe(1)
+})
+
+test('groups and filters by epic without per-group requests or mutations', async ({
+  page,
+}) => {
+  let boardRequests = 0
+  let epicRequests = 0
+  let mutatingApiRequests = 0
+
+  await page.route('**/api/v1/**', async (route) => {
+    const request = route.request()
+    const requestUrl = new URL(request.url())
+    if (request.method() !== 'GET') {
+      mutatingApiRequests += 1
+    }
+    if (
+      requestUrl.pathname === '/api/v1/tickets' &&
+      requestUrl.search === ''
+    ) {
+      boardRequests += 1
+    }
+    if (requestUrl.pathname === '/api/v1/epics' && requestUrl.search === '') {
+      epicRequests += 1
+    }
+    await route.continue()
+  })
+
+  await page.goto('/tickets')
+  await expect(page.getByTestId('ticket-board-row')).toHaveCount(1)
+  await expect.poll(() => boardRequests).toBe(1)
+  await expect.poll(() => epicRequests).toBe(1)
+
+  await page.getByRole('button', { name: 'Group by epic' }).click()
+  await expect(page).toHaveURL(/mode=epic/)
+  await expect(page.getByTestId('ticket-board-epic-group')).toHaveCount(1)
+  expect(await groupKeys(page, 'ATLAS-E1')).toEqual(['ATLAS-2'])
+
+  await page.getByRole('button', { name: /Show terminal/ }).click()
+  await expect(page.getByTestId('ticket-board-epic-group')).toHaveCount(3)
+  await expect(
+    page.locator(
+      '[data-testid="ticket-board-epic-group"][data-epic-key="unassigned"]'
+    )
+  ).toContainText('Tickets without an epic')
+  expect(await groupKeys(page, 'unassigned')).toEqual(['ATLAS-100'])
+
+  const counts = await groupCounts(page)
+  expect(counts.reduce((sum, count) => sum + count, 0)).toBe(
+    (await boardKeys(page)).length
+  )
+
+  await page.getByRole('button', { name: 'Filter epic' }).click()
+  await page
+    .getByRole('menuitemcheckbox', { name: /Terminal archive seed/ })
+    .click()
+  await page.keyboard.press('Escape')
+
+  await expect(page).toHaveURL(/epic=ATLAS-E2/)
+  await expect(page.getByTestId('ticket-board-epic-group')).toHaveCount(1)
+  expect(await groupKeys(page, 'ATLAS-E2')).toEqual(['ATLAS-4', 'ATLAS-10'])
+  expect(boardRequests).toBe(1)
+  expect(epicRequests).toBe(1)
+  expect(mutatingApiRequests).toBe(0)
 })
