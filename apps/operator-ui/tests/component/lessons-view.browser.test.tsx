@@ -3,6 +3,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import type { QueryClient } from '@tanstack/react-query'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { components } from '@/api/atlas-openapi'
+import { atlasOpenApiEnums } from '@/api/atlas-openapi-runtime'
 import { createAtlasQueryClient } from '@/api/query-policy'
 import { AppProviders } from '@/app-providers'
 import { LessonsView } from '@/features/lessons/lessons-view'
@@ -10,11 +11,11 @@ import { LessonsView } from '@/features/lessons/lessons-view'
 type LessonItem = components['schemas']['LessonItemSchema']
 type EntityStatus = components['schemas']['EntityStatus']
 
-const statusLabels: Record<EntityStatus, string> = {
-  active: 'Active',
-  archived: 'Archived',
-  deprecated: 'Deprecated',
-  draft: 'Draft',
+function formatEnumValue(value: string): string {
+  return value
+    .split('_')
+    .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
+    .join(' ')
 }
 
 let mountedRoot: Root | undefined
@@ -57,7 +58,7 @@ function makeLesson(
     source_ticket_id: `00000000-0000-4000-8000-2000000000${status.length}`,
     status,
     tags: ['operator-ui', status],
-    title: `${statusLabels[status]} lesson`,
+    title: `${formatEnumValue(status)} lesson`,
     updated_at: '2026-07-26T18:43:42+00:00',
     ...overrides,
   }
@@ -88,7 +89,7 @@ async function waitForAssertion(assertion: () => void): Promise<void> {
 }
 
 function statusTab(status: EntityStatus): HTMLButtonElement {
-  const label = statusLabels[status]
+  const label = formatEnumValue(status)
   const tab = Array.from(
     document.querySelectorAll<HTMLButtonElement>('[role="tab"]')
   ).find((button) => button.textContent?.includes(label))
@@ -205,27 +206,26 @@ afterEach(() => {
 describe('lessons view browser rendering', () => {
   it('defaults to draft and reaches every EntityStatus facet client-side', async () => {
     originalFetch = window.fetch
-    const lessons = [
-      makeLesson('draft'),
-      makeLesson('active'),
-      makeLesson('archived'),
-      makeLesson('deprecated'),
-    ]
+    const lessons = atlasOpenApiEnums.EntityStatus.map((status) =>
+      makeLesson(status)
+    )
     const requests = await renderLessons(lessons)
 
     await waitForAssertion(() => {
       expect(statusTab('draft').getAttribute('aria-selected')).toBe('true')
       expect(bodyText()).toContain('Draft lesson')
-      expect(bodyText()).not.toContain('Active lesson')
-      expect(bodyText()).not.toContain('Archived lesson')
-      expect(bodyText()).not.toContain('Deprecated lesson')
+      for (const status of atlasOpenApiEnums.EntityStatus) {
+        if (status !== 'draft') {
+          expect(bodyText()).not.toContain(`${formatEnumValue(status)} lesson`)
+        }
+      }
     })
 
-    for (const status of ['active', 'archived', 'deprecated'] as const) {
+    for (const status of atlasOpenApiEnums.EntityStatus) {
       await clickStatus(status)
       await waitForAssertion(() => {
         expect(statusTab(status).getAttribute('aria-selected')).toBe('true')
-        expect(bodyText()).toContain(`${statusLabels[status]} lesson`)
+        expect(bodyText()).toContain(`${formatEnumValue(status)} lesson`)
       })
     }
 
@@ -277,19 +277,16 @@ describe('lessons view browser rendering', () => {
 
   it('does not expose promote, reject, archive, or merge controls in any state', async () => {
     originalFetch = window.fetch
-    const lessons = [
-      makeLesson('draft'),
-      makeLesson('active'),
-      makeLesson('archived'),
-      makeLesson('deprecated'),
-    ]
+    const lessons = atlasOpenApiEnums.EntityStatus.map((status) =>
+      makeLesson(status)
+    )
     await renderLessons(lessons)
     const observedLabels: string[] = []
 
-    for (const status of ['draft', 'active', 'archived', 'deprecated'] as const) {
+    for (const status of atlasOpenApiEnums.EntityStatus) {
       await clickStatus(status)
       await waitForAssertion(() => {
-        expect(bodyText()).toContain(`${statusLabels[status]} lesson`)
+        expect(bodyText()).toContain(`${formatEnumValue(status)} lesson`)
       })
       observedLabels.push(...visibleInteractiveLabels())
     }

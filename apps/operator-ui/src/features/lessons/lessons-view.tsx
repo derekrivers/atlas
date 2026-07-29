@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Eye } from 'lucide-react'
 import type { components } from '@/api/atlas-openapi'
+import { atlasOpenApiEnums } from '@/api/atlas-openapi-runtime'
 import { useLessonsQuery } from '@/api/query-hooks'
 import { Main } from '@/components/layout/main'
 import { EmptyCollectionState, LoadingState, RequestErrorState } from '@/components/states'
@@ -30,21 +31,7 @@ type EntityStatus = Schema['EntityStatus']
 type LessonItem = Schema['LessonItemSchema']
 
 const DEFAULT_LESSON_STATUS: EntityStatus = 'draft'
-
-function defineEntityStatusFacets<const Statuses extends readonly EntityStatus[]>(
-  statuses: Exclude<EntityStatus, Statuses[number]> extends never
-    ? Statuses
-    : never
-): Statuses {
-  return statuses
-}
-
-const LESSON_STATUS_FACETS = defineEntityStatusFacets([
-  'draft',
-  'active',
-  'archived',
-  'deprecated',
-] as const)
+const LESSON_STATUS_FACETS: readonly EntityStatus[] = atlasOpenApiEnums.EntityStatus
 const EMPTY_LESSONS: readonly LessonItem[] = []
 
 function formatEnumValue(value: string): string {
