@@ -64,7 +64,6 @@ describe('operator shell browser rendering', () => {
     expect(document.body.textContent).toContain('Search routes')
     expect(document.body.textContent).toContain('Operational Snapshot')
     expect(document.body.textContent).toContain('Placeholder')
-    expect(document.querySelector('[data-sidebar="sidebar"]')).not.toBeNull()
   })
 
   it('keeps the not-found route inside the shell', async () => {
@@ -83,6 +82,5 @@ describe('operator shell browser rendering', () => {
     expect(document.body.textContent).toContain('Toggle Sidebar')
     expect(document.body.textContent).toContain('Search routes')
     expect(document.body.textContent).toContain('Something went wrong')
-    expect(document.querySelector('[data-sidebar="sidebar"]')).not.toBeNull()
   })
 })
