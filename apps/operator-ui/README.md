@@ -24,5 +24,9 @@ npm --prefix apps/operator-ui run api:generate
 The generated output is `apps/operator-ui/src/api/atlas-openapi.ts`. Do not edit
 that file by hand.
 
-This scaffold intentionally fetches no Atlas data. Routes render placeholders
-until later Operator UI tickets wire them to the read-only `/api/v1` contract.
+The Vite development server proxies same-origin `/api` requests to the Atlas API
+URL configured by `VITE_ATLAS_API_BASE_URL`, defaulting to
+`http://127.0.0.1:8000`. If that loopback API is not reachable, the shell
+renders the named API-unreachable state with the configured URL and the
+`atlas api serve` hint. Shared query hooks poll through the central
+`src/api/query-policy.ts` interval; views do not set their own polling cadence.

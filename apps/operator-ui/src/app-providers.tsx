@@ -1,17 +1,11 @@
 import { type ReactNode } from 'react'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClientProvider, type QueryClient } from '@tanstack/react-query'
+import { createAtlasQueryClient } from '@/api/query-policy'
 import { DirectionProvider } from '@/context/direction-provider'
 import { FontProvider } from '@/context/font-provider'
 import { ThemeProvider } from '@/context/theme-provider'
 
-const defaultQueryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      retry: false,
-      staleTime: 10_000,
-    },
-  },
-})
+const defaultQueryClient = createAtlasQueryClient()
 
 type AppProvidersProps = {
   children: ReactNode

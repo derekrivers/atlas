@@ -23,6 +23,7 @@
     "noUncheckedSideEffectImports": true
   },
   "include": [
+    "src/vite-env.d.ts",
     "eslint.config.js",
     "playwright.config.ts",
     "vite.config.ts",

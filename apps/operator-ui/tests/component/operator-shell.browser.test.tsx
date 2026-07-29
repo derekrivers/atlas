@@ -1,12 +1,14 @@
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { RouterProvider } from '@tanstack/react-router'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AppProviders } from '@/app-providers'
+import { createAtlasQueryClient } from '@/api/query-policy'
 import { createOperatorRouter } from '@/router'
 
 let mountedRoot: Root | undefined
 let container: HTMLDivElement | undefined
+let originalFetch: typeof window.fetch
 
 async function renderAt(path: string) {
   window.history.pushState({}, '', path)
@@ -16,16 +18,37 @@ async function renderAt(path: string) {
 
   await act(async () => {
     mountedRoot?.render(
-      <AppProviders>
+      <AppProviders queryClient={createAtlasQueryClient()}>
         <RouterProvider router={createOperatorRouter()} />
       </AppProviders>
     )
   })
 }
 
+beforeEach(() => {
+  originalFetch = window.fetch
+  window.fetch = vi.fn(async () => {
+    return new Response(
+      JSON.stringify({
+        evidence_count: 0,
+        last_evidence_pull_at: null,
+        last_linear_sync_at: null,
+        package_version: '0.0.0',
+        schema_revision: null,
+        ticket_count: 0,
+      }),
+      {
+        headers: { 'content-type': 'application/json' },
+        status: 200,
+      }
+    )
+  })
+})
+
 afterEach(() => {
   mountedRoot?.unmount()
   container?.remove()
+  window.fetch = originalFetch
   mountedRoot = undefined
   container = undefined
 })

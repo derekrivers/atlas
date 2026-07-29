@@ -11,6 +11,7 @@ from uuid import UUID, uuid4
 import pytest
 import sqlalchemy as sa
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.testclient import TestClient
 from schema_drift_helpers import (
     alembic_head_and_parent,
@@ -199,6 +200,13 @@ def test_every_registered_route_has_an_executable_case(app: FastAPI) -> None:
         for method in operations
     }
     assert registered == set(API_ROUTE_CASES)
+
+
+def test_api_application_installs_no_cors_middleware(app: FastAPI) -> None:
+    assert all(
+        cast(type[object], middleware.cls) is not CORSMiddleware
+        for middleware in app.user_middleware
+    )
 
 
 def test_lessons_api_registers_only_read_route(app: FastAPI) -> None:

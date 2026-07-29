@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { expect, test, type Locator, type Page } from '@playwright/test'
 import ts from 'typescript'
+import { startAtlasApiServer } from './atlas-api-server'
 
 type Rgba = {
   r: number
@@ -24,6 +25,17 @@ const destructiveBadgeClasses = readCvaVariantClasses(
   'badgeVariants',
   'destructive'
 )
+
+let apiServer: Awaited<ReturnType<typeof startAtlasApiServer>> | undefined
+
+test.beforeAll(async () => {
+  apiServer = await startAtlasApiServer()
+})
+
+test.afterAll(async () => {
+  await apiServer?.stop()
+  apiServer = undefined
+})
 
 function propertyNameText(name: ts.PropertyName): string | undefined {
   if (
