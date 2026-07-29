@@ -11,6 +11,7 @@ import { CriticalPathRoute } from '@/features/critical-path/critical-path-route'
 import { NotFoundError } from '@/features/errors/not-found-error'
 import { TicketBoardRoute } from '@/features/tickets/ticket-board'
 import { TicketDetailView } from '@/features/tickets/ticket-detail-view'
+import { ReviewQueueView } from '@/features/reviews/review-queue-view'
 
 type CreateOperatorRouterOptions = {
   includeErrorProbe?: boolean
@@ -78,7 +79,7 @@ function createOperatorRouteTree({
     createRoute({
       getParentRoute: () => operatorRoute,
       path: reviews.routePath,
-      component: () => <PlaceholderRoute surface={reviews} />,
+      component: ReviewQueueView,
       errorComponent: RouteErrorBoundary,
     }),
     createRoute({
