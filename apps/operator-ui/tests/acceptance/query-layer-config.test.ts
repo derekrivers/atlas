@@ -48,6 +48,16 @@ function runEslintProbe(files: Record<string, string>) {
   }
 }
 
+function expectLintProbeFailure(
+  files: Record<string, string>,
+  expectedMessage: string
+) {
+  const result = runEslintProbe(files)
+
+  expect(result.status).toBe(1)
+  expect(result.stderr + result.stdout).toContain(expectedMessage)
+}
+
 describe('Atlas query layer configuration', () => {
   it('proxies same-origin API calls to the loopback API by default', () => {
     expect(apiProxy()).toMatchObject({
@@ -61,17 +71,48 @@ describe('Atlas query layer configuration', () => {
   })
 
   it(
+    'rejects query-backed feature views without shared state primitives',
+    () => {
+      const expectedMessage =
+        'Feature views that use Atlas query hooks must import shared state primitives from @/components/states'
+
+      expectLintProbeFailure(
+        {
+          'view.tsx':
+            "import { useTicketsQuery } from '@/api/query-hooks'\nfunction Spinner() { return <div>Loading</div> }\nexport function View() { const query = useTicketsQuery(); return query.isLoading ? <Spinner /> : null }\n",
+        },
+        expectedMessage
+      )
+      expectLintProbeFailure(
+        {
+          'spinner.tsx':
+            "export function Spinner() { return <div>Loading</div> }\n",
+          'view.tsx':
+            "import { useTicketsQuery } from '@/api/query-hooks'\nimport { Spinner } from './spinner'\nexport function View() { const query = useTicketsQuery(); return query.isLoading ? <Spinner /> : null }\n",
+        },
+        expectedMessage
+      )
+      expectLintProbeFailure(
+        {
+          'view.tsx':
+            "import { useQuery } from '@tanstack/react-query'\nfunction Spinner() { return <div>Loading</div> }\nexport function View() { const query = useQuery({ queryKey: ['probe'], queryFn: () => 'ok' }); return query.isLoading ? <Spinner /> : null }\n",
+        },
+        expectedMessage
+      )
+    },
+    20_000
+  )
+
+  it(
     'rejects ad-hoc view state imports outside the shared primitives',
     () => {
-      const result = runEslintProbe({
-        'ad-hoc-states.tsx':
-          "export function LoadingState() { return <div>Loading</div> }\n",
-        'view.tsx':
-          "import { LoadingState } from './ad-hoc-states'\nexport function View() { return <LoadingState /> }\n",
-      })
-
-      expect(result.status).toBe(1)
-      expect(result.stderr + result.stdout).toContain(
+      expectLintProbeFailure(
+        {
+          'ad-hoc-states.tsx':
+            "export function LoadingState() { return <div>Loading</div> }\n",
+          'view.tsx':
+            "import { LoadingState } from './ad-hoc-states'\nexport function View() { return <LoadingState /> }\n",
+        },
         'View state primitives must be imported from @/components/states'
       )
     },
@@ -81,14 +122,22 @@ describe('Atlas query layer configuration', () => {
   it(
     'rejects view-local polling overrides',
     () => {
-      const result = runEslintProbe({
-        'view.tsx':
-          "export function View() { return null }\nexport const options = { refetchInterval: 1000 }\n",
-      })
+      const expectedMessage =
+        'View files must use the shared Atlas query polling policy instead of setting refetchInterval or refetchIntervalInBackground'
 
-      expect(result.status).toBe(1)
-      expect(result.stderr + result.stdout).toContain(
-        'View files must use the shared Atlas query polling policy instead of setting refetchInterval'
+      expectLintProbeFailure(
+        {
+          'view.tsx':
+            "export function View() { return null }\nexport const options = { refetchInterval: 1000 }\n",
+        },
+        expectedMessage
+      )
+      expectLintProbeFailure(
+        {
+          'view.tsx':
+            "export function View() { return null }\nexport const options = { refetchIntervalInBackground: true }\n",
+        },
+        expectedMessage
       )
     },
     20_000
