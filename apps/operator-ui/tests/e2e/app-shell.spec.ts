@@ -89,6 +89,9 @@ test('smoke: shell loads against the live API and reaches every ratified route',
   ).toHaveCount(0)
 
   for (const surface of operatorSurfaces) {
+    const expectedHeading =
+      surface.id === 'reviews' ? 'Acceptance Review' : surface.placeholder.title
+
     await page.goto('/')
     await expect(
       page.getByRole('button', { name: 'Toggle theme' })
@@ -98,7 +101,7 @@ test('smoke: shell loads against the live API and reaches every ratified route',
     await page.getByRole('link', { exact: true, name: surface.title }).click()
     await expect(page).toHaveURL(new RegExp(`${escapeRegExp(surface.href)}$`))
     await expect(
-      page.getByRole('heading', { exact: true, name: surface.placeholder.title })
+      page.getByRole('heading', { exact: true, name: expectedHeading })
     ).toBeVisible()
     await expectStatusFooter(page)
   }

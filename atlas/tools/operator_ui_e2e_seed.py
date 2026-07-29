@@ -9,7 +9,7 @@ from __future__ import annotations
 import argparse
 import json
 from collections.abc import Mapping, Sequence
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, TypeVar, cast
 from uuid import UUID
@@ -30,6 +30,8 @@ from atlas.core.models import (
     TicketDependency,
     TicketStatus,
     TicketType,
+    VerificationCheck,
+    VerificationCheckType,
 )
 from atlas.storage import (
     ADRRepo,
@@ -40,6 +42,7 @@ from atlas.storage import (
     ProductRepo,
     TicketDependencyRepo,
     TicketRepo,
+    VerificationCheckRepo,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -329,6 +332,42 @@ def _seed_evidence(
         )
 
 
+def _seed_verification_checks(
+    db: Database,
+    records: Sequence[Mapping[str, Any]],
+    tickets: Mapping[str, Ticket],
+    timestamp: datetime,
+) -> None:
+    repo = VerificationCheckRepo(db)
+    for index, record in enumerate(records):
+        status = EvidenceStatus(_required(record, "status", str))
+        check_type = VerificationCheckType(_required(record, "check_type", str))
+        summary = _optional(record, "summary", str)
+        required = _optional(record, "required", bool)
+        completed_at = (
+            timestamp + timedelta(seconds=index)
+            if status
+            in {
+                EvidenceStatus.FAILED,
+                EvidenceStatus.NOT_APPLICABLE,
+                EvidenceStatus.PASSED,
+            }
+            else None
+        )
+        repo.add(
+            VerificationCheck(
+                id=_uuid(_required(record, "id", str)),
+                ticket_id=tickets[_required(record, "ticket_key", str)].id,
+                check_type=check_type,
+                status=status,
+                summary=summary or f"{check_type.value}: seeded {status.value}",
+                required=True if required is None else required,
+                created_at=timestamp + timedelta(seconds=index),
+                completed_at=completed_at,
+            )
+        )
+
+
 def _seed_lessons(
     db: Database,
     records: Sequence[Mapping[str, Any]],
@@ -402,6 +441,12 @@ def seed_store(db_url: str, seed_path: Path = DEFAULT_SEED_PATH) -> Database:
         db,
         _records(seed.get("evidence"), "evidence"),
         product,
+        tickets,
+        timestamp,
+    )
+    _seed_verification_checks(
+        db,
+        _records(seed.get("verification_checks", []), "verification_checks"),
         tickets,
         timestamp,
     )

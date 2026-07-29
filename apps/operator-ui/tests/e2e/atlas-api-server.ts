@@ -12,6 +12,10 @@ type AtlasApiServer = {
   stop: () => Promise<void>
 }
 
+type StartAtlasApiServerOptions = {
+  seedPath?: string
+}
+
 function runSeedCommand(command: string, args: string[], dbUrl: string): void {
   const result = spawnSync(command, args, {
     cwd: repoRoot,
@@ -83,16 +87,30 @@ async function stopProcess(apiProcess: ChildProcess): Promise<void> {
   }
 }
 
-export async function startAtlasApiServer(): Promise<AtlasApiServer> {
+export async function startAtlasApiServer({
+  seedPath,
+}: StartAtlasApiServerOptions = {}): Promise<AtlasApiServer> {
   const apiBaseURL =
     process.env.ATLAS_OPERATOR_E2E_API_URL ?? 'http://127.0.0.1:18000'
   const apiPort = new URL(apiBaseURL).port
   const tempRoot = mkdtempSync(join(tmpdir(), 'atlas-operator-ui-e2e-'))
   const dbUrl = `sqlite:///${join(tempRoot, 'atlas.db')}`
 
+  const seedArgs = [
+    'run',
+    'python',
+    '-m',
+    'atlas.tools.operator_ui_e2e_seed',
+    '--db',
+    dbUrl,
+  ]
+  if (seedPath) {
+    seedArgs.push('--seed', seedPath)
+  }
+
   runSeedCommand(
     'uv',
-    ['run', 'python', '-m', 'atlas.tools.operator_ui_e2e_seed', '--db', dbUrl],
+    seedArgs,
     dbUrl
   )
 

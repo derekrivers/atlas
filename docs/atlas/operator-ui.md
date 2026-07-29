@@ -257,11 +257,12 @@ and are never conflated; a component suite that passes is not acceptance.
   `apps/operator-ui/tests/e2e/fixtures/live-api-seed.json`, starts
   `atlas api serve` on `127.0.0.1`, runs `@playwright/test`, then tears down
   the API process and temporary store.
-- **Contract drift** is caught by regenerating the TypeScript client from
-  the running application's OpenAPI document in CI and failing on any
-  diff against the committed output. The single regeneration command is
-  `npm --prefix apps/operator-ui run api:generate` from the repository
-  root; the generated file is committed and never hand-edited.
+- **Contract drift** is caught by regenerating the TypeScript client and
+  runtime enum metadata from the running application's OpenAPI document in CI
+  and failing on any diff against the committed outputs. The single
+  regeneration command is `npm --prefix apps/operator-ui run api:generate`
+  from the repository root; the generated files are committed and never
+  hand-edited.
 - Every view ticket carries at least one end-to-end specification as an
   acceptance criterion. A view without a spec is not delivered.
 
