@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
@@ -26,26 +27,23 @@ function apiProxy(): ProxyOptions {
 }
 
 function runEslintProbe(files: Record<string, string>) {
-  const probeRoot = join(appRoot, 'src', 'features', '__lint_probe__')
-  rmSync(probeRoot, { force: true, recursive: true })
+  const tempRoot = mkdtempSync(join(tmpdir(), 'atlas-eslint-probe-'))
+  const probeRoot = join(tempRoot, 'src', 'features', 'probe')
   mkdirSync(probeRoot, { recursive: true })
 
-  try {
-    for (const [file, source] of Object.entries(files)) {
-      writeFileSync(join(probeRoot, file), source)
-    }
-
-    return spawnSync(
-      'npx',
-      ['eslint', 'src/features/__lint_probe__'],
-      {
-        cwd: appRoot,
-        encoding: 'utf8',
-      }
-    )
-  } finally {
-    rmSync(probeRoot, { force: true, recursive: true })
+  for (const [file, source] of Object.entries(files)) {
+    writeFileSync(join(probeRoot, file), source)
   }
+  const result = spawnSync(
+    join(appRoot, 'node_modules', '.bin', 'eslint'),
+    ['--config', join(appRoot, 'eslint.config.js'), 'src/features/probe'],
+    {
+      cwd: tempRoot,
+      encoding: 'utf8',
+    }
+  )
+  rmSync(tempRoot, { force: true, recursive: true })
+  return result
 }
 
 function expectLintProbeFailure(

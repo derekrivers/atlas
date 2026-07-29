@@ -162,6 +162,8 @@ DOCUMENTED_COLUMNS: dict[str, dict[str, tuple[bool, str | None]]] = {
         "summary": (NN, None),
         "commit_sha": (True, None),
         "external_run_id": (True, None),
+        "job_name": (True, None),
+        "source_event_at": (True, None),
         "payload_hash": (True, None),
         "source_uri": (True, None),
         "raw_payload": (NN, "'{}'"),

@@ -50,6 +50,8 @@ class Evidence(BaseModel):
     summary: str
     commit_sha: str | None = None  # required for system-tier CI evidence
     external_run_id: str | None = None  # CI workflow / check run ID
+    job_name: str | None = None  # CI job/check identity for per-job resolution
+    source_event_at: datetime | None = None  # lifecycle time supplied by GitHub
     payload_hash: str | None = None  # SHA-256 of raw payload at ingestion
     source_uri: str | None = None
     raw_payload: dict[str, Any] = Field(default_factory=dict)

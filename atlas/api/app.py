@@ -5,9 +5,11 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 
 from atlas.api.routers import dependencies, epics, lessons, reviews, status, tickets
+from atlas.dependencies import GraphValidationFailed
 from atlas.storage import Database
 from atlas.storage.db import resolve_url
 from atlas.storage.preconditions import assert_schema_at_head
@@ -34,6 +36,26 @@ def create_app(
                 resolved_database.engine.dispose()
 
     application = FastAPI(title="Atlas API", lifespan=lifespan)
+
+    @application.exception_handler(GraphValidationFailed)
+    async def graph_validation_failed(
+        request: Request, error: GraphValidationFailed
+    ) -> JSONResponse:
+        del request
+        return JSONResponse(
+            status_code=409,
+            content={
+                "detail": "Stored dependency graph is invalid",
+                "violations": [
+                    {
+                        "code": type(violation).__name__,
+                        "message": str(violation),
+                    }
+                    for violation in error.violations
+                ],
+            },
+        )
+
     application.include_router(tickets.router, prefix=API_V1_PREFIX)
     application.include_router(epics.router, prefix=API_V1_PREFIX)
     application.include_router(lessons.router, prefix=API_V1_PREFIX)

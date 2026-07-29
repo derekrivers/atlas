@@ -349,6 +349,26 @@ export interface components {
          * @enum {string}
          */
         EvidenceType: "test_result" | "build_result" | "lint_result" | "coverage_report" | "screenshot" | "pr_review" | "deployment_result" | "documentation_update" | "manual_approval" | "pr_merged";
+        /**
+         * GraphValidationErrorResponse
+         * @description A dependency projection refused because stored graph data is invalid.
+         */
+        GraphValidationErrorResponse: {
+            /** Detail */
+            detail: string;
+            /** Violations */
+            violations: components["schemas"]["GraphValidationViolationSchema"][];
+        };
+        /**
+         * GraphValidationViolationSchema
+         * @description One typed dependency-graph integrity violation.
+         */
+        GraphValidationViolationSchema: {
+            /** Code */
+            code: string;
+            /** Message */
+            message: string;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -694,6 +714,15 @@ export interface operations {
                     "application/json": components["schemas"]["DependencyCriticalPathResponse"];
                 };
             };
+            /** @description Stored dependency graph failed integrity validation */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GraphValidationErrorResponse"];
+                };
+            };
         };
     };
     dependency_graph_route_api_v1_dependencies_graph_get: {
@@ -712,6 +741,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DependencyGraphResponse"];
+                };
+            };
+            /** @description Stored dependency graph failed integrity validation */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GraphValidationErrorResponse"];
                 };
             };
         };

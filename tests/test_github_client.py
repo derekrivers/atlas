@@ -9,7 +9,6 @@ redaction are all pinned here.
 from __future__ import annotations
 
 import email.message
-import logging
 from typing import Any
 
 import pytest
@@ -153,11 +152,11 @@ def test_fetch_pr_reviews_returns_bare_array_from_pr_endpoint(
     assert "per_page=100" in captured["url"]
 
 
-def test_fetch_pr_reviews_304_returns_empty_list(
+def test_fetch_pr_reviews_304_replays_cached_state(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # The ETag/304 path is shared with the envelope endpoints: an unchanged
-    # review list yields [] (no new normalised event), exactly as for checks.
+    # review list replays the cached representation; ingest dedup suppresses it.
     state = {"calls": 0}
 
     def _urlopen(request: Any, *a: Any, **k: Any) -> _Response:
@@ -169,7 +168,7 @@ def test_fetch_pr_reviews_304_returns_empty_list(
     monkeypatch.setattr("atlas.github.client.urllib_request.urlopen", _urlopen)
     client = GitHubRESTClient(token="t")
     assert client.fetch_pr_reviews("o", "r", 1) == [{"id": 1, "state": "APPROVED"}]
-    assert client.fetch_pr_reviews("o", "r", 1) == []  # 304: nothing new
+    assert client.fetch_pr_reviews("o", "r", 1) == [{"id": 1, "state": "APPROVED"}]
 
 
 def test_fetch_pr_reviews_non_array_body_is_api_error(
@@ -208,11 +207,11 @@ def test_fetch_pr_files_returns_bare_array_from_pr_endpoint(
     assert "per_page=100" in captured["url"]
 
 
-def test_fetch_pr_files_304_returns_empty_list(
+def test_fetch_pr_files_304_replays_cached_state(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # The ETag/304 path is shared with the other bare-array endpoints: an
-    # unchanged file list yields [] (no new normalised event).
+    # unchanged file list replays state so scope never mistakes 304 for no files.
     state = {"calls": 0}
 
     def _urlopen(request: Any, *a: Any, **k: Any) -> _Response:
@@ -224,7 +223,7 @@ def test_fetch_pr_files_304_returns_empty_list(
     monkeypatch.setattr("atlas.github.client.urllib_request.urlopen", _urlopen)
     client = GitHubRESTClient(token="t")
     assert client.fetch_pr_files("o", "r", 1) == [{"filename": "docs/x.md"}]
-    assert client.fetch_pr_files("o", "r", 1) == []  # 304: nothing new
+    assert client.fetch_pr_files("o", "r", 1) == [{"filename": "docs/x.md"}]
 
 
 # --- pull request: the single-object (ATLAS-67) path ------------------------
@@ -249,14 +248,14 @@ def test_fetch_pull_request_returns_object_from_pr_endpoint(
     assert "/repos/o/r/pulls/11499" in captured["url"]
 
 
-def test_fetch_pull_request_shares_conditional_request_and_raises_on_304(
+def test_fetch_pull_request_shares_conditional_request_and_replays_on_304(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # The object fetch rides the SAME conditional-request core as the arrays: it
     # caches the ETag and SENDS If-None-Match on the next call (proving the path
     # is shared, not just refactored). The ONLY divergence is the 304 outcome:
     # there is no empty-object analogue of [] and no body cache to replay, so a
-    # 304 raises the documented error -- never a KeyError, never a silent {}.
+    # 304 replays the cached object -- never a KeyError, never a silent {}.
     seen_if_none_match: list[str | None] = []
     state = {"calls": 0}
 
@@ -273,8 +272,7 @@ def test_fetch_pull_request_shares_conditional_request_and_raises_on_304(
     first = client.fetch_pull_request("o", "r", 1)
     assert first == {"head": {"sha": "abc"}}
 
-    with pytest.raises(GitHubAPIError, match="304 with no cached body"):
-        client.fetch_pull_request("o", "r", 1)
+    assert client.fetch_pull_request("o", "r", 1) == first
 
     # First request had no conditional header; the second sent the cached ETag —
     # exactly as the array path does (see the ETag/304 test below).
@@ -321,7 +319,7 @@ def test_fetch_pull_request_non_object_body_is_api_error(
 # --- ETag / 304 (criterion 3) -----------------------------------------------
 
 
-def test_etag_304_produces_no_new_normalised_event(
+def test_etag_304_replays_state_for_ingest_dedup(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     seen_if_none_match: list[str | None] = []
@@ -345,8 +343,8 @@ def test_etag_304_produces_no_new_normalised_event(
     assert normalise_workflow_runs(first, head_sha=HEAD_SHA)  # one event
 
     second = client.fetch_workflow_runs("o", "r", HEAD_SHA)
-    assert second == []  # 304: nothing new
-    assert normalise_workflow_runs(second, head_sha=HEAD_SHA) == []  # no new event
+    assert second == first
+    assert normalise_workflow_runs(second, head_sha=HEAD_SHA)
 
     # First request had no conditional header; the second sent the cached ETag.
     assert seen_if_none_match[0] is None
@@ -428,17 +426,33 @@ def test_non_json_body_becomes_api_error(monkeypatch: pytest.MonkeyPatch) -> Non
         GitHubRESTClient(token="t").fetch_workflow_runs("o", "r", HEAD_SHA)
 
 
-# --- pagination is surfaced, never silently dropped -------------------------
+# --- complete, trusted pagination -------------------------------------------
 
 
-def test_second_page_is_warned_not_silently_dropped(
-    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+def test_all_pages_are_returned(monkeypatch: pytest.MonkeyPatch) -> None:
+    urls: list[str] = []
+
+    def _urlopen(request: Any, *a: Any, **k: Any) -> _Response:
+        urls.append(request.full_url)
+        if len(urls) == 1:
+            link = '<https://api.github.com/x?page=2>; rel="next"'
+            return _Response(b'{"workflow_runs": [{"id": 1}]}', _headers(Link=link))
+        return _Response(b'{"workflow_runs": [{"id": 2}]}', _headers())
+
+    monkeypatch.setattr("atlas.github.client.urllib_request.urlopen", _urlopen)
+    result = GitHubRESTClient(token="t").fetch_workflow_runs("o", "r", HEAD_SHA)
+
+    assert result == [{"id": 1}, {"id": 2}]
+    assert urls[1] == "https://api.github.com/x?page=2"
+
+
+def test_pagination_rejects_non_github_next_link(
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     def _urlopen(request: Any, *a: Any, **k: Any) -> _Response:
-        link = '<https://api.github.com/x?page=2>; rel="next"'
+        link = '<https://example.com/steal-token?page=2>; rel="next"'
         return _Response(b'{"workflow_runs": []}', _headers(Link=link))
 
     monkeypatch.setattr("atlas.github.client.urllib_request.urlopen", _urlopen)
-    with caplog.at_level(logging.WARNING, logger="atlas.github.client"):
+    with pytest.raises(GitHubAPIError, match=r"outside api\.github\.com"):
         GitHubRESTClient(token="t").fetch_workflow_runs("o", "r", HEAD_SHA)
-    assert any("more than one page" in r.message for r in caplog.records)

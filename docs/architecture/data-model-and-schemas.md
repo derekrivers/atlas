@@ -649,6 +649,8 @@ class Evidence(BaseModel):
     summary: str
     commit_sha: Optional[str] = None      # required for system-tier CI evidence
     external_run_id: Optional[str] = None # CI workflow / check run ID
+    job_name: Optional[str] = None        # CI job/check identity
+    source_event_at: Optional[datetime] = None # GitHub lifecycle timestamp
     payload_hash: Optional[str] = None    # SHA-256 of raw payload at ingestion
     source_uri: Optional[str] = None
     raw_payload: dict = Field(default_factory=dict)
@@ -670,6 +672,8 @@ CREATE TABLE evidence (
     summary TEXT NOT NULL,
     commit_sha TEXT,
     external_run_id TEXT,
+    job_name TEXT,
+    source_event_at TIMESTAMPTZ,
     payload_hash TEXT,
     source_uri TEXT,
     raw_payload JSONB NOT NULL DEFAULT '{}',

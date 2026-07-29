@@ -49,6 +49,7 @@ def test_evidence_repo_exposes_add_and_queries_only() -> None:
         "add",
         "count",
         "get",
+        "get_by_dedup_key",
         "latest_system_created_at",
         "list",
         "list_for_ticket",
@@ -66,12 +67,13 @@ def test_plan_run_repo_exposes_documented_surface_only() -> None:
     }
 
 
-def test_second_add_for_same_logical_event_creates_new_row(db: Database) -> None:
+def test_second_add_for_same_source_payload_is_idempotent(db: Database) -> None:
     repo = EvidenceRepo(db)
     base = evidence_kwargs() | {"commit_sha": "abc123", "external_run_id": "run-1"}
-    repo.add(Evidence(**base | {"id": uuid4()}))
-    repo.add(Evidence(**base | {"id": uuid4()}))
-    assert len(repo.list()) == 2
+    first = repo.add(Evidence(**base | {"id": uuid4()}))
+    second = repo.add(Evidence(**base | {"id": uuid4()}))
+    assert second == first
+    assert len(repo.list()) == 1
 
 
 # --- trust-tier cap (ADR-0008) ---------------------------------------------
@@ -254,7 +256,14 @@ def test_decision_boundary_at_cap_stored_one_over_truncated(db: Database) -> Non
     assert _stored(repo, at_record.id).raw_payload == at_cap
 
     over_cap = _payload_measuring(RAW_PAYLOAD_CAP_BYTES + 1)
-    over_record = Evidence(**evidence_kwargs() | {"raw_payload": over_cap})
+    over_record = Evidence(
+        **evidence_kwargs()
+        | {
+            "external_run_id": "run-2",
+            "payload_hash": "sha256:" + "2" * 64,
+            "raw_payload": over_cap,
+        }
+    )
     assert repo.add(over_record).raw_payload["_truncated"] is True
     assert _stored(repo, over_record.id).raw_payload != over_cap
 

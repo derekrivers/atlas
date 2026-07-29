@@ -239,6 +239,8 @@ class EvidenceRow(Base):
     summary: Mapped[str] = mapped_column(sa.Text)
     commit_sha: Mapped[str | None] = mapped_column(sa.Text)
     external_run_id: Mapped[str | None] = mapped_column(sa.Text)
+    job_name: Mapped[str | None] = mapped_column(sa.Text)
+    source_event_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     payload_hash: Mapped[str | None] = mapped_column(sa.Text)
     source_uri: Mapped[str | None] = mapped_column(sa.Text)
     raw_payload: Mapped[dict[str, Any]] = mapped_column(

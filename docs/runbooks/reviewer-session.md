@@ -53,9 +53,16 @@ an AI assistant; the reviewer recommends, only the operator approves
   verdict; verification runs at CI parity.
 - **Seeded-defect probes.** Each acceptance criterion is proven
   falsifiable by seeding a defect that must make it fail — the probe
-  must bite before the criterion counts as verified. Seed with
-  `assert 1 == 2`, never `assert False`, which trips ruff B011 and
-  contaminates the probe.
+  must bite before the criterion counts as verified. Seed the smallest
+  realistic defect in the repository's existing test idiom; for a direct
+  assertion probe use `assert 1 == 2`, never `assert False`, which trips ruff
+  B011 and contaminates the probe. Record both the failing probe and restored
+  passing result.
+- **Guard-shaped deliverables.** When a ticket asks for a linter, path guard,
+  policy test, or other repository-wide prohibition, review the proposed
+  matching boundary against the operator ruling before editing production
+  source. The guard must reject the ruled bad shape without banning unrelated
+  literals, directories, or future domain vocabulary.
 - **Enumeration pins.** The ticket count in
   `tests/test_acceptance.py` and the export count in
   `tests/test_schemas_export.py` are confirmed unchanged on every

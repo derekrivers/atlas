@@ -28,12 +28,17 @@ coverage. Results are ingested as normalised Evidence records carrying:
 
 - `commit_sha` (required) — the exact code state attested;
 - `external_run_id` (workflow run / check run ID);
+- `job_name` (workflow/check identity);
+- `source_event_at` (GitHub lifecycle timestamp used for recency);
 - `payload_hash` — SHA-256 of the raw payload at ingestion;
 - the existing `evidence_type`, `status`, `summary`, `raw_payload`.
 
-**Evidence is append-only.** Records are never updated or deleted; a new
-result for the same check and commit is a new record. Verification reads the
-latest system-tier record per (check, commit).
+**Evidence is append-only.** Records are never updated or deleted; a changed
+result for the same check and commit is a new record, while an unchanged
+`(external_run_id, payload_hash)` is not duplicated. Verification evaluates
+the latest GitHub-timestamped execution per `(job_name, check, commit)` and
+folds all current jobs with failure precedence. UUIDs and Atlas ingest time are
+never recency signals.
 
 **Transport: pull first, push later.** Receiving webhooks requires a public
 endpoint, which a local single-operator MVP does not have. The MVP therefore
@@ -51,10 +56,12 @@ every verification decision can be replayed against the exact code state.
 
 ## Consequences
 
-- Evidence model gains `commit_sha`, `external_run_id`, `payload_hash`;
+- Evidence model gains `commit_sha`, `external_run_id`, `job_name`,
+  `source_event_at`, `payload_hash`;
   `created_by_type` determines the trust tier.
-- The Verification Engine requires system-tier evidence for `TESTS`,
-  `LINT`, and `BUILD` check types; agent claims alone can never satisfy them.
+- The Verification Engine requires system-tier evidence for the v1 `TESTS`
+  and `LINT` check types; build and coverage evidence is retained for a later
+  gating decision. Agent claims alone can never satisfy machine checks.
 - Phase 6 ticket scope changes: "evidence ingestion" means the GitHub
   polling client plus the normaliser, not per-tool parsers inside agent
   workspaces.

@@ -213,6 +213,20 @@ class DependencyGraphResponse(BaseModel):
     edges: list[DependencyGraphEdgeSchema]
 
 
+class GraphValidationViolationSchema(BaseModel):
+    """One typed dependency-graph integrity violation."""
+
+    code: str
+    message: str
+
+
+class GraphValidationErrorResponse(BaseModel):
+    """A dependency projection refused because stored graph data is invalid."""
+
+    detail: str
+    violations: list[GraphValidationViolationSchema]
+
+
 class ReviewCheckSchema(BaseModel):
     """One persisted verification outcome in a review item."""
 

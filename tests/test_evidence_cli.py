@@ -142,6 +142,23 @@ def test_pull_prints_human_per_source_counts(
     assert f"total:   {N_TOTAL}" in out
 
 
+def test_repeated_pull_reports_and_persists_no_duplicates(
+    seeded_db: Database, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert run_pull(seeded_db, make_fake(), "--json") == EXIT_OK
+    capsys.readouterr()
+
+    assert run_pull(seeded_db, make_fake(), "--json") == EXIT_OK
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["checks"] == 0
+    assert payload["reviews"] == 0
+    assert payload["docs"] == 0
+    assert payload["total"] == 0
+    assert payload["evidence_ids"] == []
+    assert EvidenceRepo(seeded_db).count() == N_TOTAL
+
+
 # --- the seeded-defect test (criterion 6) -----------------------------------
 
 

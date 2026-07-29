@@ -34,6 +34,7 @@ from atlas.evidence import (
     map_review_to_evidence,
 )
 from atlas.github import NormalisedCheck, NormalisedDocs, NormalisedReview
+from atlas.github.normaliser import payload_hash
 from atlas.storage import Database, EvidenceRepo, TrustTierError
 
 NOW = datetime(2026, 6, 26, tzinfo=UTC)
@@ -54,14 +55,16 @@ def _check(
 ) -> NormalisedCheck:
     """A frozen NormalisedCheck with a full commit-pin triple — the shape
     ATLAS-62 hands the mapper."""
+    payload = raw_payload if raw_payload is not None else {"id": name}
     return NormalisedCheck(
         name=name,
         status=status,
-        external_run_id="run-42",
+        external_run_id=f"run-{name}",
         commit_sha="a" * 40,
-        payload_hash="sha256:" + "0" * 64,
+        payload_hash=payload_hash(payload),
         source_uri="https://github.com/acme/atlas/runs/42",
-        raw_payload=raw_payload if raw_payload is not None else {"id": 42},
+        raw_payload=payload,
+        source_event_at=NOW,
     )
 
 
@@ -90,6 +93,8 @@ def test_test_check_maps_to_system_tier_test_result_and_round_trips(
     # the commit-pin triple is carried straight from the check
     assert evidence.commit_sha == check.commit_sha
     assert evidence.external_run_id == check.external_run_id
+    assert evidence.job_name == check.name
+    assert evidence.source_event_at == check.source_event_at
     assert evidence.payload_hash == check.payload_hash
     assert evidence.created_at == NOW
 
@@ -134,6 +139,18 @@ def test_ingest_persists_every_check(db: Database) -> None:
         EvidenceType.BUILD_RESULT,
     }
     assert len(repo.list()) == 3
+
+
+def test_ingest_skips_unchanged_check_payload(db: Database) -> None:
+    repo = EvidenceRepo(db)
+    check = _check("test")
+
+    first = ingest_checks([check], repo=repo, product_id=uuid4(), now=NOW)
+    second = ingest_checks([check], repo=repo, product_id=uuid4(), now=NOW)
+
+    assert len(first) == 1
+    assert second == []
+    assert repo.count() == 1
 
 
 # --- criterion 3: the job-name contract (seeded defect lives here) ------------
@@ -224,14 +241,15 @@ def _review(
 ) -> NormalisedReview:
     """A frozen NormalisedReview with a full commit-pin triple — the shape
     ATLAS-65's normaliser hands the mapper (always commit-pinned)."""
+    raw_payload = {"id": reviewer, "user": {"login": reviewer}, "state": "APPROVED"}
     return NormalisedReview(
         reviewer=reviewer,
         status=status,
-        external_run_id="review-99",
+        external_run_id=f"review-{reviewer}",
         commit_sha="b" * 40,
-        payload_hash="sha256:" + "f" * 64,
+        payload_hash=payload_hash(raw_payload),
         source_uri="https://github.com/acme/atlas/pull/1#pullrequestreview-99",
-        raw_payload={"id": 99, "user": {"login": reviewer}, "state": "APPROVED"},
+        raw_payload=raw_payload,
     )
 
 

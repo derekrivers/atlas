@@ -1,13 +1,15 @@
 """Drive the acceptance chain for one pull request (ATLAS-040M).
 
-The merge remains an operator action.  This script pauses after the interactive
-confirmation session, then independently refreshes the GitHub PR and refuses to
-run ``atlas verify`` until GitHub reports it merged.
+The merge remains an operator action. This script first requires a PASSED
+verification at the frozen PR head, pauses for the merge, independently verifies
+GitHub's merged state, records the merged proof, upgrades the local schema, and
+runs the two synchronization ticks needed to establish Done in Atlas.
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import subprocess
 import sys
@@ -141,6 +143,29 @@ def _summarise_sync(tick: int, result: subprocess.CompletedProcess[str]) -> None
         print(result.stderr, end="", file=sys.stderr)
 
 
+def _require_passed_verdict(result: subprocess.CompletedProcess[str]) -> str:
+    """Return the verified head, failing closed unless the verdict is PASSED."""
+
+    try:
+        payload = json.loads(result.stdout or "")
+    except json.JSONDecodeError as error:
+        raise RuntimeError(
+            "Pre-merge verification did not emit valid JSON; merge is blocked."
+        ) from error
+    if not isinstance(payload, dict) or payload.get("status") != "passed":
+        status = payload.get("status") if isinstance(payload, dict) else None
+        raise RuntimeError(
+            f"Pre-merge verification is {status or 'unknown'}, not passed; "
+            "merge is blocked."
+        )
+    head_commit = payload.get("head_commit")
+    if not isinstance(head_commit, str) or not head_commit.strip():
+        raise RuntimeError(
+            "Pre-merge verification has no valid head_commit; merge is blocked."
+        )
+    return head_commit
+
+
 def _merged_context(repo: str, pr: int) -> Any:
     client = resolve_github_client(None)
     return resolve_pr_context(repo, pr, client)
@@ -186,23 +211,35 @@ def drive(
         operator,
     )
     verify = ("uv", "run", "atlas", "verify", *common)
+    verify_json = (*verify, "--json")
+    migrate = ("uv", "run", "alembic", "upgrade", "head")
     sync = ("uv", "run", "atlas", "pm", "sync", "--once", "-v")
 
     try:
         _run_step(
-            "1/6",
+            "1/9",
             "Pull evidence",
             evidence,
             resume=_command_text(evidence),
             run_command=run_command,
         )
         _run_step(
-            "2/6",
+            "2/9",
             "Confirm acceptance (interactive)",
             confirm,
             resume=_command_text(confirm),
             run_command=run_command,
         )
+        pre_merge = _run_step(
+            "3/9",
+            "Verify frozen PR head",
+            verify_json,
+            resume=_command_text(verify_json),
+            run_command=run_command,
+            capture=True,
+        )
+        verified_head = _require_passed_verdict(pre_merge)
+        print(f"Pre-merge verdict: passed at head {verified_head}.")
         print("\n=== MERGE GATE ===")
         pause(
             f"Merge {repo} PR #{args.pr} in GitHub, then press Enter "
@@ -217,10 +254,18 @@ def drive(
                 file=sys.stderr,
             )
             return 1
+        if context.head_commit != verified_head:
+            print(
+                f"Merge gate failed: verified head {verified_head} does not match "
+                f"merged PR head {context.head_commit}; post-merge actions are "
+                "blocked.",
+                file=sys.stderr,
+            )
+            return 1
         print(f"Merge verified by GitHub at head {context.head_commit}.")
 
         _run_step(
-            "3/6",
+            "4/9",
             "Verify merged PR",
             verify,
             resume=_command_text(verify),
@@ -229,21 +274,28 @@ def drive(
         checkout = ("git", "checkout", "main")
         pull = ("git", "pull")
         _run_step(
-            "4/6",
+            "5/9",
             "Checkout main",
             checkout,
             resume="git checkout main && git pull",
             run_command=run_command,
         )
         _run_step(
-            "4/6",
+            "6/9",
             "Pull main",
             pull,
             resume="git pull",
             run_command=run_command,
         )
+        _run_step(
+            "7/9",
+            "Upgrade database schema",
+            migrate,
+            resume=_command_text(migrate),
+            run_command=run_command,
+        )
         first = _run_step(
-            "5/6",
+            "8/9",
             "PM sync tick 1",
             sync,
             resume=_command_text(sync),
@@ -252,7 +304,7 @@ def drive(
         )
         _summarise_sync(1, first)
         second = _run_step(
-            "6/6",
+            "9/9",
             "PM sync tick 2",
             sync,
             resume=_command_text(sync),

@@ -8,6 +8,8 @@ seeded-defect target (criterion 7) is the status table below.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 import pytest
 from github_fakes import FakeGitHubClient, load_fixture
 
@@ -135,12 +137,47 @@ def test_check_run_normalises_with_html_url() -> None:
         "name": "build",
         "status": "completed",
         "conclusion": "neutral",
+        "completed_at": "2026-07-29T10:11:12Z",
         "html_url": "https://github.com/o/r/runs/5",
     }
     normalised = normalise_check_run(check, head_sha=HEAD_SHA)
     assert normalised.status == EvidenceStatus.NOT_APPLICABLE
     assert normalised.external_run_id == "5"
     assert normalised.source_uri == "https://github.com/o/r/runs/5"
+    assert normalised.source_event_at == datetime(2026, 7, 29, 10, 11, 12, tzinfo=UTC)
+
+
+def test_workflow_source_time_prefers_updated_at() -> None:
+    run = {
+        "id": 99,
+        "name": "test",
+        "status": "completed",
+        "conclusion": "success",
+        "created_at": "2026-07-29T09:00:00Z",
+        "run_started_at": "2026-07-29T09:01:00Z",
+        "updated_at": "2026-07-29T09:02:00Z",
+    }
+
+    normalised = normalise_workflow_run(run, head_sha=HEAD_SHA)
+
+    assert normalised.source_event_at == datetime(2026, 7, 29, 9, 2, tzinfo=UTC)
+
+
+def test_malformed_source_time_fails_closed_without_crashing(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    run = {
+        "id": 99,
+        "name": "test",
+        "status": "completed",
+        "conclusion": "success",
+        "updated_at": "not-a-time",
+    }
+
+    normalised = normalise_workflow_run(run, head_sha=HEAD_SHA)
+
+    assert normalised.source_event_at is None
+    assert "source order unavailable" in caplog.text
 
 
 # --- against recorded foreign CI payloads -----------------------------------

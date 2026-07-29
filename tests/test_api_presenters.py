@@ -425,7 +425,7 @@ def test_present_system_status_maps_snapshot_fields() -> None:
     response = present_system_status(
         SystemStatus(
             package_version="0.1.0",
-            schema_revision="0020",
+            schema_revision="0021",
             ticket_count=12,
             evidence_count=34,
             last_linear_sync_at=last_sync,
@@ -435,7 +435,7 @@ def test_present_system_status_maps_snapshot_fields() -> None:
 
     assert response == SystemStatusResponse(
         package_version="0.1.0",
-        schema_revision="0020",
+        schema_revision="0021",
         ticket_count=12,
         evidence_count=34,
         last_linear_sync_at=last_sync,
