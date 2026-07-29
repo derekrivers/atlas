@@ -9,5 +9,6 @@ export default defineConfig({
   },
   test: {
     include: ['tests/acceptance/**/*.test.ts'],
+    maxWorkers: 1,
   },
 })
