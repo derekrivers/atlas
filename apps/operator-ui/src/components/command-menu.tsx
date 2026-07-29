@@ -1,6 +1,7 @@
 import React from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { ArrowRight, ChevronRight, Laptop, Moon, Sun } from 'lucide-react'
+import { normaliseTicketKeySearch, ticketDetailHref } from '@/app-shell/surfaces'
 import { useSearch } from '@/context/search-provider'
 import { useTheme } from '@/context/theme-provider'
 import {
@@ -19,21 +20,60 @@ export function CommandMenu() {
   const navigate = useNavigate()
   const { setTheme } = useTheme()
   const { open, setOpen } = useSearch()
+  const [search, setSearch] = React.useState('')
+  const ticketKey = normaliseTicketKeySearch(search)
 
   const runCommand = React.useCallback(
     (command: () => unknown) => {
       setOpen(false)
+      setSearch('')
       command()
     },
     [setOpen]
   )
 
+  const handleOpenChange = React.useCallback(
+    (nextOpen: boolean) => {
+      setOpen(nextOpen)
+      if (!nextOpen) {
+        setSearch('')
+      }
+    },
+    [setOpen]
+  )
+
   return (
-    <CommandDialog modal open={open} onOpenChange={setOpen}>
-      <CommandInput placeholder='Type a command or search...' />
+    <CommandDialog
+      modal
+      open={open}
+      onOpenChange={handleOpenChange}
+      description='Search routes and ticket keys.'
+    >
+      <CommandInput
+        placeholder='Search routes or ticket keys...'
+        value={search}
+        onValueChange={setSearch}
+      />
       <CommandList>
         <ScrollArea type='hover' className='h-72 pe-1'>
           <CommandEmpty>No results found.</CommandEmpty>
+          {ticketKey ? (
+            <CommandGroup heading='Tickets'>
+              <CommandItem
+                value={`Open ${ticketKey}`}
+                onSelect={() => {
+                  runCommand(() =>
+                    navigate({ to: ticketDetailHref(ticketKey) })
+                  )
+                }}
+              >
+                <div className='flex size-4 items-center justify-center'>
+                  <ArrowRight className='text-muted-foreground/80 size-2' />
+                </div>
+                Open {ticketKey}
+              </CommandItem>
+            </CommandGroup>
+          ) : null}
           {sidebarData.navGroups.map((group) => (
             <CommandGroup key={group.title} heading={group.title}>
               {group.items.map((navItem, i) => {

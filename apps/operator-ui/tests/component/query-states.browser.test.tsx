@@ -45,14 +45,12 @@ describe('shared query state primitives', () => {
     expect(document.body.textContent).toContain('No records matched.')
   })
 
-  it('renders request errors with an optional retry action', async () => {
-    await render(
-      <RequestErrorState error={new Error('Request exploded')} onRetry={() => {}} />
-    )
+  it('renders request errors without a retry action', async () => {
+    await render(<RequestErrorState error={new Error('Request exploded')} />)
 
     expect(document.body.textContent).toContain('Request failed')
     expect(document.body.textContent).toContain('Request exploded')
-    expect(document.body.textContent).toContain('Retry')
+    expect(document.body.textContent).not.toContain('Retry')
   })
 
   it('renders API unreachable as a named actionable state', async () => {

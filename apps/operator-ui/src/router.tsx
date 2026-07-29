@@ -1,108 +1,121 @@
 import { createRootRoute, createRoute, createRouter } from '@tanstack/react-router'
+import {
+  PlaceholderRoute,
+  ThrowingOperatorView,
+} from '@/app-shell/route-components'
+import { operatorSurfaces, type OperatorSurface } from '@/app-shell/surfaces'
 import { RootRouteChrome } from '@/components/root-route-chrome'
 import { OperatorLayout } from '@/components/layout/operator-layout'
-import { GeneralError } from '@/features/errors/general-error'
+import { GeneralError, RouteErrorBoundary } from '@/features/errors/general-error'
 import { NotFoundError } from '@/features/errors/not-found-error'
-import { OperatorViewPlaceholder } from '@/features/placeholders/operator-view-placeholder'
+import { TicketDetailPlaceholder } from '@/features/placeholders/ticket-detail-placeholder'
 
-const rootRoute = createRootRoute({
-  component: RootRouteChrome,
-  notFoundComponent: NotFoundError,
-  errorComponent: GeneralError,
-})
+type CreateOperatorRouterOptions = {
+  includeErrorProbe?: boolean
+}
 
-const operatorRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  id: 'operator',
-  component: OperatorLayout,
-})
+function getSurface(id: OperatorSurface['id']): OperatorSurface {
+  const surface = operatorSurfaces.find((item) => item.id === id)
+  if (!surface) {
+    throw new Error(`Unknown operator surface: ${id}`)
+  }
+  return surface
+}
 
-const overviewRoute = createRoute({
-  getParentRoute: () => operatorRoute,
-  path: '/',
-  component: () => (
-    <OperatorViewPlaceholder
-      eyebrow='Overview'
-      title='Operational Snapshot'
-      body='Status, board, review, and path data are reserved for later view tickets.'
-    />
-  ),
-})
+function createOperatorRouteTree({
+  includeErrorProbe = false,
+}: CreateOperatorRouterOptions) {
+  const rootRoute = createRootRoute({
+    component: RootRouteChrome,
+    notFoundComponent: () => (
+      <OperatorLayout>
+        <NotFoundError />
+      </OperatorLayout>
+    ),
+    errorComponent: () => (
+      <OperatorLayout>
+        <GeneralError minimal />
+      </OperatorLayout>
+    ),
+  })
 
-const ticketsRoute = createRoute({
-  getParentRoute: () => operatorRoute,
-  path: 'tickets',
-  component: () => (
-    <OperatorViewPlaceholder
-      eyebrow='Board'
-      title='Ticket Board'
-      body='The sortable board shell is present; live records are not requested here.'
-    />
-  ),
-})
+  const operatorRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    id: 'operator',
+    component: OperatorLayout,
+    errorComponent: RouteErrorBoundary,
+  })
 
-const ticketDetailRoute = createRoute({
-  getParentRoute: () => operatorRoute,
-  path: 'tickets/$key',
-  component: () => (
-    <OperatorViewPlaceholder
-      eyebrow='Ticket Detail'
-      title='Ticket Definition'
-      body='Definition, metadata, evidence, and dependency panels remain placeholders.'
-    />
-  ),
-})
+  const overview = getSurface('overview')
+  const tickets = getSurface('tickets')
+  const ticketDetail = getSurface('ticket-detail')
+  const reviews = getSurface('reviews')
+  const criticalPath = getSurface('critical-path')
+  const dependencyGraph = getSurface('dependency-graph')
+  const lessons = getSurface('lessons')
 
-const reviewsRoute = createRoute({
-  getParentRoute: () => operatorRoute,
-  path: 'reviews',
-  component: () => (
-    <OperatorViewPlaceholder
-      eyebrow='Review Queue'
-      title='Acceptance Review'
-      body='Verification checks and evidence gates will render after the API client lands.'
-    />
-  ),
-})
+  const operatorChildren = [
+    createRoute({
+      getParentRoute: () => operatorRoute,
+      path: overview.routePath,
+      component: () => <PlaceholderRoute surface={overview} />,
+      errorComponent: RouteErrorBoundary,
+    }),
+    createRoute({
+      getParentRoute: () => operatorRoute,
+      path: tickets.routePath,
+      component: () => <PlaceholderRoute surface={tickets} />,
+      errorComponent: RouteErrorBoundary,
+    }),
+    createRoute({
+      getParentRoute: () => operatorRoute,
+      path: ticketDetail.routePath,
+      component: () => <TicketDetailPlaceholder surface={ticketDetail} />,
+      errorComponent: RouteErrorBoundary,
+    }),
+    createRoute({
+      getParentRoute: () => operatorRoute,
+      path: reviews.routePath,
+      component: () => <PlaceholderRoute surface={reviews} />,
+      errorComponent: RouteErrorBoundary,
+    }),
+    createRoute({
+      getParentRoute: () => operatorRoute,
+      path: criticalPath.routePath,
+      component: () => <PlaceholderRoute surface={criticalPath} />,
+      errorComponent: RouteErrorBoundary,
+    }),
+    createRoute({
+      getParentRoute: () => operatorRoute,
+      path: dependencyGraph.routePath,
+      component: () => <PlaceholderRoute surface={dependencyGraph} />,
+      errorComponent: RouteErrorBoundary,
+    }),
+    createRoute({
+      getParentRoute: () => operatorRoute,
+      path: lessons.routePath,
+      component: () => <PlaceholderRoute surface={lessons} />,
+      errorComponent: RouteErrorBoundary,
+    }),
+  ]
 
-const criticalPathRoute = createRoute({
-  getParentRoute: () => operatorRoute,
-  path: 'critical-path',
-  component: () => (
-    <OperatorViewPlaceholder
-      eyebrow='Dependencies'
-      title='Critical Path'
-      body='The path route is reserved without querying dependency projections.'
-    />
-  ),
-})
+  if (includeErrorProbe) {
+    operatorChildren.push(
+      createRoute({
+        getParentRoute: () => operatorRoute,
+        path: '__atlas-error-probe',
+        component: ThrowingOperatorView,
+        errorComponent: RouteErrorBoundary,
+      })
+    )
+  }
 
-const lessonsRoute = createRoute({
-  getParentRoute: () => operatorRoute,
-  path: 'lessons',
-  component: () => (
-    <OperatorViewPlaceholder
-      eyebrow='Knowledge'
-      title='Lessons'
-      body='Draft and active lesson tables will be wired by their view ticket.'
-    />
-  ),
-})
+  return rootRoute.addChildren([operatorRoute.addChildren(operatorChildren)])
+}
 
-const routeTree = rootRoute.addChildren([
-  operatorRoute.addChildren([
-    overviewRoute,
-    ticketsRoute,
-    ticketDetailRoute,
-    reviewsRoute,
-    criticalPathRoute,
-    lessonsRoute,
-  ]),
-])
-
-export function createOperatorRouter() {
+export function createOperatorRouter(options: CreateOperatorRouterOptions = {}) {
   return createRouter({
-    routeTree,
+    routeTree: createOperatorRouteTree(options),
     defaultPreload: 'intent',
     defaultPreloadStaleTime: 0,
   })

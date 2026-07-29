@@ -1,5 +1,6 @@
 import { useNavigate, useRouter } from '@tanstack/react-router'
 import { cn } from '@/lib/utils'
+import { Main } from '@/components/layout/main'
 import { Button } from '@/components/ui/button'
 
 type GeneralErrorProps = React.HTMLAttributes<HTMLDivElement> & {
@@ -32,5 +33,21 @@ export function GeneralError({
         )}
       </div>
     </div>
+  )
+}
+
+export function RouteErrorBoundary() {
+  return (
+    <Main>
+      <div
+        role='alert'
+        className='border-border bg-card text-card-foreground flex min-h-64 flex-col items-center justify-center rounded-lg border p-6 text-center'
+      >
+        <span className='font-medium'>Something went wrong</span>
+        <p className='text-muted-foreground mt-1 text-sm'>
+          The route could not render.
+        </p>
+      </div>
+    </Main>
   )
 }
