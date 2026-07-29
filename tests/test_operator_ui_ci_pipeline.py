@@ -215,6 +215,12 @@ def test_operator_ui_e2e_ci_uses_seeded_live_api_harness() -> None:
     assert "/api/v1/status" in server
 
 
+def test_operator_ui_acceptance_ci_prepares_python_environment() -> None:
+    runs = _run_steps(_job("test-operator-ui-acceptance"))
+    assert "uv sync --locked" in runs
+    assert runs.index("uv sync --locked") < runs.index("npm run test:acceptance")
+
+
 def test_local_runbook_documents_every_operator_ui_ci_stage_command() -> None:
     runbook = _read_text(LOCAL_RUNBOOK)
     for command in OPERATOR_UI_STAGE_COMMANDS.values():
