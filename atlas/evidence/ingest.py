@@ -9,9 +9,9 @@ every input produces a record — nothing is dropped here. The system-tier
 pinning guard (ATLAS-61) runs inside ``EvidenceRepo.add`` — this is its first
 real producer.
 
-Dedup (skip a re-polled run already stored, via the normaliser's
-``(external_run_id, payload_hash)`` key) belongs to the poller/tick loop
-(Phase 8), not here; ATLAS-63 ingests every recognised check it is handed.
+Dedup is enforced at the persistence boundary via the normaliser's
+``(external_run_id, payload_hash)`` identity. Re-polling an unchanged source
+returns no newly persisted record; a changed payload appends a new one.
 """
 
 from __future__ import annotations
@@ -28,6 +28,23 @@ from atlas.evidence.mapping import (
 )
 from atlas.github import NormalisedCheck, NormalisedDocs, NormalisedReview
 from atlas.storage import EvidenceRepo
+
+
+def _persist_if_new(
+    evidence: Evidence, *, repo: EvidenceRepo, require_job_metadata: bool = False
+) -> Evidence | None:
+    """Append ``evidence`` unless its immutable source payload already exists."""
+
+    assert evidence.external_run_id is not None
+    assert evidence.payload_hash is not None
+    existing = repo.get_by_dedup_key(
+        evidence.external_run_id,
+        evidence.payload_hash,
+        require_job_metadata=require_job_metadata,
+    )
+    if existing is not None:
+        return None
+    return repo.add(evidence)
 
 
 def ingest_checks(
@@ -48,7 +65,9 @@ def ingest_checks(
     persisted: list[Evidence] = []
     for check in checks:
         evidence = map_check_to_evidence(check, product_id=product_id, now=now)
-        persisted.append(repo.add(evidence))
+        stored = _persist_if_new(evidence, repo=repo, require_job_metadata=True)
+        if stored is not None:
+            persisted.append(stored)
     return persisted
 
 
@@ -72,7 +91,9 @@ def ingest_reviews(
     persisted: list[Evidence] = []
     for review in reviews:
         evidence = map_review_to_evidence(review, product_id=product_id, now=now)
-        persisted.append(repo.add(evidence))
+        stored = _persist_if_new(evidence, repo=repo)
+        if stored is not None:
+            persisted.append(stored)
     return persisted
 
 
@@ -101,4 +122,5 @@ def ingest_docs(
     if docs is None:
         return []
     evidence = map_docs_to_evidence(docs, product_id=product_id, now=now)
-    return [repo.add(evidence)]
+    stored = _persist_if_new(evidence, repo=repo)
+    return [] if stored is None else [stored]

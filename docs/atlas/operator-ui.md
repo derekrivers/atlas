@@ -209,7 +209,9 @@ adding routes beyond the two named above is out of scope.
 
 The UI adopts `satnaing/shadcn-admin` v2.2.1 (MIT): React 19, TypeScript,
 Vite, Tailwind 4, TanStack Router, TanStack Query, TanStack Table, Radix
-primitives, `cmdk`, Recharts, Zustand, Zod.
+primitives, and `cmdk`. Recharts, Zustand, and Zod are intentionally omitted
+until a shipped view needs them; the adoption boundary is capability-driven,
+not a requirement to retain unused template dependencies.
 
 Three rulings govern the adoption:
 

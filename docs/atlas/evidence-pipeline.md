@@ -16,6 +16,9 @@ receiver can replace it without schema change — ADR-0008):
 - Dedup key: `(external_run_id, payload_hash)` — re-polling an unchanged
   run creates nothing; a re-run of the same workflow creates a new
   append-only record.
+- List endpoints follow every GitHub `Link: rel="next"` page. Conditional
+  requests replay cached state on `304 Not Modified`; repository dedup, not an
+  empty-response sentinel, suppresses unchanged evidence.
 
 ## Job-name convention (CI contract)
 
@@ -33,6 +36,12 @@ repo-owned contract rather than parser heuristics. Jobs in
 Unrecognised jobs are ingested as BUILD_RESULT with a warning so nothing
 is silently dropped. The doc linter checks workflow job names against this
 table.
+
+Each CI record also stores the exact `job_name` and GitHub lifecycle
+`source_event_at` (`updated_at` for workflows, `completed_at`/`started_at` for
+checks). Verification resolves the current execution independently per job by
+this source timestamp. Missing ordering metadata fails closed; UUIDs and Atlas
+ingest time never decide CI recency.
 
 ## Status normalisation
 
@@ -66,9 +75,10 @@ by the knowledge-core repository rule.
 
 ## Retention
 
-`raw_payload` is capped at 64KB; larger payloads store the first 64KB, the
-full payload's hash, and `source_uri` for retrieval from GitHub. Evidence
-rows are never deleted; a retention review is a Phase 10+ concern.
+`raw_payload` is capped at 64KB; a larger payload is replaced by a compact
+marker containing its original byte count, full payload hash, and `source_uri`
+for retrieval from GitHub. Evidence rows are never deleted; a retention review
+is a Phase 10+ concern.
 
 ## CLI
 

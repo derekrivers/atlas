@@ -13,4 +13,4 @@ if [[ "${CI:-}" == "true" ]]; then
 else
   npx playwright install chromium
 fi
-npm run verify:core
+npm run test:e2e

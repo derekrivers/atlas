@@ -134,7 +134,7 @@ def _adapt_machine(
         check_type=check_type,
         required=True,
         status=result.status,
-        evidence_ids=_single(result.evidence_id),
+        evidence_ids=result.evidence_ids,
         reason=result.reason,
     )
 

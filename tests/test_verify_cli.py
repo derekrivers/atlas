@@ -104,6 +104,7 @@ def _evidence(
     raw_payload: dict[str, Any] | None = None,
 ) -> Evidence:
     is_system = created_by_type == ActorType.SYSTEM
+    is_machine = evidence_type in {ET.TEST_RESULT, ET.LINT_RESULT}
     return Evidence(
         id=uuid4(),
         product_id=uuid4(),
@@ -112,8 +113,14 @@ def _evidence(
         status=status,
         summary="e",
         commit_sha=commit_sha,
-        external_run_id="run-1" if is_system else None,
-        payload_hash="h" if is_system else None,
+        external_run_id=(
+            f"run-{evidence_type.value}-{commit_sha}" if is_system else None
+        ),
+        job_name=evidence_type.value if is_system and is_machine else None,
+        source_event_at=NOW if is_system and is_machine else None,
+        payload_hash=(
+            f"hash-{evidence_type.value}-{commit_sha}" if is_system else None
+        ),
         raw_payload=raw_payload or {},
         created_by_type=created_by_type,
         created_by_id="ci" if is_system else "operator",

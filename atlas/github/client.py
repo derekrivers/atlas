@@ -18,7 +18,8 @@ and the ticket-driven tick loop is Phase 8.
 
 Rate-limit discipline (ADR-0008): conditional requests with ``If-None-Match``
 using the ETag from the prior response keep polling inside the rate limit; a
-304 Not Modified yields the empty list (no new normalised event). A
+304 Not Modified replays the cached representation so state-oriented callers
+never mistake "unchanged" for "empty" (the ingest boundary deduplicates it). A
 secondary-rate-limit response (403/429 with ``Retry-After`` or
 ``x-ratelimit-remaining: 0``) is retried a bounded number of times honouring
 ``Retry-After``, then raises ``GitHubAPIError`` -- never an unbounded loop.
@@ -31,7 +32,6 @@ inject the in-memory fake (``tests/github_fakes.py``) or stub ``urllib``
 from __future__ import annotations
 
 import json
-import logging
 import os
 import time
 from collections.abc import Callable
@@ -43,10 +43,8 @@ from urllib import request as urllib_request
 API_ROOT = "https://api.github.com"
 TOKEN_ENV = "GITHUB_TOKEN"
 API_VERSION = "2022-11-28"
-# GitHub's max page size. We request it explicitly rather than rely on the
-# default (30). Full Link-header pagination is a deliberate follow-up, exactly
-# as atlas/linear/client.py defers paging past its `first: 250` bound to
-# ATLAS-42: a second page is surfaced (a warning), never silently dropped.
+# GitHub's max page size. Every Link rel="next" page is followed so evidence,
+# review, documentation, and scope decisions always see the complete result.
 PER_PAGE = 100
 # Bounded retries on a secondary-rate-limit response before raising, so the
 # backoff can never become an unbounded loop (ADR-0008).
@@ -55,8 +53,6 @@ MAX_RATE_LIMIT_RETRIES = 3
 # Retry-After; bounded so a hostile/garbled header cannot stall a tick.
 _DEFAULT_BACKOFF_SECONDS = 1.0
 _MAX_BACKOFF_SECONDS = 60.0
-
-logger = logging.getLogger("atlas.github.client")
 
 # The result type of one conditional GET, parametrised over the parse strategy
 # (array endpoints -> list, the pull-request endpoint -> dict) so the shared
@@ -137,8 +133,8 @@ class GitHubRESTClient:
 
     Uses the stdlib ``urllib`` transport (no third-party HTTP dependency).
     The token is read from ``GITHUB_TOKEN`` at construction and never
-    exposed. ETags from each response are cached per request URL so the next
-    poll can send a conditional request; a 304 returns the empty list.
+    exposed. ETags and parsed representations are cached per request URL so the
+    next poll can send a conditional request; a 304 replays cached state.
     """
 
     def __init__(
@@ -156,6 +152,8 @@ class GitHubRESTClient:
         self._sleep = sleep
         # Per-URL ETag cache for conditional requests (ADR-0008 rate limits).
         self._etags: dict[str, str] = {}
+        self._page_cache: dict[str, tuple[list[dict[str, Any]], str | None]] = {}
+        self._object_cache: dict[str, dict[str, Any]] = {}
 
     def __repr__(self) -> str:  # never expose the token
         return "GitHubRESTClient(token=***)"
@@ -198,16 +196,16 @@ class GitHubRESTClient:
         # The pull-request endpoint returns a single OBJECT (an envelope, not a
         # bare array): the body IS the result, so there is no result_key/list to
         # unwrap. It rides the SAME conditional-request + rate-limit core as the
-        # list endpoints (it sends If-None-Match like they do); only the 304
-        # handler diverges -- there is no empty-object analogue of [] and no body
-        # cache to replay, so a 304 raises rather than returning a footgun {}
-        # (ATLAS-67). A one-shot ``pull`` never re-fetches the same PR object, so
-        # a 304 here is unexpected; the message says so.
+        # list endpoints (it sends If-None-Match like they do). A 304 replays
+        # the cached object rather than returning a footgun empty object.
         path = f"/repos/{owner}/{repo}/pulls/{pr_number}"
         url = f"{API_ROOT}{path}"
 
         def _on_not_modified() -> dict[str, Any]:
-            raise GitHubAPIError("PR object unexpectedly 304 with no cached body")
+            cached = self._object_cache.get(url)
+            if cached is None:
+                raise GitHubAPIError("PR object returned 304 with no cached body")
+            return cached
 
         return self._send(
             url,
@@ -225,19 +223,42 @@ class GitHubRESTClient:
         With ``result_key`` set, the parsed body is an envelope and the
         ``result_key`` array is returned; with ``result_key=None`` the parsed
         body IS the list (the reviews endpoint, ATLAS-65). A 304 (ETag hit)
-        returns ``[]`` -- the unchanged resource produces no new normalised
-        event. A secondary-rate-limit response is retried a bounded number of
+        replays cached state. A secondary-rate-limit response is retried a
+        bounded number of
         times honouring ``Retry-After``, then raises. The conditional-request,
         backoff, and error handling live in the shared :meth:`_send` core; this
-        wrapper only supplies the URL, the array parse, and the 304 -> ``[]``.
+        wrapper supplies the initial URL and walks every trusted ``next`` link.
         """
         query = urllib_parse.urlencode({**params, "per_page": str(PER_PAGE)})
-        url = f"{API_ROOT}{path}?{query}"
-        return self._send(
-            url,
-            parse=lambda response: self._read_page(response, result_key, url),
-            on_not_modified=lambda: [],
-        )
+        next_url: str | None = f"{API_ROOT}{path}?{query}"
+        visited: set[str] = set()
+        items: list[dict[str, Any]] = []
+        while next_url is not None:
+            if next_url in visited:
+                raise GitHubAPIError("GitHub pagination returned a Link cycle")
+            visited.add(next_url)
+            page_url = next_url
+
+            def _on_not_modified(
+                current_url: str = page_url,
+            ) -> tuple[list[dict[str, Any]], str | None]:
+                cached = self._page_cache.get(current_url)
+                if cached is None:
+                    raise GitHubAPIError("GitHub page returned 304 with no cached body")
+                return cached
+
+            def _parse_page(
+                response: Any, current_url: str = page_url
+            ) -> tuple[list[dict[str, Any]], str | None]:
+                return self._read_page(response, result_key, current_url)
+
+            page, next_url = self._send(
+                page_url,
+                parse=_parse_page,
+                on_not_modified=_on_not_modified,
+            )
+            items.extend(page)
+        return items
 
     def _send(
         self,
@@ -254,8 +275,7 @@ class GitHubRESTClient:
         retries a secondary-rate-limit response a bounded number of times
         honouring ``Retry-After``, and maps every HTTP/transport failure to
         ``GitHubAPIError``. The only per-caller variation is ``parse`` (array vs
-        object body) and ``on_not_modified`` (array -> ``[]``; the PR object ->
-        raise, since there is no empty-object sentinel and no body cache); the
+        object body) and ``on_not_modified`` (both replay cached state); the
         conditional-request and rate-limit behaviour is identical for every
         endpoint, which the shared-core tests pin.
         """
@@ -268,7 +288,7 @@ class GitHubRESTClient:
                     return parse(response)
             except urllib_error.HTTPError as error:
                 if error.code == 304:
-                    return on_not_modified()  # ETag hit: nothing changed
+                    return on_not_modified()  # ETag hit: replay cached state
                 if self._is_rate_limited(error) and attempt < MAX_RATE_LIMIT_RETRIES:
                     self._sleep(self._retry_after_seconds(error))
                     continue
@@ -299,21 +319,11 @@ class GitHubRESTClient:
 
     def _read_page(
         self, response: Any, result_key: str | None, url: str
-    ) -> list[dict[str, Any]]:
+    ) -> tuple[list[dict[str, Any]], str | None]:
         etag = response.headers.get("ETag")
         if etag is not None:
             self._etags[url] = etag
-        # The evidence layer's contract is that nothing is silently dropped:
-        # a second page (Link rel="next") is surfaced rather than discarded.
-        # Full Link-header pagination stays a follow-up.
-        link = response.headers.get("Link") or ""
-        if 'rel="next"' in link:
-            logger.warning(
-                "GitHub %s has more than one page (per_page=%d); only the first "
-                "page was read -- full pagination is a follow-up (ATLAS-62)",
-                result_key or "reviews",
-                PER_PAGE,
-            )
+        next_url = self._next_link(response.headers.get("Link"))
         try:
             body = json.loads(response.read().decode())
         except json.JSONDecodeError as error:
@@ -324,7 +334,9 @@ class GitHubRESTClient:
         if not isinstance(items, list):
             label = result_key or "response body"
             raise GitHubAPIError(f"GitHub API {label} was not a list")
-        return items
+        page = (items, next_url)
+        self._page_cache[url] = page
+        return page
 
     def _read_object(self, response: Any, url: str) -> dict[str, Any]:
         """Read one 200 response whose body is a single JSON OBJECT (ATLAS-67).
@@ -345,7 +357,31 @@ class GitHubRESTClient:
             raise GitHubAPIError(f"GitHub API returned non-JSON: {error}") from error
         if not isinstance(body, dict):
             raise GitHubAPIError("GitHub API pull-request response was not an object")
+        self._object_cache[url] = body
         return body
+
+    @staticmethod
+    def _next_link(link_header: str | None) -> str | None:
+        """Return a trusted GitHub ``rel=next`` URL from a Link header."""
+
+        if not link_header:
+            return None
+        for part in link_header.split(","):
+            target, *parameters = part.split(";")
+            if not any(parameter.strip() == 'rel="next"' for parameter in parameters):
+                continue
+            target = target.strip()
+            if not (target.startswith("<") and target.endswith(">")):
+                raise GitHubAPIError("GitHub pagination Link target was malformed")
+            url = target[1:-1]
+            parsed = urllib_parse.urlsplit(url)
+            root = urllib_parse.urlsplit(API_ROOT)
+            if (parsed.scheme, parsed.netloc) != (root.scheme, root.netloc):
+                raise GitHubAPIError(
+                    "GitHub pagination Link target was outside api.github.com"
+                )
+            return url
+        return None
 
     @staticmethod
     def _is_rate_limited(error: urllib_error.HTTPError) -> bool:

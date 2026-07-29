@@ -36,10 +36,15 @@ so tightening it is a doc change.
 
 For each required check on ticket T with PR head commit C:
 
-- **tests / lint / build / coverage:** the latest system-tier evidence of
-  the matching type with `commit_sha == C`. Older commits never satisfy a
-  check — a new push resets machine checks to PENDING. Agent-tier
-  evidence is ignored for these checks entirely.
+- **tests / lint:** for each matching CI `job_name`, the execution with the
+  greatest GitHub lifecycle `source_event_at` and `commit_sha == C` is current.
+  FAILED has precedence across current jobs; all current jobs must be PASSED
+  for the check to pass, and every other combination is PENDING. Equal source
+  timestamps are folded together; UUIDs never decide recency. Missing job or
+  source-time metadata fails closed until evidence is re-pulled. Older commits
+  never satisfy a check — a new push resets machine checks to PENDING.
+  Agent-tier evidence is ignored entirely. BUILD/COVERAGE evidence is ingested
+  but is not a v1 `VerificationCheckType`.
 - **documentation:** a DOCUMENTATION_UPDATE record for C covering at least
   one path named in `documentation_requirements`.
 - **acceptance_criteria (v1, honest):** operator-confirmed.

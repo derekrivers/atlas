@@ -13,8 +13,8 @@ approves (ADR-0009).
 
 ## The spine
 
-**review → evidence → confirm → verify → merge at the verdict commit →
-board Done → sync.**
+**review → freeze → evidence → confirm → verify PASSED → merge at the
+verdict commit → verify merged proof → schema upgrade → sync twice → Done.**
 
 The single binding invariant: the verdict pins to the PR head commit, and
 the merge decision must consume that same commit. Anything that moves the
@@ -28,9 +28,9 @@ head after evidence is pulled restarts the spine from evidence.
   the issue title and context pack, never the ATL-N Linear board number**.
 - CI green at the head commit. `unrecognised CI job … -> BUILD_RESULT`
   warnings for the workflow rollup and CodeQL are benign.
-- Nothing merges to main underneath an open agent PR under acceptance.
-  One PR through the spine at a time until concurrency is deliberately
-  raised.
+- Parallel development and review are allowed before step 2. From head freeze
+  through merge, only one PR occupies the acceptance spine. A sibling merge
+  makes every trailing PR rebase and restart at step 3.
 
 ## 1. Review (reviewer-tier, not the gate)
 
@@ -51,65 +51,81 @@ to a superseded commit (the L-6 stale-verdict lesson).
 ## 3. Evidence
 
 ```
-atlas evidence pull --pr <N> --repo <owner>/<repo>
+uv run atlas evidence pull --pr <N> --repo <owner>/<repo>
 ```
 
 Requires `GITHUB_TOKEN`. **`reviews: 0` is normal** — agent PRs are
 authored under the operator's account, GitHub forbids self-approval, and
-the loop does not use GitHub reviews as gate evidence. Re-running is
-append-only.
+the loop does not use GitHub reviews as gate evidence. Re-running an
+unchanged source creates no duplicate evidence.
 
 ## 4. Confirm (the human gate)
 
 ```
-atlas confirm --pr <N> --repo <owner>/<repo> --operator <id>
+uv run atlas confirm --pr <N> --repo <owner>/<repo> --operator <id>
 ```
 
-Writes the human-tier `MANUAL_APPROVAL` and acceptance-criterion
-confirmations the evaluators consume. This — not a GitHub review — is the
-human gate. Confirm only what was verified in step 1.
+Before writing confirmations, compare the live ticket criteria with the
+criteria reviewed in step 1. Any wording or criterion-set drift restarts the
+review; never confirm a remembered or superseded criterion. The command writes
+the human-tier `MANUAL_APPROVAL` and acceptance-criterion confirmations the
+evaluators consume. This — not a GitHub review — is the human gate.
 
 ## 5. Verify
 
 ```
-atlas verify --pr <N> --repo <owner>/<repo>
+uv run atlas verify --pr <N> --repo <owner>/<repo>
 ```
 
-Composes the verdict from stored evidence against the required-check
-matrix for the ticket's type and risk. **Read the report, not the exit
-code.** Non-PASSED routing: missing human-tier → redo confirm; failing
-machine evidence → Changes Requested (the agent's resume re-runs CI on a
-new head; spine restarts at step 3); scope/acceptance failure → operator
-judgement.
+Composes the verdict from stored evidence against the required-check matrix
+for the ticket's type and risk. **Only an explicit PASSED report opens the
+merge gate; the command exit code does not.** Non-PASSED routing: missing
+human-tier → redo confirm; failing machine evidence → Changes Requested (the
+agent's resume re-runs CI on a new head; spine restarts at step 3);
+scope/acceptance failure → operator judgement. Prefer the fail-closed driver:
+
+```
+uv run python scripts/close_ticket.py --pr <N> --repo <owner>/<repo> \
+  --operator <id>
+```
 
 ## 6. Merge — at the verdict commit
 
 Verdict PASSED → merge now, while the head is provably the verdict commit.
 Squash mints a new SHA on main; acceptable because the verdict gated the
-pre-merge decision at the verified head. A sibling change landing on main
-between verdict and merge does not invalidate the verdict; a merge
-*conflict* does — route it through Changes Requested so the agent rebases
-under its contract, never hand-resolve on the agent's branch.
+pre-merge decision at the verified head. No sibling lands during this
+freeze-to-merge interval. A trailing PR rebases after the merge and restarts
+its evidence spine; never hand-resolve a conflict on the agent's branch.
 
-## 7. Done is a hand motion
+## 7. Record merged proof and verify again
 
-**Drag the ticket to Done in Linear yourself.** No `atlas` command moves
-it — status is operator-owned and one-directional (Linear → Atlas,
-ADR-0006); `stateId` is not in the outbound payload. `atlas pm sync
---once` only *records* the transition after you drag it. This is the most
-frequently mistaken step: sync does not move the card.
+```
+uv run atlas verify --pr <N> --repo <owner>/<repo>
+```
+
+Run verification after GitHub reports the PR merged. This records the
+system-tier `PR_MERGED` evidence at the verdict commit. Without that proof the
+completion service must refuse Done.
 
 ## 8. Migration parity — before the next sync
 
-If the merged PR's diff touched `atlas/storage/migrations/versions/`, run
-`uv run alembic upgrade head` before the next `atlas pm sync`. The store
+After updating local `main`, run `uv run alembic upgrade head` before the next
+`atlas pm sync` (unconditionally is safe). The store
 is a different surface from the code; a merged migration is not an applied
 one. Skipping this crashes the next tick with `OperationalError: no such
 column …` (and, on write paths, discards LLM spend). ATLAS-174's guard now
 fails these fast with a named error, but the discipline is still to
 upgrade.
 
-## 9. Silence discipline
+## 9. Gated completion and reconciliation
+
+Run `uv run atlas pm sync --once -v` twice. The first tick may move the Linear
+card from Review Required to Done only when the persisted verdict is PASSED and
+the matching system-tier `PR_MERGED` evidence exists. The second tick pulls
+that Linear state back into Atlas. Never drag a card to Done manually: doing so
+bypasses the completion gate and creates an integrity anomaly.
+
+## 10. Silence discipline
 
 One-shot commands report their result on stdout as of ATLAS-170/178, but
 INFO logging is off by default. For any command: silence + expected board
@@ -143,7 +159,7 @@ success from silence alone — verify on the observable (board header,
   are noise.
 - Freeze the head between evidence and merge; a moved head restarts the
   spine.
-- Done is a hand motion; sync only records it.
+- Done is a gated system transition; never drag it manually.
 - Upgrade the schema after a migration-carrying merge, before the sync.
 - Needs Human is pull-invisible: repair and push passes cannot see a
   ticket parked there.

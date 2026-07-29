@@ -8,11 +8,11 @@ system-tier CI evidence pinned to ``C``? It is the first per-check evaluator
 and the core the Phase 7 milestone gates on — agent claims alone can NEVER
 satisfy a machine check (ADR-0008).
 
-The rule (verification-engine.md): the latest system-tier evidence of the
-matching type with ``commit_sha == C`` decides the check; its status passes
-through unchanged. Older or different commits never satisfy a check — a new
-push resets machine checks to PENDING. Agent-tier (and human-tier) evidence
-is ignored for these checks entirely.
+The rule (verification-engine.md): for each CI job name, the latest execution
+by GitHub-supplied lifecycle time decides that job, then fail precedence folds
+the current job outcomes. Older or different commits never satisfy a check —
+a new push resets machine checks to PENDING. Agent-tier (and human-tier)
+evidence is ignored for these checks entirely. UUIDs never decide recency.
 
 PURE and layer-faithful (D6): this module imports ``atlas.core`` only —
 models, enums, and ``trust.evidence_tier`` (the ONLY place tier logic lives;
@@ -29,7 +29,7 @@ evidence, a record with ``commit_sha=None``, or a non-machine check type.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from uuid import UUID
 
@@ -65,13 +65,10 @@ MACHINE_CHECK_TYPES: frozenset[VerificationCheckType] = frozenset(
 class MachineCheckEvaluation:
     """The result of :func:`evaluate_machine_check` (D5).
 
-    Frozen: an evaluation is an immutable record. ``status`` is the pinned
-    evidence record's status passed through unchanged (PASSED/FAILED/WARNING/
-    …) when a system-tier record at the head commit exists, ``PENDING`` when
-    none does (a missing check is "not yet proven", never "proven failing"),
-    or ``NOT_APPLICABLE`` for a non-machine check type. ``evidence_id`` names
-    the deciding Evidence record, or ``None`` when no record decided it.
-    ``reason`` is a human-readable explanation naming the pin or its absence.
+    Frozen: an evaluation is an immutable record. ``status`` is the fold over
+    the current execution of each matching CI job. ``evidence_ids`` names all
+    records participating in that fold. Missing or unorderable source metadata
+    yields ``PENDING`` rather than an identifier-based guess.
 
     This is NOT a :class:`VerificationCheck`: it carries no id, timestamps, or
     summary — building the persisted row is the composition ticket's job
@@ -80,7 +77,7 @@ class MachineCheckEvaluation:
 
     check_type: VerificationCheckType
     status: EvidenceStatus
-    evidence_id: UUID | None
+    evidence_ids: tuple[UUID, ...]
     reason: str
 
 
@@ -100,9 +97,12 @@ def evaluate_machine_check(
       decides TESTS and LINT; the others have their own evaluators.
     - Otherwise the candidates are every record whose ``evidence_type`` matches
       the check, whose ``commit_sha`` equals ``head_commit`` exactly, and whose
-      tier is ``system``. The latest candidate by ``(created_at, id)`` decides:
-      its ``status`` passes through unchanged and its ``id`` is the
-      ``evidence_id``.
+      tier is ``system``. Candidates are grouped by ``job_name``; within each
+      group the greatest ``source_event_at`` selects the current execution.
+      FAILED has precedence across current jobs; all-current-PASSED passes;
+      every other combination is PENDING.
+    - Historical candidates without ``job_name`` or source ordering metadata
+      never fall back to UUID order. They hold the check PENDING until re-pulled.
     - With no candidates the check is ``PENDING`` (never ``FAILED`` — a missing
       check is unproven, not failing). If matching agent-tier evidence exists
       at ``head_commit``, the reason states explicitly that agent claims are
@@ -120,7 +120,7 @@ def evaluate_machine_check(
         return MachineCheckEvaluation(
             check_type=check_type,
             status=EvidenceStatus.NOT_APPLICABLE,
-            evidence_id=None,
+            evidence_ids=(),
             reason=(
                 f"{_label(check_type)} is not a machine check "
                 f"(machine checks: {_machine_check_names()}); not applicable."
@@ -136,24 +136,118 @@ def evaluate_machine_check(
     ]
 
     if candidates:
-        latest = max(candidates, key=lambda e: (e.created_at, e.id))
-        return MachineCheckEvaluation(
-            check_type=check_type,
-            status=latest.status,
-            evidence_id=latest.id,
-            reason=(
-                f"{_label(check_type)}: system-tier {expected.value} evidence "
-                f"{latest.id} pinned to {head_commit} reports "
-                f"{latest.status.value}."
-            ),
-        )
+        return _resolve_jobs(check_type, expected, head_commit, candidates)
 
     return MachineCheckEvaluation(
         check_type=check_type,
         status=EvidenceStatus.PENDING,
-        evidence_id=None,
+        evidence_ids=(),
         reason=_pending_reason(check_type, expected, head_commit, evidence),
     )
+
+
+def _resolve_jobs(
+    check_type: VerificationCheckType,
+    expected: EvidenceType,
+    head_commit: str,
+    candidates: Sequence[Evidence],
+) -> MachineCheckEvaluation:
+    """Resolve current execution per job without identifier-based recency."""
+
+    named = [record for record in candidates if record.job_name]
+    if not named:
+        return MachineCheckEvaluation(
+            check_type=check_type,
+            status=EvidenceStatus.PENDING,
+            evidence_ids=(),
+            reason=(
+                f"{_label(check_type)}: {len(candidates)} system-tier "
+                f"{expected.value} record(s) exist at {head_commit}, but they "
+                "predate per-job source ordering metadata; PENDING until "
+                "evidence is re-pulled."
+            ),
+        )
+    named_source_keys = {
+        (record.external_run_id, record.payload_hash)
+        for record in named
+        if record.external_run_id is not None and record.payload_hash is not None
+    }
+    unmatched_legacy = [
+        record
+        for record in candidates
+        if not record.job_name
+        and (record.external_run_id, record.payload_hash) not in named_source_keys
+    ]
+    if unmatched_legacy:
+        return MachineCheckEvaluation(
+            check_type=check_type,
+            status=EvidenceStatus.PENDING,
+            evidence_ids=(),
+            reason=(
+                f"{_label(check_type)}: {len(unmatched_legacy)} system-tier "
+                f"{expected.value} record(s) at {head_commit} have no per-job "
+                "metadata and no enriched duplicate; PENDING until all evidence "
+                "is re-pulled."
+            ),
+        )
+
+    by_job: dict[str, list[Evidence]] = {}
+    for record in named:
+        assert record.job_name is not None
+        by_job.setdefault(record.job_name, []).append(record)
+
+    job_statuses: list[EvidenceStatus] = []
+    deciding: list[Evidence] = []
+    job_parts: list[str] = []
+    for job_name in sorted(by_job):
+        records = by_job[job_name]
+        unordered = [record for record in records if record.source_event_at is None]
+        if unordered:
+            # A queued execution has no lifecycle timestamp yet; a malformed
+            # timestamp is equally unorderable. Either holds the gate rather
+            # than allowing an older pass to win.
+            selected = sorted(unordered, key=lambda record: str(record.id))
+            job_status = EvidenceStatus.PENDING
+            job_parts.append(f"{job_name}=pending (source time unavailable)")
+        else:
+            latest_at = max(
+                record.source_event_at
+                for record in records
+                if record.source_event_at is not None
+            )
+            selected = sorted(
+                (record for record in records if record.source_event_at == latest_at),
+                key=lambda record: str(record.id),
+            )
+            job_status = _fold_machine_statuses(record.status for record in selected)
+            job_parts.append(
+                f"{job_name}={job_status.value} at {latest_at.isoformat()}"
+            )
+        deciding.extend(selected)
+        job_statuses.append(job_status)
+
+    status = _fold_machine_statuses(job_statuses)
+    return MachineCheckEvaluation(
+        check_type=check_type,
+        status=status,
+        evidence_ids=tuple(record.id for record in deciding),
+        reason=(
+            f"{_label(check_type)}: resolved {len(by_job)} current CI job(s) "
+            f"at {head_commit}; {', '.join(job_parts)}; folded status "
+            f"{status.value}."
+        ),
+    )
+
+
+def _fold_machine_statuses(statuses: Iterable[EvidenceStatus]) -> EvidenceStatus:
+    """Fold current job outcomes with the ticket-verdict precedence rule."""
+
+    materialised = tuple(statuses)
+    if any(status is EvidenceStatus.FAILED for status in materialised):
+        return EvidenceStatus.FAILED
+    if materialised and all(status is EvidenceStatus.PASSED for status in materialised):
+        return EvidenceStatus.PASSED
+    return EvidenceStatus.PENDING
 
 
 def _pending_reason(

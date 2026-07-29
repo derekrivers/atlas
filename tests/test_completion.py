@@ -115,6 +115,8 @@ def _evidence(
     ticket_id: UUID = TICKET,
     raw_payload: dict[str, Any] | None = None,
     created_at: datetime = NOW,
+    job_name: str | None = None,
+    source_event_at: datetime | None = None,
     id: UUID | None = None,
 ) -> Evidence:
     return Evidence(
@@ -125,6 +127,8 @@ def _evidence(
         status=status,
         summary="e",
         commit_sha=commit_sha,
+        job_name=job_name,
+        source_event_at=source_event_at,
         raw_payload=raw_payload or {},
         created_by_type=created_by_type,
         created_by_id="ci" if created_by_type == ActorType.SYSTEM else "operator",
@@ -134,13 +138,23 @@ def _evidence(
 
 def sys_test(status: EvidenceStatus = ES.PASSED, **kw: Any) -> Evidence:
     return _evidence(
-        ET.TEST_RESULT, status=status, created_by_type=ActorType.SYSTEM, **kw
+        ET.TEST_RESULT,
+        status=status,
+        created_by_type=ActorType.SYSTEM,
+        job_name="test",
+        source_event_at=NOW,
+        **kw,
     )
 
 
 def sys_lint(status: EvidenceStatus = ES.PASSED, **kw: Any) -> Evidence:
     return _evidence(
-        ET.LINT_RESULT, status=status, created_by_type=ActorType.SYSTEM, **kw
+        ET.LINT_RESULT,
+        status=status,
+        created_by_type=ActorType.SYSTEM,
+        job_name="lint",
+        source_event_at=NOW,
+        **kw,
     )
 
 
@@ -382,7 +396,7 @@ def test_machine_dispatch_passes_its_own_check_type(
     ) -> MachineCheckEvaluation:
         seen.append(check_type)
         return MachineCheckEvaluation(
-            check_type=check_type, status=ES.PASSED, evidence_id=None, reason="spy"
+            check_type=check_type, status=ES.PASSED, evidence_ids=(), reason="spy"
         )
 
     monkeypatch.setattr(completion_mod, "evaluate_machine_check", spy_machine)

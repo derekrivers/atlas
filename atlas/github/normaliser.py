@@ -28,6 +28,7 @@ import json
 import logging
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
 from atlas.core.enums import EvidenceStatus
@@ -64,6 +65,7 @@ class NormalisedCheck:
     payload_hash: str
     source_uri: str | None
     raw_payload: dict[str, Any]
+    source_event_at: datetime | None = None
 
     @property
     def dedup_key(self) -> tuple[str, str]:
@@ -85,6 +87,25 @@ def payload_hash(payload: Mapping[str, Any]) -> str:
     """
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _github_time(value: Any) -> datetime | None:
+    """Parse one GitHub ISO-8601 timestamp, returning ``None`` when absent.
+
+    GitHub emits UTC values with a trailing ``Z``. A malformed value is treated
+    as missing source metadata rather than crashing evidence collection; the
+    machine evaluator then fails closed instead of guessing execution order.
+    """
+
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        logger.warning(
+            "GitHub timestamp %r is malformed; source order unavailable", value
+        )
+        return None
 
 
 def normalise_status(status: str | None, conclusion: str | None) -> EvidenceStatus:
@@ -116,6 +137,9 @@ def normalise_workflow_run(run: Mapping[str, Any], *, head_sha: str) -> Normalis
         payload_hash=payload_hash(run),
         source_uri=run.get("html_url"),
         raw_payload=dict(run),
+        source_event_at=_github_time(
+            run.get("updated_at") or run.get("run_started_at") or run.get("created_at")
+        ),
     )
 
 
@@ -134,6 +158,9 @@ def normalise_check_run(check: Mapping[str, Any], *, head_sha: str) -> Normalise
         payload_hash=payload_hash(check),
         source_uri=check.get("html_url"),
         raw_payload=dict(check),
+        source_event_at=_github_time(
+            check.get("completed_at") or check.get("started_at")
+        ),
     )
 
 

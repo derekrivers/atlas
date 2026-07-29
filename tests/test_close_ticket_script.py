@@ -40,6 +40,8 @@ class Runner:
             return CompletedProcess(command, 0, "git@github.com:acme/atlas.git\n", "")
         if command == self.failure:
             return CompletedProcess(command, 7, "partial\n", "failed\n")
+        if "verify" in command and "--json" in command:
+            return CompletedProcess(command, 0, '{"status": "passed"}\n', "")
         if command[-4:] == ("pm", "sync", "--once", "-v"):
             return CompletedProcess(
                 command,
@@ -161,7 +163,9 @@ def test_unmerged_pr_refuses_verify_after_affirmative_pause(
     )
     assert code == 1
     assert pauses
-    assert not any("verify" in call[0] for call in runner.calls)
+    verify_calls = [call[0] for call in runner.calls if "verify" in call[0]]
+    assert len(verify_calls) == 1
+    assert "--json" in verify_calls[0]
     assert "is not merged" in capsys.readouterr().err
 
 
@@ -206,14 +210,22 @@ def test_chain_order_and_sync_output_is_compact(
         call[0] for call in runner.calls if call[0] != ("git", "status", "--porcelain")
     ]
     assert [
-        command[3] if command[:3] == ("uv", "run", "atlas") else command[1]
+        (
+            command[3]
+            if command[:3] == ("uv", "run", "atlas")
+            else command[2]
+            if command[:2] == ("uv", "run")
+            else command[1]
+        )
         for command in chain
     ] == [
         "evidence",
         "confirm",
         "verify",
+        "verify",
         "checkout",
         "pull",
+        "alembic",
         "pm",
         "pm",
     ]
@@ -221,6 +233,37 @@ def test_chain_order_and_sync_output_is_compact(
     assert "many skip lines" not in output
     assert "Tick 1: pm sync: completed=1" in output
     assert "Tick 2: pm sync: completed=1" in output
+
+
+def test_non_passing_pre_merge_verdict_blocks_merge(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    class PendingRunner(Runner):
+        def __call__(
+            self, command: tuple[str, ...], **kwargs: Any
+        ) -> CompletedProcess[str]:
+            result = super().__call__(command, **kwargs)
+            if "verify" in command and "--json" in command:
+                return CompletedProcess(command, 0, '{"status": "pending"}\n', "")
+            return result
+
+    runner = PendingRunner()
+    pauses: list[str] = []
+
+    def pause(prompt: str) -> str:
+        pauses.append(prompt)
+        return ""
+
+    code = close_ticket.drive(
+        args(),
+        environ={"GITHUB_TOKEN": "secret"},
+        run_command=runner,
+        pause=pause,
+    )
+
+    assert code == 1
+    assert pauses == []
+    assert "not passed; merge is blocked" in capsys.readouterr().err
 
 
 def test_final_status_is_read_and_non_done_is_failure(

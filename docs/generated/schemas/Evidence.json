@@ -99,6 +99,18 @@
       "title": "Id",
       "type": "string"
     },
+    "job_name": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Job Name"
+    },
     "payload_hash": {
       "anyOf": [
         {
@@ -120,6 +132,19 @@
       "additionalProperties": true,
       "title": "Raw Payload",
       "type": "object"
+    },
+    "source_event_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Source Event At"
     },
     "source_uri": {
       "anyOf": [

@@ -780,6 +780,7 @@ def test_lessons_returns_stored_lesson_projection(database: Database) -> None:
             tags=["api", "lessons"],
             created_by_type=ActorType.SYSTEM,
             created_by_id="atlas",
+            created_at=datetime(2026, 7, 25, 11, tzinfo=UTC),
         ),
         _lesson(
             product.id,
@@ -790,6 +791,7 @@ def test_lessons_returns_stored_lesson_projection(database: Database) -> None:
             related_ticket_ids=[],
             related_adr_ids=[],
             tags=[],
+            created_at=datetime(2026, 7, 25, 9, tzinfo=UTC),
         ),
     ]
     lesson_repo = LessonRepo(database)
@@ -803,7 +805,9 @@ def test_lessons_returns_stored_lesson_projection(database: Database) -> None:
     assert response.json() == LessonsResponse(
         lessons=[
             LessonItemSchema(**_lesson_item_json(lesson))
-            for lesson in sorted(lessons, key=lambda record: record.id)
+            for lesson in sorted(
+                lessons, key=lambda record: (record.created_at, record.id)
+            )
         ]
     ).model_dump(mode="json")
 
@@ -1007,8 +1011,8 @@ def _evidence(
         status=status,
         summary=evidence_type.value,
         commit_sha="abc123" if is_system else None,
-        external_run_id="run-123" if is_system else None,
-        payload_hash="hash-123" if is_system else None,
+        external_run_id=f"run-{ticket.id}" if is_system else None,
+        payload_hash=f"hash-{ticket.id}" if is_system else None,
         raw_payload=raw_payload or {},
         created_by_type=created_by_type,
         created_by_id="api-test",
@@ -1265,6 +1269,36 @@ def test_dependency_critical_path_returns_ordered_existing_projection(
         ],
         total_effort=10,
     ).model_dump(mode="json")
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/api/v1/dependencies/graph",
+        "/api/v1/dependencies/critical-path",
+    ],
+)
+def test_invalid_dependency_graph_is_a_typed_conflict(
+    database: Database, path: str
+) -> None:
+    product = ProductRepo(database).get_by_key("ATLAS")
+    assert product is not None
+    epic = Epic(**_epic_model_kwargs(product.id, key="ATLAS-E1"))
+    ticket = Ticket(
+        **(_ticket_model_kwargs(product.id, epic.id, key="ATLAS-1") | {"id": uuid4()})
+    )
+    EpicRepo(database).add(epic)
+    TicketRepo(database).add(ticket)
+    TicketDependencyRepo(database).add(_dependency_to(ticket, uuid4()))
+
+    with TestClient(create_app(database=database)) as client:
+        response = client.get(path)
+
+    assert response.status_code == 409
+    payload = response.json()
+    assert payload["detail"] == "Stored dependency graph is invalid"
+    assert payload["violations"][0]["code"] == "DanglingTargetError"
+    assert "dangling target" in payload["violations"][0]["message"]
 
 
 def test_dependency_graph_returns_seeded_projected_nodes_and_depends_on_edges(

@@ -125,6 +125,8 @@ def map_check_to_evidence(
         summary=f"{check.name}: {check.status.value}",
         commit_sha=check.commit_sha,
         external_run_id=check.external_run_id,
+        job_name=check.name,
+        source_event_at=check.source_event_at,
         payload_hash=check.payload_hash,
         source_uri=check.source_uri,
         raw_payload=check.raw_payload,

@@ -18,6 +18,7 @@ storage normalises to UTC and returns UTC-aware values.
 
 from __future__ import annotations
 
+import builtins
 import json
 from dataclasses import dataclass
 from datetime import datetime
@@ -526,7 +527,15 @@ class LessonRepo(_Repo[Lesson]):
     def __init__(self, db: Database) -> None:
         super().__init__(db, Lesson, LessonRow)
 
-    def list_by_status(self, status: EntityStatus) -> list[Lesson]:
+    def list(self) -> builtins.list[Lesson]:
+        """Return all lessons in deterministic creation order."""
+        with self._db.session() as session:
+            rows = session.scalars(
+                sa.select(LessonRow).order_by(LessonRow.created_at, LessonRow.id)
+            )
+            return [self._to_model(row) for row in rows]
+
+    def list_by_status(self, status: EntityStatus) -> builtins.list[Lesson]:
         """Return lessons in ``status``, ordered by creation time."""
         with self._db.session() as session:
             rows = session.scalars(
@@ -536,7 +545,7 @@ class LessonRepo(_Repo[Lesson]):
             )
             return [self._to_model(row) for row in rows]
 
-    def list_drafts(self) -> list[Lesson]:
+    def list_drafts(self) -> builtins.list[Lesson]:
         """Lessons waiting for the ADR-0009 operator promotion gate."""
         with self._db.session() as session:
             rows = session.scalars(
@@ -620,7 +629,7 @@ class LessonRepo(_Repo[Lesson]):
             self._require_status(draft_row, EntityStatus.DRAFT, action="merge")
             self._require_status(target_row, EntityStatus.ACTIVE, action="merge into")
 
-            merged_ticket_ids = list(target_row.related_ticket_ids or [])
+            merged_ticket_ids = builtins.list(target_row.related_ticket_ids or [])
             seen = {str(ticket_id) for ticket_id in merged_ticket_ids}
             for ticket_id in draft_row.related_ticket_ids or []:
                 ticket_id_str = str(ticket_id)
@@ -635,8 +644,8 @@ class LessonRepo(_Repo[Lesson]):
             return self._to_model(draft_row), self._to_model(target_row)
 
     def record_ticket_citation(
-        self, *, lesson_ids: list[UUID], ticket_id: UUID
-    ) -> list[Lesson]:
+        self, *, lesson_ids: builtins.list[UUID], ticket_id: UUID
+    ) -> builtins.list[Lesson]:
         """Append ``ticket_id`` to the cited lessons' ``related_ticket_ids``.
 
         Citation feedback is system-observed usage, not an operator lifecycle
@@ -646,18 +655,18 @@ class LessonRepo(_Repo[Lesson]):
         Missing lesson ids are ignored: a stale/tampered pack should not block
         ticket completion feedback for the lessons that still exist.
         """
-        ordered_ids = list(dict.fromkeys(lesson_ids))
+        ordered_ids = builtins.list(dict.fromkeys(lesson_ids))
         if not ordered_ids:
             return []
 
         with self._db.session() as session, session.begin():
-            rows = list(
+            rows = builtins.list(
                 session.scalars(
                     sa.select(LessonRow).where(LessonRow.id.in_(ordered_ids))
                 )
             )
             rows_by_id = {row.id: row for row in rows}
-            cited: list[Lesson] = []
+            cited: builtins.list[Lesson] = []
             ticket_id_str = str(ticket_id)
             for lesson_id in ordered_ids:
                 row = rows_by_id.get(lesson_id)
@@ -672,7 +681,9 @@ class LessonRepo(_Repo[Lesson]):
                 cited.append(self._to_model(row))
             return cited
 
-    def list_stale_active(self, *, threshold: int = 10) -> list[StaleLessonReview]:
+    def list_stale_active(
+        self, *, threshold: int = 10
+    ) -> builtins.list[StaleLessonReview]:
         """ACTIVE lessons due for stale-memory review.
 
         Predicate, documented for ATLAS-100: ``updated_at`` is the last operator
@@ -687,14 +698,14 @@ class LessonRepo(_Repo[Lesson]):
             raise LessonValidationError("stale review threshold must be >= 1")
 
         with self._db.session() as session:
-            lesson_rows = list(
+            lesson_rows = builtins.list(
                 session.scalars(
                     sa.select(LessonRow)
                     .where(LessonRow.status == EntityStatus.ACTIVE.value)
                     .order_by(LessonRow.created_at, LessonRow.id)
                 )
             )
-            pack_rows = list(
+            pack_rows = builtins.list(
                 session.scalars(
                     sa.select(ContextPackRow).order_by(
                         ContextPackRow.created_at, ContextPackRow.id
@@ -702,7 +713,7 @@ class LessonRepo(_Repo[Lesson]):
                 )
             )
 
-        reviews: list[StaleLessonReview] = []
+        reviews: builtins.list[StaleLessonReview] = []
         for lesson_row in lesson_rows:
             lesson_id = str(lesson_row.id)
             included_after_operator_action = [
@@ -860,6 +871,33 @@ class EvidenceRepo(_Repo[Evidence]):
             statement = sa.select(sa.func.count()).select_from(EvidenceRow)
             return int(session.scalar(statement))
 
+    def get_by_dedup_key(
+        self,
+        external_run_id: str,
+        payload_hash: str,
+        *,
+        require_job_metadata: bool = False,
+    ) -> Evidence | None:
+        """Return an already-ingested immutable source payload, if present.
+
+        The evidence-pipeline dedup identity is exactly
+        ``(external_run_id, payload_hash)``. Enriched CI records deliberately do
+        not match historical rows whose ``job_name`` is null, allowing one
+        append-only re-pull to add the ordering metadata needed by verification.
+        """
+
+        with self._db.session() as session:
+            statement = sa.select(EvidenceRow).where(
+                EvidenceRow.external_run_id == external_run_id,
+                EvidenceRow.payload_hash == payload_hash,
+            )
+            if require_job_metadata:
+                statement = statement.where(EvidenceRow.job_name.is_not(None))
+            row = session.scalars(
+                statement.order_by(EvidenceRow.created_at, EvidenceRow.id)
+            ).first()
+            return None if row is None else self._to_model(row)
+
     def add(self, model: Evidence) -> Evidence:
         if (
             evidence_tier(model.created_by_type) == "agent"
@@ -882,6 +920,15 @@ class EvidenceRepo(_Repo[Evidence]):
                     f"missing {missing}. Ingestion rejects records without "
                     "commit_sha, external_run_id, and payload_hash."
                 )
+            assert model.external_run_id is not None
+            assert model.payload_hash is not None
+            existing = self.get_by_dedup_key(
+                model.external_run_id,
+                model.payload_hash,
+                require_job_metadata=model.job_name is not None,
+            )
+            if existing is not None:
+                return existing
         # Retention cap (evidence-pipeline.md "Retention", ATLAS-69): AFTER the
         # trust-tier/pin guard (an oversized system-tier record is still pinned,
         # since the marker leaves the triple intact) and BEFORE super().add().

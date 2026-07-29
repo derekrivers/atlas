@@ -1,6 +1,8 @@
 import { StrictMode } from 'react'
 import ReactDOM from 'react-dom/client'
 import { RouterProvider } from '@tanstack/react-router'
+import '@fontsource-variable/inter'
+import '@fontsource-variable/manrope'
 import { AppProviders } from '@/app-providers'
 import { createOperatorRouter } from '@/router'
 import './styles/index.css'

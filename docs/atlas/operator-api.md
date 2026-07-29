@@ -93,14 +93,19 @@ two additive read routes beyond the Phase 10 surface:
 `GET /api/v1/epics` and `GET /api/v1/dependencies/graph`. No other v1 routes
 enter Phase 11. Ticket results are ordered by plain lexicographic key. Ticket
 board items carry `epic_key`, which is null when the ticket has no epic. Epic
-results are natural-key ordered (`ATLAS-E1` before `ATLAS-E10`). Unfiltered
-lesson results preserve repository order;
-status-filtered lesson results are creation-ordered by
-`LessonRepo.list_by_status`. Ticket evidence results
+results are natural-key ordered (`ATLAS-E1` before `ATLAS-E10`). All lesson
+results are creation-ordered, with ID as the deterministic tie-breaker, by
+`LessonRepo.list` or `LessonRepo.list_by_status`. Ticket evidence results
 preserve the oldest-first order returned by storage. Review results preserve
 the order established by the orchestration operation. Dependency graph nodes
 are natural-key ordered; `depends_on` edges are ordered by source key, then
 target key, using the same natural-key ordering.
+
+`DependencyGraphNodeSchema.status` and `.node_type` deliberately remain plain
+strings. A node status spans the ticket, epic, and ADR status enums, while
+`node_type` also carries the model's open `target_entity_type` string; inventing
+a parallel API enum would narrow the dependency model and create a second
+authority.
 
 `GET /api/v1/tickets` returns the lexicographic-key-ordered operator board. Its
 items expose the lean ticket fields needed for board scanning plus `epic_key`,

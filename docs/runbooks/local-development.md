@@ -2,9 +2,9 @@
 
 Runbook for working on Atlas locally: installing the toolchain, running the
 test suite, and reproducing every CI gate before you push. The guiding
-principle is that **the local gates and CI run the same commands** — nothing in
-CI is unavailable to you locally, so a clean local sweep predicts a clean CI
-run.
+principle is that **the local gates and CI run the same commands**. The Python,
+Node, browser, and PR-title gates are all reproducible locally, so a complete
+local sweep predicts a clean CI run.
 
 ## Toolchain
 
@@ -22,8 +22,8 @@ environment; there is no virtualenv to activate by hand.
 
 ## The gates
 
-CI runs five independent jobs, each after `uv sync --locked`. To reproduce CI
-locally, run all five:
+CI runs eight independent jobs on pull requests (the title job is omitted on a
+push to `main`). Reproduce the Python gates from the repository root:
 
 ```bash
 uv run pytest                              # tests
@@ -33,6 +33,20 @@ uv run mypy atlas tests                    # type-checking
 uv run python -m atlas.tools.doc_linter    # documentation rules
 uv run lint-imports                        # architecture (import-linter)
 ```
+
+Reproduce the two Operator UI jobs:
+
+```bash
+cd apps/operator-ui
+npm ci
+npx playwright install chromium
+npm run verify:core                        # contract, lint, types, component, build
+npm run test:e2e                           # real browser end-to-end suite
+```
+
+The PR-only title gate runs `scripts/check_pr_title.py` against the proposed
+title and merged title history; `.github/workflows/ci.yml` is the executable
+invocation.
 
 A green sweep of these is the bar for a pushable branch. Two of them encode
 Atlas governance rather than ordinary correctness:
@@ -49,17 +63,18 @@ Atlas governance rather than ordinary correctness:
 
 ## pre-commit
 
-The pre-commit hooks run the same checks as the gates **except `pytest`**:
-ruff-check, ruff-format, mypy, doc-linter, and import-linter. Install once, then
-let them run on each commit, or run the whole set on demand:
+The pre-commit hooks cover the Python static and governance gates: ruff-check,
+ruff-format, mypy, doc-linter, and import-linter. They do not run pytest,
+Operator UI, browser, or PR-title jobs. Install once, then let them run on each
+commit, or run the whole set on demand:
 
 ```bash
 uv run pre-commit install            # wire into git commit
 uv run pre-commit run --all-files    # run every hook now
 ```
 
-`pytest` is deliberately not a pre-commit hook — it is too slow for every
-commit — so run `uv run pytest` yourself before pushing.
+The omitted suites are deliberately too slow or require PR event data, so run
+the applicable commands above before pushing.
 
 ## Database schema drift
 
@@ -156,8 +171,10 @@ A branch is pushable when, from a clean `uv sync --locked`:
 
 1. `uv run pytest` is green;
 2. `uv run pre-commit run --all-files` passes (ruff, mypy, doc-linter,
-   import-linter); and
-3. for any change that reads or writes real Linear, the relevant live test has
+   import-linter);
+3. the Operator UI core and end-to-end commands pass when the UI or API contract
+   changed; and
+4. for any change that reads or writes real Linear, the relevant live test has
    been run by hand and its result recorded on the PR ([ADR-0008]).
 
 [Hypothesis]: https://hypothesis.readthedocs.io/

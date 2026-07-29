@@ -34,6 +34,8 @@ DOCUMENTED_FIELDS: dict[str, tuple[Any, Any]] = {
     "summary": (str, REQUIRED),
     "commit_sha": (str | None, None),
     "external_run_id": (str | None, None),
+    "job_name": (str | None, None),
+    "source_event_at": (datetime | None, None),
     "payload_hash": (str | None, None),
     "source_uri": (str | None, None),
     "raw_payload": (dict[str, Any], DICT_FACTORY),

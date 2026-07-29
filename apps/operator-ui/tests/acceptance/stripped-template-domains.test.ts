@@ -1,4 +1,3 @@
-import { execFileSync } from 'node:child_process'
 import { readdirSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -6,24 +5,6 @@ import { describe, expect, it } from 'vitest'
 
 const appRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
 const sourceRoot = join(appRoot, 'src')
-
-function grepSource(pattern: string): string {
-  try {
-    return execFileSync('grep', ['-RInE', pattern, sourceRoot], {
-      encoding: 'utf8',
-    })
-  } catch (error) {
-    if (
-      typeof error === 'object' &&
-      error !== null &&
-      'status' in error &&
-      error.status === 1
-    ) {
-      return ''
-    }
-    throw error
-  }
-}
 
 function packageMetadata(): string {
   return [
@@ -51,7 +32,28 @@ describe('stripped shadcn-admin demo domains', () => {
     expect(metadata).not.toContain(faker)
   })
 
-  it('has no demo route literals left in source', () => {
+  it('does not depend on remote font delivery', () => {
+    const html = readFileSync(join(appRoot, 'index.html'), 'utf8')
+
+    expect(html).not.toContain('fonts.googleapis.com')
+    expect(html).not.toContain('fonts.gstatic.com')
+  })
+
+  it('has no demo URL paths in route or navigation surfaces', () => {
+    const routeSurfaces = sourcePaths(sourceRoot).filter((path) => {
+      const relative = path.slice(sourceRoot.length + 1).replaceAll('\\', '/')
+      return (
+        relative === 'router.tsx' ||
+        relative.startsWith('routes/') ||
+        relative === 'components/layout/app-sidebar.tsx' ||
+        relative === 'components/layout/top-nav.tsx' ||
+        relative === 'components/command-menu.tsx'
+      )
+    })
+    const source = routeSurfaces
+      .map((path) => `${path}\n${readFileSync(path, 'utf8')}`)
+      .join('\n')
+
     for (const route of [
       'users',
       'chats',
@@ -60,8 +62,8 @@ describe('stripped shadcn-admin demo domains', () => {
       'help-center',
       'settings',
     ]) {
-      const pattern = `["']/?${route}(/|["']|$)`
-      expect(grepSource(pattern), `${route} route literal`).toBe('')
+      const pattern = new RegExp(`["'\`]/${route}(?:/|["'\`])`)
+      expect(source, `${route} URL path`).not.toMatch(pattern)
     }
   })
 

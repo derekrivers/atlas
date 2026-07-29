@@ -94,6 +94,8 @@ def _evidence(
     commit_sha: str | None = HEAD,
     raw_payload: dict[str, Any] | None = None,
     created_at: datetime = NOW,
+    job_name: str | None = None,
+    source_event_at: datetime | None = None,
 ) -> Evidence:
     return Evidence(
         id=uuid4(),
@@ -103,6 +105,8 @@ def _evidence(
         status=status,
         summary="e",
         commit_sha=commit_sha,
+        job_name=job_name,
+        source_event_at=source_event_at,
         raw_payload=raw_payload or {},
         created_by_type=created_by_type,
         created_by_id="ci" if created_by_type == ActorType.SYSTEM else "operator",
@@ -116,6 +120,8 @@ def sys_test(*, ticket_id: UUID, status: EvidenceStatus = ES.PASSED) -> Evidence
         status=status,
         created_by_type=ActorType.SYSTEM,
         ticket_id=ticket_id,
+        job_name="test",
+        source_event_at=NOW,
     )
 
 
@@ -125,6 +131,8 @@ def sys_lint(*, ticket_id: UUID, status: EvidenceStatus = ES.PASSED) -> Evidence
         status=status,
         created_by_type=ActorType.SYSTEM,
         ticket_id=ticket_id,
+        job_name="lint",
+        source_event_at=NOW,
     )
 
 
