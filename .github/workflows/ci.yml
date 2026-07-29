@@ -3,7 +3,8 @@
 # Job names are a repo-owned contract, not cosmetic: the evidence
 # pipeline (docs/atlas/evidence-pipeline.md, "Job-name convention") types
 # CI evidence by job-name prefix — test* -> TEST_RESULT,
-# lint* -> LINT_RESULT. Rename jobs only with a matching doc change.
+# lint* -> LINT_RESULT, build* -> BUILD_RESULT. Rename jobs only with a
+# matching doc change.
 name: CI
 
 on:
@@ -80,9 +81,9 @@ jobs:
       - run: uv sync --locked
       - run: uv run python -m atlas.tools.doc_linter
 
-  test-operator-ui:
+  lint-operator-ui-openapi:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
@@ -96,11 +97,101 @@ jobs:
           cache: npm
           cache-dependency-path: apps/operator-ui/package-lock.json
       - run: uv sync --locked
-      - run: ./apps/operator-ui/scripts/ci.sh
+      - run: npm ci
+        working-directory: apps/operator-ui
+      - run: npm run api:check
+        working-directory: apps/operator-ui
+
+  lint-operator-ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/operator-ui/package-lock.json
+      - run: npm ci
+        working-directory: apps/operator-ui
+      - run: npm run lint
+        working-directory: apps/operator-ui
+
+  lint-operator-ui-types:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/operator-ui/package-lock.json
+      - run: npm ci
+        working-directory: apps/operator-ui
+      - run: npm run typecheck
+        working-directory: apps/operator-ui
+
+  test-operator-ui-acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/operator-ui/package-lock.json
+      - run: uv sync --locked
+      - run: npm ci
+        working-directory: apps/operator-ui
+      - run: npm run test:acceptance
+        working-directory: apps/operator-ui
+
+  test-operator-ui-components:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PLAYWRIGHT_BROWSERS_PATH: /tmp/ms-playwright
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/operator-ui/package-lock.json
+      - run: npm ci
+        working-directory: apps/operator-ui
+      - run: ./node_modules/.bin/playwright install --with-deps chromium
+        working-directory: apps/operator-ui
+      - run: npm run test:browser
+        working-directory: apps/operator-ui
+
+  build-operator-ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/operator-ui/package-lock.json
+      - run: npm ci
+        working-directory: apps/operator-ui
+      - run: npm run build:bundle
+        working-directory: apps/operator-ui
 
   test-operator-ui-e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      PLAYWRIGHT_BROWSERS_PATH: /tmp/ms-playwright
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
@@ -114,7 +205,12 @@ jobs:
           cache: npm
           cache-dependency-path: apps/operator-ui/package-lock.json
       - run: uv sync --locked
-      - run: ./apps/operator-ui/scripts/ci-e2e.sh
+      - run: npm ci
+        working-directory: apps/operator-ui
+      - run: ./node_modules/.bin/playwright install --with-deps chromium
+        working-directory: apps/operator-ui
+      - run: npm run test:e2e
+        working-directory: apps/operator-ui
 
   # Architecture-fitness sensor: enforces the layer spine contract in
   # pyproject [tool.importlinter] (ATLAS-114). lint* job name types this as

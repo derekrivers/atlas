@@ -22,8 +22,8 @@ environment; there is no virtualenv to activate by hand.
 
 ## The gates
 
-CI runs eight independent jobs on pull requests (the title job is omitted on a
-push to `main`). Reproduce the Python gates from the repository root:
+CI runs thirteen independent jobs on pull requests (the title job is omitted on
+a push to `main`). Reproduce the Python gates from the repository root:
 
 ```bash
 uv run pytest                              # tests
@@ -34,14 +34,26 @@ uv run python -m atlas.tools.doc_linter    # documentation rules
 uv run lint-imports                        # architecture (import-linter)
 ```
 
-Reproduce the two Operator UI jobs:
+Reproduce the Operator UI jobs:
 
 ```bash
 cd apps/operator-ui
 npm ci
-npx playwright install chromium
-npm run verify:core                        # contract, lint, types, component, build
+./node_modules/.bin/playwright install chromium
+npm run api:check                          # OpenAPI drift
+npm run lint                               # ESLint
+npm run typecheck                          # TypeScript project references
+npm run test:acceptance                    # Vitest contract tests
+npm run test:browser                       # Vitest browser-mode components
+npm run build:bundle                       # Vite production bundle
 npm run test:e2e                           # seed store, serve live API, e2e
+```
+
+The cold-checkout wrappers run the same UI commands in CI order:
+
+```bash
+./apps/operator-ui/scripts/ci.sh           # all non-e2e Operator UI stages
+./apps/operator-ui/scripts/ci-e2e.sh       # seeded live-API end-to-end stage
 ```
 
 The PR-only title gate runs `scripts/check_pr_title.py` against the proposed

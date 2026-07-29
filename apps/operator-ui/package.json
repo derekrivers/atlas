@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
-    "build": "tsc -b && vite build",
+    "build": "npm run typecheck && npm run build:bundle",
+    "build:bundle": "vite build",
     "lint": "eslint .",
     "api:generate": "cd ../.. && UV_CACHE_DIR=${UV_CACHE_DIR:-/tmp/uv-cache} UV_LINK_MODE=${UV_LINK_MODE:-copy} uv run python -m atlas.tools.operator_ui_openapi",
     "api:check": "cd ../.. && UV_CACHE_DIR=${UV_CACHE_DIR:-/tmp/uv-cache} UV_LINK_MODE=${UV_LINK_MODE:-copy} uv run python -m atlas.tools.operator_ui_openapi --check",
@@ -15,7 +16,7 @@
     "test:browser": "vitest run --config vitest.browser.config.ts",
     "test:e2e": "playwright test --config playwright.config.ts",
     "typecheck": "tsc -b",
-    "verify:core": "npm run api:check && npm run lint && npm run typecheck && npm run test:core && npm run build",
+    "verify:core": "npm run api:check && npm run lint && npm run typecheck && npm run test:core && npm run build:bundle",
     "verify": "npm run verify:core && npm run test:e2e"
   },
   "dependencies": {
