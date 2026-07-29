@@ -1,0 +1,50 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+from atlas.core.keys import natural_key
+from atlas.dependencies import NotReadyCode
+from atlas.dependencies.validation import TERMINAL_STATUSES
+from atlas.orchestration import review_queue, ticket_board, ticket_dependencies
+from atlas.orchestration.ticket_evidence import ticket_evidence
+from atlas.storage import LessonRepo, TicketRepo
+from atlas.tools.operator_ui_e2e_seed import seed_store
+
+
+def test_operator_ui_e2e_seed_reproduces_live_api_edge_shapes(tmp_path: Path) -> None:
+    db = seed_store(f"sqlite:///{tmp_path / 'atlas.db'}")
+    try:
+        tickets = TicketRepo(db).list()
+        board = ticket_board(db)
+        board_keys = [item.key for item in board]
+
+        terminal = [
+            ticket for ticket in tickets if ticket.status.value in TERMINAL_STATUSES
+        ]
+        assert len(tickets) == 17
+        assert len(terminal) == 16
+        assert len(terminal) / len(tickets) > 0.9
+
+        assert board_keys.index("ATLAS-10") < board_keys.index("ATLAS-2")
+        assert board_keys != sorted(board_keys, key=natural_key)
+
+        assert review_queue(db) == ()
+        assert ticket_evidence(db, "ATLAS-10") == ()
+
+        dependencies = ticket_dependencies(db, "ATLAS-2")
+        assert dependencies is not None
+        assert dependencies.readiness.ready is False
+        reason_codes = {reason.code for reason in dependencies.readiness.reasons}
+        assert len(reason_codes) > 1
+        assert {
+            NotReadyCode.WRONG_STATUS,
+            NotReadyCode.ADR_NOT_ACCEPTED,
+            NotReadyCode.NO_ACCEPTANCE_CRITERIA,
+        }.issubset(reason_codes)
+
+        stored_ticket_ids = {ticket.id for ticket in tickets}
+        [lesson] = LessonRepo(db).list()
+        assert lesson.source_ticket_id not in stored_ticket_ids
+        assert set(lesson.related_ticket_ids).isdisjoint(stored_ticket_ids)
+    finally:
+        db.engine.dispose()

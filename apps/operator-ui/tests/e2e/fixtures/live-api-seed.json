@@ -1,0 +1,95 @@
+{
+  "metadata": {
+    "description": "Deterministic operator-ui end-to-end seed for ATL-388.",
+    "expected_terminal_ticket_ratio": "16/17",
+    "expected_lexicographic_precedes_natural": ["ATLAS-10", "ATLAS-2"],
+    "expected_empty_review_queue": true,
+    "expected_no_evidence_ticket": "ATLAS-10",
+    "expected_multi_reason_not_ready_ticket": "ATLAS-2"
+  },
+  "timestamp": "2026-07-26T18:43:42+00:00",
+  "product": {
+    "id": "00000000-0000-4000-8000-000000000388",
+    "key": "ATLAS",
+    "name": "Atlas",
+    "description": "Seeded Atlas operator UI end-to-end product.",
+    "vision": "Exercise the live read API with deterministic operational shapes."
+  },
+  "epics": [
+    {
+      "id": "00000000-0000-4000-8000-000000000e01",
+      "key": "ATLAS-E1",
+      "title": "Operator UI e2e seed",
+      "status": "planned",
+      "priority": 1,
+      "risk_level": "medium"
+    }
+  ],
+  "adrs": [
+    {
+      "id": "00000000-0000-4000-8000-000000000021",
+      "number": 21,
+      "title": "Seeded proposed ADR for readiness",
+      "status": "proposed"
+    }
+  ],
+  "tickets": [
+    { "id": "00000000-0000-4000-8000-000000000001", "key": "ATLAS-1", "status": "done", "priority": 1, "risk_level": "low", "estimated_effort": 1 },
+    { "id": "00000000-0000-4000-8000-000000000002", "key": "ATLAS-2", "status": "in_progress", "priority": 2, "risk_level": "high", "estimated_effort": 3, "acceptance_criteria": [] },
+    { "id": "00000000-0000-4000-8000-000000000003", "key": "ATLAS-3", "status": "done", "priority": 3, "risk_level": "low", "estimated_effort": 1 },
+    { "id": "00000000-0000-4000-8000-000000000004", "key": "ATLAS-4", "status": "rejected", "priority": 4, "risk_level": "medium", "estimated_effort": 1 },
+    { "id": "00000000-0000-4000-8000-000000000005", "key": "ATLAS-5", "status": "done", "priority": 5, "risk_level": "low", "estimated_effort": 2 },
+    { "id": "00000000-0000-4000-8000-000000000006", "key": "ATLAS-6", "status": "done", "priority": 6, "risk_level": "low", "estimated_effort": 2 },
+    { "id": "00000000-0000-4000-8000-000000000007", "key": "ATLAS-7", "status": "rejected", "priority": 7, "risk_level": "medium", "estimated_effort": 1 },
+    { "id": "00000000-0000-4000-8000-000000000008", "key": "ATLAS-8", "status": "done", "priority": 8, "risk_level": "low", "estimated_effort": 1 },
+    { "id": "00000000-0000-4000-8000-000000000009", "key": "ATLAS-9", "status": "done", "priority": 9, "risk_level": "low", "estimated_effort": 1 },
+    { "id": "00000000-0000-4000-8000-000000000010", "key": "ATLAS-10", "status": "done", "priority": 10, "risk_level": "low", "estimated_effort": 1 },
+    { "id": "00000000-0000-4000-8000-000000000011", "key": "ATLAS-11", "status": "rejected", "priority": 11, "risk_level": "medium", "estimated_effort": 1 },
+    { "id": "00000000-0000-4000-8000-000000000012", "key": "ATLAS-12", "status": "done", "priority": 12, "risk_level": "low", "estimated_effort": 1 },
+    { "id": "00000000-0000-4000-8000-000000000013", "key": "ATLAS-13", "status": "done", "priority": 13, "risk_level": "low", "estimated_effort": 1 },
+    { "id": "00000000-0000-4000-8000-000000000014", "key": "ATLAS-14", "status": "rejected", "priority": 14, "risk_level": "medium", "estimated_effort": 1 },
+    { "id": "00000000-0000-4000-8000-000000000015", "key": "ATLAS-15", "status": "done", "priority": 15, "risk_level": "low", "estimated_effort": 1 },
+    { "id": "00000000-0000-4000-8000-000000000016", "key": "ATLAS-16", "status": "done", "priority": 16, "risk_level": "low", "estimated_effort": 1 },
+    { "id": "00000000-0000-4000-8000-000000000100", "key": "ATLAS-100", "status": "done", "priority": 100, "risk_level": "low", "estimated_effort": 1 }
+  ],
+  "dependencies": [
+    {
+      "id": "00000000-0000-4000-8000-00000000d002",
+      "source_ticket_key": "ATLAS-2",
+      "target_entity_type": "adr",
+      "target_ref": "ADR-0021",
+      "dependency_type": "depends_on",
+      "reason": "ATLAS-2 is intentionally blocked by a proposed ADR."
+    }
+  ],
+  "evidence": [
+    {
+      "id": "00000000-0000-4000-8000-00000000e001",
+      "ticket_key": "ATLAS-1",
+      "evidence_type": "test_result",
+      "status": "passed",
+      "summary": "Seeded system evidence with a complete ADR-0008 pin triple.",
+      "commit_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "external_run_id": "seeded-run-388",
+      "job_name": "test-operator-ui-e2e",
+      "payload_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "source_uri": "https://example.invalid/atlas/operator-ui/e2e/seeded-run-388"
+    }
+  ],
+  "lessons": [
+    {
+      "id": "00000000-0000-4000-8000-00000000a388",
+      "status": "draft",
+      "category": "testing",
+      "title": "Lesson references remain UUID-only",
+      "problem": "Operator views cannot assume lesson ticket references carry keys.",
+      "solution": "Render source_ticket_id and related_ticket_ids literally until the API adds a resolving route.",
+      "outcome": "The e2e seed preserves UUID-only references with no resolvable stored ticket.",
+      "confidence": 0.7,
+      "source_ticket_id": "00000000-0000-4000-8000-00000000f001",
+      "related_ticket_ids": ["00000000-0000-4000-8000-00000000f002"],
+      "related_adr_ids": ["00000000-0000-4000-8000-000000000021"],
+      "tags": ["operator-ui", "live-api"]
+    }
+  ]
+}

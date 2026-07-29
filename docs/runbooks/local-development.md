@@ -41,7 +41,7 @@ cd apps/operator-ui
 npm ci
 npx playwright install chromium
 npm run verify:core                        # contract, lint, types, component, build
-npm run test:e2e                           # real browser end-to-end suite
+npm run test:e2e                           # seed store, serve live API, e2e
 ```
 
 The PR-only title gate runs `scripts/check_pr_title.py` against the proposed

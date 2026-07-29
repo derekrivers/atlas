@@ -77,7 +77,7 @@ async function visibleInteractiveLabels(page: Page): Promise<string[]> {
     )
 }
 
-test('shell navigation, theme toggle, command palette, and footer reach every ratified surface from cold load', async ({
+test('smoke: shell loads against the live API and reaches every ratified route', async ({
   page,
 }) => {
   await page.goto('/')

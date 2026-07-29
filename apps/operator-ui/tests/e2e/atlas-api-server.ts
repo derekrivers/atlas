@@ -92,7 +92,7 @@ export async function startAtlasApiServer(): Promise<AtlasApiServer> {
 
   runSeedCommand(
     'uv',
-    ['run', 'python', 'scripts/scratch_seed.py', '--db', dbUrl],
+    ['run', 'python', '-m', 'atlas.tools.operator_ui_e2e_seed', '--db', dbUrl],
     dbUrl
   )
 
