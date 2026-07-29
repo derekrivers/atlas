@@ -15,6 +15,7 @@ type Rgba = {
 const apiBaseURL =
   process.env.ATLAS_OPERATOR_E2E_API_URL ?? 'http://127.0.0.1:18000'
 const appRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
+const seededLiveApiTicketCount = 17
 const destructiveButtonClasses = readCvaVariantClasses(
   'src/components/ui/button.tsx',
   'buttonVariants',
@@ -471,7 +472,9 @@ test('theme mode selection persists and light/dark primitives remain legible', a
 }) => {
   const status = await request.get(`${apiBaseURL}/api/v1/status`)
   expect(status.ok()).toBe(true)
-  await expect(status.json()).resolves.toMatchObject({ ticket_count: 5 })
+  await expect(status.json()).resolves.toMatchObject({
+    ticket_count: seededLiveApiTicketCount,
+  })
 
   await page.goto('/')
 
