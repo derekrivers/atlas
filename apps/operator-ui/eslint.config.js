@@ -15,6 +15,39 @@ const sharedStateImports = new Set([
 const sharedStateImportPath = '@/components/states'
 const atlasQueryHooksImportPath = '@/api/query-hooks'
 const tanstackQueryImportPath = '@tanstack/react-query'
+const overviewDashboardPath = '/src/features/overview/overview-dashboard.tsx'
+const overviewSharedSelectors = [
+  {
+    importPath: '@/features/tickets/ticket-board-state',
+    name: 'selectTicketStatusDistribution',
+  },
+  {
+    importPath: '@/features/tickets/ticket-board-state',
+    name: 'selectTicketStatusDistributionTotal',
+  },
+  {
+    importPath: '@/features/reviews/selectors',
+    name: 'selectReviewQueueDepth',
+  },
+  {
+    importPath: '@/features/critical-path/selectors',
+    name: 'selectCriticalPathHead',
+  },
+  {
+    importPath: '@/features/critical-path/selectors',
+    name: 'selectCriticalPathTotalEffort',
+  },
+]
+const overviewDuplicateDerivationMethods = new Set([
+  'filter',
+  'forEach',
+  'reduce',
+])
+const overviewResponseDerivationProperties = new Set([
+  'reviews',
+  'steps',
+  'total_effort',
+])
 const viewPollingOverrideProperties = new Set([
   'refetchInterval',
   'refetchIntervalInBackground',
@@ -29,6 +62,10 @@ function isViewFile(filename) {
   // should place views there rather than bypassing the shared-state contract.
   const normalised = normaliseFilename(filename)
   return normalised.includes('/src/features/')
+}
+
+function isOverviewDashboardFile(filename) {
+  return normaliseFilename(filename).endsWith(overviewDashboardPath)
 }
 
 function importedName(specifier) {
@@ -80,7 +117,7 @@ function isQueryHookName(name) {
   return name === 'useQuery' || /^use[A-Z].*Query$/.test(name)
 }
 
-const atlasPlugin = {
+export const atlasPlugin = {
   rules: {
     'no-ad-hoc-view-states': {
       meta: {
@@ -214,6 +251,93 @@ const atlasPlugin = {
         }
       },
     },
+    'overview-shared-derivations': {
+      meta: {
+        type: 'problem',
+        messages: {
+          duplicate:
+            'Overview dashboard aggregates must use board, review queue, and critical path selectors instead of local derivations.',
+          missing:
+            'Overview dashboard must import {{name}} from {{importPath}}.',
+        },
+      },
+      create(context) {
+        if (!isOverviewDashboardFile(context.filename)) {
+          return {}
+        }
+
+        const imports = new Map()
+
+        function addImport(importPath, name) {
+          const names = imports.get(importPath) ?? new Set()
+          names.add(name)
+          imports.set(importPath, names)
+        }
+
+        function hasImport(importPath, name) {
+          return imports.get(importPath)?.has(name) ?? false
+        }
+
+        function reportDuplicate(node) {
+          context.report({ node, messageId: 'duplicate' })
+        }
+
+        return {
+          'Program:exit'(node) {
+            for (const selector of overviewSharedSelectors) {
+              if (!hasImport(selector.importPath, selector.name)) {
+                context.report({
+                  node,
+                  messageId: 'missing',
+                  data: selector,
+                })
+              }
+            }
+          },
+          ImportDeclaration(node) {
+            if (typeof node.source.value !== 'string') {
+              return
+            }
+
+            for (const specifier of node.specifiers) {
+              const name = importedName(specifier)
+              if (name) {
+                addImport(node.source.value, name)
+              }
+            }
+          },
+          CallExpression(node) {
+            if (node.callee.type !== 'MemberExpression') {
+              return
+            }
+
+            const method = propertyName(node.callee.property)
+            if (method && overviewDuplicateDerivationMethods.has(method)) {
+              reportDuplicate(node.callee.property)
+            }
+          },
+          MemberExpression(node) {
+            const property = propertyName(node.property)
+            if (!property) {
+              return
+            }
+
+            if (overviewResponseDerivationProperties.has(property)) {
+              reportDuplicate(node.property)
+              return
+            }
+
+            if (
+              property === 'length' &&
+              node.object.type === 'MemberExpression' &&
+              propertyName(node.object.property) === 'tickets'
+            ) {
+              reportDuplicate(node.property)
+            }
+          },
+        }
+      },
+    },
   },
 }
 
@@ -276,6 +400,7 @@ export default defineConfig(
       ],
       'no-duplicate-imports': 'error',
       'atlas/no-ad-hoc-view-states': 'error',
+      'atlas/overview-shared-derivations': 'error',
       'atlas/no-view-polling-override': 'error',
     },
   }

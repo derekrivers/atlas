@@ -30,6 +30,11 @@ export type TicketBoardState = {
   ticketTypes: string[]
 }
 
+export type TicketStatusDistributionBucket = {
+  count: number
+  status: string
+}
+
 export type TicketBoardSearchParams = Pick<
   TicketBoardState,
   | 'epicKeys'
@@ -370,6 +375,25 @@ export function groupTicketsByEpic(
         tickets: groupTickets,
       }
     })
+}
+
+export function selectTicketStatusDistribution(
+  tickets: readonly TicketBoardItem[]
+): TicketStatusDistributionBucket[] {
+  const counts = new Map<string, number>()
+  for (const ticket of tickets) {
+    counts.set(ticket.status, (counts.get(ticket.status) ?? 0) + 1)
+  }
+
+  return Array.from(counts.entries())
+    .map(([status, count]) => ({ count, status }))
+    .sort((left, right) => left.status.localeCompare(right.status))
+}
+
+export function selectTicketStatusDistributionTotal(
+  distribution: readonly TicketStatusDistributionBucket[]
+): number {
+  return distribution.reduce((total, bucket) => total + bucket.count, 0)
 }
 
 export function formatTicketBoardLabel(value: string): string {

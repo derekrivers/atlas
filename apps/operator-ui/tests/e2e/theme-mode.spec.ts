@@ -451,8 +451,10 @@ async function expectVisiblePrimitivesLegible(page: Page, mode: 'light' | 'dark'
     page.getByRole('button', { name: 'Toggle theme' })
   )
   await expectLegible(
-    `${mode} placeholder badge`,
-    page.locator('[data-slot="badge"]').filter({ hasText: 'Placeholder' })
+    `${mode} staleness badge`,
+    page
+      .getByTestId('overview-linear-sync-staleness')
+      .locator('[data-slot="badge"]')
   )
   await expectLegible(
     `${mode} destructive button`,
