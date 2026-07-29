@@ -91,7 +91,7 @@ test('round-trips filter and sort state through a copied URL', async ({
 }) => {
   await page.goto('/tickets')
 
-  await page.getByRole('button', { name: 'Status' }).click()
+  await page.getByRole('button', { name: 'Filter status' }).click()
   await page.getByRole('menuitemcheckbox', { name: 'Done' }).click()
   await page.keyboard.press('Escape')
   await page.getByRole('button', { name: /Priority/ }).click()

@@ -133,7 +133,12 @@ function FilterMenu({
   return (
     <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>
-        <Button variant='outline' size='sm' className='h-8'>
+        <Button
+          aria-label={`Filter ${label.toLowerCase()}`}
+          variant='outline'
+          size='sm'
+          className='h-8'
+        >
           {filterLabel(selectedValues.length, label)}
         </Button>
       </DropdownMenuTrigger>
