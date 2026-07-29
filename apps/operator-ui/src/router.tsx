@@ -8,8 +8,8 @@ import { RootRouteChrome } from '@/components/root-route-chrome'
 import { OperatorLayout } from '@/components/layout/operator-layout'
 import { GeneralError, RouteErrorBoundary } from '@/features/errors/general-error'
 import { NotFoundError } from '@/features/errors/not-found-error'
-import { TicketDetailPlaceholder } from '@/features/placeholders/ticket-detail-placeholder'
 import { TicketBoardRoute } from '@/features/tickets/ticket-board'
+import { TicketDetailView } from '@/features/tickets/ticket-detail-view'
 
 type CreateOperatorRouterOptions = {
   includeErrorProbe?: boolean
@@ -71,7 +71,7 @@ function createOperatorRouteTree({
     createRoute({
       getParentRoute: () => operatorRoute,
       path: ticketDetail.routePath,
-      component: () => <TicketDetailPlaceholder surface={ticketDetail} />,
+      component: () => <TicketDetailView surfaceTitle={ticketDetail.title} />,
       errorComponent: RouteErrorBoundary,
     }),
     createRoute({
