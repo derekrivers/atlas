@@ -9,6 +9,7 @@ import { OperatorLayout } from '@/components/layout/operator-layout'
 import { GeneralError, RouteErrorBoundary } from '@/features/errors/general-error'
 import { NotFoundError } from '@/features/errors/not-found-error'
 import { TicketDetailPlaceholder } from '@/features/placeholders/ticket-detail-placeholder'
+import { TicketBoardRoute } from '@/features/tickets/ticket-board'
 
 type CreateOperatorRouterOptions = {
   includeErrorProbe?: boolean
@@ -64,7 +65,7 @@ function createOperatorRouteTree({
     createRoute({
       getParentRoute: () => operatorRoute,
       path: tickets.routePath,
-      component: () => <PlaceholderRoute surface={tickets} />,
+      component: TicketBoardRoute,
       errorComponent: RouteErrorBoundary,
     }),
     createRoute({
