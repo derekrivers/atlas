@@ -251,6 +251,12 @@ and are never conflated; a component suite that passes is not acceptance.
   facts that most affect these views — a board that is overwhelmingly
   terminal, lexicographic key ordering, and UUID-only lesson references —
   are all invisible to a suite that mocks its own expectations.
+  The documented command is
+  `npm --prefix apps/operator-ui run test:e2e`: the harness seeds a fresh
+  SQLite store from
+  `apps/operator-ui/tests/e2e/fixtures/live-api-seed.json`, starts
+  `atlas api serve` on `127.0.0.1`, runs `@playwright/test`, then tears down
+  the API process and temporary store.
 - **Contract drift** is caught by regenerating the TypeScript client from
   the running application's OpenAPI document in CI and failing on any
   diff against the committed output. The single regeneration command is

@@ -15,6 +15,18 @@ The command installs the app dependencies from
 TypeScript client and fails on drift, then runs lint, type-check, Vitest
 acceptance tests, Vitest browser-mode component tests, and the production build.
 
+The end-to-end job is intentionally separate:
+
+```bash
+./apps/operator-ui/scripts/ci-e2e.sh
+```
+
+That command installs the same pinned dependencies and runs
+`npm run test:e2e`. Playwright seeds a fresh SQLite store from
+`apps/operator-ui/tests/e2e/fixtures/live-api-seed.json`, starts
+`atlas api serve` on loopback, runs the end-to-end specs against the live API,
+and tears down the API process and temporary store.
+
 Regenerate the OpenAPI TypeScript client from the live FastAPI application with:
 
 ```bash
