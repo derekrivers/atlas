@@ -39,9 +39,13 @@ table.
 
 Each CI record also stores the exact `job_name` and GitHub lifecycle
 `source_event_at` (`updated_at` for workflows, `completed_at`/`started_at` for
-checks). Verification resolves the current execution independently per job by
-this source timestamp. Missing ordering metadata fails closed; UUIDs and Atlas
-ingest time never decide CI recency.
+checks). Append-only observations sharing the same non-null `external_run_id`
+are lifecycle snapshots of one execution: an ordered later snapshot supersedes
+an unordered earlier snapshot only within that execution. An execution with no
+ordered snapshot remains unorderable, and unrelated executions — including
+records without an `external_run_id` — are never collapsed. Verification then
+resolves the current execution independently per job by GitHub lifecycle time;
+UUIDs, payload hashes, and Atlas ingest timestamps never determine CI recency.
 
 ## Status normalisation
 

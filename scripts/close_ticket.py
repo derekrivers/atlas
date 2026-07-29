@@ -143,8 +143,8 @@ def _summarise_sync(tick: int, result: subprocess.CompletedProcess[str]) -> None
         print(result.stderr, end="", file=sys.stderr)
 
 
-def _require_passed_verdict(result: subprocess.CompletedProcess[str]) -> None:
-    """Fail closed unless the captured pre-merge verification is PASSED."""
+def _require_passed_verdict(result: subprocess.CompletedProcess[str]) -> str:
+    """Return the verified head, failing closed unless the verdict is PASSED."""
 
     try:
         payload = json.loads(result.stdout or "")
@@ -158,6 +158,12 @@ def _require_passed_verdict(result: subprocess.CompletedProcess[str]) -> None:
             f"Pre-merge verification is {status or 'unknown'}, not passed; "
             "merge is blocked."
         )
+    head_commit = payload.get("head_commit")
+    if not isinstance(head_commit, str) or not head_commit.strip():
+        raise RuntimeError(
+            "Pre-merge verification has no valid head_commit; merge is blocked."
+        )
+    return head_commit
 
 
 def _merged_context(repo: str, pr: int) -> Any:
@@ -232,8 +238,8 @@ def drive(
             run_command=run_command,
             capture=True,
         )
-        _require_passed_verdict(pre_merge)
-        print("Pre-merge verdict: passed.")
+        verified_head = _require_passed_verdict(pre_merge)
+        print(f"Pre-merge verdict: passed at head {verified_head}.")
         print("\n=== MERGE GATE ===")
         pause(
             f"Merge {repo} PR #{args.pr} in GitHub, then press Enter "
@@ -245,6 +251,14 @@ def drive(
                 f"Merge gate failed: {repo} PR #{args.pr} is not merged. "
                 "Merge it in GitHub, then re-run this script; existing "
                 "confirmations at this head commit will not be re-prompted.",
+                file=sys.stderr,
+            )
+            return 1
+        if context.head_commit != verified_head:
+            print(
+                f"Merge gate failed: verified head {verified_head} does not match "
+                f"merged PR head {context.head_commit}; post-merge actions are "
+                "blocked.",
                 file=sys.stderr,
             )
             return 1

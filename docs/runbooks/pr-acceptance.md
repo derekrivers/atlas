@@ -85,7 +85,7 @@ agent's resume re-runs CI on a new head; spine restarts at step 3);
 scope/acceptance failure → operator judgement. Prefer the fail-closed driver:
 
 ```
-uv run python scripts/close_ticket.py --pr <N> --repo <owner>/<repo> \
+uv run python scripts/close_ticket.py <N> --repo <owner>/<repo> \
   --operator <id>
 ```
 

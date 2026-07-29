@@ -31,6 +31,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
+from datetime import datetime
 from uuid import UUID
 
 from atlas.core.enums import EvidenceStatus
@@ -201,23 +202,56 @@ def _resolve_jobs(
     job_parts: list[str] = []
     for job_name in sorted(by_job):
         records = by_job[job_name]
-        unordered = [record for record in records if record.source_event_at is None]
-        if unordered:
-            # A queued execution has no lifecycle timestamp yet; a malformed
-            # timestamp is equally unorderable. Either holds the gate rather
-            # than allowing an older pass to win.
-            selected = sorted(unordered, key=lambda record: str(record.id))
-            job_status = EvidenceStatus.PENDING
-            job_parts.append(f"{job_name}=pending (source time unavailable)")
-        else:
+        executions: dict[str, list[Evidence]] = {}
+        for index, record in enumerate(records):
+            execution_key = (
+                f"external:{record.external_run_id}"
+                if record.external_run_id is not None
+                else f"uncorrelated:{index}"
+            )
+            executions.setdefault(execution_key, []).append(record)
+
+        ordered_executions: list[tuple[datetime, list[Evidence]]] = []
+        unordered_executions: list[Evidence] = []
+        for execution_records in executions.values():
+            ordered = [
+                record
+                for record in execution_records
+                if record.source_event_at is not None
+            ]
+            if not ordered:
+                unordered_executions.extend(execution_records)
+                continue
             latest_at = max(
                 record.source_event_at
-                for record in records
+                for record in ordered
                 if record.source_event_at is not None
             )
-            selected = sorted(
-                (record for record in records if record.source_event_at == latest_at),
-                key=lambda record: str(record.id),
+            ordered_executions.append(
+                (
+                    latest_at,
+                    [
+                        record
+                        for record in ordered
+                        if record.source_event_at == latest_at
+                    ],
+                )
+            )
+
+        if unordered_executions:
+            selected = _presentation_order(unordered_executions)
+            job_status = EvidenceStatus.PENDING
+            job_parts.append(
+                f"{job_name}=pending ({len(unordered_executions)} execution "
+                "observation(s) have no source time)"
+            )
+        else:
+            latest_at = max(timestamp for timestamp, _ in ordered_executions)
+            selected = _presentation_order(
+                record
+                for timestamp, execution_records in ordered_executions
+                if timestamp == latest_at
+                for record in execution_records
             )
             job_status = _fold_machine_statuses(record.status for record in selected)
             job_parts.append(
@@ -235,6 +269,28 @@ def _resolve_jobs(
             f"{_label(check_type)}: resolved {len(by_job)} current CI job(s) "
             f"at {head_commit}; {', '.join(job_parts)}; folded status "
             f"{status.value}."
+        ),
+    )
+
+
+def _presentation_order(records: Iterable[Evidence]) -> list[Evidence]:
+    """Order deciding evidence without using identifiers for evaluation."""
+
+    status_order = {
+        EvidenceStatus.FAILED: 0,
+        EvidenceStatus.PENDING: 1,
+        EvidenceStatus.WARNING: 2,
+        EvidenceStatus.NOT_APPLICABLE: 3,
+        EvidenceStatus.PASSED: 4,
+    }
+    return sorted(
+        records,
+        key=lambda record: (
+            record.job_name or "",
+            record.external_run_id or "",
+            record.source_event_at.isoformat() if record.source_event_at else "",
+            status_order.get(record.status, 5),
+            str(record.id),
         ),
     )
 

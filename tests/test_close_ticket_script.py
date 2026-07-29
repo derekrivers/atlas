@@ -41,7 +41,12 @@ class Runner:
         if command == self.failure:
             return CompletedProcess(command, 7, "partial\n", "failed\n")
         if "verify" in command and "--json" in command:
-            return CompletedProcess(command, 0, '{"status": "passed"}\n', "")
+            return CompletedProcess(
+                command,
+                0,
+                '{"status": "passed", "head_commit": "' + "a" * 40 + '"}\n',
+                "",
+            )
         if command[-4:] == ("pm", "sync", "--once", "-v"):
             return CompletedProcess(
                 command,
@@ -264,6 +269,77 @@ def test_non_passing_pre_merge_verdict_blocks_merge(
     assert code == 1
     assert pauses == []
     assert "not passed; merge is blocked" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "verdict",
+    [
+        '{"status": "passed"}\n',
+        '{"status": "passed", "head_commit": ""}\n',
+        '{"status": "passed", "head_commit": 123}\n',
+        "not-json\n",
+        "[]\n",
+    ],
+)
+def test_invalid_pre_merge_head_blocks_before_merge_prompt(
+    verdict: str,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    class VerdictRunner(Runner):
+        def __call__(
+            self, command: tuple[str, ...], **kwargs: Any
+        ) -> CompletedProcess[str]:
+            result = super().__call__(command, **kwargs)
+            if "verify" in command and "--json" in command:
+                return CompletedProcess(command, 0, verdict, "")
+            return result
+
+    runner = VerdictRunner()
+    pauses: list[str] = []
+
+    def pause(prompt: str) -> str:
+        pauses.append(prompt)
+        return ""
+
+    code = close_ticket.drive(
+        args(),
+        environ={"GITHUB_TOKEN": "secret"},
+        run_command=runner,
+        pause=pause,
+    )
+
+    assert code == 1
+    assert pauses == []
+    assert "merge is blocked" in capsys.readouterr().err
+
+
+def test_verified_head_matching_merged_head_continues() -> None:
+    runner = Runner()
+
+    assert drive(runner, context=merged()) == 0
+    verify_calls = [call[0] for call in runner.calls if "verify" in call[0]]
+    assert len(verify_calls) == 2
+
+
+def test_verified_head_mismatch_blocks_all_post_merge_actions(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    runner = Runner()
+    context = merged()
+    context.head_commit = "b" * 40
+
+    assert drive(runner, context=context) == 1
+
+    commands = [call[0] for call in runner.calls]
+    verify_calls = [command for command in commands if "verify" in command]
+    assert len(verify_calls) == 1
+    assert ("git", "checkout", "main") not in commands
+    assert ("git", "pull") not in commands
+    assert not any("alembic" in command for command in commands)
+    assert not any("pm" in command for command in commands)
+    error = capsys.readouterr().err
+    assert "a" * 40 in error
+    assert "b" * 40 in error
 
 
 def test_final_status_is_read_and_non_done_is_failure(

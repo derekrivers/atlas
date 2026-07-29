@@ -12,12 +12,16 @@ irrelevant and legacy rows without source metadata fail closed.
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from uuid import UUID, uuid4
 
 import pytest
 
 from atlas.core.enums import ActorType, EvidenceStatus
 from atlas.core.models import Evidence, EvidenceType, VerificationCheckType
+from atlas.evidence import ingest_checks
+from atlas.github import normalise_check_run
+from atlas.storage import Database, EvidenceRepo
 from atlas.verification import (
     MACHINE_CHECK_EVIDENCE,
     MACHINE_CHECK_TYPES,
@@ -190,7 +194,7 @@ def test_equal_source_time_folds_without_uuid_recency() -> None:
     )
 
     assert result.status == ES.FAILED
-    assert result.evidence_ids == (low_id, high_id)
+    assert result.evidence_ids == (high_id, low_id)
 
 
 def test_latest_execution_is_resolved_independently_per_job() -> None:
@@ -296,6 +300,154 @@ def test_enriched_duplicate_supersedes_legacy_row() -> None:
 
     assert result.status is ES.PASSED
     assert result.evidence_ids == (enriched.id,)
+
+
+@pytest.mark.parametrize("completed_status", [ES.PASSED, ES.FAILED])
+def test_ordered_lifecycle_snapshot_supersedes_queued_same_execution(
+    completed_status: EvidenceStatus,
+) -> None:
+    queued = make_evidence(
+        evidence_type=ET.TEST_RESULT,
+        status=ES.PENDING,
+        created_by_type=ActorType.SYSTEM,
+        source_event_at=None,
+        external_run_id="run-42",
+        payload_hash="queued",
+    )
+    completed = make_evidence(
+        evidence_type=ET.TEST_RESULT,
+        status=completed_status,
+        created_by_type=ActorType.SYSTEM,
+        source_event_at=NOW,
+        external_run_id="run-42",
+        payload_hash="completed",
+    )
+
+    result = evaluate_machine_check(
+        VCT.TESTS, head_commit=HEAD, evidence=[queued, completed]
+    )
+
+    assert result.status is completed_status
+    assert result.evidence_ids == (completed.id,)
+
+
+def test_unordered_different_execution_holds_job_pending() -> None:
+    completed = make_evidence(
+        evidence_type=ET.TEST_RESULT,
+        status=ES.PASSED,
+        created_by_type=ActorType.SYSTEM,
+        source_event_at=NOW,
+        external_run_id="completed-run",
+    )
+    independent_queued = make_evidence(
+        evidence_type=ET.TEST_RESULT,
+        status=ES.PENDING,
+        created_by_type=ActorType.SYSTEM,
+        source_event_at=None,
+        external_run_id="queued-run",
+    )
+
+    result = evaluate_machine_check(
+        VCT.TESTS, head_commit=HEAD, evidence=[completed, independent_queued]
+    )
+
+    assert result.status is ES.PENDING
+    assert result.evidence_ids == (independent_queued.id,)
+
+
+def test_unordered_record_without_execution_id_holds_job_pending() -> None:
+    completed = make_evidence(
+        evidence_type=ET.TEST_RESULT,
+        status=ES.PASSED,
+        created_by_type=ActorType.SYSTEM,
+        source_event_at=NOW,
+        external_run_id="completed-run",
+    )
+    uncorrelated = make_evidence(
+        evidence_type=ET.TEST_RESULT,
+        status=ES.PENDING,
+        created_by_type=ActorType.SYSTEM,
+        source_event_at=None,
+        external_run_id=None,
+    )
+
+    result = evaluate_machine_check(
+        VCT.TESTS, head_commit=HEAD, evidence=[uncorrelated, completed]
+    )
+
+    assert result.status is ES.PENDING
+    assert result.evidence_ids == (uncorrelated.id,)
+
+
+def test_lifecycle_result_is_independent_of_uuid_assignment() -> None:
+    def evaluate(queued_id: UUID, completed_id: UUID) -> EvidenceStatus:
+        queued = make_evidence(
+            evidence_type=ET.TEST_RESULT,
+            status=ES.PENDING,
+            created_by_type=ActorType.SYSTEM,
+            source_event_at=None,
+            external_run_id="run-42",
+            id=queued_id,
+        )
+        completed = make_evidence(
+            evidence_type=ET.TEST_RESULT,
+            status=ES.FAILED,
+            created_by_type=ActorType.SYSTEM,
+            source_event_at=NOW,
+            external_run_id="run-42",
+            id=completed_id,
+        )
+        return evaluate_machine_check(
+            VCT.TESTS, head_commit=HEAD, evidence=[queued, completed]
+        ).status
+
+    assert evaluate(UUID(int=1), UUID(int=2)) is ES.FAILED
+    assert evaluate(UUID(int=2), UUID(int=1)) is ES.FAILED
+
+
+def test_raw_github_queued_then_completed_ingests_and_evaluates(
+    tmp_path: Path,
+) -> None:
+    database = Database(f"sqlite:///{tmp_path}/atlas.db")
+    database.create_all()
+    repo = EvidenceRepo(database)
+    product_id = uuid4()
+    queued_payload = {
+        "id": 42,
+        "name": "test",
+        "status": "queued",
+        "conclusion": None,
+        "started_at": None,
+        "completed_at": None,
+        "html_url": "https://github.com/acme/atlas/runs/42",
+    }
+    completed_payload = queued_payload | {
+        "status": "completed",
+        "conclusion": "success",
+        "started_at": "2026-06-28T12:00:00Z",
+        "completed_at": "2026-06-28T12:05:00Z",
+    }
+
+    ingest_checks(
+        [normalise_check_run(queued_payload, head_sha=HEAD)],
+        repo=repo,
+        product_id=product_id,
+        now=NOW,
+    )
+    ingest_checks(
+        [normalise_check_run(completed_payload, head_sha=HEAD)],
+        repo=repo,
+        product_id=product_id,
+        now=NOW + timedelta(minutes=5),
+    )
+
+    stored = repo.list()
+    assert len(stored) == 2
+    result = evaluate_machine_check(VCT.TESTS, head_commit=HEAD, evidence=stored)
+    assert result.status is ES.PASSED
+    assert result.evidence_ids == (
+        next(record.id for record in stored if record.status is ES.PASSED),
+    )
 
 
 # --- AC6: a non-machine check type is NOT_APPLICABLE and never raises.
