@@ -133,7 +133,7 @@ function CriticalPathTable({ steps }: { steps: CriticalPathStep[] }) {
           Execution Chain
         </h2>
       </div>
-      <Table>
+      <Table aria-label='Critical path execution chain' className='table-fixed'>
         <TableHeader>
           <TableRow>
             <TableHead className='w-20'>Step</TableHead>
@@ -148,7 +148,7 @@ function CriticalPathTable({ steps }: { steps: CriticalPathStep[] }) {
               <TableCell className='text-muted-foreground font-mono tabular-nums'>
                 {`#${index + 1}`}
               </TableCell>
-              <TableCell>
+              <TableCell className='whitespace-normal'>
                 <TicketKeyLink step={step} testId='critical-path-step-link'>
                   {step.key}
                 </TicketKeyLink>

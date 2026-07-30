@@ -67,7 +67,7 @@ function DependencyGraphCanvas({
       className='border-border bg-card h-[62svh] min-h-96 max-h-[760px] w-full rounded-lg border'
       data-testid='dependency-graph-svg'
       preserveAspectRatio='xMidYMid meet'
-      role='img'
+      role='group'
       viewBox={`0 0 ${layout.viewBoxWidth} ${layout.viewBoxHeight}`}
     >
       <defs>
@@ -179,6 +179,7 @@ function DependencyGraphCanvas({
               data-testid={`dependency-node-link-${node.key}`}
               href={ticketDetailHref(node.key)}
               key={node.key}
+              tabIndex={0}
             >
               {frame}
             </a>

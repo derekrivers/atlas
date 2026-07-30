@@ -194,6 +194,9 @@ describe('ticket detail view rendering', () => {
   it('renders definition fields and preserves stored list order', async () => {
     await render(<TicketDetailContent ticket={baseTicket} />)
 
+    expect(
+      document.querySelector('[role="tablist"][aria-label="Ticket detail sections"]')
+    ).not.toBeNull()
     expect(testText('ticket-detail-key')).toBe(baseTicket.key)
     expect(testText('ticket-detail-title')).toBe(baseTicket.title)
     expect(testText('ticket-detail-objective')).toBe(baseTicket.objective)

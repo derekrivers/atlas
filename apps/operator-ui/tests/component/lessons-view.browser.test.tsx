@@ -213,6 +213,10 @@ describe('lessons view browser rendering', () => {
 
     await waitForAssertion(() => {
       expect(statusTab('draft').getAttribute('aria-selected')).toBe('true')
+      expect(
+        document.querySelector('[role="tablist"][aria-label="Lesson status facets"]')
+      ).not.toBeNull()
+      expect(document.querySelector('table[aria-label="Lessons"]')).not.toBeNull()
       expect(bodyText()).toContain('Draft lesson')
       for (const status of atlasOpenApiEnums.EntityStatus) {
         if (status !== 'draft') {

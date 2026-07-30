@@ -14,3 +14,4 @@ else
   ./node_modules/.bin/playwright install chromium
 fi
 npm run test:e2e
+npm run test:a11y

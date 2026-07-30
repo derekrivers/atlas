@@ -31,6 +31,7 @@ OPERATOR_UI_STAGE_COMMANDS: dict[str, str] = {
     "test-operator-ui-components": "npm run test:browser",
     "build-operator-ui": "npm run build:bundle",
     "test-operator-ui-e2e": "npm run test:e2e",
+    "test-operator-ui-accessibility": "npm run test:a11y",
 }
 
 PYTHON_GATE_COMMANDS: dict[str, tuple[str, ...]] = {
@@ -189,7 +190,11 @@ def test_playwright_install_uses_lockfile_pinned_local_binary() -> None:
 
     workflow = _read_text(CI_YML)
     assert "npx playwright install" not in workflow
-    for job_name in ("test-operator-ui-components", "test-operator-ui-e2e"):
+    for job_name in (
+        "test-operator-ui-components",
+        "test-operator-ui-e2e",
+        "test-operator-ui-accessibility",
+    ):
         runs = _run_steps(_job(job_name))
         install = "./node_modules/.bin/playwright install --with-deps chromium"
         assert install in runs
@@ -201,12 +206,19 @@ def test_operator_ui_e2e_ci_uses_seeded_live_api_harness() -> None:
     package_scripts = _load_json(OPERATOR_UI_PACKAGE_JSON)["scripts"]
     assert isinstance(package_scripts, dict)
     assert package_scripts["test:e2e"] == (
-        "playwright test --config playwright.config.ts"
+        "playwright test --config playwright.config.ts --grep-invert @accessibility"
+    )
+    assert package_scripts["test:a11y"] == (
+        "playwright test --config playwright.config.ts --grep @accessibility"
     )
 
     e2e_job_runs = _run_steps(_job("test-operator-ui-e2e"))
     assert "uv sync --locked" in e2e_job_runs
     assert "npm run test:e2e" in e2e_job_runs
+
+    accessibility_job_runs = _run_steps(_job("test-operator-ui-accessibility"))
+    assert "uv sync --locked" in accessibility_job_runs
+    assert "npm run test:a11y" in accessibility_job_runs
 
     server = _read_text(E2E_SERVER)
     assert "atlas.tools.operator_ui_e2e_seed" in server

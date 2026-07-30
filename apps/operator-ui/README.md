@@ -22,10 +22,16 @@ The end-to-end job is intentionally separate:
 ```
 
 That command installs the same pinned dependencies and runs
-`npm run test:e2e`. Playwright seeds a fresh SQLite store from
+`npm run test:e2e` and `npm run test:a11y`. Playwright seeds a fresh SQLite
+store from
 `apps/operator-ui/tests/e2e/fixtures/live-api-seed.json`, starts
 `atlas api serve` on loopback, runs the end-to-end specs against the live API,
 and tears down the API process and temporary store.
+
+The accessibility stage uses `@axe-core/playwright` with axe-core's WCAG 2.2 AA
+tags across every delivered view in light and dark modes. It also holds the
+keyboard traversal, table/tab semantics, and laptop `1366x768` plus tablet
+`1024x768` no-horizontal-scroll checks.
 
 Regenerate the OpenAPI TypeScript client from the live FastAPI application with:
 

@@ -34,7 +34,10 @@ describe('Operator UI runner separation contract', () => {
       'vitest run --config vitest.browser.config.ts'
     )
     expect(packageJson.scripts['test:e2e']).toBe(
-      'playwright test --config playwright.config.ts'
+      'playwright test --config playwright.config.ts --grep-invert @accessibility'
+    )
+    expect(packageJson.scripts['test:a11y']).toBe(
+      'playwright test --config playwright.config.ts --grep @accessibility'
     )
 
     expect(readProjectFile('vitest.browser.config.ts')).toContain(

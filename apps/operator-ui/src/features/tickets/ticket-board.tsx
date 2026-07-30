@@ -88,6 +88,7 @@ type TicketBoardFilterMenuProps = Omit<TicketBoardFilter, 'param'> & {
 }
 
 type TicketBoardTableProps = {
+  ariaLabel?: string
   framed?: boolean
   onSortChange: (sort: TicketBoardSort) => void
   sort: TicketBoardSort
@@ -338,81 +339,84 @@ function TicketBoardToolbar({
 }
 
 function TicketBoardTable({
+  ariaLabel = 'Ticket board results',
   framed = true,
   onSortChange,
   sort,
   tickets,
 }: TicketBoardTableProps) {
   const table = (
-      <Table>
-        <TableHeader>
-          <TableRow className='bg-muted/50 hover:bg-muted/50'>
-            {BOARD_COLUMNS.map((column) => (
-              <TableHead
-                key={column.field}
-                aria-sort={
-                  sort.field === column.field
-                    ? sort.direction === 'asc'
-                      ? 'ascending'
-                      : 'descending'
-                    : 'none'
-                }
-                className={cn(column.field === 'title' && 'min-w-72')}
+    <Table aria-label={ariaLabel} className='table-fixed'>
+      <TableHeader>
+        <TableRow className='bg-muted/50 hover:bg-muted/50'>
+          {BOARD_COLUMNS.map((column) => (
+            <TableHead
+              key={column.field}
+              aria-sort={
+                sort.field === column.field
+                  ? sort.direction === 'asc'
+                    ? 'ascending'
+                    : 'descending'
+                  : 'none'
+              }
+              className={cn(column.field === 'title' && 'w-[36%]')}
+            >
+              <Button
+                variant='ghost'
+                size='sm'
+                className='h-auto min-h-8 whitespace-normal px-2 text-start'
+                onClick={() => onSortChange(toggleSort(sort, column.field))}
               >
-                <Button
-                  variant='ghost'
-                  size='sm'
-                  className='h-8 px-2'
-                  onClick={() => onSortChange(toggleSort(sort, column.field))}
+                {column.label}
+                {sortIcon(sort, column.field)}
+              </Button>
+            </TableHead>
+          ))}
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {tickets.length > 0 ? (
+          tickets.map((ticket) => (
+            <TableRow key={ticket.key} data-testid='ticket-board-row'>
+              <TableCell className='font-medium'>
+                <Link
+                  className='text-primary underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+                  to={ticketDetailHref(ticket.key)}
                 >
-                  {column.label}
-                  {sortIcon(sort, column.field)}
-                </Button>
-              </TableHead>
-            ))}
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {tickets.length > 0 ? (
-            tickets.map((ticket) => (
-              <TableRow key={ticket.key} data-testid='ticket-board-row'>
-                <TableCell className='font-medium'>
-                  <Link
-                    className='text-primary underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
-                    to={ticketDetailHref(ticket.key)}
-                  >
-                    {ticket.key}
-                  </Link>
-                </TableCell>
-                <TableCell className='max-w-[32rem] whitespace-normal'>
-                  {ticket.title}
-                </TableCell>
-                <TableCell>
-                  <Badge variant='outline'>
-                    {formatTicketBoardLabel(ticket.status)}
-                  </Badge>
-                </TableCell>
-                <TableCell>{formatTicketBoardLabel(ticket.ticket_type)}</TableCell>
-                <TableCell>{ticket.priority}</TableCell>
-                <TableCell>
-                  <Badge variant='secondary'>
-                    {formatTicketBoardLabel(ticket.risk_level)}
-                  </Badge>
-                </TableCell>
-              </TableRow>
-            ))
-          ) : (
-            <TableRow>
-              <TableCell
-                colSpan={BOARD_COLUMNS.length}
-                className='text-muted-foreground h-24 text-center'
-              >
-                No tickets match.
+                  {ticket.key}
+                </Link>
+              </TableCell>
+              <TableCell className='max-w-[32rem] whitespace-normal'>
+                {ticket.title}
+              </TableCell>
+              <TableCell className='whitespace-normal'>
+                <Badge variant='outline'>
+                  {formatTicketBoardLabel(ticket.status)}
+                </Badge>
+              </TableCell>
+              <TableCell className='whitespace-normal'>
+                {formatTicketBoardLabel(ticket.ticket_type)}
+              </TableCell>
+              <TableCell>{ticket.priority}</TableCell>
+              <TableCell className='whitespace-normal'>
+                <Badge variant='secondary'>
+                  {formatTicketBoardLabel(ticket.risk_level)}
+                </Badge>
               </TableCell>
             </TableRow>
-          )}
-        </TableBody>
-      </Table>
+          ))
+        ) : (
+          <TableRow>
+            <TableCell
+              colSpan={BOARD_COLUMNS.length}
+              className='text-muted-foreground h-24 text-center'
+            >
+              No tickets match.
+            </TableCell>
+          </TableRow>
+        )}
+      </TableBody>
+    </Table>
   )
 
   if (!framed) {
@@ -486,6 +490,7 @@ function TicketBoardEpicGroups({
             ) : null}
           </div>
           <TicketBoardTable
+            ariaLabel={`Tickets in ${group.epicKey ?? 'Unassigned'}`}
             framed={false}
             sort={sort}
             tickets={group.tickets}
