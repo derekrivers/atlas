@@ -16,6 +16,11 @@ const sharedStateImportPath = '@/components/states'
 const atlasQueryHooksImportPath = '@/api/query-hooks'
 const tanstackQueryImportPath = '@tanstack/react-query'
 const overviewDashboardPath = '/src/features/overview/overview-dashboard.tsx'
+const overviewQueryResponseSurfaces = new Map([
+  ['useTicketsQuery', new Set(['tickets'])],
+  ['useReviewsQuery', new Set(['reviews'])],
+  ['useDependencyCriticalPathQuery', new Set(['steps', 'total_effort'])],
+])
 const overviewSharedSelectors = [
   {
     importPath: '@/features/tickets/ticket-board-state',
@@ -38,14 +43,18 @@ const overviewSharedSelectors = [
     name: 'selectCriticalPathTotalEffort',
   },
 ]
-const overviewDuplicateDerivationMethods = new Set([
+const overviewCollectionDerivationMethods = new Set([
   'filter',
   'forEach',
+  'map',
   'reduce',
 ])
-const overviewResponseDerivationProperties = new Set([
+const overviewCollectionResponseProperties = new Set([
+  'tickets',
   'reviews',
   'steps',
+])
+const overviewScalarResponseProperties = new Set([
   'total_effort',
 ])
 const viewPollingOverrideProperties = new Set([
@@ -111,6 +120,10 @@ function propertyName(node) {
     return node.value
   }
   return undefined
+}
+
+function unwrapChain(node) {
+  return node.type === 'ChainExpression' ? node.expression : node
 }
 
 function isQueryHookName(name) {
@@ -267,6 +280,11 @@ export const atlasPlugin = {
         }
 
         const imports = new Map()
+        const overviewQueryHookLocals = new Map()
+        const overviewQueryHookNamespaces = new Set()
+        const queryResultAliases = new Map()
+        const responseDataAliases = new Map()
+        const responseCollectionAliases = new Set()
 
         function addImport(importPath, name) {
           const names = imports.get(importPath) ?? new Set()
@@ -280,6 +298,115 @@ export const atlasPlugin = {
 
         function reportDuplicate(node) {
           context.report({ node, messageId: 'duplicate' })
+        }
+
+        function queryHookNameFromCall(node) {
+          const expression = unwrapChain(node)
+          if (expression.type !== 'CallExpression') {
+            return undefined
+          }
+
+          const callee = unwrapChain(expression.callee)
+          if (callee.type === 'Identifier') {
+            return overviewQueryHookLocals.get(callee.name)
+          }
+
+          if (
+            callee.type === 'MemberExpression' &&
+            callee.object.type === 'Identifier' &&
+            overviewQueryHookNamespaces.has(callee.object.name)
+          ) {
+            const name = propertyName(callee.property)
+            if (name && overviewQueryResponseSurfaces.has(name)) {
+              return name
+            }
+          }
+
+          return undefined
+        }
+
+        function queryHookNameFromDataExpression(node) {
+          const expression = unwrapChain(node)
+          if (
+            expression.type === 'Identifier' &&
+            responseDataAliases.has(expression.name)
+          ) {
+            return responseDataAliases.get(expression.name)
+          }
+
+          if (expression.type !== 'MemberExpression') {
+            return undefined
+          }
+
+          if (propertyName(expression.property) !== 'data') {
+            return undefined
+          }
+
+          const object = unwrapChain(expression.object)
+          if (object.type !== 'Identifier') {
+            return undefined
+          }
+
+          return queryResultAliases.get(object.name)
+        }
+
+        function responseSurfaceFromExpression(node) {
+          const expression = unwrapChain(node)
+          if (expression.type !== 'MemberExpression') {
+            return undefined
+          }
+
+          const property = propertyName(expression.property)
+          if (!property) {
+            return undefined
+          }
+
+          const hookName = queryHookNameFromDataExpression(expression.object)
+          if (!hookName) {
+            return undefined
+          }
+
+          const surfaces = overviewQueryResponseSurfaces.get(hookName)
+          if (!surfaces?.has(property)) {
+            return undefined
+          }
+
+          return { hookName, property }
+        }
+
+        function isOwnedResponseCollection(node) {
+          const expression = unwrapChain(node)
+          if (
+            expression.type === 'Identifier' &&
+            responseCollectionAliases.has(expression.name)
+          ) {
+            return true
+          }
+
+          const surface = responseSurfaceFromExpression(expression)
+          return (
+            surface !== undefined &&
+            overviewCollectionResponseProperties.has(surface.property)
+          )
+        }
+
+        function addResponseDataAlias(pattern, hookName) {
+          if (pattern.type !== 'ObjectPattern') {
+            return
+          }
+
+          for (const property of pattern.properties) {
+            if (property.type !== 'Property') {
+              continue
+            }
+
+            if (
+              propertyName(property.key) === 'data' &&
+              property.value.type === 'Identifier'
+            ) {
+              responseDataAliases.set(property.value.name, hookName)
+            }
+          }
         }
 
         return {
@@ -304,6 +431,47 @@ export const atlasPlugin = {
               if (name) {
                 addImport(node.source.value, name)
               }
+
+              if (node.source.value === atlasQueryHooksImportPath) {
+                const local = localName(specifier)
+                if (local && name && overviewQueryResponseSurfaces.has(name)) {
+                  overviewQueryHookLocals.set(local, name)
+                }
+
+                const namespace = namespaceName(specifier)
+                if (namespace) {
+                  overviewQueryHookNamespaces.add(namespace)
+                }
+              }
+            }
+          },
+          VariableDeclarator(node) {
+            if (!node.init) {
+              return
+            }
+
+            const hookName = queryHookNameFromCall(node.init)
+            if (hookName) {
+              if (node.id.type === 'Identifier') {
+                queryResultAliases.set(node.id.name, hookName)
+              } else {
+                addResponseDataAlias(node.id, hookName)
+              }
+              return
+            }
+
+            if (node.id.type !== 'Identifier') {
+              return
+            }
+
+            const dataHookName = queryHookNameFromDataExpression(node.init)
+            if (dataHookName) {
+              responseDataAliases.set(node.id.name, dataHookName)
+              return
+            }
+
+            if (isOwnedResponseCollection(node.init)) {
+              responseCollectionAliases.add(node.id.name)
             }
           },
           CallExpression(node) {
@@ -312,7 +480,11 @@ export const atlasPlugin = {
             }
 
             const method = propertyName(node.callee.property)
-            if (method && overviewDuplicateDerivationMethods.has(method)) {
+            if (
+              method &&
+              overviewCollectionDerivationMethods.has(method) &&
+              isOwnedResponseCollection(node.callee.object)
+            ) {
               reportDuplicate(node.callee.property)
             }
           },
@@ -322,15 +494,17 @@ export const atlasPlugin = {
               return
             }
 
-            if (overviewResponseDerivationProperties.has(property)) {
+            if (
+              property === 'length' &&
+              isOwnedResponseCollection(node.object)
+            ) {
               reportDuplicate(node.property)
               return
             }
 
             if (
-              property === 'length' &&
-              node.object.type === 'MemberExpression' &&
-              propertyName(node.object.property) === 'tickets'
+              overviewScalarResponseProperties.has(property) &&
+              responseSurfaceFromExpression(node)
             ) {
               reportDuplicate(node.property)
             }
