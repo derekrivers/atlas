@@ -1,10 +1,10 @@
 # Operator UI Design (Phase 11)
 
-Status: Active design document for Phase 11. Defines the read-only browser
-surface over the Phase 10 operator API, the framework adoption boundary,
-the two additive v1 read routes this phase is permitted, and the testing
-contract. Operator rulings recorded here are ratified (reviewer session
-2026-07-26) and are not reopened by implementing tickets.
+Status: Delivered Phase 11 design. Defines the read-only browser surface over
+the Phase 10 Operator API, the framework adoption boundary, the two additive
+v1 read routes delivered by the phase, and the testing contract. Operator
+rulings recorded here were ratified in the reviewer session of 2026-07-26 and
+remain binding until superseded by a later canonical design.
 
 ## Purpose and scope
 

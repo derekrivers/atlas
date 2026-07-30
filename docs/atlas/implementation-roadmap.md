@@ -569,6 +569,136 @@ Milestone test: an operator can read the review queue and ticket board over
 HTTP at /api/v1 with no direct database or CLI query, with the API
 contains-no-logic rule mechanically enforced.
 
+# Phase 11 — Operator UI (Read Surface)
+
+Design doc: docs/atlas/operator-ui.md.
+Status: CLOSED.
+
+A read-only browser instrument over the Phase 10 Operator API. The application
+lives at `apps/operator-ui/`, couples to Atlas through the `/api/v1` OpenAPI
+contract, and keeps cross-projection presentation assembly in the browser.
+Generated TypeScript types and runtime enum metadata are committed and
+regenerated in CI; drift fails the build.
+
+Phase 11 added exactly two v1 read routes:
+`GET /api/v1/dependencies/graph` and `GET /api/v1/epics`, with `epic_key`
+added to the ticket-board item. It added no writes, authentication, remote
+deployment contract or third read route.
+
+## Epic: Operator UI (Read Surface) (E13)
+
+Delivered E13 tickets (store keys):
+
+```
+ATLAS-209 Accessibility and responsive pass                              — #282
+ATLAS-210 Application shell: navigation, theme toggle, command palette   — #269
+ATLAS-211 Ticket board view                                               — #272
+ATLAS-212 Operator UI CI pipeline                                         — #271
+ATLAS-213 Critical path view                                              — #274
+ATLAS-214 Dependency graph view                                           — #276
+ATLAS-215 Playwright end-to-end harness over a seeded live API            — #270
+ATLAS-216 Epic grouping on the ticket board                               — #278
+ATLAS-217 Lessons view with draft triage                                  — #277
+ATLAS-218 Open-source readiness for the Operator UI                       — #283
+ATLAS-219 Generated OpenAPI TypeScript client with a CI drift guard       — #264
+ATLAS-220 Overview dashboard                                              — #281
+ATLAS-221 Query layer, dev proxy, and API-unreachable primitives          — #267
+ATLAS-222 Review queue view                                               — #275
+ATLAS-223 Scaffold apps/operator-ui and strip the template demo domains   — #263
+ATLAS-224 Theme token contract from the vendored theme.css                — #265
+ATLAS-225 Ticket detail: dependencies and readiness tab                   — #280
+ATLAS-226 Ticket detail view: definition and metadata                     — #273
+ATLAS-227 Ticket detail: evidence tab                                     — #279
+```
+
+Phase 11 cross-epic deliveries (delivered):
+
+```
+ATLAS-207 GET /api/v1/dependencies/graph
+          — E12, Operator API (Read Surface) — #266
+ATLAS-208 GET /api/v1/epics and epic_key on the ticket board item
+          — E12, Operator API (Read Surface) — #262
+```
+
+Phase 11 hand-delivered meta work:
+
+```
+ATLAS-044M Phase 11 design, governed ticket batch and planning renders — #261
+ATLAS-045M Backlog audit and verification-gate hardening               — #268
+```
+
+Milestone test: an operator can open the UI against a running
+`atlas api serve` and reach the Overview, ticket board, grouped epics,
+complete ticket definition, evidence and dependency readiness, review queue,
+critical path, dependency graph and lessons draft queue without a CLI or
+database read. The end-to-end suite proves every view against a seeded live
+API, generated-client drift is mechanically rejected, and accessibility and
+responsive behaviour are required CI gates.
+
+Closure: docs/closure/phase-11-closure-report.md.
+
+Carried forward:
+
+- The browser surface is delivered; whether agent-authored review requires a
+  browser step remains an operator decision.
+- `last_linear_sync_at` currently reflects a ticket definition cursor rather
+  than the last successful sync tick. A successful no-op or status-only sync
+  can therefore render stale; the PM/API owner must persist and expose the
+  actual successful-sync timestamp.
+- Writeable UI/API behaviour still enters only with authentication, actor
+  context and a threat model designed together.
+- Production serving and remote deployment remain undesigned.
+
+---
+
+# Phase 12 — Mainline Integration Control
+
+Design authority: docs/atlas/symphony-integration.md, section
+“Mainline freshness discipline”.
+Status: IN PROGRESS.
+
+Phase 8 established agent-owned rebasing before a ticket reaches
+`Review Required`. Phase 12 closes the remaining post-handoff integration
+seam: when a sibling merge makes a reviewed PR stale, the operator can assess,
+rebase and republish the branch without returning mechanical work to Symphony,
+while preserving exact-head evidence and human acceptance.
+
+## Epic: Autonomous Delivery (E10)
+
+Planned serial delivery:
+
+1. Exact-head PR mainline integration assessment.
+2. Operator-owned lease-guarded PR rebase lane.
+3. Mainline freshness gate and exact-head acceptance restart.
+
+The second item depends on the first. The third depends on both. Their real
+ticket keys are assigned only by `atlas apply`; this roadmap does not reserve
+or predict them.
+
+Scope boundary:
+
+- The lane may assess ancestry, create an isolated local workspace, perform a
+  Git rebase, preserve conflicts for the operator, and publish with an exact
+  force-with-lease.
+- It never resolves conflicts automatically, merges a PR, changes Linear,
+  bypasses CI, carries evidence or confirmations across a head change, or
+  changes the operator's primary checkout.
+- Fork PRs, a dashboard action, merge queues and automatic branch updates are
+  outside the first version.
+- `Changes Requested` remains the route for semantic remediation or work that
+  must return to Symphony. A purely mechanical operator rebase leaves the
+  ticket in `Review Required` and restarts exact-head acceptance.
+
+Milestone test: merge one of two sibling PRs, then take the trailing PR from a
+stale `Review Required` head through the operator-owned rebase lane. The
+published head must contain exact current `main`, the remote update must be
+protected by a lease pinned to the original head, CI must rerun, and old-head
+evidence and confirmations must not authorise the new head. A seeded PR-head
+race, main-head race, unresolved conflict or lease rejection must produce zero
+unintended remote mutation.
+
+---
+
 # Critical Success Criteria
 
 1. Atlas generates its own backlog through plan/apply with stable identity
@@ -577,93 +707,6 @@ contains-no-logic rule mechanically enforced.
 3. Every operational record is traceable to intent (doc anchor + SHA).
 4. The doc linter keeps the canonical document set internally consistent.
 5. Product work begins only after criteria 1–4 hold.
-
----
-
-# Phase 11 roadmap section — paste-ready
-
-Append to `docs/atlas/implementation-roadmap.md` after the Phase 10
-section and before `# Critical Success Criteria`. Ticket keys are left as
-`ATLAS-2NN` placeholders until `atlas apply` mints them; fill them in
-from the apply diff, do not claim them ahead of the counter
-(WORKFLOW.md, "Ticket key identity").
-
-Also update `ROADMAP.md`'s "Current work" paragraph, which still reads
-"the operator API phase", and add `docs/atlas/operator-ui.md` to
-`docs/MANIFEST.md` under "Phase design documents".
-
----
-
-```markdown
-# Phase 11 — Operator UI (Read Surface)
-
-Design doc: docs/atlas/operator-ui.md.
-Status: IN PROGRESS.
-
-A browser instrument over the Phase 10 read API. Read-only: no writes,
-no authentication, loopback only. The UI lives at `apps/operator-ui/` in
-this repository and couples to Atlas through the `/api/v1` OpenAPI
-contract alone, with generated TypeScript types re-generated in CI and
-any drift failing the build.
-
-This phase adds exactly two v1 read routes — `GET /api/v1/epics` (with
-`epic_key` on the board item) and `GET /api/v1/dependencies/graph` — and
-no others. Both exist because a named view is otherwise unbuildable;
-`operator-api.md` is amended in the same change that adds them.
-
-## Epic: Operator UI (Read Surface) (E13)
-
-Foundation:
-
-    ATLAS-2NN  Scaffold apps/operator-ui and strip the template's demo domains
-    ATLAS-2NN  Theme token contract from the vendored theme.css
-    ATLAS-2NN  Generated OpenAPI TypeScript client with a CI drift guard
-    ATLAS-2NN  Query layer, dev proxy, and API-unreachable primitives
-    ATLAS-2NN  Application shell: navigation, theme toggle, command palette
-    ATLAS-2NN  Playwright end-to-end harness over a seeded live API
-    ATLAS-2NN  Operator UI CI pipeline
-
-Views:
-
-    ATLAS-2NN  Ticket board view
-    ATLAS-2NN  Ticket detail view: definition and metadata
-    ATLAS-2NN  Ticket detail: evidence tab
-    ATLAS-2NN  Ticket detail: dependencies and readiness tab
-    ATLAS-2NN  Review queue view
-    ATLAS-2NN  Critical path view
-    ATLAS-2NN  Lessons view with draft triage
-    ATLAS-2NN  Overview dashboard
-    ATLAS-2NN  Epic grouping on the board
-    ATLAS-2NN  Dependency graph view
-
-Close:
-
-    ATLAS-2NN  Accessibility and responsive pass
-    ATLAS-2NN  Open-source readiness
-
-Phase 11 cross-epic deliveries:
-
-    ATLAS-2NN  GET /api/v1/epics and epic_key on the board item
-               — E12, Operator API (Read Surface)
-    ATLAS-2NN  GET /api/v1/dependencies/graph
-               — E12, Operator API (Read Surface)
-
-Milestone test: an operator opens the UI in a browser against a running
-`atlas api serve`, reaches every ticket's definition, evidence and
-dependency readiness, the review queue with its acceptance gates, the
-critical path, and the lessons draft queue — with no CLI query and no
-database read — and the end-to-end suite proves each view against a
-seeded live API rather than against fixtures.
-
-Carried forward into this phase from Phase 10 (closure §6):
-
-    "GUI and browser review" — the question of whether an agent's review
-    includes a browser-based step. This phase delivers the browser
-    surface; it does not rule that question, which remains an operator
-    decision.
-```
-
----
 
 # North Star
 
