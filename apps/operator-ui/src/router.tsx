@@ -9,6 +9,7 @@ import { OperatorLayout } from '@/components/layout/operator-layout'
 import { GeneralError, RouteErrorBoundary } from '@/features/errors/general-error'
 import { CriticalPathRoute } from '@/features/critical-path/critical-path-route'
 import { DependencyGraphRoute } from '@/features/dependency-graph/dependency-graph-view'
+import { LessonsView } from '@/features/lessons/lessons-view'
 import { NotFoundError } from '@/features/errors/not-found-error'
 import { TicketBoardRoute } from '@/features/tickets/ticket-board'
 import { TicketDetailView } from '@/features/tickets/ticket-detail-view'
@@ -98,7 +99,7 @@ function createOperatorRouteTree({
     createRoute({
       getParentRoute: () => operatorRoute,
       path: lessons.routePath,
-      component: () => <PlaceholderRoute surface={lessons} />,
+      component: LessonsView,
       errorComponent: RouteErrorBoundary,
     }),
   ]
