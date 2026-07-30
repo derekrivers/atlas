@@ -19,6 +19,10 @@ import {
 } from '@/components/states'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
+import {
+  selectReviewQueueDepth,
+  selectReviewQueueItems,
+} from './selectors'
 
 type Schema = components['schemas']
 type ReviewItem = Schema['ReviewQueueItemSchema']
@@ -271,7 +275,8 @@ export function ReviewQueueView() {
     )
   }
 
-  const reviews = reviewsQuery.data.reviews
+  const reviews = selectReviewQueueItems(reviewsQuery.data)
+  const reviewDepth = selectReviewQueueDepth(reviewsQuery.data)
 
   return (
     <Main>
@@ -286,7 +291,7 @@ export function ReviewQueueView() {
             </h1>
           </div>
           <Badge variant='outline' className='w-fit'>
-            {reviews.length} waiting
+            {reviewDepth} waiting
           </Badge>
         </div>
         <ReviewQueueContent reviews={reviews} />

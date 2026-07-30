@@ -1,8 +1,5 @@
 import { createRootRoute, createRoute, createRouter } from '@tanstack/react-router'
-import {
-  PlaceholderRoute,
-  ThrowingOperatorView,
-} from '@/app-shell/route-components'
+import { ThrowingOperatorView } from '@/app-shell/route-components'
 import { operatorSurfaces, type OperatorSurface } from '@/app-shell/surfaces'
 import { RootRouteChrome } from '@/components/root-route-chrome'
 import { OperatorLayout } from '@/components/layout/operator-layout'
@@ -11,6 +8,7 @@ import { CriticalPathRoute } from '@/features/critical-path/critical-path-route'
 import { DependencyGraphRoute } from '@/features/dependency-graph/dependency-graph-view'
 import { LessonsView } from '@/features/lessons/lessons-view'
 import { NotFoundError } from '@/features/errors/not-found-error'
+import { OverviewDashboardRoute } from '@/features/overview/overview-dashboard'
 import { TicketBoardRoute } from '@/features/tickets/ticket-board'
 import { TicketDetailView } from '@/features/tickets/ticket-detail-view'
 import { ReviewQueueView } from '@/features/reviews/review-queue-view'
@@ -63,7 +61,7 @@ function createOperatorRouteTree({
     createRoute({
       getParentRoute: () => operatorRoute,
       path: overview.routePath,
-      component: () => <PlaceholderRoute surface={overview} />,
+      component: OverviewDashboardRoute,
       errorComponent: RouteErrorBoundary,
     }),
     createRoute({

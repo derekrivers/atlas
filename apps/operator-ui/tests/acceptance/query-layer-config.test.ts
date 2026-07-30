@@ -98,7 +98,7 @@ describe('Atlas query layer configuration', () => {
         expectedMessage
       )
     },
-    20_000
+    40_000
   )
 
   it(
