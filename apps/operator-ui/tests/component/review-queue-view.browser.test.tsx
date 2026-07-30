@@ -51,6 +51,9 @@ describe('review queue check matrix', () => {
     expect(document.querySelectorAll('[data-testid="review-check-row"]')).toHaveLength(
       atlasOpenApiEnums.VerificationCheckType.length
     )
+    expect(
+      document.querySelector('[role="table"][aria-label="Verification checks"]')
+    ).not.toBeNull()
 
     const passed = checkRow('tests')
     const notApplicable = checkRow('documentation')

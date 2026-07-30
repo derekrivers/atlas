@@ -117,6 +117,9 @@ describe('critical path browser rendering', () => {
     await waitForBodyText('ATLAS-20')
 
     expect(
+      document.querySelector('table[aria-label="Critical path execution chain"]')
+    ).not.toBeNull()
+    expect(
       textInRows('critical-path-step-link').map((value) =>
         value.replace(/\s+/g, '')
       )

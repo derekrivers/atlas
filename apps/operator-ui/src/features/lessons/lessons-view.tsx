@@ -83,7 +83,7 @@ function LessonTags({ tags }: { tags: readonly string[] }) {
   }
 
   return (
-    <div className='flex min-w-44 flex-wrap gap-1'>
+    <div className='flex min-w-0 flex-wrap gap-1'>
       {tags.map((tag) => (
         <Badge key={tag} variant='outline'>
           {tag}
@@ -282,18 +282,22 @@ export function LessonsView() {
           />
         ) : (
           <div className='border-border bg-card text-card-foreground overflow-hidden rounded-lg border'>
-            <Table>
+            <Table aria-label='Lessons' className='table-fixed'>
               <TableHeader>
                 <TableRow>
-                  <TableHead className='min-w-40'>Category</TableHead>
-                  <TableHead className='min-w-64'>Title</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Confidence</TableHead>
-                  <TableHead className='min-w-48'>Tags</TableHead>
-                  <TableHead className='min-w-56'>Creator</TableHead>
-                  <TableHead className='min-w-64'>Source ticket ID</TableHead>
-                  <TableHead className='min-w-56'>Created</TableHead>
-                  <TableHead className='min-w-56'>Updated</TableHead>
+                  <TableHead className='w-[8%] whitespace-normal'>Category</TableHead>
+                  <TableHead className='w-[16%] whitespace-normal'>Title</TableHead>
+                  <TableHead className='w-[8%] whitespace-normal'>Status</TableHead>
+                  <TableHead className='w-[8%] whitespace-normal'>Confidence</TableHead>
+                  <TableHead className='w-[10%] whitespace-normal'>Tags</TableHead>
+                  <TableHead className='w-[12%] whitespace-normal'>Creator</TableHead>
+                  <TableHead className='w-[14%] whitespace-normal'>Source ticket ID</TableHead>
+                  <TableHead className='hidden w-[10%] whitespace-normal xl:table-cell'>
+                    Created
+                  </TableHead>
+                  <TableHead className='hidden w-[10%] whitespace-normal xl:table-cell'>
+                    Updated
+                  </TableHead>
                   <TableHead className='w-12'>
                     <span className='sr-only'>Details</span>
                   </TableHead>
@@ -302,27 +306,37 @@ export function LessonsView() {
               <TableBody>
                 {filteredLessons.map((lesson) => (
                   <TableRow key={lesson.id}>
-                    <TableCell>{formatEnumValue(lesson.category)}</TableCell>
+                    <TableCell className='whitespace-normal'>
+                      {formatEnumValue(lesson.category)}
+                    </TableCell>
                     <TableCell className='max-w-md whitespace-normal'>
                       <span className='font-medium'>{lesson.title}</span>
                     </TableCell>
-                    <TableCell>
+                    <TableCell className='whitespace-normal'>
                       <Badge variant='secondary'>
                         {formatEnumValue(lesson.status)}
                       </Badge>
                     </TableCell>
-                    <TableCell>{formatConfidence(lesson.confidence)}</TableCell>
-                    <TableCell>
+                    <TableCell className='whitespace-normal'>
+                      {formatConfidence(lesson.confidence)}
+                    </TableCell>
+                    <TableCell className='whitespace-normal'>
                       <LessonTags tags={lesson.tags} />
                     </TableCell>
-                    <TableCell>{formatCreator(lesson)}</TableCell>
-                    <TableCell>
+                    <TableCell className='break-words whitespace-normal'>
+                      {formatCreator(lesson)}
+                    </TableCell>
+                    <TableCell className='whitespace-normal'>
                       <code className='bg-muted text-foreground rounded px-1 py-0.5 text-xs break-all'>
                         {lesson.source_ticket_id}
                       </code>
                     </TableCell>
-                    <TableCell>{lesson.created_at}</TableCell>
-                    <TableCell>{lesson.updated_at}</TableCell>
+                    <TableCell className='hidden break-all whitespace-normal xl:table-cell'>
+                      {lesson.created_at}
+                    </TableCell>
+                    <TableCell className='hidden break-all whitespace-normal xl:table-cell'>
+                      {lesson.updated_at}
+                    </TableCell>
                     <TableCell>
                       <Button
                         type='button'

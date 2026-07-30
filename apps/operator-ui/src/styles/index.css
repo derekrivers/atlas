@@ -28,6 +28,23 @@
     cursor: pointer;
   }
 
+  :where(
+    a[href],
+    button:not(:disabled),
+    input:not(:disabled),
+    [role='tab'],
+    [role='menuitem'],
+    [data-slot='command-item']
+  ):focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+
+  svg a:focus-visible [data-testid='dependency-graph-node-frame'] {
+    stroke: var(--ring);
+    stroke-width: 4px;
+  }
+
   /* Prevent focus zoom on mobile devices */
   @media screen and (max-width: 767px) {
     input,

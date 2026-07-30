@@ -275,6 +275,14 @@ and are never conflated; a component suite that passes is not acceptance.
   `apps/operator-ui/tests/e2e/fixtures/live-api-seed.json`, starts
   `atlas api serve` on `127.0.0.1`, runs `@playwright/test`, then tears down
   the API process and temporary store.
+- **Accessibility and responsive tests** use `@axe-core/playwright` in the
+  same seeded live-API harness. The enforced automated standard is axe-core's
+  WCAG 2.2 AA rule set, expressed by the `wcag2a`, `wcag2aa`, `wcag21a`,
+  `wcag21aa`, and `wcag22aa` tags. CI runs every delivered view in light and
+  dark modes, proves a seeded `image-alt` violation is detected, traverses the
+  visible keyboard surface with focus assertions, checks data table and tab
+  labels, and asserts no horizontal scrolling at the named laptop
+  `1366x768` and tablet `1024x768` viewports.
 - **Contract drift** is caught by regenerating the TypeScript client and
   runtime enum metadata from the running application's OpenAPI document in CI
   and failing on any diff against the committed outputs. The single
@@ -287,8 +295,9 @@ and are never conflated; a component suite that passes is not acceptance.
 CI exposes the Operator UI contract as independent required checks:
 `lint-operator-ui-openapi`, `lint-operator-ui`, `lint-operator-ui-types`,
 `test-operator-ui-acceptance`, `test-operator-ui-components`,
-`build-operator-ui`, and `test-operator-ui-e2e`. The end-to-end job is a
-gate, not advisory, and runs with the Playwright package and Chromium browser
+`build-operator-ui`, `test-operator-ui-e2e`, and
+`test-operator-ui-accessibility`. The end-to-end and accessibility jobs are
+gates, not advisory, and run with the Playwright package and Chromium browser
 metadata pinned by `apps/operator-ui/package-lock.json`.
 
 ## Development and serving

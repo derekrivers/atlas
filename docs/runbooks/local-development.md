@@ -22,7 +22,7 @@ environment; there is no virtualenv to activate by hand.
 
 ## The gates
 
-CI runs thirteen independent jobs on pull requests (the title job is omitted on
+CI runs fourteen independent jobs on pull requests (the title job is omitted on
 a push to `main`). Reproduce the Python gates from the repository root:
 
 ```bash
@@ -47,13 +47,14 @@ npm run test:acceptance                    # Vitest contract tests
 npm run test:browser                       # Vitest browser-mode components
 npm run build:bundle                       # Vite production bundle
 npm run test:e2e                           # seed store, serve live API, e2e
+npm run test:a11y                          # axe WCAG 2.2 AA, keyboard, viewports
 ```
 
 The cold-checkout wrappers run the same UI commands in CI order:
 
 ```bash
 ./apps/operator-ui/scripts/ci.sh           # all non-e2e Operator UI stages
-./apps/operator-ui/scripts/ci-e2e.sh       # seeded live-API end-to-end stage
+./apps/operator-ui/scripts/ci-e2e.sh       # seeded live-API e2e and a11y stages
 ```
 
 The PR-only title gate runs `scripts/check_pr_title.py` against the proposed

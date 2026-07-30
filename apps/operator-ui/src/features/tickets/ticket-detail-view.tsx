@@ -767,7 +767,10 @@ export function TicketDetailContent({
     <Main className='space-y-6'>
       <TicketHeader ticket={ticket} />
       <Tabs defaultValue='definition' className='gap-4'>
-        <TabsList className='w-full justify-start overflow-x-auto @3xl/content:w-fit'>
+        <TabsList
+          aria-label='Ticket detail sections'
+          className='w-full justify-start overflow-x-auto @3xl/content:w-fit'
+        >
           <TabsTrigger value='definition'>Definition</TabsTrigger>
           <TabsTrigger value='metadata'>Metadata</TabsTrigger>
           <TabsTrigger value='evidence'>Evidence</TabsTrigger>

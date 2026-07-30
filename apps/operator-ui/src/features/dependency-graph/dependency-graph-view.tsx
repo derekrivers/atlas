@@ -179,6 +179,7 @@ function DependencyGraphCanvas({
               data-testid={`dependency-node-link-${node.key}`}
               href={ticketDetailHref(node.key)}
               key={node.key}
+              tabIndex={0}
             >
               {frame}
             </a>

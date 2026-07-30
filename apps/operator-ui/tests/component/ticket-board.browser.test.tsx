@@ -219,6 +219,9 @@ describe('ticket board browser rendering', () => {
       expect(rowKeys()).toEqual(['ATLAS-2', 'ATLAS-10'])
     })
 
+    expect(
+      document.querySelector('table[aria-label="Ticket board results"]')
+    ).not.toBeNull()
     const firstRow = document.querySelector('[data-testid="ticket-board-row"]')
     expect(firstRow?.textContent).toContain('Seeded ATLAS-2')
     expect(firstRow?.textContent).toContain('In Progress')
@@ -259,6 +262,9 @@ describe('ticket board browser rendering', () => {
     await waitFor(() => {
       expect(groupKeys('ATLAS-E1')).toEqual(['ATLAS-2', 'ATLAS-10'])
     })
+    expect(
+      document.querySelector('table[aria-label="Tickets in ATLAS-E1"]')
+    ).not.toBeNull()
     expect(document.body.textContent).toContain('Operator UI e2e seed')
     expect(document.body.textContent).not.toContain('ATLAS-100')
   })

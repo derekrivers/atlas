@@ -158,6 +158,9 @@ test.describe('review queue view with a populated live queue', () => {
         review.has_pr_merged_evidence ? 'Pass' : 'Fail'
       )
 
+      await expect(
+        item.getByRole('table', { name: 'Verification checks' })
+      ).toBeVisible()
       const checkRows = item.getByTestId('review-check-row')
       await expect(checkRows).toHaveCount(
         atlasOpenApiEnums.VerificationCheckType.length
