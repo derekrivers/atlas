@@ -199,6 +199,42 @@ bound is review throughput rather than agent capacity, and raising
 it further or configuring a merge queue remains a separate
 operator decision.
 
+### Exact-head PR integration assessment
+
+`atlas pr status --pr <N> --repo <owner>/<repo>` is the shared read-only
+answer to whether a pull request's exact head contains the exact current
+`main` commit. The command fetches one PR snapshot, reads that snapshot's
+`base.sha` and `head.sha`, and calls GitHub REST compare as
+`GET /repos/{owner}/{repo}/compare/{base.sha}...{head.sha}`. Branch names,
+local `origin/main`, and GitHub's approximate `mergeable_state` are not
+freshness evidence.
+
+The exact-head definition is intentionally narrower than "GitHub says this
+can merge": a PR is `current` only when it is open, non-draft, same-repository,
+targets the literal base ref `main`, the compare response has `behind_by == 0`,
+the compare `merge_base_commit.sha` equals the PR snapshot's `base.sha`, and
+`mergeable` is known not-conflicted. `mergeable: null`, a missing compare
+field, contradictory compare counts, or a transport failure fails closed and
+cannot yield `current`.
+
+State vocabulary:
+
+- `eligibility`: `eligible`, `merged`, `closed`, `draft`, `fork_head`, or
+  `non_main`.
+- `ancestry`: `current`, `behind`, `diverged`, or `indeterminate`.
+- `mergeability`: `mergeable`, `conflicted`, or `indeterminate`.
+- `integration_status`: `current`, `behind`, `diverged`, `conflicted`,
+  `indeterminate`, or `ineligible`.
+
+The assessment carries the repository, PR number/state/draft/merged flags,
+head ref/SHA/repository, base ref/SHA/repository, compare status, ahead/behind
+counts, merge-base SHA, and all derived statuses. `--json` emits the same typed
+fields for automation. The command writes nothing: no Git fetch, branch update,
+GitHub mutation, Atlas-store row, or Linear transition. Exit code is zero only
+for `integration_status: current`; any rendered non-current, indeterminate, or
+ineligible assessment exits non-zero. Setup and transport failures render a
+single clean error line and no traceback.
+
 ### GitHub write-access probe
 
 `hooks.before_run` also probes GitHub write access immediately after

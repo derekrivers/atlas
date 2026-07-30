@@ -31,6 +31,11 @@ head after evidence is pulled restarts the spine from evidence.
 - Parallel development and review are allowed before step 2. From head freeze
   through merge, only one PR occupies the acceptance spine. A sibling merge
   makes every trailing PR rebase and restart at step 3.
+- Read-only exact-head diagnostics are available with
+  `uv run atlas pr status --pr <N> --repo <owner>/<repo>` (`--json` for the
+  typed payload). The state vocabulary and exact definition live in
+  `docs/atlas/symphony-integration.md#exact-head-pr-integration-assessment`;
+  this note does not add a binding step to the acceptance sequence yet.
 
 ## 1. Review (reviewer-tier, not the gate)
 

@@ -34,8 +34,10 @@ from __future__ import annotations
 import json
 import os
 import time
-from collections.abc import Callable
-from typing import Any, Protocol, TypeVar, runtime_checkable
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass
+from enum import StrEnum
+from typing import Any, Protocol, TypeVar, cast, runtime_checkable
 from urllib import error as urllib_error
 from urllib import parse as urllib_parse
 from urllib import request as urllib_request
@@ -58,6 +60,90 @@ _MAX_BACKOFF_SECONDS = 60.0
 # (array endpoints -> list, the pull-request endpoint -> dict) so the shared
 # transport core (`_send`) returns the right shape to each caller.
 _T = TypeVar("_T")
+
+
+class GitHubCompareStatus(StrEnum):
+    """GitHub compare status values Atlas accepts at the transport boundary."""
+
+    AHEAD = "ahead"
+    BEHIND = "behind"
+    DIVERGED = "diverged"
+    IDENTICAL = "identical"
+
+
+@dataclass(frozen=True)
+class GitHubCompare:
+    """The required, typed subset of a GitHub compare response."""
+
+    status: GitHubCompareStatus
+    ahead_by: int
+    behind_by: int
+    merge_base_sha: str
+
+
+def _is_40_hex_sha(value: str) -> bool:
+    return len(value) == 40 and all(char in "0123456789abcdefABCDEF" for char in value)
+
+
+def _required_str(payload: Mapping[str, Any], key: str, *, label: str) -> str:
+    value = payload.get(key)
+    if not isinstance(value, str) or not value:
+        raise GitHubAPIError(f"GitHub API {label} missing string field {key!r}")
+    return value
+
+
+def _required_int(payload: Mapping[str, Any], key: str, *, label: str) -> int:
+    value = payload.get(key)
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise GitHubAPIError(f"GitHub API {label} missing integer field {key!r}")
+    if value < 0:
+        raise GitHubAPIError(f"GitHub API {label} field {key!r} was negative")
+    return value
+
+
+def _required_object(
+    payload: Mapping[str, Any], key: str, *, label: str
+) -> Mapping[str, Any]:
+    value = payload.get(key)
+    if not isinstance(value, dict):
+        raise GitHubAPIError(f"GitHub API {label} missing object field {key!r}")
+    return cast(Mapping[str, Any], value)
+
+
+def _parse_compare_payload(payload: Mapping[str, Any]) -> GitHubCompare:
+    label = "compare response"
+    raw_status = _required_str(payload, "status", label=label)
+    try:
+        status = GitHubCompareStatus(raw_status)
+    except ValueError as error:
+        raise GitHubAPIError(
+            f"GitHub API compare response had unsupported status {raw_status!r}"
+        ) from error
+
+    ahead_by = _required_int(payload, "ahead_by", label=label)
+    behind_by = _required_int(payload, "behind_by", label=label)
+    merge_base = _required_object(payload, "merge_base_commit", label=label)
+    merge_base_sha = _required_str(merge_base, "sha", label="merge_base_commit")
+    if not _is_40_hex_sha(merge_base_sha):
+        raise GitHubAPIError("GitHub API compare response merge-base was not a SHA")
+
+    expected = {
+        GitHubCompareStatus.AHEAD: ahead_by > 0 and behind_by == 0,
+        GitHubCompareStatus.BEHIND: ahead_by == 0 and behind_by > 0,
+        GitHubCompareStatus.DIVERGED: ahead_by > 0 and behind_by > 0,
+        GitHubCompareStatus.IDENTICAL: ahead_by == 0 and behind_by == 0,
+    }[status]
+    if not expected:
+        raise GitHubAPIError(
+            "GitHub API compare response status contradicted ahead/behind counts"
+        )
+
+    return GitHubCompare(
+        status=status,
+        ahead_by=ahead_by,
+        behind_by=behind_by,
+        merge_base_sha=merge_base_sha,
+    )
 
 
 class GitHubClientError(RuntimeError):
@@ -127,6 +213,12 @@ class GitHubClient(Protocol):
         """
         ...
 
+    def compare_commits(
+        self, owner: str, repo: str, base_sha: str, head_sha: str
+    ) -> GitHubCompare:
+        """Typed exact-SHA compare for ``base_sha...head_sha`` (GitHub -> Atlas)."""
+        ...
+
 
 class GitHubRESTClient:
     """Concrete ``GitHubClient`` over the GitHub REST API (production).
@@ -154,6 +246,7 @@ class GitHubRESTClient:
         self._etags: dict[str, str] = {}
         self._page_cache: dict[str, tuple[list[dict[str, Any]], str | None]] = {}
         self._object_cache: dict[str, dict[str, Any]] = {}
+        self._compare_cache: dict[str, GitHubCompare] = {}
 
     def __repr__(self) -> str:  # never expose the token
         return "GitHubRESTClient(token=***)"
@@ -209,7 +302,43 @@ class GitHubRESTClient:
 
         return self._send(
             url,
-            parse=lambda response: self._read_object(response, url),
+            parse=lambda response: self._read_object(
+                response, url, label="pull-request response"
+            ),
+            on_not_modified=_on_not_modified,
+        )
+
+    def compare_commits(
+        self, owner: str, repo: str, base_sha: str, head_sha: str
+    ) -> GitHubCompare:
+        """Compare two exact commit SHAs with GitHub's compare endpoint.
+
+        The URL is built from the two 40-hex SHAs supplied by the caller, not
+        from branch names. The response is narrowed to the fields Atlas needs
+        and validated before leaving ``atlas.github``.
+        """
+        if not _is_40_hex_sha(base_sha):
+            raise GitHubAPIError("GitHub compare base must be an exact 40-hex SHA")
+        if not _is_40_hex_sha(head_sha):
+            raise GitHubAPIError("GitHub compare head must be an exact 40-hex SHA")
+        path = f"/repos/{owner}/{repo}/compare/{base_sha}...{head_sha}"
+        url = f"{API_ROOT}{path}"
+
+        def _on_not_modified() -> GitHubCompare:
+            cached = self._compare_cache.get(url)
+            if cached is None:
+                raise GitHubAPIError("GitHub compare returned 304 with no cached body")
+            return cached
+
+        def _parse_compare(response: Any) -> GitHubCompare:
+            body = self._read_object(response, url, label="compare response")
+            compare = _parse_compare_payload(body)
+            self._compare_cache[url] = compare
+            return compare
+
+        return self._send(
+            url,
+            parse=_parse_compare,
             on_not_modified=_on_not_modified,
         )
 
@@ -338,7 +467,9 @@ class GitHubRESTClient:
         self._page_cache[url] = page
         return page
 
-    def _read_object(self, response: Any, url: str) -> dict[str, Any]:
+    def _read_object(
+        self, response: Any, url: str, *, label: str = "response"
+    ) -> dict[str, Any]:
         """Read one 200 response whose body is a single JSON OBJECT (ATLAS-67).
 
         The object analogue of :meth:`_read_page`: it caches the ETag the same
@@ -356,7 +487,7 @@ class GitHubRESTClient:
         except json.JSONDecodeError as error:
             raise GitHubAPIError(f"GitHub API returned non-JSON: {error}") from error
         if not isinstance(body, dict):
-            raise GitHubAPIError("GitHub API pull-request response was not an object")
+            raise GitHubAPIError(f"GitHub API {label} was not an object")
         self._object_cache[url] = body
         return body
 

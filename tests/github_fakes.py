@@ -14,7 +14,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from atlas.github.client import GitHubAPIError
+from atlas.github.client import GitHubAPIError, GitHubCompare, GitHubCompareStatus
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "github"
 
@@ -64,6 +64,8 @@ class FakeGitHubClient:
         pr_reviews: list[dict[str, Any]] | None = None,
         pr_files: list[dict[str, Any]] | None = None,
         pull_request: dict[str, Any] | None = None,
+        compare: GitHubCompare | None = None,
+        compare_error: GitHubAPIError | None = None,
     ) -> None:
         self._workflow_runs = list(workflow_runs or [])
         self._check_runs = list(check_runs or [])
@@ -73,6 +75,13 @@ class FakeGitHubClient:
         # GitHubAPIError (the 404 path), so the CLI's clean-precondition exit is
         # exercised. A seeded dict replays as the recorded PR object.
         self._pull_request = pull_request
+        self._compare = compare or GitHubCompare(
+            status=GitHubCompareStatus.AHEAD,
+            ahead_by=1,
+            behind_by=0,
+            merge_base_sha="0" * 40,
+        )
+        self._compare_error = compare_error
         self.calls: list[tuple[str, str, str, str | int]] = []
 
     def fetch_workflow_runs(
@@ -113,3 +122,11 @@ class FakeGitHubClient:
                 f"GitHub API HTTP 404: pull request {pr_number} not found"
             )
         return dict(self._pull_request)
+
+    def compare_commits(
+        self, owner: str, repo: str, base_sha: str, head_sha: str
+    ) -> GitHubCompare:
+        self.calls.append(("compare", owner, repo, f"{base_sha}...{head_sha}"))
+        if self._compare_error is not None:
+            raise self._compare_error
+        return self._compare

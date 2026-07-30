@@ -9,6 +9,7 @@ redaction are all pinned here.
 from __future__ import annotations
 
 import email.message
+import json
 from typing import Any
 
 import pytest
@@ -17,11 +18,13 @@ from atlas.github import normalise_workflow_runs
 from atlas.github.client import (
     MAX_RATE_LIMIT_RETRIES,
     GitHubAPIError,
+    GitHubCompareStatus,
     GitHubRESTClient,
     MissingGitHubTokenError,
 )
 
 HEAD_SHA = "7de6f0ec2a05242b9e87c0a16a24c68661c4dedb"
+BASE_SHA = "1111111111111111111111111111111111111111"
 
 
 def _headers(**pairs: str) -> email.message.Message:
@@ -314,6 +317,113 @@ def test_fetch_pull_request_non_object_body_is_api_error(
     monkeypatch.setattr("atlas.github.client.urllib_request.urlopen", _urlopen)
     with pytest.raises(GitHubAPIError, match="was not an object"):
         GitHubRESTClient(token="t").fetch_pull_request("o", "r", 1)
+
+
+# --- exact-SHA compare: the single-object (ATLAS-228) path ------------------
+
+
+def test_compare_commits_uses_exact_sha_endpoint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, str] = {}
+
+    def _urlopen(request: Any, *a: Any, **k: Any) -> _Response:
+        captured["url"] = request.full_url
+        body = (
+            b'{"status": "ahead", "ahead_by": 2, "behind_by": 0, '
+            b'"merge_base_commit": {"sha": "1111111111111111111111111111111111111111"}}'
+        )
+        return _Response(body, _headers(ETag='"compare-v1"'))
+
+    monkeypatch.setattr("atlas.github.client.urllib_request.urlopen", _urlopen)
+    compare = GitHubRESTClient(token="t").compare_commits("o", "r", BASE_SHA, HEAD_SHA)
+
+    assert compare.status is GitHubCompareStatus.AHEAD
+    assert compare.ahead_by == 2
+    assert compare.behind_by == 0
+    assert compare.merge_base_sha == BASE_SHA
+    assert f"/repos/o/r/compare/{BASE_SHA}...{HEAD_SHA}" in captured["url"]
+    assert "main" not in captured["url"]
+    assert "per_page" not in captured["url"]
+
+
+def test_compare_commits_304_replays_cached_typed_result(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen_if_none_match: list[str | None] = []
+    state = {"calls": 0}
+
+    def _urlopen(request: Any, *a: Any, **k: Any) -> _Response:
+        seen_if_none_match.append(request.get_header("If-none-match"))
+        state["calls"] += 1
+        if state["calls"] == 1:
+            body = json.dumps(
+                {
+                    "status": "identical",
+                    "ahead_by": 0,
+                    "behind_by": 0,
+                    "merge_base_commit": {"sha": BASE_SHA},
+                }
+            ).encode()
+            return _Response(body, _headers(ETag='"compare-etag"'))
+        raise _http_error(304, _headers(ETag='"compare-etag"'))
+
+    monkeypatch.setattr("atlas.github.client.urllib_request.urlopen", _urlopen)
+    client = GitHubRESTClient(token="t")
+
+    first = client.compare_commits("o", "r", BASE_SHA, HEAD_SHA)
+    second = client.compare_commits("o", "r", BASE_SHA, HEAD_SHA)
+
+    assert second == first
+    assert second.status is GitHubCompareStatus.IDENTICAL
+    assert seen_if_none_match[0] is None
+    assert seen_if_none_match[1] == '"compare-etag"'
+
+
+def test_compare_commits_rate_limit_is_shared_bounded_backoff(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = {"calls": 0}
+
+    def _urlopen(request: Any, *a: Any, **k: Any) -> _Response:
+        state["calls"] += 1
+        raise _http_error(403, _headers(Retry_After="0", x_ratelimit_remaining="0"))
+
+    sleep, waits = _no_sleep_recorder()
+    monkeypatch.setattr("atlas.github.client.urllib_request.urlopen", _urlopen)
+    client = GitHubRESTClient(token="t", sleep=sleep)
+
+    with pytest.raises(GitHubAPIError, match="rate limit"):
+        client.compare_commits("o", "r", BASE_SHA, HEAD_SHA)
+
+    assert state["calls"] == MAX_RATE_LIMIT_RETRIES + 1
+    assert len(waits) == MAX_RATE_LIMIT_RETRIES
+
+
+def test_compare_commits_missing_field_is_api_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def _urlopen(request: Any, *a: Any, **k: Any) -> _Response:
+        return _Response(b'{"status": "ahead", "ahead_by": 1}', _headers())
+
+    monkeypatch.setattr("atlas.github.client.urllib_request.urlopen", _urlopen)
+    with pytest.raises(GitHubAPIError, match="behind_by"):
+        GitHubRESTClient(token="t").compare_commits("o", "r", BASE_SHA, HEAD_SHA)
+
+
+def test_compare_commits_contradictory_counts_are_api_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def _urlopen(request: Any, *a: Any, **k: Any) -> _Response:
+        body = (
+            b'{"status": "ahead", "ahead_by": 1, "behind_by": 1, '
+            b'"merge_base_commit": {"sha": "1111111111111111111111111111111111111111"}}'
+        )
+        return _Response(body, _headers())
+
+    monkeypatch.setattr("atlas.github.client.urllib_request.urlopen", _urlopen)
+    with pytest.raises(GitHubAPIError, match="contradicted"):
+        GitHubRESTClient(token="t").compare_commits("o", "r", BASE_SHA, HEAD_SHA)
 
 
 # --- ETag / 304 (criterion 3) -----------------------------------------------
