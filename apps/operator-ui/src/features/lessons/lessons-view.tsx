@@ -24,7 +24,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 type Schema = components['schemas']
 type EntityStatus = Schema['EntityStatus']
@@ -89,6 +89,89 @@ function LessonTags({ tags }: { tags: readonly string[] }) {
           {tag}
         </Badge>
       ))}
+    </div>
+  )
+}
+
+function LessonsTable({
+  lessons,
+  onSelectLesson,
+}: {
+  lessons: readonly LessonItem[]
+  onSelectLesson: (lesson: LessonItem) => void
+}) {
+  return (
+    <div className='border-border bg-card text-card-foreground overflow-hidden rounded-lg border'>
+      <Table aria-label='Lessons' className='table-fixed'>
+        <TableHeader>
+          <TableRow>
+            <TableHead className='w-[8%] whitespace-normal'>Category</TableHead>
+            <TableHead className='w-[16%] whitespace-normal'>Title</TableHead>
+            <TableHead className='w-[8%] whitespace-normal'>Status</TableHead>
+            <TableHead className='w-[8%] whitespace-normal'>Confidence</TableHead>
+            <TableHead className='w-[10%] whitespace-normal'>Tags</TableHead>
+            <TableHead className='w-[12%] whitespace-normal'>Creator</TableHead>
+            <TableHead className='w-[14%] whitespace-normal'>Source ticket ID</TableHead>
+            <TableHead className='hidden w-[10%] whitespace-normal xl:table-cell'>
+              Created
+            </TableHead>
+            <TableHead className='hidden w-[10%] whitespace-normal xl:table-cell'>
+              Updated
+            </TableHead>
+            <TableHead className='w-12'>
+              <span className='sr-only'>Details</span>
+            </TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {lessons.map((lesson) => (
+            <TableRow key={lesson.id}>
+              <TableCell className='whitespace-normal'>
+                {formatEnumValue(lesson.category)}
+              </TableCell>
+              <TableCell className='max-w-md whitespace-normal'>
+                <span className='font-medium'>{lesson.title}</span>
+              </TableCell>
+              <TableCell className='whitespace-normal'>
+                <Badge variant='secondary'>
+                  {formatEnumValue(lesson.status)}
+                </Badge>
+              </TableCell>
+              <TableCell className='whitespace-normal'>
+                {formatConfidence(lesson.confidence)}
+              </TableCell>
+              <TableCell className='whitespace-normal'>
+                <LessonTags tags={lesson.tags} />
+              </TableCell>
+              <TableCell className='break-words whitespace-normal'>
+                {formatCreator(lesson)}
+              </TableCell>
+              <TableCell className='whitespace-normal'>
+                <code className='bg-muted text-foreground rounded px-1 py-0.5 text-xs break-all'>
+                  {lesson.source_ticket_id}
+                </code>
+              </TableCell>
+              <TableCell className='hidden break-all whitespace-normal xl:table-cell'>
+                {lesson.created_at}
+              </TableCell>
+              <TableCell className='hidden break-all whitespace-normal xl:table-cell'>
+                {lesson.updated_at}
+              </TableCell>
+              <TableCell>
+                <Button
+                  type='button'
+                  variant='ghost'
+                  size='icon'
+                  aria-label={`View lesson details: ${lesson.title}`}
+                  onClick={() => onSelectLesson(lesson)}
+                >
+                  <Eye aria-hidden='true' className='size-4' />
+                </Button>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
     </div>
   )
 }
@@ -273,87 +356,35 @@ export function LessonsView() {
               </TabsTrigger>
             ))}
           </TabsList>
-        </Tabs>
+          {LESSON_STATUS_FACETS.map((status) => {
+            const statusLessons = lessons.filter(
+              (lesson) => lesson.status === status
+            )
 
-        {filteredLessons.length === 0 ? (
-          <EmptyLessonsState
-            selectedStatus={selectedStatus}
-            totalLessons={lessons.length}
-          />
-        ) : (
-          <div className='border-border bg-card text-card-foreground overflow-hidden rounded-lg border'>
-            <Table aria-label='Lessons' className='table-fixed'>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className='w-[8%] whitespace-normal'>Category</TableHead>
-                  <TableHead className='w-[16%] whitespace-normal'>Title</TableHead>
-                  <TableHead className='w-[8%] whitespace-normal'>Status</TableHead>
-                  <TableHead className='w-[8%] whitespace-normal'>Confidence</TableHead>
-                  <TableHead className='w-[10%] whitespace-normal'>Tags</TableHead>
-                  <TableHead className='w-[12%] whitespace-normal'>Creator</TableHead>
-                  <TableHead className='w-[14%] whitespace-normal'>Source ticket ID</TableHead>
-                  <TableHead className='hidden w-[10%] whitespace-normal xl:table-cell'>
-                    Created
-                  </TableHead>
-                  <TableHead className='hidden w-[10%] whitespace-normal xl:table-cell'>
-                    Updated
-                  </TableHead>
-                  <TableHead className='w-12'>
-                    <span className='sr-only'>Details</span>
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredLessons.map((lesson) => (
-                  <TableRow key={lesson.id}>
-                    <TableCell className='whitespace-normal'>
-                      {formatEnumValue(lesson.category)}
-                    </TableCell>
-                    <TableCell className='max-w-md whitespace-normal'>
-                      <span className='font-medium'>{lesson.title}</span>
-                    </TableCell>
-                    <TableCell className='whitespace-normal'>
-                      <Badge variant='secondary'>
-                        {formatEnumValue(lesson.status)}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className='whitespace-normal'>
-                      {formatConfidence(lesson.confidence)}
-                    </TableCell>
-                    <TableCell className='whitespace-normal'>
-                      <LessonTags tags={lesson.tags} />
-                    </TableCell>
-                    <TableCell className='break-words whitespace-normal'>
-                      {formatCreator(lesson)}
-                    </TableCell>
-                    <TableCell className='whitespace-normal'>
-                      <code className='bg-muted text-foreground rounded px-1 py-0.5 text-xs break-all'>
-                        {lesson.source_ticket_id}
-                      </code>
-                    </TableCell>
-                    <TableCell className='hidden break-all whitespace-normal xl:table-cell'>
-                      {lesson.created_at}
-                    </TableCell>
-                    <TableCell className='hidden break-all whitespace-normal xl:table-cell'>
-                      {lesson.updated_at}
-                    </TableCell>
-                    <TableCell>
-                      <Button
-                        type='button'
-                        variant='ghost'
-                        size='icon'
-                        aria-label={`View lesson details: ${lesson.title}`}
-                        onClick={() => setSelectedLesson(lesson)}
-                      >
-                        <Eye aria-hidden='true' className='size-4' />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        )}
+            return (
+              <TabsContent
+                key={status}
+                value={status}
+                forceMount
+                className='mt-4 data-[state=inactive]:hidden'
+              >
+                {status === selectedStatus ? (
+                  statusLessons.length === 0 ? (
+                    <EmptyLessonsState
+                      selectedStatus={status}
+                      totalLessons={lessons.length}
+                    />
+                  ) : (
+                    <LessonsTable
+                      lessons={statusLessons}
+                      onSelectLesson={setSelectedLesson}
+                    />
+                  )
+                ) : null}
+              </TabsContent>
+            )
+          })}
+        </Tabs>
       </div>
       <LessonDetailDrawer
         lesson={selectedLesson}
