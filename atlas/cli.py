@@ -1,127 +1,16 @@
-"""The `atlas` CLI (ATLAS-26, ATLAS-27).
+"""The `atlas` CLI.
 
-Two subcommands: `plan` composes the proposer pipeline and persists a
-PlanRun (never writes `docs/planning/`); `apply` loads the latest proposed
-PlanRun, confirms with the operator, and atomically writes the renders +
-finalises the PlanRun. Dependencies (database, client, clock) are
-injectable so tests drive the CLI with a fake client and an in-memory
-database and make zero real API calls.
+This module owns argparse wiring, dependency construction, presentation, and
+exit-code policy. Domain logic stays in lower layers (`atlas.planning`,
+`atlas.pm`, `atlas.orchestration`, `atlas.verification`, and friends), with
+dependencies injectable so tests run against fakes and in-memory stores.
 
-`plan` exit codes: 0 PlanRun proposed; 1 recorded failure (PlanRun failed);
-2 clean-exit precondition (dirty tree, missing product/key, model error; in
---stubs-only also an empty inbox or a malformed committed stub, ATLAS-153).
+Exit codes are shared across commands:
 
-`apply` exit codes: 0 applied; 1 operator rejected (PlanRun rejected, including
-explicit stale PlanRun disposition); 2 refusal/precondition (no proposed plan,
-stale plan, dirty tree, unsupported diff/CONFLICT, or no way to confirm).
-
-`deps` (ATLAS-39, ATLAS-37) is a thin read-mostly surface over the Phase 3
-dependency functions: `ready`, `blocked`, `critical-path`, `unlocks`,
-`validate`, `effort`, and `graph`. It modifies no computation module — it only
-calls them. The five computation commands (ready/blocked/critical-path/unlocks/
-graph) build the graph and run `validate_graph` FIRST, refusing an invalid
-graph (EXIT_PRECONDITION with the typed violations) rather than computing on it;
-`validate` is the explicit form of that check. `graph` (ATLAS-37) prints an
-ADVISORY Mermaid analysis view to stdout — readiness/blocker/critical-path
-overlays — and writes NO file; it is NOT the canonical docs/planning/roadmap.mmd
-(that render is `atlas apply`'s, ATLAS-27). `effort` writes `estimated_effort`
-directly via the ATLAS-32 setter (no graph). `deps` exit codes: 0 success; 2
-precondition (an invalid graph, an unknown key, or a rejected effort). Every
-deps subcommand takes `--db` and `--json`.
-
-`pm report` (ATLAS-47) is the read side of the Phase 4 PM Engine: a PURE READER
-that renders the five `pm-engine-and-linear-sync.md` "Delivery metrics" —
-throughput, historical cycle time per state (from the transition log,
-ATLAS-126), ready-queue depth, anomaly counts, and dwell breaches — plus the
-ATLAS-167 DRAFT lesson queue as markdown, or as structured JSON with `--json`.
-It computes everything from stored tickets, DebtItems, status transitions, and
-Lessons (`atlas.pm.build_delivery_report`); it makes no Linear call and writes
-nothing, so it runs with no network and no secrets.
-`datetime.now(UTC)` is read only at this boundary and passed into the pure
-builder.
-
-`pm sync` (ATLAS-50) is the write side: the recurring scheduler that calls
-`sync_tick` on a cadence (default 60s), recording one `TickFailure` on a
-crashing tick and continuing (create-on-crash), with graceful SIGTERM/SIGINT
-shutdown and a `--once` mode. It builds the real injection from the environment
-(`LinearGraphQLClient`, `LinearStatusMap.from_env`, `LINEAR_TEAM_ID`); the loop
-logic lives in `atlas.pm.scheduler` and is CI-tested with a fake client and an
-injected clock, so the end-to-end round-trip against real Linear is the
-operator-run live milestone (ADR-0008). `pm` exit codes: 0 success; 2
-precondition (`sync` only — missing Linear creds, an unset team id, or a
-missing/malformed status map).
-
-`context` (ATLAS-58) is the Phase 5 read surface over the pure `atlas.context`
-functions: `render <KEY> [--budget N] [--json]`, `validate <KEY>`, `show <KEY>`.
-A shared loader turns a bare `<KEY>` into the five already-loaded inputs the pure
-builder/validator take — the ticket (`TicketRepo.get_by_key`), the global
-dependency graph (`build_dependency_graph`, the full-backlog projection), the
-input documents re-ingested from HEAD every invocation (`collect_input_documents`
-plus the committed `processed/` stubs via `collect_processed_documents`, so
-stub-minted anchors resolve and staleness is real), the ACCEPTED ADRs, and the
-lessons — and the three
-commands are thin wrappers over it. Everything is TRANSIENT: a pack is built
-in-memory and printed; nothing is persisted (no `ContextPackRepo`, no
-`atlas/storage/` writes) — pack persistence is deferred to the PM promotion gate's
-own ticket. `validate` exits non-zero when the pack is invalid so it is scriptable
-as a gate; over-budget, ticket-not-found, a dirty input tree, and an unresolvable
-anchor are each a clean one-line CLI error (`EXIT_PRECONDITION`), never a
-traceback. `context` exit codes: 0 success (and a valid `validate`); 2 precondition
-(any loader/build failure, or an invalid `validate`).
-
-`evidence` (ATLAS-67) is the Phase 6 surface over the evidence pipeline:
-`pull --pr N --repo OWNER/REPO` (the write side) and `list`/`show` (the read
-side). `pull` resolves the PR head SHA once via `fetch_pull_request`, then
-fetches + normalises + ingests all three sources — CI checks (workflow + check
-runs, pinned to the head SHA), PR reviews (pinned to each review's own commit),
-and a per-PR documentation record (touched `docs/` paths) — through the existing
-`atlas.evidence.ingest_*` paths and the append-only `EvidenceRepo`, whose
-ATLAS-61 guard makes every persisted row commit-pinned system-tier. The
-pipeline-driving helper is `GitHubClient`-Protocol-typed and takes the client as
-a parameter, so tests inject the fake and it runs with no network; production
-builds the live `GitHubRESTClient` (token from `GITHUB_TOKEN`) inside `pull`. A
-single `datetime.now(UTC)` is captured per `pull` and threaded into every
-ingest. `list` filters `EvidenceRepo.list()` by `--commit`/`--type` in Python
-and orders by `(created_at, id)`; `show` prints one record by id. A malformed
-`--repo`, a missing product, a missing token, an unknown PR / transport failure,
-a non-UUID id, and an unknown id are each a clean one-line `EXIT_PRECONDITION`,
-never a traceback; no token is ever printed. `evidence` exit codes: 0 success; 2
-precondition. NOTE: `pull --repo` is the GitHub `OWNER/REPO` slug, not the
-repo-root path that `plan`/`context` `--repo` mean.
-
-`lessons report`, `lessons search <query>`, and `lessons show <LESSON_ID>` are
-the Learning System's pure read side. `report` renders lesson analytics
-(category/status and tag grouping, ACTIVE citation counts, pattern candidates,
-DRAFT promotion backlog age, and dwell-breach rows) as markdown or JSON.
-`search` scans ACTIVE Lessons by title and tag tokens, with optional tag
-filtering, for deterministic organisational memory lookup. `show` prints the
-full stored lesson record the operator reads before ruling at the promotion
-gate, with `--json` for machine consumers. They write nothing and make no LLM
-call. `lessons extract <KEY>` remains the explicit operator-request write side
-for generating one DRAFT lesson. `lessons playbook <tag>` drafts canonical-doc
-Markdown from ACTIVE lessons under one tag onto a new review branch, with no
-commit or automatic PR creation.
-
-`verify` (ATLAS-80) is the Phase 7 entry point that makes the verification engine
-usable: `verify --pr N --repo OWNER/REPO` verifies every ticket the PR closes,
-RECORDS the verdict, and REPORTS it. It mirrors `evidence pull`'s GitHub-client +
-`--repo` + `GITHUB_TOKEN` construction, resolves the head commit C and changed
-files from GitHub, resolves the close-set from the PR (the `(ATLAS-NN)` key in the
-title is the primary source, OP-C/R1; `--tickets` overrides), loads each Ticket
-and the stored evidence, runs the PURE `atlas.verification.evaluate_pr`, PERSISTS
-one append-only VerificationCheck row per check (OP-B; every run appends a fresh
-set, never mutating prior rows), and renders a human or `--json` report. It is
-NON-interactive and writes NO Evidence (OP-A): the interactive
-operator-confirmation capture (writing human-tier acceptance/scope/approval
-evidence pinned to C) is the OP-3 follow-on, so acceptance/scope/human checks
-report PENDING here until it lands — honest and expected, not a bug. EXIT-CODE
-CONTRACT (R2): a produced report is EXIT_OK for ANY verdict (PASSED / PENDING /
-FAILED) — because OP-A makes PENDING the normal state, a verdict-based exit code
-would make `verify` "fail" constantly; only a precondition (malformed `--repo`,
-missing token, unknown PR / transport, a cold database) is EXIT_PRECONDITION,
-never a traceback. A future `--strict` mode (FAILED -> nonzero, for CI gating) is
-a follow-up — do not script `atlas verify && merge` expecting it to block on
-FAILED today. Like `evidence`, `verify --repo` is the GitHub `OWNER/REPO` slug.
+- 0: command completed successfully.
+- 1: command completed with a recorded rejection, failure, or non-current gate.
+- 2: clean precondition/setup failure, printed as one stderr line and no
+  traceback.
 """
 
 from __future__ import annotations
@@ -219,9 +108,13 @@ from atlas.orchestration import (
     ConfirmPrompts,
     ContextInputs,
     ContextNotFoundError,
+    PRIntegrationAssessment,
+    PRIntegrationStatus,
+    assess_pr_integration,
     build_tick_config,
     capture_ticket,
     load_context_inputs,
+    pr_integration_assessment_json,
     resolve_github_client,
     resolve_pr_context,
     run_verify,
@@ -520,6 +413,7 @@ def build_parser() -> argparse.ArgumentParser:
     _add_pm_parser(subcommands)
     _add_context_parser(subcommands)
     _add_evidence_parser(subcommands)
+    _add_pr_parser(subcommands)
     _add_verify_parser(subcommands)
     _add_confirm_parser(subcommands)
     _add_preflight_parser(subcommands)
@@ -756,6 +650,31 @@ def _add_evidence_parser(subcommands: argparse._SubParsersAction) -> None:  # ty
     show.add_argument("evidence_id", help="the evidence id (a UUID)")
     show.add_argument("--db", default=None, help="database URL")
     show.add_argument("--json", action="store_true", help="emit machine-readable JSON")
+
+
+def _add_pr_parser(subcommands: argparse._SubParsersAction) -> None:  # type: ignore[type-arg]
+    """The `atlas pr` group: read-only pull-request operator checks."""
+    pr = subcommands.add_parser(
+        "pr",
+        help="Pull-request read checks: exact-head integration status",
+    )
+    pr_sub = pr.add_subparsers(dest="pr_command", required=True)
+
+    status = pr_sub.add_parser(
+        "status",
+        help="Assess whether a PR's exact head contains the exact current main",
+    )
+    status.add_argument(
+        "--pr", type=int, required=True, help="the pull request number to assess"
+    )
+    status.add_argument(
+        "--repo",
+        required=True,
+        help="the GitHub repository as OWNER/REPO (not a path)",
+    )
+    status.add_argument(
+        "--json", action="store_true", help="emit machine-readable JSON"
+    )
 
 
 def _add_verify_parser(subcommands: argparse._SubParsersAction) -> None:  # type: ignore[type-arg]
@@ -1731,6 +1650,81 @@ def _evidence_command(
     return EXIT_PRECONDITION  # unreachable: evidence subparser is required
 
 
+def _pr_status_text(assessment: PRIntegrationAssessment) -> str:
+    compare_status = (
+        assessment.compare_status.value
+        if assessment.compare_status is not None
+        else "not_run"
+    )
+    compare_counts = (
+        "not_run"
+        if assessment.ahead_by is None or assessment.behind_by is None
+        else f"ahead_by={assessment.ahead_by} behind_by={assessment.behind_by}"
+    )
+    merge_base = assessment.merge_base_sha or "not_run"
+    return "\n".join(
+        [
+            f"PR integration for {assessment.owner}/{assessment.repo} "
+            f"#{assessment.pr_number}",
+            f"integration_status: {assessment.integration_status.value}",
+            f"eligibility: {assessment.eligibility.value}",
+            f"ancestry: {assessment.ancestry.value}",
+            f"mergeability: {assessment.mergeability.value}",
+            (
+                f"base: {assessment.base_repository} "
+                f"{assessment.base_ref}@{assessment.base_sha}"
+            ),
+            (
+                f"head: {assessment.head_repository} "
+                f"{assessment.head_ref}@{assessment.head_sha}"
+            ),
+            (f"compare: {compare_status} {compare_counts} merge_base={merge_base}"),
+        ]
+    )
+
+
+def _pr_status_command(
+    args: argparse.Namespace,
+    *,
+    github_client: GitHubClient | None,
+) -> int:
+    owner, sep, repo = args.repo.partition("/")
+    if not (owner and sep and repo) or "/" in repo:
+        print("--repo must be OWNER/REPO (e.g. acme/atlas).", file=sys.stderr)
+        return EXIT_PRECONDITION
+
+    try:
+        client = resolve_github_client(github_client)
+    except MissingGitHubTokenError as error:
+        print(error, file=sys.stderr)
+        return EXIT_PRECONDITION
+
+    try:
+        assessment = assess_pr_integration(client, owner, repo, args.pr)
+    except GitHubAPIError as error:
+        print(error, file=sys.stderr)
+        return EXIT_PRECONDITION
+
+    _emit(
+        pr_integration_assessment_json(assessment),
+        _pr_status_text(assessment),
+        as_json=args.json,
+    )
+    if assessment.integration_status is PRIntegrationStatus.CURRENT:
+        return EXIT_OK
+    return EXIT_RECORDED_FAILURE
+
+
+def _pr_command(
+    args: argparse.Namespace,
+    *,
+    github_client: GitHubClient | None,
+) -> int:
+    if args.pr_command == "status":
+        return _pr_status_command(args, github_client=github_client)
+    return EXIT_PRECONDITION  # unreachable: pr subparser is required
+
+
 def _verify_check_text(outcome: CheckOutcome) -> str:
     """One per-check line in the human report (D4): status, type, gating flag,
     evidence ids, and the evaluator's reason (which already reads e.g. 'awaiting
@@ -2624,6 +2618,8 @@ def main(
         return _context_command(args, database=database)
     if args.command == "evidence":
         return _evidence_command(args, database=database, github_client=github_client)
+    if args.command == "pr":
+        return _pr_command(args, github_client=github_client)
     if args.command == "verify":
         return _verify_command(args, database=database, github_client=github_client)
     if args.command == "confirm":

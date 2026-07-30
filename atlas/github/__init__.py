@@ -20,6 +20,8 @@ from atlas.github.client import (
     GitHubAPIError,
     GitHubClient,
     GitHubClientError,
+    GitHubCompare,
+    GitHubCompareStatus,
     GitHubRESTClient,
     MissingGitHubTokenError,
 )
@@ -48,6 +50,8 @@ __all__ = [
     "GitHubAPIError",
     "GitHubClient",
     "GitHubClientError",
+    "GitHubCompare",
+    "GitHubCompareStatus",
     "GitHubRESTClient",
     "MissingGitHubTokenError",
     "NormalisedCheck",
