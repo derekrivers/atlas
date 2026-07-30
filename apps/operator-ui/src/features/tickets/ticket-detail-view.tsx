@@ -1,7 +1,9 @@
 import { useParams } from '@tanstack/react-router'
+import { AlertCircle, Check } from 'lucide-react'
 import { AtlasRequestError } from '@/api/client'
-import { useTicketDetailQuery } from '@/api/query-hooks'
+import { useTicketDetailQuery, useTicketEvidenceQuery } from '@/api/query-hooks'
 import type { components } from '@/api/atlas-openapi'
+import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import {
   Tabs,
@@ -10,13 +12,23 @@ import {
   TabsTrigger,
 } from '@/components/ui/tabs'
 import { Main } from '@/components/layout/main'
-import { LoadingState, RequestErrorState } from '@/components/states'
+import {
+  EmptyCollectionState,
+  LoadingState,
+  RequestErrorState,
+} from '@/components/states'
 
 type TicketDetail = components['schemas']['TicketDetailResponse']
+type TicketEvidenceItem = components['schemas']['TicketEvidenceItemSchema']
 
 type TicketDetailViewProps = {
   surfaceTitle: string
 }
+
+type EvidencePanelState =
+  | { kind: 'error'; error: unknown }
+  | { kind: 'loading' }
+  | { kind: 'success'; evidence: TicketEvidenceItem[] }
 
 type DetailListProps = {
   items: string[]
@@ -114,6 +126,161 @@ function TagsField({ tags }: { tags: string[] }) {
         </dd>
       )}
     </div>
+  )
+}
+
+function pinTripleLabel(record: TicketEvidenceItem): string {
+  return record.has_system_pin_triple
+    ? 'System pin triple complete'
+    : 'System pin triple incomplete'
+}
+
+function pinTripleDetail(record: TicketEvidenceItem): string {
+  return record.has_system_pin_triple
+    ? 'Commit, run, and hash pins are present.'
+    : 'A required commit, run, or hash pin is missing.'
+}
+
+function EvidenceAttribute({
+  label,
+  testId,
+  value,
+}: {
+  label: string
+  testId: string
+  value: string
+}) {
+  return (
+    <div className='min-w-0'>
+      <dt className='text-muted-foreground text-xs font-medium uppercase'>
+        {label}
+      </dt>
+      <dd
+        data-testid={testId}
+        className='mt-1 break-words text-sm font-medium'
+      >
+        {value}
+      </dd>
+    </div>
+  )
+}
+
+function EvidencePinTripleState({ record }: { record: TicketEvidenceItem }) {
+  const Icon = record.has_system_pin_triple ? Check : AlertCircle
+
+  return (
+    <div
+      data-pin-state={record.has_system_pin_triple ? 'complete' : 'incomplete'}
+      data-testid='ticket-evidence-pin-state'
+      className={cn(
+        'flex items-start gap-3 rounded-lg border p-4',
+        record.has_system_pin_triple
+          ? 'border-primary/40 bg-primary/10 text-primary'
+          : 'border-destructive/40 bg-destructive/10 text-destructive'
+      )}
+    >
+      <Icon aria-hidden='true' className='mt-0.5 size-5 shrink-0' />
+      <div className='min-w-0'>
+        <p
+          data-testid='ticket-evidence-pin-state-label'
+          className='text-sm font-semibold tracking-normal'
+        >
+          {pinTripleLabel(record)}
+        </p>
+        <p className='mt-1 text-sm leading-5'>{pinTripleDetail(record)}</p>
+      </div>
+    </div>
+  )
+}
+
+function EvidenceTrustTier({ tier }: { tier: TicketEvidenceItem['tier'] }) {
+  return (
+    <Badge
+      data-testid='ticket-evidence-tier'
+      data-tier={tier}
+      variant={tier === 'system' ? 'default' : 'outline'}
+      className={cn(
+        'mt-1',
+        tier === 'agent' ? 'bg-muted text-muted-foreground' : undefined
+      )}
+    >
+      {tier}
+    </Badge>
+  )
+}
+
+function EvidenceRecord({ record }: { record: TicketEvidenceItem }) {
+  return (
+    <li
+      data-testid='ticket-evidence-record'
+      className='border-border bg-card text-card-foreground rounded-lg border p-4'
+    >
+      <EvidencePinTripleState record={record} />
+      <dl className='mt-4 grid gap-4 @3xl/content:grid-cols-3'>
+        <EvidenceAttribute
+          label='Type'
+          testId='ticket-evidence-type'
+          value={record.type}
+        />
+        <div className='min-w-0'>
+          <dt className='text-muted-foreground text-xs font-medium uppercase'>
+            Trust Tier
+          </dt>
+          <dd>
+            <EvidenceTrustTier tier={record.tier} />
+          </dd>
+        </div>
+        <div className='min-w-0'>
+          <dt className='text-muted-foreground text-xs font-medium uppercase'>
+            Status
+          </dt>
+          <dd>
+            <Badge
+              data-testid='ticket-evidence-status'
+              variant='secondary'
+              className='mt-1'
+            >
+              {record.status}
+            </Badge>
+          </dd>
+        </div>
+      </dl>
+    </li>
+  )
+}
+
+export function TicketEvidenceTab({ state }: { state: EvidencePanelState }) {
+  if (state.kind === 'loading') {
+    return <LoadingState label='Loading evidence' />
+  }
+
+  if (state.kind === 'error') {
+    return (
+      <RequestErrorState
+        error={state.error}
+        title='Ticket evidence request failed'
+      />
+    )
+  }
+
+  if (state.evidence.length === 0) {
+    return (
+      <EmptyCollectionState
+        title='No evidence stored'
+        detail='This ticket has no stored evidence records.'
+      />
+    )
+  }
+
+  return (
+    <ol data-testid='ticket-evidence-list' className='space-y-3'>
+      {state.evidence.map((record, index) => (
+        <EvidenceRecord
+          key={`${record.type}-${record.tier}-${record.status}-${index}`}
+          record={record}
+        />
+      ))}
+    </ol>
   )
 }
 
@@ -300,7 +467,27 @@ function NativeTicketNotFound({ body }: { body: unknown }) {
   )
 }
 
-export function TicketDetailContent({ ticket }: { ticket: TicketDetail }) {
+function evidenceStateFromQuery(
+  evidenceQuery: ReturnType<typeof useTicketEvidenceQuery>
+): EvidencePanelState {
+  if (evidenceQuery.isError) {
+    return { kind: 'error', error: evidenceQuery.error }
+  }
+
+  if (!evidenceQuery.data) {
+    return { kind: 'loading' }
+  }
+
+  return { kind: 'success', evidence: evidenceQuery.data.evidence }
+}
+
+export function TicketDetailContent({
+  evidenceState = { kind: 'success', evidence: [] },
+  ticket,
+}: {
+  evidenceState?: EvidencePanelState
+  ticket: TicketDetail
+}) {
   return (
     <Main className='space-y-6'>
       <TicketHeader ticket={ticket} />
@@ -318,10 +505,11 @@ export function TicketDetailContent({ ticket }: { ticket: TicketDetail }) {
           <MetadataTab ticket={ticket} />
         </TabsContent>
         <TabsContent
-          className='min-h-24'
           data-testid='ticket-detail-evidence-panel'
           value='evidence'
-        />
+        >
+          <TicketEvidenceTab state={evidenceState} />
+        </TabsContent>
         <TabsContent
           className='min-h-24'
           data-testid='ticket-detail-dependencies-panel'
@@ -335,6 +523,7 @@ export function TicketDetailContent({ ticket }: { ticket: TicketDetail }) {
 export function TicketDetailView({ surfaceTitle }: TicketDetailViewProps) {
   const { key: ticketKey } = useParams({ strict: false }) as { key: string }
   const ticketQuery = useTicketDetailQuery(ticketKey)
+  const evidenceQuery = useTicketEvidenceQuery(ticketKey)
 
   if (ticketQuery.isLoading) {
     return (
@@ -371,5 +560,10 @@ export function TicketDetailView({ surfaceTitle }: TicketDetailViewProps) {
     )
   }
 
-  return <TicketDetailContent ticket={ticketQuery.data} />
+  return (
+    <TicketDetailContent
+      evidenceState={evidenceStateFromQuery(evidenceQuery)}
+      ticket={ticketQuery.data}
+    />
+  )
 }

@@ -4,6 +4,7 @@
     "expected_terminal_ticket_ratio": "16/17",
     "expected_lexicographic_precedes_natural": ["ATLAS-10", "ATLAS-2"],
     "expected_empty_review_queue": true,
+    "expected_evidence_ticket": "ATLAS-1",
     "expected_no_evidence_ticket": "ATLAS-10",
     "expected_multi_reason_not_ready_ticket": "ATLAS-2",
     "expected_null_metadata_ticket": "ATLAS-10"
@@ -121,11 +122,24 @@
   ],
   "evidence": [
     {
+      "id": "00000000-0000-4000-8000-00000000e000",
+      "ticket_key": "ATLAS-1",
+      "evidence_type": "manual_approval",
+      "status": "pending",
+      "summary": "Seeded agent evidence awaiting system corroboration.",
+      "created_by_type": "agent",
+      "created_by_id": "seeded-agent",
+      "created_at": "2026-07-26T18:43:40+00:00"
+    },
+    {
       "id": "00000000-0000-4000-8000-00000000e001",
       "ticket_key": "ATLAS-1",
       "evidence_type": "test_result",
       "status": "passed",
       "summary": "Seeded system evidence with a complete ADR-0008 pin triple.",
+      "created_by_type": "system",
+      "created_by_id": "github-actions",
+      "created_at": "2026-07-26T18:43:42+00:00",
       "commit_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "external_run_id": "seeded-run-388",
       "job_name": "test-operator-ui-e2e",

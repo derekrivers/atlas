@@ -1,10 +1,14 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
 import { ticketDetailHref } from '../../src/app-shell/surfaces'
 import type { components } from '../../src/api/atlas-openapi'
-import { assertTicketDetailResponse } from './live-api-shape'
+import {
+  assertTicketDetailResponse,
+  assertTicketEvidenceResponse,
+} from './live-api-shape'
 import { startAtlasApiServer } from './atlas-api-server'
 
 type TicketDetail = components['schemas']['TicketDetailResponse']
+type TicketEvidence = components['schemas']['TicketEvidenceResponse']
 
 const apiBaseURL =
   process.env.ATLAS_OPERATOR_E2E_API_URL ?? 'http://127.0.0.1:18000'
@@ -28,6 +32,17 @@ async function getTicketDetail(
   expect(response.ok(), `${key} detail should return 2xx`).toBe(true)
   const body: unknown = await response.json()
   assertTicketDetailResponse(body)
+  return body
+}
+
+async function getTicketEvidence(
+  request: APIRequestContext,
+  key: string
+): Promise<TicketEvidence> {
+  const response = await request.get(`${apiBaseURL}/api/v1/tickets/${key}/evidence`)
+  expect(response.ok(), `${key} evidence should return 2xx`).toBe(true)
+  const body: unknown = await response.json()
+  assertTicketEvidenceResponse(body)
   return body
 }
 
@@ -120,11 +135,97 @@ test('renders every ticket detail field from the live API response', async ({
 
   await page.getByRole('tab', { name: 'Evidence' }).click()
   await expect(page.getByTestId('ticket-detail-evidence-panel')).toBeVisible()
-  await expect(page.getByTestId('ticket-detail-evidence-panel')).toHaveText('')
 
   await page.getByRole('tab', { name: 'Dependencies' }).click()
   await expect(page.getByTestId('ticket-detail-dependencies-panel')).toBeVisible()
   await expect(page.getByTestId('ticket-detail-dependencies-panel')).toHaveText('')
+})
+
+test('renders ticket evidence from the live API in oldest-first order', async ({
+  page,
+  request,
+}) => {
+  const ticket = await getTicketDetail(request, 'ATLAS-1')
+  const evidence = await getTicketEvidence(request, ticket.key)
+
+  expect(evidence.evidence.map((record) => record.type)).toEqual([
+    'manual_approval',
+    'test_result',
+  ])
+  expect(evidence.evidence.map((record) => record.tier)).toEqual([
+    'agent',
+    'system',
+  ])
+  expect(evidence.evidence.map((record) => record.status)).toEqual([
+    'pending',
+    'passed',
+  ])
+  expect(evidence.evidence.map((record) => record.has_system_pin_triple)).toEqual([
+    false,
+    true,
+  ])
+
+  await page.goto(ticketDetailHref(ticket.key))
+  await page.getByRole('tab', { name: 'Evidence' }).click()
+
+  const panel = page.getByTestId('ticket-detail-evidence-panel')
+  await expect(panel).toBeVisible()
+  await expect(page.getByTestId('ticket-evidence-record')).toHaveCount(
+    evidence.evidence.length
+  )
+  await expect(page.getByTestId('ticket-evidence-type')).toHaveText(
+    evidence.evidence.map((record) => record.type)
+  )
+  await expect(page.getByTestId('ticket-evidence-tier')).toHaveText(
+    evidence.evidence.map((record) => record.tier)
+  )
+  await expect(page.getByTestId('ticket-evidence-status')).toHaveText(
+    evidence.evidence.map((record) => record.status)
+  )
+  await expect(page.getByTestId('ticket-evidence-pin-state-label')).toHaveText([
+    'System pin triple incomplete',
+    'System pin triple complete',
+  ])
+
+  const renderedPinStates = await page
+    .getByTestId('ticket-evidence-pin-state')
+    .evaluateAll((elements) =>
+      elements.map((element) => element.getAttribute('data-pin-state'))
+    )
+  expect(renderedPinStates).toEqual(['incomplete', 'complete'])
+
+  const interactiveElements = await panel
+    .locator('a, button, details, input, select, summary, textarea')
+    .evaluateAll((elements) =>
+      elements.map((element) =>
+        [
+          element.tagName.toLowerCase(),
+          element.getAttribute('aria-label') ?? '',
+          element.textContent ?? '',
+        ].join(' ')
+      )
+    )
+  expect(interactiveElements).toEqual([])
+})
+
+test('renders a seeded ticket with no evidence as an empty state', async ({
+  page,
+  request,
+}) => {
+  const ticket = await getTicketDetail(request, 'ATLAS-10')
+  const evidence = await getTicketEvidence(request, ticket.key)
+
+  expect(evidence.evidence).toEqual([])
+
+  await page.goto(ticketDetailHref(ticket.key))
+  await page.getByRole('tab', { name: 'Evidence' }).click()
+
+  const panel = page.getByTestId('ticket-detail-evidence-panel')
+  await expect(panel.getByRole('status')).toContainText('No evidence stored')
+  await expect(panel.getByRole('status')).toContainText(
+    'This ticket has no stored evidence records.'
+  )
+  await expect(panel.locator('[role="alert"]')).toHaveCount(0)
 })
 
 test('renders unknown ticket keys with the API native 404 body in the shell', async ({

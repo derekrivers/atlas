@@ -2,9 +2,13 @@ import { act, type ReactNode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { components } from '@/api/atlas-openapi'
-import { TicketDetailContent } from '@/features/tickets/ticket-detail-view'
+import {
+  TicketDetailContent,
+  TicketEvidenceTab,
+} from '@/features/tickets/ticket-detail-view'
 
 type TicketDetail = components['schemas']['TicketDetailResponse']
+type TicketEvidenceItem = components['schemas']['TicketEvidenceItemSchema']
 
 let mountedRoot: Root | undefined
 let container: HTMLDivElement | undefined
@@ -54,6 +58,21 @@ const baseTicket: TicketDetail = {
   updated_at: '2026-07-26T18:43:42Z',
 }
 
+const evidenceRecords: TicketEvidenceItem[] = [
+  {
+    has_system_pin_triple: false,
+    status: 'pending',
+    tier: 'agent',
+    type: 'manual_approval',
+  },
+  {
+    has_system_pin_triple: true,
+    status: 'passed',
+    tier: 'system',
+    type: 'test_result',
+  },
+]
+
 async function render(component: ReactNode) {
   container = document.createElement('div')
   document.body.append(container)
@@ -74,6 +93,12 @@ function testText(testId: string): string {
   return (
     document.querySelector(`[data-testid="${testId}"]`)?.textContent?.trim() ??
     ''
+  )
+}
+
+function testTexts(testId: string): string[] {
+  return Array.from(document.querySelectorAll(`[data-testid="${testId}"]`)).map(
+    (element) => element.textContent?.trim() ?? ''
   )
 }
 
@@ -169,7 +194,7 @@ describe('ticket detail view rendering', () => {
     expect(testText('ticket-detail-completed-at')).toBe('None')
   })
 
-  it('exposes evidence and dependencies tabs as empty panels', async () => {
+  it('renders the shared empty state for an evidence-free ticket', async () => {
     await render(<TicketDetailContent ticket={baseTicket} />)
 
     for (const tabName of ['Definition', 'Metadata', 'Evidence', 'Dependencies']) {
@@ -177,9 +202,70 @@ describe('ticket detail view rendering', () => {
     }
 
     await selectTab('Evidence')
-    expect(testText('ticket-detail-evidence-panel')).toBe('')
+    expect(testText('ticket-detail-evidence-panel')).toContain(
+      'No evidence stored'
+    )
+    expect(document.querySelector('[role="alert"]')).toBeNull()
 
     await selectTab('Dependencies')
     expect(testText('ticket-detail-dependencies-panel')).toBe('')
+  })
+
+  it('renders prominent complete and incomplete pin-triple states', async () => {
+    await render(
+      <TicketEvidenceTab
+        state={{ kind: 'success', evidence: evidenceRecords }}
+      />
+    )
+
+    const pinStates = Array.from(
+      document.querySelectorAll('[data-testid="ticket-evidence-pin-state"]')
+    )
+
+    expect(testTexts('ticket-evidence-pin-state-label')).toEqual([
+      'System pin triple incomplete',
+      'System pin triple complete',
+    ])
+    expect(pinStates.map((element) => element.getAttribute('data-pin-state'))).toEqual(
+      ['incomplete', 'complete']
+    )
+    expect(pinStates[0].className).toContain('border-destructive')
+    expect(pinStates[1].className).toContain('border-primary')
+  })
+
+  it('visually distinguishes agent-tier and system-tier evidence records', async () => {
+    await render(
+      <TicketEvidenceTab
+        state={{ kind: 'success', evidence: evidenceRecords }}
+      />
+    )
+
+    expect(testTexts('ticket-evidence-tier')).toEqual(['agent', 'system'])
+
+    const tierBadges = Array.from(
+      document.querySelectorAll('[data-testid="ticket-evidence-tier"]')
+    )
+
+    expect(tierBadges[0].getAttribute('data-tier')).toBe('agent')
+    expect(tierBadges[1].getAttribute('data-tier')).toBe('system')
+    expect(tierBadges[0].className).not.toBe(tierBadges[1].className)
+    expect(tierBadges[0].className).toContain('bg-muted')
+    expect(tierBadges[1].className).toContain('bg-primary')
+  })
+
+  it('does not render an interactive raw-payload affordance in the evidence tab', async () => {
+    await render(
+      <TicketEvidenceTab
+        state={{ kind: 'success', evidence: evidenceRecords }}
+      />
+    )
+
+    const interactiveElements = Array.from(
+      document.querySelectorAll(
+        'a, button, details, input, select, summary, textarea'
+      )
+    )
+
+    expect(interactiveElements).toEqual([])
   })
 })
