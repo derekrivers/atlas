@@ -116,6 +116,46 @@ describe('overview derivation contract', () => {
     )
   })
 
+  it('reports duplicated overview derivations from destructured API response collections', () => {
+    const messages = verifyOverviewDerivationRule(
+      `
+        import { useDependencyCriticalPathQuery, useReviewsQuery, useTicketsQuery } from '@/api/query-hooks'
+        ${requiredSelectorImports}
+
+        export function OverviewDashboardRoute() {
+          const ticketsQuery = useTicketsQuery()
+          const { data: reviewsData } = useReviewsQuery()
+          const pathQuery = useDependencyCriticalPathQuery()
+
+          if (!ticketsQuery.data || !reviewsData || !pathQuery.data) {
+            return null
+          }
+
+          const { tickets } = ticketsQuery.data
+          const { reviews: localReviews } = reviewsData
+          const { steps } = pathQuery.data
+          const localTotal = tickets.reduce((total) => total + 1, 0)
+          const reviewDepth = localReviews.length
+          const pathHead = steps.filter(Boolean)
+          return <div>{localTotal}{reviewDepth}{pathHead}</div>
+        }
+      `
+    )
+
+    const messageText = messages.map((message) => message.message)
+
+    expect(
+      messageText.filter(
+        (message) =>
+          message ===
+          'Overview dashboard aggregates must use board, review queue, and critical path selectors instead of local derivations.'
+      ).length
+    ).toBeGreaterThanOrEqual(3)
+    expect(messageText).not.toContain(
+      'Overview dashboard must import selectReviewQueueDepth from @/features/reviews/selectors.'
+    )
+  })
+
   it('allows presentation-only collection operations in the overview dashboard', () => {
     const messages = verifyOverviewDerivationRule(
       `

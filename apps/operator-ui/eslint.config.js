@@ -300,6 +300,22 @@ export const atlasPlugin = {
           context.report({ node, messageId: 'duplicate' })
         }
 
+        function localBindingName(node) {
+          const expression = unwrapChain(node)
+          if (expression.type === 'Identifier') {
+            return expression.name
+          }
+
+          if (
+            expression.type === 'AssignmentPattern' &&
+            expression.left.type === 'Identifier'
+          ) {
+            return expression.left.name
+          }
+
+          return undefined
+        }
+
         function queryHookNameFromCall(node) {
           const expression = unwrapChain(node)
           if (expression.type !== 'CallExpression') {
@@ -390,6 +406,42 @@ export const atlasPlugin = {
           )
         }
 
+        function addResponseSurfaceAliases(pattern, hookName) {
+          if (pattern.type !== 'ObjectPattern') {
+            return
+          }
+
+          const surfaces = overviewQueryResponseSurfaces.get(hookName)
+          if (!surfaces) {
+            return
+          }
+
+          for (const property of pattern.properties) {
+            if (property.type !== 'Property') {
+              continue
+            }
+
+            const surface = propertyName(property.key)
+            if (!surface || !surfaces.has(surface)) {
+              continue
+            }
+
+            if (overviewScalarResponseProperties.has(surface)) {
+              reportDuplicate(property.key)
+              continue
+            }
+
+            if (!overviewCollectionResponseProperties.has(surface)) {
+              continue
+            }
+
+            const local = localBindingName(property.value)
+            if (local) {
+              responseCollectionAliases.add(local)
+            }
+          }
+        }
+
         function addResponseDataAlias(pattern, hookName) {
           if (pattern.type !== 'ObjectPattern') {
             return
@@ -405,6 +457,14 @@ export const atlasPlugin = {
               property.value.type === 'Identifier'
             ) {
               responseDataAliases.set(property.value.name, hookName)
+              continue
+            }
+
+            if (
+              propertyName(property.key) === 'data' &&
+              property.value.type === 'ObjectPattern'
+            ) {
+              addResponseSurfaceAliases(property.value, hookName)
             }
           }
         }
@@ -460,17 +520,20 @@ export const atlasPlugin = {
               return
             }
 
-            if (node.id.type !== 'Identifier') {
-              return
-            }
-
             const dataHookName = queryHookNameFromDataExpression(node.init)
             if (dataHookName) {
-              responseDataAliases.set(node.id.name, dataHookName)
+              if (node.id.type === 'Identifier') {
+                responseDataAliases.set(node.id.name, dataHookName)
+              } else {
+                addResponseSurfaceAliases(node.id, dataHookName)
+              }
               return
             }
 
-            if (isOwnedResponseCollection(node.init)) {
+            if (
+              node.id.type === 'Identifier' &&
+              isOwnedResponseCollection(node.init)
+            ) {
               responseCollectionAliases.add(node.id.name)
             }
           },
