@@ -1,7 +1,7 @@
 # Render written only by `atlas apply` (ADR-0006/0007); do not hand-edit.
-# plan_run_id: 796772e5-d5ae-5c82-8783-4210caf73d81
-# prompt_version: operator-ui-phase-11-mint-v1
-# ticket_key_high_water: 227
+# plan_run_id: 169d3cdb-ea0d-4149-96e4-4be8f3c590b2
+# prompt_version: stubs-only
+# ticket_key_high_water: 230
 # epic_key_high_water: 13
 tickets:
 - id: 06701bee-33ed-44e6-b735-52dfd7c5edc8
@@ -8965,7 +8965,7 @@ tickets:
   title: Gate rejected-trigger lesson extraction on whether work was attempted
   objective: Stop a bookkeeping status change into `rejected` from manufacturing a DRAFT lesson and spending a model call. Extraction on the rejected trigger fires only when the ticket was actually worked — mirroring the notability gate the done trigger already has.
   context: 'Observed live on 2026-07-26. A triage retired 46 tickets stranded in `needs_human_decision` by the ATLAS-203 create-path default-state accident; the reconciling ticks pulled them to `rejected` and the extractor produced 45 DRAFT lessons, each an invented causal story about a delivery that never happened — `ATLAS-40`: ''CLI tickets rejected without agent runs or review cycles indicate missing pre-implementation validation gate''; `ATLAS-39`: ''Feature ticket rejected without agent execution or review — scope or priority misalignment at planning stage''. Both false: those tickets were retired because of a tracker default-state bug. All 45 were archived by raw SQL because `atlas lessons review` is read-only. The asymmetry is real and deliberate in the current design: `extract_lesson_for_ticket` (atlas/learning/extractor.py:428) gates `ExtractionTrigger.DONE` behind `notable_done_ticket`, and `learning-system.md` ''Extraction triggers'' item 1 carries the qualifier ''(only when the delivery was notable: ...)'' while item 2 — rejected and PM failure analysis — carries none. So the code faithfully implements the doc, and this ticket changes BOTH. That is why it is a design change, not a defect repair. Pre-ruled decisions (operator-ratified in reviewer session 2026-07-26; land them, do not relitigate): D-1 the gate lives INSIDE `extract_lesson_for_ticket`, beside the existing done gate, NOT at the call site — `atlas/pm/sync.py`''s `_pull` and `atlas lessons schedule` both route through the extractor, and a call-site gate would cover one path and silently miss the other. D-2 the predicate is `notable_rejected_ticket(ticket, *, agent_runs, verification_checks)`, returning True iff the ticket has at least one AgentRun OR at least one VerificationCheck row: a rejection carries a failure lesson only when something was attempted against the ticket, and a ticket rejected before any dispatch is a planning event with no delivery history to learn from. Deterministic, storage-free, and shaped like its `notable_done_ticket` sibling. D-3 `force=True` bypasses the gate exactly as it does for done, so `atlas lessons extract <KEY>` remains the operator''s unconditional escape hatch. D-4 a gated non-extraction still stamps `Ticket.lesson_extraction_attempted_at`, matching the done gate''s existing behaviour, so the scheduler does not re-poll the same ticket every cycle. D-5 the `PM_FAILURE_ANALYSIS` and `OPERATOR_REQUEST` triggers are untouched — a dwell or review-cycle breach is evidence of attempted work by construction. D-6 `learning-system.md` item 2 gains the notability qualifier in the same change, by rewriting the sentence rather than appending a caveat (deletion over annotation). D-7 no retroactive archival or re-extraction of the 45 lessons already archived on 2026-07-26; they stay archived and out of scope.'
-  status: review_required
+  status: done
   ticket_type: tech_debt
   risk_level: medium
   priority: 50
@@ -9000,16 +9000,16 @@ tickets:
   tags: []
   component: learning
   linear_synced_at: '2026-07-26T14:45:25.853800Z'
-  last_observed_linear_state_id: cf16f7da-6193-4dbf-b8fd-fa75dc9a16d7
-  status_entered_at: '2026-07-26T17:11:32.924266Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-07-26T18:46:13.821957Z'
   review_cycle_count: 0
-  lesson_extraction_attempted_at: null
+  lesson_extraction_attempted_at: '2026-07-26T18:46:13.821957Z'
   source_anchor: docs/planning/inbox/processed/inbox_stub_rejected_extraction_gate.md#a-rejection-is-not-a-lesson
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-07-26T14:45:25.853800Z'
   updated_at: '2026-07-26T14:45:25.853800Z'
-  completed_at: null
+  completed_at: '2026-07-26T18:46:13.821957Z'
 - id: d8a76445-b479-4b09-80bd-fc491f7cdad8
   product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
   epic_id: e0d47d14-bbd1-4d5d-96bc-f9e7adfeb3cf
@@ -9116,7 +9116,7 @@ tickets:
   title: GET /api/v1/dependencies/graph
   objective: Return the projected dependency graph — nodes and depends_on edges — in one response, so a whole-graph view is a single request rather than one request per ticket.
   context: 'The second and last additive v1 read route this phase permits (OP-2). Pre- ruled decisions (operator-ratified, reviewer session 2026-07-26): D-1 no graph logic is reimplemented in atlas/api/ or in the new service: atlas.dependencies builds and validates the projection exactly as it does for readiness and critical path, an atlas.orchestration coordinating service assembles the response, and the route presents it — the precedent is the existing critical-path operation. D-2 nodes carry key, status and node type; edges carry source and target keys and the dependency type. No effort weighting, no layout, no positions: layout is the client''s business and putting it in the API would make the response a rendering decision on a drift timer. D-3 the response is the whole graph in one call and takes no ticket key; the per-ticket route is unchanged and remains the right call for one ticket''s blockers. D-4 read-only, deterministic ordering so two identical stores produce byte-identical responses. D-5 operator-api.md is amended in this same change.'
-  status: planned
+  status: done
   ticket_type: feature
   risk_level: medium
   priority: 50
@@ -9139,21 +9139,21 @@ tickets:
   definition_of_done:
   - All acceptance criteria evidenced by named tests; the full Python gate sweep and the operator-UI pipeline both green; canonical docs updated in the same change where behaviour diverges from them; PR title carries the ticket key in the form (ATLAS-NN).
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: 81b51157-2177-4562-bae2-68127cb23d7a
   external_github_issue_id: null
   tags: []
   component: api
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-07-26T18:32:14.708576Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-07-27T05:48:56.075325Z'
   review_cycle_count: 0
-  lesson_extraction_attempted_at: null
+  lesson_extraction_attempted_at: '2026-07-27T05:48:56.075325Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-api-dependency-graph-read.md#get-apiv1dependenciesgraph
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-07-26T18:32:14.708576Z'
   updated_at: '2026-07-26T18:32:14.708576Z'
-  completed_at: null
+  completed_at: '2026-07-27T05:48:56.075325Z'
 - id: 0ca185e5-98e4-400f-a922-74920e46d869
   product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
   epic_id: 86fe8167-7b99-45fd-ac96-3d0f4d3a0f53
@@ -9161,7 +9161,7 @@ tickets:
   title: GET /api/v1/epics and epic_key on the ticket board item
   objective: Expose stored epics over HTTP and add the owning epic key to the board item, so the operator UI can group a 162-ticket board by the dimension the operator actually navigates by.
   context: 'Phase 11 is permitted exactly two additive v1 read routes and this is the first (OP-2); docs/atlas/operator-ui.md is the governing design and operator-api.md is amended in this same change. Pre-ruled decisions (operator-ratified, reviewer session 2026-07-26): D-1 GET /api/v1/epics is a single-repository projection over the epic repository, presented like every other collection, with repository order preserved and no pagination. D-2 the board item gains epic_key. That field requires a second source, so under operator-api.md''s own rule the BOARD projection — and only the board projection — moves into an atlas.orchestration coordinating service; ticket detail stays single-source and gains nothing. D-3 the API contains-no-logic sensor is not weakened, suppressed or exempted: the route dependency still makes exactly one call, now to the coordinating service. D-4 read-only, no writes, no new enums, no parallel API enum copies. D-5 operator-api.md''s route table, its ''no other v1 routes in this phase'' statement and its architecture section are amended in the same change, and the amendment names Phase 11 as the authority for the two additions.'
-  status: planned
+  status: done
   ticket_type: feature
   risk_level: low
   priority: 50
@@ -9183,21 +9183,21 @@ tickets:
   definition_of_done:
   - All acceptance criteria evidenced by named tests; the full Python gate sweep and the operator-UI pipeline both green; canonical docs updated in the same change where behaviour diverges from them; PR title carries the ticket key in the form (ATLAS-NN).
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: a949bbcd-c034-459c-8d2a-258be6d6da69
   external_github_issue_id: null
   tags: []
   component: api
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-07-26T18:32:14.708576Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-07-26T20:44:53.901803Z'
   review_cycle_count: 0
-  lesson_extraction_attempted_at: null
+  lesson_extraction_attempted_at: '2026-07-26T20:44:53.901803Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-api-epics-read.md#get-apiv1epics-and-epickey-on-the-ticket-board-item
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-07-26T18:32:14.708576Z'
   updated_at: '2026-07-26T18:32:14.708576Z'
-  completed_at: null
+  completed_at: '2026-07-26T20:44:53.901803Z'
 - id: 96705873-9a00-41ec-b249-b7f8d1d84893
   product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
   epic_id: 80047dd6-542c-4ad8-8213-a2372ab4e560
@@ -9205,7 +9205,7 @@ tickets:
   title: Accessibility and responsive pass
   objective: Make every delivered view keyboard-navigable, screen-reader-legible and usable at laptop and tablet widths, and hold that with an automated check rather than a one-off review.
   context: 'Pre-ruled decisions (operator-ratified, reviewer session 2026-07-26): D-1 accessibility is enforced by an automated check wired into CI as a required stage, not by a manual audit; a manual pass decays by the next ticket. D-2 the pass covers every view delivered by this phase and both colour modes, since contrast is a per-mode property and passing in light says nothing about dark. D-3 the target is keyboard reachability of every interactive element, correct semantics for the data tables and the tab frames, visible focus, and contrast that meets the standard the check enforces; the standard is named in the change rather than left implicit. D-4 responsive scope is laptop and tablet widths — the operator surface is a desktop instrument and phone layouts are out of scope for this phase. D-5 fixes land in this ticket; where a fix would change a view''s agreed behaviour rather than its presentation, it is reported as a follow-up instead of absorbed silently.'
-  status: planned
+  status: done
   ticket_type: tech_debt
   risk_level: low
   priority: 50
@@ -9227,21 +9227,21 @@ tickets:
   definition_of_done:
   - All acceptance criteria evidenced by named tests; the full Python gate sweep and the operator-UI pipeline both green; canonical docs updated in the same change where behaviour diverges from them; PR title carries the ticket key in the form (ATLAS-NN).
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: 68ad3721-8306-4c3e-9d75-0f42b9371e13
   external_github_issue_id: null
   tags: []
   component: operator-ui
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-07-26T18:32:14.708576Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-07-30T10:16:28.511704Z'
   review_cycle_count: 0
-  lesson_extraction_attempted_at: null
+  lesson_extraction_attempted_at: '2026-07-30T10:16:28.511704Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-ui-a11y-responsive.md#accessibility-and-responsive-pass
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-07-26T18:32:14.708576Z'
   updated_at: '2026-07-26T18:32:14.708576Z'
-  completed_at: null
+  completed_at: '2026-07-30T10:16:28.511704Z'
 - id: ec7e70f3-8a87-4581-8373-b647121bc008
   product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
   epic_id: 80047dd6-542c-4ad8-8213-a2372ab4e560
@@ -9249,7 +9249,7 @@ tickets:
   title: 'Application shell: navigation, theme toggle, command palette'
   objective: Deliver the persistent frame every view renders inside — sidebar navigation, header, theme toggle, command palette, route-level error boundaries and a 404 page — so view tickets add a route and nothing else.
   context: 'Pre-ruled decisions (operator-ratified, reviewer session 2026-07-26): D-1 the navigation enumerates exactly the seven ratified surfaces of docs/atlas/operator-ui.md; /status is NOT a navigation entry — it is the overview header plus a persistent footer staleness indicator, because six scalars do not justify a route. D-2 no navigation entry, button, or menu item implies a write, an approval, or a promotion; the UI is a reading instrument for this phase, and a disabled Approve control is a promise this phase does not keep. D-3 the command palette navigates and searches; it issues no mutation. D-4 route-level error boundaries contain a failing view rather than blanking the shell, and the 404 page renders the API''s native detail body for a keyed resource without a bespoke error envelope. D-5 views are placeholders in this ticket; each is filled by its own ticket.'
-  status: planned
+  status: done
   ticket_type: feature
   risk_level: low
   priority: 50
@@ -9271,21 +9271,21 @@ tickets:
   definition_of_done:
   - All acceptance criteria evidenced by named tests; the full Python gate sweep and the operator-UI pipeline both green; canonical docs updated in the same change where behaviour diverges from them; PR title carries the ticket key in the form (ATLAS-NN).
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: f346fd52-38d1-42be-9c7b-6cf26c9f33b2
   external_github_issue_id: null
   tags: []
   component: operator-ui
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-07-26T18:32:14.708576Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-07-29T14:16:48.818543Z'
   review_cycle_count: 0
-  lesson_extraction_attempted_at: null
+  lesson_extraction_attempted_at: '2026-07-29T14:16:48.818543Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-ui-app-shell.md#application-shell-navigation-theme-toggle-command-palette
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-07-26T18:32:14.708576Z'
   updated_at: '2026-07-26T18:32:14.708576Z'
-  completed_at: null
+  completed_at: '2026-07-29T14:16:48.818543Z'
 - id: e03d4b0b-dc4a-495e-ad6c-66406a9bd538
   product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
   epic_id: 80047dd6-542c-4ad8-8213-a2372ab4e560
@@ -9293,7 +9293,7 @@ tickets:
   title: Ticket board view
   objective: Render the whole ticket board as a filterable, sortable, linkable table so the operator finds the live work in one screen instead of paging a CLI.
   context: 'Pre-ruled decisions (operator-ratified, reviewer session 2026-07-26): D-1 terminal statuses — done and rejected — are HIDDEN by default with a one- interaction reveal (OP-5). At design time 156 of 162 records are terminal; a default that shows all of them is a log file rather than an instrument. D-2 ticket keys are sorted NATURALLY on the numeric segment. Storage orders by key lexicographically, which yields ATLAS-1, ATLAS-10, ATLAS-100 before ATLAS-2; a view that inherits that order is silently wrong and looks right. D-3 the board is fetched unfiltered ONCE and all faceting is client-side, because the status query parameter accepts a single value and the API has no pagination; the ticket records that this couples the view to complete collections and that pagination would break it first. D-4 filter and sort state is synchronised to the URL so a filtered board is a linkable artifact. D-5 the board renders only the six fields the projection carries; epic grouping is a separate ticket behind the epics route, and a kanban mode is deliberately out of scope for this phase.'
-  status: planned
+  status: done
   ticket_type: feature
   risk_level: low
   priority: 50
@@ -9315,21 +9315,21 @@ tickets:
   definition_of_done:
   - All acceptance criteria evidenced by named tests; the full Python gate sweep and the operator-UI pipeline both green; canonical docs updated in the same change where behaviour diverges from them; PR title carries the ticket key in the form (ATLAS-NN).
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: 0c931d46-21e1-4582-843a-e2eef3c139e5
   external_github_issue_id: null
   tags: []
   component: operator-ui
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-07-26T18:32:14.708576Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-07-29T18:19:52.712570Z'
   review_cycle_count: 0
-  lesson_extraction_attempted_at: null
+  lesson_extraction_attempted_at: '2026-07-29T18:19:52.712570Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-ui-board-view.md#ticket-board-view
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-07-26T18:32:14.708576Z'
   updated_at: '2026-07-26T18:32:14.708576Z'
-  completed_at: null
+  completed_at: '2026-07-29T18:19:52.712570Z'
 - id: cad2eae9-1bd4-44cb-8d86-0bb7345ac881
   product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
   epic_id: 80047dd6-542c-4ad8-8213-a2372ab4e560
@@ -9337,7 +9337,7 @@ tickets:
   title: Operator UI CI pipeline
   objective: Wire lint, type-check, component tests, build, the OpenAPI drift guard and the end-to-end suite into CI as required checks, so no operator UI change merges without them.
   context: 'Pre-ruled decisions (operator-ratified, reviewer session 2026-07-26): D-1 the operator UI pipeline is additive to the existing Python gate sweep and does not weaken, reorder or replace any part of it; the sweep in docs/runbooks/local-development.md remains exactly as it is for Python changes. D-2 every stage is a REQUIRED check, including the OpenAPI drift guard and the end-to-end suite; an advisory end-to-end job is not a gate. D-3 the end-to-end job runs against the seeded live API from the harness ticket, and the Playwright browser is pinned rather than resolved at run time, so a browser bump is a visible commit and not a silent failure. D-4 the runbook records the local equivalent of every CI stage so a developer reproduces a red check without reading CI configuration. D-5 evidence tiers are unchanged: CI output is system-tier under ADR-0008 and the reviewer''s local run stays reviewer-tier.'
-  status: planned
+  status: done
   ticket_type: infrastructure
   risk_level: low
   priority: 50
@@ -9359,21 +9359,21 @@ tickets:
   definition_of_done:
   - All acceptance criteria evidenced by named tests; the full Python gate sweep and the operator-UI pipeline both green; canonical docs updated in the same change where behaviour diverges from them; PR title carries the ticket key in the form (ATLAS-NN).
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: 3ad5e679-022f-4a7b-aa6b-2b44873b74cc
   external_github_issue_id: null
   tags: []
   component: operator-ui
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-07-26T18:32:14.708576Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-07-29T15:56:44.992570Z'
   review_cycle_count: 0
-  lesson_extraction_attempted_at: null
+  lesson_extraction_attempted_at: '2026-07-29T15:56:44.992570Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-ui-ci-pipeline.md#operator-ui-ci-pipeline
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-07-26T18:32:14.708576Z'
   updated_at: '2026-07-26T18:32:14.708576Z'
-  completed_at: null
+  completed_at: '2026-07-29T15:56:44.992570Z'
 - id: 10e99849-faa0-4655-a4e1-ec4fd56bfb73
   product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
   epic_id: 80047dd6-542c-4ad8-8213-a2372ab4e560
@@ -9381,7 +9381,7 @@ tickets:
   title: Critical path view
   objective: Render the graph-wide critical path in execution order with per-step and cumulative effort, so the operator sees the longest remaining chain without running the CLI.
   context: 'Pre-ruled decisions (operator-ratified, reviewer session 2026-07-26): D-1 the view states plainly that the critical path is ADVISORY and never gates dispatch. The dependency engine is explicit that it does not; a visualisation that omits this reads as authority and would quietly acquire it. D-2 the chain renders in execution order with per-step effort and the running cumulative total, and steps link to ticket detail. D-3 the API weights a null effort as 1 at compute time without mutating the node; the view does not re-derive, re-weight or re-order anything the API returned. D-4 an empty path — no non-terminal tickets — is a normal state and renders the shared empty state. D-5 this is a route in its own right, and the overview dashboard carries only the head of the chain and the total; the summary reuses this view''s selectors rather than duplicating them.'
-  status: planned
+  status: done
   ticket_type: feature
   risk_level: low
   priority: 50
@@ -9403,21 +9403,21 @@ tickets:
   definition_of_done:
   - All acceptance criteria evidenced by named tests; the full Python gate sweep and the operator-UI pipeline both green; canonical docs updated in the same change where behaviour diverges from them; PR title carries the ticket key in the form (ATLAS-NN).
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: 2f1973cf-337b-406a-a770-f93e92c74e15
   external_github_issue_id: null
   tags: []
   component: operator-ui
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-07-26T18:32:14.708576Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-07-29T19:17:21.692648Z'
   review_cycle_count: 0
-  lesson_extraction_attempted_at: null
+  lesson_extraction_attempted_at: '2026-07-29T19:17:21.692648Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-ui-critical-path-view.md#critical-path-view
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-07-26T18:32:14.708576Z'
   updated_at: '2026-07-26T18:32:14.708576Z'
-  completed_at: null
+  completed_at: '2026-07-29T19:17:21.692648Z'
 - id: d92c2f47-14f3-464f-94c2-4beba5aa437d
   product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
   epic_id: 80047dd6-542c-4ad8-8213-a2372ab4e560
@@ -9425,7 +9425,7 @@ tickets:
   title: Dependency graph view
   objective: Render the whole dependency graph in one screen with the critical path highlighted, so the operator sees the shape of the backlog rather than walking it one ticket at a time.
   context: 'Depends on the bulk graph route, without which this view is 162 requests. Pre-ruled decisions (operator-ratified, reviewer session 2026-07-26): D-1 layout is entirely CLIENT-side; the API returns nodes and edges and no coordinates, because a layout in the response is a rendering decision on a drift timer. D-2 the graph renders the whole projection, and readability is achieved by filtering — by status, by epic once available — rather than by silently sampling; if the view ever caps what it draws, the cap is stated on screen, because a truncated graph that looks complete is worse than no graph. D-3 the critical path is highlighted within the graph, and the dedicated critical-path route remains; this view does not replace it. D-4 nodes link to ticket detail and terminal statuses follow the board''s default of being hidden until revealed. D-5 read-only: no edge creation, no deletion, no drag-to-reparent.'
-  status: planned
+  status: done
   ticket_type: feature
   risk_level: medium
   priority: 50
@@ -9447,21 +9447,21 @@ tickets:
   definition_of_done:
   - All acceptance criteria evidenced by named tests; the full Python gate sweep and the operator-UI pipeline both green; canonical docs updated in the same change where behaviour diverges from them; PR title carries the ticket key in the form (ATLAS-NN).
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: a5e180f8-b8c7-46b0-8ab8-b98181e3e5b5
   external_github_issue_id: null
   tags: []
   component: operator-ui
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-07-26T18:32:14.708576Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-07-29T21:26:24.390059Z'
   review_cycle_count: 0
-  lesson_extraction_attempted_at: null
+  lesson_extraction_attempted_at: '2026-07-29T21:26:24.390059Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-ui-dependency-graph-view.md#dependency-graph-view
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-07-26T18:32:14.708576Z'
   updated_at: '2026-07-26T18:32:14.708576Z'
-  completed_at: null
+  completed_at: '2026-07-29T21:26:24.390059Z'
 - id: 2b304313-1c85-4f6b-a3c1-debe816d195e
   product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
   epic_id: 80047dd6-542c-4ad8-8213-a2372ab4e560
@@ -9469,7 +9469,7 @@ tickets:
   title: Playwright end-to-end harness over a seeded live API
   objective: Stand up @playwright/test against a real `atlas api serve` process bound to loopback over a seeded store, so every later view ticket has a place to prove itself against what Atlas actually returns.
   context: 'Pre-ruled decisions (operator-ratified, reviewer session 2026-07-26): D-1 end-to-end specs run against a LIVE API over a seeded store, not against recorded fixtures or route mocking (OP-4). Fixture replay verifies the UI against its own assumptions; it would have caught none of the three data- shape facts that most affect these views — a board that is 94 per cent terminal, lexicographic ticket-key ordering, and lesson references that are UUIDs with no resolvable key. D-2 the seed is deterministic and committed, and it deliberately reproduces those three shapes plus an empty review queue, a ticket with no evidence, and a ticket that is not ready with more than one failing readiness reason. D-3 the template''s existing Vitest browser-mode setup is COMPONENT testing and is retained unchanged; @playwright/test is a separate runner, a separate config and a separate command, and the two are never conflated — a passing component suite is not acceptance. D-4 the harness starts and stops the API process itself so a developer runs one command; a hand-started server is not a prerequisite. D-5 no view is authored here; the harness ships with one smoke spec proving the shell loads against the live API.'
-  status: planned
+  status: done
   ticket_type: infrastructure
   risk_level: medium
   priority: 50
@@ -9491,21 +9491,21 @@ tickets:
   definition_of_done:
   - All acceptance criteria evidenced by named tests; the full Python gate sweep and the operator-UI pipeline both green; canonical docs updated in the same change where behaviour diverges from them; PR title carries the ticket key in the form (ATLAS-NN).
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: 726d70a9-49f9-4b13-aa27-6851f35ed54e
   external_github_issue_id: null
   tags: []
   component: operator-ui
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-07-26T18:32:14.708576Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-07-29T15:04:08.886007Z'
   review_cycle_count: 0
-  lesson_extraction_attempted_at: null
+  lesson_extraction_attempted_at: '2026-07-29T15:04:08.886007Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-ui-e2e-harness.md#playwright-end-to-end-harness-over-a-seeded-live-api
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-07-26T18:32:14.708576Z'
   updated_at: '2026-07-26T18:32:14.708576Z'
-  completed_at: null
+  completed_at: '2026-07-29T15:04:08.886007Z'
 - id: bd78be82-6945-42d4-8af3-0eea6744d1df
   product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
   epic_id: 80047dd6-542c-4ad8-8213-a2372ab4e560
@@ -9513,7 +9513,7 @@ tickets:
   title: Epic grouping on the ticket board
   objective: Group and filter the board by epic, so a 162-ticket board is navigable along the dimension the roadmap is actually organised by.
   context: 'Depends on the epics route and the epic_key board field, which is why it is a separate ticket from the board itself. Pre-ruled decisions (operator- ratified, reviewer session 2026-07-26): D-1 grouping is a board MODE, not a new route; the flat table remains the default and the URL carries the mode so a grouped board is linkable like any other board state. D-2 the terminal- status default and natural key sort established by the board ticket apply unchanged inside every group; a grouping mode that quietly resets the defaults is a different view wearing the board''s name. D-3 tickets with no epic collect under an explicit unassigned group rather than disappearing. D-4 epic metadata shown per group is limited to what the epics route returns; nothing is inferred, and per-group progress is counted from the board rows already fetched rather than requested separately. D-5 no epic write, no reassignment, no drag-and-drop.'
-  status: planned
+  status: done
   ticket_type: feature
   risk_level: low
   priority: 50
@@ -9535,21 +9535,21 @@ tickets:
   definition_of_done:
   - All acceptance criteria evidenced by named tests; the full Python gate sweep and the operator-UI pipeline both green; canonical docs updated in the same change where behaviour diverges from them; PR title carries the ticket key in the form (ATLAS-NN).
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: 69f4b9b1-f814-4f8a-a015-f861ded68377
   external_github_issue_id: null
   tags: []
   component: operator-ui
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-07-26T18:32:14.708576Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-07-30T06:17:38.303543Z'
   review_cycle_count: 0
-  lesson_extraction_attempted_at: null
+  lesson_extraction_attempted_at: '2026-07-30T06:17:38.303543Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-ui-epic-grouping.md#epic-grouping-on-the-ticket-board
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-07-26T18:32:14.708576Z'
   updated_at: '2026-07-26T18:32:14.708576Z'
-  completed_at: null
+  completed_at: '2026-07-30T06:17:38.303543Z'
 - id: ee6feb97-9feb-4a3c-8262-dc6a5c0aca7e
   product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
   epic_id: 80047dd6-542c-4ad8-8213-a2372ab4e560
@@ -9557,7 +9557,7 @@ tickets:
   title: Lessons view with draft triage
   objective: Render stored lessons with drafts first, so the operator can work the DRAFT pile that ADR-0009 makes their queue.
   context: 'Pre-ruled decisions (operator-ratified, reviewer session 2026-07-26): D-1 DRAFT is the default filter. Agent-authored lessons are DRAFT until the operator promotes them (ADR-0009), so the draft pile is the operator''s actual queue; ATLAS-204''s incident — 45 fabricated DRAFT lessons produced by a bookkeeping status change — is the concrete case this view exists to make visible. D-2 lessons carry source_ticket_id and related_ticket_ids as raw UUIDs, and operator-api.md rules that resolving them to ticket keys would require a second source and move the whole projection into atlas.orchestration. The UUIDs are therefore displayed LITERALLY and are not linked. Fabricating a link would hide a contract gap; showing the UUID keeps it visible and fixable. D-3 the view is read-only: no promote, reject, archive or merge control, because `atlas lessons review` is itself read-only and the writeable phase owns those actions. D-4 problem, solution and outcome render in full in a detail drawer, untruncated, because a summarised lesson cannot be judged. D-5 status faceting is client-side over the full collection, consistent with every other view in this phase.'
-  status: planned
+  status: done
   ticket_type: feature
   risk_level: low
   priority: 50
@@ -9579,21 +9579,21 @@ tickets:
   definition_of_done:
   - All acceptance criteria evidenced by named tests; the full Python gate sweep and the operator-UI pipeline both green; canonical docs updated in the same change where behaviour diverges from them; PR title carries the ticket key in the form (ATLAS-NN).
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: 97373e4b-f7ee-464c-92b6-782a1fb456ed
   external_github_issue_id: null
   tags: []
   component: operator-ui
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-07-26T18:32:14.708576Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-07-30T04:43:33.014079Z'
   review_cycle_count: 0
-  lesson_extraction_attempted_at: null
+  lesson_extraction_attempted_at: '2026-07-30T04:43:33.014079Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-ui-lessons-view.md#lessons-view-with-draft-triage
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-07-26T18:32:14.708576Z'
   updated_at: '2026-07-26T18:32:14.708576Z'
-  completed_at: null
+  completed_at: '2026-07-30T04:43:33.014079Z'
 - id: c21340b2-f240-4745-9637-4ab9d3a979e4
   product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
   epic_id: 80047dd6-542c-4ad8-8213-a2372ab4e560
@@ -9601,7 +9601,7 @@ tickets:
   title: Open-source readiness for the operator UI
   objective: Make the operator UI something an outside contributor can run, understand and contribute to, and make its upstream attribution correct.
   context: 'Pre-ruled decisions (operator-ratified, reviewer session 2026-07-26): D-1 upstream attribution to satnaing/shadcn-admin under MIT is explicit and correct, covering the vendored source and the theme; this is a licence obligation and not a courtesy. D-2 the README documents running the UI against a real Atlas instance from a cold checkout, including seeding a store and starting `atlas api serve`, and a reviewer follows it verbatim on a clean machine as the acceptance evidence — a README that only works with local state is not a README. D-3 contribution guidance states the read-only boundary plainly, so an outside contributor does not open a pull request adding a write path that this phase forbids. D-4 the documentation records the known contract limits — no pagination, no epic on ticket detail, lesson ticket references unresolvable to keys, polling rather than push — so a contributor does not read them as bugs. D-5 no licence change to the repository and no package publication.'
-  status: planned
+  status: done
   ticket_type: documentation
   risk_level: low
   priority: 50
@@ -9623,21 +9623,21 @@ tickets:
   definition_of_done:
   - All acceptance criteria evidenced by named tests; the full Python gate sweep and the operator-UI pipeline both green; canonical docs updated in the same change where behaviour diverges from them; PR title carries the ticket key in the form (ATLAS-NN).
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: c993f15b-e745-4ada-ac8d-d17ed43cf645
   external_github_issue_id: null
   tags: []
   component: operator-ui
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-07-26T18:32:14.708576Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-07-30T11:25:43.032607Z'
   review_cycle_count: 0
-  lesson_extraction_attempted_at: null
+  lesson_extraction_attempted_at: '2026-07-30T11:25:43.032607Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-ui-open-source-readiness.md#open-source-readiness-for-the-operator-ui
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-07-26T18:32:14.708576Z'
   updated_at: '2026-07-26T18:32:14.708576Z'
-  completed_at: null
+  completed_at: '2026-07-30T11:25:43.032607Z'
 - id: 75f48d21-7eac-4e34-9160-d498fedf0c91
   product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
   epic_id: 80047dd6-542c-4ad8-8213-a2372ab4e560
@@ -9645,7 +9645,7 @@ tickets:
   title: Generated OpenAPI TypeScript client with a CI drift guard
   objective: Generate the operator UI's TypeScript types from the FastAPI OpenAPI document and fail CI on any drift, so the UI cannot compile against a stale view of the /api/v1 contract.
   context: 'The UI''s only coupling to Atlas is the HTTP contract; docs/atlas/operator- ui.md rules that the coupling must be mechanical. Pre-ruled decisions (operator-ratified, reviewer session 2026-07-26): D-1 types are GENERATED from the running application''s OpenAPI document and COMMITTED; they are never hand-written and never partially hand-edited. D-2 the drift guard regenerates in CI and fails on any diff against the committed output — a generated file that is merely regenerable is not a guard. D-3 the generator reads the schema from atlas.api.app.create_app rather than from a checked-in copy of the schema, so a route or field added in Python without regeneration fails the build. D-4 response fields with closed value sets arrive as the canonical domain StrEnum members that operator-api.md already publishes; no parallel TypeScript enum is authored by hand. D-5 no data fetching, no React Query, and no view code enters this ticket — types and the generation seam only.'
-  status: planned
+  status: done
   ticket_type: infrastructure
   risk_level: low
   priority: 50
@@ -9666,21 +9666,21 @@ tickets:
   definition_of_done:
   - All acceptance criteria evidenced by named tests; the full Python gate sweep and the operator-UI pipeline both green; canonical docs updated in the same change where behaviour diverges from them; PR title carries the ticket key in the form (ATLAS-NN).
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: f83ac2b5-b60c-49a5-a58c-6c97158b0d56
   external_github_issue_id: null
   tags: []
   component: operator-ui
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-07-26T18:32:14.708576Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-07-26T21:22:58.461849Z'
   review_cycle_count: 0
-  lesson_extraction_attempted_at: null
+  lesson_extraction_attempted_at: '2026-07-26T21:22:58.461849Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-ui-openapi-client.md#generated-openapi-typescript-client-with-a-ci-drift-guard
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-07-26T18:32:14.708576Z'
   updated_at: '2026-07-26T18:32:14.708576Z'
-  completed_at: null
+  completed_at: '2026-07-26T21:22:58.461849Z'
 - id: 475d004b-7249-4b37-a5c6-e79f64dc1554
   product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
   epic_id: 80047dd6-542c-4ad8-8213-a2372ab4e560
@@ -9688,7 +9688,7 @@ tickets:
   title: Overview dashboard
   objective: Give the operator one landing screen carrying instance status, board composition, review depth and the head of the critical path, so the first question of a session is answered before any navigation.
   context: 'Pre-ruled decisions (operator-ratified, reviewer session 2026-07-26): D-1 every aggregate on this page is derived CLIENT-SIDE from complete collections, because the API has no aggregation route and no pagination. The ticket records that fragility explicitly: if pagination ever lands, this view breaks first and loudest, and that is preferable to a silent partial aggregate. D-2 /status gets no route of its own; its six scalars are this page''s header plus the persistent footer indicator. D-3 the sync and evidence-pull timestamps render as staleness — relative age with a visible threshold — because an absolute timestamp does not answer the question the operator is asking. D-4 the page reuses the board, review-queue and critical-path selectors rather than reimplementing their derivations; a duplicated derivation is a drift timer. D-5 no chart implies a trend the store cannot support: there is no historical series behind any of these numbers, so nothing renders as a time series.'
-  status: planned
+  status: done
   ticket_type: feature
   risk_level: low
   priority: 50
@@ -9710,21 +9710,21 @@ tickets:
   definition_of_done:
   - All acceptance criteria evidenced by named tests; the full Python gate sweep and the operator-UI pipeline both green; canonical docs updated in the same change where behaviour diverges from them; PR title carries the ticket key in the form (ATLAS-NN).
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: 99af0adb-f777-41e1-87a8-67fe55d004c1
   external_github_issue_id: null
   tags: []
   component: operator-ui
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-07-26T18:32:14.708576Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-07-30T09:18:38.040312Z'
   review_cycle_count: 0
-  lesson_extraction_attempted_at: null
+  lesson_extraction_attempted_at: '2026-07-30T09:18:38.040312Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-ui-overview-dashboard.md#overview-dashboard
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-07-26T18:32:14.708576Z'
   updated_at: '2026-07-26T18:32:14.708576Z'
-  completed_at: null
+  completed_at: '2026-07-30T09:18:38.040312Z'
 - id: 593f1b8f-4852-42f3-b09b-270eb9500080
   product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
   epic_id: 80047dd6-542c-4ad8-8213-a2372ab4e560
@@ -9732,7 +9732,7 @@ tickets:
   title: Query layer, dev proxy, and API-unreachable primitives
   objective: 'Give every later view one shared data-access layer: typed query hooks over the generated client, the development proxy to the loopback API, a polling policy, and the loading, empty, error and API-unreachable states each view will reuse.'
   context: 'Pre-ruled decisions (operator-ratified, reviewer session 2026-07-26): D-1 no CORS middleware is added to the Python API (OP-3); the Vite development server proxies /api to the loopback API, keeping the origin question — a security-boundary question operator-api.md binds to the writeable phase — closed. D-2 freshness is polling only; there is no SSE or websocket surface to consume, and the /status timestamps are the honest staleness signal rather than a spinner. D-3 the API-unreachable state is a named, first-class state, not a generic error: a loopback API that is not running is the likeliest failure the operator will meet, and the UI must say the API is unreachable at the configured URL and that `atlas api serve` may not be running. D-4 the API base URL is configurable at build time with the loopback default; no remote default ships. D-5 this ticket adds no route and no view; it delivers hooks and state primitives that later view tickets consume.'
-  status: planned
+  status: done
   ticket_type: feature
   risk_level: low
   priority: 50
@@ -9754,21 +9754,21 @@ tickets:
   definition_of_done:
   - All acceptance criteria evidenced by named tests; the full Python gate sweep and the operator-UI pipeline both green; canonical docs updated in the same change where behaviour diverges from them; PR title carries the ticket key in the form (ATLAS-NN).
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: a7a5156d-3047-4adc-95d9-f212c3874e11
   external_github_issue_id: null
   tags: []
   component: operator-ui
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-07-26T18:32:14.708576Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-07-29T10:11:14.439613Z'
   review_cycle_count: 0
-  lesson_extraction_attempted_at: null
+  lesson_extraction_attempted_at: '2026-07-29T10:11:14.439613Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-ui-query-layer.md#query-layer-dev-proxy-and-api-unreachable-primitives
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-07-26T18:32:14.708576Z'
   updated_at: '2026-07-26T18:32:14.708576Z'
-  completed_at: null
+  completed_at: '2026-07-29T10:11:14.439613Z'
 - id: 12e0b7ae-a973-46ba-a20c-a83ce4a3d97d
   product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
   epic_id: 80047dd6-542c-4ad8-8213-a2372ab4e560
@@ -9776,7 +9776,7 @@ tickets:
   title: Review queue view
   objective: Render the tickets awaiting operator review with their verification checks and the two acceptance gates made explicit, so the operator sees what is waiting and what would block accepting it.
   context: 'Pre-ruled decisions (operator-ratified, reviewer session 2026-07-26): D-1 has_system_evidence and has_pr_merged_evidence are rendered as EXPLICIT, prominent pass or fail states rather than as flags in a row of metadata. Those two gates are what actually strand tickets — the Phase 10 closure report''s incident ledger is largely a record of that — and burying them reproduces the failure the view exists to prevent. D-2 the checks matrix covers all seven VerificationCheckType values and renders a check that has never run as distinct from one that passed and one that is not applicable; an absent check must never read as a pass. D-3 the queue is READ-ONLY and carries no approve, reject, request-changes or retry control, not even disabled: writes are deferred to the writeable API phase and a greyed-out button is a promise this phase does not keep. D-4 the API''s order is preserved; the view does not re-rank. D-5 an empty queue is a normal, expected state — it was empty at Phase 10 close — and renders the shared empty state.'
-  status: planned
+  status: done
   ticket_type: feature
   risk_level: low
   priority: 50
@@ -9798,21 +9798,21 @@ tickets:
   definition_of_done:
   - All acceptance criteria evidenced by named tests; the full Python gate sweep and the operator-UI pipeline both green; canonical docs updated in the same change where behaviour diverges from them; PR title carries the ticket key in the form (ATLAS-NN).
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: 0308419f-6942-4a67-b431-041ff9c6d951
   external_github_issue_id: null
   tags: []
   component: operator-ui
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-07-26T18:32:14.708576Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-07-29T20:10:10.724995Z'
   review_cycle_count: 0
-  lesson_extraction_attempted_at: null
+  lesson_extraction_attempted_at: '2026-07-29T20:10:10.724995Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-ui-review-queue-view.md#review-queue-view
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-07-26T18:32:14.708576Z'
   updated_at: '2026-07-26T18:32:14.708576Z'
-  completed_at: null
+  completed_at: '2026-07-29T20:10:10.724995Z'
 - id: 24be1d8f-e57f-4d2f-923b-8cb11cf4f6f9
   product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
   epic_id: 80047dd6-542c-4ad8-8213-a2372ab4e560
@@ -9820,7 +9820,7 @@ tickets:
   title: Scaffold apps/operator-ui and strip the template's demo domains
   objective: Stand up the operator UI application at apps/operator-ui with React 19, TypeScript, Vite, Tailwind 4 and TanStack Router, vendoring the shadcn-admin shell and deleting every demo domain in the same change, so no later ticket can build a real view on fixture data.
   context: 'First ticket of Phase 11; docs/atlas/operator-ui.md is the governing design. The upstream template is satnaing/shadcn-admin v2.2.1 (MIT). Pre-ruled decisions (operator-ratified, reviewer session 2026-07-26): D-1 the application lives at apps/operator-ui/ inside this repository (OP-1) — atlas is already public, and in-repo is what makes the OpenAPI drift guard a single CI job instead of a scheduled cross-repo check; bootstrap-guide.md already reserves apps/ for the phase that needs it, and this is that phase. D-2 the template is a component collection, not a starter: Clerk authentication and the users, chats, tasks, apps, help-center and settings demo domains, together with the @faker-js/faker dependency and every fixture that feeds them, are deleted in THIS change, not a follow-up. Clerk in particular imports precisely the authentication surface operator-api.md defers to the writeable phase. D-3 what is kept is the shell and the primitive layer: sidebar, header, theme, Radix-based ui components, the cmdk command palette, the TanStack Table primitives, and the error and not-found route shapes. D-4 upstream MIT attribution is preserved in the vendored source and recorded for the later open-source readiness ticket. D-5 no Atlas data is fetched in this ticket; routes render placeholders.'
-  status: planned
+  status: done
   ticket_type: infrastructure
   risk_level: medium
   priority: 50
@@ -9842,21 +9842,21 @@ tickets:
   definition_of_done:
   - All acceptance criteria evidenced by named tests; the full Python gate sweep and the operator-UI pipeline both green; canonical docs updated in the same change where behaviour diverges from them; PR title carries the ticket key in the form (ATLAS-NN).
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: c2e5abde-568d-4b55-a878-c764194df496
   external_github_issue_id: null
   tags: []
   component: operator-ui
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-07-26T18:32:14.708576Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-07-26T20:08:21.627982Z'
   review_cycle_count: 0
-  lesson_extraction_attempted_at: null
+  lesson_extraction_attempted_at: '2026-07-26T20:08:21.627982Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-ui-scaffold.md#scaffold-appsoperator-ui-and-strip-the-templates-demo-domains
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-07-26T18:32:14.708576Z'
   updated_at: '2026-07-26T18:32:14.708576Z'
-  completed_at: null
+  completed_at: '2026-07-26T20:08:21.627982Z'
 - id: 993dd6df-3ff2-40d5-b171-1d6fe25965ed
   product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
   epic_id: 80047dd6-542c-4ad8-8213-a2372ab4e560
@@ -9864,7 +9864,7 @@ tickets:
   title: Theme token contract from the vendored theme.css
   objective: Establish the vendored theme.css as the single design-token contract for the operator UI, so a token change is a one-file change and no component carries a hardcoded colour, radius or font value.
   context: 'Pre-ruled decisions (operator-ratified, reviewer session 2026-07-26): D-1 the shadcn-admin theme IS the Atlas operator UI theme (OP-7); there is no separate operator-supplied palette, and src/styles/theme.css is vendored intact rather than rewritten. D-2 the contract is falsifiable and must be enforced mechanically, not by review: a test replaces the token file with a deliberately divergent set and asserts that no component source file required a change, and a second test fails on any hardcoded colour literal (hex, rgb, hsl, oklch) or raw radius value outside the token file. D-3 light and dark modes are both first-class; the toggle persists across reloads and honours the operating-system preference on first visit. D-4 this ticket introduces no view and no data fetching.'
-  status: planned
+  status: done
   ticket_type: feature
   risk_level: low
   priority: 50
@@ -9885,21 +9885,21 @@ tickets:
   definition_of_done:
   - All acceptance criteria evidenced by named tests; the full Python gate sweep and the operator-UI pipeline both green; canonical docs updated in the same change where behaviour diverges from them; PR title carries the ticket key in the form (ATLAS-NN).
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: 89f33c6a-a663-4e8e-a167-c62498b29626
   external_github_issue_id: null
   tags: []
   component: operator-ui
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-07-26T18:32:14.708576Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-07-27T06:07:04.884265Z'
   review_cycle_count: 0
-  lesson_extraction_attempted_at: null
+  lesson_extraction_attempted_at: '2026-07-27T06:07:04.884265Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-ui-theme-contract.md#theme-token-contract-from-the-vendored-themecss
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-07-26T18:32:14.708576Z'
   updated_at: '2026-07-26T18:32:14.708576Z'
-  completed_at: null
+  completed_at: '2026-07-27T06:07:04.884265Z'
 - id: 78438b68-8052-443e-bdb3-3d241e0ba989
   product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
   epic_id: 80047dd6-542c-4ad8-8213-a2372ab4e560
@@ -9907,7 +9907,7 @@ tickets:
   title: 'Ticket detail: dependencies and readiness tab'
   objective: Render one ticket's blockers, reverse dependencies and full readiness verdict, so the operator sees every reason a ticket is not dispatchable rather than the first one.
   context: 'Pre-ruled decisions (operator-ratified, reviewer session 2026-07-26): D-1 EVERY not-ready reason is rendered, not just the first. The readiness predicate collects all failing conditions deliberately, and a view that shows one turns a complete diagnosis back into a guessing game. D-2 each NotReadyCode is rendered as human text alongside the machine code — wrong status, dependency not done, ADR not accepted, no acceptance criteria, dangling target — with the offending target and status when the API supplies them. D-3 blockers and blocked-by entries link to their own ticket detail routes, making the graph walkable one hop at a time; this is the per-ticket walk and does not pre-empt the whole-graph view, which is its own ticket behind its own API route. D-4 a dangling target is displayed as the defect it is rather than silently dropped. D-5 readiness is advisory in the same sense the dependency engine intends: the view never implies it can dispatch.'
-  status: planned
+  status: done
   ticket_type: feature
   risk_level: low
   priority: 50
@@ -9929,21 +9929,21 @@ tickets:
   definition_of_done:
   - All acceptance criteria evidenced by named tests; the full Python gate sweep and the operator-UI pipeline both green; canonical docs updated in the same change where behaviour diverges from them; PR title carries the ticket key in the form (ATLAS-NN).
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: b881cbc7-59fa-438d-815b-78996df108f7
   external_github_issue_id: null
   tags: []
   component: operator-ui
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-07-26T18:32:14.708576Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-07-30T09:21:58.768324Z'
   review_cycle_count: 0
-  lesson_extraction_attempted_at: null
+  lesson_extraction_attempted_at: '2026-07-30T09:21:58.768324Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-ui-ticket-dependencies-tab.md#ticket-detail-dependencies-and-readiness-tab
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-07-26T18:32:14.708576Z'
   updated_at: '2026-07-26T18:32:14.708576Z'
-  completed_at: null
+  completed_at: '2026-07-30T09:21:58.768324Z'
 - id: 45c0b2bb-c6de-4fc1-9af0-df62e4ec1eb5
   product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
   epic_id: 80047dd6-542c-4ad8-8213-a2372ab4e560
@@ -9951,7 +9951,7 @@ tickets:
   title: 'Ticket detail view: definition and metadata'
   objective: Render one ticket's stored definition and execution metadata in full, so the operator reads what the agent was actually asked to do without opening the store.
   context: 'Pre-ruled decisions (operator-ratified, reviewer session 2026-07-26): D-1 the view is tabbed — Definition, Metadata, Evidence, Dependencies — and THIS ticket delivers the first two plus the tab frame; the evidence and dependencies tabs are their own tickets and land behind this one. D-2 the three underlying requests are issued independently and composed in the client; that is the intended shape, because operator-api.md''s contains-no- logic rule forbids assembling them server-side. This ticket wires only the detail request. D-3 every list-valued definition field is rendered in full and in stored order — acceptance criteria, non-goals, implementation notes, test and documentation requirements, definition of done — with no truncation and no summarisation; a truncated acceptance criterion is a misleading artifact. D-4 an unknown key renders the API''s native 404 detail body verbatim, with no bespoke error envelope. D-5 the source anchor and the Linear and GitHub external identifiers are surfaced, because they are how the operator crosses back to intent and to delivery.'
-  status: planned
+  status: done
   ticket_type: feature
   risk_level: low
   priority: 50
@@ -9973,21 +9973,21 @@ tickets:
   definition_of_done:
   - All acceptance criteria evidenced by named tests; the full Python gate sweep and the operator-UI pipeline both green; canonical docs updated in the same change where behaviour diverges from them; PR title carries the ticket key in the form (ATLAS-NN).
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: 1ce266d0-f790-4d76-8353-a04d3d5477b0
   external_github_issue_id: null
   tags: []
   component: operator-ui
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-07-26T18:32:14.708576Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-07-29T19:08:09.544065Z'
   review_cycle_count: 0
-  lesson_extraction_attempted_at: null
+  lesson_extraction_attempted_at: '2026-07-29T19:08:09.544065Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-ui-ticket-detail.md#ticket-detail-view-definition-and-metadata
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-07-26T18:32:14.708576Z'
   updated_at: '2026-07-26T18:32:14.708576Z'
-  completed_at: null
+  completed_at: '2026-07-29T19:08:09.544065Z'
 - id: 184c4595-899e-485b-b5a0-a1a273444142
   product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
   epic_id: 80047dd6-542c-4ad8-8213-a2372ab4e560
@@ -9995,7 +9995,7 @@ tickets:
   title: 'Ticket detail: evidence tab'
   objective: Render one ticket's stored evidence with the system pin-triple state made unmissable, so the operator sees at a glance whether a ticket can close under ADR-0008.
   context: 'Pre-ruled decisions (operator-ratified, reviewer session 2026-07-26): D-1 has_system_pin_triple is rendered as a PROMINENT first-class state, not a trailing boolean column. Under ADR-0008 that flag is the difference between evidence that can close a ticket and evidence that cannot, and the Phase 10 incident ledger is largely a record of tickets stranded on exactly that distinction. D-2 the evidence projection exposes no raw payload by design and the view never implies one exists; there is no expand-to-payload affordance. D-3 stored order is oldest-first and is preserved; the view does not re-sort. D-4 trust tier is rendered with its canonical actor-type value, and an agent-tier record is visually distinguishable from a system-tier one, because agent-submitted evidence is PENDING until corroborated. D-5 a ticket with no evidence renders the shared empty state, which is a normal condition and not an error.'
-  status: planned
+  status: done
   ticket_type: feature
   risk_level: low
   priority: 50
@@ -10017,18 +10017,190 @@ tickets:
   definition_of_done:
   - All acceptance criteria evidenced by named tests; the full Python gate sweep and the operator-UI pipeline both green; canonical docs updated in the same change where behaviour diverges from them; PR title carries the ticket key in the form (ATLAS-NN).
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: f31efbad-8af8-47bc-bbbe-f7641a384b49
   external_github_issue_id: null
   tags: []
   component: operator-ui
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-07-26T18:32:14.708576Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-07-30T07:52:58.861876Z'
   review_cycle_count: 0
-  lesson_extraction_attempted_at: null
+  lesson_extraction_attempted_at: '2026-07-30T07:52:58.861876Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-ui-ticket-evidence-tab.md#ticket-detail-evidence-tab
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-07-26T18:32:14.708576Z'
   updated_at: '2026-07-26T18:32:14.708576Z'
+  completed_at: '2026-07-30T07:52:58.861876Z'
+- id: 8503da2f-ae10-4244-a4e2-9fc3346322f5
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 4d034c8b-0752-4089-8ff9-2fd43f51c6f4
+  key: ATLAS-228
+  title: Exact-head PR mainline integration assessment
+  objective: Give every operator acceptance command one read-only, typed answer to whether an open pull request's exact head contains the exact current main commit, so stale review evidence and GitHub's approximate mergeability fields cannot be mistaken for mainline freshness.
+  context: 'Phase 11 proved the three-agent delivery loop but repeatedly left a trailing Review Required PR stale after a sibling merged. ATLAS-168 correctly makes agents rebase before PR open, before every push and before Review Required; it deliberately sends post-handoff staleness through Changes Requested because Atlas has no operator-owned integration lane. Phase 12 replaces only that post-handoff fallback. This ticket establishes the shared read-only primitive on which both the rebase driver and the acceptance gate depend. Pre-ruled decisions: D-1 the GitHub REST compare endpoint is called with the exact `base.sha...head.sha` obtained from the same PR snapshot; branch names and locally cached remote-tracking refs are not freshness evidence. D-2 the result separates ancestry from mergeability: ancestry is one of current, behind, diverged or indeterminate; mergeability is mergeable, conflicted or indeterminate. D-3 the overall integration status is `current` only for an open, non-draft, same-repository PR targeting `main`, with compare `behind_by == 0`, merge-base SHA equal to the PR base SHA, and mergeability known not-conflicted. GitHub''s temporary `mergeable: null` fails closed as indeterminate; a missing compare field or contradictory payload is a typed boundary error, and neither case can yield current. D-4 the assessment is immutable and carries every SHA and ref needed to prove what was assessed; downstream code never reparses the raw GitHub payload. D-5 this ticket is read-only: it performs no Git, GitHub, Atlas-store or Linear write and does not decide whether a rebase may be published.'
+  status: planned
+  ticket_type: infrastructure
+  risk_level: medium
+  priority: 50
+  relevant_docs:
+  - docs/atlas/symphony-integration.md
+  - docs/runbooks/pr-acceptance.md
+  - docs/decisions/0008-ci-sourced-evidence-with-trust-tiers.md
+  acceptance_criteria:
+  - '`GitHubClient` and `GitHubRESTClient` expose an exact-SHA compare operation over `GET /repos/{owner}/{repo}/compare/{base}...{head}` using the existing conditional-request, bounded rate-limit and secret-free typed-error contract; malformed or incomplete object responses raise `GitHubAPIError`, never `KeyError` or an inferred default.'
+  - One immutable integration-assessment type carries repository identity, PR number/state/draft flag, head ref/SHA/repository, base ref/SHA/repository, merge-base SHA, ahead/behind counts, compare status, mergeability and the derived ancestry, eligibility and overall integration statuses.
+  - 'Eligibility is explicit and fail-closed: only an open, non-draft, same-repository PR targeting the literal base ref `main` is eligible; closed, merged, draft, fork-head and non-main PRs are returned as named ineligible states rather than accepted or allowed to traceback.'
+  - 'Overall `current` is emitted only when the exact head contains the exact PR base (`behind_by == 0` and `merge_base_commit.sha == base.sha`) and mergeability is known not-conflicted; `mergeable: null`, a typed boundary error or contradictory counts can never produce `current`.'
+  - Behind, diverged, conflicted and indeterminate outcomes remain distinct in both the typed assessment and presentation, while preserving the raw ahead/behind counts and SHAs needed to diagnose the result.
+  - '`atlas pr status --pr N --repo OWNER/REPO` renders the assessment without mutation and supports `--json`; current exits zero, every eligible not-current or indeterminate result exits non-zero, and malformed repo, unknown PR, missing token and transport failures use Atlas''s clean one-line precondition/error contract with no traceback or secret.'
+  - Deterministic tests cover current/ahead, behind, diverged, conflicted, mergeability-null, fork, draft, non-main, missing-field and API-error fixtures, and prove the compare call uses the two exact SHAs from the PR snapshot rather than branch names.
+  non_goals:
+  - No branch fetch, clone, worktree, rebase, push, GitHub write, Linear read or write, Atlas-store write, CI polling, evidence pull, confirmation, verification, merge or Operator UI/API route.
+  implementation_notes:
+  - Keep transport parsing in `atlas.github`, derivation in a small orchestration service, and formatting/exit-code policy in `atlas.cli`; the CLI must not duplicate the classifier used by later tickets.
+  - Compare exact 40-hex SHAs from one fetched PR object. Do not use `mergeable_state`, a local `origin/main`, or a branch-name comparison as a substitute for ancestry.
+  - Model ancestry and mergeability as separate enums or equivalent typed fields so a conflicted PR can still report its exact ahead/behind relation without collapsing diagnostic information.
+  test_requirements:
+  - Extend the existing stubbed-urllib GitHub client tests and add orchestration/CLI tests with injected fakes; no live GitHub calls and `ATLAS_LIVE_TESTS=0`.
+  - Existing evidence, verification and PR-context tests pass unmodified apart from the minimum fake-protocol additions required by the new read method; seeded Python defects use `assert 1 == 2` (B011).
+  documentation_requirements:
+  - Document the exact-head definition, state vocabulary and read-only CLI in `symphony-integration.md` and cross-reference it from the acceptance runbook without yet changing the binding acceptance sequence.
+  definition_of_done:
+  - All seven acceptance criteria are evidenced by named tests; the full Python gate sweep and doc linter are green; canonical documentation lands in the same change; the PR title carries the minted ticket key.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - github
+  - orchestration
+  - exact-head
+  - mainline
+  component: atlas.github
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/inbox-stub-01-pr-integration-assessment.md#exact-head-pr-mainline-integration-assessment
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-30T16:33:30.340654Z'
+  updated_at: '2026-07-30T16:33:30.340654Z'
+  completed_at: null
+- id: 9fb2782b-b895-4063-9669-231481d96181
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 4d034c8b-0752-4089-8ff9-2fd43f51c6f4
+  key: ATLAS-229
+  title: Operator-owned lease-guarded PR rebase lane
+  objective: Let the operator rebase a mechanically stale Review Required pull request onto current main in a durable isolated worktree, resolve any conflicts deliberately, and publish the rewritten head only when both the PR branch and main still equal the SHAs originally assessed.
+  context: 'The Phase 11 run showed that implementation is no longer the main bottleneck: sibling merges repeatedly made correct PRs stale and sent them through a full Symphony Changes Requested cycle for a mechanical rebase. ATLAS-168 remains binding before Review Required; this lane starts only after handoff and is operator-owned. Pre-ruled decisions: D-1 the command surface is `atlas pr rebase prepare --pr N --repo OWNER/REPO`, followed when needed by `continue --workspace PATH`, `publish --workspace PATH` or `abort --workspace PATH`. D-2 work occurs in a detached linked worktree beneath the gitignored `.atlas/rebase-workspaces/` root; the operator''s current branch, index and working tree are never changed. D-3 the manifest pins repository identity, PR number, branch ref, original head SHA, base ref and SHA, merge-base SHA and state transitions. D-4 conflicts are never resolved automatically: the stopped rebase and exact unmerged paths remain in the worktree for the operator; `continue` only proceeds after the index has no unresolved entries and may stop again on a later conflict. D-5 publication refetches the PR and remote refs, rejects any head or base movement, and uses only the explicit expected-value lease `--force-with-lease=refs/heads/<branch>:<original-head-sha>`; bare `--force`, implicit `--force-with-lease` and GitHub Update branch are forbidden. D-6 a successful publish is verified back through the shared exact-head assessment, writes a durable receipt, and does not change Linear or Atlas ticket status. D-7 fork PRs and automatic conflict resolution are deferred.'
+  status: planned
+  ticket_type: infrastructure
+  risk_level: high
+  priority: 50
+  relevant_docs:
+  - docs/atlas/symphony-integration.md
+  - docs/runbooks/pr-acceptance.md
+  - docs/runbooks/operator-environment.md
+  acceptance_criteria:
+  - '`prepare` refuses before local Git mutation unless the shared assessment reports an open, non-draft, same-repository PR targeting `main` whose determinate state requires integration (behind, diverged or conflicted), the PR title/body resolves to at least one existing Atlas ticket, and every ticket in that close-set is currently `review_required`; already-current and indeterminate PRs are named no-op/refusal outcomes, and no Linear call or status transition occurs.'
+  - '`prepare` creates a detached linked worktree only beneath `.atlas/rebase-workspaces/` at the assessed original head and writes a versioned manifest pinning repo slug/root, PR number, head ref/SHA, base ref/SHA, merge-base SHA, workspace path and lifecycle state; the operator''s primary checkout branch, HEAD, index, tracked files and local branch refs are unchanged.'
+  - A clean `git rebase <pinned-base-sha>` reaches a publishable state; a conflict exits non-zero without remote mutation, records and prints the exact `git diff --name-only --diff-filter=U` paths, and preserves the stopped rebase. `continue` refuses while unresolved index entries remain, continues non-interactively when they are staged, and records every conflict set if a later commit stops again.
+  - Before publishing, the driver refetches the live PR, exact current base and remote head and requires them to equal the manifest's original head and pinned base. A moved PR head, moved main, closed/drafted PR, changed branch or repository identity, missing remote ref or incomplete live snapshot aborts before push and leaves the worktree recoverable. The old PR's pre-push mergeability is diagnostic only—the pinned identities and SHAs, not a fresh mergeability guess, govern the lease gate.
+  - The only remote update is an argv-based Git invocation equivalent to `git push --force-with-lease=refs/heads/<branch>:<original-head-sha> origin <rebased-head-sha>:refs/heads/<branch>`; tests inspect the exact argv and prove lease rejection and a last-moment remote-head race cause zero remote ref change.
+  - Immediately after a successful push the manifest atomically records a `push_succeeded_unverified` state. Bounded refetching then confirms GitHub reports the exact rebased head and the shared assessment reports it current with exact current main; rerunning `publish` from that state re-verifies and never repeats the old-head lease push. Only after confirmation is a receipt persisted beneath `.atlas/rebase-receipts/` with old head, pinned base, merge base, new head, branch, conflict paths and timestamps and the managed linked worktree removed; every ticket remains `review_required`.
+  - '`abort` operates only on a canonical path contained beneath the configured rebase-workspace root with a matching Atlas manifest, aborts an in-progress rebase when present, and removes that named linked worktree through Git; traversal, symlink escape, missing/mismatched manifests, the primary worktree, any manifest recording a successful push and already-published receipts are refused without deletion.'
+  non_goals:
+  - No automatic conflict resolution, commit-content judgement, fork PR support, merge commit or GitHub Update branch, CI polling, evidence pull, acceptance confirmation, verification, PR merge, Linear mutation, Atlas ticket transition, Symphony dispatch/resume, Operator UI control, primary checkout mutation, bare `--force` or implicit lease.
+  implementation_notes:
+  - Use a detached worktree at the original head; never check out the PR branch in the primary worktree and never create/reset a local branch merely to rebase it. All Git commands use explicit argv with `shell=False`.
+  - Treat the manifest as a small state machine such as prepared, conflicts_pending, ready_to_publish, push_succeeded_unverified and published. Write manifest and receipt updates atomically so interruption cannot make an unknown workspace look publishable or repeat a completed remote update.
+  - Reuse `parse_close_set` and the exact-head assessment service. Validate the GitHub head ref as a normal `refs/heads/` branch in the same repository before constructing the refspec; never interpolate unchecked refs into a shell command.
+  - Publication is the sole remote-write boundary. Perform all deterministic local and GitHub preconditions before it, then rely on the explicit expected-SHA lease as the final atomic race guard.
+  test_requirements:
+  - Integration tests use temporary repositories and local bare remotes to cover clean rebase, one and multiple conflict stops, continue, abort, branch-head race, main race, exact lease rejection, publish confirmation and receipt/worktree cleanup; GitHub and ticket-store reads use injected fakes and `ATLAS_LIVE_TESTS=0`.
+  - Safety tests snapshot the primary checkout's branch, HEAD, index, status and local refs before and after every success/failure path and exercise path traversal, symlink escape and foreign-manifest rejection; seeded Python defects use `assert 1 == 2` (B011).
+  documentation_requirements:
+  - Document command-by-command recovery, conflict ownership, manifest/receipt locations, exact lease semantics, exit states and the no-Linear/no-merge boundary in `symphony-integration.md`, `pr-acceptance.md` and `operator-environment.md`.
+  definition_of_done:
+  - All seven acceptance criteria are evidenced by named deterministic tests; the full Python gate sweep and doc linter are green; canonical docs land in the same change; the PR title carries the minted ticket key.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - orchestration
+  - git
+  - rebase
+  - operator
+  - mainline
+  component: orchestration
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/inbox-stub-02-operator-pr-rebase-lane.md#operator-owned-lease-guarded-pr-rebase-lane
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-30T16:33:30.340654Z'
+  updated_at: '2026-07-30T16:33:30.340654Z'
+  completed_at: null
+- id: 9ed2bc93-92f4-4e51-a2bb-8008698b079c
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 4d034c8b-0752-4089-8ff9-2fd43f51c6f4
+  key: ATLAS-230
+  title: Mainline freshness gate and exact-head acceptance restart
+  objective: Make exact current-main ancestry a binding precondition of the canonical PR acceptance spine, and require evidence, human confirmations and verification to restart at every operator-rebased head before the merge prompt can appear.
+  context: '`scripts/close_ticket.py` currently begins with `atlas evidence pull`; it can therefore write evidence and prompt for human confirmations before proving that the PR contains current main. The runbook relies on operator discipline and routes a sibling-staled Review Required PR through Changes Requested, even when no semantic remediation is needed. The first two Phase 12 tickets provide one exact-head classifier and a lease-guarded operator rebase lane. This ticket makes them binding in acceptance. Pre-ruled decisions: D-1 the initial freshness assessment is read-only and runs before evidence pull, confirmation or any operator prompt. D-2 only overall `current` enters the acceptance spine; behind, diverged, conflicted, ineligible and indeterminate states fail closed and name the operator rebase command. D-3 after evidence, confirmation and a PASSED exact-head verification, the script assesses the PR again immediately before displaying the merge prompt. The live PR head must equal the verified head and initial head, and the live base SHA must equal the initial base SHA; movement restarts the spine. D-4 evidence and confirmations stay append-only, but existing commit-SHA matching remains authoritative: records from the old head are history, never authority for the rebased head. D-5 an operator rebase leaves the ticket in Review Required; Changes Requested is reserved for semantic/code remediation that Symphony must perform. D-6 the merge remains a manual operator action and the existing one-PR freeze interval remains binding; this ticket does not claim to eliminate a race after the final assessment and before the manual GitHub merge.'
+  status: planned
+  ticket_type: infrastructure
+  risk_level: high
+  priority: 50
+  relevant_docs:
+  - docs/runbooks/pr-acceptance.md
+  - docs/atlas/symphony-integration.md
+  - docs/atlas/verification-engine.md
+  - docs/decisions/0008-ci-sourced-evidence-with-trust-tiers.md
+  acceptance_criteria:
+  - '`scripts/close_ticket.py` calls the shared exact-head assessment after its local/token/operator preflight but before `atlas evidence pull`, any Atlas write or any operator prompt, and snapshots the eligible current PR''s head SHA, base SHA, branch identity and repository identity for the rest of the run.'
+  - Behind, diverged, conflicted, draft/fork/non-main/closed or indeterminate initial assessments exit non-zero before evidence, confirmation, verification or prompt, print the named state and exact `atlas pr rebase prepare --pr N --repo OWNER/REPO` recovery command when the PR is eligible for that lane, and perform no GitHub or Linear write.
+  - The existing evidence → confirm → `verify --json` sequence remains ordered and requires top-level `status == "passed"` with a valid `head_commit`; immediately afterward, before the merge prompt, a second live assessment must still be current and its head must equal both the initial head and the verified head while its base SHA, branch and repository identities equal the initial snapshot.
+  - Any PR-head movement, main movement, eligibility change, compare failure or indeterminate mergeability between the two assessments blocks the merge prompt and all post-merge steps. Tests prove stale evidence already pulled during that interrupted run cannot make a later new-head run skip the exact-head human and machine gates.
+  - A completed operator rebase leaves the close-set in `review_required`; on rerun, evidence and confirmations from the original head remain append-only but every evaluator ignores them for the new SHA, so new-head evidence, acceptance-criterion confirmation, manual approval and PASSED verification are all required before the merge prompt.
+  - '`WORKFLOW.md`, `docs/atlas/symphony-integration.md` and `docs/runbooks/pr-acceptance.md` state one ownership rule: agents keep ATLAS-168''s pre-handoff rebase discipline, operators use the Phase 12 lane for mechanical staleness after Review Required, and Changes Requested is used only when implementation or other semantic remediation must return to Symphony; the one-PR freeze-to-manual-merge residual window is explicit.'
+  - Script tests cover current success, every initial fail-closed class, head race, base/main race, second-assessment API failure, verified-head mismatch, old-head evidence/confirmation rejection, no-prompt/no-write ordering and the unchanged merged-proof/schema-upgrade/two-sync completion tail.
+  non_goals:
+  - No automatic rebase, conflict resolution, branch push, evidence deletion or mutation, confirmation deletion or mutation, automatic GitHub merge, merge queue, auto-merge, new pre-merge Linear status write, verification-matrix redesign, Operator UI control or relaxation of ADR-0008 exact-commit matching; the existing post-merge two-sync completion tail remains unchanged.
+  implementation_notes:
+  - Call the Phase 12 assessment service in process; do not parse `atlas pr status` text/JSON or duplicate its classification inside the script. Keep assessment resolution injectable like the existing `resolve_context`, command runner, pause and status-reader seams.
+  - Store the first assessment as the run's immutable freshness snapshot. The second assessment is a fresh GitHub read, not a reused object or local remote-tracking ref.
+  - Preserve the current manual merge boundary and the post-merge check that GitHub's merged PR head equals the verified head. The new gate strengthens the pre-merge side; it does not move merge authority into Atlas.
+  test_requirements:
+  - Extend `tests/test_close_ticket_script.py` with injected assessment snapshots and command/prompt spies; add focused evaluator tests only where needed to prove old-head records cannot satisfy a new head. No live GitHub or Linear calls and `ATLAS_LIVE_TESTS=0`.
+  - Preserve existing closure-tail tests and add explicit assertions that no `atlas evidence`, `confirm`, `verify`, merge prompt, checkout, migration or sync action occurs before/after the corresponding fail-closed boundary; seeded Python defects use `assert 1 == 2` (B011).
+  documentation_requirements:
+  - Replace the post-verdict `Changes Requested` fallback consistently in `WORKFLOW.md`, `symphony-integration.md` and `pr-acceptance.md`; document the exact restart sequence and retain the existing ADR-0008 evidence-at-head and manual-merge rules.
+  definition_of_done:
+  - All seven acceptance criteria are evidenced by named tests; the full Python gate sweep and doc linter are green; the three canonical workflow surfaces agree in the same change; the PR title carries the minted ticket key.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - verification
+  - orchestration
+  - exact-head
+  - acceptance
+  - mainline
+  component: verification
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/inbox-stub-03-acceptance-mainline-freshness-gate.md#mainline-freshness-gate-and-exact-head-acceptance-restart
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-30T16:33:30.340654Z'
+  updated_at: '2026-07-30T16:33:30.340654Z'
   completed_at: null

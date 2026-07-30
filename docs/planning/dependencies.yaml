@@ -1,7 +1,7 @@
 # Render written only by `atlas apply` (ADR-0006/0007); do not hand-edit.
-# plan_run_id: 796772e5-d5ae-5c82-8783-4210caf73d81
-# prompt_version: operator-ui-phase-11-mint-v1
-# ticket_key_high_water: 227
+# plan_run_id: 169d3cdb-ea0d-4149-96e4-4be8f3c590b2
+# prompt_version: stubs-only
+# ticket_key_high_water: 230
 # epic_key_high_water: 13
 dependencies:
 - id: 1d4aafed-6d6a-4f61-97d9-5af5c9a4f88e
@@ -1057,6 +1057,15 @@ dependencies:
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-07-11T20:50:12.516279Z'
+- id: 023fe3a9-6400-4667-93ec-a5f255f7ece7
+  source_ticket_id: 8503da2f-ae10-4244-a4e2-9fc3346322f5
+  target_entity_type: ticket
+  target_entity_id: de42721f-9fba-49e7-9751-bc101ec6fe9b
+  dependency_type: depends_on
+  reason: declared by the stub's depends_on front-matter (ATLAS-153)
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-30T16:33:30.340654Z'
 - id: 717e3177-065c-409b-a073-a6b97eccf714
   source_ticket_id: 86051f46-754b-40f9-8856-4c2dbec18ed8
   target_entity_type: ticket
@@ -1201,6 +1210,33 @@ dependencies:
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-07-26T18:32:14.708576Z'
+- id: 5a0e5fda-3408-458b-8c70-ede2bedb8a7d
+  source_ticket_id: 9ed2bc93-92f4-4e51-a2bb-8008698b079c
+  target_entity_type: ticket
+  target_entity_id: 8503da2f-ae10-4244-a4e2-9fc3346322f5
+  dependency_type: depends_on
+  reason: declared by the stub's depends_on front-matter (ATLAS-153)
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-30T16:33:30.340654Z'
+- id: 84d31c20-cdb7-498e-99c9-15cbf0778cb1
+  source_ticket_id: 9ed2bc93-92f4-4e51-a2bb-8008698b079c
+  target_entity_type: ticket
+  target_entity_id: 9fb2782b-b895-4063-9669-231481d96181
+  dependency_type: depends_on
+  reason: declared by the stub's depends_on front-matter (ATLAS-153)
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-30T16:33:30.340654Z'
+- id: 4d460052-dfc4-48b5-849f-edf55fde8434
+  source_ticket_id: 9fb2782b-b895-4063-9669-231481d96181
+  target_entity_type: ticket
+  target_entity_id: 8503da2f-ae10-4244-a4e2-9fc3346322f5
+  dependency_type: depends_on
+  reason: declared by the stub's depends_on front-matter (ATLAS-153)
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-07-30T16:33:30.340654Z'
 - id: 03b10656-3170-40de-921f-8488c52f208d
   source_ticket_id: a09beb34-7521-455d-820c-a0278dc147e3
   target_entity_type: ticket
