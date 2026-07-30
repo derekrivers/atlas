@@ -24,6 +24,14 @@
       "status": "planned",
       "priority": 1,
       "risk_level": "medium"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000e02",
+      "key": "ATLAS-E2",
+      "title": "Terminal archive seed",
+      "status": "archived",
+      "priority": 2,
+      "risk_level": "low"
     }
   ],
   "adrs": [
@@ -76,7 +84,7 @@
     },
     { "id": "00000000-0000-4000-8000-000000000002", "key": "ATLAS-2", "status": "in_progress", "priority": 2, "risk_level": "high", "estimated_effort": 3, "acceptance_criteria": [] },
     { "id": "00000000-0000-4000-8000-000000000003", "key": "ATLAS-3", "status": "done", "priority": 3, "risk_level": "low", "estimated_effort": 1 },
-    { "id": "00000000-0000-4000-8000-000000000004", "key": "ATLAS-4", "status": "rejected", "priority": 4, "risk_level": "medium", "estimated_effort": 1 },
+    { "id": "00000000-0000-4000-8000-000000000004", "key": "ATLAS-4", "status": "rejected", "priority": 4, "risk_level": "medium", "estimated_effort": 1, "epic_key": "ATLAS-E2" },
     { "id": "00000000-0000-4000-8000-000000000005", "key": "ATLAS-5", "status": "done", "priority": 5, "risk_level": "low", "estimated_effort": 2 },
     { "id": "00000000-0000-4000-8000-000000000006", "key": "ATLAS-6", "status": "done", "priority": 6, "risk_level": "low", "estimated_effort": 2 },
     { "id": "00000000-0000-4000-8000-000000000007", "key": "ATLAS-7", "status": "rejected", "priority": 7, "risk_level": "medium", "estimated_effort": 1 },
@@ -90,7 +98,8 @@
       "risk_level": "low",
       "estimated_effort": null,
       "component": null,
-      "tags": []
+      "tags": [],
+      "epic_key": "ATLAS-E2"
     },
     { "id": "00000000-0000-4000-8000-000000000011", "key": "ATLAS-11", "status": "rejected", "priority": 11, "risk_level": "medium", "estimated_effort": 1 },
     { "id": "00000000-0000-4000-8000-000000000012", "key": "ATLAS-12", "status": "done", "priority": 12, "risk_level": "low", "estimated_effort": 1 },
@@ -98,7 +107,7 @@
     { "id": "00000000-0000-4000-8000-000000000014", "key": "ATLAS-14", "status": "rejected", "priority": 14, "risk_level": "medium", "estimated_effort": 1 },
     { "id": "00000000-0000-4000-8000-000000000015", "key": "ATLAS-15", "status": "done", "priority": 15, "risk_level": "low", "estimated_effort": 1 },
     { "id": "00000000-0000-4000-8000-000000000016", "key": "ATLAS-16", "status": "done", "priority": 16, "risk_level": "low", "estimated_effort": 1 },
-    { "id": "00000000-0000-4000-8000-000000000100", "key": "ATLAS-100", "status": "done", "priority": 100, "risk_level": "low", "estimated_effort": 1 }
+    { "id": "00000000-0000-4000-8000-000000000100", "key": "ATLAS-100", "status": "done", "priority": 100, "risk_level": "low", "estimated_effort": 1, "epic_key": null }
   ],
   "dependencies": [
     {

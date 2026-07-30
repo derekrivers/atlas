@@ -98,12 +98,13 @@ become this page's header and a persistent footer indicator.
 
 ### Board — `/tickets`
 
-Consumes `/tickets` unfiltered, once.
+Consumes `/tickets` unfiltered, once, and `/epics` once for epic labels
+and group metadata.
 
 A sortable, filterable table over key, title, status, ticket type,
 priority and risk level — the entire board projection. Faceted
-client-side filters, text search over key and title, and URL-synced
-filter state so a filtered board is a linkable artifact.
+client-side filters, including epic, text search over key and title, and
+URL-synced filter state so a filtered board is a linkable artifact.
 
 Two binding behaviours:
 
@@ -114,6 +115,13 @@ Two binding behaviours:
   one-interaction reveal. At the time of this design 156 of 162 records
   are `done` or `rejected`; a default that shows all of them is a log
   file rather than an instrument.
+
+The flat table remains the default. `mode=epic` switches the same board route
+into a grouped-by-epic board; the mode is carried in the URL like every other
+board state. Filters, terminal-status defaults, and natural key sort apply
+inside every group. Tickets with no `epic_key` render under an explicit
+Unassigned group. Group headings show only metadata returned by `/epics`, and
+group counts are derived from the already-fetched, currently visible board rows.
 
 A kanban mode is deliberately absent. Eleven statuses across a board
 that is overwhelmingly terminal is a worse instrument than a filtered
@@ -207,11 +215,6 @@ most likely failure the operator will meet, and it must produce a named,
 actionable message — that the API is not reachable at the configured URL
 and that `atlas api serve` may not be running — rather than an empty
 page or a generic network error.
-
-### Conditional views
-
-- **Epic grouping on the board**, once `GET /api/v1/epics` and
-  `epic_key` land.
 
 ### Not buildable in this phase
 
