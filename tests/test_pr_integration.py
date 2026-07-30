@@ -187,6 +187,28 @@ def test_ineligible_prs_are_named_and_do_not_compare(
     assert fake.calls == [("pull_request", OWNER, REPO, PR_NUMBER)]
 
 
+@pytest.mark.parametrize(
+    ("mutation", "message"),
+    [
+        (lambda payload: payload.pop("number"), "number"),
+        (lambda payload: payload.update({"number": "228"}), "number"),
+        (lambda payload: payload.update({"number": True}), "number"),
+        (lambda payload: payload.update({"number": 0}), "number"),
+        (lambda payload: payload.update({"number": -1}), "number"),
+        (lambda payload: payload.update({"number": PR_NUMBER + 1}), "mismatched"),
+    ],
+)
+def test_pr_number_is_required_positive_and_matches_requested_number(
+    mutation: Any, message: str
+) -> None:
+    payload = pr_payload()
+    mutation(payload)
+    fake = FakeGitHubClient(pull_request=payload)
+
+    with pytest.raises(GitHubAPIError, match=message):
+        assess_pr_integration(fake, OWNER, REPO, PR_NUMBER)
+
+
 def test_missing_pr_field_is_typed_api_error_not_key_error() -> None:
     payload = pr_payload()
     del payload["head"]["sha"]

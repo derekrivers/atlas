@@ -210,9 +210,9 @@ def pr_integration_assessment_json(
 def _snapshot_from_pull_request(
     pull_request: Mapping[str, Any], *, requested_number: int
 ) -> _PRSnapshot:
-    number = _optional_int(pull_request, "number", label="pull-request response")
-    if number is None:
-        number = requested_number
+    number = _required_positive_int(
+        pull_request, "number", label="pull-request response"
+    )
     if number != requested_number:
         raise GitHubAPIError("GitHub API pull-request response number mismatched")
 
@@ -303,12 +303,12 @@ def _required_str(payload: Mapping[str, Any], key: str, *, label: str) -> str:
     return value
 
 
-def _optional_int(payload: Mapping[str, Any], key: str, *, label: str) -> int | None:
+def _required_positive_int(payload: Mapping[str, Any], key: str, *, label: str) -> int:
     value = payload.get(key)
-    if value is None:
-        return None
     if not isinstance(value, int) or isinstance(value, bool):
-        raise GitHubAPIError(f"GitHub API {label} field {key!r} was not an integer")
+        raise GitHubAPIError(f"GitHub API {label} missing integer field {key!r}")
+    if value <= 0:
+        raise GitHubAPIError(f"GitHub API {label} field {key!r} was not positive")
     return value
 
 

@@ -254,6 +254,21 @@ def test_missing_field_is_clean_precondition_not_traceback(
     assert "Traceback" not in captured.err
 
 
+def test_missing_pr_number_is_clean_precondition_not_traceback(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    payload = pr_payload()
+    del payload["number"]
+
+    code = run_status(fake(pull_request=payload))
+
+    captured = capsys.readouterr()
+    assert code == EXIT_PRECONDITION
+    assert captured.out == ""
+    assert "number" in captured.err
+    assert "Traceback" not in captured.err
+
+
 def test_compare_transport_error_is_clean_precondition(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
