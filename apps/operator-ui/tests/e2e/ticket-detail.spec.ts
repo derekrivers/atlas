@@ -2,12 +2,14 @@ import { expect, test, type APIRequestContext, type Page } from '@playwright/tes
 import { ticketDetailHref } from '../../src/app-shell/surfaces'
 import type { components } from '../../src/api/atlas-openapi'
 import {
+  assertTicketDependenciesResponse,
   assertTicketDetailResponse,
   assertTicketEvidenceResponse,
 } from './live-api-shape'
 import { startAtlasApiServer } from './atlas-api-server'
 
 type TicketDetail = components['schemas']['TicketDetailResponse']
+type TicketDependencies = components['schemas']['TicketDependenciesResponse']
 type TicketEvidence = components['schemas']['TicketEvidenceResponse']
 
 const apiBaseURL =
@@ -43,6 +45,19 @@ async function getTicketEvidence(
   expect(response.ok(), `${key} evidence should return 2xx`).toBe(true)
   const body: unknown = await response.json()
   assertTicketEvidenceResponse(body)
+  return body
+}
+
+async function getTicketDependencies(
+  request: APIRequestContext,
+  key: string
+): Promise<TicketDependencies> {
+  const response = await request.get(
+    `${apiBaseURL}/api/v1/tickets/${key}/dependencies`
+  )
+  expect(response.ok(), `${key} dependencies should return 2xx`).toBe(true)
+  const body: unknown = await response.json()
+  assertTicketDependenciesResponse(body)
   return body
 }
 
@@ -136,9 +151,12 @@ test('renders every ticket detail field from the live API response', async ({
   await page.getByRole('tab', { name: 'Evidence' }).click()
   await expect(page.getByTestId('ticket-detail-evidence-panel')).toBeVisible()
 
+  const dependencies = await getTicketDependencies(request, ticket.key)
   await page.getByRole('tab', { name: 'Dependencies' }).click()
   await expect(page.getByTestId('ticket-detail-dependencies-panel')).toBeVisible()
-  await expect(page.getByTestId('ticket-detail-dependencies-panel')).toHaveText('')
+  await expect(page.getByTestId('ticket-detail-readiness-verdict')).toHaveText(
+    dependencies.readiness.ready ? 'Ready' : 'Not ready'
+  )
 })
 
 test('renders ticket evidence from the live API in oldest-first order', async ({

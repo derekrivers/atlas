@@ -1,8 +1,14 @@
+import type { ReactNode } from 'react'
 import { useParams } from '@tanstack/react-router'
 import { AlertCircle, Check } from 'lucide-react'
 import { AtlasRequestError } from '@/api/client'
-import { useTicketDetailQuery, useTicketEvidenceQuery } from '@/api/query-hooks'
+import {
+  useTicketDependenciesQuery,
+  useTicketDetailQuery,
+  useTicketEvidenceQuery,
+} from '@/api/query-hooks'
 import type { components } from '@/api/atlas-openapi'
+import { ticketDetailHref } from '@/app-shell/surfaces'
 import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -19,6 +25,10 @@ import {
 } from '@/components/states'
 
 type TicketDetail = components['schemas']['TicketDetailResponse']
+type TicketDependencies =
+  components['schemas']['TicketDependenciesResponse']
+type DependencyBlocker = TicketDependencies['blockers'][number]
+type NotReadyReason = TicketDependencies['readiness']['reasons'][number]
 type TicketEvidenceItem = components['schemas']['TicketEvidenceItemSchema']
 
 type TicketDetailViewProps = {
@@ -29,6 +39,14 @@ type EvidencePanelState =
   | { kind: 'error'; error: unknown }
   | { kind: 'loading' }
   | { kind: 'success'; evidence: TicketEvidenceItem[] }
+
+type TicketDetailContentProps = {
+  dependencies?: TicketDependencies
+  dependenciesError?: unknown
+  dependenciesLoading?: boolean
+  evidenceState?: EvidencePanelState
+  ticket: TicketDetail
+}
 
 type DetailListProps = {
   items: string[]
@@ -42,6 +60,8 @@ type MetadataFieldProps = {
   value: number | string | null
 }
 
+const ticketKeyPattern = /^ATLAS-\d+$/
+
 function nativeBodyText(body: unknown): string {
   if (typeof body === 'string') {
     return body
@@ -54,6 +74,21 @@ function nullableText(value: number | string | null): string {
     return 'None'
   }
   return String(value)
+}
+
+function codeLabel(code: string): string {
+  const words = code.split('_').map((word) =>
+    word.toLowerCase() === 'adr' ? 'ADR' : word
+  )
+  const [first = '', ...rest] = words
+  if (!first) {
+    return code
+  }
+  return [first.charAt(0).toUpperCase() + first.slice(1), ...rest].join(' ')
+}
+
+function isTicketKey(value: string): boolean {
+  return ticketKeyPattern.test(value)
 }
 
 function DefinitionList({ items, label, testId }: DetailListProps) {
@@ -126,6 +161,163 @@ function TagsField({ tags }: { tags: string[] }) {
         </dd>
       )}
     </div>
+  )
+}
+
+function TicketDependencyLink({
+  children,
+  keyValue,
+  testId,
+}: {
+  children?: ReactNode
+  keyValue: string
+  testId: string
+}) {
+  return (
+    <a
+      data-testid={testId}
+      className='text-primary break-all font-medium underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+      href={ticketDetailHref(keyValue)}
+    >
+      {children ?? keyValue}
+    </a>
+  )
+}
+
+function ReasonMeta({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <dt className='text-muted-foreground text-xs font-medium uppercase'>
+        {label}
+      </dt>
+      <dd className='mt-1 break-all text-sm'>{value}</dd>
+    </div>
+  )
+}
+
+function NotReadyReasonItem({ reason }: { reason: NotReadyReason }) {
+  const isDangling = reason.code === 'dangling_target'
+  return (
+    <li
+      data-testid='ticket-detail-readiness-reason'
+      className='border-border rounded-lg border p-4'
+    >
+      <div className='flex flex-wrap items-center gap-2'>
+        <span
+          data-testid='ticket-detail-readiness-reason-label'
+          className='text-sm font-semibold'
+        >
+          {codeLabel(reason.code)}
+        </span>
+        <code
+          data-testid='ticket-detail-readiness-reason-code'
+          className='bg-muted text-foreground rounded px-1.5 py-0.5 text-xs'
+        >
+          {reason.code}
+        </code>
+        {isDangling ? (
+          <Badge
+            data-testid='ticket-detail-dependency-defect'
+            variant='destructive'
+          >
+            Defect
+          </Badge>
+        ) : null}
+      </div>
+      <p
+        data-testid='ticket-detail-readiness-reason-message'
+        className='text-muted-foreground mt-2 text-sm leading-6'
+      >
+        {reason.message}
+      </p>
+      {reason.target || reason.status ? (
+        <dl className='mt-3 grid gap-3 @3xl/content:grid-cols-2'>
+          {reason.target ? (
+            <ReasonMeta label='Target' value={reason.target} />
+          ) : null}
+          {reason.status ? (
+            <ReasonMeta label='Status' value={reason.status} />
+          ) : null}
+        </dl>
+      ) : null}
+    </li>
+  )
+}
+
+function BlockerItem({ blocker }: { blocker: DependencyBlocker }) {
+  const linked = isTicketKey(blocker.key)
+  const isDangling = blocker.code === 'dangling_target'
+  return (
+    <li
+      data-testid='ticket-detail-blockers-item'
+      className='border-border flex min-h-12 flex-wrap items-center gap-2 rounded-lg border px-3 py-2 text-sm'
+    >
+      {linked ? (
+        <TicketDependencyLink
+          keyValue={blocker.key}
+          testId='ticket-detail-blocker-link'
+        />
+      ) : (
+        <span
+          data-testid={
+            isDangling
+              ? 'ticket-detail-blocker-defect-target'
+              : 'ticket-detail-blocker-target'
+          }
+          className='break-all font-medium'
+        >
+          {blocker.key}
+        </span>
+      )}
+      <Badge variant='outline'>{codeLabel(blocker.code)}</Badge>
+      {isDangling ? (
+        <Badge data-testid='ticket-detail-blocker-defect' variant='destructive'>
+          Defect
+        </Badge>
+      ) : null}
+    </li>
+  )
+}
+
+function BlockedByItem({ keyValue }: { keyValue: string }) {
+  return (
+    <li
+      data-testid='ticket-detail-blocked-by-item'
+      className='border-border flex min-h-12 items-center rounded-lg border px-3 py-2 text-sm'
+    >
+      <TicketDependencyLink
+        keyValue={keyValue}
+        testId='ticket-detail-blocked-by-link'
+      />
+    </li>
+  )
+}
+
+function DependencySection({
+  children,
+  empty,
+  testId,
+  title,
+}: {
+  children: ReactNode
+  empty: boolean
+  testId: string
+  title: string
+}) {
+  return (
+    <section className='space-y-3'>
+      <h2 className='text-sm font-semibold tracking-normal'>{title}</h2>
+      {empty ? (
+        <p
+          data-testid={`${testId}-empty`}
+          className='text-muted-foreground border-border rounded-lg border p-4 text-sm'
+        >
+          None
+        </p>
+      ) : (
+        children
+      )}
+    </section>
   )
 }
 
@@ -281,6 +473,89 @@ export function TicketEvidenceTab({ state }: { state: EvidencePanelState }) {
         />
       ))}
     </ol>
+  )
+}
+
+export function TicketDependenciesTab({
+  dependencies,
+  error,
+  isLoading = false,
+}: {
+  dependencies?: TicketDependencies
+  error?: unknown
+  isLoading?: boolean
+}) {
+  if (isLoading && !dependencies) {
+    return <LoadingState label='Loading dependencies' />
+  }
+
+  if (error && !dependencies) {
+    return (
+      <RequestErrorState
+        error={error}
+        title='Ticket dependencies request failed'
+      />
+    )
+  }
+
+  if (!dependencies) {
+    return null
+  }
+
+  return (
+    <div className='grid gap-4 @4xl/content:grid-cols-2'>
+      <section className='border-border rounded-lg border p-4 @4xl/content:col-span-2'>
+        <div className='flex flex-wrap items-center justify-between gap-3'>
+          <h2 className='text-sm font-semibold tracking-normal'>Readiness</h2>
+          <Badge
+            data-testid='ticket-detail-readiness-verdict'
+            variant={dependencies.readiness.ready ? 'secondary' : 'outline'}
+          >
+            {dependencies.readiness.ready ? 'Ready' : 'Not ready'}
+          </Badge>
+        </div>
+        {dependencies.readiness.reasons.length > 0 ? (
+          <ol
+            data-testid='ticket-detail-readiness-reasons'
+            className='mt-4 space-y-3'
+          >
+            {dependencies.readiness.reasons.map((reason, index) => (
+              <NotReadyReasonItem
+                key={`${reason.code}-${reason.target ?? 'self'}-${index}`}
+                reason={reason}
+              />
+            ))}
+          </ol>
+        ) : null}
+      </section>
+
+      <DependencySection
+        empty={dependencies.blockers.length === 0}
+        testId='ticket-detail-blockers'
+        title='Blockers'
+      >
+        <ul data-testid='ticket-detail-blockers' className='space-y-2'>
+          {dependencies.blockers.map((blocker) => (
+            <BlockerItem
+              blocker={blocker}
+              key={`${blocker.key}-${blocker.code}`}
+            />
+          ))}
+        </ul>
+      </DependencySection>
+
+      <DependencySection
+        empty={dependencies.blocked_by.length === 0}
+        testId='ticket-detail-blocked-by'
+        title='Blocked by'
+      >
+        <ul data-testid='ticket-detail-blocked-by' className='space-y-2'>
+          {dependencies.blocked_by.map((keyValue) => (
+            <BlockedByItem key={keyValue} keyValue={keyValue} />
+          ))}
+        </ul>
+      </DependencySection>
+    </div>
   )
 }
 
@@ -482,12 +757,12 @@ function evidenceStateFromQuery(
 }
 
 export function TicketDetailContent({
+  dependencies,
+  dependenciesError,
+  dependenciesLoading,
   evidenceState = { kind: 'success', evidence: [] },
   ticket,
-}: {
-  evidenceState?: EvidencePanelState
-  ticket: TicketDetail
-}) {
+}: TicketDetailContentProps) {
   return (
     <Main className='space-y-6'>
       <TicketHeader ticket={ticket} />
@@ -514,7 +789,13 @@ export function TicketDetailContent({
           className='min-h-24'
           data-testid='ticket-detail-dependencies-panel'
           value='dependencies'
-        />
+        >
+          <TicketDependenciesTab
+            dependencies={dependencies}
+            error={dependenciesError}
+            isLoading={dependenciesLoading}
+          />
+        </TabsContent>
       </Tabs>
     </Main>
   )
@@ -524,6 +805,7 @@ export function TicketDetailView({ surfaceTitle }: TicketDetailViewProps) {
   const { key: ticketKey } = useParams({ strict: false }) as { key: string }
   const ticketQuery = useTicketDetailQuery(ticketKey)
   const evidenceQuery = useTicketEvidenceQuery(ticketKey)
+  const dependenciesQuery = useTicketDependenciesQuery(ticketKey)
 
   if (ticketQuery.isLoading) {
     return (
@@ -562,6 +844,9 @@ export function TicketDetailView({ surfaceTitle }: TicketDetailViewProps) {
 
   return (
     <TicketDetailContent
+      dependencies={dependenciesQuery.data}
+      dependenciesError={dependenciesQuery.error}
+      dependenciesLoading={dependenciesQuery.isLoading}
       evidenceState={evidenceStateFromQuery(evidenceQuery)}
       ticket={ticketQuery.data}
     />

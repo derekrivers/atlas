@@ -52,7 +52,7 @@ export const operatorSurfaces = [
     placeholder: {
       eyebrow: 'Ticket Detail',
       title: 'Ticket Definition',
-      body: 'Definition, metadata, evidence, and dependency panels remain placeholders.',
+      body: 'Definition, metadata, evidence, and dependencies render live data.',
     },
   },
   {

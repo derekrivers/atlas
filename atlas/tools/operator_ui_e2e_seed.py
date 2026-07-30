@@ -333,11 +333,15 @@ def _seed_dependencies(
     for record in records:
         source = tickets[_required(record, "source_ticket_key", str)]
         target_type = _required(record, "target_entity_type", str)
-        target_ref = _required(record, "target_ref", str)
-        if target_type == "adr":
-            target_id = adrs[target_ref].id
+        explicit_target_id = _optional(record, "target_entity_id", str)
+        if explicit_target_id is not None:
+            target_id = _uuid(explicit_target_id)
         else:
-            target_id = tickets[target_ref].id
+            target_ref = _required(record, "target_ref", str)
+            if target_type == "adr":
+                target_id = adrs[target_ref].id
+            else:
+                target_id = tickets[target_ref].id
         repo.add(
             TicketDependency(
                 id=_uuid(_required(record, "id", str)),
