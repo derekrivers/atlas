@@ -1,6 +1,10 @@
 # Third Party Notices
 
-This app vendors source from `satnaing/shadcn-admin` at tag `v2.2.1`.
+This app vendors source from `satnaing/shadcn-admin` at tag `v2.2.1`,
+including the retained application shell, component primitives, and
+`src/styles/theme.css` theme tokens. The upstream MIT attribution covers both
+the vendored source and the vendored theme; this notice is kept to satisfy that
+license obligation.
 
 ## shadcn-admin
 

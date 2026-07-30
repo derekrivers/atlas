@@ -259,6 +259,22 @@ requires `@playwright/test` end-to-end specs, which are a separate
 runner, a separate configuration, and a separate CI job. The two coexist
 and are never conflated; a component suite that passes is not acceptance.
 
+## Open-source contribution boundary
+
+The contributor-facing runbook for this phase is
+`apps/operator-ui/README.md`. Its named "Operator UI contract limits" section is
+the place an outside contributor should check before treating missing pagination,
+missing ticket-detail epic data, literal lesson ticket UUIDs, or polling instead
+of push as bugs.
+
+That README also records the read-only contribution boundary and points at the
+writeable-phase entry condition: authentication, actor context, and a threat
+model must land together before any UI write path, action control, or remote
+operator surface enters scope.
+
+The upstream MIT attribution for retained `satnaing/shadcn-admin` source and the
+vendored theme lives in `apps/operator-ui/THIRD_PARTY_NOTICES.md`.
+
 ## Testing contract
 
 - **Component and unit tests** use the template's Vitest browser-mode
