@@ -170,6 +170,12 @@ Phase closure reports (`docs/closure/`):
 - `docs/closure/phase-9-closure-report.md` — Phase 9 (Learning System)
   closure: milestone evidence, seed disposition, findings batch, incident
   ledger, carry-forwards, criteria self-assessment.
+- `docs/closure/phase-10-closure-report.md` — Phase 10 (Operator API Read
+  Surface) closure: live HTTP milestone evidence, delivery and meta ledgers,
+  incidents, carry-forwards and criteria self-assessment
+- `docs/closure/phase-11-closure-report.md` — Phase 11 (Operator UI Read
+  Surface) closure: live-API browser evidence, delivered ticket ledger,
+  integration incidents, carry-forwards and criteria self-assessment
 
 Stubs awaiting content: `docs/product/`. `docs/tech-debt/` holds the
 debt register (`docs/tech-debt/debt-register.md`), a hand-maintained,
