@@ -71,6 +71,7 @@ def _exact_path(value: object, *, stub_path: str, field: str) -> str:
     if (
         pure.is_absolute()
         or ".." in pure.parts
+        or value != pure.as_posix()
         or not _PATH_RE.fullmatch(value)
         or any(token in value for token in _FORBIDDEN_PATH_TOKENS)
     ):
@@ -131,7 +132,12 @@ def _manifest_path_list(raw: object, *, field: str, manifest_path: str) -> list[
         )
     for value in values:
         pure = PurePosixPath(value)
-        if pure.is_absolute() or ".." in pure.parts or value != value.strip():
+        if (
+            pure.is_absolute()
+            or ".." in pure.parts
+            or value != value.strip()
+            or value != pure.as_posix()
+        ):
             raise PlanningBatchIntegrityError(
                 f"planning batch manifest {manifest_path!r} field {field!r} "
                 f"contains unsafe path {value!r}"

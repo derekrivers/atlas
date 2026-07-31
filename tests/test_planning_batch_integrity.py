@@ -11,6 +11,7 @@ from test_plan_pipeline import NOW, PLAN_MD, PRODUCT_MD, git, make_repo
 from test_stubs_only import july_db
 
 import atlas.planning.apply as apply_module
+import atlas.planning.pipeline as pipeline_module
 from atlas.core.models import PlanRunStatus
 from atlas.planning.apply import run_apply
 from atlas.planning.pipeline import PlanResult, run_stubs_only_plan
@@ -21,6 +22,12 @@ from atlas.storage import Database, PlanRunRepo
 INBOX = "docs/planning/inbox"
 MANIFEST = f"{INBOX}/planning-batch-phase-13-15.yaml"
 DOC = "docs/atlas/plan.md"
+CANONICAL_FUTURE_DOC = "docs/runbook.md"
+NON_CANONICAL_PATHS = (
+    "docs//runbook.md",
+    "./docs/runbook.md",
+    "docs/./runbook.md",
+)
 
 
 def _stub(
@@ -65,6 +72,7 @@ def _phase_repo(
     *,
     include_manifest: bool = True,
     manifest_repository_files: list[str] | None = None,
+    future_document_paths: list[str] | None = None,
 ) -> Path:
     repo = make_repo(
         tmp_path, {"PRODUCT.md": PRODUCT_MD, "docs/atlas/plan.md": PLAN_MD}
@@ -86,7 +94,7 @@ def _phase_repo(
             "repository": "derekrivers/atlas",
             "base_commit": base,
             "repository_files": repository_files,
-            "future_document_paths": [],
+            "future_document_paths": future_document_paths or [],
             "stubs": [{"path": path, "phase": 13} for path in stub_paths],
         }
         target = repo / MANIFEST
@@ -155,6 +163,40 @@ def test_prose_exact_path_field_fails_before_planrun(tmp_path: Path) -> None:
     assert PlanRunRepo(database).list() == []
 
 
+@pytest.mark.parametrize("path", NON_CANONICAL_PATHS)
+def test_noncanonical_stub_path_fails_before_planrun(tmp_path: Path, path: str) -> None:
+    stubs = [_stub(1, "Security foundation", documentation_requirements=(path,))]
+    repo = _phase_repo(
+        tmp_path,
+        stubs,
+        future_document_paths=[CANONICAL_FUTURE_DOC],
+    )
+    database = july_db(tmp_path)
+
+    with pytest.raises(StubPromotionError, match="exact repository-relative"):
+        run_stubs_only_plan(repo_root=repo, database=database, now=NOW)
+    assert PlanRunRepo(database).list() == []
+
+
+@pytest.mark.parametrize("path", NON_CANONICAL_PATHS)
+def test_noncanonical_manifest_future_path_fails_before_planrun(
+    tmp_path: Path, path: str
+) -> None:
+    stubs = [
+        _stub(
+            1,
+            "Security foundation",
+            documentation_requirements=(CANONICAL_FUTURE_DOC,),
+        )
+    ]
+    repo = _phase_repo(tmp_path, stubs, future_document_paths=[path])
+    database = july_db(tmp_path)
+
+    with pytest.raises(PlanningBatchIntegrityError, match="unsafe path"):
+        run_stubs_only_plan(repo_root=repo, database=database, now=NOW)
+    assert PlanRunRepo(database).list() == []
+
+
 def test_forward_sibling_dependency_fails_before_planrun(tmp_path: Path) -> None:
     second_path, second = _stub(2, "Action ledger")
     second_name = Path(second_path).name
@@ -215,3 +257,41 @@ def test_apply_revalidates_and_retires_batch_manifest(
     assert (repo / f"{INBOX}/processed/{Path(MANIFEST).name}").is_file()
     assert not (repo / stubs[0][0]).exists()
     assert (repo / f"{INBOX}/processed/{Path(stubs[0][0]).name}").is_file()
+
+
+@pytest.mark.parametrize("path", NON_CANONICAL_PATHS)
+@pytest.mark.parametrize("invalid_source", ("stub", "manifest"))
+def test_apply_rejects_noncanonical_paths_before_confirmation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    path: str,
+    invalid_source: str,
+) -> None:
+    requirement = path if invalid_source == "stub" else CANONICAL_FUTURE_DOC
+    future_path = path if invalid_source == "manifest" else CANONICAL_FUTURE_DOC
+    stubs = [
+        _stub(
+            1,
+            "Security foundation",
+            documentation_requirements=(requirement,),
+        )
+    ]
+    repo = _phase_repo(tmp_path, stubs, future_document_paths=[future_path])
+
+    with monkeypatch.context() as planning_context:
+        planning_context.setattr(
+            pipeline_module, "validate_inbox_batch_integrity", lambda **_: None
+        )
+        database, result = _run(repo, tmp_path)
+    assert result.status is PlanRunStatus.PROPOSED
+
+    error = (
+        StubPromotionError if invalid_source == "stub" else PlanningBatchIntegrityError
+    )
+    with pytest.raises(error):
+        run_apply(
+            repo_root=repo,
+            database=database,
+            now=APPLY_NOW,
+            confirm=confirmed,
+        )
