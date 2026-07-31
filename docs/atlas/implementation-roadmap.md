@@ -723,9 +723,177 @@ Carried forward:
 - Planning must reject prose in exact-path fields before another ticket batch
   reaches the store; Phase 12 required a surgical repair after verification
   correctly refused an unmatchable documentation contract.
+- This Planning Engine repair is the pre-Wave-A gate: Phase 13–15 design
+  preparation may proceed, but no stub may be planned or applied until Atlas
+  itself validates exact-path fields, dependency identity, ordering, cycles
+  and manifest coverage. The repair must be hand-delivered because minting it
+  through the defective planning path would be circular.
 - Verification and confirmation commands need clearer zero-action and pending
   diagnostics; their current output can conceal the one check that blocks
   closure even though the underlying verdict remains fail-closed.
+
+---
+
+# Phase 13 — Governed Operator Actions
+
+Programme direction: `docs/atlas/phase-13-20-programme-horizon.md`.
+Planning state: NEXT WAVE; detailed design may proceed, but governed ticket
+planning and apply are blocked on the pre-Wave-A Planning Engine integrity
+gate.
+
+Phase 13 introduces Atlas's first authenticated browser write. The single
+operator can promote or reject a DRAFT lesson through server-owned identity,
+idempotent commands, compare-and-set domain behaviour and append-only action
+receipts. The supported topology remains loopback-only and single-operator.
+No GitHub, Linear, plan-approval or merge write enters the phase.
+
+Milestone test: through a seeded live UI and API, promote one DRAFT lesson and
+reject another, then prove final states, server attribution, durable receipts
+and the ACTIVE-only retrieval effect. Hostile origin, missing CSRF, replay,
+expired session, stale-state race and receipt failure must produce no
+unintended lesson mutation.
+
+---
+
+# Phase 14 — Review Acceptance Console
+
+Programme direction: `docs/atlas/phase-13-20-programme-horizon.md`.
+Planning state: NEXT WAVE; detailed design and governed ticket batch pending.
+
+Phase 14 turns the delivered review queue into an authenticated exact-head
+acceptance workflow. One immutable session pins the repository, PR, close-set,
+head, base and live acceptance-criteria fingerprint while the operator pulls
+evidence, confirms criteria, runs verification and receives an advisory
+ready-for-manual-merge result. Phase 12 remains the freshness authority and
+Phase 13 supplies the authentication and action-receipt boundary. Atlas does
+not merge, rebase or change Linear from the console.
+
+Milestone test: take a seeded exact-main Review Required PR through preflight,
+evidence, confirmation and passed verification until the exact head is ready
+for manual merge, while proving Atlas performs no merge. Head/main movement,
+criteria drift, old-head evidence, missing human gates, replay and concurrent
+session races must fail closed with typed reasons.
+
+---
+
+# Phase 15 — Multi-Agent Delivery Control
+
+Programme direction: `docs/atlas/phase-13-20-programme-horizon.md`.
+Planning state: NEXT WAVE; detailed design and governed ticket batch pending.
+
+Phase 15 replaces promote-everything readiness with deterministic,
+capacity-aware admission. Operator-owned policy defines separate working and
+review budgets, risk/component lanes and running, paused or draining mode.
+Atlas decides whether dependency-ready work may enter `Ready for Agent`;
+Symphony remains the scheduler and runner. Policy changes use Phase 13's
+governed action framework, and the ten-agent closure milestone depends on Phase
+14 proving adequate review throughput.
+
+Milestone test: with more than ten independent seeded tickets and a controlled
+three-to-five-to-seven-to-ten live ramp, prove Atlas never exceeds working,
+review or lane limits; review pressure stops new admission; Changes Requested
+work is not starved; and pause/drain preserve active agents. Stale sync,
+partial Linear failure, concurrent ticks and duplicate commands must produce
+zero unintended promotion.
+
+---
+
+# Phase 16 — Delivery Intelligence and Agent Evaluation
+
+Programme direction: `docs/atlas/phase-13-20-programme-horizon.md`.
+Planning state: HORIZON; detailed design and ticketing gated on Phase 15
+closure.
+
+Phase 16 establishes reproducible ticket, PR, CI, review, rebase, acceptance,
+completion, queue and cost observations. It evaluates agent/model performance
+by work type and risk, exposes missing data and sample size, and corrects the
+last-successful Linear sync projection. It observes and recommends; no opaque
+score may automatically route work, select a model or change capacity.
+
+Milestone test: replay a seeded delivery corpus to identical metrics and
+compare a controlled delivery wave by lead time, review burden, rework,
+failure and cost. Missing, duplicated or out-of-order events must be visible
+and never silently interpreted as success.
+
+---
+
+# Phase 17 — Technical Debt and Reliability Steward
+
+Programme direction: `docs/atlas/phase-13-20-programme-horizon.md`.
+Planning state: HORIZON; detailed design and ticketing gated on Phase 15
+closure.
+
+Phase 17 adds evidence-backed code-quality debt and reliability stewardship.
+The code-quality register remains distinct from delivery-anomaly `DebtItem`
+records under ADR-0011. Versioned sensors record commit-pinned observations,
+age, recurrence and ownership, and may draft bounded remediation proposals.
+They cannot edit code, create Linear tickets, change priorities or waive
+quality gates.
+
+Milestone test: seed several debt classes, repeated scans, a resolution and a
+recurrence; prove deterministic deduplication, preserved evidence, correct
+ageing and bounded proposals. Partial sensors and untrusted claims must not
+close debt or create work.
+
+---
+
+# Phase 18 — Governed Adaptive Planning
+
+Programme direction: `docs/atlas/phase-13-20-programme-horizon.md`.
+Planning state: HORIZON; detailed design and ticketing gated on Phase 15
+closure.
+
+Phase 18 converts delivery intelligence, accepted lessons and recorded debt
+into durable, evidence-anchored planning recommendations. Atlas may assemble a
+bounded proposal, but deterministic reconciliation, in-flight immutability,
+key authority, diff review and operator-controlled `atlas apply` remain
+binding. Atlas gains initiative, not unilateral roadmap or strategy authority.
+
+Milestone test: take a measured recurring weakness to a bounded plan amendment,
+operator decision and governed apply. Rejection, stale evidence, changed source
+documents and a concurrent PlanRun must yield no unintended store or planning-
+render mutation.
+
+---
+
+# Phase 19 — Multi-Product Control Plane
+
+Programme direction: `docs/atlas/phase-13-20-programme-horizon.md`.
+Planning state: HORIZON; detailed design and ticketing gated on Phase 18
+closure and a real second-product need.
+
+Phase 19 introduces explicit product scoping for repositories, trackers,
+credentials, planning, events, evidence, receipts, policy and capacity. The
+Symphony workflow body remains invariant while declared per-product settings
+are rendered around it. Cross-product knowledge is deny-by-default and global
+capacity cannot be oversubscribed.
+
+Milestone test: operate two seeded products with intentionally colliding
+tracker keys and branch names, proving isolated planning, admission, evidence,
+acceptance, receipts and credentials plus governed global capacity allocation.
+A wrong product, repository or tracker identity must fail before external
+write, with no cross-product context leakage.
+
+---
+
+# Phase 20 — Atlas Managing Atlas
+
+Programme direction: `docs/atlas/phase-13-20-programme-horizon.md`.
+Planning state: HORIZON CAPSTONE; detailed design and ticketing gated on Phase
+18 closure and the Phase 19 isolation design.
+
+Phase 20 composes the preceding capabilities so Atlas can identify and
+evidence a weakness in its own delivery system, propose a bounded improvement,
+execute operator-approved tickets within capacity and review policy, follow
+exact-head acceptance and measure the outcome. It adds no self-approval,
+self-review, merge, permission-expansion or deployment authority.
+
+Milestone test: Atlas detects a recurring Atlas delivery weakness, assembles
+exact evidence, proposes bounded governed work, receives operator approval,
+admits the minted tickets, follows their PRs through exact-head acceptance and
+records the measured lesson/debt outcome. The operator must approve the plan,
+review and merge. Seeded self-approval, policy weakening, stale evidence,
+permission expansion and cross-product confusion must fail closed.
 
 ---
 

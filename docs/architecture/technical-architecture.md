@@ -308,13 +308,33 @@ PM API
 
 # 15. Future Architecture
 
-Future Components:
+The next architecture programme expands Atlas through bounded authority rather
+than replacing the delivered core:
 
-- Knowledge Graph
-- Vector Search
-- Multi-Agent Teams
-- Autonomous Refactoring
-- Atlas Managing Atlas
+1. **Governed write foundation.** Authenticated operator sessions,
+   server-owned identity, idempotent commands and durable receipts precede any
+   browser mutation.
+2. **Exact-head acceptance.** Browser acceptance composes existing evidence,
+   verification and mainline-freshness services; it does not gain merge
+   authority.
+3. **Capacity-aware admission.** Atlas governs entry to `Ready for Agent` with
+   working, review, risk and component budgets. Symphony continues to schedule
+   and run the admitted work.
+4. **Evidence before adaptation.** Reproducible delivery intelligence feeds a
+   distinct code-quality debt register, which can then support governed
+   planning recommendations through the existing operator-owned apply seam.
+5. **Product-scoped control.** Repository, tracker, credentials, policy,
+   events, evidence, knowledge and capacity become explicitly product-scoped
+   before Atlas coordinates a second product.
+6. **Atlas managing Atlas.** The capstone composes detection, proposal,
+   operator approval, bounded admission, exact-head acceptance and outcome
+   measurement on Atlas itself.
+
+This sequence is recorded in
+`docs/atlas/phase-13-20-programme-horizon.md`. Knowledge graphs, vector search,
+autonomous refactoring, hosted multi-user operation and production deployment
+remain uncommitted future options. None is an implicit prerequisite or granted
+authority for the Phase 13–20 programme.
 
 ---
 

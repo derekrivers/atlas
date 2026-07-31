@@ -23,6 +23,9 @@ Strategy and specification (`docs/atlas/`):
   proposal across multiple bounded model calls (the output-capacity boundary;
   ADR-0010)
 - `implementation-roadmap.md` — executable delivery programme (Revision 1)
+- `phase-13-20-programme-horizon.md` — rolling-wave architectural direction
+  after Phase 12: bounded authority progression, dependencies, planning gates
+  and milestone outcomes through the Atlas-managing-Atlas capstone
 - `bootstrap-guide.md` — day-one bootstrap guide
 - `symphony-integration.md` — delivered Phase 8 and Phase 12 integration
   design (state mapping, pack delivery, exact-head assessment,
