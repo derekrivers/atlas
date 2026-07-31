@@ -420,6 +420,7 @@ class _LivePRSnapshot:
 @dataclass(frozen=True)
 class _RemoteIdentity:
     remote_name: str
+    push_url: str
     repo_slug: str
     url_kind: str
 
@@ -793,7 +794,7 @@ def publish_pr_rebase(
     push_argv = [
         "push",
         f"--force-with-lease={pending.head_branch_ref}:{pending.original_head_sha}",
-        REMOTE_NAME,
+        preconditions.remote_identity.push_url,
         f"{pending.rebased_head_sha}:{pending.head_branch_ref}",
     ]
     push_result = git_runner(pending.repo_root, push_argv)
@@ -1029,7 +1030,7 @@ def _resume_pending_publish(
     push_argv = [
         "push",
         f"--force-with-lease={manifest.head_branch_ref}:{manifest.original_head_sha}",
-        REMOTE_NAME,
+        preconditions.remote_identity.push_url,
         f"{manifest.rebased_head_sha}:{manifest.head_branch_ref}",
     ]
     push_result = git_runner(manifest.repo_root, push_argv)
@@ -1134,8 +1135,8 @@ def _publish_preconditions(
         [
             "fetch",
             REMOTE_NAME,
-            f"refs/heads/{manifest.base_ref}:refs/remotes/{REMOTE_NAME}/{manifest.base_ref}",
-            f"{manifest.head_branch_ref}:refs/remotes/{REMOTE_NAME}/{manifest.head_ref}",
+            f"+refs/heads/{manifest.base_ref}:refs/remotes/{REMOTE_NAME}/{manifest.base_ref}",
+            f"+{manifest.head_branch_ref}:refs/remotes/{REMOTE_NAME}/{manifest.head_ref}",
         ],
     )
     if fetch_result.returncode != 0:
@@ -1178,27 +1179,45 @@ def _resolve_origin_push_identity(
     expected_repo_slug: str,
     git_runner: GitRunner,
 ) -> _RemoteIdentity:
-    result = git_runner(repo_root, ["remote", "get-url", "--push", REMOTE_NAME])
-    if result.returncode != 0:
-        raise PRRebaseRefusal(_git_failed("remote get-url --push origin", result))
-    remote_url = result.stdout.strip()
-    if not remote_url:
-        raise PRRebaseRefusal("origin push URL is empty; refusing to publish.")
-    repo_slug, url_kind = _parse_remote_repo_slug(remote_url, repo_root=repo_root)
-    if repo_slug is None:
-        raise PRRebaseRefusal(
-            "origin push URL does not resolve to a supported repository identity."
-        )
-    if repo_slug.casefold() != expected_repo_slug.casefold():
-        raise PRRebaseRefusal(
-            f"origin push URL targets {repo_slug}, not {expected_repo_slug}; "
-            "refusing to publish."
-        )
-    return _RemoteIdentity(
-        remote_name=REMOTE_NAME,
-        repo_slug=repo_slug,
-        url_kind=url_kind,
+    result = git_runner(
+        repo_root,
+        ["remote", "get-url", "--push", "--all", REMOTE_NAME],
     )
+    if result.returncode != 0:
+        raise PRRebaseRefusal(_git_failed("remote get-url --push --all origin", result))
+    remote_urls = tuple(
+        line.strip() for line in result.stdout.splitlines() if line.strip()
+    )
+    if not remote_urls:
+        raise PRRebaseRefusal("origin has no push URL; refusing to publish.")
+
+    valid_identities: list[_RemoteIdentity] = []
+    for remote_url in remote_urls:
+        repo_slug, url_kind = _parse_remote_repo_slug(remote_url, repo_root=repo_root)
+        if repo_slug is None:
+            raise PRRebaseRefusal(
+                "origin push URL does not resolve to a supported repository identity."
+            )
+        if repo_slug.casefold() != expected_repo_slug.casefold():
+            raise PRRebaseRefusal(
+                f"origin push URL targets {repo_slug}, not {expected_repo_slug}; "
+                "refusing to publish."
+            )
+        valid_identities.append(
+            _RemoteIdentity(
+                remote_name=REMOTE_NAME,
+                push_url=remote_url,
+                repo_slug=repo_slug,
+                url_kind=url_kind,
+            )
+        )
+
+    if len(valid_identities) != 1:
+        raise PRRebaseRefusal(
+            "origin must have exactly one validated push URL; found "
+            f"{len(valid_identities)}."
+        )
+    return valid_identities[0]
 
 
 def _parse_remote_repo_slug(
@@ -1476,8 +1495,8 @@ def _fetch_branch_refs(
         [
             "fetch",
             REMOTE_NAME,
-            f"refs/heads/main:refs/remotes/{REMOTE_NAME}/main",
-            f"refs/heads/{branch}:refs/remotes/{REMOTE_NAME}/{branch}",
+            f"+refs/heads/main:refs/remotes/{REMOTE_NAME}/main",
+            f"+refs/heads/{branch}:refs/remotes/{REMOTE_NAME}/{branch}",
         ],
     )
     if result.returncode != 0:

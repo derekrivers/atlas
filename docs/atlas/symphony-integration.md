@@ -271,18 +271,20 @@ operator has staged the resolution; a later conflict records another conflict
 set.
 
 `publish` is the only remote-write boundary. Before pushing it refetches the
-live PR snapshot, resolves `git remote get-url --push origin` to a repository
-identity matching the manifest repo slug, and refetches remote `main`/head refs.
-It then requires the live head SHA, base SHA, branch, repository identity, open
-state, draft flag, local `origin` identity, and remote refs to match the
-manifest's pinned values. Fresh mergeability is diagnostic only at this point:
-the identity and exact SHA pins govern the safety gate. Immediately before the
-remote write, the manifest records `lease_push_pending` with the expected old
-head, rebased head, and sanitized `origin` repository identity. The push argv is
-the explicit expected-value lease form:
+live PR snapshot, resolves `git remote get-url --push --all origin`, refuses
+unless there is exactly one push destination whose repository identity matches
+the manifest repo slug, and refetches remote `main`/head refs. It then requires
+the live head SHA, base SHA, branch, repository identity, open state, draft
+flag, local `origin` identity, and remote refs to match the manifest's pinned
+values. Fresh mergeability is diagnostic only at this point: the identity and
+exact SHA pins govern the safety gate. Immediately before the remote write, the
+manifest records `lease_push_pending` with the expected old head, rebased head,
+and sanitized `origin` repository identity. The push argv uses the captured
+validated destination and the explicit expected-value lease form:
 
 ```bash
-git push --force-with-lease=refs/heads/<branch>:<original-head-sha> origin <rebased-head-sha>:refs/heads/<branch>
+git push --force-with-lease=refs/heads/<branch>:<original-head-sha> \
+  <validated-origin-push-url> <rebased-head-sha>:refs/heads/<branch>
 ```
 
 Bare `--force`, implicit `--force-with-lease`, GitHub Update branch, merge

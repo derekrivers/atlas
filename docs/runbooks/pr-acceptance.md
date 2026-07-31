@@ -47,11 +47,12 @@ head after evidence is pulled restarts the spine from evidence.
   `uv run atlas pr rebase publish --workspace <path>`. The lane refuses if the
   PR moved, `main` moved, the PR is no longer open/non-draft/same-repository, or
   the close-set tickets are not all `review_required`. Publish also verifies
-  that local `origin` pushes to the same repository named by `--repo`, writes a
-  durable `lease_push_pending` state before the force-with-lease boundary, and
-  recovers that state on retry by comparing `origin` with the expected old and
-  rebased heads. It writes a receipt under `.atlas/rebase-receipts/` and leaves
-  tickets in `review_required`.
+  that local `origin` has exactly one push destination and that destination
+  resolves to the same repository named by `--repo`, writes a durable
+  `lease_push_pending` state before the force-with-lease boundary, and recovers
+  that state on retry by comparing `origin` with the expected old and rebased
+  heads. It pushes to the captured validated destination, writes a receipt under
+  `.atlas/rebase-receipts/`, and leaves tickets in `review_required`.
 
 ## 1. Review (reviewer-tier, not the gate)
 

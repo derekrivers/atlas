@@ -764,7 +764,7 @@ def test_publish_uses_explicit_expected_value_lease_and_writes_receipt_cleanup(
         (
             "push",
             f"--force-with-lease=refs/heads/{BRANCH}:{fixture.feature_sha}",
-            "origin",
+            str(fixture.remote),
             f"{published.new_head_sha}:refs/heads/{BRANCH}",
         )
     ]
@@ -812,7 +812,7 @@ def test_publish_pending_retry_pushes_when_remote_still_equals_old_head(
         (
             "push",
             f"--force-with-lease=refs/heads/{BRANCH}:{fixture.feature_sha}",
-            "origin",
+            str(fixture.remote),
             f"{result.new_head_sha}:refs/heads/{BRANCH}",
         )
     ]
@@ -889,6 +889,62 @@ def test_publish_refuses_origin_push_repository_mismatch_before_push(
     assert _push_calls(runner) == []
     assert (
         _git_stdout(fixture.remote, "rev-parse", f"refs/heads/{BRANCH}")
+        == fixture.feature_sha
+    )
+
+
+def test_publish_refuses_additional_unvalidated_origin_pushurl_before_push(
+    tmp_path: Path,
+) -> None:
+    fixture = _repo_fixture(tmp_path, mode="clean")
+    result, runner, client = _prepare_ready(fixture)
+    assert result.workspace_path is not None
+    wrong_remote = tmp_path / "fork" / f"{REPO}.git"
+    wrong_remote.parent.mkdir()
+    _git(tmp_path, "init", "--bare", str(wrong_remote))
+    _git(
+        fixture.seed,
+        "push",
+        str(wrong_remote),
+        "main:main",
+        f"{BRANCH}:{BRANCH}",
+    )
+    _git(
+        fixture.primary,
+        "remote",
+        "set-url",
+        "--add",
+        "--push",
+        "origin",
+        str(fixture.remote),
+    )
+    _git(
+        fixture.primary,
+        "remote",
+        "set-url",
+        "--add",
+        "--push",
+        "origin",
+        str(wrong_remote),
+    )
+
+    with pytest.raises(PRRebaseRefusal, match="origin push URL targets fork/atlas"):
+        publish_pr_rebase(
+            workspace_path=result.workspace_path,
+            repo_root=fixture.primary,
+            github_client=client,
+            git_runner=runner,
+            now=NOW,
+            sleep=lambda _seconds: None,
+        )
+
+    assert _push_calls(runner) == []
+    assert (
+        _git_stdout(fixture.remote, "rev-parse", f"refs/heads/{BRANCH}")
+        == fixture.feature_sha
+    )
+    assert (
+        _git_stdout(wrong_remote, "rev-parse", f"refs/heads/{BRANCH}")
         == fixture.feature_sha
     )
 

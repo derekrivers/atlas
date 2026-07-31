@@ -61,9 +61,10 @@ local `git fetch`, `git rebase`, and lease-guarded `git push` use the git
 credential helper for `origin`. A token that can read PRs but cannot push will
 therefore prepare a workspace and fail only at publish, leaving the worktree
 recoverable. Before the publish boundary, Atlas resolves
-`git remote get-url --push origin` and refuses unless that push URL identifies
-the same repository named by the rebase manifest; this prevents a checkout with
-a fork or mirror as `origin` from rewriting the wrong branch. The manifest
+`git remote get-url --push --all origin` and refuses unless there is exactly
+one push destination whose repository identity matches the rebase manifest;
+this prevents a checkout with a fork or mirror as `origin` from rewriting the
+wrong branch. The lease push uses that captured destination. The manifest
 records the sanitized `origin` identity, not a token-bearing URL.
 
 Operator Git config does not decide conflict resolution in this lane. Atlas
