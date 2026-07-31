@@ -135,8 +135,8 @@ The optional `depends_on` list (ATLAS-153) declares the promoted ticket's
 dependency edges deterministically; promotion turns each entry into one
 `depends_on` edge with a single pinned mechanical reason (never inferred
 per-stub, ADR-0005). Each entry is an **existing ticket key** — an edge
-from the new ticket to that ticket; an unknown key fails gate 3 as a typed
-`GATE3_UNRESOLVED_TARGET` — or a **sibling stub filename in the same batch**
+from the new ticket to that ticket; the integrity guard rejects an unknown key
+before a PlanRun exists — or a **sibling stub filename in the same batch**
 (basename match, `.md` suffix) — an edge between the two new tickets; an
 `.md` entry naming no sibling (or the stub itself) is a typed promotion
 failure. The contract is honoured identically on the generative and
@@ -147,6 +147,31 @@ missing or invalid — or whose fields violate the ticket contract — raises a
 typed error at plan time (the same fail-closed posture as an uncommitted
 stub), naming the stub path and the offending field. A committed stub is
 never silently skipped and a malformed ticket is never emitted.
+
+**Planning-batch integrity guard.** Stub promotion is preceded by an
+Atlas-owned mechanical guard on both generative and stubs-only paths. For every
+active stub it rejects non-exact `relevant_docs` and
+`documentation_requirements` entries (prose, whitespace, glob, traversal,
+absolute or missing paths), invalid existing-ticket dependency identities,
+unknown/self sibling references, forward sibling order and dependency cycles.
+The failure is a clean precondition with no PlanRun, because these fields are
+mechanically impossible rather than a model proposal that failed a gate.
+
+Ordered phase stubs use contiguous `inbox-stub-NN-*.md` names and require
+exactly one committed `docs/planning/inbox/planning-batch-*.yaml` manifest.
+Schema version 1 records the exact base SHA, complete `repository_files`,
+ordered `stubs` and any `future_document_paths`. Before planning, Atlas proves
+the base is an ancestor of HEAD, the base-to-HEAD file diff equals
+`repository_files`, every file exists, the manifest lists itself and the stub
+list byte-for-byte covers the active inbox order. Ordered and unnumbered stubs
+cannot mix. Ordinary PM follow-up batches remain manifest-free but receive the
+same path, identity, deterministic backward-order and cycle validation.
+
+The manifest SHA joins `input_doc_shas`. Apply therefore treats movement as
+staleness, then re-runs the guard against the current backlog before operator
+confirmation. On apply or operator rejection, the manifest moves into
+`inbox/processed/` with the considered stubs. A pre-repair proposed PlanRun
+cannot bypass the repaired boundary.
 
 This imposes a **forward coupling**: once promotion is live, *every*
 committed inbox stub MUST carry a valid front-matter block or planning fails

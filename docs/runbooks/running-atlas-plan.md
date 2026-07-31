@@ -202,6 +202,16 @@ required** (Prerequisite 4 does not apply); the run completes in seconds.
 `--stubs-only` and `--staged` are mutually exclusive — combining them is an
 argparse error.
 
+**Phase-batch integrity.** Ordered phase-planning stubs named
+`inbox-stub-NN-*.md` require one committed
+`docs/planning/inbox/planning-batch-*.yaml` manifest. Before either plan path
+persists a PlanRun, Atlas validates the manifest's exact base-to-HEAD overlay
+and ordered stub coverage, exact-path fields, dependency identity, backward
+sibling order and cycles. Apply repeats the guard before confirmation. See
+`docs/runbooks/planning-phases-and-ticket-stubs.md` for the schema and handoff
+workflow. Unnumbered PM follow-up stubs do not require a manifest, but receive
+the same field and graph validation.
+
 **Empty inbox.** An empty committed inbox is a clean-exit precondition
 failure (exit `2`) whose message names the inbox — never an empty-diff
 `PlanRun`. Commit stubs first, or run a generative plan.
@@ -217,8 +227,8 @@ one of:
 - a **sibling stub filename in the same batch** (`inbox-stub-foo.md`,
   basename match) → an edge between the two new tickets;
 - anything else: an `.md` name matching no sibling fails closed at plan time
-  (a typed stub error, exit `2`); a key that exists nowhere fails gate 3
-  (`GATE3_UNRESOLVED_TARGET`) as a recorded `failed` run (exit `1`).
+  (a typed stub error, exit `2`); a key that exists nowhere is rejected by the
+  planning-batch integrity guard before a PlanRun exists (exit `2`).
 
 The contract is honoured identically on generative runs, so a stub means the
 same thing whichever door mints it.
@@ -260,7 +270,9 @@ confirmation:
 On confirmation, apply **atomically** writes the four renders —
 `docs/planning/epics.yaml`, `tickets.yaml`, `dependencies.yaml`, and
 `roadmap.mmd` — assigns keys from the monotonic counter, persists the backlog, and
-finalises the `PlanRun` to `applied`. **Apply is the only legal writer of
+finalises the `PlanRun` to `applied`. It also retires every considered active
+stub and its `planning-batch-*.yaml` manifest into `inbox/processed/` (the same
+retirement occurs after an operator rejection). **Apply is the only legal writer of
 `docs/planning/`** (ADR-0006/0007); the doc linter flags any hand-edit there.
 
 `atlas apply` exit codes:
@@ -285,6 +297,10 @@ Every row is the actual message and exit code from the commands.
 | `the staged path cannot seed epic-less ticket(s) […]` | plan (`--staged`) | 2 | The backlog has a `tech_debt` ticket with no epic; staged generation batches per epic and cannot seed it. Attach it to an epic, or re-plan without `--staged`. |
 | `the committed follow-up inbox 'docs/planning/inbox' has no stubs: nothing to mint…` | plan (`--stubs-only`) | 2 | The inbox is empty. Commit stubs first, or run a generative plan. |
 | `inbox stub '…' cannot be promoted: … (field '…')` | plan | 2 | The committed stub's front-matter is missing, invalid, or a `depends_on` entry names no sibling in the batch. Fix the stub and re-commit. |
+| `ordered phase stubs require exactly one committed … planning-batch-*.yaml manifest` | plan | 2 | Add the governed batch manifest from the phase-planning package and commit it with the stubs. |
+| `planning batch manifest … does not cover the exact committed overlay` | plan / apply | 2 | The base moved or the manifest and committed planning change differ. Regenerate/rebase the complete batch against current main; do not waive the mismatch. |
+| `inbox stub '…' cannot be promoted: … exact repository-relative Markdown paths …` | plan / apply | 2 | Replace prose, globs, traversal or missing values with exact paths; declare intentional future documentation in the batch manifest. |
+| `planning inbox dependency cycle …` / `sibling dependency must point to an earlier ordered stub …` | plan / apply | 2 | Repair the dependency DAG and ordered filenames before planning. |
 | `inbox stub '…' declares epic_ref 'new_epic:…'…` | plan (`--stubs-only`) | 2 | Stubs-only has no model to create epics; point `epic_ref` at an existing epic key. |
 | `Plan failed (recorded):` + `{"stage": "parse", …}` | plan | 1 | The model output was not valid JSON. Re-run; if persistent, the prompt/model needs attention. |
 | `Plan failed (recorded):` + `{"stage": "gates", "failures": […]}` | plan | 1 | A validation gate failed. Read the per-failure `gate`/`code`/`reason` — usually an unresolvable `source_anchor` (gate 4), an orphan epic (gate 5), or an oversized ticket (gate 7). |

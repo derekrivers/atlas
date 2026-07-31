@@ -359,16 +359,20 @@ confusion attempts; each must fail closed and remain auditable.
 
 ### Gate 0 — planning integrity before Wave A
 
-Phase 13–15 design preparation may begin after this horizon record is
-accepted, but no Phase 13–15 inbox stub may enter `atlas plan`, and no Phase
-13–15 PlanRun may be applied, until the Phase 12 Planning Engine carry-forward
-is repaired and merged.
+Status: SATISFIED by the hand-delivered Planning Batch Integrity Guard.
 
-Atlas itself must reject invalid exact-path fields and must validate dependency
-identity, sibling ordering, dependency cycles and manifest coverage before a
-stub can be planned or applied. The repair is a hand-delivered prerequisite:
-using the defective planning path to mint the ticket for its own repair would
-be circular and would not satisfy this gate.
+Atlas rejects invalid exact-path fields and validates dependency identity,
+sibling ordering, dependency cycles and exact committed manifest coverage
+before either plan path persists a PlanRun. Ordered phase stubs require one
+committed `planning-batch-*.yaml` manifest; its base-to-HEAD file set and
+ordered stub list must match the active inbox exactly. Apply re-runs the same
+guard before confirmation and retires the manifest with the considered stubs.
+Ordinary unnumbered PM follow-up stubs retain their existing manifest-free
+path, while receiving the same path, identity, order and cycle checks.
+
+The repair was delivered without using the defective planning path to mint a
+ticket for itself, closing the circular-authority concern. Wave A may proceed
+through the repaired canonical plan/apply path.
 
 ### Wave A — Phases 13–15
 

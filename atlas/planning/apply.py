@@ -65,6 +65,8 @@ from atlas.core.models.dependency import DependencyType
 from atlas.core.yaml_io import RenderHeader, render_document
 from atlas.dependencies import project_graph, validate_graph
 from atlas.planning.ingestion import (
+    _matches_batch_manifest,
+    collect_batch_manifest_documents,
     collect_inbox_documents,
     collect_input_documents,
     collect_processed_documents,
@@ -88,6 +90,7 @@ from atlas.planning.reconciler import (
     PlanDiff,
     reconcile,
 )
+from atlas.planning.stub_integrity import validate_inbox_batch_integrity
 from atlas.storage import (
     ADRRepo,
     Database,
@@ -227,6 +230,7 @@ class ApplyResult:
 @dataclass(frozen=True)
 class FreshPlanInputs:
     inbox_documents: list[SourceDocument]
+    manifest_documents: list[SourceDocument]
     shas: dict[str, str]
 
 
@@ -268,13 +272,16 @@ def _recover_pending_renders(planning_dir: Path, database: Database) -> None:
 
 def _fresh_plan_inputs(repo_root: Path, inbox_dir: Path) -> FreshPlanInputs:
     fresh_inbox = collect_inbox_documents(repo_root, inbox_dir)
+    fresh_manifests = collect_batch_manifest_documents(repo_root, inbox_dir)
     fresh_documents = (
         collect_input_documents(repo_root)
         + fresh_inbox
         + collect_processed_documents(repo_root, inbox_dir)
+        + fresh_manifests
     )
     return FreshPlanInputs(
         inbox_documents=fresh_inbox,
+        manifest_documents=fresh_manifests,
         shas={doc.path: doc.sha for doc in fresh_documents},
     )
 
@@ -396,7 +403,7 @@ def _archived_keys(diff: PlanDiff, kind: str) -> set[str]:
 
 
 def _retire_inbox_stubs(repo_root: Path, inbox_dir: Path, plan_run: PlanRun) -> None:
-    """Move the inbox stubs that fed this plan to processed/ (ATLAS-122, D2).
+    """Move inbox stubs and their batch manifest to processed/.
 
     Run on BOTH the applied and the rejected outcome: both mean "considered," so
     both retire the stub (it keeps a declined follow-up from reappearing every
@@ -423,11 +430,13 @@ def _retire_inbox_stubs(repo_root: Path, inbox_dir: Path, plan_run: PlanRun) -> 
 
 
 def _inbox_retirement_targets(plan_run: PlanRun, inbox: str) -> list[tuple[str, str]]:
-    """Active inbox stubs from ``input_doc_shas`` and their processed/ targets."""
+    """Active stubs/manifest from ``input_doc_shas`` and processed targets."""
     targets = []
     for path in plan_run.input_doc_shas:
         candidate = PurePosixPath(path)
-        if candidate.suffix != ".md" or candidate.parent != PurePosixPath(inbox):
+        is_stub = candidate.suffix == ".md" and candidate.parent == PurePosixPath(inbox)
+        is_manifest = _matches_batch_manifest(path, inbox)
+        if not (is_stub or is_manifest):
             continue  # a corpus doc, or already under processed/
         targets.append((path, processed_path_for(path)))
     return targets
@@ -495,6 +504,12 @@ def run_apply(
     current_deps = TicketDependencyRepo(database).list()
     backlog = Backlog(
         epics=current_epics, tickets=current_tickets, dependencies=current_deps
+    )
+    validate_inbox_batch_integrity(
+        repo_root=repo_root,
+        inbox_documents=fresh_inputs.inbox_documents,
+        manifest_documents=fresh_inputs.manifest_documents,
+        backlog=backlog,
     )
 
     proposal = Proposal.model_validate(plan_run.proposal)

@@ -134,6 +134,9 @@ Runbooks (`docs/runbooks/`):
 - `docs/runbooks/running-atlas-plan.md` — operator runbook for the
   plan/apply workflow: prerequisites, the commands and their exit
   codes, every failure mode, the capacity boundary, and provenance
+- `docs/runbooks/planning-phases-and-ticket-stubs.md` — governed phase-planning
+  packages, ordered stub and exact-path contracts, committed batch manifests,
+  Atlas-owned integrity validation and the local-agent/operator handoff
 - `docs/runbooks/local-development.md` — toolchain, running the test
   suite, reproducing the CI gates, pre-commit, the shape of the suite,
   and the operator-run live tests

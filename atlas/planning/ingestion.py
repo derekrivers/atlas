@@ -33,6 +33,12 @@ _INPUT_PATTERNS = _ROOT_DOCS + _GLOBS
 # retirement move targets it; ATLAS-159 anchors promotion to it from birth.
 PROCESSED_SUBDIR = "processed"
 
+# A governed phase-planning batch carries one committed manifest beside its
+# ordered inbox stubs.  The manifest is a separate planning input (never a
+# prompt document) and is retired with the stubs after apply.
+PLANNING_BATCH_MANIFEST_PREFIX = "planning-batch-"
+PLANNING_BATCH_MANIFEST_SUFFIX = ".yaml"
+
 _STATUS_HEADING_RE = re.compile(r"^##\s+Status\s*$")
 
 
@@ -86,6 +92,16 @@ def _matches_processed(path: str, inbox_dir: str) -> bool:
     return (
         candidate.suffix == ".md"
         and candidate.parent == PurePosixPath(inbox_dir) / PROCESSED_SUBDIR
+    )
+
+
+def _matches_batch_manifest(path: str, inbox_dir: str) -> bool:
+    """A top-level governed phase-batch manifest in ``inbox_dir``."""
+    candidate = PurePosixPath(path)
+    return (
+        candidate.parent == PurePosixPath(inbox_dir)
+        and candidate.name.startswith(PLANNING_BATCH_MANIFEST_PREFIX)
+        and candidate.name.endswith(PLANNING_BATCH_MANIFEST_SUFFIX)
     )
 
 
@@ -222,6 +238,31 @@ def collect_inbox_documents(repo_root: Path, inbox_dir: Path) -> list[SourceDocu
     _assert_committed_state(repo_root, lambda path: _matches_inbox(path, inbox))
     tracked = _git(repo_root, "ls-tree", "-r", "--name-only", "HEAD").splitlines()
     paths = sorted(path for path in tracked if _matches_inbox(path, inbox))
+
+    documents = []
+    for path in paths:
+        sha = _git(repo_root, "rev-parse", f"HEAD:{path}").strip()
+        content = _git(repo_root, "show", f"HEAD:{path}")
+        documents.append(SourceDocument(path=path, sha=sha, content=content))
+    return documents
+
+
+def collect_batch_manifest_documents(
+    repo_root: Path, inbox_dir: Path
+) -> list[SourceDocument]:
+    """Committed governed phase-batch manifests from HEAD.
+
+    A normal PM follow-up batch needs no manifest.  Ordered phase-planning
+    stubs do: the integrity validator requires exactly one matching manifest
+    and proves its coverage before plan or apply.  Returning a list keeps the
+    collector mechanical; zero/multiple semantics belong to that validator.
+    """
+    inbox = inbox_dir.as_posix()
+    _assert_committed_state(
+        repo_root, lambda path: _matches_batch_manifest(path, inbox)
+    )
+    tracked = _git(repo_root, "ls-tree", "-r", "--name-only", "HEAD").splitlines()
+    paths = sorted(path for path in tracked if _matches_batch_manifest(path, inbox))
 
     documents = []
     for path in paths:

@@ -31,10 +31,10 @@ Contract (planning-engine-specification.md §2.1):
   deterministically — the channel the stubs-only path needs, since it has no
   model to emit edges, honoured identically on the generative path so a stub
   means the same thing at both doors. Each entry is a string: an existing
-  ticket key becomes a new->existing edge (an unknown key fails gate 3,
-  typed); a sibling stub FILENAME in the same batch (matched on basename,
-  ``.md`` suffix) becomes a new->new edge; an ``.md`` entry naming no sibling
-  is a fail-closed :class:`StubPromotionError`. The edge reason is a single
+  ticket key becomes a new->existing edge (the pre-promotion integrity guard
+  rejects an unknown key); a sibling stub FILENAME in the same batch (matched
+  on basename, ``.md`` suffix) becomes a new->new edge; an ``.md`` entry naming
+  no sibling is a fail-closed :class:`StubPromotionError`. The edge reason is a single
   pinned constant (ADR-0005: never inferred per-stub).
 
 Retire/dedup is the existing ``processed/`` lifecycle: ``collect_inbox_documents``
@@ -240,9 +240,8 @@ def _promoted_dependencies(
     ticket ``new:<base_index + position>``. An ``.md`` entry must name a
     sibling stub in this batch (basename match) — a new->new edge; naming no
     sibling, or the stub itself, is fail-closed. Any other entry is emitted
-    verbatim as the target: an existing backlog key resolves, and an unknown
-    key is gate 3's typed ``GATE3_UNRESOLVED_TARGET`` failure — promotion
-    never guesses what a bad reference meant.
+    verbatim as the target after the integrity guard has proved it is an
+    existing backlog key; promotion never guesses what a bad reference meant.
     """
     index_by_basename = {
         PurePosixPath(document.path).name: base_index + position
