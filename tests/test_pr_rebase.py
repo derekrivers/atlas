@@ -244,6 +244,10 @@ class LocalRemoteGitHubClient:
             },
         }
 
+    def fetch_branch_head(self, owner: str, repo: str, branch: str) -> str:
+        self.calls.append(("branch_head", owner, repo, branch))
+        return self.fixture.main_sha
+
     def compare_commits(
         self, owner: str, repo: str, base_sha: str, head_sha: str
     ) -> GitHubCompare:

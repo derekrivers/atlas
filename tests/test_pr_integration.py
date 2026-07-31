@@ -1,9 +1,10 @@
 """Exact-head PR integration assessment.
 
 These tests pin the shared read-only classifier behind ``atlas pr status``:
-it fetches one PR snapshot, compares the exact base/head SHAs from that
-snapshot, and derives separate eligibility, ancestry, mergeability, and overall
-statuses without touching Git, GitHub write APIs, Linear, or Atlas storage.
+it fetches one PR snapshot, resolves the live base branch head independently,
+compares that exact SHA to the exact PR head, and derives separate eligibility,
+ancestry, mergeability, and overall statuses without touching Git, GitHub write
+APIs, Linear, or Atlas storage.
 """
 
 from __future__ import annotations
@@ -106,7 +107,33 @@ def test_current_ahead_pr_uses_exact_shas_from_snapshot() -> None:
     assert assessment.merge_base_sha == BASE_SHA
     assert fake.calls == [
         ("pull_request", OWNER, REPO, PR_NUMBER),
+        ("branch_head", OWNER, REPO, "main"),
         ("compare", OWNER, REPO, f"{BASE_SHA}...{HEAD_SHA}"),
+    ]
+
+
+def test_stale_pr_uses_live_branch_head_not_historical_pr_base_sha() -> None:
+    current_main = "4444444444444444444444444444444444444444"
+    fake = FakeGitHubClient(
+        pull_request=pr_payload(),
+        branch_head_sha=current_main,
+        compare=compare(
+            GitHubCompareStatus.DIVERGED,
+            ahead_by=1,
+            behind_by=2,
+            merge_base_sha=BASE_SHA,
+        ),
+    )
+
+    assessment = assess_pr_integration(fake, OWNER, REPO, PR_NUMBER)
+
+    assert assessment.base_sha == current_main
+    assert assessment.ancestry is PRAncestryStatus.DIVERGED
+    assert assessment.integration_status is PRIntegrationStatus.DIVERGED
+    assert fake.calls == [
+        ("pull_request", OWNER, REPO, PR_NUMBER),
+        ("branch_head", OWNER, REPO, "main"),
+        ("compare", OWNER, REPO, f"{current_main}...{HEAD_SHA}"),
     ]
 
 

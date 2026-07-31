@@ -64,6 +64,7 @@ class FakeGitHubClient:
         pr_reviews: list[dict[str, Any]] | None = None,
         pr_files: list[dict[str, Any]] | None = None,
         pull_request: dict[str, Any] | None = None,
+        branch_head_sha: str | None = None,
         compare: GitHubCompare | None = None,
         compare_error: GitHubAPIError | None = None,
     ) -> None:
@@ -75,6 +76,11 @@ class FakeGitHubClient:
         # GitHubAPIError (the 404 path), so the CLI's clean-precondition exit is
         # exercised. A seeded dict replays as the recorded PR object.
         self._pull_request = pull_request
+        raw_base = (pull_request or {}).get("base")
+        payload_base_sha = raw_base.get("sha") if isinstance(raw_base, dict) else None
+        self._branch_head_sha = branch_head_sha or (
+            payload_base_sha if isinstance(payload_base_sha, str) else "0" * 40
+        )
         self._compare = compare or GitHubCompare(
             status=GitHubCompareStatus.AHEAD,
             ahead_by=1,
@@ -122,6 +128,10 @@ class FakeGitHubClient:
                 f"GitHub API HTTP 404: pull request {pr_number} not found"
             )
         return dict(self._pull_request)
+
+    def fetch_branch_head(self, owner: str, repo: str, branch: str) -> str:
+        self.calls.append(("branch_head", owner, repo, branch))
+        return self._branch_head_sha
 
     def compare_commits(
         self, owner: str, repo: str, base_sha: str, head_sha: str

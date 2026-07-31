@@ -1,10 +1,12 @@
 """Exact-head PR integration assessment.
 
 This module is the shared, read-only classifier for answering whether one
-GitHub PR head contains the exact current ``main`` commit named by the same PR
-snapshot. Transport parsing stays in ``atlas.github``; this service extracts
-the PR snapshot fields, calls compare with the two exact SHAs, and derives the
-Atlas statuses that presentation surfaces consume.
+GitHub PR head contains the exact current ``main`` commit. A pull-request
+object's ``base.sha`` is the base snapshot captured for that PR and can remain
+behind after a sibling merge, so the service resolves the live base branch head
+independently before calling compare with two exact SHAs. Transport parsing
+stays in ``atlas.github``; this service derives the Atlas statuses that
+presentation surfaces consume.
 """
 
 from __future__ import annotations
@@ -139,13 +141,18 @@ def assess_pr_integration(
             integration_status=PRIntegrationStatus.INELIGIBLE,
         )
 
+    current_base_sha = github_client.fetch_branch_head(
+        owner,
+        repo,
+        snapshot.base_ref,
+    )
     compare = github_client.compare_commits(
         owner,
         repo,
-        snapshot.base_sha,
+        current_base_sha,
         snapshot.head_sha,
     )
-    ancestry = _derive_ancestry(compare, base_sha=snapshot.base_sha)
+    ancestry = _derive_ancestry(compare, base_sha=current_base_sha)
     return PRIntegrationAssessment(
         owner=owner,
         repo=repo,
@@ -159,7 +166,7 @@ def assess_pr_integration(
         head_sha=snapshot.head_sha,
         head_repository=snapshot.head_repository,
         base_ref=snapshot.base_ref,
-        base_sha=snapshot.base_sha,
+        base_sha=current_base_sha,
         base_repository=snapshot.base_repository,
         merge_base_sha=compare.merge_base_sha,
         ahead_by=compare.ahead_by,
