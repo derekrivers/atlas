@@ -174,14 +174,16 @@ that scope is a blocker: the agent comments on Linear and moves the ticket to
 
 ADR-0008 fixes the ordering: rebase precedes push precedes CI, so
 system-tier evidence pins to the final head that is current against
-`origin/main` at handoff. The agent never rebases after entering
-`Review Required`. If a sibling PR merges first and makes the verdict stale,
-the operator either updates the branch directly (using GitHub's update-branch
-control or an equivalent rebase and force-push), or routes the ticket through
-`Changes Requested`. Either route changes the head commit, so evidence is
-re-pulled against the new head before the acceptance chain continues; on a
-`Changes Requested` resume, the agent rebases, pushes, and reruns CI on the new
-head.
+`origin/main` at handoff. Agents keep ATLAS-168's pre-handoff discipline:
+rebase before PR, before every push, and before moving to `Review Required`.
+The agent never rebases after entering `Review Required`. If a sibling PR
+merges first and makes the verdict stale, the operator uses the Phase 12
+operator-owned rebase lane for mechanical staleness; that lane leaves the
+ticket in `Review Required`. `Changes Requested` is reserved for implementation
+or other semantic remediation that must return to Symphony. Any route that
+changes the head commit makes old-head evidence and confirmations historical
+only; evidence, human confirmations, manual approval, and verification restart
+at the new exact head.
 
 `hooks.after_create` performs a full clone, not `git clone --depth 1`. A
 depth-1 clone can lack the merge base after a later fetch, which makes
@@ -234,6 +236,18 @@ GitHub mutation, Atlas-store row, or Linear transition. Exit code is zero only
 for `integration_status: current`; any rendered non-current, indeterminate, or
 ineligible assessment exits non-zero. Setup and transport failures render a
 single clean error line and no traceback.
+
+The canonical close driver uses the same assessment in process. Its initial
+freshness assessment runs after local/token/operator preflight but before
+`atlas evidence pull`, any Atlas write, confirmation, verification, or operator
+prompt. Only `integration_status: current` enters the acceptance spine; stale,
+conflicted, ineligible, indeterminate, or failed assessments exit before the
+spine and name `atlas pr rebase prepare --pr <N> --repo <owner>/<repo>` when the
+PR is eligible for the Phase 12 lane. After evidence, confirmation, and a
+PASSED `verify --json`, the driver performs a second fresh assessment before
+displaying the merge prompt. The live head must equal both the initial head and
+the verified head, and the live base SHA, branch identities, and repository
+identities must match the initial snapshot. Any movement restarts acceptance.
 
 ### Operator-owned PR rebase lane
 

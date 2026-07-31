@@ -298,10 +298,13 @@ def test_atlas_168_contract_pins_adr0008_ordering() -> None:
     assert "rebase precedes push precedes CI" in section
     assert "system-tier evidence pins to a head" in section
     assert "After entering `Review Required`, never rebase on your own" in section
-    assert "update the branch directly" in section
+    assert "Phase 12" in section
+    assert "mechanical staleness" in section
+    assert "leaves the ticket in `Review Required`" in section
     assert "`Changes Requested`" in section
+    assert "semantic remediation" in section
     assert "falls behind" in section
-    assert "rerun CI on the new head" in section
+    assert "acceptance chain restarts at the new exact head" in section
 
 
 def test_atlas_168_symphony_doc_records_design_rationale() -> None:

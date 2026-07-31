@@ -161,15 +161,17 @@ ticket to `Needs Human`, and do not improvise.
 
 Under ADR-0008, this ordering is binding: rebase precedes push precedes CI, so
 system-tier evidence pins to a head that is current against `origin/main` at
-handoff. After entering `Review Required`, never rebase on your own. If a
-sibling PR merges first and your branch falls behind
-`origin/main`, the operator chooses the route: they may update
-the branch directly (GitHub's update-branch control, or an
-equivalent rebase and force-push), or route the ticket through
-`Changes Requested` for you to resume. Either route changes the
-head commit, so evidence is re-pulled against the new head
-before the acceptance chain continues. On a `Changes Requested`
-resume, apply this same discipline and rerun CI on the new head.
+handoff. Agents keep ATLAS-168's pre-handoff discipline: rebase before PR,
+before every push, and before moving to `Review Required`. After entering
+`Review Required`, never rebase on your own. If a sibling PR merges first and
+your branch falls behind `origin/main`, the operator uses the Phase 12
+operator-owned rebase lane for mechanical staleness, and that lane leaves the
+ticket in `Review Required`. `Changes Requested` is reserved for implementation
+or other semantic remediation that must return to Symphony. Any route that
+changes the head commit makes old-head evidence and confirmations historical
+only; the acceptance chain restarts at the new exact head. The final freshness
+check still leaves the existing one-PR freeze-to-manual-merge window: the
+operator performs the GitHub merge manually before any sibling PR merges.
 
 ## How to move the ticket (you perform every transition)
 

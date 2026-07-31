@@ -353,6 +353,32 @@ def test_human_approval_ignores_wrong_commit_ticket_and_tier() -> None:
     assert result.status == ES.PENDING
 
 
+def test_rebased_head_ignores_old_head_machine_acceptance_and_approval() -> None:
+    ticket = make_ticket(risk_level=RiskLevel.HIGH, documentation_requirements=[])
+    evidence = [
+        sys_test(commit_sha=HEAD),
+        sys_lint(commit_sha=HEAD),
+        human_ac(AC1, commit_sha=HEAD),
+        human_ac(AC2, commit_sha=HEAD),
+        human_blanket(commit_sha=HEAD),
+    ]
+
+    result = evaluate_ticket(
+        ticket, pr_files=[DOC], head_commit=OTHER, evidence=evidence
+    )
+
+    assert result.status == ES.PENDING
+    for check_type in (
+        VT.TESTS,
+        VT.LINT,
+        VT.ACCEPTANCE_CRITERIA,
+        VT.HUMAN_APPROVAL,
+    ):
+        outcome = outcome_for(result, check_type)
+        assert outcome.status == ES.PENDING
+        assert outcome.evidence_ids == ()
+
+
 # --- AC8: dispatch routes the RIGHT evaluator with the RIGHT inputs. The scope
 # adapter must call evaluate_scope with the ticket's relevant_docs/source_anchor
 # and the PR file list — spied to assert the exact wiring.
