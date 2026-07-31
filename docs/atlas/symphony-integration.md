@@ -1,9 +1,11 @@
 # Symphony Integration Design
 
-Status: Active design document for Phase 8. Written one phase ahead per the
-phase-readiness rule; Phase 8 tickets must anchor to headings in this
-document. Companion to ADR-0006 (field ownership), ADR-0007 (planning),
-ADR-0008 (evidence).
+Status: Delivered integration design for Phases 8 and 12. Phase 8 established
+the agent handoff contract; Phase 12 delivered exact-head assessment, the
+operator-owned lease-guarded rebase lane and the binding acceptance-freshness
+restart. These contracts remain authoritative until superseded by a later
+canonical design. Companion to ADR-0006 (field ownership), ADR-0007
+(planning), ADR-0008 (evidence).
 
 ## Boundary
 
@@ -216,7 +218,7 @@ evidence.
 The exact-head definition is intentionally narrower than "GitHub says this
 can merge": a PR is `current` only when it is open, non-draft, same-repository,
 targets the literal base ref `main`, the compare response has `behind_by == 0`,
-the compare `merge_base_commit.sha` equals the PR snapshot's `base.sha`, and
+the compare `merge_base_commit.sha` equals the resolved current-main SHA, and
 `mergeable` is known not-conflicted. `mergeable: null`, a missing compare
 field, contradictory compare counts, or a transport failure fails closed and
 cannot yield `current`.

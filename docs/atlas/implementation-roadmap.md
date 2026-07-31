@@ -655,7 +655,7 @@ Carried forward:
 
 Design authority: docs/atlas/symphony-integration.md, section
 “Mainline freshness discipline”.
-Status: IN PROGRESS.
+Status: CLOSED.
 
 Phase 8 established agent-owned rebasing before a ticket reaches
 `Review Required`. Phase 12 closes the remaining post-handoff integration
@@ -665,15 +665,20 @@ while preserving exact-head evidence and human acceptance.
 
 ## Epic: Autonomous Delivery (E10)
 
-Planned serial delivery:
+Delivered E10 tickets (store keys):
 
-1. Exact-head PR mainline integration assessment.
-2. Operator-owned lease-guarded PR rebase lane.
-3. Mainline freshness gate and exact-head acceptance restart.
+```
+ATLAS-228 Exact-head PR mainline integration assessment                 — #286
+ATLAS-229 Operator-owned lease-guarded PR rebase lane                   — #287
+ATLAS-230 Mainline freshness gate and exact-head acceptance restart     — #288
+```
 
-The second item depends on the first. The third depends on both. Their real
-ticket keys are assigned only by `atlas apply`; this roadmap does not reserve
-or predict them.
+Phase 12 hand-delivered meta work:
+
+```
+ATLAS-046M Close Phase 11 and open Phase 12                             — #284
+ATLAS-047M Create the governed Phase 12 ticket batch                    — #285
+```
 
 Scope boundary:
 
@@ -696,6 +701,31 @@ protected by a lease pinned to the original head, CI must rerun, and old-head
 evidence and confirmations must not authorise the new head. A seeded PR-head
 race, main-head race, unresolved conflict or lease rejection must produce zero
 unintended remote mutation.
+
+The deterministic Phase 12 suite proves the complete lifecycle over real local
+Git repositories and injected GitHub/ticket boundaries, including every named
+race and refusal. The accepted delivery head reported 2,209 passing Python
+tests and all 14 required CI jobs green. The controlled live sibling-PR drill
+then took PR #291 from old head `8e5bc892` through the lease-guarded lane to
+republished head `8af6c33f` on exact current `main` `495fffaf`, reran all 14
+required CI jobs, rejected old-head evidence and confirmation, and reached a
+fresh passed exact-head verdict. The drill found historical-`base.sha`
+assumptions in assessment and publication; PRs #293 and #294 corrected both
+before the successful remote write.
+
+Closure: docs/closure/phase-12-closure-report.md.
+
+Carried forward:
+
+- The residual interval between the close driver's final live assessment and
+  the operator's manual GitHub merge remains governed by the one-PR freeze.
+  Merge queues and automatic merge authority remain deferred.
+- Planning must reject prose in exact-path fields before another ticket batch
+  reaches the store; Phase 12 required a surgical repair after verification
+  correctly refused an unmatchable documentation contract.
+- Verification and confirmation commands need clearer zero-action and pending
+  diagnostics; their current output can conceal the one check that blocks
+  closure even though the underlying verdict remains fail-closed.
 
 ---
 
