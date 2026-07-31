@@ -1,4 +1,0 @@
-Controlled Phase 12 live stale-PR drill mainline marker.
-
-This temporary marker forces a real tree-changing sibling merge so GitHub
-advances the trailing PR's base snapshot. PR #289 removes it after the drill.

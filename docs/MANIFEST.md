@@ -24,8 +24,9 @@ Strategy and specification (`docs/atlas/`):
   ADR-0010)
 - `implementation-roadmap.md` — executable delivery programme (Revision 1)
 - `bootstrap-guide.md` — day-one bootstrap guide
-- `symphony-integration.md` — Phase 8 integration design (state mapping,
-  pack delivery, transition ownership, retry seam)
+- `symphony-integration.md` — delivered Phase 8 and Phase 12 integration
+  design (state mapping, pack delivery, exact-head assessment,
+  operator-owned rebase lane, acceptance freshness and retry seam)
 
 Phase design documents (one per engine; phase-readiness rule below):
 
@@ -176,6 +177,10 @@ Phase closure reports (`docs/closure/`):
 - `docs/closure/phase-11-closure-report.md` — Phase 11 (Operator UI Read
   Surface) closure: live-API browser evidence, delivered ticket ledger,
   integration incidents, carry-forwards and criteria self-assessment
+- `docs/closure/phase-12-closure-report.md` — Phase 12 (Mainline Integration
+  Control) closure: exact-head and rebase-lane evidence, delivered ticket
+  ledger, review corrections, incidents, carry-forwards and criteria
+  self-assessment
 
 Stubs awaiting content: `docs/product/`. `docs/tech-debt/` holds the
 debt register (`docs/tech-debt/debt-register.md`), a hand-maintained,
