@@ -180,8 +180,9 @@ def _validate_manifest(
     expected_files = set(repository_files)
     actual_files = {
         line
-        for line in _git(repo_root, "diff", "--name-only", f"{base_commit}..HEAD")
-        .splitlines()
+        for line in _git(
+            repo_root, "diff", "--name-only", f"{base_commit}..HEAD"
+        ).splitlines()
         if line
     }
     if actual_files != expected_files:
@@ -292,8 +293,7 @@ def validate_inbox_batch_integrity(
 
     tracked_paths = {
         line
-        for line in _git(repo_root, "ls-tree", "-r", "--name-only", "HEAD")
-        .splitlines()
+        for line in _git(repo_root, "ls-tree", "-r", "--name-only", "HEAD").splitlines()
         if line
     }
     future_paths: set[str] = set()
@@ -312,9 +312,7 @@ def validate_inbox_batch_integrity(
 
     if has_ordered:
         numbers = [
-            int(match.group(1))
-            for match in ordered_matches
-            if match is not None
+            int(match.group(1)) for match in ordered_matches if match is not None
         ]
         expected = list(range(1, len(numbers) + 1))
         if numbers != expected:

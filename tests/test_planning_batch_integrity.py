@@ -7,16 +7,16 @@ from pathlib import Path
 import pytest
 import yaml
 from test_apply import APPLY_NOW, confirmed
-from test_plan_pipeline import PLAN_MD, PRODUCT_MD, git, make_repo
-from test_stubs_only import NOW, july_db
+from test_plan_pipeline import NOW, PLAN_MD, PRODUCT_MD, git, make_repo
+from test_stubs_only import july_db
 
 import atlas.planning.apply as apply_module
 from atlas.core.models import PlanRunStatus
 from atlas.planning.apply import run_apply
-from atlas.planning.pipeline import run_stubs_only_plan
+from atlas.planning.pipeline import PlanResult, run_stubs_only_plan
 from atlas.planning.promotion import StubPromotionError
 from atlas.planning.stub_integrity import PlanningBatchIntegrityError
-from atlas.storage import PlanRunRepo
+from atlas.storage import Database, PlanRunRepo
 
 INBOX = "docs/planning/inbox"
 MANIFEST = f"{INBOX}/planning-batch-phase-13-15.yaml"
@@ -97,7 +97,7 @@ def _phase_repo(
     return repo
 
 
-def _run(repo: Path, tmp_path: Path):
+def _run(repo: Path, tmp_path: Path) -> tuple[Database, PlanResult]:
     database = july_db(tmp_path)
     return database, run_stubs_only_plan(repo_root=repo, database=database, now=NOW)
 
@@ -174,9 +174,7 @@ def test_sibling_cycle_fails_before_order_diagnostic(tmp_path: Path) -> None:
     first_path, first = _stub(
         1, "Security foundation", depends_on=("inbox-stub-02-action-ledger.md",)
     )
-    second_path, second = _stub(
-        2, "Action ledger", depends_on=(Path(first_path).name,)
-    )
+    second_path, second = _stub(2, "Action ledger", depends_on=(Path(first_path).name,))
     repo = _phase_repo(tmp_path, [(first_path, first), (second_path, second)])
     database = july_db(tmp_path)
 
@@ -194,7 +192,7 @@ def test_apply_revalidates_and_retires_batch_manifest(
     assert result.status is PlanRunStatus.PROPOSED
 
     calls = 0
-    real_validate = apply_module.validate_inbox_batch_integrity
+    real_validate = apply_module.validate_inbox_batch_integrity  # type: ignore[attr-defined]
 
     def counting_validate(**kwargs: object) -> None:
         nonlocal calls
