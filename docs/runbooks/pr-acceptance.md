@@ -35,7 +35,19 @@ head after evidence is pulled restarts the spine from evidence.
   `uv run atlas pr status --pr <N> --repo <owner>/<repo>` (`--json` for the
   typed payload). The state vocabulary and exact definition live in
   `docs/atlas/symphony-integration.md#exact-head-pr-integration-assessment`;
-  this note does not add a binding step to the acceptance sequence yet.
+  use that diagnostic before deciding whether a PR is current enough to enter
+  the freeze.
+- If a Review Required PR is mechanically stale (`behind`, `diverged`, or
+  `conflicted`) before evidence is pulled, use the operator-owned lane rather
+  than routing through a Symphony implementation cycle:
+  `uv run atlas pr rebase prepare --pr <N> --repo <owner>/<repo>`. Resolve only
+  the stopped worktree conflicts, then run
+  `uv run atlas pr rebase continue --workspace <path>` until it reports
+  `ready_to_publish`, and publish with
+  `uv run atlas pr rebase publish --workspace <path>`. The lane refuses if the
+  PR moved, `main` moved, the PR is no longer open/non-draft/same-repository, or
+  the close-set tickets are not all `review_required`. It writes a receipt under
+  `.atlas/rebase-receipts/` and leaves tickets in `review_required`.
 
 ## 1. Review (reviewer-tier, not the gate)
 
@@ -52,6 +64,11 @@ Review is input to the operator, not the acceptance gate.
 No pushes, rebases, or GitHub "update branch" from here to merge. Note the
 head SHA. If it moves, return to step 3 — never merge on a verdict pinned
 to a superseded commit (the L-6 stale-verdict lesson).
+
+If the head is already mechanically stale before this freeze, use the rebase
+lane from step 0 first. Once evidence has been pulled, any head rewrite restarts
+the spine from evidence; do not use GitHub Update branch during the frozen
+interval.
 
 ## 3. Evidence
 
@@ -99,8 +116,11 @@ uv run python scripts/close_ticket.py <N> --repo <owner>/<repo> \
 Verdict PASSED → merge now, while the head is provably the verdict commit.
 Squash mints a new SHA on main; acceptable because the verdict gated the
 pre-merge decision at the verified head. No sibling lands during this
-freeze-to-merge interval. A trailing PR rebases after the merge and restarts
-its evidence spine; never hand-resolve a conflict on the agent's branch.
+freeze-to-merge interval. A trailing Review Required PR that becomes stale
+after the merge uses `atlas pr rebase prepare`, resolves conflicts only inside
+the managed `.atlas/rebase-workspaces/` worktree, publishes through the explicit
+old-head lease, and restarts its evidence spine; never hand-resolve a conflict
+on the primary checkout or through GitHub Update branch.
 
 ## 7. Record merged proof and verify again
 
@@ -164,6 +184,8 @@ success from silence alone — verify on the observable (board header,
   are noise.
 - Freeze the head between evidence and merge; a moved head restarts the
   spine.
+- Mechanically stale Review Required PRs use `atlas pr rebase`; the publish
+  guard is the pinned old-head lease, not GitHub Update branch.
 - Done is a gated system transition; never drag it manually.
 - Upgrade the schema after a migration-carrying merge, before the sync.
 - Needs Human is pull-invisible: repair and push passes cannot see a

@@ -108,13 +108,9 @@ from atlas.orchestration import (
     ConfirmPrompts,
     ContextInputs,
     ContextNotFoundError,
-    PRIntegrationAssessment,
-    PRIntegrationStatus,
-    assess_pr_integration,
     build_tick_config,
     capture_ticket,
     load_context_inputs,
-    pr_integration_assessment_json,
     resolve_github_client,
     resolve_pr_context,
     run_verify,
@@ -122,6 +118,8 @@ from atlas.orchestration import (
 from atlas.orchestration.pr_context import (
     parse_tickets_flag as _parse_tickets_flag,
 )
+from atlas.orchestration.pr_rebase import GitRunner
+from atlas.orchestration.pr_rebase_cli import add_pr_parser, run_pr_cli_command
 from atlas.planning.apply import (
     ApplyDecision,
     ApplyError,
@@ -413,7 +411,7 @@ def build_parser() -> argparse.ArgumentParser:
     _add_pm_parser(subcommands)
     _add_context_parser(subcommands)
     _add_evidence_parser(subcommands)
-    _add_pr_parser(subcommands)
+    add_pr_parser(subcommands)
     _add_verify_parser(subcommands)
     _add_confirm_parser(subcommands)
     _add_preflight_parser(subcommands)
@@ -650,31 +648,6 @@ def _add_evidence_parser(subcommands: argparse._SubParsersAction) -> None:  # ty
     show.add_argument("evidence_id", help="the evidence id (a UUID)")
     show.add_argument("--db", default=None, help="database URL")
     show.add_argument("--json", action="store_true", help="emit machine-readable JSON")
-
-
-def _add_pr_parser(subcommands: argparse._SubParsersAction) -> None:  # type: ignore[type-arg]
-    """The `atlas pr` group: read-only pull-request operator checks."""
-    pr = subcommands.add_parser(
-        "pr",
-        help="Pull-request read checks: exact-head integration status",
-    )
-    pr_sub = pr.add_subparsers(dest="pr_command", required=True)
-
-    status = pr_sub.add_parser(
-        "status",
-        help="Assess whether a PR's exact head contains the exact current main",
-    )
-    status.add_argument(
-        "--pr", type=int, required=True, help="the pull request number to assess"
-    )
-    status.add_argument(
-        "--repo",
-        required=True,
-        help="the GitHub repository as OWNER/REPO (not a path)",
-    )
-    status.add_argument(
-        "--json", action="store_true", help="emit machine-readable JSON"
-    )
 
 
 def _add_verify_parser(subcommands: argparse._SubParsersAction) -> None:  # type: ignore[type-arg]
@@ -1650,81 +1623,6 @@ def _evidence_command(
     return EXIT_PRECONDITION  # unreachable: evidence subparser is required
 
 
-def _pr_status_text(assessment: PRIntegrationAssessment) -> str:
-    compare_status = (
-        assessment.compare_status.value
-        if assessment.compare_status is not None
-        else "not_run"
-    )
-    compare_counts = (
-        "not_run"
-        if assessment.ahead_by is None or assessment.behind_by is None
-        else f"ahead_by={assessment.ahead_by} behind_by={assessment.behind_by}"
-    )
-    merge_base = assessment.merge_base_sha or "not_run"
-    return "\n".join(
-        [
-            f"PR integration for {assessment.owner}/{assessment.repo} "
-            f"#{assessment.pr_number}",
-            f"integration_status: {assessment.integration_status.value}",
-            f"eligibility: {assessment.eligibility.value}",
-            f"ancestry: {assessment.ancestry.value}",
-            f"mergeability: {assessment.mergeability.value}",
-            (
-                f"base: {assessment.base_repository} "
-                f"{assessment.base_ref}@{assessment.base_sha}"
-            ),
-            (
-                f"head: {assessment.head_repository} "
-                f"{assessment.head_ref}@{assessment.head_sha}"
-            ),
-            (f"compare: {compare_status} {compare_counts} merge_base={merge_base}"),
-        ]
-    )
-
-
-def _pr_status_command(
-    args: argparse.Namespace,
-    *,
-    github_client: GitHubClient | None,
-) -> int:
-    owner, sep, repo = args.repo.partition("/")
-    if not (owner and sep and repo) or "/" in repo:
-        print("--repo must be OWNER/REPO (e.g. acme/atlas).", file=sys.stderr)
-        return EXIT_PRECONDITION
-
-    try:
-        client = resolve_github_client(github_client)
-    except MissingGitHubTokenError as error:
-        print(error, file=sys.stderr)
-        return EXIT_PRECONDITION
-
-    try:
-        assessment = assess_pr_integration(client, owner, repo, args.pr)
-    except GitHubAPIError as error:
-        print(error, file=sys.stderr)
-        return EXIT_PRECONDITION
-
-    _emit(
-        pr_integration_assessment_json(assessment),
-        _pr_status_text(assessment),
-        as_json=args.json,
-    )
-    if assessment.integration_status is PRIntegrationStatus.CURRENT:
-        return EXIT_OK
-    return EXIT_RECORDED_FAILURE
-
-
-def _pr_command(
-    args: argparse.Namespace,
-    *,
-    github_client: GitHubClient | None,
-) -> int:
-    if args.pr_command == "status":
-        return _pr_status_command(args, github_client=github_client)
-    return EXIT_PRECONDITION  # unreachable: pr subparser is required
-
-
 def _verify_check_text(outcome: CheckOutcome) -> str:
     """One per-check line in the human report (D4): status, type, gating flag,
     evidence ids, and the evaluator's reason (which already reads e.g. 'awaiting
@@ -2593,11 +2491,12 @@ def main(
     github_client: GitHubClient | None = None,
     linear_client: LinearClient | None = None,
     model_probe: ModelProbe | None = None,
+    git_runner: GitRunner | None = None,
 ) -> int:
     """Entry point. ``database``/``client``/``identity``/``staged_generator``/
-    ``github_client``/``linear_client``/``model_probe`` are injectable for
-    tests; production builds them from the environment (and the C6 model probe
-    shells out to Codex)."""
+    ``github_client``/``linear_client``/``model_probe``/``git_runner`` are
+    injectable for tests; production builds them from the environment (and the
+    C6 model probe shells out to Codex)."""
     args = build_parser().parse_args(argv)
     _configure_logging(bool(getattr(args, "verbose", False)))
     if args.command == "plan":
@@ -2619,7 +2518,12 @@ def main(
     if args.command == "evidence":
         return _evidence_command(args, database=database, github_client=github_client)
     if args.command == "pr":
-        return _pr_command(args, github_client=github_client)
+        return run_pr_cli_command(
+            args,
+            github_client=github_client,
+            database=database,
+            git_runner=git_runner,
+        )
     if args.command == "verify":
         return _verify_command(args, database=database, github_client=github_client)
     if args.command == "confirm":

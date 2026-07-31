@@ -60,6 +60,8 @@ class PRIntegrationAssessment:
     owner: str
     repo: str
     pr_number: int
+    pr_title: str | None
+    pr_body: str | None
     pr_state: str
     pr_draft: bool
     pr_merged: bool
@@ -86,6 +88,8 @@ class PRIntegrationAssessment:
 @dataclass(frozen=True)
 class _PRSnapshot:
     number: int
+    title: str | None
+    body: str | None
     state: str
     draft: bool
     merged: bool
@@ -114,6 +118,8 @@ def assess_pr_integration(
             owner=owner,
             repo=repo,
             pr_number=snapshot.number,
+            pr_title=snapshot.title,
+            pr_body=snapshot.body,
             pr_state=snapshot.state,
             pr_draft=snapshot.draft,
             pr_merged=snapshot.merged,
@@ -144,6 +150,8 @@ def assess_pr_integration(
         owner=owner,
         repo=repo,
         pr_number=snapshot.number,
+        pr_title=snapshot.title,
+        pr_body=snapshot.body,
         pr_state=snapshot.state,
         pr_draft=snapshot.draft,
         pr_merged=snapshot.merged,
@@ -175,6 +183,7 @@ def pr_integration_assessment_json(
         "repository": {"owner": assessment.owner, "repo": assessment.repo},
         "pr": {
             "number": assessment.pr_number,
+            "title": assessment.pr_title,
             "state": assessment.pr_state,
             "draft": assessment.pr_draft,
             "merged": assessment.pr_merged,
@@ -225,6 +234,8 @@ def _snapshot_from_pull_request(
 
     return _PRSnapshot(
         number=number,
+        title=_optional_str(pull_request, "title", label="pull-request response"),
+        body=_optional_str(pull_request, "body", label="pull-request response"),
         state=state,
         draft=draft,
         merged=merged,
@@ -300,6 +311,15 @@ def _required_str(payload: Mapping[str, Any], key: str, *, label: str) -> str:
     value = payload.get(key)
     if not isinstance(value, str) or not value:
         raise GitHubAPIError(f"GitHub API {label} missing string field {key!r}")
+    return value
+
+
+def _optional_str(payload: Mapping[str, Any], key: str, *, label: str) -> str | None:
+    value = payload.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise GitHubAPIError(f"GitHub API {label} field {key!r} was not a string")
     return value
 
 
