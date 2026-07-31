@@ -284,17 +284,43 @@ Knowledge Update
 
 # 13. Phase Roadmap
 
-Phase 0 - Foundation
-Phase 1 - Knowledge System
-Phase 2 - Planning Engine
-Phase 3 - Dependency Engine
-Phase 4 - PM Engine
-Phase 5 - Context Renderer
-Phase 6 - Evidence System
-Phase 7 - Verification Engine
-Phase 8 - Symphony Integration
-Phase 9 - Learning System
-Phase 10 - Multi-Product Atlas
+Delivered foundation:
+
+- Phase 0 — Foundation and Mechanical Trust
+- Phase 1 — Knowledge Core
+- Phase 2 — Planning Engine
+- Phase 3 — Dependency Engine
+- Phase 3.5 — Layer Consolidation
+- Phase 4 — PM Engine
+- Phase 5 — Context Renderer
+- Phase 6 — Evidence System
+- Phase 7 — Verification Engine
+- Phase 8 — Symphony Integration
+- Phase 9 — Learning System
+- Phase 10 — Operator API Read Surface
+- Phase 11 — Operator UI Read Surface
+- Phase 12 — Mainline Integration Control
+
+Recorded programme direction:
+
+- Phase 13 — Governed Operator Actions
+- Phase 14 — Review Acceptance Console
+- Phase 15 — Multi-Agent Delivery Control
+- Phase 16 — Delivery Intelligence and Agent Evaluation
+- Phase 17 — Technical Debt and Reliability Steward
+- Phase 18 — Governed Adaptive Planning
+- Phase 19 — Multi-Product Control Plane
+- Phase 20 — Atlas Managing Atlas
+
+Phases 13–15 are the next rolling-wave planning horizon. Their design
+preparation may proceed, but plan/apply is gated until Atlas itself rejects
+invalid exact-path fields and validates dependency identity, ordering, cycles
+and manifest coverage. That Planning Engine repair is hand-delivered rather
+than minted through the defective path it repairs. Phases 16–20 are
+architectural direction only until their post-Phase-15 and post-Phase-18 design
+gates. The canonical ordering, authority boundaries and milestone outcomes are
+defined in `docs/atlas/phase-13-20-programme-horizon.md`; delivery state remains
+canonical in `docs/atlas/implementation-roadmap.md`.
 
 ---
 
