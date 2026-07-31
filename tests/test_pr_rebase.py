@@ -41,6 +41,13 @@ NOW = datetime(2026, 1, 2, 3, 4, 5, tzinfo=UTC)
 PRODUCT_ID = UUID("00000000-0000-0000-0000-000000000001")
 EPIC_ID = UUID("00000000-0000-0000-0000-000000000002")
 TICKET_ID = UUID("00000000-0000-0000-0000-000000000003")
+RERERE_DISABLED_PREFIX = (
+    "-c",
+    "rerere.enabled=false",
+    "-c",
+    "rerere.autoupdate=false",
+    "rebase",
+)
 
 
 def _git(cwd: Path, *argv: str, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -90,9 +97,10 @@ class RepoFixture:
 
 
 def _repo_fixture(tmp_path: Path, *, mode: str) -> RepoFixture:
-    remote = tmp_path / "remote.git"
+    remote = tmp_path / OWNER / f"{REPO}.git"
     seed = tmp_path / "seed"
     primary = tmp_path / "primary"
+    remote.parent.mkdir()
     _git(tmp_path, "init", "--bare", str(remote))
     seed.mkdir()
     _git(seed, "init", "-b", "main")
@@ -298,10 +306,17 @@ class FakeTicketLookup:
 
 
 class RecordingGitRunner:
-    def __init__(self, *, before_push: Callable[[], None] | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        before_push: Callable[[], None] | None = None,
+        after_push: Callable[[], None] | None = None,
+    ) -> None:
         self.calls: list[tuple[Path, tuple[str, ...]]] = []
         self.before_push = before_push
+        self.after_push = after_push
         self._pushed = False
+        self._after_pushed = False
 
     def __call__(
         self,
@@ -320,7 +335,17 @@ class RecordingGitRunner:
         ):
             self._pushed = True
             self.before_push()
-        return run_git(cwd, argv, env=env)
+        result = run_git(cwd, argv, env=env)
+        if (
+            args
+            and args[0] == "push"
+            and result.returncode == 0
+            and self.after_push is not None
+            and not self._after_pushed
+        ):
+            self._after_pushed = True
+            self.after_push()
+        return result
 
 
 def _minimal_repo(tmp_path: Path) -> Path:
@@ -385,6 +410,10 @@ def _write_manifest_payload(workspace: Path, payload: Mapping[str, Any]) -> None
         json.dumps(payload, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
+
+
+def _push_calls(runner: RecordingGitRunner) -> list[tuple[str, ...]]:
+    return [argv for _cwd, argv in runner.calls if argv and argv[0] == "push"]
 
 
 def test_prepare_gate_refuses_before_local_git_mutation_for_non_rebaseable_prs(
@@ -565,7 +594,44 @@ def test_prepare_conflict_records_exact_unmerged_paths_and_preserves_stopped_reb
         _git_stdout(fixture.remote, "rev-parse", f"refs/heads/{BRANCH}")
         == fixture.feature_sha
     )
-    assert [argv[0] for _cwd, argv in runner.calls if argv].count("push") == 0
+    assert _push_calls(runner) == []
+
+
+def test_prepare_disables_repository_rerere_autoupdate_for_rebase(
+    tmp_path: Path,
+) -> None:
+    fixture = _repo_fixture(tmp_path, mode="conflict")
+    _git(fixture.primary, "config", "rerere.enabled", "true")
+    _git(fixture.primary, "config", "rerere.autoupdate", "true")
+
+    _git(fixture.primary, "checkout", "--detach", fixture.feature_sha)
+    seeded = _git(fixture.primary, "rebase", fixture.main_sha, check=False)
+    assert seeded.returncode != 0
+    (fixture.primary / "shared.txt").write_text(
+        "previous manual resolution\n", encoding="utf-8"
+    )
+    _git(fixture.primary, "add", "shared.txt")
+    _git(fixture.primary, "-c", "core.editor=true", "rebase", "--continue")
+    _git(fixture.primary, "checkout", "operator")
+
+    client = LocalRemoteGitHubClient(fixture, mergeable=False)
+    runner = RecordingGitRunner()
+    result = prepare_pr_rebase(
+        repo_slug=REPO_SLUG,
+        pr_number=PR_NUMBER,
+        repo_root=fixture.primary,
+        github_client=client,
+        ticket_lookup=_ready_lookup(),
+        git_runner=runner,
+        now=NOW,
+    )
+
+    assert result.outcome is PRRebaseOutcome.CONFLICTS_PENDING
+    assert result.conflict_paths == ("shared.txt",)
+    assert any(
+        argv == (*RERERE_DISABLED_PREFIX, fixture.main_sha)
+        for _cwd, argv in runner.calls
+    )
 
 
 def test_continue_refuses_unresolved_entries_and_records_later_conflict_sets(
@@ -622,6 +688,9 @@ def test_continue_refuses_unresolved_entries_and_records_later_conflict_sets(
     )
     assert ready.outcome is PRRebaseOutcome.READY_TO_PUBLISH
     assert _manifest_payload(workspace)["state"] == PRRebaseState.READY_TO_PUBLISH.value
+    assert any(
+        argv == (*RERERE_DISABLED_PREFIX, "--continue") for _cwd, argv in runner.calls
+    )
 
 
 @pytest.mark.parametrize("moved_ref", ["head", "main"])
@@ -662,7 +731,7 @@ def test_publish_refetches_live_refs_and_refuses_moved_head_or_main_before_push(
         )
 
     assert workspace.exists()
-    assert [argv for _cwd, argv in runner.calls if argv and argv[0] == "push"] == []
+    assert _push_calls(runner) == []
 
 
 def test_publish_uses_explicit_expected_value_lease_and_writes_receipt_cleanup(
@@ -690,7 +759,7 @@ def test_publish_uses_explicit_expected_value_lease_and_writes_receipt_cleanup(
         _git_stdout(fixture.remote, "rev-parse", f"refs/heads/{BRANCH}")
         == published.new_head_sha
     )
-    push_calls = [argv for _cwd, argv in runner.calls if argv and argv[0] == "push"]
+    push_calls = _push_calls(runner)
     assert push_calls == [
         (
             "push",
@@ -707,7 +776,121 @@ def test_publish_uses_explicit_expected_value_lease_and_writes_receipt_cleanup(
     assert receipt["merge_base_sha"] == fixture.base_sha
     assert receipt["new_head_sha"] == published.new_head_sha
     assert receipt["branch"] == BRANCH
+    assert receipt["remote_name"] == "origin"
+    assert receipt["remote_repo_slug"] == REPO_SLUG
+    assert receipt["remote_url_kind"] == "local_path"
     assert receipt["conflict_paths"] == []
+
+
+def test_publish_pending_retry_pushes_when_remote_still_equals_old_head(
+    tmp_path: Path,
+) -> None:
+    fixture = _repo_fixture(tmp_path, mode="clean")
+    result, runner, client = _prepare_ready(fixture)
+    assert result.workspace_path is not None
+    workspace = result.workspace_path
+    payload = _manifest_payload(workspace)
+    payload["state"] = PRRebaseState.LEASE_PUSH_PENDING.value
+    payload["remote_name"] = "origin"
+    payload["remote_repo_slug"] = REPO_SLUG
+    payload["remote_url_kind"] = "local_path"
+    payload["pending_push_expected_old_head_sha"] = fixture.feature_sha
+    payload["pending_push_rebased_head_sha"] = result.new_head_sha
+    _write_manifest_payload(workspace, payload)
+
+    published = publish_pr_rebase(
+        workspace_path=workspace,
+        repo_root=fixture.primary,
+        github_client=client,
+        git_runner=runner,
+        now=NOW,
+        sleep=lambda _seconds: None,
+    )
+
+    assert published.outcome is PRRebaseOutcome.PUBLISHED
+    assert _push_calls(runner) == [
+        (
+            "push",
+            f"--force-with-lease=refs/heads/{BRANCH}:{fixture.feature_sha}",
+            "origin",
+            f"{result.new_head_sha}:refs/heads/{BRANCH}",
+        )
+    ]
+
+
+def test_publish_recovers_lease_pending_after_crash_immediately_after_push(
+    tmp_path: Path,
+) -> None:
+    fixture = _repo_fixture(tmp_path, mode="clean")
+
+    def crash() -> None:
+        raise RuntimeError("crash after push")
+
+    runner = RecordingGitRunner(after_push=crash)
+    result, runner, client = _prepare_ready(fixture, runner=runner)
+    assert result.workspace_path is not None
+    workspace = result.workspace_path
+
+    with pytest.raises(RuntimeError, match="crash after push"):
+        publish_pr_rebase(
+            workspace_path=workspace,
+            repo_root=fixture.primary,
+            github_client=client,
+            git_runner=runner,
+            now=NOW,
+            sleep=lambda _seconds: None,
+        )
+
+    assert (
+        _git_stdout(fixture.remote, "rev-parse", f"refs/heads/{BRANCH}")
+        == result.new_head_sha
+    )
+    payload = _manifest_payload(workspace)
+    assert payload["state"] == PRRebaseState.LEASE_PUSH_PENDING.value
+    assert payload["pending_push_expected_old_head_sha"] == fixture.feature_sha
+    assert payload["pending_push_rebased_head_sha"] == result.new_head_sha
+    assert payload["remote_repo_slug"] == REPO_SLUG
+
+    published = publish_pr_rebase(
+        workspace_path=workspace,
+        repo_root=fixture.primary,
+        github_client=client,
+        git_runner=runner,
+        now=NOW,
+        sleep=lambda _seconds: None,
+    )
+
+    assert published.outcome is PRRebaseOutcome.PUBLISHED
+    assert not workspace.exists()
+    assert len(_push_calls(runner)) == 1
+
+
+def test_publish_refuses_origin_push_repository_mismatch_before_push(
+    tmp_path: Path,
+) -> None:
+    fixture = _repo_fixture(tmp_path, mode="clean")
+    result, runner, client = _prepare_ready(fixture)
+    assert result.workspace_path is not None
+    wrong_remote = tmp_path / "fork" / f"{REPO}.git"
+    wrong_remote.parent.mkdir()
+    _git(tmp_path, "init", "--bare", str(wrong_remote))
+    _git(fixture.primary, "remote", "set-url", "--push", "origin", str(wrong_remote))
+
+    with pytest.raises(PRRebaseRefusal, match="origin push URL targets fork/atlas"):
+        publish_pr_rebase(
+            workspace_path=result.workspace_path,
+            repo_root=fixture.primary,
+            github_client=client,
+            git_runner=runner,
+            now=NOW,
+            sleep=lambda _seconds: None,
+        )
+
+    assert _push_calls(runner) == []
+    assert (
+        _git_stdout(fixture.remote, "rev-parse", f"refs/heads/{BRANCH}")
+        == fixture.feature_sha
+    )
 
 
 def test_publish_from_unverified_state_reverifies_without_repeating_old_head_push(
@@ -744,7 +927,7 @@ def test_publish_from_unverified_state_reverifies_without_repeating_old_head_pus
 
     assert published.outcome is PRRebaseOutcome.PUBLISHED
     assert not workspace.exists()
-    assert len([argv for _cwd, argv in runner.calls if argv and argv[0] == "push"]) == 1
+    assert len(_push_calls(runner)) == 1
 
 
 def test_last_moment_remote_head_race_lease_rejection_changes_no_remote_ref(
@@ -776,8 +959,18 @@ def test_last_moment_remote_head_race_lease_rejection_changes_no_remote_ref(
     assert _git_stdout(fixture.remote, "rev-parse", f"refs/heads/{BRANCH}") == race_sha
     assert (
         _manifest_payload(result.workspace_path)["state"]
-        == PRRebaseState.READY_TO_PUBLISH.value
+        == PRRebaseState.LEASE_PUSH_PENDING.value
     )
+    with pytest.raises(PRRebaseRefusal, match="expected one of"):
+        publish_pr_rebase(
+            workspace_path=result.workspace_path,
+            repo_root=fixture.primary,
+            github_client=client,
+            git_runner=runner,
+            now=NOW,
+            sleep=lambda _seconds: None,
+        )
+    assert len(_push_calls(runner)) == 1
 
 
 def test_abort_aborts_in_progress_rebase_and_removes_named_worktree_through_git(
@@ -940,5 +1133,5 @@ def test_publish_refuses_changed_branch_repo_identity_and_incomplete_snapshot(
             now=NOW,
             sleep=lambda _seconds: None,
         )
-    assert [argv for _cwd, argv in runner.calls if argv and argv[0] == "push"] == []
+    assert _push_calls(runner) == []
     assert workspace.exists()

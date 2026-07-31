@@ -60,7 +60,16 @@ assessment and post-push verification use the Atlas CLI `GITHUB_TOKEN`; the
 local `git fetch`, `git rebase`, and lease-guarded `git push` use the git
 credential helper for `origin`. A token that can read PRs but cannot push will
 therefore prepare a workspace and fail only at publish, leaving the worktree
-recoverable.
+recoverable. Before the publish boundary, Atlas resolves
+`git remote get-url --push origin` and refuses unless that push URL identifies
+the same repository named by the rebase manifest; this prevents a checkout with
+a fork or mirror as `origin` from rewriting the wrong branch. The manifest
+records the sanitized `origin` identity, not a token-bearing URL.
+
+Operator Git config does not decide conflict resolution in this lane. Atlas
+invokes both initial and continued rebases with `rerere.enabled=false` and
+`rerere.autoupdate=false`, so remembered resolutions are not reused or staged
+automatically.
 
 The managed worktrees live under `.atlas/rebase-workspaces/` in this repository
 and receipts live under `.atlas/rebase-receipts/`. The whole `.atlas/` root is
@@ -68,8 +77,10 @@ ignored by Git, so these files are local operational state, not PR content.
 Never move a workspace by hand: `continue`, `publish`, and `abort` require the
 canonical path to remain beneath that root and require the workspace manifest to
 match the current repository. A successful publish removes the linked worktree
-through Git only after a receipt exists; a `push_succeeded_unverified` workspace
-is not abortable because the remote branch may already have changed.
+through Git only after a receipt exists; `lease_push_pending` and
+`push_succeeded_unverified` workspaces are not abortable because the remote
+branch may already have changed. Rerun `publish` to reconcile or verify those
+states.
 
 ## Codex runtime
 

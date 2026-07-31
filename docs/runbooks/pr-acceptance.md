@@ -46,8 +46,12 @@ head after evidence is pulled restarts the spine from evidence.
   `ready_to_publish`, and publish with
   `uv run atlas pr rebase publish --workspace <path>`. The lane refuses if the
   PR moved, `main` moved, the PR is no longer open/non-draft/same-repository, or
-  the close-set tickets are not all `review_required`. It writes a receipt under
-  `.atlas/rebase-receipts/` and leaves tickets in `review_required`.
+  the close-set tickets are not all `review_required`. Publish also verifies
+  that local `origin` pushes to the same repository named by `--repo`, writes a
+  durable `lease_push_pending` state before the force-with-lease boundary, and
+  recovers that state on retry by comparing `origin` with the expected old and
+  rebased heads. It writes a receipt under `.atlas/rebase-receipts/` and leaves
+  tickets in `review_required`.
 
 ## 1. Review (reviewer-tier, not the gate)
 
@@ -120,7 +124,9 @@ freeze-to-merge interval. A trailing Review Required PR that becomes stale
 after the merge uses `atlas pr rebase prepare`, resolves conflicts only inside
 the managed `.atlas/rebase-workspaces/` worktree, publishes through the explicit
 old-head lease, and restarts its evidence spine; never hand-resolve a conflict
-on the primary checkout or through GitHub Update branch.
+on the primary checkout or through GitHub Update branch. The rebase lane runs
+with rerere and rerere autoupdate disabled, so every conflict stop remains an
+operator decision even when the repository has remembered resolutions.
 
 ## 7. Record merged proof and verify again
 

@@ -19,6 +19,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
 from typing import Any, Protocol, cast
+from urllib.parse import urlparse
 
 from atlas.core.models import Ticket, TicketStatus
 from atlas.github import GitHubAPIError, GitHubClient
@@ -45,6 +46,7 @@ class PRRebaseState(StrEnum):
     PREPARED = "prepared"
     CONFLICTS_PENDING = "conflicts_pending"
     READY_TO_PUBLISH = "ready_to_publish"
+    LEASE_PUSH_PENDING = "lease_push_pending"
     PUSH_SUCCEEDED_UNVERIFIED = "push_succeeded_unverified"
     PUBLISHED = "published"
 
@@ -157,6 +159,11 @@ class RebaseManifest:
     transitions: tuple[StateTransition, ...]
     rebased_head_sha: str | None = None
     receipt_path: Path | None = None
+    remote_name: str | None = None
+    remote_repo_slug: str | None = None
+    remote_url_kind: str | None = None
+    pending_push_expected_old_head_sha: str | None = None
+    pending_push_rebased_head_sha: str | None = None
 
     @property
     def manifest_path(self) -> Path:
@@ -189,6 +196,13 @@ class RebaseManifest:
             "receipt_path": (
                 None if self.receipt_path is None else str(self.receipt_path)
             ),
+            "remote_name": self.remote_name,
+            "remote_repo_slug": self.remote_repo_slug,
+            "remote_url_kind": self.remote_url_kind,
+            "pending_push_expected_old_head_sha": (
+                self.pending_push_expected_old_head_sha
+            ),
+            "pending_push_rebased_head_sha": self.pending_push_rebased_head_sha,
         }
 
     @classmethod
@@ -213,6 +227,29 @@ class RebaseManifest:
         if rebased_head is not None:
             _require_sha_value(rebased_head, label="manifest rebased_head_sha")
         receipt = _optional_str(payload, "receipt_path", label="manifest")
+        remote_name = _optional_str(payload, "remote_name", label="manifest")
+        remote_repo_slug = _optional_str(payload, "remote_repo_slug", label="manifest")
+        remote_url_kind = _optional_str(payload, "remote_url_kind", label="manifest")
+        pending_old_head = _optional_str(
+            payload,
+            "pending_push_expected_old_head_sha",
+            label="manifest",
+        )
+        if pending_old_head is not None:
+            _require_sha_value(
+                pending_old_head,
+                label="manifest pending_push_expected_old_head_sha",
+            )
+        pending_rebased_head = _optional_str(
+            payload,
+            "pending_push_rebased_head_sha",
+            label="manifest",
+        )
+        if pending_rebased_head is not None:
+            _require_sha_value(
+                pending_rebased_head,
+                label="manifest pending_push_rebased_head_sha",
+            )
         merge_base_sha = _required_str(payload, "merge_base_sha", label="manifest")
         if not _is_sha(merge_base_sha):
             raise PRRebasePreconditionError("manifest merge_base_sha was not a SHA")
@@ -230,7 +267,8 @@ class RebaseManifest:
             raise PRRebasePreconditionError("rebase manifest conflict_sets invalid")
         if len(transitions) != len(raw_transitions):
             raise PRRebasePreconditionError("rebase manifest transitions invalid")
-        return cls(
+        state = _state_from_str(_required_str(payload, "state", label="manifest"))
+        manifest = cls(
             schema_version=schema_version,
             kind=kind,
             repo_slug=_required_str(payload, "repo_slug", label="manifest"),
@@ -245,14 +283,30 @@ class RebaseManifest:
             workspace_path=Path(
                 _required_str(payload, "workspace_path", label="manifest")
             ),
-            state=_state_from_str(_required_str(payload, "state", label="manifest")),
+            state=state,
             created_at=_required_str(payload, "created_at", label="manifest"),
             updated_at=_required_str(payload, "updated_at", label="manifest"),
             conflict_sets=conflict_sets,
             transitions=transitions,
             rebased_head_sha=rebased_head,
             receipt_path=None if receipt is None else Path(receipt),
+            remote_name=remote_name,
+            remote_repo_slug=remote_repo_slug,
+            remote_url_kind=remote_url_kind,
+            pending_push_expected_old_head_sha=pending_old_head,
+            pending_push_rebased_head_sha=pending_rebased_head,
         )
+        if manifest.state is PRRebaseState.LEASE_PUSH_PENDING and (
+            manifest.pending_push_expected_old_head_sha != manifest.original_head_sha
+            or manifest.pending_push_rebased_head_sha != manifest.rebased_head_sha
+            or manifest.remote_name is None
+            or manifest.remote_repo_slug is None
+            or manifest.remote_url_kind is None
+        ):
+            raise PRRebasePreconditionError(
+                "lease-pending manifest is missing expected push identity"
+            )
+        return manifest
 
     def transition(
         self,
@@ -262,6 +316,9 @@ class RebaseManifest:
         reason: str,
         rebased_head_sha: str | None | object = _UNCHANGED,
         receipt_path: Path | None | object = _UNCHANGED,
+        remote_identity: _RemoteIdentity | None | object = _UNCHANGED,
+        pending_push_expected_old_head_sha: str | None | object = _UNCHANGED,
+        pending_push_rebased_head_sha: str | None | object = _UNCHANGED,
         conflict_paths: Sequence[str] | None = None,
     ) -> RebaseManifest:
         conflicts = self.conflict_sets
@@ -288,6 +345,43 @@ class RebaseManifest:
                 self.receipt_path
                 if receipt_path is _UNCHANGED
                 else cast(Path | None, receipt_path)
+            ),
+            remote_name=(
+                self.remote_name
+                if remote_identity is _UNCHANGED
+                else (
+                    None
+                    if remote_identity is None
+                    else cast(_RemoteIdentity, remote_identity).remote_name
+                )
+            ),
+            remote_repo_slug=(
+                self.remote_repo_slug
+                if remote_identity is _UNCHANGED
+                else (
+                    None
+                    if remote_identity is None
+                    else cast(_RemoteIdentity, remote_identity).repo_slug
+                )
+            ),
+            remote_url_kind=(
+                self.remote_url_kind
+                if remote_identity is _UNCHANGED
+                else (
+                    None
+                    if remote_identity is None
+                    else cast(_RemoteIdentity, remote_identity).url_kind
+                )
+            ),
+            pending_push_expected_old_head_sha=(
+                self.pending_push_expected_old_head_sha
+                if pending_push_expected_old_head_sha is _UNCHANGED
+                else cast(str | None, pending_push_expected_old_head_sha)
+            ),
+            pending_push_rebased_head_sha=(
+                self.pending_push_rebased_head_sha
+                if pending_push_rebased_head_sha is _UNCHANGED
+                else cast(str | None, pending_push_rebased_head_sha)
             ),
         )
 
@@ -321,6 +415,20 @@ class _LivePRSnapshot:
     base_ref: str
     base_sha: str
     base_repository: str
+
+
+@dataclass(frozen=True)
+class _RemoteIdentity:
+    remote_name: str
+    repo_slug: str
+    url_kind: str
+
+
+@dataclass(frozen=True)
+class _PublishPreconditions:
+    remote_identity: _RemoteIdentity
+    remote_head_sha: str
+    remote_base_sha: str
 
 
 def run_git(
@@ -501,7 +609,7 @@ def prepare_pr_rebase(
     )
     _write_manifest(manifest)
 
-    rebase_result = git_runner(workspace, ["rebase", assessment.base_sha])
+    rebase_result = git_runner(workspace, _rebase_argv(assessment.base_sha))
     if rebase_result.returncode == 0:
         new_head = _rev_parse(workspace, "HEAD", git_runner=git_runner)
         ready = manifest.transition(
@@ -567,7 +675,7 @@ def continue_pr_rebase(
 
     result = git_runner(
         manifest.workspace_path,
-        ["rebase", "--continue"],
+        _rebase_argv("--continue"),
         env={
             "GIT_EDITOR": "true",
             "GIT_SEQUENCE_EDITOR": "true",
@@ -643,6 +751,15 @@ def publish_pr_rebase(
             sleep=sleep,
             verify_attempts=verify_attempts,
         )
+    if manifest.state is PRRebaseState.LEASE_PUSH_PENDING:
+        return _resume_pending_publish(
+            manifest,
+            github_client=github_client,
+            git_runner=git_runner,
+            now=now,
+            sleep=sleep,
+            verify_attempts=verify_attempts,
+        )
     if manifest.state is not PRRebaseState.READY_TO_PUBLISH:
         raise PRRebaseRefusal(
             f"workspace is {manifest.state.value}, not ready_to_publish."
@@ -657,27 +774,37 @@ def publish_pr_rebase(
             f"{manifest.rebased_head_sha}, got {current_head}."
         )
 
-    _publish_preconditions(
+    preconditions = _publish_preconditions(
         manifest,
         github_client=github_client,
         git_runner=git_runner,
+        allowed_head_shas=(manifest.original_head_sha,),
     )
+    pending = manifest.transition(
+        PRRebaseState.LEASE_PUSH_PENDING,
+        timestamp=_timestamp(now),
+        reason="lease-protected push about to start",
+        remote_identity=preconditions.remote_identity,
+        pending_push_expected_old_head_sha=manifest.original_head_sha,
+        pending_push_rebased_head_sha=manifest.rebased_head_sha,
+    )
+    _write_manifest(pending)
 
     push_argv = [
         "push",
-        f"--force-with-lease={manifest.head_branch_ref}:{manifest.original_head_sha}",
+        f"--force-with-lease={pending.head_branch_ref}:{pending.original_head_sha}",
         REMOTE_NAME,
-        f"{manifest.rebased_head_sha}:{manifest.head_branch_ref}",
+        f"{pending.rebased_head_sha}:{pending.head_branch_ref}",
     ]
-    push_result = git_runner(manifest.repo_root, push_argv)
+    push_result = git_runner(pending.repo_root, push_argv)
     if push_result.returncode != 0:
         return _manifest_result(
-            manifest,
+            pending,
             outcome=PRRebaseOutcome.REFUSED,
             message=_git_failed("lease-protected push", push_result),
         )
 
-    pushed = manifest.transition(
+    pushed = pending.transition(
         PRRebaseState.PUSH_SUCCEEDED_UNVERIFIED,
         timestamp=_timestamp(now),
         reason="lease-protected push succeeded",
@@ -707,6 +834,7 @@ def abort_pr_rebase(
         git_runner=git_runner,
     )
     if manifest.state in {
+        PRRebaseState.LEASE_PUSH_PENDING,
         PRRebaseState.PUSH_SUCCEEDED_UNVERIFIED,
         PRRebaseState.PUBLISHED,
     }:
@@ -843,6 +971,91 @@ def _verify_and_cleanup(
     )
 
 
+def _resume_pending_publish(
+    manifest: RebaseManifest,
+    *,
+    github_client: GitHubClient,
+    git_runner: GitRunner,
+    now: datetime | None,
+    sleep: Callable[[float], None],
+    verify_attempts: int,
+) -> PRRebaseResult:
+    if manifest.rebased_head_sha is None:
+        raise PRRebaseRefusal("manifest has no rebased head to publish.")
+    if (
+        manifest.pending_push_expected_old_head_sha != manifest.original_head_sha
+        or manifest.pending_push_rebased_head_sha != manifest.rebased_head_sha
+    ):
+        raise PRRebaseRefusal("lease-pending manifest does not match push SHAs.")
+
+    current_head = _rev_parse(manifest.workspace_path, "HEAD", git_runner=git_runner)
+    if current_head != manifest.rebased_head_sha:
+        raise PRRebaseRefusal(
+            f"workspace HEAD changed from manifest rebased head: expected "
+            f"{manifest.rebased_head_sha}, got {current_head}."
+        )
+
+    preconditions = _publish_preconditions(
+        manifest,
+        github_client=github_client,
+        git_runner=git_runner,
+        allowed_head_shas=(
+            manifest.original_head_sha,
+            manifest.rebased_head_sha,
+        ),
+    )
+    _require_same_remote_identity(manifest, preconditions.remote_identity)
+    if preconditions.remote_head_sha == manifest.rebased_head_sha:
+        recovered = manifest.transition(
+            PRRebaseState.PUSH_SUCCEEDED_UNVERIFIED,
+            timestamp=_timestamp(now),
+            reason="lease-pending retry found rebased head on remote",
+        )
+        _write_manifest(recovered)
+        return _verify_and_cleanup(
+            recovered,
+            github_client=github_client,
+            git_runner=git_runner,
+            now=now,
+            sleep=sleep,
+            verify_attempts=verify_attempts,
+        )
+    if preconditions.remote_head_sha != manifest.original_head_sha:
+        raise PRRebaseRefusal(
+            "remote PR head is neither the expected old head nor the rebased head: "
+            f"{preconditions.remote_head_sha}."
+        )
+
+    push_argv = [
+        "push",
+        f"--force-with-lease={manifest.head_branch_ref}:{manifest.original_head_sha}",
+        REMOTE_NAME,
+        f"{manifest.rebased_head_sha}:{manifest.head_branch_ref}",
+    ]
+    push_result = git_runner(manifest.repo_root, push_argv)
+    if push_result.returncode != 0:
+        return _manifest_result(
+            manifest,
+            outcome=PRRebaseOutcome.REFUSED,
+            message=_git_failed("lease-protected push", push_result),
+        )
+
+    pushed = manifest.transition(
+        PRRebaseState.PUSH_SUCCEEDED_UNVERIFIED,
+        timestamp=_timestamp(now),
+        reason="lease-pending retry completed lease-protected push",
+    )
+    _write_manifest(pushed)
+    return _verify_and_cleanup(
+        pushed,
+        github_client=github_client,
+        git_runner=git_runner,
+        now=now,
+        sleep=sleep,
+        verify_attempts=verify_attempts,
+    )
+
+
 def _verify_published(
     manifest: RebaseManifest,
     *,
@@ -880,7 +1093,13 @@ def _publish_preconditions(
     *,
     github_client: GitHubClient,
     git_runner: GitRunner,
-) -> None:
+    allowed_head_shas: tuple[str, ...],
+) -> _PublishPreconditions:
+    remote_identity = _resolve_origin_push_identity(
+        manifest.repo_root,
+        expected_repo_slug=manifest.repo_slug,
+        git_runner=git_runner,
+    )
     owner, repo = _split_repo_slug(manifest.repo_slug)
     try:
         payload = github_client.fetch_pull_request(owner, repo, manifest.pr_number)
@@ -899,10 +1118,10 @@ def _publish_preconditions(
         raise PRRebaseRefusal("live PR head branch changed; refusing to publish.")
     if snapshot.base_ref != manifest.base_ref:
         raise PRRebaseRefusal("live PR base branch changed; refusing to publish.")
-    if snapshot.head_sha != manifest.original_head_sha:
+    if snapshot.head_sha not in allowed_head_shas:
         raise PRRebaseRefusal(
-            f"live PR head moved: expected {manifest.original_head_sha}, "
-            f"got {snapshot.head_sha}."
+            f"live PR head moved: expected one of "
+            f"{', '.join(allowed_head_shas)}, got {snapshot.head_sha}."
         )
     if snapshot.base_sha != manifest.pinned_base_sha:
         raise PRRebaseRefusal(
@@ -931,16 +1150,128 @@ def _publish_preconditions(
         f"refs/remotes/{REMOTE_NAME}/{manifest.base_ref}",
         git_runner=git_runner,
     )
-    if remote_head != manifest.original_head_sha:
+    if remote_head not in allowed_head_shas:
+        if allowed_head_shas == (manifest.original_head_sha,):
+            raise PRRebaseRefusal(
+                f"remote PR head moved: expected {manifest.original_head_sha}, "
+                f"got {remote_head}."
+            )
         raise PRRebaseRefusal(
-            f"remote PR head moved: expected {manifest.original_head_sha}, "
-            f"got {remote_head}."
+            f"remote PR head moved: expected one of "
+            f"{', '.join(allowed_head_shas)}, got {remote_head}."
         )
     if remote_base != manifest.pinned_base_sha:
         raise PRRebaseRefusal(
             f"remote main moved: expected {manifest.pinned_base_sha}, "
             f"got {remote_base}."
         )
+    return _PublishPreconditions(
+        remote_identity=remote_identity,
+        remote_head_sha=remote_head,
+        remote_base_sha=remote_base,
+    )
+
+
+def _resolve_origin_push_identity(
+    repo_root: Path,
+    *,
+    expected_repo_slug: str,
+    git_runner: GitRunner,
+) -> _RemoteIdentity:
+    result = git_runner(repo_root, ["remote", "get-url", "--push", REMOTE_NAME])
+    if result.returncode != 0:
+        raise PRRebaseRefusal(_git_failed("remote get-url --push origin", result))
+    remote_url = result.stdout.strip()
+    if not remote_url:
+        raise PRRebaseRefusal("origin push URL is empty; refusing to publish.")
+    repo_slug, url_kind = _parse_remote_repo_slug(remote_url, repo_root=repo_root)
+    if repo_slug is None:
+        raise PRRebaseRefusal(
+            "origin push URL does not resolve to a supported repository identity."
+        )
+    if repo_slug.casefold() != expected_repo_slug.casefold():
+        raise PRRebaseRefusal(
+            f"origin push URL targets {repo_slug}, not {expected_repo_slug}; "
+            "refusing to publish."
+        )
+    return _RemoteIdentity(
+        remote_name=REMOTE_NAME,
+        repo_slug=repo_slug,
+        url_kind=url_kind,
+    )
+
+
+def _parse_remote_repo_slug(
+    remote_url: str,
+    *,
+    repo_root: Path,
+) -> tuple[str | None, str]:
+    scp_match = re.fullmatch(
+        r"(?:[^@\s]+@)?github\.com:(?P<owner>[^/\s]+)/(?P<repo>[^/\s]+)",
+        remote_url,
+    )
+    if scp_match is not None:
+        return (
+            f"{scp_match.group('owner')}/{_strip_git_suffix(scp_match.group('repo'))}",
+            "github_scp",
+        )
+
+    parsed = urlparse(remote_url)
+    if parsed.scheme and parsed.hostname == "github.com":
+        path_parts = _path_repo_parts(Path(parsed.path))
+        if path_parts is None:
+            return None, f"github_{parsed.scheme}"
+        return path_parts, f"github_{parsed.scheme}"
+    if parsed.scheme == "file":
+        path_parts = _path_repo_parts(Path(parsed.path))
+        return path_parts, "local_path"
+    if not parsed.scheme:
+        remote_path = Path(remote_url)
+        if not remote_path.is_absolute():
+            remote_path = repo_root / remote_path
+        return _path_repo_parts(remote_path), "local_path"
+    return None, parsed.scheme
+
+
+def _path_repo_parts(path: Path) -> str | None:
+    parts = [part for part in path.parts if part not in {path.anchor, ""}]
+    if len(parts) < 2:
+        return None
+    owner = parts[-2]
+    repo = _strip_git_suffix(parts[-1])
+    if not owner or not repo or "/" in owner or "/" in repo:
+        return None
+    return f"{owner}/{repo}"
+
+
+def _strip_git_suffix(value: str) -> str:
+    return value[:-4] if value.endswith(".git") else value
+
+
+def _require_same_remote_identity(
+    manifest: RebaseManifest,
+    remote_identity: _RemoteIdentity,
+) -> None:
+    if (
+        manifest.remote_name != remote_identity.remote_name
+        or manifest.remote_repo_slug != remote_identity.repo_slug
+        or manifest.remote_url_kind != remote_identity.url_kind
+    ):
+        raise PRRebaseRefusal(
+            "origin push identity changed since the lease-pending manifest was "
+            "written; refusing to publish."
+        )
+
+
+def _rebase_argv(*args: str) -> list[str]:
+    return [
+        "-c",
+        "rerere.enabled=false",
+        "-c",
+        "rerere.autoupdate=false",
+        "rebase",
+        *args,
+    ]
 
 
 def _prepare_gate_refusal(
@@ -1072,6 +1403,13 @@ def _write_receipt(manifest: RebaseManifest, *, now: datetime | None) -> Path:
         "merge_base_sha": manifest.merge_base_sha,
         "new_head_sha": manifest.rebased_head_sha,
         "workspace_path": str(manifest.workspace_path),
+        "remote_name": manifest.remote_name,
+        "remote_repo_slug": manifest.remote_repo_slug,
+        "remote_url_kind": manifest.remote_url_kind,
+        "pending_push_expected_old_head_sha": (
+            manifest.pending_push_expected_old_head_sha
+        ),
+        "pending_push_rebased_head_sha": manifest.pending_push_rebased_head_sha,
         "conflict_paths": list(_flatten_conflict_paths(manifest)),
         "conflict_sets": [entry.to_json() for entry in manifest.conflict_sets],
         "created_at": manifest.created_at,

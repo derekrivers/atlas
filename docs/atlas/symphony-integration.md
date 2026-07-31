@@ -259,21 +259,27 @@ uv run atlas pr rebase abort --workspace <path>
 `prepare` creates a detached linked worktree under
 `.atlas/rebase-workspaces/` at the assessed original PR head, writes an atomic
 versioned manifest, fetches the pinned base/head objects, and runs
-`git rebase <pinned-base-sha>` inside that worktree. The operator's primary
-checkout branch, index, tracked files, and local branch refs are not checked
-out, reset, or rewritten. A clean rebase records `ready_to_publish`. A conflict
-records `conflicts_pending`, prints the exact
+`git -c rerere.enabled=false -c rerere.autoupdate=false rebase
+<pinned-base-sha>` inside that worktree. The operator's primary checkout
+branch, index, tracked files, and local branch refs are not checked out, reset,
+or rewritten. A clean rebase records `ready_to_publish`. A conflict records
+`conflicts_pending`, prints the exact
 `git diff --name-only --diff-filter=U` paths, and leaves the stopped rebase for
-the operator. `continue` refuses while unresolved entries remain, then runs
-`git rebase --continue` non-interactively after the operator has staged the
-resolution; a later conflict records another conflict set.
+the operator. `continue` refuses while unresolved entries remain, then runs the
+same rerere-disabled `git rebase --continue` non-interactively after the
+operator has staged the resolution; a later conflict records another conflict
+set.
 
 `publish` is the only remote-write boundary. Before pushing it refetches the
-live PR snapshot and remote `main`/head refs, then requires the live head SHA,
-base SHA, branch, repository identity, open state, and draft flag to match the
+live PR snapshot, resolves `git remote get-url --push origin` to a repository
+identity matching the manifest repo slug, and refetches remote `main`/head refs.
+It then requires the live head SHA, base SHA, branch, repository identity, open
+state, draft flag, local `origin` identity, and remote refs to match the
 manifest's pinned values. Fresh mergeability is diagnostic only at this point:
-the identity and exact SHA pins govern the safety gate. The push argv is the
-explicit expected-value lease form:
+the identity and exact SHA pins govern the safety gate. Immediately before the
+remote write, the manifest records `lease_push_pending` with the expected old
+head, rebased head, and sanitized `origin` repository identity. The push argv is
+the explicit expected-value lease form:
 
 ```bash
 git push --force-with-lease=refs/heads/<branch>:<original-head-sha> origin <rebased-head-sha>:refs/heads/<branch>
@@ -283,17 +289,21 @@ Bare `--force`, implicit `--force-with-lease`, GitHub Update branch, merge
 commits, fork PRs, and automatic conflict resolution remain out of scope. After
 a successful push the manifest first records `push_succeeded_unverified`; bounded
 GitHub refetches must then report the exact rebased head and the shared
-assessment must report `current` with the pinned `main` SHA. Only then is a
-receipt written under `.atlas/rebase-receipts/` and the managed worktree removed.
-Rerunning `publish` from `push_succeeded_unverified` verifies and cleans up
-without repeating the old-head lease push.
+assessment must report `current` with the pinned `main` SHA. If an interruption
+leaves the manifest at `lease_push_pending`, rerunning `publish` reconciles
+`origin`: old head means the lease push may proceed, rebased head is recovered
+as `push_succeeded_unverified`, and any other head is refused without another
+push. Only after verification is a receipt written under
+`.atlas/rebase-receipts/` and the managed worktree removed. Rerunning `publish`
+from `push_succeeded_unverified` verifies and cleans up without repeating the
+old-head lease push.
 
 `abort` accepts only a canonical path beneath `.atlas/rebase-workspaces/` whose
 manifest matches this repository and the requested workspace. It aborts an
 in-progress rebase when present and removes that named linked worktree through
 Git. Traversal, symlink escape, missing or foreign manifests, the primary
-worktree, any manifest recording a successful push, and already-published
-receipts are refused without deletion.
+worktree, `lease_push_pending`, any manifest recording a successful push, and
+already-published receipts are refused without deletion.
 
 ### GitHub write-access probe
 
