@@ -312,11 +312,13 @@ Recorded programme direction:
 - Phase 19 — Multi-Product Control Plane
 - Phase 20 — Atlas Managing Atlas
 
-Phases 13–15 are the next rolling-wave planning horizon. Their design
-preparation may proceed, but plan/apply is gated until Atlas itself rejects
-invalid exact-path fields and validates dependency identity, ordering, cycles
-and manifest coverage. That Planning Engine repair is hand-delivered rather
-than minted through the defective path it repairs. Phases 16–20 are
+Phases 13–15 are the next rolling-wave planning horizon. Their pre-Wave-A
+Planning Engine gate is satisfied by the hand-delivered Planning Batch
+Integrity Guard: Atlas itself rejects invalid exact-path fields and validates
+dependency identity, ordering, cycles and exact committed batch-manifest
+coverage before plan and again before apply confirmation. Ordered phase stubs
+must carry one committed `planning-batch-*.yaml` manifest, which apply retires
+with the batch. Phases 16–20 are
 architectural direction only until their post-Phase-15 and post-Phase-18 design
 gates. The canonical ordering, authority boundaries and milestone outcomes are
 defined in `docs/atlas/phase-13-20-programme-horizon.md`; delivery state remains

@@ -154,6 +154,7 @@ from atlas.planning.progress import (
 from atlas.planning.promotion import StubPromotionError
 from atlas.planning.reconciler import DEFAULT_SIMILARITY_THRESHOLD, PlanDiff
 from atlas.planning.staged import StagedProposalGenerator, TemplateStagedGenerator
+from atlas.planning.stub_integrity import PlanningBatchIntegrityError
 from atlas.pm import (
     DEFAULT_INTERVAL_SECONDS,
     SyncDecisionClassification,
@@ -859,7 +860,12 @@ def _apply_command(args: argparse.Namespace, *, database: Database | None) -> in
             confirm=_make_confirm(args.yes, args.add_only),
             add_only=args.add_only,
         )
-    except (DirtyInputError, ApplyError) as error:
+    except (
+        DirtyInputError,
+        ApplyError,
+        StubPromotionError,
+        PlanningBatchIntegrityError,
+    ) as error:
         print(error, file=sys.stderr)
         return EXIT_PRECONDITION
     except GraphValidationFailed as error:
@@ -940,7 +946,12 @@ def _plan_command(
                 similarity_threshold=args.similarity_threshold,
                 now=datetime.now(UTC),
             )
-        except (DirtyInputError, PlanPreconditionError, StubPromotionError) as error:
+        except (
+            DirtyInputError,
+            PlanPreconditionError,
+            StubPromotionError,
+            PlanningBatchIntegrityError,
+        ) as error:
             print(error, file=sys.stderr)
             return EXIT_PRECONDITION
         return _print_plan_result(result)
@@ -975,6 +986,7 @@ def _plan_command(
         PlanPreconditionError,
         ModelCallError,
         StubPromotionError,
+        PlanningBatchIntegrityError,
     ) as error:
         # StubPromotionError joins the clean-exit set (ATLAS-153, gate-
         # authorised): a malformed committed stub is the same fail-closed

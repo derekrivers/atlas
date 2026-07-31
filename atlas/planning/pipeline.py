@@ -50,6 +50,7 @@ from atlas.core.models.dependency import DependencyType
 from atlas.planning.client import ModelIdentity, PlannerClient, TruncatedOutputError
 from atlas.planning.gates import GateFailure, run_gates
 from atlas.planning.ingestion import (
+    collect_batch_manifest_documents,
     collect_inbox_documents,
     collect_input_documents,
     collect_processed_documents,
@@ -83,6 +84,7 @@ from atlas.planning.staged import (
     composite_prompt_hash,
     composite_prompt_version,
 )
+from atlas.planning.stub_integrity import validate_inbox_batch_integrity
 from atlas.storage import (
     Database,
     EpicRepo,
@@ -283,6 +285,7 @@ def run_plan(
     # inbox subset is identifiable by its <inbox_dir>/ path prefix). An empty
     # inbox is a no-op; an uncommitted stub raises DirtyInputError (the gate).
     inbox_documents = collect_inbox_documents(repo_root, inbox_dir)
+    manifest_documents = collect_batch_manifest_documents(repo_root, inbox_dir)
     all_documents = documents + inbox_documents
     # Retired stubs and durable aliases (ATLAS-159): processed/ headings join
     # the anchor index (never the prompt payload) so a stub-minted ticket's
@@ -296,13 +299,22 @@ def run_plan(
         + processed_documents
         + durable_alias_documents(inbox_documents, processed_documents)
     )
-    input_doc_shas = {doc.path: doc.sha for doc in all_documents + processed_documents}
+    input_doc_shas = {
+        doc.path: doc.sha
+        for doc in all_documents + processed_documents + manifest_documents
+    }
 
     # Current backlog from operational state (the database; ADR-0006).
     epics = EpicRepo(database).list()
     tickets = TicketRepo(database).list()
     dependencies = TicketDependencyRepo(database).list()
     backlog = Backlog(epics=epics, tickets=tickets, dependencies=dependencies)
+    validate_inbox_batch_integrity(
+        repo_root=repo_root,
+        inbox_documents=inbox_documents,
+        manifest_documents=manifest_documents,
+        backlog=backlog,
+    )
     backlog_keys = {epic.key for epic in epics} | {ticket.key for ticket in tickets}
     frozen = [ticket.key for ticket in tickets if ticket.status in FROZEN_STATUSES]
 
@@ -573,8 +585,8 @@ def run_stubs_only_plan(
     guarantee. No PlannerClient is constructed or called; there is no
     generative failure surface (no truncation, no parse stage), but a gate
     failure still records a FAILED PlanRun exactly as a generative run's
-    would — that is how a ``depends_on`` entry naming a nonexistent ticket
-    surfaces (gate 3, typed).
+    would. Impossible stub contracts are rejected earlier by the planning-
+    batch integrity guard, before this proposal or a PlanRun exists.
 
     ``input_doc_shas`` still pins corpus + inbox + processed (ATLAS-159), so
     apply's AT-5 re-check holds identically. An empty inbox is a typed
@@ -605,6 +617,7 @@ def run_stubs_only_plan(
             "stubs: nothing to mint. Commit inbox stubs first, or run a "
             "generative `atlas plan` (stubs-only plans promoted stubs only)"
         )
+    manifest_documents = collect_batch_manifest_documents(repo_root, inbox_dir)
     # Processed stubs + durable aliases join the index exactly as on the
     # generative path (ATLAS-159): the verbatim backlog echo re-states every
     # stub-minted ticket's durable anchor, and gate 4 must resolve it here too.
@@ -616,7 +629,10 @@ def run_stubs_only_plan(
         + durable_alias_documents(inbox_documents, processed_documents)
     )
     input_doc_shas = {
-        doc.path: doc.sha for doc in documents + inbox_documents + processed_documents
+        doc.path: doc.sha
+        for doc in (
+            documents + inbox_documents + processed_documents + manifest_documents
+        )
     }
 
     # Current backlog from operational state (the database; ADR-0006).
@@ -624,6 +640,12 @@ def run_stubs_only_plan(
     tickets = TicketRepo(database).list()
     dependencies = TicketDependencyRepo(database).list()
     backlog = Backlog(epics=epics, tickets=tickets, dependencies=dependencies)
+    validate_inbox_batch_integrity(
+        repo_root=repo_root,
+        inbox_documents=inbox_documents,
+        manifest_documents=manifest_documents,
+        backlog=backlog,
+    )
     backlog_keys = {epic.key for epic in epics} | {ticket.key for ticket in tickets}
 
     # The stubs-only proposal: verbatim keyed echo + deterministic promotion,

@@ -294,24 +294,18 @@ def test_depends_on_sibling_filename_becomes_new_to_new_edge(tmp_path: Path) -> 
     }
 
 
-def test_depends_on_unknown_key_fails_gate3_typed(tmp_path: Path) -> None:
-    # A nonexistent ticket key fails the gates with a typed error: gate 3's
-    # GATE3_UNRESOLVED_TARGET, recorded as a FAILED PlanRun (spec §6) exactly
-    # as a generative run's gate failure would be.
+def test_depends_on_unknown_key_fails_before_planrun(tmp_path: Path) -> None:
+    # Gate 0 tightens the stub boundary: a nonexistent existing-ticket key is
+    # rejected before proposal construction, so no impossible PlanRun exists.
     stubs = {
         "docs/planning/inbox/inbox-stub-bad-key.md": _stub(
             "Bad key", depends_on=["ATLAS-999"]
         )
     }
     repo, database = july_setup(tmp_path, stubs)
-    result = run_stubs(repo, database)
-    assert result.status is PlanRunStatus.FAILED
-    assert result.failure_reason is not None
-    assert "GATE3_UNRESOLVED_TARGET" in result.failure_reason
-    assert "ATLAS-999" in result.failure_reason
-    stored = PlanRunRepo(database).list()
-    assert len(stored) == 1
-    assert stored[0].status is PlanRunStatus.FAILED
+    with pytest.raises(StubPromotionError, match="absent from the current backlog"):
+        run_stubs(repo, database)
+    assert PlanRunRepo(database).list() == []
 
 
 def test_depends_on_unknown_sibling_filename_fails_closed(tmp_path: Path) -> None:

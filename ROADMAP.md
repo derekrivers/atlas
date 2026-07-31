@@ -16,7 +16,9 @@ The architectural direction through Phase 20 is recorded in
 rolling-wave planning batch, while Phases 16–20 remain gated programme
 horizons. Phase 13 still requires its detailed design and governed ticket-
 planning change before implementation begins. Design preparation may proceed,
-but Phase 13–15 plan/apply is blocked until Atlas's exact-path, dependency and
-manifest validation repair is hand-delivered and merged. Atlas retains no
+and the hand-delivered Planning Batch Integrity Guard satisfies the pre-Wave-A
+Gate 0 by validating exact paths, dependency identity/order/cycles and exact
+batch-manifest coverage in both plan and apply. Phase 13–15 detailed planning
+may proceed through that repaired path. Atlas retains no
 automatic conflict-resolution, plan-approval, review, merge, permission-
 expansion or deployment authority.

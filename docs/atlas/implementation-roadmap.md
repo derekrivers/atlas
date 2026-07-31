@@ -720,14 +720,14 @@ Carried forward:
 - The residual interval between the close driver's final live assessment and
   the operator's manual GitHub merge remains governed by the one-PR freeze.
   Merge queues and automatic merge authority remain deferred.
-- Planning must reject prose in exact-path fields before another ticket batch
-  reaches the store; Phase 12 required a surgical repair after verification
-  correctly refused an unmatchable documentation contract.
-- This Planning Engine repair is the pre-Wave-A gate: Phase 13–15 design
-  preparation may proceed, but no stub may be planned or applied until Atlas
-  itself validates exact-path fields, dependency identity, ordering, cycles
-  and manifest coverage. The repair must be hand-delivered because minting it
-  through the defective planning path would be circular.
+- The hand-delivered Planning Batch Integrity Guard closes the Phase 12
+  planning-integrity carry-forward. Before a PlanRun exists, Atlas rejects
+  prose, globs, traversal, missing paths, invalid dependency identities,
+  forward sibling references and cycles. Ordered phase batches require one
+  committed manifest whose exact base-to-HEAD overlay and ordered stub list
+  match the active inbox; apply re-runs the guard before confirmation and
+  retires the manifest with the stubs. No ticket was minted through the
+  defective path to authorise its own repair.
 - Verification and confirmation commands need clearer zero-action and pending
   diagnostics; their current output can conceal the one check that blocks
   closure even though the underlying verdict remains fail-closed.
@@ -737,9 +737,9 @@ Carried forward:
 # Phase 13 — Governed Operator Actions
 
 Programme direction: `docs/atlas/phase-13-20-programme-horizon.md`.
-Planning state: NEXT WAVE; detailed design may proceed, but governed ticket
-planning and apply are blocked on the pre-Wave-A Planning Engine integrity
-gate.
+Planning state: NEXT WAVE; the pre-Wave-A Planning Engine integrity gate is
+satisfied by the hand-delivered Planning Batch Integrity Guard. Detailed
+design and governed ticket planning may proceed through the repaired path.
 
 Phase 13 introduces Atlas's first authenticated browser write. The single
 operator can promote or reject a DRAFT lesson through server-owned identity,
