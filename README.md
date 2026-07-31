@@ -18,3 +18,5 @@ Start here:
 Canonical deep docs live in `docs/atlas/` and `docs/architecture/`.
 Governing decisions live in `docs/decisions/`.
 The planner prompt template lives in `atlas/planning/prompts/`.
+
+<!-- Phase 12 controlled live drill: disposable trailing sibling PR. -->
