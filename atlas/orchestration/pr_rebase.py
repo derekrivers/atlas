@@ -1124,10 +1124,18 @@ def _publish_preconditions(
             f"live PR head moved: expected one of "
             f"{', '.join(allowed_head_shas)}, got {snapshot.head_sha}."
         )
-    if snapshot.base_sha != manifest.pinned_base_sha:
+    try:
+        live_base_sha = github_client.fetch_branch_head(
+            owner,
+            repo,
+            snapshot.base_ref,
+        )
+    except GitHubAPIError as error:
+        raise PRRebaseRefusal(str(error)) from error
+    if live_base_sha != manifest.pinned_base_sha:
         raise PRRebaseRefusal(
             f"live main moved: expected {manifest.pinned_base_sha}, "
-            f"got {snapshot.base_sha}."
+            f"got {live_base_sha}."
         )
 
     fetch_result = git_runner(

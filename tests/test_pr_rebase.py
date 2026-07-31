@@ -786,6 +786,33 @@ def test_publish_uses_explicit_expected_value_lease_and_writes_receipt_cleanup(
     assert receipt["conflict_paths"] == []
 
 
+def test_publish_uses_live_branch_head_not_historical_pr_base_sha(
+    tmp_path: Path,
+) -> None:
+    fixture = _repo_fixture(tmp_path, mode="clean")
+    result, runner, _client = _prepare_ready(fixture)
+    assert result.workspace_path is not None
+
+    client = LocalRemoteGitHubClient(
+        fixture,
+        base_sha_override=fixture.base_sha,
+    )
+    published = publish_pr_rebase(
+        workspace_path=result.workspace_path,
+        repo_root=fixture.primary,
+        github_client=client,
+        git_runner=runner,
+        now=NOW,
+        sleep=lambda _seconds: None,
+    )
+
+    assert published.outcome is PRRebaseOutcome.PUBLISHED
+    assert ("branch_head", OWNER, REPO, "main") in client.calls
+    assert _git_stdout(fixture.remote, "rev-parse", f"refs/heads/{BRANCH}") == (
+        published.new_head_sha
+    )
+
+
 def test_publish_pending_retry_pushes_when_remote_still_equals_old_head(
     tmp_path: Path,
 ) -> None:
