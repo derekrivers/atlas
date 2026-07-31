@@ -1,7 +1,9 @@
 """Drive the acceptance chain for one pull request (ATLAS-040M).
 
-The merge remains an operator action. This script first requires a PASSED
-verification at the frozen PR head, pauses for the merge, independently verifies
+The merge remains an operator action. This script first proves the PR head is
+current with main, then requires evidence, human confirmations, a PASSED
+verification at that exact head, and a second live freshness check before it
+pauses for the merge. After the operator merges, it independently verifies
 GitHub's merged state, records the merged proof, upgrades the local schema, and
 runs the two synchronization ticks needed to establish Done in Atlas.
 """
@@ -15,12 +17,19 @@ import subprocess
 import sys
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 from sqlalchemy.exc import OperationalError
 
 from atlas.github import GitHubAPIError, MissingGitHubTokenError
-from atlas.orchestration import resolve_github_client, resolve_pr_context
+from atlas.orchestration import (
+    PRIntegrationAssessment,
+    PRIntegrationEligibility,
+    PRIntegrationStatus,
+    assess_pr_integration,
+    resolve_github_client,
+    resolve_pr_context,
+)
 from atlas.storage import Database, TicketRepo
 from atlas.verification import parse_close_set
 
@@ -28,6 +37,19 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 OPERATOR_ENV = "ATLAS_OPERATOR_ID"
 Command = tuple[str, ...]
 RunCommand = Callable[..., subprocess.CompletedProcess[str]]
+ResolveAssessment = Callable[[str, int], PRIntegrationAssessment]
+
+
+class FreshnessSnapshot(NamedTuple):
+    owner: str
+    repo: str
+    pr_number: int
+    head_ref: str
+    head_sha: str
+    head_repository: str
+    base_ref: str
+    base_sha: str
+    base_repository: str
 
 
 def _command_text(command: Sequence[str]) -> str:
@@ -166,6 +188,193 @@ def _require_passed_verdict(result: subprocess.CompletedProcess[str]) -> str:
     return head_commit
 
 
+def _repo_parts(repo: str) -> tuple[str, str]:
+    owner, _separator, name = repo.partition("/")
+    return owner, name
+
+
+def _assess_current_head(repo: str, pr: int) -> PRIntegrationAssessment:
+    owner, name = _repo_parts(repo)
+    client = resolve_github_client(None)
+    return assess_pr_integration(client, owner, name, pr)
+
+
+def _snapshot(assessment: PRIntegrationAssessment) -> FreshnessSnapshot:
+    return FreshnessSnapshot(
+        owner=assessment.owner,
+        repo=assessment.repo,
+        pr_number=assessment.pr_number,
+        head_ref=assessment.head_ref,
+        head_sha=assessment.head_sha,
+        head_repository=assessment.head_repository,
+        base_ref=assessment.base_ref,
+        base_sha=assessment.base_sha,
+        base_repository=assessment.base_repository,
+    )
+
+
+def _rebase_prepare_command(assessment: PRIntegrationAssessment) -> str:
+    return (
+        f"atlas pr rebase prepare --pr {assessment.pr_number} "
+        f"--repo {assessment.owner}/{assessment.repo}"
+    )
+
+
+def _eligible_for_operator_rebase(assessment: PRIntegrationAssessment) -> bool:
+    return (
+        assessment.eligibility is PRIntegrationEligibility.ELIGIBLE
+        and assessment.integration_status
+        in {
+            PRIntegrationStatus.BEHIND,
+            PRIntegrationStatus.DIVERGED,
+            PRIntegrationStatus.CONFLICTED,
+        }
+    )
+
+
+def _assessment_state(assessment: PRIntegrationAssessment) -> str:
+    return (
+        f"integration_status: {assessment.integration_status.value}; "
+        f"eligibility: {assessment.eligibility.value}; "
+        f"ancestry: {assessment.ancestry.value}; "
+        f"mergeability: {assessment.mergeability.value}"
+    )
+
+
+def _freshness_failure(
+    assessment: PRIntegrationAssessment,
+    *,
+    prefix: str,
+) -> str:
+    lines = [
+        f"{prefix}: {_assessment_state(assessment)}.",
+        (
+            "PR head: "
+            f"{assessment.head_repository} {assessment.head_ref}@{assessment.head_sha}."
+        ),
+        (
+            "PR base: "
+            f"{assessment.base_repository} {assessment.base_ref}@{assessment.base_sha}."
+        ),
+    ]
+    if _eligible_for_operator_rebase(assessment):
+        lines.append(f"Recovery: {_rebase_prepare_command(assessment)}")
+    return "\n".join(lines)
+
+
+def _resolve_freshness_assessment(
+    repo: str,
+    pr: int,
+    *,
+    resolve_assessment: ResolveAssessment,
+    prefix: str,
+) -> PRIntegrationAssessment:
+    try:
+        return resolve_assessment(repo, pr)
+    except (GitHubAPIError, MissingGitHubTokenError) as error:
+        raise RuntimeError(
+            f"{prefix}: integration_status: indeterminate; {error}."
+        ) from error
+
+
+def _require_initial_current(
+    repo: str,
+    pr: int,
+    *,
+    resolve_assessment: ResolveAssessment,
+) -> FreshnessSnapshot:
+    assessment = _resolve_freshness_assessment(
+        repo,
+        pr,
+        resolve_assessment=resolve_assessment,
+        prefix="Freshness gate failed",
+    )
+    if assessment.integration_status is not PRIntegrationStatus.CURRENT:
+        raise RuntimeError(
+            _freshness_failure(assessment, prefix="Freshness gate failed")
+        )
+    snapshot = _snapshot(assessment)
+    print(
+        "Freshness gate: current "
+        f"{snapshot.head_repository} {snapshot.head_ref}@{snapshot.head_sha} "
+        f"on {snapshot.base_repository} {snapshot.base_ref}@{snapshot.base_sha}."
+    )
+    return snapshot
+
+
+def _identity_mismatches(
+    initial: FreshnessSnapshot,
+    live: FreshnessSnapshot,
+) -> list[str]:
+    mismatches: list[str] = []
+    if live.owner != initial.owner or live.repo != initial.repo:
+        mismatches.append(
+            "repository changed "
+            f"from {initial.owner}/{initial.repo} to {live.owner}/{live.repo}"
+        )
+    if live.pr_number != initial.pr_number:
+        mismatches.append(
+            f"PR number changed from #{initial.pr_number} to #{live.pr_number}"
+        )
+    if live.head_ref != initial.head_ref:
+        mismatches.append(
+            f"head branch changed from {initial.head_ref} to {live.head_ref}"
+        )
+    if live.head_repository != initial.head_repository:
+        mismatches.append(
+            "head repository changed "
+            f"from {initial.head_repository} to {live.head_repository}"
+        )
+    if live.base_ref != initial.base_ref:
+        mismatches.append(
+            f"base branch changed from {initial.base_ref} to {live.base_ref}"
+        )
+    if live.base_repository != initial.base_repository:
+        mismatches.append(
+            "base repository changed "
+            f"from {initial.base_repository} to {live.base_repository}"
+        )
+    return mismatches
+
+
+def _require_pre_merge_freshness(
+    initial: FreshnessSnapshot,
+    verified_head: str,
+    live: PRIntegrationAssessment,
+) -> None:
+    if live.integration_status is not PRIntegrationStatus.CURRENT:
+        raise RuntimeError(
+            _freshness_failure(live, prefix="Freshness restart required")
+        )
+
+    live_snapshot = _snapshot(live)
+    failures = _identity_mismatches(initial, live_snapshot)
+    if live_snapshot.head_sha != initial.head_sha:
+        failures.append(
+            f"PR head moved from {initial.head_sha} to {live_snapshot.head_sha}"
+        )
+    if verified_head != initial.head_sha:
+        failures.append(
+            "verification evaluated "
+            f"{verified_head}, not initial head {initial.head_sha}"
+        )
+    if live_snapshot.head_sha != verified_head:
+        failures.append(
+            f"live head {live_snapshot.head_sha} is not verified head {verified_head}"
+        )
+    if live_snapshot.base_sha != initial.base_sha:
+        failures.append(
+            f"base moved from {initial.base_sha} to {live_snapshot.base_sha}"
+        )
+
+    if failures:
+        raise RuntimeError(
+            "Freshness restart required before merge: "
+            + "; ".join(failures)
+            + ". Rerun the acceptance spine from evidence at the current PR head."
+        )
+
+
 def _merged_context(repo: str, pr: int) -> Any:
     client = resolve_github_client(None)
     return resolve_pr_context(repo, pr, client)
@@ -186,6 +395,7 @@ def drive(
     environ: Mapping[str, str] = os.environ,
     run_command: RunCommand = subprocess.run,
     pause: Callable[[str], str] = input,
+    resolve_assessment: ResolveAssessment = _assess_current_head,
     resolve_context: Callable[[str, int], Any] = _merged_context,
     read_statuses: Callable[[Sequence[str]], list[tuple[str, str]]] = _ticket_statuses,
 ) -> int:
@@ -216,6 +426,11 @@ def drive(
     sync = ("uv", "run", "atlas", "pm", "sync", "--once", "-v")
 
     try:
+        initial_freshness = _require_initial_current(
+            repo,
+            args.pr,
+            resolve_assessment=resolve_assessment,
+        )
         _run_step(
             "1/9",
             "Pull evidence",
@@ -240,6 +455,17 @@ def drive(
         )
         verified_head = _require_passed_verdict(pre_merge)
         print(f"Pre-merge verdict: passed at head {verified_head}.")
+        live_freshness = _resolve_freshness_assessment(
+            repo,
+            args.pr,
+            resolve_assessment=resolve_assessment,
+            prefix="Freshness restart required",
+        )
+        _require_pre_merge_freshness(
+            initial_freshness,
+            verified_head,
+            live_freshness,
+        )
         print("\n=== MERGE GATE ===")
         pause(
             f"Merge {repo} PR #{args.pr} in GitHub, then press Enter "

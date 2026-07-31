@@ -13,12 +13,14 @@ approves (ADR-0009).
 
 ## The spine
 
-**review → freeze → evidence → confirm → verify PASSED → merge at the
-verdict commit → verify merged proof → schema upgrade → sync twice → Done.**
+**review → exact-head current → freeze → evidence → confirm → verify PASSED →
+exact-head still current → merge at the verdict commit → verify merged proof →
+schema upgrade → sync twice → Done.**
 
-The single binding invariant: the verdict pins to the PR head commit, and
-the merge decision must consume that same commit. Anything that moves the
-head after evidence is pulled restarts the spine from evidence.
+The single binding invariant: the verdict pins to the PR head commit, that
+head must contain the exact current `main` snapshot admitted at the start of
+the spine, and the merge decision must consume that same commit. Anything that
+moves the head after evidence is pulled restarts the spine from evidence.
 
 ## 0. Preconditions
 
@@ -30,7 +32,7 @@ head after evidence is pulled restarts the spine from evidence.
   warnings for the workflow rollup and CodeQL are benign.
 - Parallel development and review are allowed before step 2. From head freeze
   through merge, only one PR occupies the acceptance spine. A sibling merge
-  makes every trailing PR rebase and restart at step 3.
+  makes every trailing PR use the Phase 12 rebase lane and restart at step 3.
 - Read-only exact-head diagnostics are available with
   `uv run atlas pr status --pr <N> --repo <owner>/<repo>` (`--json` for the
   typed payload). The state vocabulary and exact definition live in
@@ -53,6 +55,11 @@ head after evidence is pulled restarts the spine from evidence.
   that state on retry by comparing `origin` with the expected old and rebased
   heads. It pushes to the captured validated destination, writes a receipt under
   `.atlas/rebase-receipts/`, and leaves tickets in `review_required`.
+- Ownership rule: agents keep ATLAS-168's pre-handoff rebase discipline before
+  PRs, pushes, and `Review Required`; operators use the Phase 12 lane for
+  mechanical staleness after `Review Required`; `Changes Requested` is used
+  only when implementation or other semantic remediation must return to
+  Symphony.
 
 ## 1. Review (reviewer-tier, not the gate)
 
@@ -70,10 +77,11 @@ No pushes, rebases, or GitHub "update branch" from here to merge. Note the
 head SHA. If it moves, return to step 3 — never merge on a verdict pinned
 to a superseded commit (the L-6 stale-verdict lesson).
 
-If the head is already mechanically stale before this freeze, use the rebase
-lane from step 0 first. Once evidence has been pulled, any head rewrite restarts
-the spine from evidence; do not use GitHub Update branch during the frozen
-interval.
+The fail-closed driver performs this exact-head assessment before pulling
+evidence or prompting the operator. If the head is already mechanically stale
+before this freeze, use the rebase lane from step 0 first. Once evidence has
+been pulled, any head rewrite restarts the spine from evidence; do not use
+GitHub Update branch during the frozen interval.
 
 ## 3. Evidence
 
@@ -105,11 +113,19 @@ uv run atlas verify --pr <N> --repo <owner>/<repo>
 ```
 
 Composes the verdict from stored evidence against the required-check matrix
-for the ticket's type and risk. **Only an explicit PASSED report opens the
-merge gate; the command exit code does not.** Non-PASSED routing: missing
-human-tier → redo confirm; failing machine evidence → Changes Requested (the
-agent's resume re-runs CI on a new head; spine restarts at step 3);
-scope/acceptance failure → operator judgement. Prefer the fail-closed driver:
+for the ticket's type and risk. **Only an explicit PASSED report with a valid
+`head_commit` can advance toward the merge gate; the command exit code does
+not.** The fail-closed driver immediately performs a second live exact-head
+assessment after the JSON verdict and before showing the merge prompt. The live
+head must equal both the initial exact-head snapshot and the verified
+`head_commit`, and the live base SHA, branch identities, and repository
+identities must match the initial snapshot. Any PR-head movement, `main`
+movement, eligibility change, compare failure, or indeterminate mergeability
+blocks the merge prompt and restarts the spine at step 3. Non-PASSED routing:
+missing human-tier → redo confirm; failing machine evidence → `Changes
+Requested` only when implementation remediation must return to Symphony;
+mechanical staleness → Phase 12 rebase lane; scope/acceptance failure →
+operator judgement. Prefer the fail-closed driver:
 
 ```
 uv run python scripts/close_ticket.py <N> --repo <owner>/<repo> \
@@ -118,16 +134,20 @@ uv run python scripts/close_ticket.py <N> --repo <owner>/<repo> \
 
 ## 6. Merge — at the verdict commit
 
-Verdict PASSED → merge now, while the head is provably the verdict commit.
+Verdict PASSED plus the second exact-head assessment → merge now, while the
+head is provably the verdict commit and contains the admitted `main` snapshot.
 Squash mints a new SHA on main; acceptable because the verdict gated the
 pre-merge decision at the verified head. No sibling lands during this
-freeze-to-merge interval. A trailing Review Required PR that becomes stale
-after the merge uses `atlas pr rebase prepare`, resolves conflicts only inside
-the managed `.atlas/rebase-workspaces/` worktree, publishes through the explicit
-old-head lease, and restarts its evidence spine; never hand-resolve a conflict
-on the primary checkout or through GitHub Update branch. The rebase lane runs
-with rerere and rerere autoupdate disabled, so every conflict stop remains an
-operator decision even when the repository has remembered resolutions.
+freeze-to-manual-merge interval. This final assessment does not eliminate the
+residual race after the prompt and before the operator's manual GitHub merge;
+the one-PR freeze remains binding. A trailing Review Required PR that becomes
+stale after the merge uses `atlas pr rebase prepare`, resolves conflicts only
+inside the managed `.atlas/rebase-workspaces/` worktree, publishes through the
+explicit old-head lease, and restarts its evidence spine; never hand-resolve a
+conflict on the primary checkout or through GitHub Update branch. The rebase
+lane runs with rerere and rerere autoupdate disabled, so every conflict stop
+remains an operator decision even when the repository has remembered
+resolutions.
 
 ## 7. Record merged proof and verify again
 
@@ -189,10 +209,13 @@ success from silence alone — verify on the observable (board header,
 - The human gate is `atlas confirm`, never a GitHub review.
 - `reviews: 0` is healthy; rollup/CodeQL `unrecognised CI job` warnings
   are noise.
-- Freeze the head between evidence and merge; a moved head restarts the
-  spine.
-- Mechanically stale Review Required PRs use `atlas pr rebase`; the publish
-  guard is the pinned old-head lease, not GitHub Update branch.
+- Freeze the head between evidence and manual merge; a moved head or moved
+  `main` restarts the spine.
+- Mechanically stale Review Required PRs use `atlas pr rebase` and remain
+  `review_required`; the publish guard is the pinned old-head lease, not
+  GitHub Update branch.
+- Changes Requested is only for semantic remediation that must return to
+  Symphony.
 - Done is a gated system transition; never drag it manually.
 - Upgrade the schema after a migration-carrying merge, before the sync.
 - Needs Human is pull-invisible: repair and push passes cannot see a
