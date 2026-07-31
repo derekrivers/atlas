@@ -213,6 +213,10 @@ class GitHubClient(Protocol):
         """
         ...
 
+    def fetch_branch_head(self, owner: str, repo: str, branch: str) -> str:
+        """Resolve one branch's current exact head SHA (GitHub -> Atlas)."""
+        ...
+
     def compare_commits(
         self, owner: str, repo: str, base_sha: str, head_sha: str
     ) -> GitHubCompare:
@@ -307,6 +311,33 @@ class GitHubRESTClient:
             ),
             on_not_modified=_on_not_modified,
         )
+
+    def fetch_branch_head(self, owner: str, repo: str, branch: str) -> str:
+        """Resolve a branch's current exact head SHA from the branches endpoint."""
+        if not branch:
+            raise GitHubAPIError("GitHub branch name must not be empty")
+        encoded_branch = urllib_parse.quote(branch, safe="")
+        path = f"/repos/{owner}/{repo}/branches/{encoded_branch}"
+        url = f"{API_ROOT}{path}"
+
+        def _on_not_modified() -> dict[str, Any]:
+            cached = self._object_cache.get(url)
+            if cached is None:
+                raise GitHubAPIError("branch object returned 304 with no cached body")
+            return cached
+
+        body = self._send(
+            url,
+            parse=lambda response: self._read_object(
+                response, url, label="branch response"
+            ),
+            on_not_modified=_on_not_modified,
+        )
+        commit = _required_object(body, "commit", label="branch response")
+        sha = _required_str(commit, "sha", label="branch commit")
+        if not _is_40_hex_sha(sha):
+            raise GitHubAPIError("GitHub API branch commit was not a SHA")
+        return sha
 
     def compare_commits(
         self, owner: str, repo: str, base_sha: str, head_sha: str

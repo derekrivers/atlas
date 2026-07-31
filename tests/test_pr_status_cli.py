@@ -111,6 +111,7 @@ def test_current_status_json_exits_zero_and_carries_exact_proof(
     }
     assert client.calls == [
         ("pull_request", OWNER, REPO, PR_NUMBER),
+        ("branch_head", OWNER, REPO, "main"),
         ("compare", OWNER, REPO, f"{BASE_SHA}...{HEAD_SHA}"),
     ]
 

@@ -205,11 +205,13 @@ operator decision.
 
 `atlas pr status --pr <N> --repo <owner>/<repo>` is the shared read-only
 answer to whether a pull request's exact head contains the exact current
-`main` commit. The command fetches one PR snapshot, reads that snapshot's
-`base.sha` and `head.sha`, and calls GitHub REST compare as
-`GET /repos/{owner}/{repo}/compare/{base.sha}...{head.sha}`. Branch names,
-local `origin/main`, and GitHub's approximate `mergeable_state` are not
-freshness evidence.
+`main` commit. The command fetches one PR snapshot for identity and exact head,
+then independently resolves the current `main` branch head because a PR
+payload's historical `base.sha` can remain pinned across sibling merges. It
+calls GitHub REST compare as
+`GET /repos/{owner}/{repo}/compare/{current-main-sha}...{head.sha}`. Local
+`origin/main` and GitHub's approximate `mergeable_state` are not freshness
+evidence.
 
 The exact-head definition is intentionally narrower than "GitHub says this
 can merge": a PR is `current` only when it is open, non-draft, same-repository,

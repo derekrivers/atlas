@@ -319,6 +319,49 @@ def test_fetch_pull_request_non_object_body_is_api_error(
         GitHubRESTClient(token="t").fetch_pull_request("o", "r", 1)
 
 
+# --- branch head: current protected-base resolution ------------------------
+
+
+def test_fetch_branch_head_returns_exact_sha_from_encoded_branch_endpoint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, str] = {}
+
+    def _urlopen(request: Any, *a: Any, **k: Any) -> _Response:
+        captured["url"] = request.full_url
+        body = json.dumps({"commit": {"sha": BASE_SHA}}).encode()
+        return _Response(body, _headers(ETag='"branch-v1"'))
+
+    monkeypatch.setattr("atlas.github.client.urllib_request.urlopen", _urlopen)
+
+    assert (
+        GitHubRESTClient(token="t").fetch_branch_head("o", "r", "release/live")
+        == BASE_SHA
+    )
+    assert "/repos/o/r/branches/release%2Flive" in captured["url"]
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {},
+        {"commit": {}},
+        {"commit": {"sha": "not-a-sha"}},
+    ],
+)
+def test_fetch_branch_head_rejects_missing_or_invalid_sha(
+    monkeypatch: pytest.MonkeyPatch,
+    payload: dict[str, Any],
+) -> None:
+    def _urlopen(request: Any, *a: Any, **k: Any) -> _Response:
+        return _Response(json.dumps(payload).encode(), _headers())
+
+    monkeypatch.setattr("atlas.github.client.urllib_request.urlopen", _urlopen)
+
+    with pytest.raises(GitHubAPIError, match="branch"):
+        GitHubRESTClient(token="t").fetch_branch_head("o", "r", "main")
+
+
 # --- exact-SHA compare: the single-object (ATLAS-228) path ------------------
 
 
