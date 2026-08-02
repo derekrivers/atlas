@@ -28,6 +28,7 @@ const expectedV1Routes = [
   '/api/v1/dependencies/critical-path',
   '/api/v1/dependencies/graph',
   '/api/v1/reviews',
+  '/api/v1/session',
   '/api/v1/status',
 ] as const satisfies readonly (keyof paths)[]
 
@@ -40,6 +41,8 @@ type Equal<Left, Right> = (<Value>() => Value extends Left ? 1 : 2) extends <
 type Assert<Type extends true> = Type
 type Schema = components['schemas']
 type GetOperation<Path extends keyof paths> = paths[Path]['get']
+type PostOperation<Path extends keyof paths> = paths[Path]['post']
+type DeleteOperation<Path extends keyof paths> = paths[Path]['delete']
 type JsonResponse<Operation> = Operation extends {
   responses: {
     200: {
@@ -50,6 +53,15 @@ type JsonResponse<Operation> = Operation extends {
   }
 }
   ? Response
+  : never
+type JsonRequest<Operation> = Operation extends {
+  requestBody: {
+    content: {
+      'application/json': infer Request
+    }
+  }
+}
+  ? Request
   : never
 type RouteResponse<Path extends keyof paths> = JsonResponse<GetOperation<Path>>
 
@@ -62,6 +74,10 @@ type DependencyGraph = RouteResponse<'/api/v1/dependencies/graph'>
 type EpicItem = RouteResponse<'/api/v1/epics'>['epics'][number]
 type LessonItem = RouteResponse<'/api/v1/lessons'>['lessons'][number]
 type ReviewItem = RouteResponse<'/api/v1/reviews'>['reviews'][number]
+type SessionState = RouteResponse<'/api/v1/session'>
+type SessionLoginRequest = JsonRequest<PostOperation<'/api/v1/session'>>
+type SessionLoginResponse = JsonResponse<PostOperation<'/api/v1/session'>>
+type SessionLogoutResponse = JsonResponse<DeleteOperation<'/api/v1/session'>>
 
 const routeTypeParity: Assert<Equal<keyof paths, ExpectedV1Route>> = true
 const closedValueFieldParity: [
@@ -103,7 +119,15 @@ const closedValueFieldParity: [
     Equal<ReviewItem['checks'][number]['check_type'], Schema['VerificationCheckType']>
   >,
   Assert<Equal<ReviewItem['checks'][number]['status'], Schema['EvidenceStatus']>>,
+  Assert<Equal<SessionState, Schema['SessionStateResponse']>>,
+  Assert<Equal<SessionLoginRequest, Schema['SessionLoginRequest']>>,
+  Assert<Equal<SessionLoginResponse, Schema['SessionLoginResponse']>>,
+  Assert<Equal<SessionLogoutResponse, Schema['SessionStateResponse']>>,
 ] = [
+  true,
+  true,
+  true,
+  true,
   true,
   true,
   true,
@@ -146,7 +170,7 @@ function tsFiles(root: string): string[] {
 describe('generated OpenAPI TypeScript client contract', () => {
   it('represents every current v1 route in the generated types', () => {
     expect(routeTypeParity).toBe(true)
-    expect(expectedV1Routes).toHaveLength(11)
+    expect(expectedV1Routes).toHaveLength(12)
   })
 
   it('types closed-value response fields through generated schema enum members', () => {
@@ -162,6 +186,18 @@ describe('generated OpenAPI TypeScript client contract', () => {
         ).not.toMatch(enumDeclaration)
       }
     }
+  })
+
+  it('keeps session credentials out of browser storage helpers', () => {
+    const clientSource = readFileSync(generatedClientPath.replace(
+      'atlas-openapi.ts',
+      'client.ts'
+    ), 'utf8')
+
+    expect(clientSource).toContain('let atlasCsrfToken: string | null = null')
+    expect(clientSource).not.toContain('localStorage')
+    expect(clientSource).not.toContain('sessionStorage')
+    expect(clientSource).not.toContain('document.cookie')
   })
 
   it('publishes runtime enum metadata for view matrices', () => {

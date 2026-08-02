@@ -16,6 +16,9 @@ type StartAtlasApiServerOptions = {
   seedPath?: string
 }
 
+const E2E_OPERATOR_TOKEN =
+  'atlas-operator-e2e-token-0123456789ABCDEFGHJKLMNPQRSTxyz!@#'
+
 function runSeedCommand(command: string, args: string[], dbUrl: string): void {
   const result = spawnSync(command, args, {
     cwd: repoRoot,
@@ -111,14 +114,23 @@ export async function startAtlasApiServer({
   runSeedCommand('uv', seedArgs, dbUrl)
 
   let apiOutput = ''
+  const atlasApiServeArgs = ['run', 'atlas', 'api', 'serve']
   const apiProcess = spawn(
     'uv',
-    ['run', 'atlas', 'api', 'serve', '--host', '127.0.0.1', '--port', apiPort],
+    [
+      ...atlasApiServeArgs,
+      '--enable-writes',
+      '--host',
+      '127.0.0.1',
+      '--port',
+      apiPort,
+    ],
     {
       cwd: repoRoot,
       env: {
         ...process.env,
         ATLAS_DATABASE_URL: dbUrl,
+        ATLAS_OPERATOR_TOKEN: E2E_OPERATOR_TOKEN,
         UV_CACHE_DIR: process.env.UV_CACHE_DIR ?? '/tmp/uv-cache',
         UV_LINK_MODE: process.env.UV_LINK_MODE ?? 'copy',
       },

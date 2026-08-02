@@ -115,6 +115,13 @@ from atlas.orchestration import (
     resolve_pr_context,
     run_verify,
 )
+from atlas.orchestration.operator_security import (
+    WRITABLE_BIND_HOST_ENV,
+    WRITABLE_ROUTES_ENV,
+    WritableApiPreconditionError,
+    assert_writable_startup_preconditions,
+    operator_token_from_env,
+)
 from atlas.orchestration.pr_context import (
     parse_tickets_flag as _parse_tickets_flag,
 )
@@ -428,10 +435,27 @@ def _add_api_parser(subcommands: argparse._SubParsersAction) -> None:  # type: i
     serve = api_sub.add_parser("serve", help="Serve the API on localhost")
     serve.add_argument("--host", default="127.0.0.1", help="bind host")
     serve.add_argument("--port", type=int, default=8000, help="bind port")
+    serve.add_argument(
+        "--enable-writes",
+        action="store_true",
+        help="enable authenticated writable API routes on loopback only",
+    )
 
 
 def _api_command(args: argparse.Namespace) -> int:
     """Launch by import string, preserving the cli/api sibling boundary."""
+    os.environ[WRITABLE_ROUTES_ENV] = "0"
+    os.environ[WRITABLE_BIND_HOST_ENV] = args.host
+    if args.enable_writes:
+        try:
+            assert_writable_startup_preconditions(
+                operator_token=operator_token_from_env(),
+                bind_host=args.host,
+            )
+        except WritableApiPreconditionError as error:
+            print(error, file=sys.stderr)
+            return EXIT_PRECONDITION
+        os.environ[WRITABLE_ROUTES_ENV] = "1"
     uvicorn.run("atlas.api.app:app", host=args.host, port=args.port)
     return EXIT_OK
 

@@ -114,6 +114,7 @@ test('all ratified v1 routes return the expected runtime shape from the live see
     ],
     ['/api/v1/dependencies/graph', '/api/v1/dependencies/graph'],
     ['/api/v1/reviews', '/api/v1/reviews'],
+    ['/api/v1/session', '/api/v1/session'],
     ['/api/v1/status', '/api/v1/status'],
   ] as const
 

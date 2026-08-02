@@ -105,6 +105,35 @@ states.
   root — every runbook, agent prompt, and gate sweep already does.
   Identify the impostor with `which atlas`.
 
+## Operator API writable mode
+
+Writable API routes are off unless `atlas api serve --enable-writes` is used.
+The existing read-only loopback API can still be started without an operator
+token:
+
+Do not export `ATLAS_API_ENABLE_WRITES` or `ATLAS_API_BIND_HOST` by hand. Those
+variables are internal handoff state from the CLI to the imported API app, and
+each `atlas api serve` invocation overwrites them from its actual flags before
+launching Uvicorn.
+
+```bash
+uv run atlas api serve --host 127.0.0.1 --port 8000
+```
+
+Before enabling writes, set `ATLAS_OPERATOR_TOKEN` in the shell that launches
+the API. The value is a local bootstrap credential, not repository state: do
+not commit it, paste it into docs, put it in `VITE_` variables, or pass it in a
+URL. Generate it with a cryptographic random source, for example:
+
+```bash
+python -c 'import secrets; print(secrets.token_urlsafe(32))'
+```
+
+The server refuses writable startup if the token is absent, is outside the
+43-to-512 printable ASCII character range, or fails the 128-bit estimated
+entropy floor. Writable serving also refuses non-loopback bind hosts; remote
+serving remains unsupported until a later HTTPS/Secure-cookie design lands.
+
 ## Database
 
 - The store is a single SQLite file at

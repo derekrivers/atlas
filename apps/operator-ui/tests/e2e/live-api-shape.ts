@@ -567,6 +567,15 @@ function assertSystemStatusResponse(
   )
 }
 
+function assertSessionStateResponse(
+  value: unknown
+): asserts value is RouteResponse<'/api/v1/session'> {
+  assertObject(value, 'SessionStateResponse')
+  assertExactKeys(value, ['authenticated', 'expires_at'], 'SessionStateResponse')
+  assertBoolean(value.authenticated, 'SessionStateResponse.authenticated')
+  assertIsoDateTimeOrNull(value.expires_at, 'SessionStateResponse.expires_at')
+}
+
 export const liveApiShapeAssertions = {
   '/api/v1/tickets': assertTicketBoardResponse,
   '/api/v1/tickets/count': assertTicketCountResponse,
@@ -578,6 +587,7 @@ export const liveApiShapeAssertions = {
   '/api/v1/dependencies/critical-path': assertDependencyCriticalPathResponse,
   '/api/v1/dependencies/graph': assertDependencyGraphResponse,
   '/api/v1/reviews': assertReviewQueueResponse,
+  '/api/v1/session': assertSessionStateResponse,
   '/api/v1/status': assertSystemStatusResponse,
 } satisfies {
   [Path in keyof paths]: (value: unknown) => asserts value is RouteResponse<Path>

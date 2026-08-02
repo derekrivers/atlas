@@ -1,6 +1,7 @@
 """Pydantic response schemas exposed by the HTTP adapter."""
 
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -22,6 +23,32 @@ class TicketCountResponse(BaseModel):
     """Number of tickets in the Atlas store."""
 
     count: int
+
+
+class SessionLoginRequest(BaseModel):
+    """Bootstrap-token login request for the single local operator."""
+
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={"examples": [{"token": "<ATLAS_OPERATOR_TOKEN>"}]},
+    )
+
+    token: str = Field(min_length=1)
+
+
+class SessionLoginResponse(BaseModel):
+    """Successful operator login state plus one in-memory CSRF value."""
+
+    authenticated: Literal[True]
+    expires_at: datetime
+    csrf_token: str
+
+
+class SessionStateResponse(BaseModel):
+    """Current browser session state without credential material."""
+
+    authenticated: bool
+    expires_at: datetime | None
 
 
 class TicketBoardItemSchema(BaseModel):

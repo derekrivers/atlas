@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import Depends, HTTPException, Request, status
+from fastapi import Depends, HTTPException, Request, Response, Security, status
+from fastapi.security import APIKeyCookie, APIKeyHeader
 
 from atlas.api.presenters import (
     present_dependency_critical_path,
@@ -24,11 +25,20 @@ from atlas.api.schemas import (
     EpicsResponse,
     LessonsResponse,
     ReviewQueueResponse,
+    SessionLoginRequest,
+    SessionLoginResponse,
+    SessionStateResponse,
     SystemStatusResponse,
     TicketBoardResponse,
     TicketDependenciesResponse,
     TicketDetailResponse,
     TicketEvidenceResponse,
+)
+from atlas.api.security import (
+    CSRF_HEADER_NAME,
+    SESSION_COOKIE_NAME,
+    MutationContext,
+    OperatorSessionService,
 )
 from atlas.core.enums import EntityStatus
 from atlas.core.models import TicketStatus
@@ -51,6 +61,94 @@ def get_database(request: Request) -> Database:
 
 
 DatabaseDependency = Annotated[Database, Depends(get_database)]
+
+
+def get_operator_session_service(request: Request) -> OperatorSessionService:
+    """Return the writable-session service installed during app startup."""
+    service: OperatorSessionService = request.app.state.operator_session_service
+    return service
+
+
+OperatorSessionServiceDependency = Annotated[
+    OperatorSessionService,
+    Depends(get_operator_session_service),
+]
+
+SessionCookieSecurity = APIKeyCookie(
+    name=SESSION_COOKIE_NAME,
+    scheme_name="AtlasSessionCookie",
+    auto_error=False,
+)
+CSRFHeaderSecurity = APIKeyHeader(
+    name=CSRF_HEADER_NAME,
+    scheme_name="AtlasCSRFToken",
+    auto_error=False,
+)
+
+
+def create_operator_session_response(
+    request: Request,
+    response: Response,
+    body: SessionLoginRequest,
+    sessions: OperatorSessionServiceDependency,
+) -> SessionLoginResponse:
+    """Create one short-lived operator session from a strict JSON login body."""
+    return sessions.login(request=request, response=response, body=body)
+
+
+CreatedOperatorSessionDependency = Annotated[
+    SessionLoginResponse,
+    Depends(create_operator_session_response),
+]
+
+
+def get_current_session_state(
+    request: Request,
+    sessions: OperatorSessionServiceDependency,
+) -> SessionStateResponse:
+    """Read current session state without returning credentials or CSRF."""
+    return sessions.read_state(request=request)
+
+
+CurrentSessionStateDependency = Annotated[
+    SessionStateResponse,
+    Depends(get_current_session_state),
+]
+
+
+def resolve_mutation_context(
+    request: Request,
+    sessions: OperatorSessionServiceDependency,
+    session_id: Annotated[str | None, Security(SessionCookieSecurity)],
+    csrf_token: Annotated[str | None, Security(CSRFHeaderSecurity)],
+) -> MutationContext:
+    """Resolve the immutable server-owned actor for one protected mutation."""
+    return sessions.resolve_mutation_context(
+        request=request,
+        session_id=session_id,
+        csrf_token=csrf_token,
+    )
+
+
+MutationContextDependency = Annotated[
+    MutationContext,
+    Depends(resolve_mutation_context),
+]
+
+
+def revoke_operator_session_response(
+    response: Response,
+    context: MutationContextDependency,
+    sessions: OperatorSessionServiceDependency,
+) -> SessionStateResponse:
+    """Revoke the exact live session resolved by the mutation dependency."""
+    return sessions.revoke(context=context, response=response)
+
+
+RevokedOperatorSessionDependency = Annotated[
+    SessionStateResponse,
+    Depends(revoke_operator_session_response),
+]
 
 
 def get_ticket_repo(database: DatabaseDependency) -> TicketRepo:
