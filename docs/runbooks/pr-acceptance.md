@@ -105,10 +105,13 @@ criteria reviewed in step 1. Any wording or criterion-set drift restarts the
 review; never confirm a remembered or superseded criterion. The command writes
 the human-tier `MANUAL_APPROVAL` and acceptance-criterion confirmations the
 evaluators consume. If no decisions remain, it exits successfully and prints
-`No outstanding confirmations ...`; do not retry that as missing work. If the
-operator skips or declines every presented action, it reports zero recorded
-confirmations and names that outstanding confirmation actions remain unresolved.
-This — not a GitHub review — is the human gate.
+`No outstanding confirmations ...`; do not retry that as missing work. The
+summary separately counts passed/approved and failed/rejected records, and names
+every skipped action as unresolved even when other decisions were recorded. An
+empty close-set or an unknown-only close-set prints
+`No confirmation assessment performed ...` and exits with the precondition code;
+fix the close-set instead of treating that result as successful exhaustion. This
+— not a GitHub review — is the human gate.
 
 ## 5. Verify
 

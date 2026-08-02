@@ -153,6 +153,16 @@ token, an unknown PR or transport error, a cold database) is a non-zero exit. A
 future `--strict` mode (FAILED → non-zero, for CI gating) is a follow-up — until
 it exists, `verify` does not block a merge on a FAILED verdict.
 
+`atlas confirm` consumes the structured pending-capture result and reports
+positive decisions (confirmed/waived/approved), negative decisions
+(failed/rejected), and skipped actions separately. It reports skipped actions
+even when other decisions were recorded, so a partial session cannot hide
+outstanding work. A resolved close-set with no pending decisions is the only
+zero-action success and prints `No outstanding confirmations ...` with exit 0.
+An empty close-set or one made entirely of unknown ticket keys performs no
+assessment, prints `No confirmation assessment performed ...`, and exits with
+the precondition code; it cannot be mistaken for exhausted confirmation work.
+
 ## Open items
 
 - Coverage minimums: start with "coverage evidence must exist", add a

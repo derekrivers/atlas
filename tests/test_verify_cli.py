@@ -35,7 +35,12 @@ from github_fakes import FakeGitHubClient
 
 from atlas.cli import EXIT_OK, EXIT_PRECONDITION, main
 from atlas.core.enums import ActorType, EvidenceStatus, RiskLevel
-from atlas.core.models import Evidence, EvidenceType, VerificationCheckType
+from atlas.core.models import (
+    Evidence,
+    EvidenceType,
+    VerificationCheck,
+    VerificationCheckType,
+)
 from atlas.core.models.ticket import Ticket, TicketStatus, TicketType
 from atlas.storage import Database, EvidenceRepo, TicketRepo, VerificationCheckRepo
 from atlas.verification import acceptance_criterion_hash
@@ -311,6 +316,45 @@ def test_report_does_not_claim_confirmations_absent_when_human_records_exist(
     assert "PASSED" in out
     assert "no operator confirmations exist yet" not in out
     assert "OP-A" not in out
+
+
+def test_live_confirmation_diagnostic_ignores_contradictory_historical_check(
+    db: Database, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """An append-only historical PENDING row may claim confirmations were absent;
+    once matching human evidence exists, the new report is derived from the live
+    evaluation and cannot repeat that stale assertion."""
+    ticket = make_ticket(key="ATLAS-204")
+    TicketRepo(db).add(ticket)
+    historical = VerificationCheck(
+        id=uuid4(),
+        ticket_id=ticket.id,
+        check_type=VT.ACCEPTANCE_CRITERIA,
+        status=ES.PENDING,
+        summary="Note (OP-A): no operator confirmations exist yet.",
+        required=True,
+        evidence_ids=[],
+        created_at=NOW,
+        completed_at=None,
+    )
+    VerificationCheckRepo(db).add(historical)
+    confirmation = accept_confirmation(ticket.id)
+    seed_evidence(db, sys_test(), sys_lint(), confirmation)
+
+    code = run_verify(db, fake(title="feat: thing (ATLAS-204) (#126)"))
+
+    assert code == EXIT_OK
+    out = capsys.readouterr().out
+    assert str(confirmation.id) in out
+    assert "acceptance_criteria" in out and "PASSED" in out
+    assert "Confirmation note:" not in out
+    assert historical.summary not in out
+    assert "no operator confirmations exist yet" not in out
+    rows = VerificationCheckRepo(db).list_for_ticket(ticket.id)
+    assert rows[0] == historical  # append-only history remains stored
+    acceptance_rows = [r for r in rows if r.check_type == VT.ACCEPTANCE_CRITERIA]
+    assert {r.status for r in acceptance_rows} == {ES.PENDING, ES.PASSED}
+    assert historical in acceptance_rows
 
 
 # --- DoD 6: --json shape ----------------------------------------------------

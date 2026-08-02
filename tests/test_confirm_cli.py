@@ -30,6 +30,10 @@ Each assertion names the wrong answer it catches. Criteria AC-1..AC-10:
 - AC-9: records only — no VerificationCheck rows, no ticket transition.
 - AC-10: a multi-ticket close-set captures each ticket's own pending set; an
   unknown key is reported, not fatal.
+- AC-11: partial skips, scope failures, and approval rejections are explicitly
+  counted in the completed-session diagnostic.
+- AC-12: empty and unknown-only close-sets perform no assessment and exit with a
+  clean precondition diagnostic.
 """
 
 from __future__ import annotations
@@ -283,7 +287,9 @@ def test_confirm_round_trip_reaches_passed(
 # --- AC-2: a scope "fail" records a FAILED decision --------------------------
 
 
-def test_scope_fail_records_failed(db: Database) -> None:
+def test_scope_fail_records_failed(
+    db: Database, capsys: pytest.CaptureFixture[str]
+) -> None:
     """Scripting scope "fail" persists build_scope_decision(waive=False) ->
     evaluate_scope FAILED at C. Wrong answer: "fail" mapped to a waive (PASSED)."""
     ticket = make_ticket(db, key="ATLAS-300", ticket_type=TicketType.BUG)
@@ -300,6 +306,32 @@ def test_scope_fail_records_failed(db: Database) -> None:
         evidence=EvidenceRepo(db).list(),
     )
     assert evaluation.status == ES.FAILED
+    assert capsys.readouterr().out == (
+        f"Recorded 2 operator confirmation(s) for atlas/atlas PR #133 at {HEAD}: "
+        "1 passed/approved; 1 failed/rejected.\n"
+    )
+
+
+def test_approval_rejection_is_explicitly_reported(
+    db: Database, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A persisted blanket rejection is a recorded negative decision, not an
+    unresolved skip hidden inside the total-recorded count."""
+    ticket = make_ticket(db, key="ATLAS-314", risk_level=RiskLevel.HIGH)
+
+    code = run_confirm(
+        db,
+        fake(files=[IN_SCOPE_SRC, ANCHOR_DOC]),
+        ScriptedPrompts(approval="reject"),
+        tickets="ATLAS-314",
+    )
+
+    assert code == EXIT_OK
+    assert status_of(ticket, db, VT.HUMAN_APPROVAL) == ES.FAILED
+    assert capsys.readouterr().out == (
+        f"Recorded 2 operator confirmation(s) for atlas/atlas PR #133 at {HEAD}: "
+        "1 passed/approved; 1 failed/rejected.\n"
+    )
 
 
 # --- AC-3: skipping every item writes nothing, exits EXIT_OK -----------------
@@ -333,6 +365,33 @@ def test_skip_writes_nothing_and_items_stay_pending(
     assert again.acceptance_calls == [AC]  # still prompted -> still pending
 
 
+def test_partial_skip_is_reported_even_when_other_actions_are_recorded(
+    db: Database, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Two positive writes plus one skip must still name the unresolved action;
+    a non-zero recorded total cannot suppress it."""
+    ticket = make_ticket(db, key="ATLAS-315", risk_level=RiskLevel.HIGH)
+
+    code = run_confirm(
+        db,
+        fake(),
+        ScriptedPrompts(approval="skip"),
+        tickets="ATLAS-315",
+    )
+
+    assert code == EXIT_OK
+    assert len(EvidenceRepo(db).list()) == 2
+    assert capsys.readouterr().out == (
+        f"Recorded 2 operator confirmation(s) for atlas/atlas PR #133 at {HEAD}: "
+        "2 passed/approved; 0 failed/rejected.\n"
+        "  1 outstanding confirmation action(s) remain unresolved because the "
+        "operator skipped them.\n"
+    )
+    assert VerificationCheckRepo(db).list() == []
+    reloaded = TicketRepo(db).get_by_key(ticket.key)
+    assert reloaded is not None and reloaded.status == TicketStatus.REVIEW_REQUIRED
+
+
 def test_no_outstanding_confirmations_reports_zero_action_success(
     db: Database, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -361,6 +420,47 @@ def test_no_outstanding_confirmations_reports_zero_action_success(
     assert VerificationCheckRepo(db).list() == []
     reloaded = TicketRepo(db).get_by_key(ticket.key)
     assert reloaded is not None and reloaded.status == TicketStatus.REVIEW_REQUIRED
+
+
+def test_empty_close_set_reports_no_assessment(
+    db: Database, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """No parsed ticket keys means no assessment, not zero outstanding work."""
+    code = run_confirm(
+        db,
+        fake(title="chore: no ticket key", body="nothing to close"),
+        ScriptedPrompts(),
+    )
+
+    assert code == EXIT_PRECONDITION
+    assert capsys.readouterr().out == (
+        f"No confirmation assessment performed for atlas/atlas PR #133 at {HEAD}: "
+        "the close-set is empty.\n"
+    )
+    assert EvidenceRepo(db).list() == []
+    assert VerificationCheckRepo(db).list() == []
+
+
+def test_unknown_only_close_set_reports_no_assessment(
+    db: Database, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Unknown-only keys are named and fail cleanly instead of claiming that a
+    resolved ticket has no outstanding confirmations."""
+    code = run_confirm(
+        db,
+        fake(),
+        ScriptedPrompts(),
+        tickets="ATLAS-998,ATLAS-999",
+    )
+
+    assert code == EXIT_PRECONDITION
+    assert capsys.readouterr().out == (
+        f"No confirmation assessment performed for atlas/atlas PR #133 at {HEAD}: "
+        "no close-set tickets resolved from the database.\n"
+        "  Skipped (no such ticket in the database): ATLAS-998, ATLAS-999\n"
+    )
+    assert EvidenceRepo(db).list() == []
+    assert VerificationCheckRepo(db).list() == []
 
 
 # --- AC-4: operator identity -------------------------------------------------

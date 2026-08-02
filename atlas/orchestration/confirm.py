@@ -44,8 +44,19 @@ class ConfirmPrompts(Protocol):
 class ConfirmCaptureResult(NamedTuple):
     """Structured outcome for one ticket's confirmation capture."""
 
-    recorded: int
-    pending_actions: int
+    passed_or_approved: int
+    failed_or_rejected: int
+    skipped: int
+
+    @property
+    def recorded(self) -> int:
+        """Persisted decisions, whether positive or negative."""
+        return self.passed_or_approved + self.failed_or_rejected
+
+    @property
+    def pending_actions(self) -> int:
+        """Actions presented during this capture, including skipped actions."""
+        return self.recorded + self.skipped
 
 
 def capture_ticket(
@@ -96,18 +107,16 @@ def capture_ticket_result(
     to the matching builder (D-2): a confirmed criterion →
     :func:`build_acceptance_confirmation`; a waived/failed scope file →
     :func:`build_scope_decision`; an approved/rejected blanket →
-    :func:`build_blanket_approval`. A skip persists nothing. Returns a structured
-    count so the command can distinguish "nothing outstanding" from "pending
-    actions were shown but skipped or declined" without parsing prompt text."""
+    :func:`build_blanket_approval`. A skip persists nothing. Returns structured
+    positive, negative, and skipped counts so the command can distinguish
+    "nothing outstanding" from every kind of presented decision without parsing
+    prompt text."""
     pending = pending_capture(
         ticket, head_commit=head_commit, pr_files=pr_files, evidence=evidence
     )
-    pending_actions = (
-        len(pending.unconfirmed_criteria)
-        + len(pending.undecided_scope_files)
-        + int(pending.human_approval_required_and_missing)
-    )
-    recorded = 0
+    passed_or_approved = 0
+    failed_or_rejected = 0
+    skipped = 0
 
     for prompt in pending.unconfirmed_criteria:
         if prompts.acceptance(prompt.criterion):
@@ -122,7 +131,9 @@ def capture_ticket_result(
                     now=now,
                 )
             )
-            recorded += 1
+            passed_or_approved += 1
+        else:
+            skipped += 1
 
     for path in pending.undecided_scope_files:
         scope_decision = prompts.scope(path)
@@ -139,7 +150,12 @@ def capture_ticket_result(
                     now=now,
                 )
             )
-            recorded += 1
+            if scope_decision == "waive":
+                passed_or_approved += 1
+            else:
+                failed_or_rejected += 1
+        else:
+            skipped += 1
 
     if pending.human_approval_required_and_missing:
         approval_decision = prompts.approval()
@@ -155,6 +171,15 @@ def capture_ticket_result(
                     now=now,
                 )
             )
-            recorded += 1
+            if approval_decision == "approve":
+                passed_or_approved += 1
+            else:
+                failed_or_rejected += 1
+        else:
+            skipped += 1
 
-    return ConfirmCaptureResult(recorded=recorded, pending_actions=pending_actions)
+    return ConfirmCaptureResult(
+        passed_or_approved=passed_or_approved,
+        failed_or_rejected=failed_or_rejected,
+        skipped=skipped,
+    )

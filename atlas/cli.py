@@ -745,10 +745,12 @@ def _add_confirm_parser(subcommands: argparse._SubParsersAction) -> None:  # typ
     pull`), not a repo-root path.
 
     EXIT-CODE CONTRACT (D-6): a completed session — even one where the operator
-    skips every item — is EXIT_OK. Every setup failure (malformed `--repo`,
-    missing operator identity, missing token, unknown PR / transport, a cold
-    database, no `ATLAS` product, or no TTY without an injected prompt seam) is a
-    clean one-line EXIT_PRECONDITION, never a traceback. No secret is printed."""
+    skips every item — is EXIT_OK. A close-set that resolves no tickets performs
+    no confirmation assessment and is EXIT_PRECONDITION. Every other setup
+    failure (malformed `--repo`, missing operator identity, missing token, unknown
+    PR / transport, a cold database, no `ATLAS` product, or no TTY without an
+    injected prompt seam) is also a clean one-line EXIT_PRECONDITION, never a
+    traceback. No secret is printed."""
     confirm = subcommands.add_parser(
         "confirm",
         help="Interactively capture operator confirmations for a PR (writes "
@@ -1866,8 +1868,8 @@ def _confirm_command(
 
     RECORDS ONLY (D-5): no `evaluate_pr`, no VerificationCheck rows, no ticket
     transition. EXIT-CODE CONTRACT (D-6): a completed session (even all-skip) →
-    EXIT_OK; every setup failure → a clean one-line EXIT_PRECONDITION, never a
-    traceback, no secret printed."""
+    EXIT_OK; a close-set resolving no tickets or any other setup failure → a
+    clean one-line EXIT_PRECONDITION, never a traceback, no secret printed."""
     resolved_db = database if database is not None else Database(args.db)
 
     owner, sep, repo = args.repo.partition("/")
@@ -1943,9 +1945,31 @@ def _confirm_command(
                 continue
             tickets.append(ticket)
 
+        target = (
+            f"{context.owner}/{context.repo} PR #{args.pr} at {context.head_commit}"
+        )
+        if not tickets:
+            if close_set:
+                print(
+                    f"No confirmation assessment performed for {target}: no "
+                    "close-set tickets resolved from the database."
+                )
+            else:
+                print(
+                    f"No confirmation assessment performed for {target}: the "
+                    "close-set is empty."
+                )
+            if unknown_keys:
+                print(
+                    "  Skipped (no such ticket in the database): "
+                    + ", ".join(unknown_keys)
+                )
+            return EXIT_PRECONDITION
+
         evidence = evidence_repo.list()  # snapshot at C; loaded once (mirrors verify)
-        recorded = 0
-        pending_actions = 0
+        passed_or_approved = 0
+        failed_or_rejected = 0
+        skipped = 0
         for ticket in tickets:
             result = capture_ticket_result(
                 ticket,
@@ -1959,8 +1983,9 @@ def _confirm_command(
                 now=clock,
                 new_id=mint,
             )
-            recorded += result.recorded
-            pending_actions += result.pending_actions
+            passed_or_approved += result.passed_or_approved
+            failed_or_rejected += result.failed_or_rejected
+            skipped += result.skipped
     except OperationalError:
         print(
             "database is not initialised (no such table); run the database "
@@ -1969,15 +1994,20 @@ def _confirm_command(
         )
         return EXIT_PRECONDITION
 
-    target = f"{context.owner}/{context.repo} PR #{args.pr} at {context.head_commit}"
+    recorded = passed_or_approved + failed_or_rejected
+    pending_actions = recorded + skipped
     if pending_actions == 0:
         print(f"No outstanding confirmations for {target}.")
     else:
-        print(f"Recorded {recorded} operator confirmation(s) for {target}.")
-        if recorded == 0:
+        print(
+            f"Recorded {recorded} operator confirmation(s) for {target}: "
+            f"{passed_or_approved} passed/approved; "
+            f"{failed_or_rejected} failed/rejected."
+        )
+        if skipped:
             print(
-                f"  {pending_actions} outstanding confirmation action(s) remain "
-                "unresolved because the operator skipped or declined them."
+                f"  {skipped} outstanding confirmation action(s) remain "
+                "unresolved because the operator skipped them."
             )
     if unknown_keys:
         print("  Skipped (no such ticket in the database): " + ", ".join(unknown_keys))
