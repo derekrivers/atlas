@@ -21,6 +21,7 @@ from test_models_validation import (
     ticket_kwargs,
 )
 from test_plan_run_model import plan_run_kwargs
+from test_pm_sync_receipt_model import pm_sync_receipt_kwargs
 
 import atlas.storage as storage
 from atlas.core.models import (
@@ -31,6 +32,7 @@ from atlas.core.models import (
     Evidence,
     Lesson,
     PlanRun,
+    PmSyncReceipt,
     Product,
     Ticket,
     TicketDependency,
@@ -44,6 +46,7 @@ from atlas.storage import (
     EvidenceRepo,
     LessonRepo,
     PlanRunRepo,
+    PmSyncReceiptRepo,
     ProductRepo,
     TicketDependencyRepo,
     TicketRepo,
@@ -68,6 +71,7 @@ CASES = [
     (AgentRunRepo, AgentRun, agent_run_kwargs),
     (ContextPackRepo, ContextPack, context_pack_kwargs),
     (PlanRunRepo, PlanRun, plan_run_kwargs),
+    (PmSyncReceiptRepo, PmSyncReceipt, pm_sync_receipt_kwargs),
 ]
 CASE_IDS = [model.__name__ for _, model, _ in CASES]
 

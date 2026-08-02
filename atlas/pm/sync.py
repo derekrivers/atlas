@@ -83,6 +83,8 @@ with no network and no secrets.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 import os
 import re
@@ -91,7 +93,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import StrEnum
 from pathlib import Path
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import networkx as nx
 
@@ -102,6 +104,7 @@ from atlas.core.enums import ActorType
 from atlas.core.models.adr import ADRStatus, ArchitectureDecisionRecord
 from atlas.core.models.debt_item import AnomalyType, DebtItem
 from atlas.core.models.lesson import Lesson
+from atlas.core.models.pm_sync_receipt import PmSyncReceipt, PmSyncReceiptResult
 from atlas.core.models.ticket import Ticket, TicketStatus
 from atlas.dependencies.blockers import blocked
 from atlas.dependencies.graph import build_dependency_graph
@@ -128,6 +131,8 @@ from atlas.storage.repositories import (
     ContextPackRepo,
     DebtItemRepo,
     LessonRepo,
+    PmSyncReceiptRepo,
+    ProductRepo,
     TicketRepo,
 )
 
@@ -136,6 +141,16 @@ from atlas.storage.repositories import (
 # ``system`` and created_by_id names the writer (matches the §6.1 example).
 # One definition for the system-actor id, mirroring planning's CREATED_BY.
 CREATED_BY = "pm-engine"
+RECEIPT_ERROR_SUMMARY_MAX_LEN = 500
+
+
+class SyncReceiptPersistenceError(RuntimeError):
+    """Persisting the PM sync receipt failed at the local completion boundary."""
+
+
+class MalformedLinearPullError(RuntimeError):
+    """The batched Linear project pull returned an unusable board shape."""
+
 
 # Per-status dwell horizons (ATLAS-119; pm-engine-and-linear-sync.md "Anomaly and
 # dwell detection"). A ticket whose time in one of these working states exceeds
@@ -382,6 +397,7 @@ class SyncResult:
 
     status_pulled: int = 0
     status_unchanged: int = 0
+    missing_issues: int = 0
     unmapped: int = 0
     anomalies_logged: int = 0
     pushed_created: int = 0
@@ -408,6 +424,7 @@ class SyncResult:
 SYNC_RESULT_COUNTER_NAMES: tuple[str, ...] = (
     "status_pulled",
     "status_unchanged",
+    "missing_issues",
     "unmapped",
     "anomalies_logged",
     "pushed_created",
@@ -434,6 +451,7 @@ def sync_result_is_empty(result: SyncResult) -> bool:
     counters = [
         result.status_pulled,
         result.status_unchanged,
+        result.missing_issues,
         result.unmapped,
         result.anomalies_logged,
         result.pushed_created,
@@ -455,6 +473,162 @@ def sync_result_is_empty(result: SyncResult) -> bool:
         result.draft_lessons_filed,
     ]
     return all(counter == 0 for counter in counters)
+
+
+@dataclass
+class _ReceiptContext:
+    """Mutable receipt inputs collected by the sync body as it runs."""
+
+    result: SyncResult = field(default_factory=SyncResult)
+    pull_board: list[Ticket] = field(default_factory=list)
+    fetched_issues: list[LinearIssue] = field(default_factory=list)
+
+
+def _canonical_hash(payload: object) -> str:
+    rendered = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(rendered.encode("utf-8")).hexdigest()
+
+
+def _status_map_fingerprint(status_map: LinearStatusMap) -> str:
+    return _canonical_hash(status_map.snapshot())
+
+
+def _fetched_board_fingerprint(issues: list[LinearIssue]) -> str:
+    """Fingerprint the bounded board observation fields used by sync.
+
+    Titles, descriptions and comment bodies are deliberately excluded. The
+    receipt needs enough provenance to prove which board state was observed
+    without storing raw Linear payload material.
+    """
+
+    payload = [
+        {
+            "id": issue.id,
+            "identifier": issue.identifier,
+            "state_id": issue.state_id,
+            "state_name": issue.state_name,
+            "state_type": issue.state_type,
+        }
+        for issue in sorted(issues, key=lambda item: item.id)
+    ]
+    return _canonical_hash(payload)
+
+
+def _validate_fetched_board(issues: list[LinearIssue]) -> None:
+    """Reject malformed board pulls before they can look successful."""
+
+    seen: set[str] = set()
+    for index, issue in enumerate(issues):
+        if not isinstance(issue.id, str) or not issue.id.strip():
+            raise MalformedLinearPullError(
+                f"Linear project pull returned issue[{index}] without a stable id"
+            )
+        if issue.id in seen:
+            raise MalformedLinearPullError(
+                f"Linear project pull returned duplicate issue id {issue.id!r}"
+            )
+        seen.add(issue.id)
+
+
+def _sync_result_counters(result: SyncResult) -> dict[str, int]:
+    return {name: int(getattr(result, name)) for name in SYNC_RESULT_COUNTER_NAMES}
+
+
+def _bounded_error_summary(error: BaseException) -> str:
+    cls = type(error)
+    rendered = f"{cls.__module__}.{cls.__qualname__}: {error}"
+    if len(rendered) <= RECEIPT_ERROR_SUMMARY_MAX_LEN:
+        return rendered
+    return rendered[: RECEIPT_ERROR_SUMMARY_MAX_LEN - 3] + "..."
+
+
+def _product_identity(
+    db: Database, pull_board: list[Ticket]
+) -> tuple[UUID | None, str | None]:
+    product_repo = ProductRepo(db)
+    product_ids = {ticket.product_id for ticket in pull_board}
+    if len(product_ids) == 1:
+        product_id = next(iter(product_ids))
+        product = product_repo.get(product_id)
+        if product is not None:
+            return product.id, product.key
+
+    products = product_repo.list()
+    if len(products) == 1:
+        product = products[0]
+        return product.id, product.key
+    return None, None
+
+
+def _classify_successful_receipt(
+    result: SyncResult,
+) -> PmSyncReceiptResult:
+    if (
+        result.pack_render_failures > 0
+        or result.unmapped > 0
+        or result.missing_issues > 0
+        or result.anomalies_logged > 0
+    ):
+        return PmSyncReceiptResult.PARTIAL
+    if result.pushed_created > 0 or result.pushed_updated > 0:
+        return PmSyncReceiptResult.SUCCESS_DEFINITION_CHANGED
+    if any(
+        counter > 0
+        for counter in (
+            result.status_pulled,
+            result.promoted,
+            result.completed,
+            result.routed_to_human,
+            result.agent_runs_reconstructed,
+            result.agent_runs_updated,
+            result.follow_ups_stubbed,
+            result.dwell_breaches,
+            result.review_cycles_logged,
+            result.stale_blocks,
+            result.draft_lessons_filed,
+        )
+    ):
+        return PmSyncReceiptResult.SUCCESS_STATUS_ONLY
+    return PmSyncReceiptResult.SUCCESS_ZERO_ACTION
+
+
+def _record_sync_receipt(
+    *,
+    db: Database,
+    status_map: LinearStatusMap,
+    project_id: str,
+    started_at: datetime,
+    finished_at: datetime,
+    receipt_result: PmSyncReceiptResult,
+    context: _ReceiptContext,
+    error: BaseException | None = None,
+) -> None:
+    product_id, product_key = _product_identity(db, context.pull_board)
+    try:
+        PmSyncReceiptRepo(db).record(
+            PmSyncReceipt(
+                id=uuid4(),
+                product_id=product_id,
+                product_key=product_key,
+                linear_project_id=project_id,
+                started_at=started_at,
+                finished_at=finished_at,
+                status_map_fingerprint=_status_map_fingerprint(status_map),
+                fetched_board_fingerprint=_fetched_board_fingerprint(
+                    context.fetched_issues
+                ),
+                fetched_board_issue_count=len(context.fetched_issues),
+                result=receipt_result,
+                counters=_sync_result_counters(context.result),
+                error_summary=None if error is None else _bounded_error_summary(error),
+                created_by_type=ActorType.SYSTEM,
+                created_by_id=CREATED_BY,
+            )
+        )
+    except Exception as receipt_error:
+        raise SyncReceiptPersistenceError(
+            "PM sync receipt persistence failed; tick success cannot be reported"
+        ) from receipt_error
 
 
 def _definition_changed(ticket: Ticket) -> bool:
@@ -914,6 +1088,7 @@ def _pull(
         # distinct anomaly (not an out-of-ownership *transition*) and out of
         # ATLAS-118's narrowed scope; here we only avoid crashing and leave
         # status unchanged.
+        result.missing_issues += 1
         logger.warning(
             "linear-sync: issue %s for %s not found; status left unchanged",
             ticket.external_linear_id,
@@ -1397,7 +1572,7 @@ def _repair_pack_absent_descriptions(
         )
 
 
-def sync_tick(
+def _sync_tick_impl(
     *,
     tickets: TicketRepo,
     db: Database,
@@ -1410,6 +1585,7 @@ def sync_tick(
     now: datetime,
     repair_packs: bool = False,
     lesson_client: LessonModelClient | None = None,
+    receipt_context: _ReceiptContext | None = None,
 ) -> SyncResult:
     """Run one idempotent sync pass over every ticket (steps 1-5).
 
@@ -1505,6 +1681,8 @@ def sync_tick(
     """
 
     result = SyncResult()
+    if receipt_context is not None:
+        receipt_context.result = result
     debt = DebtItemRepo(db)
     # Step 1's one batched read (ATLAS-148): every issue in the configured
     # project, keyed by id — the join key. Tickets join by external_linear_id
@@ -1512,16 +1690,18 @@ def sync_tick(
     # with nothing pullable (no joined, non-terminal ticket) makes ZERO pull
     # requests, exactly as the per-ticket loop it replaced did.
     pull_board = tickets.list()
+    if receipt_context is not None:
+        receipt_context.pull_board = pull_board
     needs_pull = any(
         ticket.external_linear_id is not None
         and ticket.status.value not in TERMINAL_STATUSES
         for ticket in pull_board
     )
-    issues_by_id: dict[str, LinearIssue] = (
-        {issue.id: issue for issue in client.fetch_project_issues(project_id)}
-        if needs_pull
-        else {}
-    )
+    fetched_issues = client.fetch_project_issues(project_id) if needs_pull else []
+    if receipt_context is not None:
+        receipt_context.fetched_issues = fetched_issues
+    _validate_fetched_board(fetched_issues)
+    issues_by_id: dict[str, LinearIssue] = {issue.id: issue for issue in fetched_issues}
     # Pull all joined tickets first, then reconstruct AgentRuns from the local
     # transition/evidence store plus the already-fetched board descriptions
     # (ATLAS-166). The push pass runs after reconstruction so this step is
@@ -1633,4 +1813,94 @@ def sync_tick(
                 result=result,
                 now=now,
             )
+    return result
+
+
+def sync_tick(
+    *,
+    tickets: TicketRepo,
+    db: Database,
+    client: LinearClient,
+    status_map: LinearStatusMap,
+    team_id: str,
+    project_id: str,
+    inbox_dir: Path,
+    documents: Callable[[], list[SourceDocument]],
+    now: datetime,
+    repair_packs: bool = False,
+    lesson_client: LessonModelClient | None = None,
+    receipt_finished_at: datetime | None = None,
+) -> SyncResult:
+    """Run one sync tick and append its durable PM sync receipt.
+
+    The internal sync body preserves the existing pull/push/promote/scan/anomaly
+    behavior. This wrapper makes receipt persistence part of the local
+    completion boundary: a receipt write failure raises
+    ``SyncReceiptPersistenceError`` and no successful result is returned.
+    """
+
+    context = _ReceiptContext()
+    finished_at = receipt_finished_at or now
+    try:
+        result = _sync_tick_impl(
+            tickets=tickets,
+            db=db,
+            client=client,
+            status_map=status_map,
+            team_id=team_id,
+            project_id=project_id,
+            inbox_dir=inbox_dir,
+            documents=documents,
+            now=now,
+            repair_packs=repair_packs,
+            lesson_client=lesson_client,
+            receipt_context=context,
+        )
+    except MalformedLinearPullError as error:
+        _record_sync_receipt(
+            db=db,
+            status_map=status_map,
+            project_id=project_id,
+            started_at=now,
+            finished_at=finished_at,
+            receipt_result=PmSyncReceiptResult.MALFORMED_PULL,
+            context=context,
+            error=error,
+        )
+        raise
+    except (KeyboardInterrupt, SystemExit) as error:
+        _record_sync_receipt(
+            db=db,
+            status_map=status_map,
+            project_id=project_id,
+            started_at=now,
+            finished_at=finished_at,
+            receipt_result=PmSyncReceiptResult.CANCELLED,
+            context=context,
+            error=error,
+        )
+        raise
+    except Exception as error:
+        _record_sync_receipt(
+            db=db,
+            status_map=status_map,
+            project_id=project_id,
+            started_at=now,
+            finished_at=finished_at,
+            receipt_result=PmSyncReceiptResult.FAILED,
+            context=context,
+            error=error,
+        )
+        raise
+
+    receipt_result = _classify_successful_receipt(result)
+    _record_sync_receipt(
+        db=db,
+        status_map=status_map,
+        project_id=project_id,
+        started_at=now,
+        finished_at=finished_at,
+        receipt_result=receipt_result,
+        context=context,
+    )
     return result

@@ -411,10 +411,11 @@ class Ticket(BaseModel):
     # ticket partly by these; no controlled vocabulary in v1.
     tags: list[str] = Field(default_factory=list)
     component: Optional[str] = None
-    # PM-Engine sync cursor (ATLAS-42): updated_at at the last confirmed
-    # definition push to Linear; a push happens only while
+    # PM-Engine definition cursor (ATLAS-42): updated_at at the last
+    # confirmed definition push to Linear; a push happens only while
     # updated_at > linear_synced_at. Written by the sync loop, never bumped
-    # by an Atlas definition edit.
+    # by an Atlas definition edit. This is not the board-freshness timestamp;
+    # /api/v1/status derives that from PmSyncReceipt.finished_at.
     linear_synced_at: Optional[datetime] = None
     # PM-Engine transition signal (ATLAS-118): the Linear state id observed on
     # the last pull. The out-of-ownership anomaly detector logs one DebtItem
@@ -1160,6 +1161,11 @@ severity are derived by query — never stored, never a creation gate.
 ADR-0011 records why this name now denotes the delivery anomaly and how
 the prior code-quality technical-debt register is deferred.
 
+This section also contains PM sync receipts. They are operational records
+written by the same reconciliation boundary, but they are tick-scoped rather
+than ticket-scoped and they record provenance for successful and unsuccessful
+board observations.
+
 ---
 
 ## 6.1 Debt Item
@@ -1308,6 +1314,84 @@ CREATE TABLE ticket_status_transitions (
     from_status TEXT NOT NULL,
     to_status TEXT NOT NULL,
     occurred_at TIMESTAMPTZ NOT NULL,
+    created_by_type TEXT NOT NULL,
+    created_by_id TEXT NOT NULL
+);
+```
+
+---
+
+## 6.7 PM Sync Receipt
+
+A `PmSyncReceipt` is the fourth operational record the PM Engine appends: a
+durable, append-only receipt for one PM sync tick's local completion boundary.
+It is written after the tick body has either completed, failed, been cancelled,
+or rejected a malformed board pull. The record carries bounded provenance only:
+timing, product/project identity, deterministic fingerprints, result
+classification and integer counters. It never stores Linear issue bodies,
+comments, tokens, credentials or raw payloads.
+
+```python
+class PmSyncReceiptResult(str, Enum):
+    SUCCESS_DEFINITION_CHANGED = "success_definition_changed"
+    SUCCESS_STATUS_ONLY = "success_status_only"
+    SUCCESS_ZERO_ACTION = "success_zero_action"
+    PARTIAL = "partial"
+    MALFORMED_PULL = "malformed_pull"
+    CANCELLED = "cancelled"
+    FAILED = "failed"
+
+class PmSyncReceipt(BaseModel):
+    id: UUID
+    product_id: Optional[UUID] = None
+    product_key: Optional[str] = None
+    linear_project_id: str
+    started_at: datetime
+    finished_at: datetime
+    status_map_fingerprint: str
+    fetched_board_fingerprint: str
+    fetched_board_issue_count: int = Field(ge=0, le=2147483647)
+    result: PmSyncReceiptResult
+    counters: dict[str, int]
+    error_summary: Optional[str] = None
+    created_by_type: ActorType
+    created_by_id: str
+```
+
+`started_at` is the injected tick clock at entry and `finished_at` is the tick
+completion instant used by status projections. `product_id` and `product_key`
+are populated when the tick's product is unambiguous from the board or a
+single-product store; otherwise they remain null rather than guessing. The
+`linear_project_id` is always the configured Linear project id. The two
+fingerprints are SHA-256 hashes over canonical, bounded inputs: the status map
+by Linear state id, and fetched board issue ids/identifiers/state metadata.
+`counters` stores the bounded `SyncResult` integer counters by name.
+`error_summary` is optional, bounded diagnostic text for unsuccessful receipts.
+
+Only `SUCCESS_DEFINITION_CHANGED`, `SUCCESS_STATUS_ONLY` and
+`SUCCESS_ZERO_ACTION` are successful receipts. `PARTIAL`, `MALFORMED_PULL`,
+`CANCELLED` and `FAILED` remain queryable for diagnosis but never advance the
+latest successful sync timestamp. There is no `updated_at` and no mutable
+status; append-only enforcement lives in `PmSyncReceiptRepo`.
+
+---
+
+## 6.8 PostgreSQL Table
+
+```sql
+CREATE TABLE pm_sync_receipts (
+    id UUID PRIMARY KEY,
+    product_id UUID REFERENCES products(id),
+    product_key TEXT,
+    linear_project_id TEXT NOT NULL,
+    started_at TIMESTAMPTZ NOT NULL,
+    finished_at TIMESTAMPTZ NOT NULL,
+    status_map_fingerprint TEXT NOT NULL,
+    fetched_board_fingerprint TEXT NOT NULL,
+    fetched_board_issue_count INTEGER NOT NULL,
+    result TEXT NOT NULL,
+    counters JSONB NOT NULL DEFAULT '{}',
+    error_summary TEXT,
     created_by_type TEXT NOT NULL,
     created_by_id TEXT NOT NULL
 );

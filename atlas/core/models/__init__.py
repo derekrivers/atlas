@@ -15,6 +15,11 @@ from atlas.core.models.epic import Epic, EpicStatus
 from atlas.core.models.evidence import Evidence, EvidenceType
 from atlas.core.models.lesson import Lesson, LessonCategory
 from atlas.core.models.plan_run import PlanRun, PlanRunStatus
+from atlas.core.models.pm_sync_receipt import (
+    SUCCESSFUL_PM_SYNC_RESULTS,
+    PmSyncReceipt,
+    PmSyncReceiptResult,
+)
 from atlas.core.models.product import Product
 from atlas.core.models.tick_failure import TickFailure
 from atlas.core.models.ticket import Ticket, TicketStatus, TicketType
@@ -25,6 +30,7 @@ from atlas.core.models.verification_check import (
 )
 
 __all__ = [
+    "SUCCESSFUL_PM_SYNC_RESULTS",
     "ADRStatus",
     "AgentProvider",
     "AgentRun",
@@ -42,6 +48,8 @@ __all__ = [
     "LessonCategory",
     "PlanRun",
     "PlanRunStatus",
+    "PmSyncReceipt",
+    "PmSyncReceiptResult",
     "Product",
     "TickFailure",
     "Ticket",

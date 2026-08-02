@@ -58,8 +58,8 @@ def test_sync_result_first_summary_line_is_byte_identical() -> None:
 
     assert _format_sync_result(result).splitlines()[0] == (
         "pm sync: completed; pushes=3 pushed_created=1 pushed_updated=2 "
-        "embeds=7 status_pulls=3 status_unchanged=4 anomalies_logged=6 "
-        "unmapped_observations=5 push_skipped=2 "
+        "embeds=7 status_pulls=3 status_unchanged=4 missing_issues=0 "
+        "anomalies_logged=6 unmapped_observations=5 push_skipped=2 "
         "(not pushable: done=1, rejected=1)"
     )
 

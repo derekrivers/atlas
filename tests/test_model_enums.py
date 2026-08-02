@@ -13,6 +13,7 @@ from atlas.core.models import (
     AnomalyType,
     DependencyType,
     EpicStatus,
+    PmSyncReceiptResult,
     TicketStatus,
     TicketType,
 )
@@ -71,6 +72,16 @@ DOCUMENTED_MEMBERS: dict[type[Enum], dict[str, str]] = {
         "DWELL_BREACH": "dwell_breach",
         "STALE_BLOCK": "stale_block",
         "PACK_RENDER_FAILURE": "pack_render_failure",
+    },
+    # data-model §6.7
+    PmSyncReceiptResult: {
+        "SUCCESS_DEFINITION_CHANGED": "success_definition_changed",
+        "SUCCESS_STATUS_ONLY": "success_status_only",
+        "SUCCESS_ZERO_ACTION": "success_zero_action",
+        "PARTIAL": "partial",
+        "MALFORMED_PULL": "malformed_pull",
+        "CANCELLED": "cancelled",
+        "FAILED": "failed",
     },
 }
 

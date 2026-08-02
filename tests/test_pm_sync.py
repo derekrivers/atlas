@@ -51,7 +51,7 @@ from uuid import UUID, uuid4
 import pytest
 from linear_fakes import InMemoryLinearClient
 from test_lesson_model import lesson_kwargs
-from test_models_validation import NOW, dependency_kwargs, ticket_kwargs
+from test_models_validation import NOW, dependency_kwargs, product_kwargs, ticket_kwargs
 
 from atlas.core.anchors import SourceDocument
 from atlas.core.enums import ActorType, EntityStatus, EvidenceStatus
@@ -60,6 +60,8 @@ from atlas.core.models import (
     ContextPack,
     DebtItem,
     Lesson,
+    PmSyncReceiptResult,
+    Product,
     Ticket,
     TicketDependency,
     VerificationCheck,
@@ -67,7 +69,12 @@ from atlas.core.models import (
 from atlas.core.models.ticket import TicketStatus
 from atlas.linear.client import LinearComment, LinearIssue, WorkflowState
 from atlas.linear.ownership import LinearStatusMap
-from atlas.pm import SyncResult, sync_tick
+from atlas.pm import (
+    MalformedLinearPullError,
+    SyncReceiptPersistenceError,
+    SyncResult,
+    sync_tick,
+)
 from atlas.pm.sync import CREATED_BY
 from atlas.storage import (
     AgentRunRepo,
@@ -75,6 +82,8 @@ from atlas.storage import (
     Database,
     DebtItemRepo,
     LessonRepo,
+    PmSyncReceiptRepo,
+    ProductRepo,
     TicketDependencyRepo,
     TicketRepo,
     TicketStatusTransitionRepo,
@@ -197,6 +206,18 @@ class FailingStateAssertionClient(RecordingClient):
         raise RuntimeError("state assertion unavailable")
 
 
+class FailingProjectPullClient(RecordingClient):
+    def fetch_project_issues(self, project_id: str) -> list[LinearIssue]:
+        raise RuntimeError(f"project pull failed for {project_id}")
+
+
+class DuplicateProjectPullClient(RecordingClient):
+    def fetch_project_issues(self, project_id: str) -> list[LinearIssue]:
+        issues = super().fetch_project_issues(project_id)
+        assert issues
+        return [issues[0], issues[0]]
+
+
 def status_map() -> LinearStatusMap:
     # unstarted -> planned, started -> in_progress, state-ready -> the unique
     # ready_for_agent promotion target. state-orphan is in the workspace but
@@ -313,6 +334,7 @@ def run(
     client: RecordingClient,
     *,
     now: datetime = NOW,
+    receipt_finished_at: datetime | None = None,
     inbox_dir: Path | None = None,
     lesson_client: FakeLessonClient | None = None,
 ) -> SyncResult:
@@ -335,6 +357,7 @@ def run(
         inbox_dir=inbox_dir or Path(tempfile.mkdtemp()),
         documents=lambda: [PACK_DOC],
         now=now,
+        receipt_finished_at=receipt_finished_at,
         lesson_client=lesson_client,
     )
 
@@ -351,6 +374,16 @@ def debt_rows(
         if item.anomaly_type == kind
         and (ticket_id is None or item.ticket_id == ticket_id)
     ]
+
+
+def seed_product_identity(db: Database, ticket: Ticket) -> Product:
+    return ProductRepo(db).add(
+        Product(**product_kwargs() | {"id": ticket.product_id, "key": "ATLAS"})
+    )
+
+
+def receipt_results(db: Database) -> list[PmSyncReceiptResult]:
+    return [receipt.result for receipt in PmSyncReceiptRepo(db).list()]
 
 
 def draft_lessons(db: Database) -> list[Lesson]:
@@ -398,6 +431,189 @@ def test_second_tick_over_unchanged_linear_writes_nothing(db: Database) -> None:
     # No redundant status set on either tick: set-to-same never writes.
     assert first.status_pulled == 0 and second.status_pulled == 0
     assert first.status_unchanged == 1 and second.status_unchanged == 1
+
+
+# --- durable sync receipts (ATLAS-245) -------------------------------------
+
+
+def test_definition_changing_tick_records_success_receipt_and_advances_latest(
+    db: Database,
+) -> None:
+    client = RecordingClient()
+    ticket = seed_ticket(
+        db,
+        client,
+        key="ATLAS-245",
+        status=TicketStatus.PLANNED,
+        linear_synced_at=None,
+    )
+    product = seed_product_identity(db, ticket)
+    finished_at = LATER
+
+    result = run(db, client, now=NOW, receipt_finished_at=finished_at)
+
+    [receipt] = PmSyncReceiptRepo(db).list()
+    assert result.pushed_updated == 1
+    assert receipt.id is not None
+    assert receipt.product_id == product.id
+    assert receipt.product_key == "ATLAS"
+    assert receipt.linear_project_id == PROJECT_ID
+    assert receipt.started_at == NOW
+    assert receipt.finished_at == finished_at
+    assert receipt.result == PmSyncReceiptResult.SUCCESS_DEFINITION_CHANGED
+    assert receipt.fetched_board_issue_count == 1
+    assert len(receipt.status_map_fingerprint) == 64
+    assert len(receipt.fetched_board_fingerprint) == 64
+    assert receipt.counters["pushed_updated"] == 1
+    assert receipt.error_summary is None
+    assert PmSyncReceiptRepo(db).latest_successful_finished_at() == finished_at
+
+
+def test_status_only_tick_records_success_receipt_and_advances_latest(
+    db: Database,
+) -> None:
+    client = RecordingClient()
+    seed_ticket(
+        db,
+        client,
+        key="ATLAS-246",
+        status=TicketStatus.PLANNED,
+        linear_synced_at=EARLIER,
+        issue_state=STARTED,
+    )
+
+    result = run(db, client, now=LATER)
+
+    [receipt] = PmSyncReceiptRepo(db).list()
+    assert result.status_pulled == 1
+    assert result.pushed_updated == 0
+    assert receipt.result == PmSyncReceiptResult.SUCCESS_STATUS_ONLY
+    assert PmSyncReceiptRepo(db).latest_successful_finished_at() == LATER
+
+
+def test_zero_action_tick_records_success_receipt_and_stable_fingerprints(
+    db: Database,
+) -> None:
+    client = RecordingClient()
+
+    first = run(db, client, now=NOW)
+    second = run(db, client, now=LATER)
+
+    receipts = PmSyncReceiptRepo(db).list()
+    assert first == SyncResult()
+    assert second == SyncResult()
+    assert [receipt.result for receipt in receipts] == [
+        PmSyncReceiptResult.SUCCESS_ZERO_ACTION,
+        PmSyncReceiptResult.SUCCESS_ZERO_ACTION,
+    ]
+    assert receipts[0].id != receipts[1].id
+    assert receipts[0].status_map_fingerprint == receipts[1].status_map_fingerprint
+    assert (
+        receipts[0].fetched_board_fingerprint == receipts[1].fetched_board_fingerprint
+    )
+    assert [receipt.started_at for receipt in receipts] == [NOW, LATER]
+    assert PmSyncReceiptRepo(db).latest_successful_finished_at() == LATER
+
+
+def test_partial_degraded_definition_push_records_receipt_without_advancing_success(
+    db: Database,
+) -> None:
+    client = RecordingClient()
+    seed_ticket(db, client, key="ATLAS-247", status=TicketStatus.PLANNED)
+
+    result = sync_tick(
+        tickets=TicketRepo(db),
+        db=db,
+        client=client,
+        status_map=status_map(),
+        team_id=TEAM_ID,
+        project_id=PROJECT_ID,
+        inbox_dir=Path(tempfile.mkdtemp()),
+        documents=lambda: (_ for _ in ()).throw(ValueError("pack input malformed")),
+        now=NOW,
+    )
+
+    [receipt] = PmSyncReceiptRepo(db).list()
+    assert result.pack_render_failures == 1
+    assert receipt.result == PmSyncReceiptResult.PARTIAL
+    assert receipt.counters["pack_render_failures"] == 1
+    assert PmSyncReceiptRepo(db).latest_successful_finished_at() is None
+
+
+def test_failed_tick_records_failed_receipt_without_advancing_success(
+    db: Database,
+) -> None:
+    client = FailingProjectPullClient()
+    seed_ticket(db, client, key="ATLAS-248", status=TicketStatus.PLANNED)
+
+    with pytest.raises(RuntimeError, match="project pull failed"):
+        run(db, client, now=NOW)
+
+    [receipt] = PmSyncReceiptRepo(db).list()
+    assert receipt.result == PmSyncReceiptResult.FAILED
+    assert receipt.error_summary is not None
+    assert "RuntimeError" in receipt.error_summary
+    assert PmSyncReceiptRepo(db).latest_successful_finished_at() is None
+
+
+def test_malformed_pull_records_malformed_receipt_without_advancing_success(
+    db: Database,
+) -> None:
+    client = DuplicateProjectPullClient()
+    seed_ticket(db, client, key="ATLAS-249", status=TicketStatus.PLANNED)
+
+    with pytest.raises(MalformedLinearPullError, match="duplicate issue id"):
+        run(db, client, now=NOW)
+
+    [receipt] = PmSyncReceiptRepo(db).list()
+    assert receipt.result == PmSyncReceiptResult.MALFORMED_PULL
+    assert receipt.fetched_board_issue_count == 2
+    assert PmSyncReceiptRepo(db).latest_successful_finished_at() is None
+
+
+def test_cancelled_tick_records_cancelled_receipt_without_advancing_success(
+    db: Database,
+) -> None:
+    client = RecordingClient()
+    seed_ticket(db, client, key="ATLAS-250", status=TicketStatus.PLANNED)
+
+    with pytest.raises(KeyboardInterrupt):
+        sync_tick(
+            tickets=TicketRepo(db),
+            db=db,
+            client=client,
+            status_map=status_map(),
+            team_id=TEAM_ID,
+            project_id=PROJECT_ID,
+            inbox_dir=Path(tempfile.mkdtemp()),
+            documents=lambda: (_ for _ in ()).throw(KeyboardInterrupt("stop")),
+            now=NOW,
+        )
+
+    [receipt] = PmSyncReceiptRepo(db).list()
+    assert receipt.result == PmSyncReceiptResult.CANCELLED
+    assert PmSyncReceiptRepo(db).latest_successful_finished_at() is None
+
+
+def test_receipt_write_failure_is_typed_and_reports_no_success(
+    db: Database, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client = RecordingClient()
+    real_repo = PmSyncReceiptRepo
+
+    class FailingReceiptRepo:
+        def __init__(self, database: Database) -> None:
+            self.database = database
+
+        def record(self, model: object) -> object:
+            raise RuntimeError("receipt store unavailable")
+
+    monkeypatch.setattr("atlas.pm.sync.PmSyncReceiptRepo", FailingReceiptRepo)
+
+    with pytest.raises(SyncReceiptPersistenceError):
+        run(db, client, now=NOW)
+
+    assert real_repo(db).list() == []
 
 
 # --- pull (Linear -> Atlas) ------------------------------------------------

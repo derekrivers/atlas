@@ -55,6 +55,8 @@ from atlas.core.models import (
     EvidenceType,
     Lesson,
     LessonCategory,
+    PmSyncReceipt,
+    PmSyncReceiptResult,
     Ticket,
     TicketDependency,
     TicketStatus,
@@ -69,6 +71,7 @@ from atlas.storage import (
     EpicRepo,
     EvidenceRepo,
     LessonRepo,
+    PmSyncReceiptRepo,
     ProductRepo,
     TicketDependencyRepo,
     TicketRepo,
@@ -362,7 +365,9 @@ def test_status_returns_operator_system_snapshot(database: Database) -> None:
     assert product is not None
     epic = Epic(**_epic_model_kwargs(product.id, key="ATLAS-E1"))
     older_sync = datetime(2026, 7, 24, 16, tzinfo=UTC)
-    latest_sync = datetime(2026, 7, 25, 10, tzinfo=UTC)
+    stale_definition_cursor = datetime(2026, 7, 25, 10, tzinfo=UTC)
+    latest_successful_receipt = datetime(2026, 7, 25, 10, 30, tzinfo=UTC)
+    later_partial_receipt = datetime(2026, 7, 25, 10, 45, tzinfo=UTC)
     older_evidence_pull = datetime(2026, 7, 25, 8, tzinfo=UTC)
     latest_evidence_pull = datetime(2026, 7, 25, 11, tzinfo=UTC)
     tickets = [
@@ -380,7 +385,7 @@ def test_status_returns_operator_system_snapshot(database: Database) -> None:
                 _ticket_model_kwargs(product.id, epic.id, key="ATLAS-203")
                 | {
                     "id": uuid4(),
-                    "linear_synced_at": latest_sync,
+                    "linear_synced_at": stale_definition_cursor,
                 }
             )
         ),
@@ -423,15 +428,65 @@ def test_status_returns_operator_system_snapshot(database: Database) -> None:
     )
 
     with TestClient(create_app(database=database)) as client:
-        response = client.get("/api/v1/status")
+        before_receipt = client.get("/api/v1/status")
 
-    assert response.status_code == 200
-    assert response.json() == SystemStatusResponse(
+    assert before_receipt.status_code == 200
+    assert before_receipt.json() == SystemStatusResponse(
         package_version=__version__,
         schema_revision=head,
         ticket_count=3,
         evidence_count=3,
-        last_linear_sync_at=latest_sync,
+        last_linear_sync_at=None,
+        last_evidence_pull_at=latest_evidence_pull,
+    ).model_dump(mode="json")
+
+    receipt_repo = PmSyncReceiptRepo(database)
+    receipt_repo.record(
+        PmSyncReceipt(
+            id=uuid4(),
+            product_id=product.id,
+            product_key=product.key,
+            linear_project_id="project-1",
+            started_at=latest_successful_receipt,
+            finished_at=latest_successful_receipt,
+            status_map_fingerprint="a" * 64,
+            fetched_board_fingerprint="b" * 64,
+            fetched_board_issue_count=3,
+            result=PmSyncReceiptResult.SUCCESS_STATUS_ONLY,
+            counters={"status_pulled": 1},
+            created_by_type=ActorType.SYSTEM,
+            created_by_id="pm-engine",
+        )
+    )
+    receipt_repo.record(
+        PmSyncReceipt(
+            id=uuid4(),
+            product_id=product.id,
+            product_key=product.key,
+            linear_project_id="project-1",
+            started_at=later_partial_receipt,
+            finished_at=later_partial_receipt,
+            status_map_fingerprint="a" * 64,
+            fetched_board_fingerprint="c" * 64,
+            fetched_board_issue_count=3,
+            result=PmSyncReceiptResult.PARTIAL,
+            counters={"unmapped": 1},
+            error_summary="unmapped state",
+            created_by_type=ActorType.SYSTEM,
+            created_by_id="pm-engine",
+        )
+    )
+
+    with TestClient(create_app(database=database)) as client:
+        after_receipt = client.get("/api/v1/status")
+
+    assert after_receipt.status_code == 200
+    assert after_receipt.json() == SystemStatusResponse(
+        package_version=__version__,
+        schema_revision=head,
+        ticket_count=3,
+        evidence_count=3,
+        last_linear_sync_at=latest_successful_receipt,
         last_evidence_pull_at=latest_evidence_pull,
     ).model_dump(mode="json")
 

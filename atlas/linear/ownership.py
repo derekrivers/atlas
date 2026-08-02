@@ -295,6 +295,19 @@ class LinearStatusMap:
     def __len__(self) -> int:
         return len(self._mapping)
 
+    def snapshot(self) -> dict[str, str]:
+        """Return a deterministic, JSON-ready state-id -> status snapshot.
+
+        Consumers use this for provenance fingerprints; the status map remains
+        immutable-by-convention from the outside because callers receive a copy.
+        """
+        return {
+            state_id: status.value
+            for state_id, status in sorted(
+                self._mapping.items(), key=lambda item: item[0]
+            )
+        }
+
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> LinearStatusMap:
         """Parse ``LINEAR_STATE_MAP`` (JSON object of state-id -> status).

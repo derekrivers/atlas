@@ -46,7 +46,9 @@ from atlas.pm.scheduler import (
 )
 from atlas.pm.sync import (
     PUSHABLE_STATUSES,
+    MalformedLinearPullError,
     SyncDecisionClassification,
+    SyncReceiptPersistenceError,
     SyncResult,
     sync_result_is_empty,
     sync_tick,
@@ -63,7 +65,9 @@ __all__ = [
     "DeliveryReport",
     "DraftLesson",
     "DwellBreach",
+    "MalformedLinearPullError",
     "SyncDecisionClassification",
+    "SyncReceiptPersistenceError",
     "SyncResult",
     "ThroughputBucket",
     "TickConfig",
