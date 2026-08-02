@@ -338,6 +338,34 @@ DOCUMENTED_COLUMNS: dict[str, dict[str, tuple[bool, str | None]]] = {
         "created_at": (NN, None),
         "completed_at": (NN, None),
     },
+    # §5.8 acceptance session: pinned identity plus append-oriented summaries.
+    "acceptance_sessions": {
+        "id": (NN, None),
+        "repository_owner": (NN, None),
+        "repository_name": (NN, None),
+        "pr_number": (NN, None),
+        "close_set": (NN, None),
+        "head_ref": (NN, None),
+        "head_sha": (NN, None),
+        "head_repository": (NN, None),
+        "base_ref": (NN, None),
+        "base_sha": (NN, None),
+        "base_repository": (NN, None),
+        "initial_assessment": (NN, None),
+        "criteria_snapshot": (NN, None),
+        "criteria_fingerprint": (NN, None),
+        "creation_idempotency_key_identity": (NN, None),
+        "created_by_type": (NN, None),
+        "created_by_id": (NN, None),
+        "lifecycle": (NN, None),
+        "step_summaries": (NN, None),
+        "blocking_reasons": (NN, None),
+        "stored_merge_ready": (NN, "FALSE"),
+        "historical_readiness_reasons": (NN, None),
+        "created_at": (NN, None),
+        "updated_at": (NN, None),
+        "staled_at": (True, None),
+    },
 }
 
 # Transcribed FK targets: table -> {column: referred table}. Absence is
@@ -364,6 +392,7 @@ DOCUMENTED_FOREIGN_KEYS: dict[str, dict[str, str]] = {
     "verification_checks": {"ticket_id": "tickets"},
     "operator_action_keys": {},
     "operator_action_receipts": {"idempotency_key_identity": "operator_action_keys"},
+    "acceptance_sessions": {},
 }
 
 DOCUMENTED_UNIQUES: dict[str, list[list[str]]] = {
@@ -375,6 +404,7 @@ DOCUMENTED_UNIQUES: dict[str, list[list[str]]] = {
         ["idempotency_key_identity"],
         ["correlation_id"],
     ],
+    "acceptance_sessions": [["creation_idempotency_key_identity"]],
 }
 
 
@@ -739,6 +769,45 @@ def test_operator_action_ledger_migration_upgrade_and_downgrade(
             )
         }
     assert triggers == set()
+
+
+def test_acceptance_session_migration_pins_identity_and_active_pr(
+    tmp_path: Path,
+) -> None:
+    url = f"sqlite:///{tmp_path}/acceptance-sessions.db"
+    config = _alembic_config(url)
+    command.upgrade(config, "0024")
+
+    engine = sa.create_engine(url)
+    with engine.connect() as connection:
+        inspector = sa.inspect(connection)
+        assert "acceptance_sessions" in inspector.get_table_names()
+        assert {
+            constraint["name"]
+            for constraint in inspector.get_check_constraints("acceptance_sessions")
+        } == {
+            "acceptance_sessions_operator_actor",
+            "acceptance_sessions_stale_timestamp",
+        }
+        indexes = {
+            index["name"]: index
+            for index in inspector.get_indexes("acceptance_sessions")
+        }
+        assert indexes["uq_acceptance_sessions_non_terminal_pr"]["unique"] == 1
+        triggers = {
+            row[0]
+            for row in connection.execute(
+                sa.text(
+                    "SELECT name FROM sqlite_master WHERE type = 'trigger' "
+                    "AND name = 'acceptance_sessions_pinned_identity'"
+                )
+            )
+        }
+        assert triggers == {"acceptance_sessions_pinned_identity"}
+
+    command.downgrade(config, "0023")
+    with engine.connect() as connection:
+        assert "acceptance_sessions" not in sa.inspect(connection).get_table_names()
 
 
 def test_ddl_compiles_under_postgresql_dialect() -> None:

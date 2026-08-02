@@ -21,6 +21,7 @@ from pathlib import Path
 from pydantic import BaseModel
 
 from atlas.core.models import (
+    AcceptanceSession,
     AgentRun,
     ArchitectureDecisionRecord,
     ContextPack,
@@ -50,6 +51,7 @@ from atlas.planning.proposal import (
 # atlas.core.models and PLANNING_MODELS to every public BaseModel in
 # atlas.planning (D1, ATLAS-23).
 CORE_MODELS: tuple[type[BaseModel], ...] = (
+    AcceptanceSession,
     AgentRun,
     ArchitectureDecisionRecord,
     ContextPack,

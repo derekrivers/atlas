@@ -253,6 +253,38 @@ displaying the merge prompt. The live head must equal both the initial head and
 the verified head, and the live base SHA, branch identities, and repository
 identities must match the initial snapshot. Any movement restarts acceptance.
 
+### Durable acceptance-session consumer
+
+Phase 14's durable acceptance-session foundation consumes the exact same
+in-process assessment; it does not call `atlas pr status`, parse CLI output or
+reimplement the classifier. Creation accepts only an open, non-draft,
+same-repository PR targeting literal `main` whose shared assessment is
+`current`, then resolves the existing close-set parser and requires every live
+ticket to be `review_required`. It snapshots the current stored acceptance
+criteria in sorted ticket-key/index order before making the single session
+insert. Caller or cached UI criterion text is never authoritative.
+
+The session pins repository/PR, close-set, head and base refs/SHAs/repository
+identities, structured assessment fields, criteria fingerprint and the
+server-owned `human/operator` actor. Those identities cannot be updated.
+There is one non-terminal session per repository/PR; head movement must first
+make the old session terminal `stale`, after which creation records a new row
+without retargeting or deleting the old row.
+
+The shared pure freshness comparator reports all head, base, ref, repository,
+eligibility and criteria mismatches. A mutation that observes any mismatch
+atomically marks the session stale. Read use is non-mutating: the stored-status
+projection labels any persisted readiness `historical_only` and explicitly not
+current merge authority. The later live-readiness service composes fresh
+bounded reads separately; there is no polling or hidden refresh write.
+
+Behind, diverged and conflicted creation preflight returns the existing exact
+`atlas pr rebase prepare --pr <N> --repo <owner>/<repo>` operator recovery
+command and creates no session. Draft, fork-head, non-main, merged, closed,
+unknown and indeterminate cases remain distinct typed refusals. This foundation
+adds no evidence, confirmation, verification, HTTP, GitHub/Linear write, Git
+operation or merge path.
+
 ### Operator-owned PR rebase lane
 
 `atlas pr rebase` is the operator-owned lane for a mechanically stale PR after
