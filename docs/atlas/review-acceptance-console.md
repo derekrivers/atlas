@@ -1,0 +1,241 @@
+# Review Acceptance Console Design (Phase 14)
+
+Status: Planned Phase 14 design authority. Defines an authenticated,
+exact-head, stepwise browser workflow for PR acceptance. It consumes Phase 12's
+mainline-freshness guarantees and Phase 13's session, actor and action-receipt
+framework.
+
+## Purpose and milestone
+
+Phase 14 turns the delivered review queue into an operator acceptance console.
+For one Review Required PR, the operator can:
+
+1. create an exact-head acceptance session;
+2. pull evidence for that head;
+3. inspect and confirm the live acceptance criteria;
+4. run verification;
+5. see whether the exact head is currently eligible for a manual GitHub merge.
+
+The console stops at that boundary. Merge remains a deliberate hand motion in
+GitHub. Post-merge proof, schema upgrade and the two-sync completion tail remain
+outside the browser workflow in this phase.
+
+## Binding invariants
+
+- The acceptance session pins one repository, PR, close-set, head SHA, base SHA,
+  head/base refs and criteria fingerprint.
+- Only Phase 12's shared exact-head assessment decides whether the PR is
+  current with main. The API and UI never recreate that classifier.
+- Evidence, confirmations and verification are authoritative only for the
+  session's exact head.
+- Any PR head, main/base SHA, repository identity, eligibility or criteria
+  movement closes the live readiness gate. A mutation that observes movement
+  marks the session stale; a GET reports the mismatch without rewriting stored
+  history.
+- A stale session is immutable history. The operator starts a new session;
+  Atlas never retargets an old session to a new head.
+- The final readiness result is advisory authority for the operator's manual
+  merge, not merge authority for Atlas.
+
+## Position in the architecture
+
+`atlas.orchestration` owns the acceptance-session state machine and coordinates
+the existing GitHub assessment, evidence, confirmation and verification
+services. Each HTTP action resolves authenticated command context, calls one
+application operation and presents the typed result. The UI renders the state
+machine and never decides readiness.
+
+The console reuses the Phase 13 operator-action/idempotency framework for every
+write. GitHub credentials remain server-side runtime configuration; the
+browser never sends or receives them.
+
+## Durable acceptance session
+
+An `AcceptanceSession` is append-oriented operational history with:
+
+- session ID and lifecycle state;
+- repository and PR number;
+- resolved Atlas close-set;
+- initial exact-head assessment;
+- pinned head/base SHA and refs;
+- acceptance-criteria fingerprint;
+- server-resolved operator actor;
+- evidence, confirmation and verification step summaries;
+- stored verification-time readiness result and reasons as historical evidence;
+- created/updated/staled timestamps.
+
+Lifecycle:
+
+```text
+preflight_passed
+  → evidence_ready
+  → confirmations_ready
+  → verification_passed
+  → merge_ready
+```
+
+`stale`, `blocked` and `failed` are terminal for that session. Step retries with
+the same idempotency key replay their stored outcome. A recoverable transport
+failure does not advance the session and can be retried with a new key; it
+cannot erase prior history.
+
+The first version permits one non-terminal session per repository/PR/head.
+Creating it again with the same command key replays the existing result.
+Creating a new session after head movement creates a new record and leaves the
+old record intact.
+
+## Preflight
+
+Session creation performs the Phase 12 exact-head assessment before any
+evidence, confirmation or operator approval write. It succeeds only for an
+open, non-draft, same-repository PR targeting `main`, current with exact main,
+with a close-set whose tickets are all `review_required`.
+
+Preflight also snapshots the live ticket acceptance criteria and stores a
+canonical criteria fingerprint. It does not treat the UI's previously cached
+ticket body as authority.
+
+Behind, diverged, conflicted or otherwise rebase-eligible states return the
+named Phase 12 recovery command but do not start a session. Draft, fork,
+non-main, closed, unknown and indeterminate states fail closed without writes
+other than the authenticated action outcome.
+
+## Evidence action
+
+The evidence step calls the existing evidence-pull service for the pinned PR
+head. It preserves source idempotency and append-only evidence semantics. After
+the pull it re-reads the stored evidence projection and records only a bounded
+summary on the session; evidence itself remains in the canonical evidence
+store.
+
+Before and after the external GitHub read, the operation proves the live PR
+identity and head still match the session. Movement makes the session stale and
+the pulled old-head records remain history, not authority for a new session.
+
+## Confirmation action
+
+The console renders every live criterion from the session snapshot. The
+operator must explicitly confirm each criterion and the manual approval gate.
+The request identifies criteria by stable index plus the session's criteria
+fingerprint; it cannot submit replacement criterion text or actor identity.
+
+The server re-reads the ticket definitions and exact-head assessment before
+writing. Any criteria or head drift stales the session. Successful
+confirmations use the existing human-tier confirmation/evidence semantics,
+pinned to the session head and attributed from the authenticated session.
+
+## Verification and merge readiness
+
+Verification calls the existing verification engine over the session close-set
+and exact head. Only explicit top-level PASSED with a valid matching
+`head_commit` advances the session.
+
+Immediately after verification, a fresh Phase 12 assessment must report:
+
+- the same repository, PR, branch and head SHA as the session;
+- the same base identity and base SHA as the session;
+- overall integration status `current`;
+- a verified head equal to the session head;
+- unchanged acceptance-criteria fingerprint;
+- required evidence and human confirmations at that head.
+
+Only then may the server return `merge_ready: true`. Every failing reason is
+returned as a typed list and the UI displays all of them. Readiness is revoked
+on every later refresh if the live assessment has moved or become
+indeterminate.
+
+The stored verification-time `merge_ready` result is historical evidence, not
+current merge authority. Every
+`GET /api/v1/acceptance-sessions/{session_id}` calls one bounded, read-only
+live-readiness application service. That service combines the stored session
+history with a fresh Phase 12 assessment and the current acceptance-criteria
+fingerprint. Head, main, repository, eligibility or criteria movement,
+indeterminate assessment, timeout, malformed response or other external-read
+failure returns `merge_ready: false` with every typed reason. The read does not
+rewrite, stale or otherwise mutate the stored session.
+
+The console displays the exact verified head and a clear instruction to merge
+that head manually in GitHub. It does not expose a merge button.
+
+## HTTP contract
+
+The phase adds an authenticated acceptance-session resource:
+
+```http
+POST /api/v1/reviews/{pr_number}/acceptance-sessions
+GET  /api/v1/acceptance-sessions/{session_id}
+POST /api/v1/acceptance-sessions/{session_id}/evidence
+POST /api/v1/acceptance-sessions/{session_id}/confirm
+POST /api/v1/acceptance-sessions/{session_id}/verify
+```
+
+The creation body contains the repository slug only. The server validates it
+against supported/configured repository policy. Step routes use strict JSON,
+Phase 13 authentication/CSRF/origin controls and an `Idempotency-Key`.
+
+The GET is authenticated and non-mutating. Its route dependency makes exactly
+one call to the bounded live-readiness service; the route itself contains no
+GitHub, criteria or readiness logic. The response distinguishes stored
+verification history from current `merge_ready` and all live blocking reasons.
+
+Operations are synchronous and bounded in the first version. The phase adds no
+job queue, websocket, background worker or progress protocol. Transport timeout
+is a named non-advancing outcome; the operator refreshes the session before
+retrying.
+
+## UI workflow
+
+The Review queue links to a focused acceptance panel showing:
+
+- preflight and exact-head identity;
+- close-set and live criteria;
+- evidence status and pin completeness;
+- per-criterion confirmation state and manual approval;
+- verification matrix and explicit verdict;
+- merge-readiness status with every blocking reason;
+- action receipts and timestamps relevant to the session.
+
+Only the next valid action is primary. Completed steps remain inspectable.
+Blocked/stale states explain the recovery route. The UI never jumps a step,
+constructs readiness locally, changes ticket status or retries a mutation
+silently. Initial load and every later refresh use the GET's live-readiness
+result; a failed live read closes the displayed merge gate rather than leaving
+a cached `merge_ready: true` visible as authority.
+
+## Security and failure rules
+
+- All Phase 13 session, CSRF, origin, actor and receipt controls remain binding.
+- Repository and PR identity are server validated; external URLs are never
+  accepted as fetch targets.
+- GitHub token, raw evidence payloads and unbounded logs never reach the UI.
+- Lesson or PR text is rendered as inert text, never trusted markup.
+- Refresh/read operations may perform bounded external reads but do not mutate
+  the session or any external system.
+- Audit/receipt failure prevents step advancement.
+- One action in flight per session is enforced server-side, not only in the UI.
+- A second tab may observe state but cannot overwrite a completed or stale
+  transition.
+
+## Explicit non-goals
+
+- GitHub merge, auto-merge, merge queue or branch update.
+- PR rebase controls in the UI.
+- Automatic conflict resolution.
+- Linear status mutation, Changes Requested routing or Symphony resume.
+- Post-merge `PR_MERGED` proof, schema migration or PM sync.
+- Replacing the CLI acceptance driver.
+- Background jobs, push notifications or remote hosting.
+- Multi-user approval or delegated review.
+
+## Milestone test
+
+With a seeded Review Required PR current at exact main, create a session,
+pull evidence, confirm every live criterion, produce a PASSED exact-head
+verification and reach `merge_ready: true`. Prove Atlas performs no merge.
+After PASSED, seed PR-head movement, main movement, criteria drift and GitHub
+read failure before the next GET; each response must report
+`merge_ready: false` with all typed reasons while preserving stored history.
+Also seed old-head evidence, missing human confirmation, non-PASSED
+verification, duplicate submission, cross-tab transition and audit failure.
+Every case must close the live gate and perform no unintended external or Atlas
+mutation.
