@@ -38,6 +38,7 @@ from atlas.core.models import (
     ArchitectureDecisionRecord,
     ContextPack,
     DebtItem,
+    DeliveryAdmissionPolicyRevision,
     Epic,
     EpicStatus,
     Evidence,
@@ -68,6 +69,8 @@ from atlas.storage.tables import (
     Base,
     ContextPackRow,
     DebtItemRow,
+    DeliveryAdmissionPolicyActiveRow,
+    DeliveryAdmissionPolicyRevisionRow,
     EpicRow,
     EvidenceRow,
     KeyCounterRow,
@@ -1296,6 +1299,78 @@ class PmSyncReceiptRepo(_Repo[PmSyncReceipt]):
                 PmSyncReceiptRow.result.in_(successful)
             )
             return cast(datetime | None, session.scalar(statement))
+
+
+class DeliveryAdmissionPolicyRepo:
+    """Read-only access to immutable policy history and its active pointer.
+
+    Policy revision writes are intentionally absent from this public surface.
+    They are composed only by the governed operator-action command service so
+    a caller cannot bypass actor attribution, idempotency, compare-and-set or
+    the atomic receipt boundary.
+    """
+
+    def __init__(self, db: Database) -> None:
+        self._db = db
+
+    def get_active(self, product_id: UUID) -> DeliveryAdmissionPolicyRevision | None:
+        """Return the active immutable revision for ``product_id``."""
+
+        with self._db.session() as session:
+            row = session.scalars(
+                sa.select(DeliveryAdmissionPolicyRevisionRow)
+                .join(
+                    DeliveryAdmissionPolicyActiveRow,
+                    (
+                        DeliveryAdmissionPolicyActiveRow.product_id
+                        == DeliveryAdmissionPolicyRevisionRow.product_id
+                    )
+                    & (
+                        DeliveryAdmissionPolicyActiveRow.revision
+                        == DeliveryAdmissionPolicyRevisionRow.revision
+                    ),
+                )
+                .where(DeliveryAdmissionPolicyActiveRow.product_id == product_id)
+            ).one_or_none()
+            return _delivery_admission_policy_model(row)
+
+    def get_revision(
+        self, product_id: UUID, revision: int
+    ) -> DeliveryAdmissionPolicyRevision | None:
+        """Return one historical product revision by monotonic number."""
+
+        with self._db.session() as session:
+            row = session.scalars(
+                sa.select(DeliveryAdmissionPolicyRevisionRow).where(
+                    DeliveryAdmissionPolicyRevisionRow.product_id == product_id,
+                    DeliveryAdmissionPolicyRevisionRow.revision == revision,
+                )
+            ).one_or_none()
+            return _delivery_admission_policy_model(row)
+
+    def list_revisions(self, product_id: UUID) -> list[DeliveryAdmissionPolicyRevision]:
+        """Return all immutable revisions oldest first."""
+
+        with self._db.session() as session:
+            rows = session.scalars(
+                sa.select(DeliveryAdmissionPolicyRevisionRow)
+                .where(DeliveryAdmissionPolicyRevisionRow.product_id == product_id)
+                .order_by(DeliveryAdmissionPolicyRevisionRow.revision)
+            )
+            return [
+                DeliveryAdmissionPolicyRevision.model_validate(
+                    row, from_attributes=True
+                )
+                for row in rows
+            ]
+
+
+def _delivery_admission_policy_model(
+    row: DeliveryAdmissionPolicyRevisionRow | None,
+) -> DeliveryAdmissionPolicyRevision | None:
+    if row is None:
+        return None
+    return DeliveryAdmissionPolicyRevision.model_validate(row, from_attributes=True)
 
 
 class TicketStatusTransitionRepo(_Repo[TicketStatusTransition]):

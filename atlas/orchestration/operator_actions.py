@@ -96,6 +96,7 @@ class OperatorActionEntityLoad:
     name: str
     entity_type: type[Any]
     entity_id: object
+    for_update: bool = False
 
 
 @dataclass(frozen=True)
@@ -543,7 +544,11 @@ def _load_detached_entities(
     for item in loads:
         if not item.name or item.name in loaded:
             raise ValueError("operator action load names must be unique and non-empty")
-        entity = session.get(item.entity_type, item.entity_id)
+        entity = session.get(
+            item.entity_type,
+            item.entity_id,
+            with_for_update=item.for_update,
+        )
         if entity is not None:
             session.expunge(entity)
             loaded[item.name] = entity

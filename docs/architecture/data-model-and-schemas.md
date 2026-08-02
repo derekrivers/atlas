@@ -1414,6 +1414,110 @@ CREATE UNIQUE INDEX uq_acceptance_sessions_non_terminal_pr
 
 ---
 
+## 5.9 Delivery Admission Policy Revision
+
+`DeliveryAdmissionPolicyRevision` is immutable, product-scoped operational
+policy. The operator submits a complete replacement, never a patch. Revision
+numbers begin at one and increase monotonically per product; the companion
+active pointer selects the authoritative row without changing history.
+
+The approved Symphony ceiling, working budget and review budget are strict
+integers. The ceiling is `1..10`, working is `1..ceiling`, review is `1..10`,
+and the Changes Requested reserve is `0..working`. A risk or component lane
+limit is `0..working`. Risk selectors are exact `RiskLevel` values; component
+selectors are NFKC-normalised, trimmed and case-folded exact strings. Duplicate
+risk selectors and component selectors that canonicalise to the same value are
+rejected. There may be at most four risk lanes and 64 component lanes.
+
+`running` permits a later admission evaluator to continue to occupancy checks.
+`paused` and `draining` fail that gate closed. The model has no ticket, agent,
+workspace, Linear or Symphony mutation verb.
+
+```python
+class DeliveryAdmissionMode(str, Enum):
+    RUNNING = "running"
+    PAUSED = "paused"
+    DRAINING = "draining"
+
+class RiskLaneLimit(BaseModel):
+    risk_level: RiskLevel
+    limit: int = Field(ge=0, le=10)
+
+class ComponentLaneLimit(BaseModel):
+    component: str = Field(min_length=1, max_length=128)
+    limit: int = Field(ge=0, le=10)
+
+class DeliveryAdmissionPolicyRevision(BaseModel):
+    id: UUID
+    product_id: UUID
+    revision: int = Field(ge=1)
+    mode: DeliveryAdmissionMode
+    approved_symphony_ceiling: int = Field(ge=1, le=10)
+    working_budget: int = Field(ge=1, le=10)
+    review_budget: int = Field(ge=1, le=10)
+    changes_requested_reserve: int = Field(ge=0, le=10)
+    risk_lane_limits: tuple[RiskLaneLimit, ...] = ()
+    component_lane_limits: tuple[ComponentLaneLimit, ...] = ()
+    created_by_type: ActorType
+    created_by_id: str
+    created_at: datetime
+```
+
+## 5.10 PostgreSQL Table
+
+```sql
+CREATE TABLE delivery_admission_policy_revisions (
+    id UUID PRIMARY KEY,
+    product_id UUID NOT NULL REFERENCES products(id),
+    revision INTEGER NOT NULL CHECK (revision >= 1),
+    mode TEXT NOT NULL CHECK (mode IN ('running', 'paused', 'draining')),
+    approved_symphony_ceiling INTEGER NOT NULL
+        CHECK (approved_symphony_ceiling BETWEEN 1 AND 10),
+    working_budget INTEGER NOT NULL
+        CHECK (working_budget BETWEEN 1 AND approved_symphony_ceiling),
+    review_budget INTEGER NOT NULL CHECK (review_budget BETWEEN 1 AND 10),
+    changes_requested_reserve INTEGER NOT NULL
+        CHECK (changes_requested_reserve BETWEEN 0 AND working_budget),
+    risk_lane_limits JSONB NOT NULL DEFAULT '[]',
+    component_lane_limits JSONB NOT NULL DEFAULT '[]',
+    created_by_type TEXT NOT NULL,
+    created_by_id TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL,
+    UNIQUE (product_id, revision)
+);
+```
+
+`delivery_admission_policy_revisions` is append-only at the database boundary:
+SQLite and PostgreSQL triggers reject `UPDATE` and `DELETE`. Lane JSON is
+validated before storage through the canonical model; the public repository is
+read-only, so the operator command service is the only application writer.
+
+## 5.11 Delivery Admission Policy Active Pointer
+
+There is at most one active pointer per product. Its composite foreign key
+guarantees that it can select only a revision belonging to the same product.
+The pointer is the sole mutable policy row and advances in the same transaction
+as the new immutable revision and `OperatorActionReceipt`.
+
+## 5.12 PostgreSQL Table
+
+```sql
+CREATE TABLE delivery_admission_policy_active (
+    product_id UUID PRIMARY KEY,
+    revision INTEGER NOT NULL CHECK (revision >= 1),
+    FOREIGN KEY (product_id, revision)
+        REFERENCES delivery_admission_policy_revisions(product_id, revision)
+);
+```
+
+Migration `0025` creates revision one for every existing product as explicit
+system bootstrap state: `running`, ceiling `3`, working `3`, review `3`, reserve
+`0`, and empty lane sets. It changes no Symphony configuration and does not
+edit `WORKFLOW.md`. Subsequent creation or replacement is human/operator
+attributed and must pass the governed action gateway.
+
+---
+
 # 6. Delivery-Anomaly Schema
 
 The PM Engine records delivery anomalies as it reconciles Atlas and
