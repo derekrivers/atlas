@@ -355,6 +355,35 @@ class TickFailureRow(Base):
     created_by_id: Mapped[str] = mapped_column(sa.Text)
 
 
+class PmSyncReceiptRow(Base):
+    """One PM sync tick receipt (ATLAS-245).
+
+    Append-only (enforced in PmSyncReceiptRepo, not here). Tick-scoped, with
+    optional product identity for cold or empty stores and the configured Linear
+    project id for every run. It stores fingerprints and counters only, never
+    Linear payload bodies or credentials.
+    """
+
+    __tablename__ = "pm_sync_receipts"
+
+    id: Mapped[UUID] = mapped_column(sa.Uuid, primary_key=True)
+    product_id: Mapped[UUID | None] = mapped_column(
+        sa.Uuid, sa.ForeignKey("products.id")
+    )
+    product_key: Mapped[str | None] = mapped_column(sa.Text)
+    linear_project_id: Mapped[str] = mapped_column(sa.Text)
+    started_at: Mapped[datetime] = mapped_column(UTCDateTime())
+    finished_at: Mapped[datetime] = mapped_column(UTCDateTime())
+    status_map_fingerprint: Mapped[str] = mapped_column(sa.Text)
+    fetched_board_fingerprint: Mapped[str] = mapped_column(sa.Text)
+    fetched_board_issue_count: Mapped[int] = mapped_column(sa.Integer)
+    result: Mapped[str] = mapped_column(sa.Text)
+    counters: Mapped[dict[str, int]] = mapped_column(JSONB, server_default=_EMPTY_DICT)
+    error_summary: Mapped[str | None] = mapped_column(sa.Text)
+    created_by_type: Mapped[str] = mapped_column(sa.Text)
+    created_by_id: Mapped[str] = mapped_column(sa.Text)
+
+
 class TicketStatusTransitionRow(Base):
     """One recorded real status transition (ATLAS-121, data-model §6.6).
 

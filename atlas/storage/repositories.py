@@ -31,6 +31,7 @@ from sqlalchemy.orm import Session
 
 from atlas.core.enums import ActorType, EntityStatus, EvidenceStatus
 from atlas.core.models import (
+    SUCCESSFUL_PM_SYNC_RESULTS,
     AgentRun,
     AnomalyType,
     ArchitectureDecisionRecord,
@@ -42,6 +43,7 @@ from atlas.core.models import (
     Lesson,
     PlanRun,
     PlanRunStatus,
+    PmSyncReceipt,
     Product,
     Ticket,
     TicketDependency,
@@ -63,6 +65,7 @@ from atlas.storage.tables import (
     KeyCounterRow,
     LessonRow,
     PlanRunRow,
+    PmSyncReceiptRow,
     ProductRow,
     TicketDependencyRow,
     TicketRow,
@@ -1102,6 +1105,46 @@ class TickFailureRepo(_Repo[TickFailure]):
                 )
             )
             return (count or 0) > 0
+
+
+class PmSyncReceiptRepo(_Repo[PmSyncReceipt]):
+    """Append-only PM sync receipt log (ATLAS-245).
+
+    The PM sync loop's local completion boundary records one receipt per tick,
+    successful or not. The repository exposes append and read-only projections
+    only — no update, no delete, no bypass — so a recorded tick outcome is never
+    rewritten. ``latest_successful_finished_at`` is a pure query over the
+    bounded success classifications and deliberately ignores partial, failed,
+    cancelled and malformed-pull receipts.
+    """
+
+    def __init__(self, db: Database) -> None:
+        super().__init__(db, PmSyncReceipt, PmSyncReceiptRow)
+
+    def record(self, model: PmSyncReceipt) -> PmSyncReceipt:
+        """Append one sync receipt and return the persisted row."""
+        return self.add(model)
+
+    def list(self) -> list[PmSyncReceipt]:
+        """Return receipts in tick order, with id as the stable tie-breaker."""
+        with self._db.session() as session:
+            rows = session.scalars(
+                sa.select(PmSyncReceiptRow).order_by(
+                    PmSyncReceiptRow.started_at,
+                    PmSyncReceiptRow.finished_at,
+                    PmSyncReceiptRow.id,
+                )
+            )
+            return [self._to_model(row) for row in rows]
+
+    def latest_successful_finished_at(self) -> datetime | None:
+        """Return the newest finished_at among genuinely successful receipts."""
+        successful = [result.value for result in SUCCESSFUL_PM_SYNC_RESULTS]
+        with self._db.session() as session:
+            statement = sa.select(sa.func.max(PmSyncReceiptRow.finished_at)).where(
+                PmSyncReceiptRow.result.in_(successful)
+            )
+            return cast(datetime | None, session.scalar(statement))
 
 
 class TicketStatusTransitionRepo(_Repo[TicketStatusTransition]):

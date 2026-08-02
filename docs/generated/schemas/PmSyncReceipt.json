@@ -1,0 +1,133 @@
+{
+  "$defs": {
+    "ActorType": {
+      "description": "Who or what created a record (data-model §2.2, attribution §1.5).",
+      "enum": [
+        "human",
+        "agent",
+        "system"
+      ],
+      "title": "ActorType",
+      "type": "string"
+    },
+    "PmSyncReceiptResult": {
+      "description": "Bounded classification for one sync tick receipt.",
+      "enum": [
+        "success_definition_changed",
+        "success_status_only",
+        "success_zero_action",
+        "partial",
+        "malformed_pull",
+        "cancelled",
+        "failed"
+      ],
+      "title": "PmSyncReceiptResult",
+      "type": "string"
+    }
+  },
+  "description": "One durable PM sync tick receipt.\n\n``finished_at`` is the timestamp used by status projections for the latest\ngenuinely successful Linear observation. Failed, cancelled, partial and\nmalformed-pull receipts remain visible but are excluded by the repository\npredicate that computes the latest successful instant.",
+  "properties": {
+    "counters": {
+      "additionalProperties": {
+        "type": "integer"
+      },
+      "title": "Counters",
+      "type": "object"
+    },
+    "created_by_id": {
+      "title": "Created By Id",
+      "type": "string"
+    },
+    "created_by_type": {
+      "$ref": "#/$defs/ActorType"
+    },
+    "error_summary": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Error Summary"
+    },
+    "fetched_board_fingerprint": {
+      "title": "Fetched Board Fingerprint",
+      "type": "string"
+    },
+    "fetched_board_issue_count": {
+      "maximum": 2147483647,
+      "minimum": 0,
+      "title": "Fetched Board Issue Count",
+      "type": "integer"
+    },
+    "finished_at": {
+      "format": "date-time",
+      "title": "Finished At",
+      "type": "string"
+    },
+    "id": {
+      "format": "uuid",
+      "title": "Id",
+      "type": "string"
+    },
+    "linear_project_id": {
+      "title": "Linear Project Id",
+      "type": "string"
+    },
+    "product_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Product Id"
+    },
+    "product_key": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Product Key"
+    },
+    "result": {
+      "$ref": "#/$defs/PmSyncReceiptResult"
+    },
+    "started_at": {
+      "format": "date-time",
+      "title": "Started At",
+      "type": "string"
+    },
+    "status_map_fingerprint": {
+      "title": "Status Map Fingerprint",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "linear_project_id",
+    "started_at",
+    "finished_at",
+    "status_map_fingerprint",
+    "fetched_board_fingerprint",
+    "fetched_board_issue_count",
+    "result",
+    "counters",
+    "created_by_type",
+    "created_by_id"
+  ],
+  "title": "PmSyncReceipt",
+  "type": "object"
+}

@@ -25,6 +25,8 @@ from atlas.core.models import (
     EvidenceType,
     Lesson,
     LessonCategory,
+    PmSyncReceipt,
+    PmSyncReceiptResult,
     Product,
     Ticket,
     TicketDependency,
@@ -39,6 +41,7 @@ from atlas.storage import (
     EpicRepo,
     EvidenceRepo,
     LessonRepo,
+    PmSyncReceiptRepo,
     ProductRepo,
     TicketDependencyRepo,
     TicketRepo,
@@ -480,6 +483,32 @@ def _seed_lessons(
         )
 
 
+def _seed_pm_sync_receipt(db: Database, product: Product, timestamp: datetime) -> None:
+    PmSyncReceiptRepo(db).record(
+        PmSyncReceipt(
+            id=UUID("9f2f046e-9ad2-4e5d-a0bf-4d2752ac7401"),
+            product_id=product.id,
+            product_key=product.key,
+            linear_project_id="operator-ui-seed-project",
+            started_at=timestamp,
+            finished_at=timestamp,
+            status_map_fingerprint="0" * 64,
+            fetched_board_fingerprint="1" * 64,
+            fetched_board_issue_count=0,
+            result=PmSyncReceiptResult.SUCCESS_ZERO_ACTION,
+            counters={
+                "status_pulled": 0,
+                "status_unchanged": 0,
+                "missing_issues": 0,
+                "pushed_created": 0,
+                "pushed_updated": 0,
+            },
+            created_by_type=ActorType.SYSTEM,
+            created_by_id="operator-ui-e2e-seed",
+        )
+    )
+
+
 def seed_store(db_url: str, seed_path: Path = DEFAULT_SEED_PATH) -> Database:
     """Create a fresh SQLite store and load the committed e2e fixture."""
     seed = _load_seed(seed_path)
@@ -525,6 +554,7 @@ def seed_store(db_url: str, seed_path: Path = DEFAULT_SEED_PATH) -> Database:
         product,
         timestamp,
     )
+    _seed_pm_sync_receipt(db, product, timestamp)
     return db
 
 

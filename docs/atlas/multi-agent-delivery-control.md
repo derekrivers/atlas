@@ -38,17 +38,23 @@ No policy value is inferred from an LLM or changed by an agent.
 cursor. A durable `PmSyncReceipt` records one completed tick with:
 
 - receipt ID, start and finish timestamps;
-- configured product/project identity and status-map fingerprint;
+- product/project identity and status-map fingerprint;
 - fetched-board fingerprint and ticket count;
-- policy revision when admission is enabled;
-- result counters and a bounded success/failure classification; and
-- correlation to an admission run, when one occurs.
+- result counters and a bounded success/failure classification.
 
-Only a tick that completes every mandatory read and local processing stage
-writes a successful receipt. A failed, cancelled or partial tick preserves its
-diagnostic outcome but does not advance `last_successful_linear_sync_at`.
-No-op and status-only successful ticks do advance it. The Operator API and UI
-project this field directly.
+The start and finish are separate injected clock samples: finish is taken only
+after the tick body completes (or at its unsuccessful receipt boundary). Failed
+receipt diagnostics contain only a sanitized exception type and controlled
+local error code, never arbitrary Linear exception text or response payloads.
+
+Only `success_definition_changed`, `success_status_only` and
+`success_zero_action` receipts advance `last_successful_linear_sync_at`. Failed,
+cancelled, malformed-pull and partial ticks still write diagnostic receipts but
+do not advance freshness. No-op and status-only successful ticks therefore
+count as fresh complete observations, while `Ticket.linear_synced_at` remains
+only the definition-push cursor. The Operator API keeps the existing
+`last_linear_sync_at` response field and projects it from the latest successful
+receipt's `finished_at`; the UI consumes that field directly.
 
 ## Delivery admission policy
 

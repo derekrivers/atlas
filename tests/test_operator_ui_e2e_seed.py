@@ -7,9 +7,14 @@ from atlas.core.keys import natural_key
 from atlas.core.models import EvidenceType
 from atlas.dependencies import NotReadyCode
 from atlas.dependencies.validation import TERMINAL_STATUSES
-from atlas.orchestration import review_queue, ticket_board, ticket_dependencies
+from atlas.orchestration import (
+    review_queue,
+    system_status,
+    ticket_board,
+    ticket_dependencies,
+)
 from atlas.orchestration.ticket_evidence import ticket_evidence
-from atlas.storage import EpicRepo, LessonRepo, TicketRepo
+from atlas.storage import EpicRepo, LessonRepo, PmSyncReceiptRepo, TicketRepo
 from atlas.tools.operator_ui_e2e_seed import seed_store
 
 
@@ -33,6 +38,8 @@ def test_operator_ui_e2e_seed_reproduces_live_api_edge_shapes(tmp_path: Path) ->
             "ATLAS-E2",
             None,
         }
+        [receipt] = PmSyncReceiptRepo(db).list()
+        assert system_status(db).last_linear_sync_at == receipt.finished_at
 
         assert board_keys.index("ATLAS-10") < board_keys.index("ATLAS-2")
         assert board_keys != sorted(board_keys, key=natural_key)

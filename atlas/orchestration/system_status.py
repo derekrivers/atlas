@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from atlas import __version__
-from atlas.storage import Database, EvidenceRepo, TicketRepo
+from atlas.storage import Database, EvidenceRepo, PmSyncReceiptRepo, TicketRepo
 from atlas.storage.preconditions import database_schema_revision
 
 
@@ -26,11 +26,12 @@ def system_status(db: Database) -> SystemStatus:
     """Compose the singleton system snapshot from persisted state only."""
     tickets = TicketRepo(db)
     evidence = EvidenceRepo(db)
+    receipts = PmSyncReceiptRepo(db)
     return SystemStatus(
         package_version=__version__,
         schema_revision=database_schema_revision(db),
         ticket_count=tickets.count(),
         evidence_count=evidence.count(),
-        last_linear_sync_at=tickets.latest_linear_synced_at(),
+        last_linear_sync_at=receipts.latest_successful_finished_at(),
         last_evidence_pull_at=evidence.latest_system_created_at(),
     )

@@ -254,6 +254,30 @@ Pull-based, consistent with ADR-0008 (no webhooks before hosting):
    request budget.
 5. Run anomaly and dwell checks (below).
 
+After step 5, before the tick reports success to its caller, the PM Engine
+appends one bounded `PmSyncReceipt`. The receipt stores the injected entry-time
+logic clock and a second completion-clock sample taken after the body finishes,
+the configured Linear project id, the unambiguous product
+identity when one can be resolved, a SHA-256 fingerprint of the status map, a
+SHA-256 fingerprint of the fetched board's ids/identifiers/state metadata, the
+fetched issue count, the `SyncResult` integer counters, and a bounded result
+classification. It deliberately excludes Linear descriptions, issue bodies,
+comments, raw payloads, tokens and credentials.
+
+An unsuccessful receipt stores no arbitrary exception message. Its optional
+diagnostic is limited to a sanitized exception type and a controlled local
+error code; raw HTTP bodies, GraphQL errors and credential-bearing exception
+text are excluded even when the Linear client includes them in `str(error)`.
+
+Receipt persistence is part of the local completion boundary. If the tick body
+completed but the receipt write fails, `sync_tick` returns a typed receipt
+persistence failure rather than reporting the tick as successful. Successful
+definition-changing, status-only and zero-action ticks are the only receipt
+classes that advance `last_successful_linear_sync_at`; degraded pack-render,
+unmapped-state, missing-issue, malformed-pull, cancelled and failed ticks keep
+their diagnostic receipts but do not advance freshness. `Ticket.linear_synced_at`
+remains only the definition-push cursor and is not a board freshness signal.
+
 Ticks are idempotent; a missed tick costs latency only. The scheduler is a
 plain loop (or cron) — no distributed job system.
 
@@ -282,6 +306,11 @@ record and its query-time dedup predicate (`recorded_since`, deduping by
 `failure_signature` over a caller-supplied window) are ATLAS-125, a prerequisite
 for ATLAS-50; the scheduler is the sole writer, and the count surfaces in the
 delivery report (ATLAS-47).
+`PmSyncReceipt` is different from `TickFailure`: it is written by `sync_tick`
+itself for every completed local boundary, including successful no-op ticks,
+partial ticks, malformed pulls and failures that were caught at the sync
+wrapper. The scheduler's `TickFailure` remains the crash ledger used for
+deduped scheduler reporting.
 
 The realized shape. The scheduler is a plain loop with an interruptible sleep
 between ticks (default interval 60s, `--interval`); `now` is taken fresh per

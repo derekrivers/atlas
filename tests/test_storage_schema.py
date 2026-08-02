@@ -261,6 +261,24 @@ DOCUMENTED_COLUMNS: dict[str, dict[str, tuple[bool, str | None]]] = {
         "created_by_type": (NN, None),
         "created_by_id": (NN, None),
     },
+    # §6.8 (PM sync receipt, ATLAS-245): append-only completion-boundary
+    # receipt. Stores fingerprints and counters, never raw Linear payloads.
+    "pm_sync_receipts": {
+        "id": (NN, None),
+        "product_id": (True, None),
+        "product_key": (True, None),
+        "linear_project_id": (NN, None),
+        "started_at": (NN, None),
+        "finished_at": (NN, None),
+        "status_map_fingerprint": (NN, None),
+        "fetched_board_fingerprint": (NN, None),
+        "fetched_board_issue_count": (NN, None),
+        "result": (NN, None),
+        "counters": (NN, "'{}'"),
+        "error_summary": (True, None),
+        "created_by_type": (NN, None),
+        "created_by_id": (NN, None),
+    },
     # §6.6 (status-transition record, ATLAS-121): append-only — no status, no
     # created_at, no updated_at. Ticket-scoped: ticket_id is FK-backed (modelled
     # on debt_items), but there is NO product_id.
@@ -309,6 +327,7 @@ DOCUMENTED_FOREIGN_KEYS: dict[str, dict[str, str]] = {
     "key_counters": {},
     "debt_items": {"product_id": "products", "ticket_id": "tickets"},
     "tick_failures": {},
+    "pm_sync_receipts": {"product_id": "products"},
     "ticket_status_transitions": {"ticket_id": "tickets"},
     "verification_checks": {"ticket_id": "tickets"},
 }
@@ -531,6 +550,83 @@ def test_lesson_source_ticket_migration_splits_old_positional_related_ids(
         }
 
     assert restored == old_related_text
+
+
+def test_pm_sync_receipt_migration_preserves_ticket_definition_cursors(
+    tmp_path: Path,
+) -> None:
+    url = f"sqlite:///{tmp_path}/receipt-upgrade.db"
+    config = _alembic_config(url)
+    command.upgrade(config, "0021")
+
+    product_id = UUID("11111111-1111-4111-8111-111111111111")
+    ticket_id = UUID("22222222-2222-4222-8222-222222222222")
+    cursor = datetime(2026, 8, 2, 9, tzinfo=UTC)
+    engine = sa.create_engine(url)
+    metadata = sa.MetaData()
+    products = sa.Table("products", metadata, autoload_with=engine)
+    tickets = sa.Table("tickets", metadata, autoload_with=engine)
+    with engine.begin() as connection:
+        connection.execute(
+            products.insert().values(
+                id=product_id.hex,
+                key="ATLAS",
+                name="Atlas",
+                description="Atlas product",
+                vision="Repeatable work",
+                status="active",
+                goals=[],
+                non_goals=[],
+                constraints=[],
+                created_by_type="human",
+                created_by_id="operator",
+                created_at=cursor,
+                updated_at=cursor,
+            )
+        )
+        connection.execute(
+            tickets.insert().values(
+                id=ticket_id.hex,
+                product_id=product_id.hex,
+                key="ATLAS-245",
+                title="Receipt migration",
+                objective="Preserve definition cursor.",
+                context="Migration parity.",
+                status="planned",
+                ticket_type="feature",
+                risk_level="low",
+                priority=1,
+                relevant_docs=[],
+                tags=[],
+                acceptance_criteria=[],
+                non_goals=[],
+                implementation_notes=[],
+                test_requirements=[],
+                documentation_requirements=[],
+                definition_of_done=[],
+                linear_synced_at=cursor,
+                review_cycle_count=0,
+                source_anchor="docs/atlas/pm-engine-and-linear-sync.md#sync-loop",
+                created_by_type="agent",
+                created_by_id="pm-engine",
+                created_at=cursor,
+                updated_at=cursor,
+            )
+        )
+
+    command.upgrade(config, "head")
+
+    with engine.connect() as connection:
+        inspector = sa.inspect(connection)
+        assert "pm_sync_receipts" in inspector.get_table_names()
+        stored = connection.execute(
+            sa.text("SELECT linear_synced_at FROM tickets WHERE key = 'ATLAS-245'")
+        ).scalar_one()
+
+    if isinstance(stored, str):
+        assert stored.startswith("2026-08-02 09:00:00")
+    else:
+        assert stored == cursor
 
 
 def test_alembic_upgrades_fresh_db_and_matches_metadata(tmp_path: Path) -> None:

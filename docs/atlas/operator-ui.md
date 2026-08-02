@@ -88,6 +88,12 @@ path total effort); a status distribution derived client-side from the
 complete board; staleness indicators over `last_linear_sync_at` and
 `last_evidence_pull_at`; the head of the critical path.
 
+`last_linear_sync_at` is consumed as the Operator API's truthful
+last-successful PM-sync receipt completion timestamp, sampled after the tick
+body finishes rather than at tick entry. The Overview must not infer Linear
+freshness from ticket definition cursors; before the first successful receipt
+the indicator shows the API's null value.
+
 Every aggregate here is derived in the browser from complete
 collections. That is a direct consequence of the API having no
 aggregation routes and no pagination, and it is the view's stated

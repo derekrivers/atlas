@@ -160,8 +160,14 @@ coordinates, effort weighting, or rendering hints. It does not authorize any
 additional v1 route beyond the two OP-2 additions named here.
 
 `GET /api/v1/status` returns the singleton operator system snapshot: package
-version, store schema revision, ticket and evidence counts, and the latest
-Linear-sync and evidence-pull timestamps.
+version, store schema revision, ticket and evidence counts, the latest
+successful PM-sync receipt timestamp, and the latest evidence-pull timestamp.
+The response field remains `last_linear_sync_at`, but its value is
+`PmSyncReceipt.finished_at` from the latest successful receipt
+(`success_definition_changed`, `success_status_only` or `success_zero_action`).
+That finish time is sampled after the successful tick body completes, not
+copied from its entry time. It is null before the first successful receipt and
+ignores `Ticket.linear_synced_at`, which is only a definition-push cursor.
 
 `POST /api/v1/session` accepts only a strict JSON body containing the
 bootstrap operator token. Success returns authenticated state, an expiry

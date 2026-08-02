@@ -290,6 +290,7 @@ def _format_sync_result(result: SyncResult, *, verbose: bool = False) -> str:
             f"embeds={result.packs_embedded} "
             f"status_pulls={result.status_pulled} "
             f"status_unchanged={result.status_unchanged} "
+            f"missing_issues={result.missing_issues} "
             f"anomalies_logged={result.anomalies_logged} "
             f"unmapped_observations={result.unmapped} "
             f"{_format_push_skipped(result)}"

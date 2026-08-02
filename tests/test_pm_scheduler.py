@@ -45,6 +45,7 @@ from atlas.cli import (
     main,
 )
 from atlas.core.enums import ActorType
+from atlas.core.models import TicketStatus
 from atlas.linear.client import (
     API_KEY_ENV,
     PROJECT_ID_ENV,
@@ -66,7 +67,7 @@ from atlas.pm.scheduler import (
     run_scheduler,
     run_tick,
 )
-from atlas.storage import Database, TicketRepo, TickFailureRepo
+from atlas.storage import Database, PmSyncReceiptRepo, TicketRepo, TickFailureRepo
 
 NOW = datetime(2026, 1, 1, tzinfo=UTC)
 
@@ -142,7 +143,13 @@ def make_config(db: Database, tmp_path: Path) -> TickConfig:
         tickets=TicketRepo(db),
         db=db,
         client=InMemoryLinearClient(),
-        status_map=LinearStatusMap({}),
+        status_map=LinearStatusMap(
+            {
+                "state-ready": TicketStatus.READY_FOR_AGENT,
+                "state-needs": TicketStatus.NEEDS_HUMAN_DECISION,
+                "state-done": TicketStatus.DONE,
+            }
+        ),
         team_id="team-1",
         project_id="project-1",
         inbox_dir=tmp_path / "inbox",
@@ -267,6 +274,22 @@ def test_once_runs_exactly_one_tick_and_never_sleeps(
 
     assert len(spy.calls) == 1  # the wrong answer: --once loops
     assert sleep.calls == 0  # --once ignores the cadence entirely
+
+
+def test_once_samples_distinct_start_and_completion_receipt_times(
+    db: Database, tmp_path: Path
+) -> None:
+    config = make_config(db, tmp_path)
+    clock = FakeClock(start=NOW, step=timedelta(minutes=5))
+
+    result = run_scheduler(config, once=True, now=clock)
+
+    assert result == SyncResult()
+    [receipt] = PmSyncReceiptRepo(db).list()
+    assert receipt.started_at == NOW
+    assert receipt.finished_at == NOW + timedelta(minutes=5)
+    assert receipt.finished_at > receipt.started_at
+    assert clock.calls == 2
 
 
 def test_loop_runs_repeatedly_until_shutdown(
@@ -434,8 +457,9 @@ def test_injection_passed_into_sync_tick_and_clean_tick_records_nothing(
     spy_sync_tick(monkeypatch, spy)
     config = make_config(db, tmp_path)
     failures = TickFailureRepo(db)
+    completion_clock = FakeClock()
 
-    run_tick(config, failures, now=NOW)
+    run_tick(config, failures, now=NOW, completion_clock=completion_clock)
 
     assert spy.calls == [
         {
@@ -448,6 +472,7 @@ def test_injection_passed_into_sync_tick_and_clean_tick_records_nothing(
             "inbox_dir": config.inbox_dir,
             "documents": config.documents,
             "now": NOW,
+            "completion_clock": completion_clock,
         }
     ]
     assert failures.list() == []  # a clean tick records no TickFailure
