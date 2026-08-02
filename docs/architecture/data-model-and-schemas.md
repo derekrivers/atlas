@@ -1192,7 +1192,11 @@ domain command has a status transition.
 
 Receipts never store raw idempotency keys, token/session/CSRF values, full
 request bodies, raw evidence payloads, lesson content or exception traces.
-Receipt metadata is default-deny. The only approved keys are `changed`
+Receipt result codes and before/after states are closed, server-controlled
+vocabularies rather than command-authored strings. Result codes are one of
+`action_succeeded`, `action_refused`, `stale_state` or `action_conflict`;
+before/after states, where present, are `EntityStatus` values. Receipt metadata
+is default-deny. The only approved keys are `changed`
 (strict boolean), `affected_count` (strict integer `0..1000000`) and
 `confidence` (strict finite float `0.0..1.0`); string, object and list values
 are never valid metadata. The gateway drops unapproved command-result fields
@@ -1213,6 +1217,12 @@ class OperatorActionOutcome(str, Enum):
     FAILED = "failed"
     CONFLICT = "conflict"
 
+class OperatorActionResultCode(str, Enum):
+    ACTION_SUCCEEDED = "action_succeeded"
+    ACTION_REFUSED = "action_refused"
+    STALE_STATE = "stale_state"
+    ACTION_CONFLICT = "action_conflict"
+
 class OperatorActionReceipt(BaseModel):
     model_config = ConfigDict(hide_input_in_errors=True)
 
@@ -1226,12 +1236,12 @@ class OperatorActionReceipt(BaseModel):
     idempotency_key_identity: str = Field(min_length=1, max_length=80)
     request_fingerprint: str = Field(min_length=1, max_length=80)
     outcome: OperatorActionOutcome
-    result_code: str = Field(pattern=r"^[a-z][a-z0-9_]{0,127}$")
+    result_code: OperatorActionResultCode
     result_metadata: dict[
         OperatorActionMetadataKey, OperatorActionMetadataValue
     ] = Field(default_factory=dict)
-    before_status: str | None = Field(default=None, max_length=128)
-    after_status: str | None = Field(default=None, max_length=128)
+    before_status: EntityStatus | None = None
+    after_status: EntityStatus | None = None
     created_at: datetime
     completed_at: datetime
 ```

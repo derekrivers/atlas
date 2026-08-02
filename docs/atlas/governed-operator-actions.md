@@ -152,12 +152,16 @@ in-progress only after a separate read proves that reservation; an error with
 no visible owner is a typed storage failure.
 
 Injected commands receive a transaction-scoped unit-of-work facade with only
-domain `get` and `add` operations. It exposes no session and no `flush`,
-`commit`, `rollback` or `close`, so only the gateway can end its transaction.
-The gateway flushes command mutations and receipt insertion separately for
-classification, then catches failure from the actual transaction commit as a
-receipt-commit failure. Any such failure rolls back the reservation, mutation
-and receipt together.
+domain `get` and `add` operations. `get` detaches every ORM value loaded in the
+gateway session before returning the requested row. `add` merges and flushes a
+copy without attaching the command-owned object, then detaches the gateway's
+loaded values again. A command therefore cannot recover the gateway session
+through `inspect(row).session` or `object_session(row)`. The facade exposes no
+session and no `flush`, `commit`, `rollback` or `close`, so only the gateway can
+end its transaction. The gateway flushes command mutations and receipt
+insertion separately for classification, then catches failure from the actual
+transaction commit as a receipt-commit failure. Any such failure rolls back
+the reservation, mutation and receipt together.
 
 An append-only `OperatorActionReceipt` records:
 
@@ -165,20 +169,23 @@ An append-only `OperatorActionReceipt` records:
 - action and target;
 - server-resolved actor;
 - idempotency key identity and request fingerprint reference;
-- before and after status where applicable;
-- bounded non-secret result code;
+- before and after `EntityStatus` values where applicable;
+- a server-controlled result code from `action_succeeded`, `action_refused`,
+  `stale_state` or `action_conflict`;
 - default-deny result metadata limited to `changed` (boolean),
   `affected_count` (integer `0..1000000`) and `confidence` (finite float
   `0.0..1.0`);
 - created/completed timestamps.
 
 The lesson mutation and successful receipt commit atomically. If the receipt
-cannot be persisted, the lesson is not changed. Secrets, full request bodies
+cannot be persisted, the lesson is not changed. Secrets, full request bodies,
 raw evidence payloads, lesson content and exception traces are not copied into
-receipts or rendered receipt JSON. The gateway discards every unapproved
-metadata field without inspecting its value; the canonical model and public
-repository writers reject unapproved fields or wrongly typed approved values,
-so callers cannot bypass that default-deny boundary.
+receipts or rendered receipt JSON. Result codes and before/after states are
+closed enums rather than free-form command strings. The gateway discards every
+unapproved metadata field without inspecting its value; the canonical model,
+presentation path and public repository writers revalidate every receipt, so
+callers cannot bypass either controlled vocabulary or the metadata default-deny
+boundary.
 
 ## Lesson disposition contract
 

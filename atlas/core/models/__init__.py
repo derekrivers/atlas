@@ -17,6 +17,7 @@ from atlas.core.models.lesson import Lesson, LessonCategory
 from atlas.core.models.operator_action_receipt import (
     OperatorActionOutcome,
     OperatorActionReceipt,
+    OperatorActionResultCode,
 )
 from atlas.core.models.plan_run import PlanRun, PlanRunStatus
 from atlas.core.models.pm_sync_receipt import (
@@ -52,6 +53,7 @@ __all__ = [
     "LessonCategory",
     "OperatorActionOutcome",
     "OperatorActionReceipt",
+    "OperatorActionResultCode",
     "PlanRun",
     "PlanRunStatus",
     "PmSyncReceipt",

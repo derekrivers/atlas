@@ -16,8 +16,12 @@ import sqlalchemy as sa
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
-from atlas.core.enums import ActorType
-from atlas.core.models import OperatorActionOutcome, OperatorActionReceipt
+from atlas.core.enums import ActorType, EntityStatus
+from atlas.core.models import (
+    OperatorActionOutcome,
+    OperatorActionReceipt,
+    OperatorActionResultCode,
+)
 from atlas.core.models.operator_action_receipt import (
     APPROVED_OPERATOR_ACTION_METADATA_FIELDS,
     OperatorActionMetadataKey,
@@ -85,9 +89,11 @@ class OperatorActionEnvelope:
 class OperatorActionUnitOfWork:
     """Narrow command facade over the gateway-owned transaction.
 
-    Commands may load and stage domain rows, but transaction lifecycle methods
-    deliberately do not exist on this surface. Commit, rollback, close and
-    flush remain exclusively owned by :class:`OperatorActionGateway`.
+    Commands may load detached domain rows and merge their changed values, but
+    never receive an ORM entity attached to the gateway-owned session.
+    Transaction lifecycle methods deliberately do not exist on this surface.
+    Commit, rollback, close and flush remain exclusively owned by
+    :class:`OperatorActionGateway`.
     """
 
     __slots__ = ("__session",)
@@ -96,12 +102,16 @@ class OperatorActionUnitOfWork:
         self.__session = session
 
     def add(self, entity: object) -> None:
-        """Stage one domain entity in the gateway-owned transaction."""
-        self.__session.add(entity)
+        """Merge one detached entity without attaching the caller's object."""
+        self.__session.merge(entity)
+        self.__session.flush()
+        self.__session.expunge_all()
 
     def get(self, entity_type: type[_Entity], entity_id: object) -> _Entity | None:
-        """Load one domain entity in the gateway-owned transaction."""
-        return cast(_Entity | None, self.__session.get(entity_type, entity_id))
+        """Load one domain entity and detach every loaded ORM value."""
+        entity = cast(_Entity | None, self.__session.get(entity_type, entity_id))
+        self.__session.expunge_all()
+        return entity
 
 
 @dataclass(frozen=True)
@@ -119,10 +129,10 @@ class OperatorActionCommandResult:
     """Bounded terminal outcome returned by a domain command."""
 
     outcome: OperatorActionOutcome
-    result_code: str
+    result_code: OperatorActionResultCode
     result_metadata: Mapping[str, Any] = field(default_factory=dict)
-    before_status: str | None = None
-    after_status: str | None = None
+    before_status: EntityStatus | None = None
+    after_status: EntityStatus | None = None
 
 
 @dataclass(frozen=True)

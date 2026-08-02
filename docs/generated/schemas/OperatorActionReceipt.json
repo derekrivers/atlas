@@ -10,6 +10,17 @@
       "title": "ActorType",
       "type": "string"
     },
+    "EntityStatus": {
+      "description": "Generic lifecycle status for knowledge entities (data-model §2.3).",
+      "enum": [
+        "draft",
+        "active",
+        "archived",
+        "deprecated"
+      ],
+      "title": "EntityStatus",
+      "type": "string"
+    },
     "OperatorActionOutcome": {
       "description": "Terminal outcome stored on an operator action receipt.",
       "enum": [
@@ -19,6 +30,17 @@
         "conflict"
       ],
       "title": "OperatorActionOutcome",
+      "type": "string"
+    },
+    "OperatorActionResultCode": {
+      "description": "Server-controlled terminal result vocabulary for operator commands.",
+      "enum": [
+        "action_succeeded",
+        "action_refused",
+        "stale_state",
+        "action_conflict"
+      ],
+      "title": "OperatorActionResultCode",
       "type": "string"
     }
   },
@@ -33,28 +55,24 @@
     "after_status": {
       "anyOf": [
         {
-          "maxLength": 128,
-          "type": "string"
+          "$ref": "#/$defs/EntityStatus"
         },
         {
           "type": "null"
         }
       ],
-      "default": null,
-      "title": "After Status"
+      "default": null
     },
     "before_status": {
       "anyOf": [
         {
-          "maxLength": 128,
-          "type": "string"
+          "$ref": "#/$defs/EntityStatus"
         },
         {
           "type": "null"
         }
       ],
-      "default": null,
-      "title": "Before Status"
+      "default": null
     },
     "completed_at": {
       "format": "date-time",
@@ -101,9 +119,7 @@
       "type": "string"
     },
     "result_code": {
-      "pattern": "^[a-z][a-z0-9_]{0,127}$",
-      "title": "Result Code",
-      "type": "string"
+      "$ref": "#/$defs/OperatorActionResultCode"
     },
     "result_metadata": {
       "additionalProperties": {

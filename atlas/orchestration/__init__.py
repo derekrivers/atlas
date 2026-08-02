@@ -1,5 +1,6 @@
 """Cross-layer orchestration shared by Atlas presentation surfaces."""
 
+from atlas.core.models import OperatorActionResultCode
 from atlas.orchestration.confirm import (
     ConfirmCaptureResult,
     ConfirmPrompts,
@@ -100,6 +101,7 @@ __all__ = [
     "OperatorActionGatewayResult",
     "OperatorActionGatewayStatus",
     "OperatorActionIdempotencyKeyError",
+    "OperatorActionResultCode",
     "OperatorActionUnitOfWork",
     "PRAncestryStatus",
     "PRContext",

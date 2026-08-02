@@ -7,8 +7,12 @@ from uuid import UUID, uuid4
 import pytest
 from pydantic import ValidationError
 
-from atlas.core.enums import ActorType
-from atlas.core.models import OperatorActionOutcome, OperatorActionReceipt
+from atlas.core.enums import ActorType, EntityStatus
+from atlas.core.models import (
+    OperatorActionOutcome,
+    OperatorActionReceipt,
+    OperatorActionResultCode,
+)
 from atlas.core.models.operator_action_receipt import (
     OperatorActionMetadataKey,
     OperatorActionMetadataValue,
@@ -28,13 +32,13 @@ DOCUMENTED_FIELDS: dict[str, tuple[Any, Any]] = {
     "idempotency_key_identity": (str, REQUIRED),
     "request_fingerprint": (str, REQUIRED),
     "outcome": (OperatorActionOutcome, REQUIRED),
-    "result_code": (str, REQUIRED),
+    "result_code": (OperatorActionResultCode, REQUIRED),
     "result_metadata": (
         dict[OperatorActionMetadataKey, OperatorActionMetadataValue],
         DICT_FACTORY,
     ),
-    "before_status": (str | None, None),
-    "after_status": (str | None, None),
+    "before_status": (EntityStatus | None, None),
+    "after_status": (EntityStatus | None, None),
     "created_at": (datetime, REQUIRED),
     "completed_at": (datetime, REQUIRED),
 }
@@ -52,7 +56,7 @@ def operator_action_receipt_kwargs() -> dict[str, Any]:
         "idempotency_key_identity": "sha256:" + ("a" * 64),
         "request_fingerprint": "sha256:" + ("b" * 64),
         "outcome": "succeeded",
-        "result_code": "lesson_promoted",
+        "result_code": "action_succeeded",
         "result_metadata": {"confidence": 0.8},
         "before_status": "draft",
         "after_status": "active",
@@ -129,9 +133,38 @@ def test_metadata_is_default_deny_and_bounded(metadata: dict[str, Any]) -> None:
         )
 
 
-def test_result_code_accepts_only_bounded_machine_codes() -> None:
-    with pytest.raises(ValidationError, match="result_code"):
+@pytest.mark.parametrize(
+    ("field_name", "prohibited"),
+    [
+        ("result_code", "mf9kq7vlc2xp8nr4wt6yb3dh5js1ag0z"),
+        ("before_status", "Promote this private lesson narrative verbatim."),
+        ("after_status", '{"private_command":"do not copy"}'),
+        ("after_status", "raw-test-output-with-customer-data"),
+    ],
+    ids=["opaque-result-code", "lesson-before", "request-after", "evidence-after"],
+)
+def test_command_controlled_strings_use_closed_vocabularies(
+    field_name: str,
+    prohibited: str,
+) -> None:
+    with pytest.raises(ValidationError, match=field_name) as raised:
         OperatorActionReceipt(
-            **operator_action_receipt_kwargs()
-            | {"result_code": "opaque result content"}
+            **operator_action_receipt_kwargs() | {field_name: prohibited}
         )
+
+    assert prohibited not in str(raised.value)
+
+
+def test_result_code_and_status_vocabularies_are_bounded() -> None:
+    assert {code.value for code in OperatorActionResultCode} == {
+        "action_succeeded",
+        "action_refused",
+        "stale_state",
+        "action_conflict",
+    }
+    assert {status.value for status in EntityStatus} == {
+        "draft",
+        "active",
+        "archived",
+        "deprecated",
+    }

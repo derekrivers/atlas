@@ -6,14 +6,16 @@ import json
 import math
 import threading
 import time
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from uuid import UUID, uuid4
 
 import pytest
 import sqlalchemy as sa
-from sqlalchemy.orm import Session
+from pydantic import ValidationError
+from sqlalchemy.orm import Session, object_session
 from test_models_validation import product_kwargs
 from test_operator_action_receipt_model import operator_action_receipt_kwargs
 
@@ -28,6 +30,7 @@ from atlas.orchestration import (
     OperatorActionFailureCode,
     OperatorActionGateway,
     OperatorActionGatewayStatus,
+    OperatorActionResultCode,
     canonical_request_fingerprint,
     idempotency_key_identity,
     present_operator_action_receipt,
@@ -102,17 +105,18 @@ def mutate_product_command(
     product_id: UUID,
     calls: list[str],
     *,
-    status: str = "deprecated",
+    status: EntityStatus = EntityStatus.DEPRECATED,
 ) -> Any:
     def _command(context: OperatorActionCommandContext) -> OperatorActionCommandResult:
         calls.append(str(context.correlation_id))
         row = context.unit_of_work.get(ProductRow, product_id)
         assert row is not None
-        before = row.status
-        row.status = status
+        before = EntityStatus(row.status)
+        row.status = status.value
+        context.unit_of_work.add(row)
         return OperatorActionCommandResult(
             outcome=OperatorActionOutcome.SUCCEEDED,
-            result_code="product_deprecated",
+            result_code=OperatorActionResultCode.ACTION_SUCCEEDED,
             result_metadata={"changed": True},
             before_status=before,
             after_status=status,
@@ -266,7 +270,7 @@ def test_same_key_same_fingerprint_replays_terminal_success_without_command(
     first = gateway.execute(request, mutate_product_command(product.id, calls))
     second = gateway.execute(
         request,
-        mutate_product_command(product.id, calls, status="archived"),
+        mutate_product_command(product.id, calls, status=EntityStatus.ARCHIVED),
     )
 
     assert first.status is OperatorActionGatewayStatus.EXECUTED
@@ -317,8 +321,8 @@ def test_terminal_refusal_is_recorded_and_replayed_without_success_masquerade(
         calls += 1
         return OperatorActionCommandResult(
             outcome=OperatorActionOutcome.REFUSED,
-            result_code="stale_state",
-            before_status="active",
+            result_code=OperatorActionResultCode.STALE_STATE,
+            before_status=EntityStatus.ACTIVE,
         )
 
     first = gateway.execute(request, refuse)
@@ -345,7 +349,7 @@ def test_in_progress_recovery_returns_named_conflict_and_invokes_no_command(
         calls += 1
         return OperatorActionCommandResult(
             outcome=OperatorActionOutcome.SUCCEEDED,
-            result_code="should_not_run",
+            result_code=OperatorActionResultCode.ACTION_SUCCEEDED,
         )
 
     result = gateway.execute(request, command)
@@ -370,6 +374,7 @@ def test_mutation_failure_rolls_back_state_and_leaves_no_replayable_success(
         row = context.unit_of_work.get(ProductRow, product.id)
         assert row is not None
         row.status = EntityStatus.DEPRECATED.value
+        context.unit_of_work.add(row)
         raise RuntimeError("domain mutation failed")
 
     result = gateway.execute(request, failing_command)
@@ -406,7 +411,7 @@ def test_command_cannot_end_or_flush_gateway_owned_transaction(
         getattr(context.unit_of_work, lifecycle_method)()
         return OperatorActionCommandResult(
             outcome=OperatorActionOutcome.SUCCEEDED,
-            result_code="must_not_commit",
+            result_code=OperatorActionResultCode.ACTION_SUCCEEDED,
         )
 
     result = gateway.execute(request, escaping_command)
@@ -425,6 +430,49 @@ def test_command_cannot_end_or_flush_gateway_owned_transaction(
             )
             is None
         )
+
+
+@pytest.mark.parametrize("lifecycle_method", ["commit", "rollback"])
+def test_detached_domain_row_cannot_recover_gateway_transaction(
+    db: Database,
+    lifecycle_method: str,
+) -> None:
+    product = seed_product(db)
+    request = envelope(
+        key=f"idem-row-session-{lifecycle_method}", target_id=product.key
+    )
+    gateway = OperatorActionGateway(db, clock=FrozenClock())
+
+    def command(
+        context: OperatorActionCommandContext,
+    ) -> OperatorActionCommandResult:
+        row = context.unit_of_work.get(ProductRow, product.id)
+        assert row is not None
+        owning_session = object_session(row)
+        assert owning_session is None
+        assert sa.inspect(row).session is None
+        with pytest.raises(AttributeError):
+            getattr(owning_session, lifecycle_method)()
+
+        row.status = EntityStatus.DEPRECATED.value
+        context.unit_of_work.add(row)
+        assert object_session(row) is None
+        assert sa.inspect(row).session is None
+        return OperatorActionCommandResult(
+            outcome=OperatorActionOutcome.SUCCEEDED,
+            result_code=OperatorActionResultCode.ACTION_SUCCEEDED,
+            result_metadata={"changed": True},
+            before_status=EntityStatus.ACTIVE,
+            after_status=EntityStatus.DEPRECATED,
+        )
+
+    result = gateway.execute(request, command)
+
+    assert result.status is OperatorActionGatewayStatus.EXECUTED
+    assert result.receipt is not None
+    stored = ProductRepo(db).get(product.id)
+    assert stored is not None
+    assert stored.status is EntityStatus.DEPRECATED
 
 
 def test_receipt_insert_failure_rolls_back_mutation_and_leaves_no_success(
@@ -531,7 +579,7 @@ def test_unproven_operational_error_is_typed_storage_failure(
         calls += 1
         return OperatorActionCommandResult(
             outcome=OperatorActionOutcome.SUCCEEDED,
-            result_code="must_not_run",
+            result_code=OperatorActionResultCode.ACTION_SUCCEEDED,
         )
 
     sa.event.listen(Session, "before_flush", fail_reservation_flush)
@@ -565,7 +613,7 @@ def test_operational_error_is_in_progress_only_with_proven_reservation(
         calls += 1
         return OperatorActionCommandResult(
             outcome=OperatorActionOutcome.SUCCEEDED,
-            result_code="must_not_run",
+            result_code=OperatorActionResultCode.ACTION_SUCCEEDED,
         )
 
     sa.event.listen(Session, "before_flush", fail_reservation_flush)
@@ -598,7 +646,7 @@ def test_concurrent_duplicate_calls_invoke_command_once(tmp_path: Path) -> None:
         time.sleep(0.1)
         return OperatorActionCommandResult(
             outcome=OperatorActionOutcome.SUCCEEDED,
-            result_code="noop_ok",
+            result_code=OperatorActionResultCode.ACTION_SUCCEEDED,
         )
 
     def run() -> None:
@@ -631,7 +679,7 @@ def test_receipt_default_deny_excludes_neutral_key_opaque_content(
     def command(_: OperatorActionCommandContext) -> OperatorActionCommandResult:
         return OperatorActionCommandResult(
             outcome=OperatorActionOutcome.SUCCEEDED,
-            result_code="metadata_filtered",
+            result_code=OperatorActionResultCode.ACTION_SUCCEEDED,
             result_metadata={
                 "alpha": opaque_credential,
                 "bravo": lesson_content,
@@ -665,3 +713,58 @@ def test_receipt_default_deny_excludes_neutral_key_opaque_content(
     assert result.receipt.idempotency_key_identity == idempotency_key_identity(
         opaque_credential
     )
+
+
+@pytest.mark.parametrize("field_name", ["result_code", "before_status", "after_status"])
+@pytest.mark.parametrize(
+    "prohibited",
+    [
+        "mf9kq7vlc2xp8nr4wt6yb3dh5js1ag0z",
+        "Promote this private lesson narrative verbatim.",
+        '{"private_command":"do not copy"}',
+        "raw-test-output-with-customer-data",
+    ],
+    ids=["opaque-credential", "lesson-content", "request-body", "raw-evidence"],
+)
+def test_gateway_rejects_private_content_in_every_command_controlled_string(
+    db: Database,
+    caplog: pytest.LogCaptureFixture,
+    field_name: str,
+    prohibited: str,
+) -> None:
+    request = envelope(key=f"idem-private-{field_name}")
+    gateway = OperatorActionGateway(db, clock=FrozenClock())
+
+    def command(_: OperatorActionCommandContext) -> OperatorActionCommandResult:
+        safe = OperatorActionCommandResult(
+            outcome=OperatorActionOutcome.SUCCEEDED,
+            result_code=OperatorActionResultCode.ACTION_SUCCEEDED,
+            before_status=EntityStatus.DRAFT,
+            after_status=EntityStatus.ACTIVE,
+        )
+        if field_name == "result_code":
+            return replace(
+                safe,
+                result_code=cast(OperatorActionResultCode, prohibited),
+            )
+        if field_name == "before_status":
+            return replace(safe, before_status=cast(EntityStatus, prohibited))
+        return replace(safe, after_status=cast(EntityStatus, prohibited))
+
+    result = gateway.execute(request, command)
+
+    assert result.status is OperatorActionGatewayStatus.FAILED
+    assert result.failure is not None
+    assert result.failure.code is OperatorActionFailureCode.RECEIPT_COMMIT_FAILED
+    assert result.receipt is None
+    with db.session() as session:
+        assert session.scalars(sa.select(OperatorActionKeyRow)).all() == []
+        assert session.scalars(sa.select(OperatorActionReceiptRow)).all() == []
+    assert prohibited not in caplog.text
+
+    poisoned = OperatorActionReceipt(**operator_action_receipt_kwargs()).model_copy(
+        update={field_name: prohibited}
+    )
+    with pytest.raises(ValidationError) as raised:
+        present_operator_action_receipt(poisoned)
+    assert prohibited not in str(raised.value)

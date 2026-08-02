@@ -104,6 +104,36 @@ def test_public_writers_revalidate_metadata_allowlist(
         assert session.get(OperatorActionReceiptRow, unsafe.id) is None
 
 
+@pytest.mark.parametrize("method_name", ["add", "record"])
+@pytest.mark.parametrize(
+    ("field_name", "prohibited"),
+    [
+        ("result_code", "mf9kq7vlc2xp8nr4wt6yb3dh5js1ag0z"),
+        ("before_status", "Promote this private lesson narrative verbatim."),
+        ("after_status", '{"private_command":"do not copy"}'),
+        ("after_status", "raw-test-output-with-customer-data"),
+    ],
+    ids=["opaque-result-code", "lesson-before", "request-after", "evidence-after"],
+)
+def test_public_writers_revalidate_controlled_receipt_vocabularies(
+    db: Database,
+    method_name: str,
+    field_name: str,
+    prohibited: str,
+) -> None:
+    unsafe = OperatorActionReceipt(**operator_action_receipt_kwargs()).model_copy(
+        update={field_name: prohibited}
+    )
+    seed_reservation(db, unsafe)
+
+    with pytest.raises(ValidationError, match=field_name) as raised:
+        getattr(OperatorActionReceiptRepo(db), method_name)(unsafe)
+
+    assert prohibited not in str(raised.value)
+    with db.session() as session:
+        assert session.get(OperatorActionReceiptRow, unsafe.id) is None
+
+
 def test_database_rejects_receipt_update_and_delete(db: Database) -> None:
     receipt = a_receipt()
     seed_reservation(db, receipt)

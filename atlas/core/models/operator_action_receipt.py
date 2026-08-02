@@ -22,7 +22,7 @@ from pydantic import (
     field_validator,
 )
 
-from atlas.core.enums import ActorType
+from atlas.core.enums import ActorType, EntityStatus
 
 MAX_OPERATOR_ACTION_METADATA_BYTES = 4096
 MAX_OPERATOR_ACTION_AFFECTED_COUNT = 1_000_000
@@ -42,6 +42,15 @@ class OperatorActionOutcome(StrEnum):
     CONFLICT = "conflict"
 
 
+class OperatorActionResultCode(StrEnum):
+    """Server-controlled terminal result vocabulary for operator commands."""
+
+    ACTION_SUCCEEDED = "action_succeeded"
+    ACTION_REFUSED = "action_refused"
+    STALE_STATE = "stale_state"
+    ACTION_CONFLICT = "action_conflict"
+
+
 class OperatorActionReceipt(BaseModel):
     """Append-only receipt for one governed operator command."""
 
@@ -57,12 +66,12 @@ class OperatorActionReceipt(BaseModel):
     idempotency_key_identity: str = Field(min_length=1, max_length=80)
     request_fingerprint: str = Field(min_length=1, max_length=80)
     outcome: OperatorActionOutcome
-    result_code: str = Field(pattern=r"^[a-z][a-z0-9_]{0,127}$")
+    result_code: OperatorActionResultCode
     result_metadata: dict[OperatorActionMetadataKey, OperatorActionMetadataValue] = (
         Field(default_factory=dict)
     )
-    before_status: str | None = Field(default=None, max_length=128)
-    after_status: str | None = Field(default=None, max_length=128)
+    before_status: EntityStatus | None = None
+    after_status: EntityStatus | None = None
     created_at: datetime
     completed_at: datetime
 
