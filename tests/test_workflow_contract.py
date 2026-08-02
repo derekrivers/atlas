@@ -385,7 +385,7 @@ def test_ac1_codex_model_requirement_documented_in_raw_text() -> None:
     # vacuously or never find the note. The version/URL strings below appear
     # ONLY in the note (not in the command), so they evidence it directly.
     raw = _read(WORKFLOW_PATH)
-    assert 'model="gpt-5.5"' in raw  # the pinned model is named
+    assert 'model="gpt-5.6-sol"' in raw  # the pinned model is named
     assert "0.142.5" in raw  # the known-good Codex CLI version
     assert "0.114.0" in raw  # the snap cap that cannot run the pin
     assert _INSTALL_URL in raw  # how to obtain a working CLI
@@ -397,7 +397,7 @@ def test_ac6_pinned_model_parseable_from_live_command() -> None:
     # command drift). Pins the two together.
     front, _ = _split()
     command = front["codex"]["command"]
-    assert _parse_model(command) == "gpt-5.5"
+    assert _parse_model(command) == "gpt-5.6-sol"
 
 
 # --- Smoke A finding T2: the pack is optional, the description is the contract -
@@ -489,4 +489,4 @@ def test_pack_reword_scope_confined_to_body() -> None:
         "Changes Requested",
     ]
     assert front["tracker"]["terminal_states"] == ["Done", "Canceled", "Duplicate"]
-    assert _parse_model(front["codex"]["command"]) == "gpt-5.5"
+    assert _parse_model(front["codex"]["command"]) == "gpt-5.6-sol"
