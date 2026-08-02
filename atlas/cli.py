@@ -41,7 +41,8 @@ from atlas.context import (
     validate_context_pack,
 )
 from atlas.core.anchors import IngestionError
-from atlas.core.models import PlanRun, PlanRunStatus
+from atlas.core.enums import EvidenceStatus
+from atlas.core.models import PlanRun, PlanRunStatus, VerificationCheckType
 from atlas.core.models.context_pack import ContextPack
 from atlas.core.models.evidence import Evidence
 from atlas.core.models.ticket import Ticket
@@ -109,7 +110,7 @@ from atlas.orchestration import (
     ContextInputs,
     ContextNotFoundError,
     build_tick_config,
-    capture_ticket,
+    capture_ticket_result,
     load_context_inputs,
     resolve_github_client,
     resolve_pr_context,
@@ -1672,6 +1673,24 @@ def _verify_check_text(outcome: CheckOutcome) -> str:
     )
 
 
+_HUMAN_CONFIRMATION_CHECK_TYPES = {
+    VerificationCheckType.ACCEPTANCE_CRITERIA,
+    VerificationCheckType.SCOPE,
+    VerificationCheckType.HUMAN_APPROVAL,
+}
+
+
+def _pending_human_confirmation_count(pr: PRVerification) -> int:
+    return sum(
+        1
+        for tv in pr.tickets
+        for outcome in tv.checks
+        if outcome.required
+        and outcome.check_type in _HUMAN_CONFIRMATION_CHECK_TYPES
+        and outcome.status == EvidenceStatus.PENDING
+    )
+
+
 def _verify_report_text(
     pr: PRVerification,
     key_by_id: dict[UUID, str],
@@ -1680,9 +1699,7 @@ def _verify_report_text(
     pr_number: int,
     unknown_keys: list[str],
 ) -> str:
-    """The human report (D4): a PR verdict headline at C, then per ticket (by
-    key) its verdict and per-check breakdown, plus the OP-A honesty note and any
-    skipped unknown keys / empty-close-set explanation. Never a traceback (D5)."""
+    """Render the human verification report from the structured verdict."""
     lines = [
         f"Verification for {repo} PR #{pr_number} at {pr.head_commit}",
         f"PR verdict: {pr.status.value.upper()}",
@@ -1701,13 +1718,14 @@ def _verify_report_text(
         lines.append(
             "  Skipped (no such ticket in the database): " + ", ".join(unknown_keys)
         )
-    lines.append(
-        "  Note (OP-A): acceptance / scope / human_approval report PENDING here "
-        "until the interactive operator-confirmation capture lands (OP-3 "
-        "follow-on) — no operator confirmations exist yet. This is honest and "
-        "expected, not a bug; the machine checks (tests / lint / documentation) "
-        "are evaluated against system-tier evidence at this commit."
-    )
+    pending_human_checks = _pending_human_confirmation_count(pr)
+    if pending_human_checks:
+        lines.append(
+            "  Confirmation note: "
+            f"{pending_human_checks} human-tier confirmation check(s) remain "
+            "PENDING at this head; run atlas confirm for the outstanding "
+            "acceptance, scope, or approval decisions."
+        )
     return "\n".join(lines)
 
 
@@ -1769,7 +1787,10 @@ def _verify_command(
         )
         return EXIT_PRECONDITION
 
-    payload = pr_verification_json(result.verification)
+    payload = pr_verification_json(
+        result.verification,
+        key_by_id=result.key_by_id,
+    )
     text = _verify_report_text(
         result.verification,
         result.key_by_id,
@@ -1924,8 +1945,9 @@ def _confirm_command(
 
         evidence = evidence_repo.list()  # snapshot at C; loaded once (mirrors verify)
         recorded = 0
+        pending_actions = 0
         for ticket in tickets:
-            recorded += capture_ticket(
+            result = capture_ticket_result(
                 ticket,
                 prompts=prompts,
                 head_commit=context.head_commit,
@@ -1937,6 +1959,8 @@ def _confirm_command(
                 now=clock,
                 new_id=mint,
             )
+            recorded += result.recorded
+            pending_actions += result.pending_actions
     except OperationalError:
         print(
             "database is not initialised (no such table); run the database "
@@ -1945,10 +1969,16 @@ def _confirm_command(
         )
         return EXIT_PRECONDITION
 
-    print(
-        f"Recorded {recorded} operator confirmation(s) for "
-        f"{context.owner}/{context.repo} PR #{args.pr} at {context.head_commit}."
-    )
+    target = f"{context.owner}/{context.repo} PR #{args.pr} at {context.head_commit}"
+    if pending_actions == 0:
+        print(f"No outstanding confirmations for {target}.")
+    else:
+        print(f"Recorded {recorded} operator confirmation(s) for {target}.")
+        if recorded == 0:
+            print(
+                f"  {pending_actions} outstanding confirmation action(s) remain "
+                "unresolved because the operator skipped or declined them."
+            )
     if unknown_keys:
         print("  Skipped (no such ticket in the database): " + ", ".join(unknown_keys))
     return EXIT_OK

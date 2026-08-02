@@ -305,7 +305,9 @@ def test_scope_fail_records_failed(db: Database) -> None:
 # --- AC-3: skipping every item writes nothing, exits EXIT_OK -----------------
 
 
-def test_skip_writes_nothing_and_items_stay_pending(db: Database) -> None:
+def test_skip_writes_nothing_and_items_stay_pending(
+    db: Database, capsys: pytest.CaptureFixture[str]
+) -> None:
     """Skip acceptance, scope, and approval -> zero evidence, EXIT_OK, and the
     items remain pending (a confirm-all re-run still records them). Wrong answer:
     a record written on skip."""
@@ -319,12 +321,46 @@ def test_skip_writes_nothing_and_items_stay_pending(db: Database) -> None:
     )
     assert code == EXIT_OK
     assert EvidenceRepo(db).list() == []
+    out = capsys.readouterr().out
+    assert "Recorded 0 operator confirmation(s)" in out
+    assert "outstanding confirmation action(s) remain unresolved" in out
+    assert "No outstanding confirmations" not in out
 
     # The items were never satisfied: a follow-up confirm-all session records them.
     again = ScriptedPrompts()
     assert run_confirm(db, fake(), again, tickets="ATLAS-301") == EXIT_OK
     assert len(EvidenceRepo(db).list()) == 3
     assert again.acceptance_calls == [AC]  # still prompted -> still pending
+
+
+def test_no_outstanding_confirmations_reports_zero_action_success(
+    db: Database, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """When pending_capture finds no decisions, the CLI says so instead of
+    printing an ambiguous "Recorded 0". Wrong answer: an operator retries already
+    complete confirmations because zero writes look like skipped work."""
+    ticket = make_ticket(db, key="ATLAS-313", ticket_type=TicketType.BUG)
+    seed_evidence(db, accept_confirmation(db, ticket.id))
+    prompts = ScriptedPrompts()
+
+    code = run_confirm(
+        db,
+        fake(files=[IN_SCOPE_SRC, ANCHOR_DOC]),
+        prompts,
+        tickets="ATLAS-313",
+    )
+
+    assert code == EXIT_OK
+    out = capsys.readouterr().out
+    assert f"No outstanding confirmations for atlas/atlas PR #133 at {HEAD}." in out
+    assert "Recorded 0" not in out
+    assert prompts.acceptance_calls == []
+    assert prompts.scope_calls == []
+    assert prompts.approval_calls == 0
+    assert len(EvidenceRepo(db).list()) == 1
+    assert VerificationCheckRepo(db).list() == []
+    reloaded = TicketRepo(db).get_by_key(ticket.key)
+    assert reloaded is not None and reloaded.status == TicketStatus.REVIEW_REQUIRED
 
 
 # --- AC-4: operator identity -------------------------------------------------

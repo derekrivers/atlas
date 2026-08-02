@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from datetime import datetime
-from typing import Literal, Protocol, runtime_checkable
+from typing import Literal, NamedTuple, Protocol, runtime_checkable
 from uuid import UUID
 
 from atlas.core.models import Evidence, Ticket
@@ -41,6 +41,13 @@ class ConfirmPrompts(Protocol):
         ...
 
 
+class ConfirmCaptureResult(NamedTuple):
+    """Structured outcome for one ticket's confirmation capture."""
+
+    recorded: int
+    pending_actions: int
+
+
 def capture_ticket(
     ticket: Ticket,
     *,
@@ -54,6 +61,34 @@ def capture_ticket(
     now: datetime,
     new_id: Callable[[], UUID],
 ) -> int:
+    """Prompt the operator and return only the number of persisted rulings."""
+    return capture_ticket_result(
+        ticket,
+        prompts=prompts,
+        head_commit=head_commit,
+        pr_files=pr_files,
+        evidence=evidence,
+        product_id=product_id,
+        operator_id=operator_id,
+        evidence_repo=evidence_repo,
+        now=now,
+        new_id=new_id,
+    ).recorded
+
+
+def capture_ticket_result(
+    ticket: Ticket,
+    *,
+    prompts: ConfirmPrompts,
+    head_commit: str,
+    pr_files: list[str],
+    evidence: list[Evidence],
+    product_id: UUID,
+    operator_id: str,
+    evidence_repo: EvidenceRepo,
+    now: datetime,
+    new_id: Callable[[], UUID],
+) -> ConfirmCaptureResult:
     """Prompt the operator for one ticket's pending items and persist the rulings.
 
     Calls OP-3.1's :func:`pending_capture` (the inverse view of the three human
@@ -61,10 +96,16 @@ def capture_ticket(
     to the matching builder (D-2): a confirmed criterion →
     :func:`build_acceptance_confirmation`; a waived/failed scope file →
     :func:`build_scope_decision`; an approved/rejected blanket →
-    :func:`build_blanket_approval`. A skip persists nothing. Returns the number of
-    records written so the command can summarise the session."""
+    :func:`build_blanket_approval`. A skip persists nothing. Returns a structured
+    count so the command can distinguish "nothing outstanding" from "pending
+    actions were shown but skipped or declined" without parsing prompt text."""
     pending = pending_capture(
         ticket, head_commit=head_commit, pr_files=pr_files, evidence=evidence
+    )
+    pending_actions = (
+        len(pending.unconfirmed_criteria)
+        + len(pending.undecided_scope_files)
+        + int(pending.human_approval_required_and_missing)
     )
     recorded = 0
 
@@ -116,4 +157,4 @@ def capture_ticket(
             )
             recorded += 1
 
-    return recorded
+    return ConfirmCaptureResult(recorded=recorded, pending_actions=pending_actions)

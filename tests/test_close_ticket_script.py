@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 from argparse import Namespace
 from collections.abc import Callable
 from pathlib import Path
@@ -603,6 +604,126 @@ def test_non_passing_pre_merge_verdict_blocks_merge(
     assert code == 1
     assert pauses == []
     assert "not passed; merge is blocked" in capsys.readouterr().err
+
+
+def test_non_passing_pre_merge_verdict_names_one_blocking_check(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    class PendingRunner(Runner):
+        def __call__(
+            self, command: tuple[str, ...], **kwargs: Any
+        ) -> CompletedProcess[str]:
+            result = super().__call__(command, **kwargs)
+            if "verify" in command and "--json" in command:
+                payload = {
+                    "head_commit": HEAD,
+                    "status": "pending",
+                    "blocking_checks": [
+                        {
+                            "ticket_id": "00000000-0000-0000-0000-000000000200",
+                            "ticket_key": "ATLAS-200",
+                            "head_commit": HEAD,
+                            "check_type": "documentation",
+                            "required": True,
+                            "status": "pending",
+                            "evidence_ids": [],
+                            "reason": (
+                                "documentation: a system-tier documentation_update "
+                                f"record exists at {HEAD} but covers none of the "
+                                "required paths; PENDING."
+                            ),
+                        }
+                    ],
+                    "tickets": [],
+                }
+                return CompletedProcess(command, 0, json.dumps(payload) + "\n", "")
+            return result
+
+    runner = PendingRunner()
+    pauses: list[str] = []
+
+    code = close_ticket.drive(
+        args(),
+        environ={"GITHUB_TOKEN": "secret"},
+        run_command=runner,
+        pause=recording_pause(pauses),
+        resolve_assessment=AssessmentSequence(),
+    )
+
+    assert code == 1
+    assert pauses == []
+    assert_no_post_merge_actions(runner)
+    error = capsys.readouterr().err
+    assert "Blocking verification checks:" in error
+    assert (
+        f"- ATLAS-200 documentation pending at {HEAD}: documentation: "
+        "a system-tier documentation_update record exists"
+    ) in error
+    assert "covers none of the required paths; PENDING." in error
+
+
+def test_non_passing_pre_merge_verdict_names_several_blocking_checks_in_order(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    class FailedRunner(Runner):
+        def __call__(
+            self, command: tuple[str, ...], **kwargs: Any
+        ) -> CompletedProcess[str]:
+            result = super().__call__(command, **kwargs)
+            if "verify" in command and "--json" in command:
+                payload = {
+                    "head_commit": HEAD,
+                    "status": "failed",
+                    "blocking_checks": [
+                        {
+                            "ticket_id": "00000000-0000-0000-0000-000000000200",
+                            "ticket_key": "ATLAS-200",
+                            "head_commit": HEAD,
+                            "check_type": "tests",
+                            "required": True,
+                            "status": "failed",
+                            "evidence_ids": [],
+                            "reason": f"tests: folded status failed at {HEAD}.",
+                        },
+                        {
+                            "ticket_id": "00000000-0000-0000-0000-000000000201",
+                            "ticket_key": "ATLAS-201",
+                            "head_commit": HEAD,
+                            "check_type": "acceptance_criteria",
+                            "required": True,
+                            "status": "pending",
+                            "evidence_ids": [],
+                            "reason": (
+                                f"acceptance_criteria: 1 of 2 criteria confirmed "
+                                f"at {HEAD}; 1 unconfirmed; PENDING."
+                            ),
+                        },
+                    ],
+                    "tickets": [],
+                }
+                return CompletedProcess(command, 0, json.dumps(payload) + "\n", "")
+            return result
+
+    runner = FailedRunner()
+
+    code = close_ticket.drive(
+        args(),
+        environ={"GITHUB_TOKEN": "secret"},
+        run_command=runner,
+        pause=lambda _: "",
+        resolve_assessment=AssessmentSequence(),
+    )
+
+    assert code == 1
+    error = capsys.readouterr().err
+    first = f"- ATLAS-200 tests failed at {HEAD}: tests: folded status failed"
+    second = (
+        f"- ATLAS-201 acceptance_criteria pending at {HEAD}: "
+        "acceptance_criteria: 1 of 2 criteria confirmed"
+    )
+    assert first in error
+    assert second in error
+    assert error.index(first) < error.index(second)
 
 
 @pytest.mark.parametrize(
