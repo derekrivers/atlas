@@ -85,6 +85,8 @@ from atlas.learning import (
     NoActiveLessonsForTagError,
     PlaybookGenerationError,
     PlaybookGitError,
+    PromoteLesson,
+    RejectLesson,
     build_lessons_report,
     draft_playbook_branch,
     extract_lesson_for_ticket,
@@ -109,6 +111,9 @@ from atlas.orchestration import (
     ConfirmPrompts,
     ContextInputs,
     ContextNotFoundError,
+    LessonDispositionCommandContext,
+    LessonDispositionService,
+    LessonDispositionStatus,
     build_tick_config,
     capture_ticket_result,
     load_context_inputs,
@@ -2254,22 +2259,26 @@ def _lessons_command(
 
     repo = LessonRepo(resolved_db)
     now = datetime.now(UTC)
+    if args.lessons_command in {"promote", "reject"}:
+        promoting = args.lessons_command == "promote"
+        command: PromoteLesson | RejectLesson = RejectLesson(args.lesson_id)
+        if promoting:
+            command = PromoteLesson(args.lesson_id, args.confidence)
+        command_context = LessonDispositionCommandContext.operator(f"cli:{uuid4()}")
+        result = LessonDispositionService(resolved_db).execute(command, command_context)
+        if result.status is LessonDispositionStatus.SUCCEEDED:
+            assert result.lesson is not None
+            if promoting:
+                print(
+                    f"Promoted lesson {result.lesson.id} to ACTIVE "
+                    f"(confidence: {result.lesson.confidence})."
+                )
+            else:
+                print(f"Rejected lesson {result.lesson.id}; status is ARCHIVED.")
+            return EXIT_OK
+        print(result.message or "lesson disposition failed", file=sys.stderr)
+        return EXIT_PRECONDITION
     try:
-        if args.lessons_command == "promote":
-            lesson = repo.promote(
-                args.lesson_id,
-                confidence=args.confidence,
-                now=now,
-            )
-            print(
-                f"Promoted lesson {lesson.id} to ACTIVE "
-                f"(confidence: {lesson.confidence})."
-            )
-            return EXIT_OK
-        if args.lessons_command == "reject":
-            lesson = repo.reject(args.lesson_id, now=now)
-            print(f"Rejected lesson {lesson.id}; status is ARCHIVED.")
-            return EXIT_OK
         if args.lessons_command == "archive":
             lesson = repo.archive(args.lesson_id, now=now)
             print(f"Archived lesson {lesson.id}.")

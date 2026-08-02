@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -129,7 +130,11 @@ def test_archive_active_sets_archived(db: Database) -> None:
     assert archived.confidence == 0.7
 
 
-@pytest.mark.parametrize("confidence", [-0.01, 1.01])
+@pytest.mark.parametrize(
+    "confidence",
+    [-0.01, 1.01, math.nan, math.inf, -math.inf],
+    ids=["below", "above", "nan", "positive-infinity", "negative-infinity"],
+)
 def test_promote_out_of_range_confidence_raises_typed_validation_error(
     db: Database, confidence: float
 ) -> None:

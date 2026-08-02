@@ -20,6 +20,8 @@ from __future__ import annotations
 
 import builtins
 import json
+import math
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Generic, TypeVar, cast
@@ -193,6 +195,57 @@ def _reject_naive(model: BaseModel) -> None:
         value = getattr(model, name)
         if isinstance(value, datetime) and value.utcoffset() is None:
             raise NaiveDatetimeError(type(model).__name__, name)
+
+
+def compare_and_set_entity(
+    session: Session,
+    entity: object,
+    *,
+    expected_values: Mapping[str, object],
+    updated_fields: Sequence[str],
+) -> bool:
+    """Atomically update selected mapped fields when observations still match.
+
+    This is the storage-boundary primitive used by governed commands.  The
+    caller supplies a detached mapped entity containing the proposed values,
+    an exact set of observed predicates, and the only fields that may change.
+    A false return means another transaction changed the observed state; no
+    fallback merge or unconditional save is attempted.
+    """
+
+    state = sa.inspect(entity, raiseerr=False)
+    if state is None or state.mapper is None:
+        raise ValueError("compare-and-set requires a mapped entity")
+    mapper = state.mapper
+    if len(mapper.primary_key) != 1:
+        raise ValueError("compare-and-set requires one primary-key column")
+    if not expected_values:
+        raise ValueError("compare-and-set requires at least one observed predicate")
+    if not updated_fields:
+        raise ValueError("compare-and-set requires at least one updated field")
+
+    mapped_fields = {column.key for column in mapper.columns}
+    primary_key = mapper.primary_key[0]
+    primary_key_value = getattr(entity, primary_key.key)
+    if any(field not in mapped_fields for field in expected_values):
+        raise ValueError("compare-and-set predicate names must be mapped fields")
+    if any(field not in mapped_fields for field in updated_fields):
+        raise ValueError("compare-and-set update names must be mapped fields")
+    if primary_key.key in updated_fields:
+        raise ValueError("compare-and-set cannot update the primary key")
+
+    statement = sa.update(type(entity)).where(primary_key == primary_key_value)
+    for field, expected in expected_values.items():
+        column = getattr(type(entity), field)
+        statement = statement.where(
+            column.is_(None) if expected is None else column == expected
+        )
+    statement = statement.values(
+        {field: getattr(entity, field) for field in updated_fields}
+    )
+    result = session.execute(statement.execution_options(synchronize_session=False))
+    rowcount = cast(int, getattr(result, "rowcount", 0))
+    return rowcount == 1
 
 
 def _status_transition_row(
@@ -705,16 +758,27 @@ class LessonRepo(_Repo[Lesson]):
         """
         if now.utcoffset() is None:
             raise NaiveDatetimeError("Lesson", "updated_at")
-        if confidence < 0.0 or confidence > 1.0:
+        if not math.isfinite(confidence) or confidence < 0.0 or confidence > 1.0:
             raise LessonValidationError(
-                f"confidence must be between 0.0 and 1.0 inclusive; got {confidence!r}"
+                "confidence must be between 0.0 and 1.0 inclusive and finite; "
+                f"got {confidence!r}"
             )
         with self._db.session() as session, session.begin():
             row = self._get_lesson_row(session, lesson_id)
             self._require_status(row, EntityStatus.DRAFT, action="promote")
+            session.expunge(row)
             row.status = EntityStatus.ACTIVE.value
             row.confidence = confidence
             row.updated_at = now
+            if not compare_and_set_entity(
+                session,
+                row,
+                expected_values={"status": EntityStatus.DRAFT.value},
+                updated_fields=("status", "confidence", "updated_at"),
+            ):
+                raise LessonStateError(
+                    f"lesson {lesson_id} changed after DRAFT was observed"
+                )
             return self._to_model(row)
 
     def reject(self, lesson_id: UUID, *, now: datetime) -> Lesson:
@@ -724,8 +788,18 @@ class LessonRepo(_Repo[Lesson]):
         with self._db.session() as session, session.begin():
             row = self._get_lesson_row(session, lesson_id)
             self._require_status(row, EntityStatus.DRAFT, action="reject")
+            session.expunge(row)
             row.status = EntityStatus.ARCHIVED.value
             row.updated_at = now
+            if not compare_and_set_entity(
+                session,
+                row,
+                expected_values={"status": EntityStatus.DRAFT.value},
+                updated_fields=("status", "confidence", "updated_at"),
+            ):
+                raise LessonStateError(
+                    f"lesson {lesson_id} changed after DRAFT was observed"
+                )
             return self._to_model(row)
 
     def archive(self, lesson_id: UUID, *, now: datetime) -> Lesson:
