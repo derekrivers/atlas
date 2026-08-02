@@ -1,0 +1,144 @@
+{
+  "$defs": {
+    "ActorType": {
+      "description": "Who or what created a record (data-model §2.2, attribution §1.5).",
+      "enum": [
+        "human",
+        "agent",
+        "system"
+      ],
+      "title": "ActorType",
+      "type": "string"
+    },
+    "OperatorActionOutcome": {
+      "description": "Terminal outcome stored on an operator action receipt.",
+      "enum": [
+        "succeeded",
+        "refused",
+        "failed",
+        "conflict"
+      ],
+      "title": "OperatorActionOutcome",
+      "type": "string"
+    }
+  },
+  "description": "Append-only receipt for one governed operator command.",
+  "properties": {
+    "action": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Action",
+      "type": "string"
+    },
+    "after_status": {
+      "anyOf": [
+        {
+          "maxLength": 128,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "After Status"
+    },
+    "before_status": {
+      "anyOf": [
+        {
+          "maxLength": 128,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Before Status"
+    },
+    "completed_at": {
+      "format": "date-time",
+      "title": "Completed At",
+      "type": "string"
+    },
+    "correlation_id": {
+      "format": "uuid",
+      "title": "Correlation Id",
+      "type": "string"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "created_by_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Created By Id",
+      "type": "string"
+    },
+    "created_by_type": {
+      "$ref": "#/$defs/ActorType"
+    },
+    "id": {
+      "format": "uuid",
+      "title": "Id",
+      "type": "string"
+    },
+    "idempotency_key_identity": {
+      "maxLength": 80,
+      "minLength": 1,
+      "title": "Idempotency Key Identity",
+      "type": "string"
+    },
+    "outcome": {
+      "$ref": "#/$defs/OperatorActionOutcome"
+    },
+    "request_fingerprint": {
+      "maxLength": 80,
+      "minLength": 1,
+      "title": "Request Fingerprint",
+      "type": "string"
+    },
+    "result_code": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Result Code",
+      "type": "string"
+    },
+    "result_metadata": {
+      "additionalProperties": true,
+      "title": "Result Metadata",
+      "type": "object"
+    },
+    "target_id": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Target Id",
+      "type": "string"
+    },
+    "target_type": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Target Type",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "correlation_id",
+    "action",
+    "target_type",
+    "target_id",
+    "created_by_type",
+    "created_by_id",
+    "idempotency_key_identity",
+    "request_fingerprint",
+    "outcome",
+    "result_code",
+    "created_at",
+    "completed_at"
+  ],
+  "title": "OperatorActionReceipt",
+  "type": "object"
+}

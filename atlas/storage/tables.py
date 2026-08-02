@@ -1,12 +1,13 @@
 """ORM table mappings (ATLAS-18), private to the storage package.
 
 The Pydantic models in atlas.core.models are the contract; these row
-classes mirror the SQL blocks in data-model-and-schemas.md §3.1-§3.10
-exactly (names, nullability, defaults, constraints — including the
-deliberately FK-less evidence.agent_run_id and
-agent_runs.input_context_pack_id). Conversion to and from the Pydantic
-models happens at the repository boundary; nothing outside
-atlas/storage/ touches a row class or a session.
+classes mirror the SQL blocks in data-model-and-schemas.md exactly
+(names, nullability, defaults, constraints — including the deliberately
+FK-less evidence.agent_run_id and agent_runs.input_context_pack_id).
+Conversion to and from the Pydantic models happens at the repository
+boundary; row mappings stay inside atlas/storage/. Ordinary repository
+consumers never receive sessions. The operator-action gateway is the explicit
+transaction-context seam for composing a domain mutation and receipt atomically.
 
 PostgreSQL-compatible types only: JSONB maps through a JSON shim on
 SQLite (knowledge-core "Storage architecture"); datetimes go through
@@ -17,7 +18,7 @@ always returned UTC-aware).
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
 import sqlalchemy as sa
@@ -434,6 +435,60 @@ class VerificationCheckRow(Base):
     completed_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
 
 
+class OperatorActionKeyRow(Base):
+    """One idempotency-key reservation for governed operator writes.
+
+    The row is inserted before command invocation and never updated. If a row
+    exists without a matching terminal receipt, the key has an explicit
+    in-progress owner and retries must not infer that the command is safe to
+    rerun.
+    """
+
+    __tablename__ = "operator_action_keys"
+
+    idempotency_key_identity: Mapped[str] = mapped_column(sa.Text, primary_key=True)
+    request_fingerprint: Mapped[str] = mapped_column(sa.Text)
+    receipt_id: Mapped[UUID] = mapped_column(sa.Uuid)
+    correlation_id: Mapped[UUID] = mapped_column(sa.Uuid)
+    action: Mapped[str] = mapped_column(sa.Text)
+    target_type: Mapped[str] = mapped_column(sa.Text)
+    target_id: Mapped[str] = mapped_column(sa.Text)
+    created_by_type: Mapped[str] = mapped_column(sa.Text)
+    created_by_id: Mapped[str] = mapped_column(sa.Text)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime())
+
+
+class OperatorActionReceiptRow(Base):
+    """Append-only terminal receipt for one governed operator write."""
+
+    __tablename__ = "operator_action_receipts"
+    __table_args__ = (
+        sa.UniqueConstraint("idempotency_key_identity"),
+        sa.UniqueConstraint("correlation_id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(sa.Uuid, primary_key=True)
+    correlation_id: Mapped[UUID] = mapped_column(sa.Uuid)
+    action: Mapped[str] = mapped_column(sa.Text)
+    target_type: Mapped[str] = mapped_column(sa.Text)
+    target_id: Mapped[str] = mapped_column(sa.Text)
+    created_by_type: Mapped[str] = mapped_column(sa.Text)
+    created_by_id: Mapped[str] = mapped_column(sa.Text)
+    idempotency_key_identity: Mapped[str] = mapped_column(
+        sa.Text, sa.ForeignKey("operator_action_keys.idempotency_key_identity")
+    )
+    request_fingerprint: Mapped[str] = mapped_column(sa.Text)
+    outcome: Mapped[str] = mapped_column(sa.Text)
+    result_code: Mapped[str] = mapped_column(sa.Text)
+    result_metadata: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, server_default=_EMPTY_DICT
+    )
+    before_status: Mapped[str | None] = mapped_column(sa.Text)
+    after_status: Mapped[str | None] = mapped_column(sa.Text)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime())
+    completed_at: Mapped[datetime] = mapped_column(UTCDateTime())
+
+
 class KeyCounterRow(Base):
     """Monotonic per-prefix key counter (ATLAS-25, data-model §3.12).
 
@@ -482,3 +537,47 @@ class PlanRunRow(Base):
     approved_by: Mapped[str | None] = mapped_column(sa.Text)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime())
     applied_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+
+
+def _append_only_sqlite_trigger(table_name: str, operation: str) -> sa.DDL:
+    trigger_name = f"{table_name}_no_{operation.lower()}"
+    return sa.DDL(  # type: ignore[no-untyped-call]
+        f"""
+        CREATE TRIGGER {trigger_name}
+        BEFORE {operation} ON {table_name}
+        BEGIN
+            SELECT RAISE(ABORT, '{table_name} is append-only');
+        END
+        """
+    )
+
+
+def _drop_sqlite_trigger(table_name: str, operation: str) -> sa.DDL:
+    trigger_name = f"{table_name}_no_{operation.lower()}"
+    return sa.DDL(  # type: ignore[no-untyped-call]
+        f"DROP TRIGGER IF EXISTS {trigger_name}"
+    )
+
+
+_APPEND_ONLY_OPERATOR_ACTION_TABLES = (
+    cast(sa.Table, OperatorActionKeyRow.__table__),
+    cast(sa.Table, OperatorActionReceiptRow.__table__),
+)
+
+for _append_only_table in _APPEND_ONLY_OPERATOR_ACTION_TABLES:
+    _append_only_table_name = _append_only_table.name
+    for _operation in ("UPDATE", "DELETE"):
+        sa.event.listen(
+            _append_only_table,
+            "after_create",
+            _append_only_sqlite_trigger(_append_only_table_name, _operation).execute_if(
+                dialect="sqlite"
+            ),
+        )
+        sa.event.listen(
+            _append_only_table,
+            "before_drop",
+            _drop_sqlite_trigger(_append_only_table_name, _operation).execute_if(
+                dialect="sqlite"
+            ),
+        )

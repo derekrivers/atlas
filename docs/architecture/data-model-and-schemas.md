@@ -1147,6 +1147,107 @@ CREATE TABLE verification_checks (
 
 ---
 
+## 5.3 Operator Action Idempotency Key
+
+The idempotency-key table is internal gateway state for governed operator
+writes. It reserves a key identity before command invocation so duplicate
+submissions serialise at the database boundary. The raw `Idempotency-Key`
+header is never stored; `idempotency_key_identity` is a SHA-256 identity for
+lookup and uniqueness.
+
+A row without a matching terminal receipt is an explicit in-progress owner.
+Recovery and retries must not infer that a missing receipt means a previously
+started command is safe to repeat. The table is append-only: no update, no
+delete.
+
+It has no canonical Pydantic model and no generated schema. The public receipt
+model below is the audit record exposed to callers.
+
+## 5.4 PostgreSQL Table
+
+```sql
+CREATE TABLE operator_action_keys (
+    idempotency_key_identity TEXT PRIMARY KEY,
+    request_fingerprint TEXT NOT NULL,
+    receipt_id UUID NOT NULL,
+    correlation_id UUID NOT NULL,
+    action TEXT NOT NULL,
+    target_type TEXT NOT NULL,
+    target_id TEXT NOT NULL,
+    created_by_type TEXT NOT NULL,
+    created_by_id TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL
+);
+```
+
+---
+
+## 5.5 Operator Action Receipt
+
+An `OperatorActionReceipt` is the append-only terminal audit record for one
+governed operator command. It stores server-resolved actor context, action and
+target identity, the idempotency key identity, the canonical request
+fingerprint, bounded non-secret result metadata and before/after status where a
+domain command has a status transition.
+
+Receipts never store raw idempotency keys, token/session/CSRF values, full
+request bodies, raw evidence payloads, lesson content or exception traces.
+
+## Pydantic Model
+
+```python
+MAX_OPERATOR_ACTION_METADATA_BYTES = 4096
+
+class OperatorActionOutcome(str, Enum):
+    SUCCEEDED = "succeeded"
+    REFUSED = "refused"
+    FAILED = "failed"
+    CONFLICT = "conflict"
+
+class OperatorActionReceipt(BaseModel):
+    id: UUID
+    correlation_id: UUID
+    action: str = Field(min_length=1, max_length=128)
+    target_type: str = Field(min_length=1, max_length=128)
+    target_id: str = Field(min_length=1, max_length=256)
+    created_by_type: ActorType
+    created_by_id: str = Field(min_length=1, max_length=128)
+    idempotency_key_identity: str = Field(min_length=1, max_length=80)
+    request_fingerprint: str = Field(min_length=1, max_length=80)
+    outcome: OperatorActionOutcome
+    result_code: str = Field(min_length=1, max_length=128)
+    result_metadata: dict[str, Any] = Field(default_factory=dict)
+    before_status: str | None = Field(default=None, max_length=128)
+    after_status: str | None = Field(default=None, max_length=128)
+    created_at: datetime
+    completed_at: datetime
+```
+
+## 5.6 PostgreSQL Table
+
+```sql
+CREATE TABLE operator_action_receipts (
+    id UUID PRIMARY KEY,
+    correlation_id UUID NOT NULL UNIQUE,
+    action TEXT NOT NULL,
+    target_type TEXT NOT NULL,
+    target_id TEXT NOT NULL,
+    created_by_type TEXT NOT NULL,
+    created_by_id TEXT NOT NULL,
+    idempotency_key_identity TEXT NOT NULL UNIQUE REFERENCES operator_action_keys(idempotency_key_identity),
+    request_fingerprint TEXT NOT NULL,
+    outcome TEXT NOT NULL,
+    result_code TEXT NOT NULL,
+    result_metadata JSONB NOT NULL DEFAULT '{}',
+    before_status TEXT,
+    after_status TEXT,
+    created_at TIMESTAMPTZ NOT NULL,
+    completed_at TIMESTAMPTZ NOT NULL
+);
+```
+
+---
+
 # 6. Delivery-Anomaly Schema
 
 The PM Engine records delivery anomalies as it reconciles Atlas and

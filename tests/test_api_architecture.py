@@ -8,6 +8,7 @@ from pathlib import Path
 from textwrap import dedent
 
 API_ROOT = Path(__file__).resolve().parents[1] / "atlas" / "api"
+ATLAS_ROOT = API_ROOT.parent
 ROUTERS_ROOT = API_ROOT / "routers"
 DEPENDENCIES_PATH = API_ROOT / "dependencies.py"
 LOWER_LAYER_OPERATION_MODULES = ("atlas.orchestration",)
@@ -827,6 +828,32 @@ def test_writable_routes_require_shared_security_dependency() -> None:
             )
         )
 
+
+def _fastapi_imports_in_source(source: str) -> list[int]:
+    tree = ast.parse(source)
+    lines: list[int] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            if any(alias.name == "fastapi" for alias in node.names):
+                lines.append(node.lineno)
+        elif (
+            isinstance(node, ast.ImportFrom)
+            and node.module is not None
+            and (node.module == "fastapi" or node.module.startswith("fastapi."))
+        ):
+            lines.append(node.lineno)
+    return lines
+
+
+def test_lower_layers_do_not_import_fastapi() -> None:
+    violations: list[str] = []
+    for path in ATLAS_ROOT.rglob("*.py"):
+        relative = path.relative_to(ATLAS_ROOT)
+        if relative.parts[0] in {"api", "tools"}:
+            continue
+        for lineno in _fastapi_imports_in_source(path.read_text(encoding="utf-8")):
+            violations.append(f"{path}:{lineno}")
+
     assert violations == []
 
 
@@ -850,3 +877,13 @@ def test_writable_route_security_sensor_fires_on_seeded_bypass() -> None:
     )
 
     assert violations
+
+
+def test_lower_layer_fastapi_sensor_fires_on_seeded_import() -> None:
+    source = """
+    from fastapi import Depends
+
+    assert 1 == 2  # type: ignore[comparison-overlap]
+    """
+
+    assert _fastapi_imports_in_source(dedent(source)) == [2]

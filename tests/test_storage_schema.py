@@ -306,6 +306,38 @@ DOCUMENTED_COLUMNS: dict[str, dict[str, tuple[bool, str | None]]] = {
         "created_at": (NN, None),
         "completed_at": (True, None),
     },
+    # §5.4 idempotency-key reservation: append-only, internal gateway state.
+    "operator_action_keys": {
+        "idempotency_key_identity": (NN, None),
+        "request_fingerprint": (NN, None),
+        "receipt_id": (NN, None),
+        "correlation_id": (NN, None),
+        "action": (NN, None),
+        "target_type": (NN, None),
+        "target_id": (NN, None),
+        "created_by_type": (NN, None),
+        "created_by_id": (NN, None),
+        "created_at": (NN, None),
+    },
+    # §5.5 terminal operator-action receipt: append-only; no updated_at.
+    "operator_action_receipts": {
+        "id": (NN, None),
+        "correlation_id": (NN, None),
+        "action": (NN, None),
+        "target_type": (NN, None),
+        "target_id": (NN, None),
+        "created_by_type": (NN, None),
+        "created_by_id": (NN, None),
+        "idempotency_key_identity": (NN, None),
+        "request_fingerprint": (NN, None),
+        "outcome": (NN, None),
+        "result_code": (NN, None),
+        "result_metadata": (NN, "'{}'"),
+        "before_status": (True, None),
+        "after_status": (True, None),
+        "created_at": (NN, None),
+        "completed_at": (NN, None),
+    },
 }
 
 # Transcribed FK targets: table -> {column: referred table}. Absence is
@@ -330,6 +362,8 @@ DOCUMENTED_FOREIGN_KEYS: dict[str, dict[str, str]] = {
     "pm_sync_receipts": {"product_id": "products"},
     "ticket_status_transitions": {"ticket_id": "tickets"},
     "verification_checks": {"ticket_id": "tickets"},
+    "operator_action_keys": {},
+    "operator_action_receipts": {"idempotency_key_identity": "operator_action_keys"},
 }
 
 DOCUMENTED_UNIQUES: dict[str, list[list[str]]] = {
@@ -337,6 +371,10 @@ DOCUMENTED_UNIQUES: dict[str, list[list[str]]] = {
     "architecture_decision_records": [["product_id", "number"]],
     "epics": [["key"]],
     "tickets": [["key"]],
+    "operator_action_receipts": [
+        ["idempotency_key_identity"],
+        ["correlation_id"],
+    ],
 }
 
 
@@ -436,6 +474,14 @@ def test_key_counters_primary_key_is_prefix(migrated_db: Database) -> None:
     inspector = sa.inspect(migrated_db.engine)
     pk = inspector.get_pk_constraint("key_counters")
     assert pk["constrained_columns"] == ["prefix"]
+
+
+def test_operator_action_keys_primary_key_is_idempotency_identity(
+    migrated_db: Database,
+) -> None:
+    inspector = sa.inspect(migrated_db.engine)
+    pk = inspector.get_pk_constraint("operator_action_keys")
+    assert pk["constrained_columns"] == ["idempotency_key_identity"]
 
 
 def test_lesson_source_ticket_migration_splits_old_positional_related_ids(
@@ -639,6 +685,53 @@ def test_alembic_upgrades_fresh_db_and_matches_metadata(tmp_path: Path) -> None:
         context = MigrationContext.configure(connection)
         diff = compare_metadata(context, Base.metadata)
     assert diff == [], f"migration drifts from ORM metadata: {diff}"
+
+
+def test_operator_action_ledger_migration_upgrade_and_downgrade(
+    tmp_path: Path,
+) -> None:
+    url = f"sqlite:///{tmp_path}/operator-actions.db"
+    config = _alembic_config(url)
+
+    command.upgrade(config, "0022")
+
+    engine = sa.create_engine(url)
+    with engine.connect() as connection:
+        inspector = sa.inspect(connection)
+        assert "operator_action_keys" in inspector.get_table_names()
+        assert "operator_action_receipts" in inspector.get_table_names()
+        triggers = {
+            row[0]
+            for row in connection.execute(
+                sa.text(
+                    "SELECT name FROM sqlite_master "
+                    "WHERE type = 'trigger' AND name LIKE 'operator_action_%'"
+                )
+            )
+        }
+    assert {
+        "operator_action_keys_no_update",
+        "operator_action_keys_no_delete",
+        "operator_action_receipts_no_update",
+        "operator_action_receipts_no_delete",
+    } <= triggers
+
+    command.downgrade(config, "0021")
+
+    with engine.connect() as connection:
+        inspector = sa.inspect(connection)
+        assert "operator_action_keys" not in inspector.get_table_names()
+        assert "operator_action_receipts" not in inspector.get_table_names()
+        triggers = {
+            row[0]
+            for row in connection.execute(
+                sa.text(
+                    "SELECT name FROM sqlite_master "
+                    "WHERE type = 'trigger' AND name LIKE 'operator_action_%'"
+                )
+            )
+        }
+    assert triggers == set()
 
 
 def test_ddl_compiles_under_postgresql_dialect() -> None:

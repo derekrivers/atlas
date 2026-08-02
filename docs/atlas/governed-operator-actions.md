@@ -135,24 +135,35 @@ Every accepted write uses one generic command envelope:
 - request timestamp and correlation ID.
 
 The action store enforces uniqueness of the idempotency key within the operator
-action namespace. The first terminal outcome is retained. Repeating the same
-key with the same fingerprint returns the stored outcome and never repeats the
-domain mutation. Reusing the key with a different fingerprint returns
-`409 Conflict`.
+action namespace by storing a SHA-256 `idempotency_key_identity`, never the raw
+key. The gateway inserts this reservation before invoking the command. The
+canonical request fingerprint covers the action name, target type/ID and the
+complete validated command payload; it is deterministic across JSON key order
+and rejects unsupported or non-finite values.
+
+The first terminal outcome is retained. Repeating the same key with the same
+fingerprint returns the stored outcome and never repeats the domain mutation.
+Reusing the key with a different fingerprint returns `409 Conflict`. A
+committed key reservation with no terminal receipt is treated as an explicit
+in-progress owner and returns a named in-progress conflict without an unbounded
+polling loop; recovery must never treat a missing receipt as permission to
+rerun a possibly started command.
 
 An append-only `OperatorActionReceipt` records:
 
 - receipt and correlation IDs;
 - action and target;
 - server-resolved actor;
-- idempotency key/fingerprint reference;
+- idempotency key identity and request fingerprint reference;
 - before and after status where applicable;
 - bounded non-secret result code;
+- bounded non-secret result metadata;
 - created/completed timestamps.
 
 The lesson mutation and successful receipt commit atomically. If the receipt
 cannot be persisted, the lesson is not changed. Secrets, full request bodies
-and lesson content are not copied into receipts.
+raw evidence payloads, lesson content and exception traces are not copied into
+receipts or rendered receipt JSON.
 
 ## Lesson disposition contract
 
