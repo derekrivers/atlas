@@ -147,7 +147,17 @@ Reusing the key with a different fingerprint returns `409 Conflict`. A
 committed key reservation with no terminal receipt is treated as an explicit
 in-progress owner and returns a named in-progress conflict without an unbounded
 polling loop; recovery must never treat a missing receipt as permission to
-rerun a possibly started command.
+rerun a possibly started command. A storage `OperationalError` is reported as
+in-progress only after a separate read proves that reservation; an error with
+no visible owner is a typed storage failure.
+
+Injected commands receive a transaction-scoped unit-of-work facade with only
+domain `get` and `add` operations. It exposes no session and no `flush`,
+`commit`, `rollback` or `close`, so only the gateway can end its transaction.
+The gateway flushes command mutations and receipt insertion separately for
+classification, then catches failure from the actual transaction commit as a
+receipt-commit failure. Any such failure rolls back the reservation, mutation
+and receipt together.
 
 An append-only `OperatorActionReceipt` records:
 
@@ -157,13 +167,18 @@ An append-only `OperatorActionReceipt` records:
 - idempotency key identity and request fingerprint reference;
 - before and after status where applicable;
 - bounded non-secret result code;
-- bounded non-secret result metadata;
+- default-deny result metadata limited to `changed` (boolean),
+  `affected_count` (integer `0..1000000`) and `confidence` (finite float
+  `0.0..1.0`);
 - created/completed timestamps.
 
 The lesson mutation and successful receipt commit atomically. If the receipt
 cannot be persisted, the lesson is not changed. Secrets, full request bodies
 raw evidence payloads, lesson content and exception traces are not copied into
-receipts or rendered receipt JSON.
+receipts or rendered receipt JSON. The gateway discards every unapproved
+metadata field without inspecting its value; the canonical model and public
+repository writers reject unapproved fields or wrongly typed approved values,
+so callers cannot bypass that default-deny boundary.
 
 ## Lesson disposition contract
 

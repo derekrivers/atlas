@@ -33,10 +33,10 @@ from atlas.orchestration.operator_actions import (
     OperatorActionGatewayResult,
     OperatorActionGatewayStatus,
     OperatorActionIdempotencyKeyError,
+    OperatorActionUnitOfWork,
     canonical_request_fingerprint,
     idempotency_key_identity,
     present_operator_action_receipt,
-    redact_operator_action_metadata,
 )
 from atlas.orchestration.pr_context import (
     PRContext,
@@ -100,6 +100,7 @@ __all__ = [
     "OperatorActionGatewayResult",
     "OperatorActionGatewayStatus",
     "OperatorActionIdempotencyKeyError",
+    "OperatorActionUnitOfWork",
     "PRAncestryStatus",
     "PRContext",
     "PRIntegrationAssessment",
@@ -133,7 +134,6 @@ __all__ = [
     "prepare_pr_rebase",
     "present_operator_action_receipt",
     "publish_pr_rebase",
-    "redact_operator_action_metadata",
     "resolve_github_client",
     "resolve_pr_context",
     "review_queue",

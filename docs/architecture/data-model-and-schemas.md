@@ -1192,11 +1192,20 @@ domain command has a status transition.
 
 Receipts never store raw idempotency keys, token/session/CSRF values, full
 request bodies, raw evidence payloads, lesson content or exception traces.
+Receipt metadata is default-deny. The only approved keys are `changed`
+(strict boolean), `affected_count` (strict integer `0..1000000`) and
+`confidence` (strict finite float `0.0..1.0`); string, object and list values
+are never valid metadata. The gateway drops unapproved command-result fields
+without inspecting their values. Canonical model validation and every public
+repository writer reject unapproved fields and wrongly typed approved fields,
+including models constructed without initial validation.
 
 ## Pydantic Model
 
 ```python
 MAX_OPERATOR_ACTION_METADATA_BYTES = 4096
+OperatorActionMetadataKey = Literal["affected_count", "changed", "confidence"]
+OperatorActionMetadataValue = StrictBool | StrictInt | StrictFloat
 
 class OperatorActionOutcome(str, Enum):
     SUCCEEDED = "succeeded"
@@ -1205,6 +1214,8 @@ class OperatorActionOutcome(str, Enum):
     CONFLICT = "conflict"
 
 class OperatorActionReceipt(BaseModel):
+    model_config = ConfigDict(hide_input_in_errors=True)
+
     id: UUID
     correlation_id: UUID
     action: str = Field(min_length=1, max_length=128)
@@ -1215,8 +1226,10 @@ class OperatorActionReceipt(BaseModel):
     idempotency_key_identity: str = Field(min_length=1, max_length=80)
     request_fingerprint: str = Field(min_length=1, max_length=80)
     outcome: OperatorActionOutcome
-    result_code: str = Field(min_length=1, max_length=128)
-    result_metadata: dict[str, Any] = Field(default_factory=dict)
+    result_code: str = Field(pattern=r"^[a-z][a-z0-9_]{0,127}$")
+    result_metadata: dict[
+        OperatorActionMetadataKey, OperatorActionMetadataValue
+    ] = Field(default_factory=dict)
     before_status: str | None = Field(default=None, max_length=128)
     after_status: str | None = Field(default=None, max_length=128)
     created_at: datetime

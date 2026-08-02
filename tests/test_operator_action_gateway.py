@@ -12,6 +12,8 @@ from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
+import sqlalchemy as sa
+from sqlalchemy.orm import Session
 from test_models_validation import product_kwargs
 from test_operator_action_receipt_model import operator_action_receipt_kwargs
 
@@ -104,14 +106,14 @@ def mutate_product_command(
 ) -> Any:
     def _command(context: OperatorActionCommandContext) -> OperatorActionCommandResult:
         calls.append(str(context.correlation_id))
-        row = context.session.get(ProductRow, product_id)
+        row = context.unit_of_work.get(ProductRow, product_id)
         assert row is not None
         before = row.status
         row.status = status
         return OperatorActionCommandResult(
             outcome=OperatorActionOutcome.SUCCEEDED,
             result_code="product_deprecated",
-            result_metadata={"status": status},
+            result_metadata={"changed": True},
             before_status=before,
             after_status=status,
         )
@@ -316,7 +318,6 @@ def test_terminal_refusal_is_recorded_and_replayed_without_success_masquerade(
         return OperatorActionCommandResult(
             outcome=OperatorActionOutcome.REFUSED,
             result_code="stale_state",
-            result_metadata={"current_status": "active"},
             before_status="active",
         )
 
@@ -366,7 +367,7 @@ def test_mutation_failure_rolls_back_state_and_leaves_no_replayable_success(
     def failing_command(
         context: OperatorActionCommandContext,
     ) -> OperatorActionCommandResult:
-        row = context.session.get(ProductRow, product.id)
+        row = context.unit_of_work.get(ProductRow, product.id)
         assert row is not None
         row.status = EntityStatus.DEPRECATED.value
         raise RuntimeError("domain mutation failed")
@@ -385,6 +386,45 @@ def test_mutation_failure_rolls_back_state_and_leaves_no_replayable_success(
         )
         is None
     )
+
+
+@pytest.mark.parametrize("lifecycle_method", ["commit", "rollback", "close", "flush"])
+def test_command_cannot_end_or_flush_gateway_owned_transaction(
+    db: Database,
+    lifecycle_method: str,
+) -> None:
+    product = seed_product(db)
+    request = envelope(key=f"idem-premature-{lifecycle_method}", target_id=product.key)
+    gateway = OperatorActionGateway(db, clock=FrozenClock())
+
+    def escaping_command(
+        context: OperatorActionCommandContext,
+    ) -> OperatorActionCommandResult:
+        row = context.unit_of_work.get(ProductRow, product.id)
+        assert row is not None
+        row.status = EntityStatus.DEPRECATED.value
+        getattr(context.unit_of_work, lifecycle_method)()
+        return OperatorActionCommandResult(
+            outcome=OperatorActionOutcome.SUCCEEDED,
+            result_code="must_not_commit",
+        )
+
+    result = gateway.execute(request, escaping_command)
+
+    assert result.status is OperatorActionGatewayStatus.FAILED
+    assert result.failure is not None
+    assert result.failure.code is OperatorActionFailureCode.COMMAND_FAILED
+    stored = ProductRepo(db).get(product.id)
+    assert stored is not None
+    assert stored.status is EntityStatus.ACTIVE
+    with db.session() as session:
+        assert (
+            session.get(
+                OperatorActionKeyRow,
+                idempotency_key_identity(request.idempotency_key),
+            )
+            is None
+        )
 
 
 def test_receipt_insert_failure_rolls_back_mutation_and_leaves_no_success(
@@ -435,6 +475,112 @@ def test_receipt_insert_failure_rolls_back_mutation_and_leaves_no_success(
         )
 
 
+def test_actual_transaction_commit_failure_rolls_back_mutation_and_receipt(
+    db: Database,
+) -> None:
+    product = seed_product(db)
+    request = envelope(key="idem-commit-failure", target_id=product.key)
+    gateway = OperatorActionGateway(db, clock=FrozenClock())
+    armed = True
+
+    def fail_commit(_: Session) -> None:
+        nonlocal armed
+        if armed:
+            armed = False
+            raise sa.exc.OperationalError(
+                "COMMIT", {}, RuntimeError("seeded commit failure")
+            )
+
+    sa.event.listen(Session, "before_commit", fail_commit)
+    try:
+        result = gateway.execute(request, mutate_product_command(product.id, []))
+    finally:
+        sa.event.remove(Session, "before_commit", fail_commit)
+
+    assert result.status is OperatorActionGatewayStatus.FAILED
+    assert result.failure is not None
+    assert result.failure.code is OperatorActionFailureCode.RECEIPT_COMMIT_FAILED
+    stored = ProductRepo(db).get(product.id)
+    assert stored is not None
+    assert stored.status is EntityStatus.ACTIVE
+    with db.session() as session:
+        assert (
+            session.get(
+                OperatorActionKeyRow,
+                idempotency_key_identity(request.idempotency_key),
+            )
+            is None
+        )
+
+
+def test_unproven_operational_error_is_typed_storage_failure(
+    db: Database,
+) -> None:
+    request = envelope(key="idem-unproven-storage-error")
+    gateway = OperatorActionGateway(db, clock=FrozenClock())
+    calls = 0
+
+    def fail_reservation_flush(session: Session, *_: Any) -> None:
+        if any(isinstance(row, OperatorActionKeyRow) for row in session.new):
+            raise sa.exc.OperationalError(
+                "INSERT", {}, RuntimeError("seeded storage failure")
+            )
+
+    def command(_: OperatorActionCommandContext) -> OperatorActionCommandResult:
+        nonlocal calls
+        calls += 1
+        return OperatorActionCommandResult(
+            outcome=OperatorActionOutcome.SUCCEEDED,
+            result_code="must_not_run",
+        )
+
+    sa.event.listen(Session, "before_flush", fail_reservation_flush)
+    try:
+        result = gateway.execute(request, command)
+    finally:
+        sa.event.remove(Session, "before_flush", fail_reservation_flush)
+
+    assert result.status is OperatorActionGatewayStatus.FAILED
+    assert result.failure is not None
+    assert result.failure.code is OperatorActionFailureCode.STORAGE_FAILED
+    assert calls == 0
+
+
+def test_operational_error_is_in_progress_only_with_proven_reservation(
+    db: Database,
+) -> None:
+    request = envelope(key="idem-proven-storage-owner")
+    correlation_id = seed_in_progress_reservation(db, request)
+    gateway = OperatorActionGateway(db, clock=FrozenClock())
+    calls = 0
+
+    def fail_reservation_flush(session: Session, *_: Any) -> None:
+        if any(isinstance(row, OperatorActionKeyRow) for row in session.new):
+            raise sa.exc.OperationalError(
+                "INSERT", {}, RuntimeError("seeded storage contention")
+            )
+
+    def command(_: OperatorActionCommandContext) -> OperatorActionCommandResult:
+        nonlocal calls
+        calls += 1
+        return OperatorActionCommandResult(
+            outcome=OperatorActionOutcome.SUCCEEDED,
+            result_code="must_not_run",
+        )
+
+    sa.event.listen(Session, "before_flush", fail_reservation_flush)
+    try:
+        result = gateway.execute(request, command)
+    finally:
+        sa.event.remove(Session, "before_flush", fail_reservation_flush)
+
+    assert result.status is OperatorActionGatewayStatus.IN_PROGRESS
+    assert result.conflict is not None
+    assert result.conflict.code is OperatorActionConflictCode.IN_PROGRESS
+    assert result.conflict.correlation_id == correlation_id
+    assert calls == 0
+
+
 def test_concurrent_duplicate_calls_invoke_command_once(tmp_path: Path) -> None:
     database = Database(f"sqlite:///{tmp_path}/concurrent.db")
     database.create_all()
@@ -472,27 +618,26 @@ def test_concurrent_duplicate_calls_invoke_command_once(tmp_path: Path) -> None:
     ]
 
 
-def test_receipt_persistence_and_presentation_redact_secrets_and_payloads(
+def test_receipt_default_deny_excludes_neutral_key_opaque_content(
     db: Database, caplog: pytest.LogCaptureFixture
 ) -> None:
-    secret = "sk-secretfixture123456789"
-    bearer = "Bearer abcdefghijklmnop"
-    request = envelope(key=secret, payload={"safe": True})
+    opaque_credential = "mF9kQ7vLc2xP8nR4wT6yB3dH5jS1aG0z"
+    lesson_content = "Promote this private lesson narrative verbatim."
+    request_content = '{"private_command":"do not copy"}'
+    evidence_content = "raw-test-output-with-customer-data"
+    request = envelope(key=opaque_credential, payload={"safe": True})
     gateway = OperatorActionGateway(db, clock=FrozenClock())
 
     def command(_: OperatorActionCommandContext) -> OperatorActionCommandResult:
         return OperatorActionCommandResult(
             outcome=OperatorActionOutcome.SUCCEEDED,
-            result_code="redacted",
+            result_code="metadata_filtered",
             result_metadata={
-                "token": secret,
-                "session_id": "session-abcdef123456",
-                "csrf_value": "csrf-abcdef123456",
-                "request_body": {"token": secret, "safe": "body copied"},
-                "raw_evidence": {"value": secret},
-                "lesson_content": "full lesson content must not persist",
-                "traceback": "Traceback (most recent call last): secret",
-                "nested": ["safe", bearer],
+                "alpha": opaque_credential,
+                "bravo": lesson_content,
+                "charlie": request_content,
+                "delta": evidence_content,
+                "changed": True,
             },
         )
 
@@ -505,18 +650,18 @@ def test_receipt_persistence_and_presentation_redact_secrets_and_payloads(
     rendered_json = json.dumps(
         present_operator_action_receipt(persisted), sort_keys=True
     )
+    assert persisted.result_metadata == {"changed": True}
     for forbidden in (
-        secret,
-        bearer,
-        "session-abcdef123456",
-        "csrf-abcdef123456",
-        "body copied",
-        "full lesson content",
-        "Traceback (most recent call last)",
+        opaque_credential,
+        lesson_content,
+        request_content,
+        evidence_content,
     ):
         assert forbidden not in persisted_json
         assert forbidden not in rendered_json
         assert forbidden not in caplog.text
     assert request.idempotency_key not in persisted_json
     assert request.idempotency_key not in rendered_json
-    assert result.receipt.idempotency_key_identity == idempotency_key_identity(secret)
+    assert result.receipt.idempotency_key_identity == idempotency_key_identity(
+        opaque_credential
+    )

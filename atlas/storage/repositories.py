@@ -257,8 +257,14 @@ def _get_operator_action_reservation(
 def _operator_action_receipt_row(
     receipt: OperatorActionReceipt,
 ) -> OperatorActionReceiptRow:
-    payload = receipt.model_dump()
-    payload["result_metadata"] = receipt.model_dump(mode="json")["result_metadata"]
+    validated = OperatorActionReceipt.model_validate(
+        {
+            field_name: getattr(receipt, field_name)
+            for field_name in OperatorActionReceipt.model_fields
+        }
+    )
+    payload = validated.model_dump()
+    payload["result_metadata"] = validated.model_dump(mode="json")["result_metadata"]
     return OperatorActionReceiptRow(**payload)
 
 
@@ -1378,6 +1384,9 @@ class OperatorActionReceiptRepo(_Repo[OperatorActionReceipt]):
 
     def __init__(self, db: Database) -> None:
         super().__init__(db, OperatorActionReceipt, OperatorActionReceiptRow)
+
+    def _to_row(self, model: OperatorActionReceipt) -> Base:
+        return _operator_action_receipt_row(model)
 
     def record(self, model: OperatorActionReceipt) -> OperatorActionReceipt:
         """Append one terminal receipt and return the persisted row."""

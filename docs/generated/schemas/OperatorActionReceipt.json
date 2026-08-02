@@ -101,13 +101,31 @@
       "type": "string"
     },
     "result_code": {
-      "maxLength": 128,
-      "minLength": 1,
+      "pattern": "^[a-z][a-z0-9_]{0,127}$",
       "title": "Result Code",
       "type": "string"
     },
     "result_metadata": {
-      "additionalProperties": true,
+      "additionalProperties": {
+        "anyOf": [
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "integer"
+          },
+          {
+            "type": "number"
+          }
+        ]
+      },
+      "propertyNames": {
+        "enum": [
+          "affected_count",
+          "changed",
+          "confidence"
+        ]
+      },
       "title": "Result Metadata",
       "type": "object"
     },

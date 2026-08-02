@@ -7,6 +7,7 @@ from uuid import uuid4
 
 import pytest
 import sqlalchemy as sa
+from pydantic import ValidationError
 from test_debt_item_storage import public_methods
 from test_operator_action_receipt_model import operator_action_receipt_kwargs
 
@@ -82,6 +83,25 @@ def test_re_recording_a_persisted_receipt_raises(db: Database) -> None:
 
     with pytest.raises(sa.exc.IntegrityError):
         repo.record(a_receipt(id=receipt.id))
+
+
+@pytest.mark.parametrize("method_name", ["add", "record"])
+def test_public_writers_revalidate_metadata_allowlist(
+    db: Database,
+    method_name: str,
+) -> None:
+    opaque_credential = "mF9kQ7vLc2xP8nR4wT6yB3dH5jS1aG0z"
+    unsafe = OperatorActionReceipt(**operator_action_receipt_kwargs()).model_copy(
+        update={"result_metadata": {"neutral": opaque_credential}}
+    )
+    seed_reservation(db, unsafe)
+
+    with pytest.raises(ValidationError, match="result_metadata") as raised:
+        getattr(OperatorActionReceiptRepo(db), method_name)(unsafe)
+
+    assert opaque_credential not in str(raised.value)
+    with db.session() as session:
+        assert session.get(OperatorActionReceiptRow, unsafe.id) is None
 
 
 def test_database_rejects_receipt_update_and_delete(db: Database) -> None:

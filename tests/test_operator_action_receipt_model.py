@@ -10,7 +10,8 @@ from pydantic import ValidationError
 from atlas.core.enums import ActorType
 from atlas.core.models import OperatorActionOutcome, OperatorActionReceipt
 from atlas.core.models.operator_action_receipt import (
-    MAX_OPERATOR_ACTION_METADATA_BYTES,
+    OperatorActionMetadataKey,
+    OperatorActionMetadataValue,
 )
 
 REQUIRED = object()
@@ -28,7 +29,10 @@ DOCUMENTED_FIELDS: dict[str, tuple[Any, Any]] = {
     "request_fingerprint": (str, REQUIRED),
     "outcome": (OperatorActionOutcome, REQUIRED),
     "result_code": (str, REQUIRED),
-    "result_metadata": (dict[str, Any], DICT_FACTORY),
+    "result_metadata": (
+        dict[OperatorActionMetadataKey, OperatorActionMetadataValue],
+        DICT_FACTORY,
+    ),
     "before_status": (str | None, None),
     "after_status": (str | None, None),
     "created_at": (datetime, REQUIRED),
@@ -99,10 +103,35 @@ def test_no_raw_secret_or_payload_fields() -> None:
         assert forbidden not in field_names
 
 
-def test_metadata_is_bounded() -> None:
-    too_large = "x" * (MAX_OPERATOR_ACTION_METADATA_BYTES + 1)
+@pytest.mark.parametrize(
+    "metadata",
+    [
+        {"unclassified": "opaque-value"},
+        {"changed": "opaque-value"},
+        {"affected_count": -1},
+        {"affected_count": 1_000_001},
+        {"confidence": float("nan")},
+        {"confidence": 2.0},
+    ],
+    ids=[
+        "unapproved-field",
+        "wrong-approved-primitive",
+        "negative-count",
+        "oversized-count",
+        "non-finite-confidence",
+        "out-of-range-confidence",
+    ],
+)
+def test_metadata_is_default_deny_and_bounded(metadata: dict[str, Any]) -> None:
     with pytest.raises(ValidationError, match="result_metadata"):
         OperatorActionReceipt(
+            **operator_action_receipt_kwargs() | {"result_metadata": metadata}
+        )
+
+
+def test_result_code_accepts_only_bounded_machine_codes() -> None:
+    with pytest.raises(ValidationError, match="result_code"):
+        OperatorActionReceipt(
             **operator_action_receipt_kwargs()
-            | {"result_metadata": {"safe": too_large}}
+            | {"result_code": "opaque result content"}
         )

@@ -5,12 +5,11 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
-from typing import Any, Protocol, cast
+from typing import Any, Protocol, TypeVar, cast
 from uuid import UUID, uuid4
 
 import sqlalchemy as sa
@@ -20,7 +19,9 @@ from sqlalchemy.orm import Session
 from atlas.core.enums import ActorType
 from atlas.core.models import OperatorActionOutcome, OperatorActionReceipt
 from atlas.core.models.operator_action_receipt import (
-    MAX_OPERATOR_ACTION_METADATA_BYTES,
+    APPROVED_OPERATOR_ACTION_METADATA_FIELDS,
+    OperatorActionMetadataKey,
+    OperatorActionMetadataValue,
 )
 from atlas.storage import Database
 from atlas.storage.repositories import (
@@ -32,25 +33,7 @@ from atlas.storage.repositories import (
 )
 
 _HASH_PREFIX = "sha256:"
-_REDACTED = "[REDACTED]"
-_MAX_METADATA_STRING_BYTES = 512
-_SECRET_KEY_RE = re.compile(
-    r"(authorization|cookie|csrf|session|token|secret|password|credential|api[_-]?key)",
-    re.IGNORECASE,
-)
-_FORBIDDEN_PAYLOAD_KEY_RE = re.compile(
-    r"(request[_-]?body|raw[_-]?payload|raw[_-]?evidence|evidence[_-]?payload|"
-    r"lesson[_-]?content|traceback|stack[_-]?trace|exception|problem|solution|"
-    r"lesson[_-]?text)",
-    re.IGNORECASE,
-)
-_SECRET_VALUE_RES = (
-    re.compile(r"\bBearer\s+[A-Za-z0-9._~+/=-]{8,}", re.IGNORECASE),
-    re.compile(r"\bsk-[A-Za-z0-9_-]{8,}"),
-    re.compile(r"\bgh[pousr]_[A-Za-z0-9_]{8,}"),
-    re.compile(r"\bcsrf[-_A-Za-z0-9]{6,}", re.IGNORECASE),
-    re.compile(r"\bsession[-_A-Za-z0-9]{6,}", re.IGNORECASE),
-)
+_Entity = TypeVar("_Entity")
 
 
 class CanonicalFingerprintError(ValueError):
@@ -83,7 +66,7 @@ class OperatorActionFailureCode(StrEnum):
 
     COMMAND_FAILED = "command_failed"
     RECEIPT_COMMIT_FAILED = "receipt_commit_failed"
-    RESERVATION_UNAVAILABLE = "reservation_unavailable"
+    STORAGE_FAILED = "storage_failed"
 
 
 @dataclass(frozen=True)
@@ -99,11 +82,33 @@ class OperatorActionEnvelope:
     request_fingerprint: str
 
 
+class OperatorActionUnitOfWork:
+    """Narrow command facade over the gateway-owned transaction.
+
+    Commands may load and stage domain rows, but transaction lifecycle methods
+    deliberately do not exist on this surface. Commit, rollback, close and
+    flush remain exclusively owned by :class:`OperatorActionGateway`.
+    """
+
+    __slots__ = ("__session",)
+
+    def __init__(self, session: Session) -> None:
+        self.__session = session
+
+    def add(self, entity: object) -> None:
+        """Stage one domain entity in the gateway-owned transaction."""
+        self.__session.add(entity)
+
+    def get(self, entity_type: type[_Entity], entity_id: object) -> _Entity | None:
+        """Load one domain entity in the gateway-owned transaction."""
+        return cast(_Entity | None, self.__session.get(entity_type, entity_id))
+
+
 @dataclass(frozen=True)
 class OperatorActionCommandContext:
     """Transaction context supplied to the injected command."""
 
-    session: Session
+    unit_of_work: OperatorActionUnitOfWork
     receipt_id: UUID
     correlation_id: UUID
     created_at: datetime
@@ -166,6 +171,10 @@ class _ReceiptFailed(Exception):
     pass
 
 
+class _ReservationStorageFailed(Exception):
+    pass
+
+
 def canonical_request_fingerprint(
     *,
     action: str,
@@ -206,6 +215,12 @@ def present_operator_action_receipt(
 ) -> dict[str, Any]:
     """Render a receipt without credentials, request bodies or raw payloads."""
 
+    receipt = OperatorActionReceipt.model_validate(
+        {
+            field_name: getattr(receipt, field_name)
+            for field_name in OperatorActionReceipt.model_fields
+        }
+    )
     return {
         "receipt_id": str(receipt.id),
         "correlation_id": str(receipt.correlation_id),
@@ -222,7 +237,7 @@ def present_operator_action_receipt(
         "request_fingerprint": receipt.request_fingerprint,
         "outcome": receipt.outcome.value,
         "result_code": receipt.result_code,
-        "result_metadata": receipt.result_metadata,
+        "result_metadata": dict(receipt.result_metadata),
         "before_status": receipt.before_status,
         "after_status": receipt.after_status,
         "created_at": receipt.created_at.isoformat(),
@@ -272,10 +287,10 @@ class OperatorActionGateway:
                     OperatorActionFailureCode.RECEIPT_COMMIT_FAILED
                 ),
             )
-        except sa.exc.OperationalError:
-            return OperatorActionGatewayResult(
-                status=OperatorActionGatewayStatus.IN_PROGRESS,
-                conflict=OperatorActionConflict(OperatorActionConflictCode.IN_PROGRESS),
+        except _ReservationStorageFailed:
+            return self._result_for_existing_reservation(
+                envelope,
+                key_identity,
             )
 
     def _execute_owned(
@@ -289,6 +304,7 @@ class OperatorActionGateway:
         receipt_id = self._receipt_id_factory()
         correlation_id = self._correlation_id_factory()
         receipt: OperatorActionReceipt | None = None
+        reservation_owned = False
 
         with self._db.session() as session:
             try:
@@ -310,15 +326,20 @@ class OperatorActionGateway:
                         session.flush()
                     except sa.exc.IntegrityError as exc:
                         raise _ReservationConflict from exc
+                    except sa.exc.SQLAlchemyError as exc:
+                        raise _ReservationStorageFailed from exc
+
+                    reservation_owned = True
 
                     context = OperatorActionCommandContext(
-                        session=session,
+                        unit_of_work=OperatorActionUnitOfWork(session),
                         receipt_id=receipt_id,
                         correlation_id=correlation_id,
                         created_at=created_at,
                     )
                     try:
                         command_result = command(context)
+                        session.flush()
                     except Exception as exc:
                         raise _CommandFailed from exc
 
@@ -340,8 +361,17 @@ class OperatorActionGateway:
                         ValidationError,
                     ) as exc:
                         raise _ReceiptFailed from exc
-            except (_ReservationConflict, _CommandFailed, _ReceiptFailed):
+            except (
+                _ReservationConflict,
+                _ReservationStorageFailed,
+                _CommandFailed,
+                _ReceiptFailed,
+            ):
                 raise
+            except sa.exc.SQLAlchemyError as exc:
+                if reservation_owned:
+                    raise _ReceiptFailed from exc
+                raise _ReservationStorageFailed from exc
 
         assert receipt is not None
         return OperatorActionGatewayResult(
@@ -373,7 +403,7 @@ class OperatorActionGateway:
             request_fingerprint=envelope.request_fingerprint,
             outcome=command_result.outcome,
             result_code=command_result.result_code,
-            result_metadata=redact_operator_action_metadata(
+            result_metadata=_approved_operator_action_metadata(
                 command_result.result_metadata
             ),
             before_status=command_result.before_status,
@@ -387,49 +417,60 @@ class OperatorActionGateway:
         envelope: OperatorActionEnvelope,
         key_identity: str,
     ) -> OperatorActionGatewayResult:
-        with self._db.session() as session:
-            key_row = _get_operator_action_reservation(session, key_identity)
-            if key_row is None:
-                return OperatorActionGatewayResult(
-                    status=OperatorActionGatewayStatus.FAILED,
-                    failure=OperatorActionFailure(
-                        OperatorActionFailureCode.RESERVATION_UNAVAILABLE
-                    ),
+        try:
+            with self._db.session() as session:
+                key_row = _get_operator_action_reservation(session, key_identity)
+                if key_row is None:
+                    return _storage_failure_result()
+                if key_row.request_fingerprint != envelope.request_fingerprint:
+                    return OperatorActionGatewayResult(
+                        status=OperatorActionGatewayStatus.CONFLICT,
+                        conflict=OperatorActionConflict(
+                            code=OperatorActionConflictCode.IDEMPOTENCY_KEY_REUSED,
+                            correlation_id=key_row.correlation_id,
+                        ),
+                    )
+
+                receipt = _get_operator_action_receipt_by_identity(
+                    session, key_identity
                 )
-            if key_row.request_fingerprint != envelope.request_fingerprint:
+                if receipt is None:
+                    return OperatorActionGatewayResult(
+                        status=OperatorActionGatewayStatus.IN_PROGRESS,
+                        conflict=OperatorActionConflict(
+                            code=OperatorActionConflictCode.IN_PROGRESS,
+                            correlation_id=key_row.correlation_id,
+                        ),
+                    )
+
                 return OperatorActionGatewayResult(
-                    status=OperatorActionGatewayStatus.CONFLICT,
-                    conflict=OperatorActionConflict(
-                        code=OperatorActionConflictCode.IDEMPOTENCY_KEY_REUSED,
-                        correlation_id=key_row.correlation_id,
-                    ),
+                    status=OperatorActionGatewayStatus.REPLAYED,
+                    receipt=receipt,
                 )
-
-            receipt = _get_operator_action_receipt_by_identity(session, key_identity)
-            if receipt is None:
-                return OperatorActionGatewayResult(
-                    status=OperatorActionGatewayStatus.IN_PROGRESS,
-                    conflict=OperatorActionConflict(
-                        code=OperatorActionConflictCode.IN_PROGRESS,
-                        correlation_id=key_row.correlation_id,
-                    ),
-                )
-
-            return OperatorActionGatewayResult(
-                status=OperatorActionGatewayStatus.REPLAYED,
-                receipt=receipt,
-            )
+        except sa.exc.SQLAlchemyError:
+            return _storage_failure_result()
 
 
-def redact_operator_action_metadata(metadata: Mapping[str, Any]) -> dict[str, Any]:
-    """Return bounded JSON metadata with secret-shaped values redacted."""
+def _approved_operator_action_metadata(
+    metadata: Mapping[str, Any],
+) -> dict[OperatorActionMetadataKey, OperatorActionMetadataValue]:
+    """Select only structurally approved metadata without inspecting denials."""
 
-    redacted = cast(dict[str, Any], _redact_json(metadata))
-    rendered = _render_metadata(redacted)
-    size = len(rendered.encode("utf-8"))
-    if size <= MAX_OPERATOR_ACTION_METADATA_BYTES:
-        return redacted
-    return {"_truncated": True, "_original_bytes": size}
+    return cast(
+        dict[OperatorActionMetadataKey, OperatorActionMetadataValue],
+        {
+            key: metadata[key]
+            for key in APPROVED_OPERATOR_ACTION_METADATA_FIELDS
+            if key in metadata
+        },
+    )
+
+
+def _storage_failure_result() -> OperatorActionGatewayResult:
+    return OperatorActionGatewayResult(
+        status=OperatorActionGatewayStatus.FAILED,
+        failure=OperatorActionFailure(OperatorActionFailureCode.STORAGE_FAILED),
+    )
 
 
 def _json_string(value: str, path: str) -> str:
@@ -464,46 +505,6 @@ def _canonical_json_value(value: Any, path: str) -> Any:
     raise CanonicalFingerprintError(
         f"{path} contains unsupported value {type(value).__name__}"
     )
-
-
-def _redact_json(value: Any) -> Any:
-    if value is None or isinstance(value, bool | int):
-        return value
-    if isinstance(value, float):
-        return value if math.isfinite(value) else None
-    if isinstance(value, str):
-        if _looks_secret_value(value):
-            return _REDACTED
-        if len(value.encode("utf-8")) > _MAX_METADATA_STRING_BYTES:
-            return value.encode("utf-8")[:_MAX_METADATA_STRING_BYTES].decode(
-                "utf-8", errors="ignore"
-            )
-        return value
-    if isinstance(value, list):
-        return [_redact_json(item) for item in value[:20]]
-    if isinstance(value, Mapping):
-        safe: dict[str, Any] = {}
-        redacted_index = 0
-        for raw_key, item in list(value.items())[:40]:
-            key = str(raw_key)
-            if _looks_secret_value(key):
-                redacted_index += 1
-                safe[f"_redacted_key_{redacted_index}"] = _REDACTED
-                continue
-            if _SECRET_KEY_RE.search(key) or _FORBIDDEN_PAYLOAD_KEY_RE.search(key):
-                safe[key[:128]] = _REDACTED
-                continue
-            safe[key[:128]] = _redact_json(item)
-        return safe
-    return f"<{type(value).__name__}>"
-
-
-def _looks_secret_value(value: str) -> bool:
-    return any(pattern.search(value) for pattern in _SECRET_VALUE_RES)
-
-
-def _render_metadata(value: dict[str, Any]) -> str:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False)
 
 
 def _reject_naive_datetime(value: datetime, model_name: str, field: str) -> None:

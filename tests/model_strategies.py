@@ -75,6 +75,15 @@ json_values = st.recursive(
     max_leaves=8,
 )
 json_dicts = st.dictionaries(texts, json_values, max_size=4)
+operator_action_result_codes = st.from_regex(r"[a-z][a-z0-9_]{0,31}", fullmatch=True)
+operator_action_metadata = st.fixed_dictionaries(
+    {},
+    optional={
+        "affected_count": st.integers(min_value=0, max_value=1_000_000),
+        "changed": st.booleans(),
+        "confidence": unit_floats,
+    },
+)
 
 
 def optional(strategy: st.SearchStrategy[object]) -> st.SearchStrategy[object]:
@@ -222,8 +231,8 @@ STRATEGIES: dict[type[BaseModel], st.SearchStrategy[BaseModel]] = {
         idempotency_key_identity=texts.filter(bool),
         request_fingerprint=texts.filter(bool),
         outcome=st.sampled_from(OperatorActionOutcome),
-        result_code=texts.filter(bool),
-        result_metadata=json_dicts,
+        result_code=operator_action_result_codes,
+        result_metadata=operator_action_metadata,
         before_status=optional(texts),
         after_status=optional(texts),
         created_at=aware_datetimes,
