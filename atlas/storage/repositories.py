@@ -41,6 +41,7 @@ from atlas.core.models import (
     EpicStatus,
     Evidence,
     Lesson,
+    OperatorActionReceipt,
     PlanRun,
     PlanRunStatus,
     PmSyncReceipt,
@@ -64,6 +65,8 @@ from atlas.storage.tables import (
     EvidenceRow,
     KeyCounterRow,
     LessonRow,
+    OperatorActionKeyRow,
+    OperatorActionReceiptRow,
     PlanRunRow,
     PmSyncReceiptRow,
     ProductRow,
@@ -144,6 +147,22 @@ class StaleLessonReview:
     context_pack_count: int
 
 
+@dataclass(frozen=True)
+class _OperatorActionReservation:
+    """Internal storage view of one idempotency-key reservation."""
+
+    idempotency_key_identity: str
+    request_fingerprint: str
+    receipt_id: UUID
+    correlation_id: UUID
+    action: str
+    target_type: str
+    target_id: str
+    created_by_type: str
+    created_by_id: str
+    created_at: datetime
+
+
 def _reject_naive(model: BaseModel) -> None:
     for name in type(model).model_fields:
         value = getattr(model, name)
@@ -178,6 +197,100 @@ def _status_transition_row(
         occurred_at=occurred_at,
         created_by_type=ActorType.SYSTEM.value,
         created_by_id=created_by_id,
+    )
+
+
+def _add_operator_action_reservation(
+    session: Session,
+    *,
+    idempotency_key_identity: str,
+    request_fingerprint: str,
+    receipt_id: UUID,
+    correlation_id: UUID,
+    action: str,
+    target_type: str,
+    target_id: str,
+    created_by_type: str,
+    created_by_id: str,
+    created_at: datetime,
+) -> None:
+    """Insert the idempotency-key owner row inside the caller transaction."""
+
+    session.add(
+        OperatorActionKeyRow(
+            idempotency_key_identity=idempotency_key_identity,
+            request_fingerprint=request_fingerprint,
+            receipt_id=receipt_id,
+            correlation_id=correlation_id,
+            action=action,
+            target_type=target_type,
+            target_id=target_id,
+            created_by_type=created_by_type,
+            created_by_id=created_by_id,
+            created_at=created_at,
+        )
+    )
+
+
+def _get_operator_action_reservation(
+    session: Session, idempotency_key_identity: str
+) -> _OperatorActionReservation | None:
+    """Read one idempotency-key owner row inside the caller transaction."""
+
+    row = session.get(OperatorActionKeyRow, idempotency_key_identity)
+    if row is None:
+        return None
+    return _OperatorActionReservation(
+        idempotency_key_identity=row.idempotency_key_identity,
+        request_fingerprint=row.request_fingerprint,
+        receipt_id=row.receipt_id,
+        correlation_id=row.correlation_id,
+        action=row.action,
+        target_type=row.target_type,
+        target_id=row.target_id,
+        created_by_type=row.created_by_type,
+        created_by_id=row.created_by_id,
+        created_at=row.created_at,
+    )
+
+
+def _operator_action_receipt_row(
+    receipt: OperatorActionReceipt,
+) -> OperatorActionReceiptRow:
+    validated = OperatorActionReceipt.model_validate(
+        {
+            field_name: getattr(receipt, field_name)
+            for field_name in OperatorActionReceipt.model_fields
+        }
+    )
+    payload = validated.model_dump()
+    payload["result_metadata"] = validated.model_dump(mode="json")["result_metadata"]
+    return OperatorActionReceiptRow(**payload)
+
+
+def _add_operator_action_receipt(
+    session: Session, receipt: OperatorActionReceipt
+) -> None:
+    """Insert a terminal receipt inside the caller transaction."""
+
+    session.add(_operator_action_receipt_row(receipt))
+
+
+def _get_operator_action_receipt_by_identity(
+    session: Session, idempotency_key_identity: str
+) -> OperatorActionReceipt | None:
+    """Read the terminal receipt for an idempotency-key identity."""
+
+    row = session.scalars(
+        sa.select(OperatorActionReceiptRow).where(
+            OperatorActionReceiptRow.idempotency_key_identity
+            == idempotency_key_identity
+        )
+    ).first()
+    return (
+        None
+        if row is None
+        else OperatorActionReceipt.model_validate(row, from_attributes=True)
     )
 
 
@@ -1258,6 +1371,38 @@ class VerificationCheckRepo(_Repo[VerificationCheck]):
                 .order_by(VerificationCheckRow.created_at, VerificationCheckRow.id)
             )
             return [self._to_model(row) for row in rows]
+
+
+class OperatorActionReceiptRepo(_Repo[OperatorActionReceipt]):
+    """Append-only governed-operator action receipts.
+
+    The companion ``operator_action_keys`` table owns idempotency reservation.
+    This repository exposes only terminal receipt append and read paths — no
+    update, no delete, no bypass — and the database trigger rejects direct row
+    mutation for the same append-only guarantee.
+    """
+
+    def __init__(self, db: Database) -> None:
+        super().__init__(db, OperatorActionReceipt, OperatorActionReceiptRow)
+
+    def _to_row(self, model: OperatorActionReceipt) -> Base:
+        return _operator_action_receipt_row(model)
+
+    def record(self, model: OperatorActionReceipt) -> OperatorActionReceipt:
+        """Append one terminal receipt and return the persisted row."""
+        _reject_naive(model)
+        with self._db.session() as session, session.begin():
+            _add_operator_action_receipt(session, model)
+        return model
+
+    def get_by_idempotency_key_identity(
+        self, idempotency_key_identity: str
+    ) -> OperatorActionReceipt | None:
+        """Return the terminal receipt for an idempotency key identity."""
+        with self._db.session() as session:
+            return _get_operator_action_receipt_by_identity(
+                session, idempotency_key_identity
+            )
 
 
 class PlanRunRepo(_Repo[PlanRun]):

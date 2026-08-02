@@ -14,6 +14,11 @@ from atlas.core.models.dependency import DependencyType, TicketDependency
 from atlas.core.models.epic import Epic, EpicStatus
 from atlas.core.models.evidence import Evidence, EvidenceType
 from atlas.core.models.lesson import Lesson, LessonCategory
+from atlas.core.models.operator_action_receipt import (
+    OperatorActionOutcome,
+    OperatorActionReceipt,
+    OperatorActionResultCode,
+)
 from atlas.core.models.plan_run import PlanRun, PlanRunStatus
 from atlas.core.models.pm_sync_receipt import (
     SUCCESSFUL_PM_SYNC_RESULTS,
@@ -46,6 +51,9 @@ __all__ = [
     "EvidenceType",
     "Lesson",
     "LessonCategory",
+    "OperatorActionOutcome",
+    "OperatorActionReceipt",
+    "OperatorActionResultCode",
     "PlanRun",
     "PlanRunStatus",
     "PmSyncReceipt",

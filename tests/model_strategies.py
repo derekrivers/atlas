@@ -25,6 +25,9 @@ from atlas.core.models import (
     Epic,
     Evidence,
     Lesson,
+    OperatorActionOutcome,
+    OperatorActionReceipt,
+    OperatorActionResultCode,
     PlanRun,
     PmSyncReceipt,
     PmSyncReceiptResult,
@@ -73,6 +76,23 @@ json_values = st.recursive(
     max_leaves=8,
 )
 json_dicts = st.dictionaries(texts, json_values, max_size=4)
+operator_action_metadata = st.fixed_dictionaries(
+    {},
+    optional={
+        "affected_count": st.integers(min_value=0, max_value=1_000_000),
+        "changed": st.booleans(),
+        "confidence": unit_floats,
+    },
+)
+operator_action_outcome_result = st.sampled_from(
+    [
+        (OperatorActionOutcome.SUCCEEDED, OperatorActionResultCode.ACTION_SUCCEEDED),
+        (OperatorActionOutcome.REFUSED, OperatorActionResultCode.ACTION_REFUSED),
+        (OperatorActionOutcome.REFUSED, OperatorActionResultCode.STALE_STATE),
+        (OperatorActionOutcome.FAILED, OperatorActionResultCode.ACTION_FAILED),
+        (OperatorActionOutcome.CONFLICT, OperatorActionResultCode.ACTION_CONFLICT),
+    ]
+)
 
 
 def optional(strategy: st.SearchStrategy[object]) -> st.SearchStrategy[object]:
@@ -207,6 +227,27 @@ STRATEGIES: dict[type[BaseModel], st.SearchStrategy[BaseModel]] = {
         created_by_id=texts,
         created_at=aware_datetimes,
         updated_at=aware_datetimes,
+    ),
+    OperatorActionReceipt: operator_action_outcome_result.flatmap(
+        lambda pair: st.builds(
+            OperatorActionReceipt,
+            id=uuids,
+            correlation_id=uuids,
+            action=texts.filter(bool),
+            target_type=texts.filter(bool),
+            target_id=texts.filter(bool),
+            created_by_type=st.sampled_from(ActorType),
+            created_by_id=texts.filter(bool),
+            idempotency_key_identity=texts.filter(bool),
+            request_fingerprint=texts.filter(bool),
+            outcome=st.just(pair[0]),
+            result_code=st.just(pair[1]),
+            result_metadata=operator_action_metadata,
+            before_status=optional(st.sampled_from(EntityStatus)),
+            after_status=optional(st.sampled_from(EntityStatus)),
+            created_at=aware_datetimes,
+            completed_at=aware_datetimes,
+        )
     ),
     # System-tier evidence is commit-pinned: EvidenceRepo.add (ADR-0008,
     # ATLAS-61) refuses a system-tier record missing any of commit_sha /

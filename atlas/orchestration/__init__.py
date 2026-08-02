@@ -1,5 +1,6 @@
 """Cross-layer orchestration shared by Atlas presentation surfaces."""
 
+from atlas.core.models import OperatorActionResultCode
 from atlas.orchestration.confirm import (
     ConfirmCaptureResult,
     ConfirmPrompts,
@@ -19,6 +20,25 @@ from atlas.orchestration.dependency_projection import (
     dependency_critical_path,
     dependency_graph,
     ticket_dependencies,
+)
+from atlas.orchestration.operator_actions import (
+    CanonicalFingerprintError,
+    OperatorActionCommandContext,
+    OperatorActionCommandResult,
+    OperatorActionConflict,
+    OperatorActionConflictCode,
+    OperatorActionEntityLoad,
+    OperatorActionEnvelope,
+    OperatorActionFailure,
+    OperatorActionFailureCode,
+    OperatorActionGateway,
+    OperatorActionGatewayResult,
+    OperatorActionGatewayStatus,
+    OperatorActionIdempotencyKeyError,
+    OperatorActionMutation,
+    canonical_request_fingerprint,
+    idempotency_key_identity,
+    present_operator_action_receipt,
 )
 from atlas.orchestration.pr_context import (
     PRContext,
@@ -62,6 +82,7 @@ from atlas.orchestration.ticket_evidence import (
 from atlas.orchestration.verify import VerifyResult, run_verify
 
 __all__ = [
+    "CanonicalFingerprintError",
     "ConfirmCaptureResult",
     "ConfirmPrompts",
     "ContextInputs",
@@ -70,6 +91,20 @@ __all__ = [
     "DependencyGraphNodeState",
     "DependencyGraphState",
     "GitRunner",
+    "OperatorActionCommandContext",
+    "OperatorActionCommandResult",
+    "OperatorActionConflict",
+    "OperatorActionConflictCode",
+    "OperatorActionEntityLoad",
+    "OperatorActionEnvelope",
+    "OperatorActionFailure",
+    "OperatorActionFailureCode",
+    "OperatorActionGateway",
+    "OperatorActionGatewayResult",
+    "OperatorActionGatewayStatus",
+    "OperatorActionIdempotencyKeyError",
+    "OperatorActionMutation",
+    "OperatorActionResultCode",
     "PRAncestryStatus",
     "PRContext",
     "PRIntegrationAssessment",
@@ -91,14 +126,17 @@ __all__ = [
     "abort_pr_rebase",
     "assess_pr_integration",
     "build_tick_config",
+    "canonical_request_fingerprint",
     "capture_ticket",
     "capture_ticket_result",
     "continue_pr_rebase",
     "dependency_critical_path",
     "dependency_graph",
+    "idempotency_key_identity",
     "load_context_inputs",
     "pr_integration_assessment_json",
     "prepare_pr_rebase",
+    "present_operator_action_receipt",
     "publish_pr_rebase",
     "resolve_github_client",
     "resolve_pr_context",

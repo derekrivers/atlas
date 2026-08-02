@@ -20,6 +20,7 @@ from test_models_validation import (
     product_kwargs,
     ticket_kwargs,
 )
+from test_operator_action_receipt_model import operator_action_receipt_kwargs
 from test_plan_run_model import plan_run_kwargs
 from test_pm_sync_receipt_model import pm_sync_receipt_kwargs
 
@@ -31,6 +32,7 @@ from atlas.core.models import (
     Epic,
     Evidence,
     Lesson,
+    OperatorActionReceipt,
     PlanRun,
     PmSyncReceipt,
     Product,
@@ -45,6 +47,7 @@ from atlas.storage import (
     EpicRepo,
     EvidenceRepo,
     LessonRepo,
+    OperatorActionReceiptRepo,
     PlanRunRepo,
     PmSyncReceiptRepo,
     ProductRepo,
@@ -67,6 +70,7 @@ CASES = [
     (TicketRepo, Ticket, ticket_kwargs),
     (TicketDependencyRepo, TicketDependency, dependency_kwargs),
     (LessonRepo, Lesson, lesson_kwargs),
+    (OperatorActionReceiptRepo, OperatorActionReceipt, operator_action_receipt_kwargs),
     (EvidenceRepo, Evidence, evidence_kwargs),
     (AgentRunRepo, AgentRun, agent_run_kwargs),
     (ContextPackRepo, ContextPack, context_pack_kwargs),

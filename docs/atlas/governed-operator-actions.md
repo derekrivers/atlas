@@ -135,24 +135,61 @@ Every accepted write uses one generic command envelope:
 - request timestamp and correlation ID.
 
 The action store enforces uniqueness of the idempotency key within the operator
-action namespace. The first terminal outcome is retained. Repeating the same
-key with the same fingerprint returns the stored outcome and never repeats the
-domain mutation. Reusing the key with a different fingerprint returns
-`409 Conflict`.
+action namespace by storing a SHA-256 `idempotency_key_identity`, never the raw
+key. The gateway inserts this reservation before invoking the command. The
+canonical request fingerprint covers the action name, target type/ID and the
+complete validated command payload; it is deterministic across JSON key order
+and rejects unsupported or non-finite values.
+
+The first terminal outcome is retained. Repeating the same key with the same
+fingerprint returns the stored outcome and never repeats the domain mutation.
+Reusing the key with a different fingerprint returns `409 Conflict`. A
+committed key reservation with no terminal receipt is treated as an explicit
+in-progress owner and returns a named in-progress conflict without an unbounded
+polling loop; recovery must never treat a missing receipt as permission to
+rerun a possibly started command. A storage `OperationalError` is reported as
+in-progress only after a separate read proves that reservation; an error with
+no visible owner is a typed storage failure.
+
+The gateway loads command-declared domain inputs inside its transaction and
+detaches them before invoking the command. The command receives only a
+session-free context containing those detached values and returns a mutation
+plan of detached ORM values. It never receives a facade, callable or other
+object that retains the gateway's SQLAlchemy session. The gateway validates
+and merges the plan after the command returns, without attaching the
+command-owned values, so `inspect(row).session` and `object_session(row)` cannot
+recover the transaction. Only the gateway can flush, commit, roll back or close
+that transaction. It flushes planned mutations and receipt insertion
+separately for classification, then catches failure from the actual transaction
+commit as a receipt-commit failure. Any such failure rolls back the reservation,
+mutation and receipt together.
 
 An append-only `OperatorActionReceipt` records:
 
 - receipt and correlation IDs;
 - action and target;
 - server-resolved actor;
-- idempotency key/fingerprint reference;
-- before and after status where applicable;
-- bounded non-secret result code;
+- idempotency key identity and request fingerprint reference;
+- before and after `EntityStatus` values where applicable;
+- a server-controlled result code from `action_succeeded`, `action_refused`,
+  `stale_state`, `action_failed` or `action_conflict`;
+- default-deny result metadata limited to `changed` (boolean),
+  `affected_count` (integer `0..1000000`) and `confidence` (finite float
+  `0.0..1.0`);
 - created/completed timestamps.
 
 The lesson mutation and successful receipt commit atomically. If the receipt
-cannot be persisted, the lesson is not changed. Secrets, full request bodies
-and lesson content are not copied into receipts.
+cannot be persisted, the lesson is not changed. Secrets, full request bodies,
+raw evidence payloads, lesson content and exception traces are not copied into
+receipts or rendered receipt JSON. Result codes and before/after states are
+closed enums rather than free-form command strings. Outcomes and result codes
+also form one enforced matrix: success uses `action_succeeded`; refusal uses
+`action_refused` or `stale_state`; failure uses `action_failed`; and conflict
+uses `action_conflict`. The database, gateway, canonical model, presentation
+path and public repository writers all enforce that matrix. The gateway
+discards every unapproved metadata field without inspecting its value, so
+callers cannot bypass either the terminal-claim invariant, controlled
+vocabularies or the metadata default-deny boundary.
 
 ## Lesson disposition contract
 
