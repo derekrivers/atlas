@@ -176,16 +176,66 @@ def _require_passed_verdict(result: subprocess.CompletedProcess[str]) -> str:
         ) from error
     if not isinstance(payload, dict) or payload.get("status") != "passed":
         status = payload.get("status") if isinstance(payload, dict) else None
-        raise RuntimeError(
-            f"Pre-merge verification is {status or 'unknown'}, not passed; "
-            "merge is blocked."
-        )
+        raise RuntimeError(_non_passing_verdict_message(payload, status))
     head_commit = payload.get("head_commit")
     if not isinstance(head_commit, str) or not head_commit.strip():
         raise RuntimeError(
             "Pre-merge verification has no valid head_commit; merge is blocked."
         )
     return head_commit
+
+
+def _non_passing_verdict_message(payload: Any, status: Any) -> str:
+    lines = [
+        f"Pre-merge verification is {status or 'unknown'}, not passed; "
+        "merge is blocked."
+    ]
+    if not isinstance(payload, dict):
+        return "\n".join(lines)
+
+    blockers = _blocking_check_lines(payload)
+    if blockers:
+        lines.append("Blocking verification checks:")
+        lines.extend(blockers)
+    else:
+        lines.append(
+            "No structured blocking_checks were supplied by atlas verify; rerun "
+            "the current JSON verifier to inspect the check breakdown."
+        )
+    return "\n".join(lines)
+
+
+def _blocking_check_lines(payload: dict[str, Any]) -> list[str]:
+    raw_blockers = payload.get("blocking_checks")
+    if not isinstance(raw_blockers, list):
+        return []
+
+    lines: list[str] = []
+    fallback_head = _string_value(payload.get("head_commit"), "unknown head")
+    for raw in raw_blockers:
+        if not isinstance(raw, dict):
+            continue
+        ticket = _ticket_label(raw)
+        check_type = _string_value(raw.get("check_type"), "unknown_check")
+        status = _string_value(raw.get("status"), "unknown")
+        head = _string_value(raw.get("head_commit"), fallback_head)
+        reason = _string_value(raw.get("reason"), "no typed reason supplied")
+        lines.append(f"- {ticket} {check_type} {status} at {head}: {reason}")
+    return lines
+
+
+def _ticket_label(check: dict[str, Any]) -> str:
+    ticket_key = check.get("ticket_key")
+    if isinstance(ticket_key, str) and ticket_key.strip():
+        return ticket_key.strip()
+    ticket_id = check.get("ticket_id")
+    if isinstance(ticket_id, str) and ticket_id.strip():
+        return f"ticket {ticket_id.strip()}"
+    return "unknown ticket"
+
+
+def _string_value(value: Any, fallback: str) -> str:
+    return value.strip() if isinstance(value, str) and value.strip() else fallback
 
 
 def _repo_parts(repo: str) -> tuple[str, str]:

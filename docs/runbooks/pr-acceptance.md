@@ -104,7 +104,14 @@ Before writing confirmations, compare the live ticket criteria with the
 criteria reviewed in step 1. Any wording or criterion-set drift restarts the
 review; never confirm a remembered or superseded criterion. The command writes
 the human-tier `MANUAL_APPROVAL` and acceptance-criterion confirmations the
-evaluators consume. This — not a GitHub review — is the human gate.
+evaluators consume. If no decisions remain, it exits successfully and prints
+`No outstanding confirmations ...`; do not retry that as missing work. The
+summary separately counts passed/approved and failed/rejected records, and names
+every skipped action as unresolved even when other decisions were recorded. An
+empty close-set or an unknown-only close-set prints
+`No confirmation assessment performed ...` and exits with the precondition code;
+fix the close-set instead of treating that result as successful exhaustion. This
+— not a GitHub review — is the human gate.
 
 ## 5. Verify
 
@@ -115,17 +122,21 @@ uv run atlas verify --pr <N> --repo <owner>/<repo>
 Composes the verdict from stored evidence against the required-check matrix
 for the ticket's type and risk. **Only an explicit PASSED report with a valid
 `head_commit` can advance toward the merge gate; the command exit code does
-not.** The fail-closed driver immediately performs a second live exact-head
-assessment after the JSON verdict and before showing the merge prompt. The live
-head must equal both the initial exact-head snapshot and the verified
-`head_commit`, and the live base SHA, branch identities, and repository
-identities must match the initial snapshot. Any PR-head movement, `main`
-movement, eligibility change, compare failure, or indeterminate mergeability
-blocks the merge prompt and restarts the spine at step 3. Non-PASSED routing:
-missing human-tier → redo confirm; failing machine evidence → `Changes
-Requested` only when implementation remediation must return to Symphony;
-mechanical staleness → Phase 12 rebase lane; scope/acceptance failure →
-operator judgement. Prefer the fail-closed driver:
+not.** `atlas verify --json` includes a top-level `blocking_checks` list for the
+ordered required checks that are not PASSED, including their check type, status,
+typed reason, evidence IDs, ticket identity and exact `head_commit`. The
+fail-closed driver consumes that structured payload; when a pre-merge verdict is
+not PASSED, it names every blocking check before refusing the merge gate. It
+then performs a second live exact-head assessment after the JSON verdict and
+before showing the merge prompt. The live head must equal both the initial
+exact-head snapshot and the verified `head_commit`, and the live base SHA,
+branch identities, and repository identities must match the initial snapshot.
+Any PR-head movement, `main` movement, eligibility change, compare failure, or
+indeterminate mergeability blocks the merge prompt and restarts the spine at
+step 3. Non-PASSED routing: missing human-tier → redo confirm; failing machine
+evidence → `Changes Requested` only when implementation remediation must return
+to Symphony; mechanical staleness → Phase 12 rebase lane; scope/acceptance
+failure → operator judgement. Prefer the fail-closed driver:
 
 ```
 uv run python scripts/close_ticket.py <N> --repo <owner>/<repo> \

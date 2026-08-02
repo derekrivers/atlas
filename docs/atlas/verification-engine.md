@@ -135,20 +135,33 @@ title is the primary source; `--tickets ATLAS-a,ATLAS-b` overrides), reads the
 stored evidence, runs the pure `evaluate_pr`, and prints the PR/per-ticket
 verdict with the per-check breakdown (check_type, required, status, the
 evaluator's reason, and evidence IDs); `--json` emits the serialised
-PRVerification for automation. Each run PERSISTS the verdict as append-only
-VerificationCheck rows (one per check; a re-run appends a fresh set, never
-mutating prior rows); there is no dashboard (Revision 1). The command is
-NON-interactive and writes NO evidence: the interactive operator-confirmation
-capture — writing the human-tier acceptance/scope/human-approval confirmations
-pinned to C — is a separate follow-on (OP-3), so the acceptance, scope, and
-human_approval checks report PENDING here until it lands (no operator
-confirmations exist yet); this is honest and expected, not a failure. Exit-code
-contract: a produced report is exit 0 for any verdict (PASSED/PENDING/FAILED) —
-because PENDING is the normal state until the OP-3 capture lands, a verdict-based
-exit code would make `verify` fail constantly; only a precondition (a malformed
-`--repo`, a missing token, an unknown PR or transport error, a cold database) is
-a non-zero exit. A future `--strict` mode (FAILED → non-zero, for CI gating) is a
-follow-up — until it exists, `verify` does not block a merge on a FAILED verdict.
+PRVerification for automation. The JSON payload preserves those canonical fields
+and adds top-level `blocking_checks`: the ordered required checks whose status is
+not PASSED, each carrying `ticket_id`, `ticket_key` when known, `head_commit`,
+`check_type`, `required`, `status`, `evidence_ids`, and the evaluator's typed
+`reason`. Each run PERSISTS the verdict as append-only VerificationCheck rows
+(one per check; a re-run appends a fresh set, never mutating prior rows); there
+is no dashboard (Revision 1). The command is NON-interactive and writes NO
+evidence: the separate `atlas confirm` command writes the human-tier
+acceptance/scope/human-approval confirmations pinned to C. The human report's
+confirmation note is derived from the current check outcomes and appears only
+when human-tier confirmation checks remain PENDING at C; it must not claim
+operator confirmations are absent once matching human-tier records exist.
+Exit-code contract: a produced report is exit 0 for any verdict
+(PASSED/PENDING/FAILED); only a precondition (a malformed `--repo`, a missing
+token, an unknown PR or transport error, a cold database) is a non-zero exit. A
+future `--strict` mode (FAILED → non-zero, for CI gating) is a follow-up — until
+it exists, `verify` does not block a merge on a FAILED verdict.
+
+`atlas confirm` consumes the structured pending-capture result and reports
+positive decisions (confirmed/waived/approved), negative decisions
+(failed/rejected), and skipped actions separately. It reports skipped actions
+even when other decisions were recorded, so a partial session cannot hide
+outstanding work. A resolved close-set with no pending decisions is the only
+zero-action success and prints `No outstanding confirmations ...` with exit 0.
+An empty close-set or one made entirely of unknown ticket keys performs no
+assessment, prints `No confirmation assessment performed ...`, and exits with
+the precondition code; it cannot be mistaken for exhausted confirmation work.
 
 ## Open items
 

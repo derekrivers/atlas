@@ -1,6 +1,11 @@
 """Cross-layer orchestration shared by Atlas presentation surfaces."""
 
-from atlas.orchestration.confirm import ConfirmPrompts, capture_ticket
+from atlas.orchestration.confirm import (
+    ConfirmCaptureResult,
+    ConfirmPrompts,
+    capture_ticket,
+    capture_ticket_result,
+)
 from atlas.orchestration.context_inputs import (
     ContextInputs,
     ContextNotFoundError,
@@ -57,6 +62,7 @@ from atlas.orchestration.ticket_evidence import (
 from atlas.orchestration.verify import VerifyResult, run_verify
 
 __all__ = [
+    "ConfirmCaptureResult",
     "ConfirmPrompts",
     "ContextInputs",
     "ContextNotFoundError",
@@ -86,6 +92,7 @@ __all__ = [
     "assess_pr_integration",
     "build_tick_config",
     "capture_ticket",
+    "capture_ticket_result",
     "continue_pr_rebase",
     "dependency_critical_path",
     "dependency_graph",

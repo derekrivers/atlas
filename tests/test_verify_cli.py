@@ -4,8 +4,8 @@ an in-memory SQLite database and a ``FakeGitHubClient`` replaying a PR object
 (head.sha + title/body) and a changed-file list — no network.
 
 verify is the seam where the pure engine does real I/O but stays NON-interactive
-and writes NO Evidence (OP-A): acceptance/scope/human checks report PENDING until
-the OP-3 follow-on lands. These tests prove the WIRING — close-set resolution,
+and writes NO Evidence: acceptance/scope/human checks read only the human-tier
+records already stored at C. These tests prove the WIRING — close-set resolution,
 evidence load at C, the pure ``evaluate_pr``, append-only persistence, the report
 shapes, and the clean-error exits — not the verdict math (covered by the
 verification unit tests).
@@ -15,8 +15,8 @@ Each behavioural assertion names the wrong answer it catches. Criteria:
   rows persisted (read back).
 - DoD 4 (MILESTONE): AGENT-tier TEST only -> TESTS/verdict PENDING; swapping it
   to SYSTEM-tier at C -> PASSED. "No system evidence = no completion" via the CLI.
-- DoD 5: acceptance/scope/human report PENDING; the report states the OP-A note.
-- DoD 6: --json emits the serialised PRVerification with the documented shape.
+- DoD 5: acceptance/scope/human diagnostics are derived from live stored evidence.
+- DoD 6: --json emits the serialised PRVerification with blocking-check details.
 - DoD 7: empty close-set / unknown key / empty PR files -> a clean report, no
   traceback.
 - DoD 8: append-only — a second run appends a second row-set, mutating none.
@@ -35,7 +35,12 @@ from github_fakes import FakeGitHubClient
 
 from atlas.cli import EXIT_OK, EXIT_PRECONDITION, main
 from atlas.core.enums import ActorType, EvidenceStatus, RiskLevel
-from atlas.core.models import Evidence, EvidenceType, VerificationCheckType
+from atlas.core.models import (
+    Evidence,
+    EvidenceType,
+    VerificationCheck,
+    VerificationCheckType,
+)
 from atlas.core.models.ticket import Ticket, TicketStatus, TicketType
 from atlas.storage import Database, EvidenceRepo, TicketRepo, VerificationCheckRepo
 from atlas.verification import acceptance_criterion_hash
@@ -265,10 +270,10 @@ def test_milestone_agent_tier_tests_stay_pending_then_system_passes(
     )
 
 
-# --- DoD 5: OP-A honesty — acceptance/scope/human PENDING, stated -----------
+# --- DoD 5: live confirmation diagnostics -----------------------------------
 
 
-def test_acceptance_reports_pending_with_op_a_note(
+def test_acceptance_reports_pending_with_live_confirmation_note(
     db: Database, capsys: pytest.CaptureFixture[str]
 ) -> None:
     ticket = make_ticket(key="ATLAS-200")
@@ -287,9 +292,69 @@ def test_acceptance_reports_pending_with_op_a_note(
     # Wrong answer: acceptance PASSED with no confirmation written (OP-A violated).
     assert acceptance.status == ES.PENDING
     assert acceptance.completed_at is None
-    # The report states the honest OP-A behaviour.
-    assert "OP-A" in out
+    # The report states the live pending human-tier action without claiming
+    # operator confirmations are categorically absent.
+    assert "Confirmation note:" in out
     assert "PENDING" in out
+    assert "no operator confirmations exist yet" not in out
+
+
+def test_report_does_not_claim_confirmations_absent_when_human_records_exist(
+    db: Database, capsys: pytest.CaptureFixture[str]
+) -> None:
+    ticket = make_ticket(key="ATLAS-202")
+    TicketRepo(db).add(ticket)
+    confirmation = accept_confirmation(ticket.id)
+    seed_evidence(db, sys_test(), sys_lint(), confirmation)
+
+    code = run_verify(db, fake(title="feat: thing (ATLAS-202) (#126)"))
+    assert code == EXIT_OK
+    out = capsys.readouterr().out
+
+    assert str(confirmation.id) in out
+    assert "acceptance_criteria" in out
+    assert "PASSED" in out
+    assert "no operator confirmations exist yet" not in out
+    assert "OP-A" not in out
+
+
+def test_live_confirmation_diagnostic_ignores_contradictory_historical_check(
+    db: Database, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """An append-only historical PENDING row may claim confirmations were absent;
+    once matching human evidence exists, the new report is derived from the live
+    evaluation and cannot repeat that stale assertion."""
+    ticket = make_ticket(key="ATLAS-204")
+    TicketRepo(db).add(ticket)
+    historical = VerificationCheck(
+        id=uuid4(),
+        ticket_id=ticket.id,
+        check_type=VT.ACCEPTANCE_CRITERIA,
+        status=ES.PENDING,
+        summary="Note (OP-A): no operator confirmations exist yet.",
+        required=True,
+        evidence_ids=[],
+        created_at=NOW,
+        completed_at=None,
+    )
+    VerificationCheckRepo(db).add(historical)
+    confirmation = accept_confirmation(ticket.id)
+    seed_evidence(db, sys_test(), sys_lint(), confirmation)
+
+    code = run_verify(db, fake(title="feat: thing (ATLAS-204) (#126)"))
+
+    assert code == EXIT_OK
+    out = capsys.readouterr().out
+    assert str(confirmation.id) in out
+    assert "acceptance_criteria" in out and "PASSED" in out
+    assert "Confirmation note:" not in out
+    assert historical.summary not in out
+    assert "no operator confirmations exist yet" not in out
+    rows = VerificationCheckRepo(db).list_for_ticket(ticket.id)
+    assert rows[0] == historical  # append-only history remains stored
+    acceptance_rows = [r for r in rows if r.check_type == VT.ACCEPTANCE_CRITERIA]
+    assert {r.status for r in acceptance_rows} == {ES.PENDING, ES.PASSED}
+    assert historical in acceptance_rows
 
 
 # --- DoD 6: --json shape ----------------------------------------------------
@@ -306,7 +371,8 @@ def test_json_emits_serialised_pr_verification(
     payload = json.loads(capsys.readouterr().out)
 
     assert payload["head_commit"] == HEAD
-    assert set(payload) == {"head_commit", "status", "tickets"}
+    assert {"head_commit", "status", "tickets"} <= set(payload)
+    assert "blocking_checks" in payload
     tv = payload["tickets"][0]
     assert tv["ticket_id"] == str(ticket.id)
     assert set(tv) == {"ticket_id", "status", "checks"}
@@ -314,6 +380,63 @@ def test_json_emits_serialised_pr_verification(
     # Wrong answer: a check missing 'evidence_ids' or 'reason' (an incomplete
     # documented shape that breaks automation).
     assert set(check) == {"check_type", "required", "status", "evidence_ids", "reason"}
+
+
+def test_json_exposes_ordered_blocking_checks_with_exact_reasons(
+    db: Database, capsys: pytest.CaptureFixture[str]
+) -> None:
+    ticket = make_ticket(key="ATLAS-203")
+    TicketRepo(db).add(ticket)
+
+    code = run_verify(db, fake(title="feat: thing (ATLAS-203) (#126)"), "--json")
+    assert code == EXIT_OK
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["status"] == "pending"
+    assert payload["blocking_checks"] == [
+        {
+            "ticket_id": str(ticket.id),
+            "ticket_key": "ATLAS-203",
+            "head_commit": HEAD,
+            "check_type": "tests",
+            "required": True,
+            "status": "pending",
+            "evidence_ids": [],
+            "reason": (
+                f"tests: no system-tier test_result evidence exists at {HEAD}; "
+                "PENDING (a machine check is unproven, not failing, until "
+                "system-tier evidence lands)."
+            ),
+        },
+        {
+            "ticket_id": str(ticket.id),
+            "ticket_key": "ATLAS-203",
+            "head_commit": HEAD,
+            "check_type": "lint",
+            "required": True,
+            "status": "pending",
+            "evidence_ids": [],
+            "reason": (
+                f"lint: no system-tier lint_result evidence exists at {HEAD}; "
+                "PENDING (a machine check is unproven, not failing, until "
+                "system-tier evidence lands)."
+            ),
+        },
+        {
+            "ticket_id": str(ticket.id),
+            "ticket_key": "ATLAS-203",
+            "head_commit": HEAD,
+            "check_type": "acceptance_criteria",
+            "required": True,
+            "status": "pending",
+            "evidence_ids": [],
+            "reason": (
+                f"acceptance_criteria: 0 of 1 criteria confirmed at {HEAD}; "
+                "1 unconfirmed; PENDING (an unconfirmed criterion is unproven, "
+                "not failing)."
+            ),
+        },
+    ]
 
 
 # --- DoD 7: empty/edge handling, never a traceback --------------------------
