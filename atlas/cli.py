@@ -444,6 +444,8 @@ def _add_api_parser(subcommands: argparse._SubParsersAction) -> None:  # type: i
 
 def _api_command(args: argparse.Namespace) -> int:
     """Launch by import string, preserving the cli/api sibling boundary."""
+    os.environ[WRITABLE_ROUTES_ENV] = "0"
+    os.environ[WRITABLE_BIND_HOST_ENV] = args.host
     if args.enable_writes:
         try:
             assert_writable_startup_preconditions(
@@ -454,7 +456,6 @@ def _api_command(args: argparse.Namespace) -> int:
             print(error, file=sys.stderr)
             return EXIT_PRECONDITION
         os.environ[WRITABLE_ROUTES_ENV] = "1"
-        os.environ[WRITABLE_BIND_HOST_ENV] = args.host
     uvicorn.run("atlas.api.app:app", host=args.host, port=args.port)
     return EXIT_OK
 

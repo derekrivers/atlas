@@ -111,6 +111,11 @@ Writable API routes are off unless `atlas api serve --enable-writes` is used.
 The existing read-only loopback API can still be started without an operator
 token:
 
+Do not export `ATLAS_API_ENABLE_WRITES` or `ATLAS_API_BIND_HOST` by hand. Those
+variables are internal handoff state from the CLI to the imported API app, and
+each `atlas api serve` invocation overwrites them from its actual flags before
+launching Uvicorn.
+
 ```bash
 uv run atlas api serve --host 127.0.0.1 --port 8000
 ```

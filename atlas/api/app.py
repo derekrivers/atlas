@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from typing import Any, cast
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -40,6 +41,37 @@ API_V1_PREFIX = "/api/v1"
 CONTENT_SECURITY_POLICY = (
     "default-src 'self'; base-uri 'none'; frame-ancestors 'none'; object-src 'none'"
 )
+MUTATION_SECURITY_REQUIREMENT: dict[str, list[str]] = {
+    "AtlasSessionCookie": [],
+    "AtlasCSRFToken": [],
+}
+
+
+def _install_openapi_contract(application: FastAPI) -> None:
+    """Publish mutation authentication as one AND requirement in OpenAPI."""
+
+    generate_openapi = application.openapi
+
+    def openapi() -> dict[str, Any]:
+        document = generate_openapi()
+        for path_item in cast(dict[str, dict[str, Any]], document["paths"]).values():
+            for operation in path_item.values():
+                if not isinstance(operation, dict):
+                    continue
+                security = operation.get("security", [])
+                if not isinstance(security, list):
+                    continue
+                security_names = {
+                    name
+                    for requirement in security
+                    if isinstance(requirement, dict)
+                    for name in requirement
+                }
+                if security_names >= set(MUTATION_SECURITY_REQUIREMENT):
+                    operation["security"] = [MUTATION_SECURITY_REQUIREMENT]
+        return document
+
+    application.openapi = openapi  # type: ignore[method-assign]
 
 
 def create_app(
@@ -120,6 +152,7 @@ def create_app(
     application.include_router(status.router, prefix=API_V1_PREFIX)
     if enable_writes:
         application.include_router(session.router, prefix=API_V1_PREFIX)
+        _install_openapi_contract(application)
     return application
 
 

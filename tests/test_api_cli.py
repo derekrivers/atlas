@@ -21,6 +21,8 @@ def test_api_serve_uses_import_string_and_local_defaults(
         host="127.0.0.1",
         port=8000,
     )
+    assert os.environ["ATLAS_API_ENABLE_WRITES"] == "0"
+    assert os.environ["ATLAS_API_BIND_HOST"] == "127.0.0.1"
 
 
 def test_api_serve_forwards_host_and_port(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -106,4 +108,26 @@ def test_api_serve_enable_writes_sets_import_string_environment(
         "atlas.api.app:app",
         host="127.0.0.1",
         port=8010,
+    )
+
+
+def test_api_serve_without_enable_writes_overrides_stale_writable_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run = Mock()
+    monkeypatch.setattr(uvicorn, "run", run)
+    monkeypatch.setenv("ATLAS_API_ENABLE_WRITES", "1")
+    monkeypatch.setenv("ATLAS_API_BIND_HOST", "127.0.0.1")
+    monkeypatch.delenv("ATLAS_OPERATOR_TOKEN", raising=False)
+
+    assert (
+        cli.main(["api", "serve", "--host", "0.0.0.0", "--port", "8099"]) == cli.EXIT_OK
+    )
+
+    assert os.environ["ATLAS_API_ENABLE_WRITES"] == "0"
+    assert os.environ["ATLAS_API_BIND_HOST"] == "0.0.0.0"
+    run.assert_called_once_with(
+        "atlas.api.app:app",
+        host="0.0.0.0",
+        port=8099,
     )

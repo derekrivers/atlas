@@ -469,10 +469,12 @@ def test_ac7_openapi_declares_session_routes_security_and_no_usable_secret(
         "in": "header",
         "name": CSRF_HEADER_NAME,
     }
-    assert {
-        "AtlasSessionCookie": [],
-        "AtlasCSRFToken": [],
-    } in document["paths"]["/api/v1/session"]["delete"]["security"]
+    assert document["paths"]["/api/v1/session"]["delete"]["security"] == [
+        {
+            "AtlasSessionCookie": [],
+            "AtlasCSRFToken": [],
+        }
+    ]
     serialized = json.dumps(document, sort_keys=True)
     assert GOOD_TOKEN not in serialized
     assert WRONG_TOKEN not in serialized
