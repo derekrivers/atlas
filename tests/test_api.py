@@ -13,6 +13,7 @@ import sqlalchemy as sa
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.testclient import TestClient
+from linear_fakes import InMemoryLinearClient
 from schema_drift_helpers import (
     alembic_head_and_parent,
     drifted_database,
@@ -65,6 +66,8 @@ from atlas.core.models import (
     VerificationCheckType,
 )
 from atlas.dependencies import NotReadyCode, build_dependency_graph
+from atlas.linear.ownership import LinearStatusMap
+from atlas.pm.scheduler import TickConfig, run_scheduler
 from atlas.storage import (
     ADRRepo,
     Database,
@@ -489,6 +492,47 @@ def test_status_returns_operator_system_snapshot(database: Database) -> None:
         last_linear_sync_at=latest_successful_receipt,
         last_evidence_pull_at=latest_evidence_pull,
     ).model_dump(mode="json")
+
+
+def test_status_projects_actual_scheduler_completion_time(
+    database: Database, tmp_path: Path
+) -> None:
+    head, _parent = alembic_head_and_parent()
+    stamp_database(database, head)
+    started_at = datetime(2026, 7, 25, 12, tzinfo=UTC)
+    finished_at = datetime(2026, 7, 25, 12, 0, 9, tzinfo=UTC)
+    instants = iter((started_at, finished_at))
+    config = TickConfig(
+        tickets=TicketRepo(database),
+        db=database,
+        client=InMemoryLinearClient(),
+        status_map=LinearStatusMap(
+            {
+                "state-ready": TicketStatus.READY_FOR_AGENT,
+                "state-needs": TicketStatus.NEEDS_HUMAN_DECISION,
+                "state-done": TicketStatus.DONE,
+            }
+        ),
+        team_id="team-1",
+        project_id="project-1",
+        inbox_dir=tmp_path / "inbox",
+        documents=lambda: [],
+    )
+
+    run_scheduler(config, once=True, now=lambda: next(instants))
+
+    [receipt] = PmSyncReceiptRepo(database).list()
+    assert receipt.started_at == started_at
+    assert receipt.finished_at == finished_at
+    with TestClient(create_app(database=database)) as client:
+        response = client.get("/api/v1/status")
+
+    assert response.status_code == 200
+    projected = datetime.fromisoformat(
+        response.json()["last_linear_sync_at"].replace("Z", "+00:00")
+    )
+    assert projected == finished_at
+    assert projected != started_at
 
 
 def test_status_response_excludes_environment_secret_values(

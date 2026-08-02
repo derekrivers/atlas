@@ -255,13 +255,19 @@ Pull-based, consistent with ADR-0008 (no webhooks before hosting):
 5. Run anomaly and dwell checks (below).
 
 After step 5, before the tick reports success to its caller, the PM Engine
-appends one bounded `PmSyncReceipt`. The receipt stores the injected
-start/finish times, the configured Linear project id, the unambiguous product
+appends one bounded `PmSyncReceipt`. The receipt stores the injected entry-time
+logic clock and a second completion-clock sample taken after the body finishes,
+the configured Linear project id, the unambiguous product
 identity when one can be resolved, a SHA-256 fingerprint of the status map, a
 SHA-256 fingerprint of the fetched board's ids/identifiers/state metadata, the
 fetched issue count, the `SyncResult` integer counters, and a bounded result
 classification. It deliberately excludes Linear descriptions, issue bodies,
 comments, raw payloads, tokens and credentials.
+
+An unsuccessful receipt stores no arbitrary exception message. Its optional
+diagnostic is limited to a sanitized exception type and a controlled local
+error code; raw HTTP bodies, GraphQL errors and credential-bearing exception
+text are excluded even when the Linear client includes them in `str(error)`.
 
 Receipt persistence is part of the local completion boundary. If the tick body
 completed but the receipt write fails, `sync_tick` returns a typed receipt

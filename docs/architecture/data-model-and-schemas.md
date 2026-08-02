@@ -1358,15 +1358,21 @@ class PmSyncReceipt(BaseModel):
     created_by_id: str
 ```
 
-`started_at` is the injected tick clock at entry and `finished_at` is the tick
-completion instant used by status projections. `product_id` and `product_key`
+`started_at` is the injected tick clock sampled at entry and `finished_at` is a
+second clock sample taken after the tick body completes, or immediately before
+an unsuccessful receipt is recorded. The latter is the actual completion
+instant used by status projections, never an alias for the start time.
+`product_id` and `product_key`
 are populated when the tick's product is unambiguous from the board or a
 single-product store; otherwise they remain null rather than guessing. The
 `linear_project_id` is always the configured Linear project id. The two
 fingerprints are SHA-256 hashes over canonical, bounded inputs: the status map
 by Linear state id, and fetched board issue ids/identifiers/state metadata.
 `counters` stores the bounded `SyncResult` integer counters by name.
-`error_summary` is optional, bounded diagnostic text for unsuccessful receipts.
+`error_summary` is optional bounded diagnostic metadata for unsuccessful
+receipts: a sanitized exception type plus a controlled local error code. It
+never contains `str(error)`, an HTTP body, a GraphQL payload, a token or other
+arbitrary external exception text.
 
 Only `SUCCESS_DEFINITION_CHANGED`, `SUCCESS_STATUS_ONLY` and
 `SUCCESS_ZERO_ACTION` are successful receipts. `PARTIAL`, `MALFORMED_PULL`,

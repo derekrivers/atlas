@@ -90,7 +90,7 @@ import os
 import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -114,7 +114,12 @@ from atlas.learning import (
     LessonModelClient,
     extract_lesson_for_ticket,
 )
-from atlas.linear.client import LinearClient, LinearIssue
+from atlas.linear.client import (
+    LinearAPIError,
+    LinearClient,
+    LinearIssue,
+    LinearRateLimitError,
+)
 from atlas.linear.ownership import (
     PACK_HEADER_PREFIX,
     LinearStatusMap,
@@ -141,7 +146,7 @@ from atlas.storage.repositories import (
 # ``system`` and created_by_id names the writer (matches the §6.1 example).
 # One definition for the system-actor id, mirroring planning's CREATED_BY.
 CREATED_BY = "pm-engine"
-RECEIPT_ERROR_SUMMARY_MAX_LEN = 500
+RECEIPT_EXCEPTION_TYPE_MAX_LEN = 200
 
 
 class SyncReceiptPersistenceError(RuntimeError):
@@ -150,6 +155,12 @@ class SyncReceiptPersistenceError(RuntimeError):
 
 class MalformedLinearPullError(RuntimeError):
     """The batched Linear project pull returned an unusable board shape."""
+
+
+def _utcnow() -> datetime:
+    """Sample a timezone-aware completion instant for direct tick callers."""
+
+    return datetime.now(UTC)
 
 
 # Per-status dwell horizons (ATLAS-119; pm-engine-and-linear-sync.md "Anomaly and
@@ -534,12 +545,29 @@ def _sync_result_counters(result: SyncResult) -> dict[str, int]:
     return {name: int(getattr(result, name)) for name in SYNC_RESULT_COUNTER_NAMES}
 
 
-def _bounded_error_summary(error: BaseException) -> str:
+def _sanitized_error_summary(error: BaseException) -> str:
+    """Return bounded diagnostic metadata without exception message content.
+
+    Linear transport exceptions may embed response bodies, GraphQL payloads or
+    credentials in ``str(error)``. Receipts therefore persist only a sanitized
+    exception type plus one code selected from this closed local allow-list.
+    """
+
+    if isinstance(error, MalformedLinearPullError):
+        code = "malformed_linear_pull"
+    elif isinstance(error, (KeyboardInterrupt, SystemExit)):
+        code = "tick_cancelled"
+    elif isinstance(error, LinearRateLimitError):
+        code = "linear_rate_limited"
+    elif isinstance(error, LinearAPIError):
+        code = "linear_api_failure"
+    else:
+        code = "unexpected_failure"
+
     cls = type(error)
-    rendered = f"{cls.__module__}.{cls.__qualname__}: {error}"
-    if len(rendered) <= RECEIPT_ERROR_SUMMARY_MAX_LEN:
-        return rendered
-    return rendered[: RECEIPT_ERROR_SUMMARY_MAX_LEN - 3] + "..."
+    qualified_type = f"{cls.__module__}.{cls.__qualname__}"
+    safe_type = re.sub(r"[^A-Za-z0-9_.]+", "_", qualified_type)
+    return f"{safe_type[:RECEIPT_EXCEPTION_TYPE_MAX_LEN]}; code={code}"
 
 
 def _product_identity(
@@ -620,7 +648,9 @@ def _record_sync_receipt(
                 fetched_board_issue_count=len(context.fetched_issues),
                 result=receipt_result,
                 counters=_sync_result_counters(context.result),
-                error_summary=None if error is None else _bounded_error_summary(error),
+                error_summary=(
+                    None if error is None else _sanitized_error_summary(error)
+                ),
                 created_by_type=ActorType.SYSTEM,
                 created_by_id=CREATED_BY,
             )
@@ -1829,18 +1859,20 @@ def sync_tick(
     now: datetime,
     repair_packs: bool = False,
     lesson_client: LessonModelClient | None = None,
-    receipt_finished_at: datetime | None = None,
+    completion_clock: Callable[[], datetime] = _utcnow,
 ) -> SyncResult:
     """Run one sync tick and append its durable PM sync receipt.
 
     The internal sync body preserves the existing pull/push/promote/scan/anomaly
     behavior. This wrapper makes receipt persistence part of the local
     completion boundary: a receipt write failure raises
-    ``SyncReceiptPersistenceError`` and no successful result is returned.
+    ``SyncReceiptPersistenceError`` and no successful result is returned. The
+    deterministic logic clock ``now`` remains the tick start; ``completion_clock``
+    is sampled only after the body completes or immediately before recording a
+    failure/cancellation receipt.
     """
 
     context = _ReceiptContext()
-    finished_at = receipt_finished_at or now
     try:
         result = _sync_tick_impl(
             tickets=tickets,
@@ -1857,6 +1889,7 @@ def sync_tick(
             receipt_context=context,
         )
     except MalformedLinearPullError as error:
+        finished_at = completion_clock()
         _record_sync_receipt(
             db=db,
             status_map=status_map,
@@ -1869,6 +1902,7 @@ def sync_tick(
         )
         raise
     except (KeyboardInterrupt, SystemExit) as error:
+        finished_at = completion_clock()
         _record_sync_receipt(
             db=db,
             status_map=status_map,
@@ -1881,6 +1915,7 @@ def sync_tick(
         )
         raise
     except Exception as error:
+        finished_at = completion_clock()
         _record_sync_receipt(
             db=db,
             status_map=status_map,
@@ -1894,6 +1929,7 @@ def sync_tick(
         raise
 
     receipt_result = _classify_successful_receipt(result)
+    finished_at = completion_clock()
     _record_sync_receipt(
         db=db,
         status_map=status_map,

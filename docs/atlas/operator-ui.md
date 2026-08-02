@@ -89,7 +89,8 @@ complete board; staleness indicators over `last_linear_sync_at` and
 `last_evidence_pull_at`; the head of the critical path.
 
 `last_linear_sync_at` is consumed as the Operator API's truthful
-last-successful PM-sync receipt timestamp. The Overview must not infer Linear
+last-successful PM-sync receipt completion timestamp, sampled after the tick
+body finishes rather than at tick entry. The Overview must not infer Linear
 freshness from ticket definition cursors; before the first successful receipt
 the indicator shows the API's null value.
 

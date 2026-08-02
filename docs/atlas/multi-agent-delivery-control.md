@@ -42,6 +42,11 @@ cursor. A durable `PmSyncReceipt` records one completed tick with:
 - fetched-board fingerprint and ticket count;
 - result counters and a bounded success/failure classification.
 
+The start and finish are separate injected clock samples: finish is taken only
+after the tick body completes (or at its unsuccessful receipt boundary). Failed
+receipt diagnostics contain only a sanitized exception type and controlled
+local error code, never arbitrary Linear exception text or response payloads.
+
 Only `success_definition_changed`, `success_status_only` and
 `success_zero_action` receipts advance `last_successful_linear_sync_at`. Failed,
 cancelled, malformed-pull and partial ticks still write diagnostic receipts but

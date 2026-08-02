@@ -67,7 +67,12 @@ from atlas.core.models import (
     VerificationCheck,
 )
 from atlas.core.models.ticket import TicketStatus
-from atlas.linear.client import LinearComment, LinearIssue, WorkflowState
+from atlas.linear.client import (
+    LinearAPIError,
+    LinearComment,
+    LinearIssue,
+    WorkflowState,
+)
 from atlas.linear.ownership import LinearStatusMap
 from atlas.pm import (
     MalformedLinearPullError,
@@ -211,6 +216,14 @@ class FailingProjectPullClient(RecordingClient):
         raise RuntimeError(f"project pull failed for {project_id}")
 
 
+class SecretBearingProjectPullClient(RecordingClient):
+    def fetch_project_issues(self, project_id: str) -> list[LinearIssue]:
+        raise LinearAPIError(
+            "HTTP 400 Authorization: lin_api_super_secret; "
+            'body={"data":{"issues":[{"description":"raw-private-description"}]}}'
+        )
+
+
 class DuplicateProjectPullClient(RecordingClient):
     def fetch_project_issues(self, project_id: str) -> list[LinearIssue]:
         issues = super().fetch_project_issues(project_id)
@@ -334,7 +347,7 @@ def run(
     client: RecordingClient,
     *,
     now: datetime = NOW,
-    receipt_finished_at: datetime | None = None,
+    finished_at: datetime | None = None,
     inbox_dir: Path | None = None,
     lesson_client: FakeLessonClient | None = None,
 ) -> SyncResult:
@@ -357,7 +370,7 @@ def run(
         inbox_dir=inbox_dir or Path(tempfile.mkdtemp()),
         documents=lambda: [PACK_DOC],
         now=now,
-        receipt_finished_at=receipt_finished_at,
+        completion_clock=lambda: finished_at or now,
         lesson_client=lesson_client,
     )
 
@@ -450,7 +463,7 @@ def test_definition_changing_tick_records_success_receipt_and_advances_latest(
     product = seed_product_identity(db, ticket)
     finished_at = LATER
 
-    result = run(db, client, now=NOW, receipt_finished_at=finished_at)
+    result = run(db, client, now=NOW, finished_at=finished_at)
 
     [receipt] = PmSyncReceiptRepo(db).list()
     assert result.pushed_updated == 1
@@ -547,13 +560,37 @@ def test_failed_tick_records_failed_receipt_without_advancing_success(
     seed_ticket(db, client, key="ATLAS-248", status=TicketStatus.PLANNED)
 
     with pytest.raises(RuntimeError, match="project pull failed"):
-        run(db, client, now=NOW)
+        run(db, client, now=NOW, finished_at=LATER)
 
     [receipt] = PmSyncReceiptRepo(db).list()
     assert receipt.result == PmSyncReceiptResult.FAILED
-    assert receipt.error_summary is not None
-    assert "RuntimeError" in receipt.error_summary
+    assert receipt.started_at == NOW
+    assert receipt.finished_at == LATER
+    assert receipt.error_summary == ("builtins.RuntimeError; code=unexpected_failure")
     assert PmSyncReceiptRepo(db).latest_successful_finished_at() is None
+
+
+def test_failed_receipt_excludes_linear_secret_and_raw_payload_content(
+    db: Database,
+) -> None:
+    client = SecretBearingProjectPullClient()
+    seed_ticket(db, client, key="ATLAS-248S", status=TicketStatus.PLANNED)
+
+    with pytest.raises(LinearAPIError, match="lin_api_super_secret"):
+        run(db, client, now=NOW, finished_at=LATER)
+
+    [receipt] = PmSyncReceiptRepo(db).list()
+    assert receipt.error_summary == (
+        "atlas.linear.client.LinearAPIError; code=linear_api_failure"
+    )
+    durable = receipt.model_dump_json()
+    for forbidden in (
+        "lin_api_super_secret",
+        "Authorization",
+        "raw-private-description",
+        '"issues"',
+    ):
+        assert forbidden not in durable
 
 
 def test_malformed_pull_records_malformed_receipt_without_advancing_success(
@@ -563,10 +600,14 @@ def test_malformed_pull_records_malformed_receipt_without_advancing_success(
     seed_ticket(db, client, key="ATLAS-249", status=TicketStatus.PLANNED)
 
     with pytest.raises(MalformedLinearPullError, match="duplicate issue id"):
-        run(db, client, now=NOW)
+        run(db, client, now=NOW, finished_at=LATER)
 
     [receipt] = PmSyncReceiptRepo(db).list()
     assert receipt.result == PmSyncReceiptResult.MALFORMED_PULL
+    assert receipt.finished_at == LATER
+    assert receipt.error_summary == (
+        "atlas.pm.sync.MalformedLinearPullError; code=malformed_linear_pull"
+    )
     assert receipt.fetched_board_issue_count == 2
     assert PmSyncReceiptRepo(db).latest_successful_finished_at() is None
 
@@ -588,10 +629,13 @@ def test_cancelled_tick_records_cancelled_receipt_without_advancing_success(
             inbox_dir=Path(tempfile.mkdtemp()),
             documents=lambda: (_ for _ in ()).throw(KeyboardInterrupt("stop")),
             now=NOW,
+            completion_clock=lambda: LATER,
         )
 
     [receipt] = PmSyncReceiptRepo(db).list()
     assert receipt.result == PmSyncReceiptResult.CANCELLED
+    assert receipt.finished_at == LATER
+    assert receipt.error_summary == "builtins.KeyboardInterrupt; code=tick_cancelled"
     assert PmSyncReceiptRepo(db).latest_successful_finished_at() is None
 
 

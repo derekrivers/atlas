@@ -108,8 +108,8 @@ def _utcnow() -> datetime:
 @dataclass(frozen=True)
 class TickConfig:
     """The injection a single ``sync_tick`` needs, built once and reused every
-    tick. Mirrors ``sync_tick``'s keyword-only signature except for ``now``
-    (taken fresh per tick): ``tickets``, ``db``, ``client``, ``status_map``,
+    tick. Mirrors ``sync_tick``'s keyword-only signature except for the clocks
+    (sampled by the scheduler): ``tickets``, ``db``, ``client``, ``status_map``,
     ``team_id``, ``project_id``, ``inbox_dir``, ``documents``, and the
     operator-invoked ``repair_packs`` flag. ``documents`` (ATLAS-164) is the
     pack-inputs provider the CLI builds from the ``atlas.planning`` collectors —
@@ -179,18 +179,20 @@ def run_tick(
     failures: TickFailureRepo,
     *,
     now: datetime,
+    completion_clock: Callable[[], datetime] = _utcnow,
     result_sink: Callable[[SyncResult], None] | None = None,
 ) -> Exception | None:
     """Run exactly one sync tick. The single-tick body shared by ``--once`` and
     the loop.
 
-    Calls :func:`sync_tick` with the exact keyword injection from ``config`` and
-    the per-tick ``now``. On ANY exception it records one ``TickFailure`` (deduped
-    per :func:`_record_crash`) and returns — a crashing tick NEVER escapes, so the
-    loop is resilient by construction (AC1). Returns ``None`` on a clean tick, the
-    caught exception when the tick crashed (recorded or deduped) — so the loop can
-    stretch its next wait on a :class:`LinearRateLimitError` (ATLAS-147) without
-    the crash ever escaping."""
+    Calls :func:`sync_tick` with the exact keyword injection from ``config``, the
+    already-sampled tick start, and a completion clock sampled by ``sync_tick``
+    after its body finishes (or at the failure boundary). On ANY exception it
+    records one ``TickFailure`` (deduped per :func:`_record_crash`) and returns —
+    a crashing tick NEVER escapes, so the loop is resilient by construction
+    (AC1). Returns ``None`` on a clean tick, the caught exception when the tick
+    crashed (recorded or deduped) — so the loop can stretch its next wait on a
+    :class:`LinearRateLimitError` (ATLAS-147) without the crash ever escaping."""
 
     try:
         tick_kwargs: dict[str, object] = {
@@ -203,6 +205,7 @@ def run_tick(
             "inbox_dir": config.inbox_dir,
             "documents": config.documents,
             "now": now,
+            "completion_clock": completion_clock,
         }
         if config.repair_packs:
             tick_kwargs["repair_packs"] = True
@@ -237,7 +240,8 @@ def run_scheduler(
     it returns True when shutdown was signalled during the wait; the default is
     ``shutdown.wait`` (woken early by the signal). All of ``now``/``shutdown``/
     ``sleep`` are injectable so CI exercises the full loop with a fake clock and a
-    fake sleep, no real time and no signals.
+    fake sleep, no real time and no signals. The same injected clock is sampled at
+    tick entry and again by ``sync_tick`` at its receipt completion boundary.
 
     ``--once`` (``once=True``) runs exactly one tick and returns, ignoring the
     cadence entirely (AC3).
@@ -263,7 +267,13 @@ def run_scheduler(
         "single tick (--once)" if once else f"interval {interval}s",
     )
     while True:
-        crash = run_tick(config, failures, now=now(), result_sink=remember_result)
+        crash = run_tick(
+            config,
+            failures,
+            now=now(),
+            completion_clock=now,
+            result_sink=remember_result,
+        )
         if once:
             return last_result
         if shutdown.is_set():
