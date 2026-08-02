@@ -70,22 +70,30 @@ operator account.
 ## Authentication and session contract
 
 The bootstrap credential is provided at runtime through
-`ATLAS_OPERATOR_TOKEN`. Startup of writable routes fails closed when it is
-missing or below the documented entropy/length contract. It is never accepted
-in a URL or query parameter, embedded in the UI bundle, written to the Atlas
-store or logged.
+`ATLAS_OPERATOR_TOKEN`. Writable routes are enabled explicitly with
+`atlas api serve --enable-writes`; the read-only loopback API remains startable
+without the variable. Startup of writable routes fails closed when the token is
+missing, shorter than 43 printable non-whitespace ASCII characters, longer than
+512 characters, or below the 128-bit estimated entropy floor. Operators should
+generate it with a cryptographic random source such as
+`python -c 'import secrets; print(secrets.token_urlsafe(32))'`; the server-side
+estimator is a guardrail, not proof of true randomness. The token is never
+accepted in a URL or query parameter, embedded in the UI bundle, written to the
+Atlas store or logged.
 
-`POST /api/v1/session` accepts the bootstrap credential in a strict JSON body
-and compares it in constant time. Success creates a short-lived server-side
-session and returns a CSRF token once. The browser receives an opaque,
-high-entropy, host-only, HttpOnly, SameSite=Strict session cookie. The UI keeps
-the CSRF token in memory only and sends it in `X-Atlas-CSRF` for every mutation.
-`GET /api/v1/session` reports authenticated/expiry state without returning the
-credential or CSRF secret. `DELETE /api/v1/session` revokes the session.
+`POST /api/v1/session` accepts the bootstrap credential only in an exact
+`Content-Type: application/json` body and compares it in constant time. Success
+creates a 30-minute server-side session and returns a CSRF token once. The
+browser receives an opaque, high-entropy, host-only, HttpOnly, SameSite=Strict
+`atlas_session` cookie with no `Domain` attribute. The cookie is not marked
+`Secure` on loopback HTTP. The UI keeps the CSRF token in memory only and sends
+it in `X-Atlas-CSRF` for every mutation. `GET /api/v1/session` reports
+authenticated/expiry state without returning the credential or CSRF secret.
+`DELETE /api/v1/session` revokes the exact live session.
 
 Every mutation additionally requires:
 
-- exact allowed Host and Origin values for the supported loopback UI;
+- a loopback Host and an exact Origin of `http://<Host>`;
 - `Content-Type: application/json`;
 - the per-session CSRF header;
 - a non-expired server-side session;

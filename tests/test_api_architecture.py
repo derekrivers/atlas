@@ -739,3 +739,114 @@ def test_api_and_cli_remain_independent_siblings() -> None:
                 if node.module == "atlas":
                     imported = {alias.name for alias in node.names}
                     assert "cli" not in imported, f"{path} imports atlas.cli"
+
+
+def _route_methods(node: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str]:
+    methods: set[str] = set()
+    for decorator in node.decorator_list:
+        if (
+            isinstance(decorator, ast.Call)
+            and isinstance(decorator.func, ast.Attribute)
+            and decorator.func.attr in {"post", "put", "patch", "delete"}
+        ):
+            methods.add(decorator.func.attr.upper())
+    return methods
+
+
+def _annotation_names(node: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str]:
+    return {
+        _annotation_text(arg.annotation)
+        for arg in [*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs]
+    }
+
+
+def _context_dependency_aliases() -> set[str]:
+    tree = ast.parse(DEPENDENCIES_PATH.read_text(encoding="utf-8"))
+    context_consuming_functions = {
+        node.name
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef)
+        and any("MutationContextDependency" in name for name in _annotation_names(node))
+    }
+    aliases = {"MutationContextDependency"}
+    for node in tree.body:
+        if not isinstance(node, ast.Assign) or len(node.targets) != 1:
+            continue
+        target = node.targets[0]
+        if not isinstance(target, ast.Name):
+            continue
+        value_text = ast.unparse(node.value)
+        if any(
+            f"Depends({function_name})" in value_text
+            for function_name in context_consuming_functions
+        ):
+            aliases.add(target.id)
+    return aliases
+
+
+def _writable_route_security_violations_for(
+    source: str,
+    *,
+    path: Path,
+    context_aliases: set[str],
+) -> list[str]:
+    tree = ast.parse(dedent(source).strip() + "\n")
+    violations: list[str] = []
+    for node in tree.body:
+        if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+            continue
+        methods = _route_methods(node)
+        if not methods or (
+            path.name == "session.py" and node.name == "create_operator_session"
+        ):
+            continue
+        annotations = _annotation_names(node)
+        if not any(
+            context_alias in annotation
+            for context_alias in context_aliases
+            for annotation in annotations
+        ):
+            violations.append(
+                f"{path}:{node.lineno} {node.name} {sorted(methods)} "
+                "does not depend on MutationContextDependency"
+            )
+    return violations
+
+
+def test_writable_routes_require_shared_security_dependency() -> None:
+    context_aliases = _context_dependency_aliases()
+    assert "RevokedOperatorSessionDependency" in context_aliases
+
+    violations: list[str] = []
+    for path in ROUTERS_ROOT.glob("*.py"):
+        violations.extend(
+            _writable_route_security_violations_for(
+                path.read_text(encoding="utf-8"),
+                path=path,
+                context_aliases=context_aliases,
+            )
+        )
+
+    assert violations == []
+
+
+def test_writable_route_security_sensor_fires_on_seeded_bypass() -> None:
+    # Seeded red first with `assert 1 == 2` (B011); the wrong answer was a
+    # writable route calling service logic without resolving the shared
+    # mutation context.
+    violations = _writable_route_security_violations_for(
+        """
+        from fastapi import APIRouter
+
+        router = APIRouter()
+
+        @router.post("/seeded")
+        def seeded_write() -> dict[str, str]:
+            assert 1 == 2
+            return {"status": "bad"}
+        """,
+        path=Path("seeded.py"),
+        context_aliases=_context_dependency_aliases(),
+    )
+
+    assert violations

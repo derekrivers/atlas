@@ -89,6 +89,25 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Operator Session */
+        get: operations["read_operator_session_api_v1_session_get"];
+        put?: never;
+        /** Create Operator Session */
+        post: operations["create_operator_session_api_v1_session_post"];
+        /** Revoke Operator Session */
+        delete: operations["revoke_operator_session_api_v1_session_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/status": {
         parameters: {
             query?: never;
@@ -503,6 +522,45 @@ export interface components {
          */
         RiskLevel: "low" | "medium" | "high" | "critical";
         /**
+         * SessionLoginRequest
+         * @description Bootstrap-token login request for the single local operator.
+         * @example {
+         *       "token": "<ATLAS_OPERATOR_TOKEN>"
+         *     }
+         */
+        SessionLoginRequest: {
+            /** Token */
+            token: string;
+        };
+        /**
+         * SessionLoginResponse
+         * @description Successful operator login state plus one in-memory CSRF value.
+         */
+        SessionLoginResponse: {
+            /**
+             * Authenticated
+             * @constant
+             */
+            authenticated: true;
+            /** Csrf Token */
+            csrf_token: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+        };
+        /**
+         * SessionStateResponse
+         * @description Current browser session state without credential material.
+         */
+        SessionStateResponse: {
+            /** Authenticated */
+            authenticated: boolean;
+            /** Expires At */
+            expires_at: string | null;
+        };
+        /**
          * SystemStatusResponse
          * @description Singleton operator-facing Atlas instance status.
          */
@@ -821,6 +879,79 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ReviewQueueResponse"];
+                };
+            };
+        };
+    };
+    read_operator_session_api_v1_session_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionStateResponse"];
+                };
+            };
+        };
+    };
+    create_operator_session_api_v1_session_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SessionLoginRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionLoginResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_operator_session_api_v1_session_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionStateResponse"];
                 };
             };
         };

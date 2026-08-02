@@ -24,6 +24,7 @@ export const ATLAS_QUERY_ROUTES = [
   '/api/v1/dependencies/critical-path',
   '/api/v1/dependencies/graph',
   '/api/v1/reviews',
+  '/api/v1/session',
   '/api/v1/status',
 ] as const satisfies readonly AtlasApiRoute[]
 
@@ -34,6 +35,7 @@ export const atlasQueryKeys = {
   lessons: (status?: Schema['EntityStatus'] | null) =>
     ['atlas', 'lessons', status ?? null] as const,
   reviews: () => ['atlas', 'reviews'] as const,
+  session: () => ['atlas', 'session'] as const,
   status: () => ['atlas', 'status'] as const,
   ticketCount: () => ['atlas', 'tickets', 'count'] as const,
   ticketDependencies: (key: string) =>
@@ -123,6 +125,13 @@ export function useReviewsQuery(): AtlasQueryResult<'/api/v1/reviews'> {
   return useQuery({
     queryKey: atlasQueryKeys.reviews(),
     queryFn: () => atlasGet('/api/v1/reviews'),
+  })
+}
+
+export function useSessionQuery(): AtlasQueryResult<'/api/v1/session'> {
+  return useQuery({
+    queryKey: atlasQueryKeys.session(),
+    queryFn: () => atlasGet('/api/v1/session'),
   })
 }
 

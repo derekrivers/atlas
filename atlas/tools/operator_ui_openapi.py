@@ -17,6 +17,9 @@ APP_ROOT: Final = REPO_ROOT / "apps" / "operator-ui"
 GENERATED_CLIENT: Final = APP_ROOT / "src" / "api" / "atlas-openapi.ts"
 GENERATED_RUNTIME_ENUMS: Final = APP_ROOT / "src" / "api" / "atlas-openapi-runtime.ts"
 OPENAPI_TYPESCRIPT: Final = APP_ROOT / "node_modules" / ".bin" / "openapi-typescript"
+OPENAPI_OPERATOR_TOKEN: Final = (
+    "openapi-contract-placeholder-0123456789ABCDEFGHJKLMNPQRSTxyz!@#"
+)
 
 
 def load_openapi_document(*, seed_response_field: str | None = None) -> dict[str, Any]:
@@ -24,7 +27,11 @@ def load_openapi_document(*, seed_response_field: str | None = None) -> dict[str
 
     from atlas.api.app import create_app
 
-    document = create_app().openapi()
+    document = create_app(
+        enable_writes=True,
+        operator_token=OPENAPI_OPERATOR_TOKEN,
+        bind_host="127.0.0.1",
+    ).openapi()
     if seed_response_field is not None:
         add_seeded_response_field(document, seed_response_field)
     return document

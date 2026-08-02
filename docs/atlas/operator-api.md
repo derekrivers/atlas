@@ -1,19 +1,25 @@
 # Operator API Design (Phase 10)
 
 Status: Active design document for Phase 10, amended by Phase 11 OP-2 for
-exactly two additive read routes. Describes the read-only HTTP projection
-surface delivered by ATLAS-187..191 and the Phase 11 additions that follow it.
+exactly two additive read routes and by Phase 13 for loopback operator session
+authentication. Describes the HTTP projection surface delivered by
+ATLAS-187..191, the Phase 11 additions that follow it, and the Phase 13 session
+boundary that gates later writes.
 
 ## Purpose and scope
 
 The operator API exposes Atlas operational state to a local operator through a
 small, versioned HTTP contract. Its current resources are the ticket board,
 ticket count, ticket detail, ticket evidence, epics, lessons, dependency
-readiness, critical path, review queue, and system status. It is a projection
-of existing state, not a new source of truth and not a second place to
-implement domain behaviour.
+readiness, critical path, review queue, system status, and local browser
+session state. It is a projection of existing state plus a server-owned browser
+session boundary, not a new source of truth and not a second place to implement
+domain behaviour.
 
-The operator API is a read-only projection surface in this phase. It serves GET endpoints only. Writeable actions are a future phase and do not begin until authentication, actor context, and a threat model land together in the same phase.
+The original Phase 10 operator API was a read-only projection surface. Phase 13
+adds authenticated session lifecycle routes and the shared mutation-security
+dependency, but no resource mutation. Lesson or other writable commands remain
+absent until they can depend on that shared boundary.
 
 ## Position in the architecture
 
@@ -58,7 +64,10 @@ Merge is always an operator-manual step in GitHub's UI. Atlas never gains PR-mer
 
 Linear status moves remain manual in this phase; the API does not write to Linear.
 
-The server binds to loopback. Any remote binding is gated on the writeable-phase entry criteria (D-1), plus startup refusal when authentication is not configured.
+The server binds to loopback for supported operation. Writable serving is
+enabled only with `atlas api serve --enable-writes`; it refuses startup unless
+`ATLAS_OPERATOR_TOKEN` satisfies the Phase 13 length and entropy contract and
+the bind host is loopback. Remote writable serving is unsupported.
 
 The supported `atlas api serve` default is therefore `127.0.0.1`. The generic
 `--host` launch option does not make remote binding a supported deployment in
@@ -86,6 +95,9 @@ additions as phase authority, is:
 | GET    | `/api/v1/dependencies/critical-path` | none | `DependencyCriticalPathResponse` | Phase 10 |
 | GET    | `/api/v1/dependencies/graph` | none | `DependencyGraphResponse` | Phase 11 OP-2 |
 | GET    | `/api/v1/reviews`       | none             | `ReviewQueueResponse`     | Phase 10 |
+| GET    | `/api/v1/session`       | session cookie if present | `SessionStateResponse` | Phase 13 |
+| POST   | `/api/v1/session`       | strict JSON `SessionLoginRequest` | `SessionLoginResponse` | Phase 13 |
+| DELETE | `/api/v1/session`       | live cookie + `X-Atlas-CSRF` | `SessionStateResponse` | Phase 13 |
 | GET    | `/api/v1/status`        | none             | `SystemStatusResponse`    | Phase 10 |
 
 Phase 11, by authority of `docs/atlas/operator-ui.md` OP-2, permits exactly
@@ -151,6 +163,29 @@ additional v1 route beyond the two OP-2 additions named here.
 version, store schema revision, ticket and evidence counts, and the latest
 Linear-sync and evidence-pull timestamps.
 
+`POST /api/v1/session` accepts only a strict JSON body containing the
+bootstrap operator token. Success returns authenticated state, an expiry
+timestamp and one CSRF token, while setting the opaque host-only HttpOnly
+SameSite=Strict `atlas_session` cookie. `GET /api/v1/session` returns only
+authenticated state and expiry metadata. `DELETE /api/v1/session` uses the
+same mutation-security dependency as future writes and revokes the exact live
+session. Session responses use `Cache-Control: no-store`.
+
+Every mutation route, including session revocation and future lesson
+commands, must resolve `MutationContextDependency`. That dependency requires a
+loopback Host, an exact `http://<Host>` Origin, strict
+`Content-Type: application/json`, a live `atlas_session` cookie and a matching
+`X-Atlas-CSRF` value. The resolved actor is always
+`created_by_type: human, created_by_id: "operator"` and cannot be supplied or
+overridden by request JSON or headers.
+
+The API installs no CORS middleware. Session and mutation responses are
+`no-store`; all API responses include `X-Frame-Options: DENY` and the CSP:
+
+```text
+default-src 'self'; base-uri 'none'; frame-ancestors 'none'; object-src 'none'
+```
+
 Closed-value response fields use the canonical domain `StrEnum` types directly:
 `TicketStatus`, `TicketType`, `RiskLevel`, `EvidenceType`, `ActorType`,
 `EpicStatus`, `EntityStatus`, `LessonCategory`, `VerificationCheckType`,
@@ -166,10 +201,10 @@ bespoke error envelope in this phase.
 
 ## Deferred capabilities
 
-- **Writeable commands** — enter only when authentication, actor context, and a
-  threat model are designed and land together in the writeable phase.
-- **Authentication** — enters with the writeable phase as part of that same
-  authentication, actor-context, and threat-model boundary.
+- **Resource writeable commands** — enter only behind the Phase 13 session,
+  CSRF, origin and server-owned actor boundary.
+- **Remote authentication and hosting** — remain unsupported; HTTPS, Secure
+  cookies, remote origins and deployment topology require a later design gate.
 - **Pagination** — enters when measured collection size or response cost shows
   that complete ticket or review projections are no longer operationally
   suitable, with ordering and continuation semantics designed as one contract.

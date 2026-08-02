@@ -2,6 +2,8 @@ import { ATLAS_API_BASE_URL } from '@/api/config'
 import type { components, paths } from '@/api/atlas-openapi'
 
 type OperationFor<Path extends keyof paths> = paths[Path]['get']
+type PostOperationFor<Path extends keyof paths> = paths[Path]['post']
+type DeleteOperationFor<Path extends keyof paths> = paths[Path]['delete']
 
 type JsonResponse<Operation> = Operation extends {
   responses: {
@@ -13,6 +15,16 @@ type JsonResponse<Operation> = Operation extends {
   }
 }
   ? Response
+  : never
+
+type JsonRequest<Operation> = Operation extends {
+  requestBody: {
+    content: {
+      'application/json': infer Request
+    }
+  }
+}
+  ? Request
   : never
 
 type OperationParameters<Path extends keyof paths> =
@@ -46,6 +58,15 @@ type RequestArguments<Path extends keyof paths> =
 export type AtlasApiRoute = keyof paths
 export type AtlasRouteResponse<Path extends AtlasApiRoute> = JsonResponse<
   OperationFor<Path>
+>
+export type AtlasSessionState = JsonResponse<
+  OperationFor<'/api/v1/session'>
+>
+export type AtlasSessionLoginRequest = JsonRequest<
+  PostOperationFor<'/api/v1/session'>
+>
+export type AtlasSessionLoginResponse = JsonResponse<
+  PostOperationFor<'/api/v1/session'>
 >
 
 export type AtlasValidationError = components['schemas']['HTTPValidationError']
@@ -156,6 +177,54 @@ async function responseBody(response: Response): Promise<unknown> {
   return response.text()
 }
 
+let atlasCsrfToken: string | null = null
+
+async function atlasJsonRequest<ResponseBody>({
+  body,
+  includeCsrf,
+  method,
+  route,
+}: {
+  body?: unknown
+  includeCsrf: boolean
+  method: 'DELETE' | 'POST'
+  route: AtlasApiRoute
+}): Promise<ResponseBody> {
+  const headers: Record<string, string> = {
+    Accept: 'application/json',
+    'Content-Type': 'application/json',
+  }
+  if (includeCsrf && atlasCsrfToken) {
+    headers['X-Atlas-CSRF'] = atlasCsrfToken
+  }
+
+  let response: Response
+  try {
+    response = await fetch(requestUrl(route, undefined), {
+      body: body === undefined ? undefined : JSON.stringify(body),
+      credentials: 'same-origin',
+      headers,
+      method,
+    })
+  } catch (error) {
+    throw new AtlasApiUnreachableError(ATLAS_API_BASE_URL, error)
+  }
+
+  if (!response.ok) {
+    const errorBody = await responseBody(response)
+    if (looksLikeProxyFailure(response.status, errorBody)) {
+      throw new AtlasApiUnreachableError(ATLAS_API_BASE_URL, errorBody)
+    }
+    throw new AtlasRequestError({
+      body: errorBody,
+      status: response.status,
+      statusText: response.statusText,
+    })
+  }
+
+  return response.json() as Promise<ResponseBody>
+}
+
 export async function atlasGet<Path extends AtlasApiRoute>(
   route: Path,
   ...[options]: RequestArguments<Path>
@@ -164,6 +233,7 @@ export async function atlasGet<Path extends AtlasApiRoute>(
 
   try {
     response = await fetch(requestUrl(route, options), {
+      credentials: 'same-origin',
       headers: {
         Accept: 'application/json',
       },
@@ -185,4 +255,33 @@ export async function atlasGet<Path extends AtlasApiRoute>(
   }
 
   return response.json() as Promise<AtlasRouteResponse<Path>>
+}
+
+export async function atlasLogin(
+  request: AtlasSessionLoginRequest
+): Promise<AtlasSessionLoginResponse> {
+  const response = await atlasJsonRequest<AtlasSessionLoginResponse>({
+    body: request,
+    includeCsrf: false,
+    method: 'POST',
+    route: '/api/v1/session',
+  })
+  atlasCsrfToken = response.csrf_token
+  return response
+}
+
+export async function atlasSessionState(): Promise<AtlasSessionState> {
+  return atlasGet('/api/v1/session')
+}
+
+export async function atlasLogout(): Promise<AtlasSessionState> {
+  const response = await atlasJsonRequest<
+    JsonResponse<DeleteOperationFor<'/api/v1/session'>>
+  >({
+    includeCsrf: true,
+    method: 'DELETE',
+    route: '/api/v1/session',
+  })
+  atlasCsrfToken = null
+  return response
 }
