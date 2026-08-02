@@ -1,7 +1,7 @@
 # Render written only by `atlas apply` (ADR-0006/0007); do not hand-edit.
-# plan_run_id: 169d3cdb-ea0d-4149-96e4-4be8f3c590b2
+# plan_run_id: c89c7c82-d451-4ddb-a314-5b0e8d6d8348
 # prompt_version: stubs-only
-# ticket_key_high_water: 230
+# ticket_key_high_water: 253
 # epic_key_high_water: 13
 tickets:
 - id: 06701bee-33ed-44e6-b735-52dfd7c5edc8
@@ -10039,7 +10039,7 @@ tickets:
   title: Exact-head PR mainline integration assessment
   objective: Give every operator acceptance command one read-only, typed answer to whether an open pull request's exact head contains the exact current main commit, so stale review evidence and GitHub's approximate mergeability fields cannot be mistaken for mainline freshness.
   context: 'Phase 11 proved the three-agent delivery loop but repeatedly left a trailing Review Required PR stale after a sibling merged. ATLAS-168 correctly makes agents rebase before PR open, before every push and before Review Required; it deliberately sends post-handoff staleness through Changes Requested because Atlas has no operator-owned integration lane. Phase 12 replaces only that post-handoff fallback. This ticket establishes the shared read-only primitive on which both the rebase driver and the acceptance gate depend. Pre-ruled decisions: D-1 the GitHub REST compare endpoint is called with the exact `base.sha...head.sha` obtained from the same PR snapshot; branch names and locally cached remote-tracking refs are not freshness evidence. D-2 the result separates ancestry from mergeability: ancestry is one of current, behind, diverged or indeterminate; mergeability is mergeable, conflicted or indeterminate. D-3 the overall integration status is `current` only for an open, non-draft, same-repository PR targeting `main`, with compare `behind_by == 0`, merge-base SHA equal to the PR base SHA, and mergeability known not-conflicted. GitHub''s temporary `mergeable: null` fails closed as indeterminate; a missing compare field or contradictory payload is a typed boundary error, and neither case can yield current. D-4 the assessment is immutable and carries every SHA and ref needed to prove what was assessed; downstream code never reparses the raw GitHub payload. D-5 this ticket is read-only: it performs no Git, GitHub, Atlas-store or Linear write and does not decide whether a rebase may be published.'
-  status: planned
+  status: done
   ticket_type: infrastructure
   risk_level: medium
   priority: 50
@@ -10065,11 +10065,12 @@ tickets:
   - Extend the existing stubbed-urllib GitHub client tests and add orchestration/CLI tests with injected fakes; no live GitHub calls and `ATLAS_LIVE_TESTS=0`.
   - Existing evidence, verification and PR-context tests pass unmodified apart from the minimum fake-protocol additions required by the new read method; seeded Python defects use `assert 1 == 2` (B011).
   documentation_requirements:
-  - Document the exact-head definition, state vocabulary and read-only CLI in `symphony-integration.md` and cross-reference it from the acceptance runbook without yet changing the binding acceptance sequence.
+  - docs/atlas/symphony-integration.md
+  - docs/runbooks/pr-acceptance.md
   definition_of_done:
   - All seven acceptance criteria are evidenced by named tests; the full Python gate sweep and doc linter are green; canonical documentation lands in the same change; the PR title carries the minted ticket key.
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: 16e2aba5-fc9a-4f5e-bcd7-2ecfffc583e1
   external_github_issue_id: null
   tags:
   - github
@@ -10077,17 +10078,17 @@ tickets:
   - exact-head
   - mainline
   component: atlas.github
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-07-30T16:33:30.340654Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-07-30T20:15:34.673886Z'
   review_cycle_count: 0
-  lesson_extraction_attempted_at: null
+  lesson_extraction_attempted_at: '2026-07-30T20:15:34.673886Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-01-pr-integration-assessment.md#exact-head-pr-mainline-integration-assessment
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-07-30T16:33:30.340654Z'
   updated_at: '2026-07-30T16:33:30.340654Z'
-  completed_at: null
+  completed_at: '2026-07-30T20:15:34.673886Z'
 - id: 9fb2782b-b895-4063-9669-231481d96181
   product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
   epic_id: 4d034c8b-0752-4089-8ff9-2fd43f51c6f4
@@ -10095,7 +10096,7 @@ tickets:
   title: Operator-owned lease-guarded PR rebase lane
   objective: Let the operator rebase a mechanically stale Review Required pull request onto current main in a durable isolated worktree, resolve any conflicts deliberately, and publish the rewritten head only when both the PR branch and main still equal the SHAs originally assessed.
   context: 'The Phase 11 run showed that implementation is no longer the main bottleneck: sibling merges repeatedly made correct PRs stale and sent them through a full Symphony Changes Requested cycle for a mechanical rebase. ATLAS-168 remains binding before Review Required; this lane starts only after handoff and is operator-owned. Pre-ruled decisions: D-1 the command surface is `atlas pr rebase prepare --pr N --repo OWNER/REPO`, followed when needed by `continue --workspace PATH`, `publish --workspace PATH` or `abort --workspace PATH`. D-2 work occurs in a detached linked worktree beneath the gitignored `.atlas/rebase-workspaces/` root; the operator''s current branch, index and working tree are never changed. D-3 the manifest pins repository identity, PR number, branch ref, original head SHA, base ref and SHA, merge-base SHA and state transitions. D-4 conflicts are never resolved automatically: the stopped rebase and exact unmerged paths remain in the worktree for the operator; `continue` only proceeds after the index has no unresolved entries and may stop again on a later conflict. D-5 publication refetches the PR and remote refs, rejects any head or base movement, and uses only the explicit expected-value lease `--force-with-lease=refs/heads/<branch>:<original-head-sha>`; bare `--force`, implicit `--force-with-lease` and GitHub Update branch are forbidden. D-6 a successful publish is verified back through the shared exact-head assessment, writes a durable receipt, and does not change Linear or Atlas ticket status. D-7 fork PRs and automatic conflict resolution are deferred.'
-  status: planned
+  status: done
   ticket_type: infrastructure
   risk_level: high
   priority: 50
@@ -10122,11 +10123,13 @@ tickets:
   - Integration tests use temporary repositories and local bare remotes to cover clean rebase, one and multiple conflict stops, continue, abort, branch-head race, main race, exact lease rejection, publish confirmation and receipt/worktree cleanup; GitHub and ticket-store reads use injected fakes and `ATLAS_LIVE_TESTS=0`.
   - Safety tests snapshot the primary checkout's branch, HEAD, index, status and local refs before and after every success/failure path and exercise path traversal, symlink escape and foreign-manifest rejection; seeded Python defects use `assert 1 == 2` (B011).
   documentation_requirements:
-  - Document command-by-command recovery, conflict ownership, manifest/receipt locations, exact lease semantics, exit states and the no-Linear/no-merge boundary in `symphony-integration.md`, `pr-acceptance.md` and `operator-environment.md`.
+  - docs/atlas/symphony-integration.md
+  - docs/runbooks/pr-acceptance.md
+  - docs/runbooks/operator-environment.md
   definition_of_done:
   - All seven acceptance criteria are evidenced by named deterministic tests; the full Python gate sweep and doc linter are green; canonical docs land in the same change; the PR title carries the minted ticket key.
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: f57376dc-6ee0-48f5-8b5e-a9c0f46d303c
   external_github_issue_id: null
   tags:
   - orchestration
@@ -10135,17 +10138,17 @@ tickets:
   - operator
   - mainline
   component: orchestration
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-07-30T16:33:30.340654Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-07-31T10:40:40.662065Z'
   review_cycle_count: 0
-  lesson_extraction_attempted_at: null
+  lesson_extraction_attempted_at: '2026-07-31T10:40:40.662065Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-02-operator-pr-rebase-lane.md#operator-owned-lease-guarded-pr-rebase-lane
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-07-30T16:33:30.340654Z'
   updated_at: '2026-07-30T16:33:30.340654Z'
-  completed_at: null
+  completed_at: '2026-07-31T10:40:40.662065Z'
 - id: 9ed2bc93-92f4-4e51-a2bb-8008698b079c
   product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
   epic_id: 4d034c8b-0752-4089-8ff9-2fd43f51c6f4
@@ -10153,7 +10156,7 @@ tickets:
   title: Mainline freshness gate and exact-head acceptance restart
   objective: Make exact current-main ancestry a binding precondition of the canonical PR acceptance spine, and require evidence, human confirmations and verification to restart at every operator-rebased head before the merge prompt can appear.
   context: '`scripts/close_ticket.py` currently begins with `atlas evidence pull`; it can therefore write evidence and prompt for human confirmations before proving that the PR contains current main. The runbook relies on operator discipline and routes a sibling-staled Review Required PR through Changes Requested, even when no semantic remediation is needed. The first two Phase 12 tickets provide one exact-head classifier and a lease-guarded operator rebase lane. This ticket makes them binding in acceptance. Pre-ruled decisions: D-1 the initial freshness assessment is read-only and runs before evidence pull, confirmation or any operator prompt. D-2 only overall `current` enters the acceptance spine; behind, diverged, conflicted, ineligible and indeterminate states fail closed and name the operator rebase command. D-3 after evidence, confirmation and a PASSED exact-head verification, the script assesses the PR again immediately before displaying the merge prompt. The live PR head must equal the verified head and initial head, and the live base SHA must equal the initial base SHA; movement restarts the spine. D-4 evidence and confirmations stay append-only, but existing commit-SHA matching remains authoritative: records from the old head are history, never authority for the rebased head. D-5 an operator rebase leaves the ticket in Review Required; Changes Requested is reserved for semantic/code remediation that Symphony must perform. D-6 the merge remains a manual operator action and the existing one-PR freeze interval remains binding; this ticket does not claim to eliminate a race after the final assessment and before the manual GitHub merge.'
-  status: planned
+  status: done
   ticket_type: infrastructure
   risk_level: high
   priority: 50
@@ -10180,11 +10183,13 @@ tickets:
   - Extend `tests/test_close_ticket_script.py` with injected assessment snapshots and command/prompt spies; add focused evaluator tests only where needed to prove old-head records cannot satisfy a new head. No live GitHub or Linear calls and `ATLAS_LIVE_TESTS=0`.
   - Preserve existing closure-tail tests and add explicit assertions that no `atlas evidence`, `confirm`, `verify`, merge prompt, checkout, migration or sync action occurs before/after the corresponding fail-closed boundary; seeded Python defects use `assert 1 == 2` (B011).
   documentation_requirements:
-  - Replace the post-verdict `Changes Requested` fallback consistently in `WORKFLOW.md`, `symphony-integration.md` and `pr-acceptance.md`; document the exact restart sequence and retain the existing ADR-0008 evidence-at-head and manual-merge rules.
+  - WORKFLOW.md
+  - docs/atlas/symphony-integration.md
+  - docs/runbooks/pr-acceptance.md
   definition_of_done:
   - All seven acceptance criteria are evidenced by named tests; the full Python gate sweep and doc linter are green; the three canonical workflow surfaces agree in the same change; the PR title carries the minted ticket key.
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: cdf3ca37-0d92-4f20-9a69-107aa7c22120
   external_github_issue_id: null
   tags:
   - verification
@@ -10193,14 +10198,1339 @@ tickets:
   - acceptance
   - mainline
   component: verification
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-07-30T16:33:30.340654Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-07-31T11:28:20.326538Z'
   review_cycle_count: 0
-  lesson_extraction_attempted_at: null
+  lesson_extraction_attempted_at: '2026-07-31T11:28:20.326538Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-03-acceptance-mainline-freshness-gate.md#mainline-freshness-gate-and-exact-head-acceptance-restart
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-07-30T16:33:30.340654Z'
   updated_at: '2026-07-30T16:33:30.340654Z'
+  completed_at: '2026-07-31T11:28:20.326538Z'
+- id: b2fa9fbf-26e3-46e3-ae1e-a4c265bacc72
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 86fe8167-7b99-45fd-ac96-3d0f4d3a0f53
+  key: ATLAS-231
+  title: Loopback operator session security and server-owned actor context
+  objective: Establish Atlas's first authenticated browser session so every writable API command is bound to the single operator by the server and protected against hostile-webpage, CSRF, token-disclosure and accidental-remote-binding risks.
+  context: 'Phase 10 and Phase 11 deliberately delivered read-only surfaces and made authentication, actor context and a threat model one indivisible entry gate for writes. Phase 13 now opens that gate for lesson disposition only. Pre-ruled decisions: D-1 the supported topology remains loopback and `atlas api serve` refuses to enable writable routes without a configured `ATLAS_OPERATOR_TOKEN`; remote serving remains unsupported. D-2 login accepts the token only in strict JSON, compares it in constant time, and creates a short-lived server-side session with an opaque host-only HttpOnly SameSite=Strict cookie; the credential never enters a URL, log, store, generated bundle or browser storage. D-3 the login response returns a per-session CSRF token once; the UI keeps it in memory and every mutation requires it in `X-Atlas-CSRF`, an allowed Host/Origin, strict `application/json` and a live session. D-4 authenticated actor context is always `human/operator`, resolved server-side; request models contain no actor field and reject unexpected actor-shaped input. D-5 CORS is deny-by-default, session/mutation responses are no-store, framing is denied and a restrictive CSP applies. D-6 this ticket lands the complete security boundary and session lifecycle but no resource mutation.'
+  status: planned
+  ticket_type: infrastructure
+  risk_level: high
+  priority: 50
+  relevant_docs:
+  - docs/atlas/governed-operator-actions.md
+  - docs/atlas/operator-api.md
+  - docs/decisions/0009-single-operator-governance.md
+  - docs/runbooks/operator-environment.md
+  acceptance_criteria:
+  - Writable-route startup fails with a named, secret-free precondition error when `ATLAS_OPERATOR_TOKEN` is absent or violates the documented length/entropy contract, while the existing read-only loopback API remains startable; non-loopback writable serving is refused.
+  - '`POST /api/v1/session` accepts only strict JSON, compares the configured token in constant time, throttles bounded failed attempts, and on success creates a short-lived server-side session plus an opaque host-only HttpOnly SameSite=Strict cookie and one CSRF token; neither credential nor session secret appears in responses beyond the one intended CSRF value, logs, URLs, OpenAPI examples, generated code, store fields or errors.'
+  - '`GET /api/v1/session` returns only authenticated state and expiry metadata, and `DELETE /api/v1/session` revokes the exact session; expiry and revocation are enforced server-side and subsequent mutation-context resolution returns 401.'
+  - The mutation security dependency requires an allowed loopback Host and exact Origin, `application/json`, the matching `X-Atlas-CSRF` value and a live session; missing, cross-origin, null-origin, malformed-content-type and wrong-token requests fail before an application-service call.
+  - Successful authentication resolves one immutable command actor with `created_by_type=human` and `created_by_id=operator`; request schemas reject `actor`, `created_by_type`, `created_by_id` and other unexpected fields, and no header can override the actor.
+  - 'Session and mutation responses use `Cache-Control: no-store`; CORS is deny-by-default; framing is denied and the documented CSP is present, asserted by executable response-header tests.'
+  - The OpenAPI contract declares the session routes and mutation security requirements without embedding a usable secret, and generated TypeScript client/runtime metadata regenerate without unexplained drift.
+  non_goals:
+  - No lesson or other resource mutation, role/permission model, multiple operators, OAuth/OIDC, password recovery, remote hosting, TLS termination, Secure-cookie claim over loopback HTTP, GitHub write, Linear write or PR merge.
+  implementation_notes:
+  - Keep credential comparison and session persistence behind injected services. Store only a one-way digest of the opaque session identifier and CSRF secret. Use cryptographic randomness and explicit expiry; do not use localStorage, a query-string token or client-created actor context.
+  - Make the loopback-HTTP limitation explicit. Do not set a Secure cookie and then claim a working HTTP session; remote/HTTPS support is a later design that must require transport security and Secure cookies together.
+  test_requirements:
+  - Deterministic API/security tests cover successful login, bad-token throttling, missing configuration, expiry, revocation, hostile Origin, null Origin, Host confusion, CSRF mismatch, simple-form/content-type bypass, actor injection and secret-redaction; `ATLAS_LIVE_TESTS=0`.
+  - Add an architecture test proving writable routes cannot bypass the shared security dependency and session resolution, while existing read-route contains-no-logic tests remain green; seeded defects use `assert 1 == 2` (B011).
+  documentation_requirements:
+  - docs/atlas/governed-operator-actions.md
+  - docs/atlas/operator-api.md
+  - docs/runbooks/operator-environment.md
+  definition_of_done:
+  - All seven acceptance criteria have named tests; the full Python, OpenAPI drift, TypeScript and doc-linter gates are green; canonical security docs land in the same change; the PR title carries the minted ticket key.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - authentication
+  - security
+  - operator
+  - csrf
+  - api
+  component: atlas.api
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/inbox-stub-01-operator-session-security.md#loopback-operator-session-security-and-server-owned-actor-context
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
+  updated_at: '2026-08-02T12:32:32.638319Z'
+  completed_at: null
+- id: e87fd13a-6c0a-4c92-ac07-02bc47f99d98
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 86fe8167-7b99-45fd-ac96-3d0f4d3a0f53
+  key: ATLAS-232
+  title: Append-only operator action ledger and idempotent command gateway
+  objective: Give every current and future Operator API write one transactional, server-attributed idempotency and audit boundary so retries cannot duplicate mutations and an unaudited mutation cannot be reported as success.
+  context: 'Phase 13''s lesson disposition and Phase 14''s acceptance workflow need the same command envelope. Implementing replay and audit independently in each route would create a drift-prone security boundary. Pre-ruled decisions: D-1 one application-layer gateway accepts server-resolved actor context, action name, target identity, idempotency key and a canonical request fingerprint; routes do not implement replay policy. D-2 idempotency keys are unique within the operator action namespace. Same key/same fingerprint returns the first stored terminal outcome without rerunning the command; same key/different fingerprint returns conflict. D-3 an append-only `OperatorActionReceipt` stores bounded non-secret metadata, actor, target, before/after state where applicable, outcome and timestamps; it never copies credentials, raw request bodies, evidence payloads or lesson content. D-4 a successful domain mutation and receipt commit atomically; receipt failure rolls back the mutation. D-5 authenticated refusals/conflicts may record a bounded outcome but can never masquerade as mutation success. D-6 this is a generic internal foundation with deterministic fakes; it exposes no HTTP resource action by itself.'
+  status: planned
+  ticket_type: infrastructure
+  risk_level: high
+  priority: 50
+  relevant_docs:
+  - docs/atlas/governed-operator-actions.md
+  - docs/architecture/data-model-and-schemas.md
+  - docs/decisions/0006-source-of-truth-hierarchy.md
+  - docs/decisions/0009-single-operator-governance.md
+  acceptance_criteria:
+  - A migration and canonical model add an append-only operator-action record with stable receipt/correlation IDs, action, target type/ID, server-resolved actor, idempotency key identity, canonical request fingerprint, bounded outcome, optional before/after status and created/completed timestamps; database and repository guards reject update and delete.
+  - The gateway reserves an idempotency key atomically. Same key and same fingerprint replays the original terminal response without invoking the injected command; the same key with a different fingerprint returns a typed conflict and invokes no command.
+  - Canonical fingerprints are deterministic across JSON key order and reject unsupported/non-finite values; they cover action, target and the complete validated command payload so two semantically different commands cannot collide through omitted fields.
+  - A successful injected domain mutation and its success receipt commit in one database transaction. A seeded receipt insert/commit failure leaves domain state unchanged, returns a typed failure and leaves no replayable success.
+  - 'Concurrent calls using one key are serialised by a database uniqueness or equivalent transaction boundary: exactly one command invocation occurs and every caller observes the same terminal outcome or a named in-progress conflict; no polling loop is unbounded.'
+  - Receipt presentation excludes token/session/CSRF values, full request bodies, raw evidence, lesson content and exception traces; secret-shaped fixture values do not appear in persisted fields, logs or rendered JSON.
+  - The gateway and repository are usable without FastAPI imports and have injected clock/ID/command seams, so lesson disposition and acceptance sessions can reuse them without depending on `atlas.api`.
+  non_goals:
+  - No session authentication, HTTP routes, resource-specific state machine, distributed lock service, message queue, global exactly-once claim across external systems, receipt mutation/deletion UI, GitHub write, Linear write or merge.
+  implementation_notes:
+  - Reuse the repository unit-of-work/transaction boundary. Do not commit the resource mutation in one service and attempt the receipt afterward.
+  - Model terminal success, terminal refusal and in-progress ownership explicitly. Recovery must never infer that a missing receipt means a previously committed mutation is safe to repeat.
+  test_requirements:
+  - Repository and transaction tests cover append-only enforcement, replay, altered replay, concurrent duplicate calls, in-progress recovery, mutation failure, receipt failure and secret redaction on SQLite and the existing supported store matrix with `ATLAS_LIVE_TESTS=0`.
+  - Property/table tests cover canonical fingerprint stability and differentiation; architecture tests reject FastAPI imports below the API layer; seeded defects use `assert 1 == 2` (B011).
+  documentation_requirements:
+  - docs/architecture/data-model-and-schemas.md
+  - docs/atlas/governed-operator-actions.md
+  definition_of_done:
+  - All seven acceptance criteria are evidenced by named tests; migration upgrade and downgrade tests, full Python gates and doc linter are green; canonical schema docs land in the same change; the PR title carries the minted ticket key.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - idempotency
+  - audit
+  - operator
+  - orchestration
+  - storage
+  component: orchestration
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/inbox-stub-02-operator-action-ledger.md#append-only-operator-action-ledger-and-idempotent-command-gateway
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
+  updated_at: '2026-08-02T12:32:32.638319Z'
+  completed_at: null
+- id: 6c4595ff-5d69-443f-8d38-374b84534001
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 5a486514-1761-45a8-8094-9a0e8282c3d4
+  key: ATLAS-233
+  title: Governed lesson disposition service with atomic stale-state protection
+  objective: Reuse one lesson-domain command service for CLI and HTTP promotion/rejection so a DRAFT lesson is ruled once, with operator confidence and compare-and-set protection against stale or concurrent decisions.
+  context: 'ATLAS-100 delivered the lesson promotion CLI and DRAFT/ACTIVE/ARCHIVED lifecycle; ATLAS-173 made the full lesson readable before the operator rules on it. Phase 13 must expose that behaviour without duplicating it in the API. Pre-ruled decisions: D-1 explicit promote and reject commands are the only v1 dispositions. Promote requires finite confidence in `0.0..1.0`; reject carries no editable lesson fields. D-2 only DRAFT is a valid starting state: promote yields ACTIVE and reject yields ARCHIVED. D-3 the repository update is compare-and-set on the observed DRAFT state, so a CLI/browser race has one winner and a typed stale-state loser. D-4 actor comes from command context and the service delegates idempotency/receipt atomicity to the Phase 13 gateway. D-5 the existing CLI calls this service and preserves its public command/output contract. D-6 editing, merging, archiving ACTIVE lessons and stale re-confirmation remain deferred.'
+  status: planned
+  ticket_type: feature
+  risk_level: high
+  priority: 50
+  relevant_docs:
+  - docs/atlas/governed-operator-actions.md
+  - docs/atlas/learning-system.md
+  - docs/decisions/0009-single-operator-governance.md
+  acceptance_criteria:
+  - One API-independent lesson disposition service accepts a typed promote or reject command plus command context, loads the exact lesson once inside the unit of work and returns a typed updated lesson/outcome suitable for both CLI and HTTP presenters.
+  - Promote accepts only finite confidence from 0.0 through 1.0 inclusive and changes DRAFT to ACTIVE while preserving lesson identity, content, provenance and creation metadata; invalid confidence performs no write.
+  - Reject accepts no editable lesson fields and changes DRAFT to ARCHIVED while retaining the lesson for audit and excluding it from ACTIVE context retrieval.
+  - Both writes use a repository compare-and-set whose predicate includes the observed DRAFT state. Two concurrent dispositions produce exactly one state change; the loser receives a typed stale-state conflict carrying a safe current representation and no second receipt.
+  - Unknown lesson, non-DRAFT lesson, altered idempotency replay and receipt persistence failure are distinct typed outcomes and leave the lesson unchanged except for a previously completed replayed success.
+  - '`atlas lessons promote` and `atlas lessons reject` delegate to the shared service and preserve existing CLI arguments, exit behaviour and operator attribution; tests prove there is no second lifecycle implementation in CLI or API modules.'
+  - ACTIVE-only context retrieval includes a newly promoted lesson and excludes a rejected lesson, while DRAFT/ACTIVE pattern detection semantics remain unchanged.
+  non_goals:
+  - No HTTP route, browser UI, lesson content edit, merge, ACTIVE archive, re-promotion, confidence decay, generic update command, GitHub write, Linear write or actor supplied by the caller's payload.
+  implementation_notes:
+  - Extract/refactor the existing CLI behaviour rather than wrapping the CLI process or parsing its output. Keep the domain transition in `atlas.learning` and transaction coordination in `atlas.orchestration`.
+  - Do not use a read-then-unconditional-save sequence. The stale-state rule must be enforced at the database write boundary.
+  test_requirements:
+  - Unit/repository tests cover boundary confidence values, NaN/infinity, unknown/non-DRAFT lessons, promote/reject success, CLI compatibility, concurrent race, replay and receipt rollback with `ATLAS_LIVE_TESTS=0`.
+  - Retrieval regression tests prove the context-pack gate, and an architecture test rejects lesson lifecycle decisions in `atlas.api`; seeded defects use `assert 1 == 2` (B011).
+  documentation_requirements:
+  - docs/atlas/learning-system.md
+  - docs/atlas/governed-operator-actions.md
+  definition_of_done:
+  - All seven acceptance criteria have named tests; full Python and doc-linter gates are green; CLI compatibility and ACTIVE-only retrieval are evidenced; canonical docs land in the same change; the PR title carries the minted ticket key.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - lessons
+  - governance
+  - concurrency
+  - idempotency
+  - learning
+  component: atlas.learning
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/inbox-stub-03-governed-lesson-disposition.md#governed-lesson-disposition-service-with-atomic-stale-state-protection
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
+  updated_at: '2026-08-02T12:32:32.638319Z'
+  completed_at: null
+- id: 31d9d42a-2e30-462c-8a2d-5c11d9eebcc6
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 86fe8167-7b99-45fd-ac96-3d0f4d3a0f53
+  key: ATLAS-234
+  title: Authenticated lesson promote and reject API commands
+  objective: Expose the governed lesson disposition service through two explicit v1 commands with session, CSRF, idempotency and typed conflict semantics, while preserving Atlas's no-domain-logic API boundary.
+  context: 'ATLAS-201 delivered the read-only lessons projection. Phase 13 now adds the first resource writes. Pre-ruled decisions: D-1 the only routes are `POST /api/v1/lessons/{lesson_id}/promote` and `/reject`; there is no generic lesson PATCH/PUT. D-2 both routes require the shared authenticated mutation dependency and `Idempotency-Key`; actor identity is absent from request schemas. D-3 promote''s body is exactly finite confidence, reject''s body is an empty strict object. D-4 the route resolves context, calls one disposition application operation and presents; it does not load a lesson, branch on status, create receipts or implement replay. D-5 success returns the safe updated lesson plus action receipt. Unknown is 404, validation 422, unauthenticated 401, security refusal 403, stale/altered replay 409. D-6 read routes retain existing compatibility and no read becomes auth-dependent.'
+  status: planned
+  ticket_type: feature
+  risk_level: high
+  priority: 50
+  relevant_docs:
+  - docs/atlas/governed-operator-actions.md
+  - docs/atlas/operator-api.md
+  - docs/decisions/0009-single-operator-governance.md
+  acceptance_criteria:
+  - The v1 route table adds exactly the two explicit POST routes at the documented paths; executable route inventory and OpenAPI tests reject a generic PATCH/PUT, an extra lesson action or an unversioned duplicate.
+  - Both routes require the shared authenticated mutation context, `X-Atlas-CSRF`, allowed Host/Origin, strict JSON and `Idempotency-Key` before their application-service dependency is invoked.
+  - 'Promote accepts exactly `{"confidence": number}` with the canonical finite `0.0..1.0` validation; reject accepts exactly `{}`. Actor, status, content and unknown fields are rejected with 422 and cannot reach the service.'
+  - Each route dependency makes exactly one call to the shared disposition operation and presenters map typed success, unknown, stale-state, replay, altered-replay and security outcomes to the documented 2xx/401/403/404/ 409/422 responses without reparsing domain state.
+  - Success returns the updated safe lesson representation and bounded action receipt with server-owned `human/operator` attribution; no credential, CSRF value, raw request body or internal exception is present.
+  - Same-key/same-body retry returns the byte-equivalent semantic outcome and receipt without a second mutation; same-key/different-confidence or action returns 409 with no mutation.
+  - Existing GET lesson route behaviour, ordering, optional canonical status filter, 422 invalid-filter response and generated-client compatibility remain unchanged apart from the additive command types.
+  non_goals:
+  - No lesson edit, merge, ACTIVE archive, re-promotion, generic update route, browser UI, remote binding, GitHub write, Linear write, PR operation or client-supplied actor.
+  implementation_notes:
+  - Keep presenter schemas additive and reuse the canonical Lesson/EntityStatus types. Do not invoke CLI commands or construct actor context from JSON.
+  - The route layer does not own transactions. The disposition/gateway operation must return everything needed to present success or conflict in one typed result.
+  test_requirements:
+  - Fixture-driven API tests cover success and every status mapping, security preconditions, strict schemas, duplicate/altered replay, stale CLI race and secret-free errors; `ATLAS_LIVE_TESTS=0`.
+  - Extend route-inventory/no-logic architecture tests and OpenAPI generated client drift tests; a seeded extra repository/service call or route-level state branch must fail; seeded Python defects use `assert 1 == 2` (B011).
+  documentation_requirements:
+  - docs/atlas/operator-api.md
+  - docs/atlas/governed-operator-actions.md
+  definition_of_done:
+  - All seven acceptance criteria are evidenced by named tests; Python, OpenAPI/TypeScript drift, UI compile compatibility and doc-linter gates are green; canonical API docs land in the same change; the PR title carries the minted ticket key.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - api
+  - lessons
+  - authentication
+  - idempotency
+  - openapi
+  component: atlas.api
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/inbox-stub-04-lesson-mutation-api.md#authenticated-lesson-promote-and-reject-api-commands
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
+  updated_at: '2026-08-02T12:32:32.638319Z'
+  completed_at: null
+- id: 155963ee-136e-4207-8a27-82fa14e289ff
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 80047dd6-542c-4ad8-8213-a2372ab4e560
+  key: ATLAS-235
+  title: Lessons UI promote and reject workflow
+  objective: Let the authenticated operator rule on DRAFT lessons from the existing Lessons drawer with explicit confidence, confirmation and honest handling of replay, expiry and stale-state conflicts.
+  context: 'ATLAS-217 delivered the read-only Lessons draft triage view and ATLAS-221 delivered the query/proxy/error primitives. This ticket completes the visible human gate without moving domain rules into React. Pre-ruled decisions: D-1 the shell gains a login/session-expiry flow backed by the Phase 13 session routes; the bootstrap token is submitted once and is never stored in localStorage/sessionStorage, a URL, query cache or generated configuration. D-2 Promote is available only for DRAFT and requires finite confidence plus confirmation that ACTIVE lessons may enter future context packs. Reject is available only for DRAFT and confirms archival. D-3 one stable idempotency key is retained for the in-flight command and safe retry; the UI never invents a new key after an ambiguous response without first refreshing. D-4 success consumes the server lesson/receipt, updates query state and removes the row when the filter requires. D-5 409 refreshes and displays the safe current state; the UI never overwrites or silently retries. D-6 no edit/merge/archive/rebase/merge-PR affordance appears.'
+  status: planned
+  ticket_type: feature
+  risk_level: medium
+  priority: 50
+  relevant_docs:
+  - docs/atlas/governed-operator-actions.md
+  - docs/atlas/operator-ui.md
+  - docs/atlas/learning-system.md
+  acceptance_criteria:
+  - The application presents an accessible login/session-expired flow, submits the bootstrap token only to the session endpoint, holds the returned CSRF token in memory, and stores neither token in web storage, URL state, query cache, logs nor generated assets.
+  - A DRAFT lesson drawer exposes Promote and Reject; non-DRAFT lessons expose neither. Promote requires a labelled finite `0.0..1.0` confidence value and a confirmation explaining future context-pack eligibility; Reject requires a distinct archival confirmation.
+  - Every submission sends credentials, CSRF header, strict JSON and one generated idempotency key; controls disable while in flight and a safe retry of an ambiguous response reuses that key until the session state is refreshed.
+  - Success renders the server-returned lesson/receipt, invalidates or updates the exact query keys, and removes the lesson from a DRAFT-only queue without a full-page reload; no client-side lifecycle inference supplies the new status.
+  - A 401 returns to the session flow without retaining the bootstrap credential; 403 names the security refusal; 409 shows the current safe lesson, prevents overwrite and requires explicit re-review; 422 attaches a validation error to the relevant control.
+  - Keyboard-only use, focus trap/return, destructive confirmation, labelled confidence input, disabled/busy state and success/error announcements pass the established automated accessibility checks.
+  - No lesson edit, merge, ACTIVE archive, PR merge/rebase, Linear write or generic resource update affordance, client or query mutation exists in the delivered bundle.
+  non_goals:
+  - No design-system rewrite, remote login, remember-me, role UI, lesson editing/merging/archiving, bulk disposition, optimistic state transition, GitHub write, Linear write or acceptance console.
+  implementation_notes:
+  - Extend the existing query/mutation primitives; do not hand-write duplicate API enums or response shapes. Treat server responses as authority.
+  - Generate idempotency keys through the browser crypto API and retain them only for the command lifecycle. Never place them or the CSRF token in URL state.
+  test_requirements:
+  - Component/query tests cover login, expiry, promote/reject validation, confirmation, in-flight idempotency, success cache updates and every typed error with generated API types only.
+  - Playwright tests against a seeded live API cover promote, reject, stale CLI race, duplicate-click prevention, refresh/session loss, keyboard flow and forbidden token persistence; Python live calls remain disabled outside the established seeded harness.
+  documentation_requirements:
+  - docs/atlas/operator-ui.md
+  definition_of_done:
+  - All seven acceptance criteria have named component and browser evidence; UI lint/type/test/build, generated-client drift, Python gates, accessibility and doc linter are green; canonical UI docs land in the same change; the PR title carries the minted ticket key.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - operator-ui
+  - lessons
+  - authentication
+  - accessibility
+  - governance
+  component: operator-ui
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/inbox-stub-05-lessons-ui-actions.md#lessons-ui-promote-and-reject-workflow
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
+  updated_at: '2026-08-02T12:32:32.638319Z'
+  completed_at: null
+- id: c8f6b393-7ab4-4b33-80cd-3d2bb4078c10
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 80047dd6-542c-4ad8-8213-a2372ab4e560
+  key: ATLAS-236
+  title: Writable-surface security, accessibility and live-API acceptance
+  objective: Prove the complete Phase 13 browser-to-store write boundary under hostile, concurrent and failure conditions before Atlas treats governed UI actions as operationally ready.
+  context: 'Authentication, receipts, domain transitions, routes and UI each have focused tests, but Phase 13''s risk exists at their seams. This ticket owns the release-level adversarial and milestone proof rather than adding another feature. Pre-ruled decisions: D-1 run the built UI against a seeded live FastAPI/store process, never request mocks for the milestone. D-2 prove promote and reject outcomes, actor attribution, atomic receipts and ACTIVE-only retrieval. D-3 actively seed hostile Origin/Host, CSRF failure, strict-content-type bypass, token/actor injection, duplicate and altered replay, expired/revoked session, two-tab/CLI race and receipt failure. D-4 every rejected path asserts zero unintended domain or external mutation and secret-free output. D-5 accessibility, responsive and generated-client drift remain binding. D-6 close the phase docs with residual risks; do not implement Phase 14.'
+  status: planned
+  ticket_type: infrastructure
+  risk_level: high
+  priority: 50
+  relevant_docs:
+  - docs/atlas/governed-operator-actions.md
+  - docs/atlas/operator-api.md
+  - docs/atlas/operator-ui.md
+  - docs/runbooks/operator-environment.md
+  acceptance_criteria:
+  - A seeded live-API Playwright milestone logs in, reads the full lesson, promotes one DRAFT with confidence, rejects another, and proves stored ACTIVE/ARCHIVED states, `human/operator` receipts and ACTIVE-only context retrieval without direct database mutation by the test.
+  - Hostile Origin/Host, missing/wrong CSRF, simple-form or wrong content type, unauthenticated, expired and revoked session cases are exercised through the real HTTP stack and each proves zero lesson/action success.
+  - Duplicate submission, same-key replay, altered replay, two-browser-tab race and an injected CLI-versus-browser race prove exactly one domain transition and one success receipt, with typed replay/conflict UX.
+  - An injected receipt/store commit failure proves the lesson remains DRAFT and no success is returned; restart/retry behaviour cannot infer or create an unaudited success.
+  - Canary credentials, CSRF values and actor-injection payloads are absent from browser storage, URLs, screenshots/traces retained by CI, API/UI logs, response errors, receipts and generated assets.
+  - Keyboard, focus, announcement, contrast and responsive suites pass for login, confirmation, busy, success and every error state on the established viewport matrix.
+  - Phase 13 canonical docs agree on delivered routes, threat controls, supported loopback topology, residual loopback-HTTP risk and non-goals; executable route inventory confirms no other write exists.
+  non_goals:
+  - No new product behaviour, acceptance console, penetration-test claim, remote deployment, HTTPS termination, multi-user auth, bulk actions, GitHub write, Linear write or PR merge.
+  implementation_notes:
+  - Prefer test-only dependency injection/fault seams already established by the tickets. Do not add production bypass flags or weaken session policy to make browser setup easier.
+  - Assert observables through API/UI/store repository reads, not raw SQL rewrites. Keep every failure case explicit enough to diagnose the violated invariant.
+  test_requirements:
+  - Extend the established seeded live harness with isolated databases, deterministic credentials, fault injection and browser contexts. Tests clean only their named fixtures and retain no secrets in failure artifacts.
+  - Run full Python gates with `ATLAS_LIVE_TESTS=0`, UI lint/type/test/build, Playwright, accessibility, OpenAPI/client drift and doc linter; seeded Python defects use `assert 1 == 2` (B011).
+  documentation_requirements:
+  - docs/atlas/governed-operator-actions.md
+  - docs/atlas/operator-api.md
+  - docs/atlas/operator-ui.md
+  - docs/runbooks/operator-environment.md
+  - ROADMAP.md
+  - docs/closure/phase-13-closure-report.md
+  definition_of_done:
+  - All seven criteria pass in CI and the operator-run seeded milestone; no secret artifact is retained; Phase 13 closure evidence and canonical docs land together; full gates are green; the PR title carries the minted ticket key.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - security
+  - acceptance
+  - playwright
+  - accessibility
+  - operator-ui
+  component: operator-ui
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/inbox-stub-06-writable-surface-acceptance.md#writable-surface-security-accessibility-and-live-api-acceptance
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
+  updated_at: '2026-08-02T12:32:32.638319Z'
+  completed_at: null
+- id: aeb60ef6-d301-4ee1-9857-b41e4b646527
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: f64bcf20-dbdf-4d8e-98b3-d615de1bc6a4
+  key: ATLAS-237
+  title: Acceptance and confirmation zero-action diagnostics
+  objective: Make the exact blocking acceptance check immediately visible and make a successful zero-confirmation pass unambiguous, so the operator never retries or closes work from a misleading summary.
+  context: 'Phase 12 remained fail-closed but exposed two operator-facing defects: the close driver hid the detailed pending check behind a generic verdict, and `atlas confirm` printed `Recorded 0` when no decisions remained. A stale OP-A explanatory note could also contradict live confirmation evidence. This carry-forward must land before the browser acceptance workflow reuses those services. The fix changes diagnostics only and must preserve exact-head, evidence and confirmation authority.'
+  status: planned
+  ticket_type: bug
+  risk_level: medium
+  priority: 50
+  relevant_docs:
+  - docs/closure/phase-12-closure-report.md
+  - docs/atlas/verification-engine.md
+  - docs/runbooks/pr-acceptance.md
+  acceptance_criteria:
+  - Human close-driver output names every failed or pending verification check, including its typed reason and exact-head identity, instead of reporting only a generic pending verdict.
+  - JSON output preserves the complete existing machine contract and exposes the same ordered blocking-check details without scraping human prose.
+  - '`atlas confirm` distinguishes `no outstanding confirmations` from a failed or skipped confirmation action; a legitimate zero-action run exits successfully and cannot be mistaken for missing work.'
+  - The stale OP-A explanatory note is removed or derived from the current stored evidence so it cannot claim confirmations are absent when human-tier records exist.
+  - 'Diagnostics remain read-only: tests prove they do not create evidence, confirmation or verification rows, change ticket state, call GitHub writes or relax exact-head acceptance.'
+  - Focused CLI and close-driver tests cover one pending check, several pending checks, no outstanding confirmations and contradictory historical records.
+  non_goals:
+  - No acceptance-session model, HTTP route, UI, new evidence rule, automatic confirmation, merge/rebase action or ticket status transition.
+  implementation_notes:
+  - Consume structured verifier/confirmation results. Do not parse previously rendered CLI text or duplicate verification logic in the close driver.
+  test_requirements:
+  - Add deterministic formatter and driver tests for human and JSON output, with exact expected reasons and exit codes; use injected stores/clients and `ATLAS_LIVE_TESTS=0`.
+  - Retain the Phase 12 exact-head, evidence and confirmation regression suite; seeded Python defects use `assert 1 == 2` (B011).
+  documentation_requirements:
+  - docs/atlas/verification-engine.md
+  - docs/runbooks/pr-acceptance.md
+  definition_of_done:
+  - Every acceptance criterion has named deterministic coverage; CLI contracts, exact-head regressions, full Python gates and doc linter are green; the PR title carries the minted ticket key.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - acceptance
+  - diagnostics
+  - verification
+  - cli
+  component: atlas.verification
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/inbox-stub-07-acceptance-zero-action-diagnostics.md#acceptance-and-confirmation-zero-action-diagnostics
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
+  updated_at: '2026-08-02T12:32:32.638319Z'
+  completed_at: null
+- id: 956be8cf-3c9f-4a50-a361-8126c9ad5e1a
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 4d034c8b-0752-4089-8ff9-2fd43f51c6f4
+  key: ATLAS-238
+  title: Durable exact-head acceptance session and status projection
+  objective: Represent one PR acceptance attempt as an immutable-head, durable state machine so evidence, confirmations and verification can never be mixed across PR heads, main revisions or changing acceptance criteria.
+  context: 'Phase 12''s ATLAS-228 supplies one exact-head integration assessment and Phase 13 supplies the action/idempotency ledger. Phase 14 needs a coordinating resource before it exposes any acceptance write. Pre-ruled decisions: D-1 a session pins repository, PR, close-set, head/base SHA and refs, exact-head assessment, live criteria fingerprint and `human/operator` actor. D-2 session creation performs read-only exact-head preflight before evidence, confirmation or approval writes and succeeds only for an open, non-draft, same-repository PR targeting main, current with exact main, whose close-set is entirely `review_required`. D-3 the state machine is append-oriented; head/base/repository/eligibility/criteria movement observed by a mutation marks the session stale; a later read reports movement without rewriting history. A new head requires a new session, and an old session is never retargeted. D-4 one non-terminal session may exist per repository/PR/head; idempotent creation replays it. D-5 the stored status projection reports historical step states and reasons without external reads or writes; it is an input to, not a substitute for, the later bounded live-readiness projection. D-6 this ticket adds no evidence, confirmation, verification or HTTP route.'
+  status: planned
+  ticket_type: infrastructure
+  risk_level: high
+  priority: 50
+  relevant_docs:
+  - docs/atlas/review-acceptance-console.md
+  - docs/atlas/symphony-integration.md
+  - docs/runbooks/pr-acceptance.md
+  - docs/decisions/0008-ci-sourced-evidence-with-trust-tiers.md
+  acceptance_criteria:
+  - A migration and canonical model add an acceptance session with stable ID, repository/PR, close-set, initial exact-head assessment, pinned head/base identities and SHAs, criteria fingerprint, operator actor, lifecycle/step summaries, typed blocking reasons and timestamps; pinned identity fields cannot be updated after creation.
+  - The creation service calls the shared ATLAS-228 assessment and fails before any acceptance-domain write unless the PR is open, non-draft, same-repository, targets literal main, is overall current and resolves to a close-set wholly in `review_required`.
+  - Creation snapshots current ticket acceptance criteria in deterministic close-set/key/index order and stores a canonical fingerprint; cached UI text or caller-supplied criterion content cannot become the snapshot.
+  - One non-terminal session is allowed per repository/PR/head. Same idempotency command replays the existing session; concurrent creation yields one record; a different head creates a new record only after the old session is terminal/stale.
+  - A reusable pure freshness comparator compares a live assessment and live criteria to the pinned session and returns every typed head/base/ref/ repository/eligibility/criteria mismatch; indeterminate external state never counts as fresh. Mutation callers atomically transition the session to terminal stale, while read callers leave stored history unchanged.
+  - The pure stored-status projection returns pinned identity, lifecycle, step summaries, receipts and historical readiness reasons without invoking GitHub, evidence pull, confirmation, verification or a store write; stored `merge_ready` is explicitly not current merge authority.
+  - Behind/diverged/conflicted preflight returns the named Phase 12 rebase recovery command as bounded diagnostic data but creates no session; draft/fork/non-main/closed/unknown/indeterminate cases remain distinct and secret-free.
+  non_goals:
+  - No HTTP route, evidence pull, confirmation, verification, merge readiness, Git rebase, GitHub write, Linear write, PR merge, automatic session retargeting, background job or browser UI.
+  implementation_notes:
+  - Store structured pinned fields, not a raw GitHub payload. Reuse the typed ATLAS-228 assessment and existing close-set parser; do not parse CLI text.
+  - Keep the pure stored projection separate from the bounded live-readiness service added by the verification ticket. The later GET composes them explicitly and remains non-mutating; there is no hidden background polling.
+  test_requirements:
+  - Migration/repository/service tests cover every eligibility class, close-set state, deterministic criteria fingerprint, concurrent creation, same/different-head creation and all freshness mismatches with injected GitHub/ticket fakes and `ATLAS_LIVE_TESTS=0`.
+  - Append/immutability tests reject pinned-identity edits and stored-projection tests prove zero external calls/writes and no historical readiness result is labelled current authority; seeded defects use `assert 1 == 2` (B011).
+  documentation_requirements:
+  - docs/architecture/data-model-and-schemas.md
+  - docs/atlas/review-acceptance-console.md
+  - docs/atlas/symphony-integration.md
+  definition_of_done:
+  - All seven acceptance criteria have named tests; migration, full Python and doc-linter gates are green; canonical schema/design docs land together; the PR title carries the minted ticket key.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - acceptance
+  - exact-head
+  - orchestration
+  - state-machine
+  - audit
+  component: orchestration
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/inbox-stub-08-acceptance-session-model.md#durable-exact-head-acceptance-session-and-status-projection
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
+  updated_at: '2026-08-02T12:32:32.638319Z'
+  completed_at: null
+- id: 63d5e97e-f35b-4817-9a50-0ea48044a548
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 01499978-f6b2-4cd9-9924-4056720e5a2d
+  key: ATLAS-239
+  title: Exact-head acceptance-session evidence pull action
+  objective: Pull and summarise canonical GitHub/CI evidence for an acceptance session's pinned PR head without allowing external movement, retries or partial failure to advance the session incorrectly.
+  context: 'Atlas already has an evidence-pull path and append-only, exact-commit evidence. Phase 14 must call that domain service rather than spawn the CLI or reimplement GitHub mapping. Pre-ruled decisions: D-1 the action accepts only a session ID and authenticated command context; repository, PR and head come from the session. D-2 it proves session freshness immediately before and after the bounded external pull. D-3 evidence stays in the canonical evidence store; the session records a bounded summary and receipt only. D-4 source idempotency plus the Phase 13 gateway prevents duplicate evidence or step advancement. D-5 a moved/indeterminate PR stales the session; transport or source failure does not advance it and may be retried with a new action key after refresh. D-6 raw payloads and GitHub credentials never enter the session or presentation.'
+  status: planned
+  ticket_type: feature
+  risk_level: high
+  priority: 50
+  relevant_docs:
+  - docs/atlas/review-acceptance-console.md
+  - docs/atlas/evidence-pipeline.md
+  - docs/decisions/0008-ci-sourced-evidence-with-trust-tiers.md
+  acceptance_criteria:
+  - One API-independent action resolves repository, PR, close-set and pinned head solely from the session, rejects a non-`preflight_passed`/retryable session and accepts no caller-supplied SHA, repository, ticket key or token.
+  - The action runs the shared session freshness evaluator immediately before external work; any stale/indeterminate result performs no evidence pull and returns every typed reason.
+  - The existing evidence-pull service is invoked directly with injected clients and preserves its conditional requests, bounded rate-limit handling, trust-tier mapping, pin-triple and source-idempotency rules; no CLI subprocess or duplicated mapper exists.
+  - After the pull, a fresh assessment must still match the session. Movement marks the session stale; evidence already stored at the old head remains append-only history and cannot mark a new session or head evidence-ready.
+  - Success advances exactly once to `evidence_ready` and stores only counts, trust/status/pin completeness, source timestamps and the operator-action receipt; raw payloads, tokens, job logs and unbounded errors are absent.
+  - Same-key replay invokes neither GitHub nor the evidence service again; concurrent calls cause one bounded pull/advance; altered replay conflicts without external work.
+  - Transport, authentication, rate-limit and malformed-source failures are distinct non-advancing outcomes. After a status refresh proves the session still fresh, the operator may retry with a new action key; no failure is silently converted to evidence-ready.
+  non_goals:
+  - No HTTP route, browser UI, operator confirmation, verification, merge readiness, evidence deletion/edit, unbounded CI polling, background worker, GitHub write, Linear write or PR merge.
+  implementation_notes:
+  - Extract a callable application service from the existing CLI path if one is not already available. Do not parse `atlas evidence pull` output.
+  - Keep the external call bounded. A future asynchronous job protocol must be designed separately rather than leaked through partial session states.
+  test_requirements:
+  - Deterministic service tests use injected assessment/evidence fakes to cover success, no-op source replay, head/main movement before and after pull, every transport/source failure, duplicate/concurrent calls and receipt rollback with `ATLAS_LIVE_TESTS=0`.
+  - Regression tests prove old-head evidence cannot satisfy a new session and raw payload/token canaries never enter session or receipt; seeded defects use `assert 1 == 2` (B011).
+  documentation_requirements:
+  - docs/atlas/review-acceptance-console.md
+  - docs/atlas/evidence-pipeline.md
+  definition_of_done:
+  - All seven acceptance criteria have named tests; evidence and exact-commit regressions, full Python gates and doc linter are green; canonical docs land in the same change; the PR title carries the minted ticket key.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - evidence
+  - acceptance
+  - exact-head
+  - github
+  - idempotency
+  component: atlas.evidence
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/inbox-stub-09-acceptance-evidence-action.md#exact-head-acceptance-session-evidence-pull-action
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
+  updated_at: '2026-08-02T12:32:32.638319Z'
+  completed_at: null
+- id: 9e9a21ec-7f7b-45b8-9915-060c7eb024e1
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: f64bcf20-dbdf-4d8e-98b3-d615de1bc6a4
+  key: ATLAS-240
+  title: Acceptance-session criteria confirmation and manual approval action
+  objective: Let the authenticated operator confirm every live acceptance criterion and the manual approval gate for one pinned session head without accepting caller-authored criteria or stale definitions.
+  context: '`atlas confirm` and the verification evaluators already define the human-tier gate. Phase 14 must reuse those semantics while moving the interaction into a governed session. Pre-ruled decisions: D-1 the UI/server request identifies criteria only by session-bound stable index plus the pinned criteria fingerprint; it cannot submit replacement criterion text, head SHA or actor. D-2 every criterion and the manual approval must be explicitly true; partial confirmation is a validation result, not step success. D-3 the server re-reads live ticket definitions and exact-head freshness before writing. Drift stales the session and writes no confirmation. D-4 confirmations use the existing human-tier append-only records pinned to the session head and server-owned `human/operator` actor. D-5 idempotency and receipt atomicity come from the Phase 13 gateway. D-6 the action does not run verification.'
+  status: planned
+  ticket_type: feature
+  risk_level: high
+  priority: 50
+  relevant_docs:
+  - docs/atlas/review-acceptance-console.md
+  - docs/atlas/verification-engine.md
+  - docs/runbooks/pr-acceptance.md
+  - docs/decisions/0009-single-operator-governance.md
+  acceptance_criteria:
+  - One API-independent action accepts a session ID, the exact pinned criteria fingerprint, a complete set of stable criterion indexes and explicit manual approval; request types contain no criterion text, actor, repository, ticket key or head SHA.
+  - The action requires every criterion in every close-set ticket exactly once and manual approval true; missing, duplicate, unknown or extra indexes and a mismatched fingerprint fail validation with no confirmation or session advance.
+  - Immediately before writing, the service re-reads the ticket definitions and shared exact-head freshness. Criteria/head/base/eligibility drift atomically stales the session and writes no human-tier record.
+  - Success delegates to the existing confirmation domain service and persists the evaluator-compatible acceptance-criterion confirmations and `MANUAL_APPROVAL` at the pinned head with server-resolved `human/operator` attribution.
+  - Confirmation records, the `confirmations_ready` session advance and action receipt commit atomically. A seeded write/receipt failure leaves no partial set that the verification evaluator can treat as complete.
+  - Same-key replay returns the original outcome without duplicate human-tier records; concurrent or altered replays cannot double-advance or replace the criterion set.
+  - Existing CLI confirmation output/evaluator behaviour remains compatible and delegates to the same underlying service or record writer; no parallel browser-only human-gate model is introduced.
+  non_goals:
+  - No HTTP route, UI, criterion editing/waiver, partial save, verification, merge readiness, GitHub review/approval, GitHub write, Linear write, PR merge or client-supplied actor.
+  implementation_notes:
+  - Use a deterministic criteria identity derived from close-set ticket key and stored list index. Do not depend on browser display order alone.
+  - Keep operator intent explicit; do not infer confirmation from opening a drawer, checking a subset or a prior session at another head.
+  test_requirements:
+  - Service/repository tests cover complete success, missing/duplicate/extra criteria, fingerprint drift, head/main drift, concurrent replay, partial write/receipt failure and CLI/evaluator compatibility with `ATLAS_LIVE_TESTS=0`.
+  - Canary tests prove submitted text/actor/head fields are impossible or rejected and old-head confirmations cannot satisfy a new session; seeded defects use `assert 1 == 2` (B011).
+  documentation_requirements:
+  - docs/atlas/review-acceptance-console.md
+  - docs/atlas/verification-engine.md
+  - docs/runbooks/pr-acceptance.md
+  definition_of_done:
+  - All seven acceptance criteria have named tests; confirmation/evaluator regressions, full Python gates and doc linter are green; canonical docs land in the same change; the PR title carries the minted ticket key.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - confirmation
+  - acceptance
+  - operator
+  - exact-head
+  - verification
+  component: atlas.verification
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/inbox-stub-10-acceptance-confirmation-action.md#acceptance-session-criteria-confirmation-and-manual-approval-action
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
+  updated_at: '2026-08-02T12:32:32.638319Z'
+  completed_at: null
+- id: 85658732-3eac-4a49-b97a-1a0d67d8f170
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: f64bcf20-dbdf-4d8e-98b3-d615de1bc6a4
+  key: ATLAS-241
+  title: Exact-head verification and manual-merge readiness evaluator
+  objective: Run canonical verification for one acceptance session and emit `merge_ready` only when the PASSED verdict, live PR and current main still match every identity pinned by the session.
+  context: 'ATLAS-230 makes exact current-main freshness and acceptance restart binding in the CLI spine. Phase 14 must consume the same services and cannot weaken their ordering. Pre-ruled decisions: D-1 verification is available only after evidence and confirmations are ready. D-2 it invokes the canonical verification engine in process and requires explicit top-level PASSED with a valid `head_commit` equal to the session head. D-3 immediately afterward a fresh ATLAS-228 assessment and live criteria fingerprint must match the session''s repository, PR, branch, head, base and criteria. D-4 `merge_ready=true` is a typed session result only when every gate passes; all blocking reasons are preserved. D-5 one bounded, read-only live-readiness service re-evaluates readiness for every later GET and revokes it on movement, indeterminate assessment or external-read failure. D-6 verification may persist its historical exact-head result and receipt; the later live-readiness service is strictly non-mutating. Neither service writes to GitHub or Linear, and Atlas only displays authority for a manual GitHub action.'
+  status: planned
+  ticket_type: feature
+  risk_level: high
+  priority: 50
+  relevant_docs:
+  - docs/atlas/review-acceptance-console.md
+  - docs/atlas/verification-engine.md
+  - docs/runbooks/pr-acceptance.md
+  - docs/decisions/0008-ci-sourced-evidence-with-trust-tiers.md
+  acceptance_criteria:
+  - The action refuses before verification unless the session is fresh and both evidence and confirmation steps are complete for the pinned head; every failing prerequisite is returned and no verifier call occurs.
+  - The canonical verification engine is invoked in process over the session close-set/PR. Only explicit top-level PASSED with a valid `head_commit` exactly equal to the pinned session head is accepted; exit code, CI green or a stale stored verdict is insufficient.
+  - Immediately after PASSED, a fresh shared integration assessment must be overall current and match repository, PR, head/base refs and SHAs from the session; live criteria must reproduce the pinned fingerprint.
+  - The evaluator returns and stores every typed blocking reason across evidence, confirmations, verification, head/base movement, eligibility, criteria drift and indeterminate external state; it does not collapse to a first failure.
+  - '`merge_ready=true` is persisted only with the verified head, verdict ID, final assessment identity and receipt in one transaction. Receipt/store failure returns no readiness success.'
+  - A bounded read-only live-readiness application service combines stored session history with a fresh shared Phase 12 assessment and current criteria fingerprint. Any later head/main/repository/eligibility/criteria movement, indeterminate assessment, timeout, malformed response or other external-read failure returns `merge_ready=false` with every typed reason, performs no store write and never presents cached true as authority.
+  - Tests and executable client spies prove the operation performs no GitHub mutation/merge, Linear write, ticket status transition, Git command, schema upgrade or PM sync.
+  non_goals:
+  - No HTTP route, UI, automatic merge, rebase, conflict resolution, post-merge proof, schema migration, PM sync, Changes Requested transition, Symphony resume, background worker or merge queue.
+  implementation_notes:
+  - Reuse ATLAS-230's in-process assessment and acceptance-ordering services; do not call or parse `scripts/close_ticket.py` or CLI JSON.
+  - 'Expose the bounded live-readiness operation for the API GET to call once. Separate stored milestone result from current readiness: a previously reached state is history, and live movement or read failure closes the gate without mutating that history.'
+  test_requirements:
+  - Deterministic evaluator/action tests cover every prerequisite and verdict class, verified-head mismatch, head/main/criteria races before and after verification, all-reasons presentation, replay and receipt rollback with injected fakes and `ATLAS_LIVE_TESTS=0`. After PASSED, movement and GitHub failure before a subsequent live-readiness call must close the gate.
+  - Regression tests prove old-head evidence/confirmations/verdicts cannot produce readiness and external mutation spies remain untouched; seeded defects use `assert 1 == 2` (B011).
+  documentation_requirements:
+  - docs/atlas/review-acceptance-console.md
+  - docs/atlas/verification-engine.md
+  - docs/runbooks/pr-acceptance.md
+  - docs/atlas/symphony-integration.md
+  definition_of_done:
+  - All seven acceptance criteria have named tests; verification/acceptance regressions, full Python gates and doc linter are green; canonical docs agree in the same change; the PR title carries the minted ticket key.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - verification
+  - acceptance
+  - exact-head
+  - merge-readiness
+  - orchestration
+  component: atlas.verification
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/inbox-stub-11-acceptance-verification-readiness.md#exact-head-verification-and-manual-merge-readiness-evaluator
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
+  updated_at: '2026-08-02T12:32:32.638319Z'
+  completed_at: null
+- id: e13affa7-002f-4693-812a-5dea87c18b0c
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 86fe8167-7b99-45fd-ac96-3d0f4d3a0f53
+  key: ATLAS-242
+  title: Authenticated acceptance-session workflow API
+  objective: Expose the acceptance session, evidence, confirmation and verification operations as one authenticated v1 resource whose routes preserve exact-head ordering, idempotency and Atlas's thin-API architecture.
+  context: 'The Phase 14 application operations are now typed and API-independent. Pre-ruled decisions: D-1 the route set is exactly session create/read plus evidence, confirm and verify POST actions under `/api/v1`; there is no merge, rebase, generic PATCH or arbitrary command endpoint. D-2 every POST uses the Phase 13 authenticated mutation context and idempotency gateway; the GET is authenticated, read-only and calls one bounded live-readiness application service without a refresh write. D-3 create accepts a repository slug validated against configured policy; step routes accept a session ID and their minimal strict body. GitHub token, actor, ticket keys and SHAs are never browser inputs. D-4 each route dependency makes exactly one application-service call and presents typed results. D-5 operations are synchronous and bounded; timeout is a named non-advancing outcome, not a hidden job. D-6 OpenAPI/generated-client drift is binding.'
+  status: planned
+  ticket_type: feature
+  risk_level: high
+  priority: 50
+  relevant_docs:
+  - docs/atlas/review-acceptance-console.md
+  - docs/atlas/operator-api.md
+  - docs/atlas/governed-operator-actions.md
+  acceptance_criteria:
+  - 'The v1 route inventory adds exactly: `POST /reviews/{pr_number}/acceptance-sessions`, `GET /acceptance-sessions/{session_id}`, and POST `/acceptance-sessions/{session_id}/{evidence|confirm|verify}`; tests reject merge/rebase/PATCH/PUT/arbitrary-action routes.'
+  - All POST routes require the shared session/CSRF/Host/Origin/content-type security dependency and `Idempotency-Key`; the GET requires a live session, is no-store and performs exactly one bounded live-readiness service call with no session or external-system mutation.
+  - Create accepts only a configured-policy repository slug. Step schemas accept only their documented minimal fields; actor, GitHub token, ticket, PR identity override, SHA, criterion text and unknown fields are rejected.
+  - Every route dependency resolves context, makes exactly one typed application-service call and presents. No route directly reads repositories, invokes GitHub, branches on session state or computes freshness/readiness; the GET's service owns its fresh Phase 12 assessment, current criteria fingerprint and stored-history composition.
+  - Typed unknown, validation, unauthenticated, security, stale, altered replay, external timeout/failure and blocked outcomes map consistently to the documented HTTP statuses and bounded body. Movement, indeterminate state or GET external-read failure returns `merge_ready=false` with all reasons; successful writes return the updated session plus receipt.
+  - Synchronous external operations have configured finite deadlines and cancellation-safe non-advancing outcomes. The contract contains no job ID, polling state, websocket, server-sent event or background completion claim.
+  - OpenAPI publishes canonical enums and all-reasons schemas, generated TypeScript/client runtime metadata regenerate deterministically, and existing read routes remain backwards compatible.
+  non_goals:
+  - No PR merge, rebase, conflict resolution, GitHub token input/write, Linear write, ticket status change, generic command endpoint, background job, remote hosting or browser UI.
+  implementation_notes:
+  - Reuse the Phase 13 mutation dependency and presenters. Do not introduce a second session/authentication path for acceptance commands.
+  - Keep the repository allowlist/configuration server-side and compare parsed owner/repository components; never accept a URL that could become an SSRF target.
+  test_requirements:
+  - Fixture-driven API tests cover each route, success and every typed mapping, strict request schemas, policy repository validation, security, idempotency and bounded timeout with `ATLAS_LIVE_TESTS=0`; after PASSED, head/main/criteria movement and GitHub failure before GET return current `merge_ready=false` without changing stored session history.
+  - Extend executable route-inventory/no-logic/security dependency tests and OpenAPI/client drift tests; seeded extra service/repository calls or a forbidden route must fail; seeded Python defects use `assert 1 == 2` (B011).
+  documentation_requirements:
+  - docs/atlas/operator-api.md
+  - docs/atlas/review-acceptance-console.md
+  definition_of_done:
+  - All seven acceptance criteria are evidenced by named tests; Python, OpenAPI/TypeScript drift, UI compile compatibility and doc-linter gates are green; canonical API docs land in the same change; the PR title carries the minted ticket key.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - api
+  - acceptance
+  - authentication
+  - exact-head
+  - openapi
+  component: atlas.api
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/inbox-stub-12-acceptance-workflow-api.md#authenticated-acceptance-session-workflow-api
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
+  updated_at: '2026-08-02T12:32:32.638319Z'
+  completed_at: null
+- id: 6a31f4e7-1f94-45b7-9132-4cc8dfd61c5e
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 80047dd6-542c-4ad8-8213-a2372ab4e560
+  key: ATLAS-243
+  title: Review queue acceptance console UI
+  objective: Turn a Review Required item into a guided, exact-head acceptance panel that exposes each governed step and every blocking reason while leaving merge as a manual GitHub action.
+  context: 'ATLAS-222 delivered the read-only review queue. Phase 14 adds a focused panel over the generated acceptance-session client. Pre-ruled decisions: D-1 the queue links to one session panel showing pinned PR/head/base, close-set, criteria, evidence, confirmations, verification matrix, receipts and live readiness. D-2 only the next valid action is primary; completed steps remain inspectable and blocked/stale steps show all server reasons and recovery. D-3 the criteria confirmation form explicitly checks every server snapshot item and manual approval; it cannot edit/send criterion text. D-4 the UI never computes freshness, verdict or merge readiness and never silently retries a mutation. D-5 initial load and every refresh use the GET''s bounded live-readiness result; only its current `merge_ready` displays the exact verified head plus instruction to merge manually in GitHub, with no merge button. D-6 no rebase/Linear/Symphony/post-merge action appears.'
+  status: planned
+  ticket_type: feature
+  risk_level: high
+  priority: 50
+  relevant_docs:
+  - docs/atlas/review-acceptance-console.md
+  - docs/atlas/operator-ui.md
+  - docs/runbooks/pr-acceptance.md
+  acceptance_criteria:
+  - Each eligible Review Required row links to an acceptance panel that can create/load a session and displays repository/PR, pinned head/base SHAs and refs, close-set, lifecycle, timestamps and relevant action receipts from generated API types.
+  - The panel renders the state machine in order and makes only the next server-permitted action primary; completed steps remain inspectable, an in-flight action disables conflicting controls, and no client transition occurs before the server response.
+  - Evidence state shows trust/status/pin completeness without raw payloads. Confirmation renders every server-snapshot criterion as inert text with an explicit checkbox plus separate manual approval; request construction sends only indexes/fingerprint/approval.
+  - Verification displays the complete canonical check matrix, explicit top-level verdict, verified head and every blocking reason. Initial load and each refresh request a new GET; the UI does not derive PASSED or merge readiness from individual rows or stored verification history.
+  - Stale, blocked, timeout, security, replay/conflict and session-expiry outcomes each have a distinct accessible state. Head/main/criteria movement names refresh/new-session or Phase 12 rebase recovery and never reuses the old command key silently.
+  - Only a current GET response with `merge_ready=true` displays the exact verified SHA and clear manual-GitHub instruction. Movement, indeterminate assessment or external-read failure clears that instruction and renders all server reasons; executable UI tests prove there is no merge, auto-merge, rebase, Linear status, Symphony resume, schema-upgrade or PM-sync control.
+  - Keyboard order, focus management, busy/step semantics, confirmation, status/error announcements, long-SHA wrapping and established responsive viewports pass automated accessibility and visual-layout assertions.
+  non_goals:
+  - No GitHub merge link that performs an action, embedded GitHub token, rebase/conflict UI, ticket status change, Changes Requested, Symphony resume, post-merge completion, job progress, websocket or UI framework redesign.
+  implementation_notes:
+  - Extend the existing Review queue/detail patterns and Phase 13 mutation primitive. Do not hand-maintain response types or duplicate enum metadata.
+  - Render PR/ticket/criterion content as text. Do not use unsanitised HTML, interpolate repository data into arbitrary URLs or expose raw evidence.
+  test_requirements:
+  - Component/query tests cover every lifecycle and error state, generated request shapes, one-action-in-flight, no local readiness derivation and forbidden-control inventory.
+  - Playwright against a seeded live API covers the successful step sequence, post-PASSED movement and GitHub failure before refresh, stale/new-session recovery, timeout/retry-key discipline, cross-tab observation, session expiry and keyboard/responsive flows.
+  documentation_requirements:
+  - docs/atlas/operator-ui.md
+  definition_of_done:
+  - All seven acceptance criteria have named component/browser evidence; UI lint/type/test/build, generated-client drift, Python gates, accessibility and doc linter are green; canonical UI docs land in the same change; the PR title carries the minted ticket key.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - operator-ui
+  - acceptance
+  - review-queue
+  - exact-head
+  - accessibility
+  component: operator-ui
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/inbox-stub-13-review-acceptance-console-ui.md#review-queue-acceptance-console-ui
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
+  updated_at: '2026-08-02T12:32:32.638319Z'
+  completed_at: null
+- id: 46525e07-ffc1-41ab-93a0-7814d74d3829
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 80047dd6-542c-4ad8-8213-a2372ab4e560
+  key: ATLAS-244
+  title: Acceptance console security, concurrency and live-API milestone
+  objective: Prove Phase 14 end to end against a seeded exact-head PR, including movement, replay, cross-tab, external-failure and accessibility cases, while mechanically demonstrating that Atlas never performs the merge.
+  context: 'Phase 14 spans GitHub reads, canonical evidence and verification stores, operator confirmations, exact-head freshness, authenticated commands and a browser state machine. Focused ticket tests cannot alone prove the ordering at those seams. Pre-ruled decisions: D-1 the success milestone uses the built UI and live FastAPI/store with deterministic injected GitHub/CI fixtures. D-2 it reaches `merge_ready=true` only after preflight, evidence, confirmations and PASSED verification at one pinned head, then proves no merge/external mutation. D-3 seed head/main movement at each seam, criteria drift, old-head records, missing human gates, non-PASSED verification, timeout, duplicate/altered replay, cross-tab transition and receipt failure. After PASSED, movement or GitHub read failure before the next GET must revoke current readiness without rewriting stored history. D-4 every block returns all reasons and zero unintended mutation. D-5 the Phase 13 adversarial/session suite remains binding. D-6 closure reconciles roadmap/design/runbooks and records residual manual-merge race; no Phase 15 feature enters.'
+  status: planned
+  ticket_type: infrastructure
+  risk_level: high
+  priority: 50
+  relevant_docs:
+  - docs/atlas/review-acceptance-console.md
+  - docs/atlas/governed-operator-actions.md
+  - docs/runbooks/pr-acceptance.md
+  - docs/atlas/symphony-integration.md
+  acceptance_criteria:
+  - A seeded live-API/browser milestone creates an exact-head session, pulls evidence, confirms every live criterion and manual approval, records explicit PASSED verification and reaches `merge_ready=true` for the exact displayed head.
+  - GitHub/Git/client spies and repository assertions prove the successful milestone performs no PR merge, branch/rebase/push, Linear write, ticket transition, Symphony action, schema upgrade or PM sync.
+  - PR-head and main/base movement are seeded before evidence, after evidence, before confirmation, before verification and after PASSED. Post-PASSED movement before the subsequent GET returns current `merge_ready=false` with all reasons while stored verification history remains unchanged; earlier stale/blocked results prevent later steps or old-session reuse.
+  - Criteria drift, old-head evidence/confirmations/verdict, missing human gates and every non-PASSED verification class are exercised through the real API and UI; none can produce merge readiness.
+  - Duplicate click, same/altered replay, two-tab concurrent transition, external timeout/malformed response and receipt/store failure prove one action owner, bounded recovery, no partial step advance and zero unaudited success. A GitHub failure after PASSED but before the next GET returns `merge_ready=false` with typed reasons and performs no session mutation.
+  - Phase 13 hostile-Origin/CSRF/session/secret-redaction cases pass unchanged for every Phase 14 POST; token, CSRF, raw evidence and unbounded error canaries are absent from retained browser/API artifacts.
+  - Keyboard, focus, announcement, matrix readability, long identity values and responsive suites pass, and Phase 14 canonical docs/route inventories agree on the delivered workflow, manual-merge boundary, synchronous limitation and residual freeze-to-manual-merge race.
+  non_goals:
+  - No new feature, PR merge/rebase, post-merge completion, remote deployment, penetration-test certification, asynchronous jobs, multi-user approval or relaxation of Phase 12/13 gates.
+  implementation_notes:
+  - Use production services behind injected boundaries; do not add production bypass flags, direct SQL state fabrication after setup or client-only success shortcuts.
+  - 'Keep assertions on authoritative observables: session/status responses, canonical repositories and external call spies. A green screenshot alone is not milestone evidence.'
+  test_requirements:
+  - Extend the seeded live harness with deterministic GitHub assessment, evidence and verification fixtures, fault injection, multiple browser contexts and external-mutation spies. Retained traces/screenshots must be secret-free.
+  - Run full Python gates with `ATLAS_LIVE_TESTS=0`, UI lint/type/test/build, Playwright, accessibility, OpenAPI/client drift and doc linter; seeded Python defects use `assert 1 == 2` (B011).
+  documentation_requirements:
+  - ROADMAP.md
+  - docs/atlas/implementation-roadmap.md
+  - docs/atlas/review-acceptance-console.md
+  - docs/atlas/operator-api.md
+  - docs/atlas/operator-ui.md
+  - docs/runbooks/pr-acceptance.md
+  - docs/atlas/symphony-integration.md
+  - docs/closure/phase-14-closure-report.md
+  definition_of_done:
+  - All seven criteria pass in CI and the operator-run milestone; no secret artifact or unintended external write exists; Phase 14 closure evidence and canonical docs land together; full gates are green; the PR title carries the minted ticket key.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - acceptance
+  - security
+  - concurrency
+  - playwright
+  - exact-head
+  component: operator-ui
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/inbox-stub-14-acceptance-console-milestone.md#acceptance-console-security-concurrency-and-live-api-milestone
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
+  updated_at: '2026-08-02T12:32:32.638319Z'
+  completed_at: null
+- id: fd56ed56-6f52-4f9a-ba23-f5074024abb4
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: e0d47d14-bbd1-4d5d-96bc-f9e7adfeb3cf
+  key: ATLAS-245
+  title: Successful PM-sync receipt and truthful status timestamp
+  objective: Persist the identity and completion time of each PM sync tick so the Operator API reports the last genuinely successful Linear observation, including successful no-op and status-only ticks.
+  context: Phase 11 carried forward that `last_linear_sync_at` is currently derived from ticket definition cursors. Phase 15 admission cannot make a stale/fresh decision from that value. Introduce the minimal durable sync receipt required for coherent admission and future Phase 16 measurement. A partial or failed tick must remain visible but cannot advance the successful timestamp.
+  status: planned
+  ticket_type: infrastructure
+  risk_level: high
+  priority: 50
+  relevant_docs:
+  - docs/atlas/multi-agent-delivery-control.md
+  - docs/atlas/pm-engine-and-linear-sync.md
+  - docs/atlas/operator-api.md
+  - docs/atlas/operator-ui.md
+  acceptance_criteria:
+  - A durable sync receipt records start/finish times, product/project identity, status-map and fetched-board fingerprints, bounded result classification and counters without storing credentials or raw Linear payloads.
+  - Successful definition-changing, status-only and zero-action ticks each advance `last_successful_linear_sync_at`; failed, cancelled, partial or malformed-pull ticks do not.
+  - 'Receipt persistence is part of the tick''s local completion boundary: a receipt write failure returns a typed failure and cannot report the tick as successful.'
+  - '`GET /api/v1/status` and the Overview projection use the latest successful receipt rather than `Ticket.linear_synced_at`, preserving null before the first successful tick.'
+  - Repeated ticks use distinct receipt identities while deterministic tests with an injected clock produce stable fingerprints and ordering.
+  - Migrations work on SQLite and PostgreSQL and upgrade from the current head without changing existing ticket definition cursors.
+  non_goals:
+  - No delivery admission, capacity policy, historical performance analytics, event warehouse, webhook, extra Linear request or UI redesign.
+  implementation_notes:
+  - Keep the receipt append-only and bounded. Store hashes/fingerprints, not issue bodies, tokens or unbounded error responses.
+  test_requirements:
+  - Repository and sync integration tests cover success classes, each failure seam, receipt-write rollback, API projection and migration parity with injected clocks and clients.
+  - Existing PM request-budget, no-op and Operator API/UI tests remain green; seeded Python defects use `assert 1 == 2` (B011).
+  documentation_requirements:
+  - docs/architecture/data-model-and-schemas.md
+  - docs/atlas/pm-engine-and-linear-sync.md
+  - docs/atlas/operator-api.md
+  - docs/atlas/operator-ui.md
+  - docs/atlas/multi-agent-delivery-control.md
+  definition_of_done:
+  - Named tests prove all six criteria; migrations, Python/API/UI drift gates and doc linter pass; canonical docs change with the code; the PR title carries the minted ticket key.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - linear-sync
+  - provenance
+  - system-status
+  - phase-15
+  component: atlas.pm
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/inbox-stub-15-successful-sync-receipt.md#successful-pm-sync-receipt-and-truthful-status-timestamp
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
+  updated_at: '2026-08-02T12:32:32.638319Z'
+  completed_at: null
+- id: f08de9e4-217e-4be0-845e-0d1398417b81
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: e0d47d14-bbd1-4d5d-96bc-f9e7adfeb3cf
+  key: ATLAS-246
+  title: Versioned operator-owned delivery admission policy
+  objective: Define one immutable-revision policy for working, review, rework, risk and component capacity so no agent or heuristic can silently widen delivery authority.
+  context: Phase 15 separates eligibility from admission. Policy changes belong to the operator and must use Phase 13's actor, idempotency, compare-and-set and receipt boundary. The initial revision preserves the current ceiling of three; over-capacity changes hold new work and never demote active tickets.
+  status: planned
+  ticket_type: infrastructure
+  risk_level: high
+  priority: 50
+  relevant_docs:
+  - docs/atlas/multi-agent-delivery-control.md
+  - docs/atlas/governed-operator-actions.md
+  - docs/atlas/pm-engine-and-linear-sync.md
+  acceptance_criteria:
+  - A validated policy revision stores mode, approved Symphony ceiling, working/review budgets, Changes Requested reserve and bounded risk/component lane rules for one product.
+  - The bootstrap revision is explicit, running at ceiling/working budget three, and never increases the current `WORKFLOW.md` ceiling as a migration side effect.
+  - Policy creation/update uses server-owned actor context, idempotency and an expected-revision compare-and-set; stale or altered replay returns conflict with no new revision.
+  - A successful policy revision and append-only action receipt commit atomically; receipt/store failure leaves the prior revision authoritative.
+  - Validation rejects budgets outside approved bounds, reserve above working budget, duplicate/ambiguous lanes and a ceiling above ten.
+  - Paused and draining modes prohibit new admission but never demote a ticket, cancel an agent, delete a workspace or invoke Symphony.
+  non_goals:
+  - No HTTP/UI, candidate ranking, Linear status write, automatic policy optimisation, model selection, multi-product allocation or agent control.
+  implementation_notes:
+  - Use immutable revisions plus one active pointer or deterministic latest lookup. Never update a historical policy row in place.
+  test_requirements:
+  - Model/repository/service tests cover validation, revisions, races, replay, atomic receipts, bootstrap and pause/drain invariants on SQLite and PostgreSQL migrations.
+  - Architecture tests preserve layer ownership and prove policy code cannot import or invoke Symphony; seeded defects use `assert 1 == 2` (B011).
+  documentation_requirements:
+  - docs/architecture/data-model-and-schemas.md
+  - docs/atlas/multi-agent-delivery-control.md
+  - docs/atlas/pm-engine-and-linear-sync.md
+  definition_of_done:
+  - All six criteria have named deterministic tests; migrations, full Python gates and doc linter pass; canonical docs land together; the PR title carries the minted ticket key.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - admission
+  - capacity
+  - policy
+  - governance
+  component: atlas.pm
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/inbox-stub-16-delivery-admission-policy.md#versioned-operator-owned-delivery-admission-policy
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
+  updated_at: '2026-08-02T12:32:32.638319Z'
+  completed_at: null
+- id: 5743680a-448a-408a-b18e-df2d9c99678c
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: e0d47d14-bbd1-4d5d-96bc-f9e7adfeb3cf
+  key: ATLAS-247
+  title: Coherent delivery occupancy and review-pressure snapshot
+  objective: Derive one immutable, fingerprinted view of working, review and lane occupancy from a complete Linear pull and current Atlas state before any ticket can be considered for admission.
+  context: Separate budgets are meaningful only if they are calculated from one coherent observation. Working occupancy includes dispatchable/active/rework states; review occupancy includes Review Required and Needs Human. Unknown, incomplete or contradictory external state must make the snapshot unusable for writes rather than silently reduce the count.
+  status: planned
+  ticket_type: feature
+  risk_level: high
+  priority: 50
+  relevant_docs:
+  - docs/atlas/multi-agent-delivery-control.md
+  - docs/atlas/pm-engine-and-linear-sync.md
+  - docs/atlas/dependency-engine.md
+  acceptance_criteria:
+  - Working occupancy counts Ready for Agent, In Progress, PR Open and Changes Requested; review occupancy separately counts Review Required and Needs Human, using configured state IDs rather than display-name guesses.
+  - Each active ticket consumes all matching risk and component lanes, and Changes Requested occupancy is identified separately for reserve calculation.
+  - The snapshot pins product/project, policy revision, status-map fingerprint, fetched-board fingerprint, Atlas graph/store revision inputs and observation time in a canonical deterministic representation.
+  - Pagination gaps, duplicate issue identities, unmapped/contradictory states, missing joined issues or an incomplete pull produce typed incompleteness reasons and `admission_allowed=false`.
+  - Over-budget existing occupancy is reported with every breached dimension; snapshot construction performs no Linear write, ticket mutation, demotion or Symphony action.
+  - Given identical policy, board and Atlas state, snapshot counts, reasons and fingerprint are byte-stable regardless of source iteration order.
+  non_goals:
+  - No ranking, promotion, policy change, scheduler replacement, historical metrics, prediction or automatic capacity adjustment.
+  implementation_notes:
+  - Reuse the existing project-scoped pull and canonical status map. Do not add a workspace-wide query or join by title/identifier.
+  test_requirements:
+  - Table-driven tests cover every workflow state, combined lanes, reserve, over-capacity, pagination/identity failures and order-independent fingerprinting with injected clocks.
+  - Existing Linear status-map and request-budget suites remain green; seeded defects use `assert 1 == 2` (B011).
+  documentation_requirements:
+  - docs/atlas/multi-agent-delivery-control.md
+  - docs/atlas/pm-engine-and-linear-sync.md
+  definition_of_done:
+  - All six criteria have named deterministic coverage; Python, typing, import and doc-linter gates pass; docs land with code; the PR title carries the minted ticket key.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - admission
+  - occupancy
+  - review-pressure
+  - linear-sync
+  component: atlas.pm
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/inbox-stub-17-delivery-occupancy-snapshot.md#coherent-delivery-occupancy-and-review-pressure-snapshot
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
+  updated_at: '2026-08-02T12:32:32.638319Z'
+  completed_at: null
+- id: 07094c14-7d88-44b4-820a-11399c4c7faf
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: e0d47d14-bbd1-4d5d-96bc-f9e7adfeb3cf
+  key: ATLAS-248
+  title: Deterministic capacity-aware admission decision engine
+  objective: Convert dependency-ready candidates, policy and one coherent snapshot into reproducible admit/hold decisions with complete typed reasons and at most one selected external promotion.
+  context: Phase 3 readiness remains the eligibility authority. Phase 15 adds a pure policy decision after it, protecting working/review budgets, Changes Requested reserve and risk/component lanes. Linear has no batch transaction, so one evaluation may select at most one write while still explaining every candidate.
+  status: planned
+  ticket_type: feature
+  risk_level: high
+  priority: 50
+  relevant_docs:
+  - docs/atlas/multi-agent-delivery-control.md
+  - docs/atlas/dependency-engine.md
+  - docs/atlas/pm-engine-and-linear-sync.md
+  acceptance_criteria:
+  - Candidates come exclusively from the existing readiness predicate; the admission layer never weakens acceptance-criteria, ADR, dependency or status eligibility.
+  - Stable ranking follows unlock count, critical-path membership/position, priority, risk, continuously-eligible age and natural ticket key in the documented order, with no model or Linear-list-order input.
+  - Paused/draining mode, incomplete snapshot, full review/working budget, Changes Requested reserve and every matched lane each produce explicit typed hold reasons; all reasons are retained.
+  - A run selects zero or one candidate only, never a multi-issue write batch, and simulates the selection against all budgets before returning `admit`.
+  - An append-only admission run pins policy/snapshot fingerprints and records every considered candidate, rank inputs, decision and reasons without raw Linear payloads.
+  - Identical inputs produce byte-identical ordering and decisions; source iteration order, timestamps outside the injected clock and random UUIDs do not affect the decision.
+  non_goals:
+  - No Linear write, API/UI, Symphony dispatch, learned scoring, throughput prediction, policy mutation or ticket demotion.
+  implementation_notes:
+  - Keep calculation side-effect free. Persist the returned run in the PM orchestration layer, not inside ranking functions.
+  test_requirements:
+  - Pure decision tests exhaust ranking tie-breaks, combined budget/lane holds, reserve behaviour, incomplete snapshots and zero/one selection.
+  - Property tests vary input order and prove determinism plus no budget oversubscription; seeded defects use `assert 1 == 2` (B011).
+  documentation_requirements:
+  - docs/atlas/multi-agent-delivery-control.md
+  - docs/atlas/pm-engine-and-linear-sync.md
+  - docs/atlas/dependency-engine.md
+  definition_of_done:
+  - All six criteria have named deterministic/property coverage; full Python, typing, import and doc-linter gates pass; docs land together; the PR title carries the minted ticket key.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - admission
+  - deterministic
+  - capacity
+  - explainability
+  component: atlas.pm
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/inbox-stub-18-deterministic-admission-engine.md#deterministic-capacity-aware-admission-decision-engine
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
+  updated_at: '2026-08-02T12:32:32.638319Z'
+  completed_at: null
+- id: fe844acc-692d-4676-8978-ebc6e4c67376
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: e0d47d14-bbd1-4d5d-96bc-f9e7adfeb3cf
+  key: ATLAS-249
+  title: Fail-closed single-write admission integration in the PM sync tick
+  objective: Replace promote-everything sync behaviour with one lease-guarded, revalidated admission write so stale, concurrent, partial or ambiguous external state cannot oversubscribe delivery.
+  context: The current sync promotes every dependency-ready ticket. Phase 15 must route that sole `Ready for Agent` writer through the deterministic admission engine while preserving Linear-to-Atlas status ownership and request accounting. A promotion tick re-reads the complete board immediately before its one external write; ambiguity blocks further admission until reconciliation.
+  status: planned
+  ticket_type: feature
+  risk_level: critical
+  priority: 50
+  relevant_docs:
+  - docs/atlas/multi-agent-delivery-control.md
+  - docs/atlas/pm-engine-and-linear-sync.md
+  - docs/atlas/symphony-integration.md
+  acceptance_criteria:
+  - The periodic and `--once` paths acquire the same database-backed admission lease; a concurrent owner records a typed no-write hold and cannot evaluate a second promotion.
+  - The tick builds an initial complete snapshot, selects at most one candidate, then re-pulls/re-fingerprints policy and the project board immediately before `set_state`; any mismatch produces zero writes.
+  - The only external mutation is the selected issue's state to the uniquely mapped Ready for Agent ID; definition fields, other issue states and Atlas ticket status are untouched, and the next pull remains the Atlas writer.
+  - A confirmed success records the admission outcome and successful sync receipt. A transport-ambiguous write marks admission indeterminate, stops the tick and blocks later admission until a fresh pull reconciles it.
+  - Partial/malformed pagination, policy revision, lease loss, candidate status movement and failures before `set_state` admit nobody; retry cannot promote a different candidate from the stale run.
+  - Changes Requested tickets remain Symphony-active, consume capacity before new admissions and are never demoted or delayed by an Atlas status write.
+  - Sync result output reports admitted, held, over-capacity, stale, indeterminate and policy revision details without exposing credentials or raw issue bodies.
+  non_goals:
+  - No multi-issue transaction simulation, compensating status write, agent cancellation, ticket demotion, scheduler ownership, review transition or automatic policy/ceiling change.
+  implementation_notes:
+  - Replace the step-3 call site rather than adding a second promotion path. Preserve the dedicated `LinearClient.set_state` ownership boundary.
+  test_requirements:
+  - Deterministic sync tests inject every race before and after revalidation, pagination/transport failures, concurrent leases and ambiguous success; external mutation spies prove zero or one exact write.
+  - Existing PM pull/push/promotion/completion, Linear request-budget and scheduler tests remain green; seeded defects use `assert 1 == 2` (B011).
+  documentation_requirements:
+  - docs/atlas/multi-agent-delivery-control.md
+  - docs/atlas/pm-engine-and-linear-sync.md
+  - docs/atlas/symphony-integration.md
+  definition_of_done:
+  - All seven criteria have named race/failure coverage; full Python, typing, import and doc-linter gates pass; docs land together; the PR title carries the minted ticket key.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - admission
+  - linear-sync
+  - concurrency
+  - fail-closed
+  component: atlas.pm
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/inbox-stub-19-fail-closed-admission-sync.md#fail-closed-single-write-admission-integration-in-the-pm-sync-tick
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
+  updated_at: '2026-08-02T12:32:32.638319Z'
+  completed_at: null
+- id: b627cd9c-660f-4f01-9bd6-60b3fc3f87da
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 86fe8167-7b99-45fd-ac96-3d0f4d3a0f53
+  key: ATLAS-250
+  title: Authenticated delivery-control policy and status API
+  objective: Expose current policy, occupancy and admission reasons and allow one authenticated compare-and-set policy replacement without creating a generic ticket or Symphony control surface.
+  context: The operator needs to understand why eligible work is held and deliberately change budgets or mode. Phase 13 owns mutation security and receipts; Phase 15 services own validation and admission. The API remains thin and exposes no ticket-state, agent-session or automatic-ceiling action.
+  status: planned
+  ticket_type: feature
+  risk_level: high
+  priority: 50
+  relevant_docs:
+  - docs/atlas/multi-agent-delivery-control.md
+  - docs/atlas/operator-api.md
+  - docs/atlas/governed-operator-actions.md
+  acceptance_criteria:
+  - '`GET /api/v1/delivery-control` returns active policy/revision, approved ceiling, truthful last-successful-sync time, current occupancy, latest decisions and every typed hold/over-capacity/indeterminate reason.'
+  - '`POST /api/v1/delivery-control/policy` accepts one complete strict policy plus `expected_revision`; actor, action identity and current state remain server-owned.'
+  - POST requires the shared session, Host/Origin, JSON, CSRF and idempotency controls and makes exactly one policy-service call; stale revision and altered replay return conflict with no change.
+  - 'GET is authenticated, no-store and observational: it never acquires an admission lease, refreshes Linear, writes a receipt or mutates policy.'
+  - Responses are bounded and secret-free; raw Linear payloads, tokens, session secrets and unbounded stored exceptions are never projected.
+  - Route-inventory tests reject ticket-status, dispatch, cancel, merge, rebase, arbitrary PATCH/PUT and automatic-ceiling endpoints.
+  - OpenAPI schemas and generated TypeScript types/runtime metadata regenerate deterministically with no unexplained drift.
+  non_goals:
+  - No ticket promotion endpoint, Symphony worker control, GitHub/Linear credential input, background optimiser, multi-user role or remote hosting.
+  implementation_notes:
+  - Route dependencies resolve context, call one application service and present. Do not compute occupancy or admission in `atlas.api`.
+  test_requirements:
+  - API/service tests cover read and policy success, every validation/security/ conflict outcome, no-write GET and route-inventory prohibitions.
+  - Existing contains-no-logic, OpenAPI/client and secret-redaction tests remain green; seeded Python defects use `assert 1 == 2` (B011).
+  documentation_requirements:
+  - docs/atlas/operator-api.md
+  - docs/atlas/multi-agent-delivery-control.md
+  definition_of_done:
+  - All seven criteria have named API/architecture coverage; Python, OpenAPI, TypeScript and doc-linter gates pass; docs land with code; the PR title carries the minted ticket key.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - api
+  - admission
+  - policy
+  - authentication
+  component: atlas.api
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/inbox-stub-20-delivery-control-api.md#authenticated-delivery-control-policy-and-status-api
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
+  updated_at: '2026-08-02T12:32:32.638319Z'
+  completed_at: null
+- id: a2caf27e-bac7-4733-80d7-c97cbf6522f2
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 80047dd6-542c-4ad8-8213-a2372ab4e560
+  key: ATLAS-251
+  title: Operator delivery-control and admission-explanation UI
+  objective: Give the operator a clear control panel for working/review capacity, policy revisions and admit/hold reasons while keeping every delivery action and authority boundary server-owned.
+  context: Phase 15 needs an instrument, not an autonomous optimiser. The UI consumes generated delivery-control schemas, displays ceilings as limits rather than targets and submits explicit full-policy revisions through the Phase 13 mutation primitive. It never changes a ticket status or controls Symphony.
+  status: planned
+  ticket_type: feature
+  risk_level: high
+  priority: 50
+  relevant_docs:
+  - docs/atlas/multi-agent-delivery-control.md
+  - docs/atlas/operator-ui.md
+  - docs/atlas/governed-operator-actions.md
+  acceptance_criteria:
+  - The control view shows approved ceiling, mode, policy revision, truthful sync freshness and used/available working, review, risk, component and Changes Requested reserve capacity from generated API types.
+  - Eligible tickets display deterministic rank inputs and all admitted/held, stale, over-capacity or indeterminate reasons without recomputing a server decision.
+  - A complete policy form validates obvious bounds, requires an explicit summary confirmation and submits `expected_revision` with a fresh idempotency key through the shared authenticated mutation client.
+  - Stale revision, altered replay, session expiry, security failure and API unavailability each preserve the entered proposal, show an accessible recovery state and never silently retry.
+  - Paused and draining modes explain that active work is preserved; executable control-inventory tests prove there is no promote, demote, cancel, dispatch, terminate, merge, rebase or automatic-ramp control.
+  - Loading/refetch keeps the last truthful server snapshot visibly stale until replacement and never presents a client clock or optimistic policy as authoritative.
+  - Keyboard flow, focus/confirmation handling, announcements, dense reason lists, long component names and established responsive viewports pass accessibility and layout tests.
+  non_goals:
+  - No ticket board redesign, direct Linear write, Symphony session UI, automatic recommendations, charts requiring Phase 16 metrics or remote administration.
+  implementation_notes:
+  - Reuse the generated client, query layer, mutation confirmation and design tokens. Never hand-maintain policy enums or calculate admission locally.
+  test_requirements:
+  - Component/query tests cover every mode/reason, policy success/conflict, session/security failures, stale snapshots and forbidden controls.
+  - Playwright against a seeded live API covers policy revision, pause/drain, cross-tab stale revision, keyboard and responsive flows without external writes beyond the intended local policy command.
+  documentation_requirements:
+  - docs/atlas/operator-ui.md
+  - docs/atlas/multi-agent-delivery-control.md
+  definition_of_done:
+  - All seven criteria have named component/browser evidence; UI lint/type/ test/build, Playwright, accessibility, client drift and doc linter pass; the PR title carries the minted ticket key.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - operator-ui
+  - admission
+  - capacity
+  - explainability
+  component: operator-ui
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/inbox-stub-21-delivery-control-ui.md#operator-delivery-control-and-admission-explanation-ui
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
+  updated_at: '2026-08-02T12:32:32.638319Z'
+  completed_at: null
+- id: 1a647b7e-3c62-4289-88c4-203e0722bb2d
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 4d034c8b-0752-4089-8ff9-2fd43f51c6f4
+  key: ATLAS-252
+  title: Symphony ceiling contract and controlled-ramp runbook
+  objective: Make the 3-to-5-to-7-to-10 ceiling change a governed, reversible operator procedure with exact evidence gates, while keeping committed `main` at three until the dedicated milestone branch proves ten.
+  context: More available workers are safe only when Atlas admission and human review capacity agree. This ticket defines the config ownership, preflight, observation window, stop/rollback rules and evidence receipt for each level. It must define that the operator changes `WORKFLOW.md` only on a dedicated milestone branch through 5, 7 and 10 after each preceding gate passes. It must not perform the live Phase 15 milestone or treat ten as a target.
+  status: planned
+  ticket_type: infrastructure
+  risk_level: high
+  priority: 50
+  relevant_docs:
+  - WORKFLOW.md
+  - docs/atlas/multi-agent-delivery-control.md
+  - docs/atlas/symphony-integration.md
+  - docs/runbooks/operator-environment.md
+  acceptance_criteria:
+  - Canonical docs define one operator-owned ceiling value and distinguish it from Atlas working/review/lane budgets and actual occupied slots.
+  - The runbook pins the dedicated milestone branch, prerequisites, exact `WORKFLOW.md` edit, preflight, observation window, evidence capture, success/stop conditions and rollback for ceilings 3, 5, 7 and 10; each branch increase occurs only after the preceding gate passes.
+  - Five cannot begin without baseline admission/pause/rework proof; seven requires stable review and stale-write evidence; ten requires Phase 14 closure and adequate exact-head acceptance throughput.
+  - A failed level restores or retains the last proven milestone-branch value, records the failure, leaves Phase 15 open and merges no ceiling change to `main`. Lowering a branch ceiling or pausing admission never claims to terminate active Symphony sessions.
+  - '`WORKFLOW.md` remains at three in this implementation change and on committed `main` until milestone closure. Executable contract tests fail an unaccompanied or above-ten ceiling edit and require the successful closure change to commit and merge exactly ten.'
+  - The procedure contains no Atlas endpoint or agent path for editing `WORKFLOW.md`, Symphony configuration, policy or acceptance evidence.
+  non_goals:
+  - No live ramp execution, automatic autoscaling, scheduler modification, worker cancellation, merge queue, performance scoring or Phase 16 metrics.
+  implementation_notes:
+  - Keep the product-invariant Symphony workflow body intact. The operator edits the declared ceiling only on the dedicated milestone branch at a recorded live gate; intermediate ceiling edits never merge independently.
+  test_requirements:
+  - Extend workflow-contract and documentation-linter tests for ceiling bounds, unchanged initial value, authority wording and required level gates.
+  - Rehearse the runbook against deterministic fixtures only; no live worker is started by CI and seeded Python defects use `assert 1 == 2` (B011).
+  documentation_requirements:
+  - WORKFLOW.md
+  - docs/atlas/multi-agent-delivery-control.md
+  - docs/atlas/symphony-integration.md
+  - docs/runbooks/operator-environment.md
+  definition_of_done:
+  - All six criteria have named contract/doc tests; the initial ceiling remains three; full Python and doc-linter gates pass; the PR title carries the minted ticket key.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - symphony
+  - capacity
+  - runbook
+  - governance
+  component: orchestration
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/inbox-stub-22-symphony-capacity-ramp-contract.md#symphony-ceiling-contract-and-controlled-ramp-runbook
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
+  updated_at: '2026-08-02T12:32:32.638319Z'
+  completed_at: null
+- id: 317bdce2-b7b3-4993-b423-ee025aac2822
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 4d034c8b-0752-4089-8ff9-2fd43f51c6f4
+  key: ATLAS-253
+  title: Three-to-five-to-seven-to-ten delivery-control milestone
+  objective: Prove the complete Phase 15 admission and review-pressure system under a controlled live workload before authorising the ten-agent ceiling.
+  context: 'Focused tests cannot prove the operational relationship between Atlas admission, Linear state, Symphony occupancy and Phase 14 acceptance throughput. The milestone uses more than ten independent tickets and moves one governed level at a time. Any breach stops at the last proven ceiling; Atlas never merges, cancels workers or rewrites policy on its own. Phase 15 remains open below ten. Committed `main` stays at three while the operator advances `WORKFLOW.md` on a dedicated milestone branch through 5, 7 and 10. Only after the ten-agent gate succeeds does this milestone/closure change commit and merge `max_concurrent_agents: 10` to `main`.'
+  status: planned
+  ticket_type: infrastructure
+  risk_level: critical
+  priority: 50
+  relevant_docs:
+  - WORKFLOW.md
+  - docs/atlas/multi-agent-delivery-control.md
+  - docs/atlas/review-acceptance-console.md
+  - docs/atlas/symphony-integration.md
+  - docs/runbooks/pr-acceptance.md
+  acceptance_criteria:
+  - A controlled live fixture with more than ten independent tickets records exact policy, board, sync/admission, Symphony and acceptance evidence at ceilings 3, 5, 7 and 10. The operator changes `WORKFLOW.md` on the dedicated milestone branch for each next level only when the prior gate passes; committed `main` remains at three throughout the exercise.
+  - At every level working, review, risk, component and rework-reserve occupancy remains within policy; a full review budget stops new admission while Changes Requested work remains dispatchable and unstarved.
+  - Candidate choice is reproduced from the recorded snapshot and policy, and every non-selected ticket has complete typed hold reasons visible through the API and UI.
+  - Paused and draining exercises admit nobody and preserve active tickets, agents and workspaces; returning to running requires an explicit operator-attributed policy revision.
+  - Seeded stale board/policy, concurrent tick, pagination/partial-read, ambiguous single write and duplicate/altered policy command cases never admit an unselected ticket or allow a second admission before reconciliation.
+  - Phase 14 exact-head acceptance is exercised at the higher ceilings and the recorded review throughput/pressure must support ten. If any gate fails, the last proven milestone-branch ceiling is restored or retained, the failure is recorded honestly, Phase 15 remains open and no ceiling change merges to `main`; closure below ten is prohibited.
+  - 'External and repository assertions prove Atlas performs no GitHub merge or rebase, Linear review-state mutation, Symphony scheduling/cancellation, plan approval, permission expansion or deployment. After the ten-agent gate passes, the milestone/closure change commits and merges `WORKFLOW.md` at exactly `max_concurrent_agents: 10`; intermediate branch values never merge independently.'
+  non_goals:
+  - No Phase 16 scoring/analytics, automatic model choice, autoscaling, multi-product allocation, merge queue, remote deployment or relaxation of Phase 13/14 security and evidence gates.
+  implementation_notes:
+  - Capture exact identities and timestamps at each level. A screenshot or configured value alone is not proof of bounded occupancy or review throughput. Preserve the dedicated milestone branch and exact `WORKFLOW.md` value in the evidence for every gate.
+  test_requirements:
+  - Extend the seeded live harness with deterministic Linear/Symphony fault injection, multiple tick owners and external-mutation spies; retained evidence must contain no credentials or raw secret-bearing payloads.
+  - Run full Python, API/UI, OpenAPI/client, Playwright, accessibility, workflow-contract and doc-linter gates plus the operator-controlled live exercise.
+  documentation_requirements:
+  - WORKFLOW.md
+  - ROADMAP.md
+  - docs/atlas/implementation-roadmap.md
+  - docs/atlas/multi-agent-delivery-control.md
+  - docs/atlas/review-acceptance-console.md
+  - docs/atlas/symphony-integration.md
+  - docs/runbooks/pr-acceptance.md
+  - docs/runbooks/operator-environment.md
+  - docs/closure/phase-15-closure-report.md
+  definition_of_done:
+  - 'All seven criteria pass in CI and the controlled operator exercise; exact evidence proves ten; `WORKFLOW.md` lands at `max_concurrent_agents: 10` with Phase 15 closure and canonical docs; the PR title carries the minted ticket key. Any lower result leaves the phase open.'
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - phase-15
+  - milestone
+  - symphony
+  - admission
+  - acceptance
+  component: orchestration
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/inbox-stub-23-delivery-control-milestone.md#three-to-five-to-seven-to-ten-delivery-control-milestone
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
+  updated_at: '2026-08-02T12:32:32.638319Z'
   completed_at: null

@@ -1,7 +1,7 @@
 # Render written only by `atlas apply` (ADR-0006/0007); do not hand-edit.
-# plan_run_id: 169d3cdb-ea0d-4149-96e4-4be8f3c590b2
+# plan_run_id: c89c7c82-d451-4ddb-a314-5b0e8d6d8348
 # prompt_version: stubs-only
-# ticket_key_high_water: 230
+# ticket_key_high_water: 253
 # epic_key_high_water: 13
 dependencies:
 - id: 1d4aafed-6d6a-4f61-97d9-5af5c9a4f88e
@@ -22,6 +22,24 @@ dependencies:
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-07-04T18:05:38.538342Z'
+- id: 01caf358-ffe9-40fd-a858-c4b18e6824f3
+  source_ticket_id: 07094c14-7d88-44b4-820a-11399c4c7faf
+  target_entity_type: ticket
+  target_entity_id: 2d867a2a-092f-49d4-ab9e-c7d283b882b6
+  dependency_type: depends_on
+  reason: declared by the stub's depends_on front-matter (ATLAS-153)
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
+- id: d627cd16-6137-4311-a764-65fa67f7b4a4
+  source_ticket_id: 07094c14-7d88-44b4-820a-11399c4c7faf
+  target_entity_type: ticket
+  target_entity_id: 5743680a-448a-408a-b18e-df2d9c99678c
+  dependency_type: depends_on
+  reason: declared by the stub's depends_on front-matter (ATLAS-153)
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
 - id: 878d86b2-17a4-469e-98cb-1edd31bfdb05
   source_ticket_id: 0caa98d1-84ef-4ed5-bcc7-e4ee07f15817
   target_entity_type: ticket
@@ -121,6 +139,42 @@ dependencies:
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-07-04T18:05:38.538342Z'
+- id: c9a23e9b-3dfc-4de6-97b3-fd3104c990f4
+  source_ticket_id: 155963ee-136e-4207-8a27-82fa14e289ff
+  target_entity_type: ticket
+  target_entity_id: 31d9d42a-2e30-462c-8a2d-5c11d9eebcc6
+  dependency_type: depends_on
+  reason: declared by the stub's depends_on front-matter (ATLAS-153)
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
+- id: 07279aec-ce1e-4044-a6d8-defa7f0bdef2
+  source_ticket_id: 155963ee-136e-4207-8a27-82fa14e289ff
+  target_entity_type: ticket
+  target_entity_id: 593f1b8f-4852-42f3-b09b-270eb9500080
+  dependency_type: depends_on
+  reason: declared by the stub's depends_on front-matter (ATLAS-153)
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
+- id: ad1c8076-305b-4402-8bd9-b89ba51e5dde
+  source_ticket_id: 155963ee-136e-4207-8a27-82fa14e289ff
+  target_entity_type: ticket
+  target_entity_id: 75f48d21-7eac-4e34-9160-d498fedf0c91
+  dependency_type: depends_on
+  reason: declared by the stub's depends_on front-matter (ATLAS-153)
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
+- id: fddf2444-7217-4760-a2b8-12f4ec756df8
+  source_ticket_id: 155963ee-136e-4207-8a27-82fa14e289ff
+  target_entity_type: ticket
+  target_entity_id: ee6feb97-9feb-4a3c-8262-dc6a5c0aca7e
+  dependency_type: depends_on
+  reason: declared by the stub's depends_on front-matter (ATLAS-153)
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
 - id: ccd02a9e-9ee6-4818-b9fe-8a2f26ffb171
   source_ticket_id: 184c4595-899e-485b-b5a0-a1a273444142
   target_entity_type: ticket
@@ -175,6 +229,15 @@ dependencies:
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-07-04T18:05:38.538342Z'
+- id: 2bb87f2e-d747-430b-a00c-c649ffa0863e
+  source_ticket_id: 1a647b7e-3c62-4289-88c4-203e0722bb2d
+  target_entity_type: ticket
+  target_entity_id: fe844acc-692d-4676-8978-ebc6e4c67376
+  dependency_type: depends_on
+  reason: declared by the stub's depends_on front-matter (ATLAS-153)
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
 - id: 27a7132c-1d99-4206-91b5-c4a718524eaa
   source_ticket_id: 1cfd4705-edb4-4f0e-9fdd-d5a978b42a51
   target_entity_type: ticket
@@ -319,6 +382,60 @@ dependencies:
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-07-04T18:05:38.538342Z'
+- id: 0c6afa10-837c-4cda-ac21-28c5d285f719
+  source_ticket_id: 317bdce2-b7b3-4993-b423-ee025aac2822
+  target_entity_type: ticket
+  target_entity_id: 1a647b7e-3c62-4289-88c4-203e0722bb2d
+  dependency_type: depends_on
+  reason: declared by the stub's depends_on front-matter (ATLAS-153)
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
+- id: aee188ec-89e5-4b46-927c-c8a99558f8a1
+  source_ticket_id: 317bdce2-b7b3-4993-b423-ee025aac2822
+  target_entity_type: ticket
+  target_entity_id: 46525e07-ffc1-41ab-93a0-7814d74d3829
+  dependency_type: depends_on
+  reason: declared by the stub's depends_on front-matter (ATLAS-153)
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
+- id: 48b53fb0-6124-4bcc-8988-9bfed5b1ba7b
+  source_ticket_id: 317bdce2-b7b3-4993-b423-ee025aac2822
+  target_entity_type: ticket
+  target_entity_id: a2caf27e-bac7-4733-80d7-c97cbf6522f2
+  dependency_type: depends_on
+  reason: declared by the stub's depends_on front-matter (ATLAS-153)
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
+- id: 15fcaecb-53b2-46f7-8e35-9ffeb0772dbd
+  source_ticket_id: 31d9d42a-2e30-462c-8a2d-5c11d9eebcc6
+  target_entity_type: ticket
+  target_entity_id: 0f4e0778-128a-4bd9-9bd2-d0c609eaaba5
+  dependency_type: depends_on
+  reason: declared by the stub's depends_on front-matter (ATLAS-153)
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
+- id: df56e9cd-399b-4802-9155-b19ee3ce5df3
+  source_ticket_id: 31d9d42a-2e30-462c-8a2d-5c11d9eebcc6
+  target_entity_type: ticket
+  target_entity_id: 6c4595ff-5d69-443f-8d38-374b84534001
+  dependency_type: depends_on
+  reason: declared by the stub's depends_on front-matter (ATLAS-153)
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
+- id: 4e90327f-7ae9-47e0-863c-80761e30d428
+  source_ticket_id: 31d9d42a-2e30-462c-8a2d-5c11d9eebcc6
+  target_entity_type: ticket
+  target_entity_id: b2fa9fbf-26e3-46e3-ae1e-a4c265bacc72
+  dependency_type: depends_on
+  reason: declared by the stub's depends_on front-matter (ATLAS-153)
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
 - id: e925a6d0-10ed-4bee-82a7-fe87dcbdb903
   source_ticket_id: 3589d7cd-38b5-472b-a872-52824ffb63c7
   target_entity_type: ticket
@@ -526,6 +643,24 @@ dependencies:
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-07-26T18:32:14.708576Z'
+- id: 20a3b973-8cc7-4744-9e19-b309745d7955
+  source_ticket_id: 46525e07-ffc1-41ab-93a0-7814d74d3829
+  target_entity_type: ticket
+  target_entity_id: 6a31f4e7-1f94-45b7-9132-4cc8dfd61c5e
+  dependency_type: depends_on
+  reason: declared by the stub's depends_on front-matter (ATLAS-153)
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
+- id: ddb9c705-dedb-4b69-a7a8-2998c4078c3c
+  source_ticket_id: 46525e07-ffc1-41ab-93a0-7814d74d3829
+  target_entity_type: ticket
+  target_entity_id: c8f6b393-7ab4-4b33-80cd-3d2bb4078c10
+  dependency_type: depends_on
+  reason: declared by the stub's depends_on front-matter (ATLAS-153)
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
 - id: 173036c6-7a86-4ac4-b079-dee81d8f8b2b
   source_ticket_id: 4727b4b3-f130-454a-9edf-6b882a762b15
   target_entity_type: ticket
@@ -643,6 +778,33 @@ dependencies:
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-07-04T18:05:38.538342Z'
+- id: c73d65ed-d821-47c5-84fa-0e7ff1b9b978
+  source_ticket_id: 5743680a-448a-408a-b18e-df2d9c99678c
+  target_entity_type: ticket
+  target_entity_id: eca263f4-c4e9-4de3-8abf-0b8dc7a83ef6
+  dependency_type: depends_on
+  reason: declared by the stub's depends_on front-matter (ATLAS-153)
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
+- id: bdc00889-663b-4989-ad55-b92b4eafa993
+  source_ticket_id: 5743680a-448a-408a-b18e-df2d9c99678c
+  target_entity_type: ticket
+  target_entity_id: f08de9e4-217e-4be0-845e-0d1398417b81
+  dependency_type: depends_on
+  reason: declared by the stub's depends_on front-matter (ATLAS-153)
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
+- id: 519acf34-c0f4-4420-8ce7-b3270de5a72d
+  source_ticket_id: 5743680a-448a-408a-b18e-df2d9c99678c
+  target_entity_type: ticket
+  target_entity_id: fd56ed56-6f52-4f9a-ba23-f5074024abb4
+  dependency_type: depends_on
+  reason: declared by the stub's depends_on front-matter (ATLAS-153)
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
 - id: da8daa1c-7333-479f-9889-3a920475c473
   source_ticket_id: 587ab736-54d9-43b3-b57f-a445471aa58e
   target_entity_type: ticket
@@ -796,6 +958,15 @@ dependencies:
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-07-04T18:05:38.538342Z'
+- id: 2dcfc134-c74f-4b3c-bb67-b5ed1d04f956
+  source_ticket_id: 63d5e97e-f35b-4817-9a50-0ea48044a548
+  target_entity_type: ticket
+  target_entity_id: 956be8cf-3c9f-4a50-a361-8126c9ad5e1a
+  dependency_type: depends_on
+  reason: declared by the stub's depends_on front-matter (ATLAS-153)
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
 - id: 0075fd2d-4116-48c1-85df-9d2c193f8833
   source_ticket_id: 6537ed61-70c6-4618-972f-fefd19f91ca8
   target_entity_type: ticket
@@ -850,6 +1021,42 @@ dependencies:
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-07-04T18:05:38.538342Z'
+- id: 4e843de6-7331-44e9-ba04-2735fcd5ab5e
+  source_ticket_id: 6a31f4e7-1f94-45b7-9132-4cc8dfd61c5e
+  target_entity_type: ticket
+  target_entity_id: 12e0b7ae-a973-46ba-a20c-a83ce4a3d97d
+  dependency_type: depends_on
+  reason: declared by the stub's depends_on front-matter (ATLAS-153)
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
+- id: 099d0b07-fc3d-4ead-8179-c0296777fc30
+  source_ticket_id: 6a31f4e7-1f94-45b7-9132-4cc8dfd61c5e
+  target_entity_type: ticket
+  target_entity_id: 593f1b8f-4852-42f3-b09b-270eb9500080
+  dependency_type: depends_on
+  reason: declared by the stub's depends_on front-matter (ATLAS-153)
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
+- id: 8ec7a98d-0b63-40f6-8290-9dac74115585
+  source_ticket_id: 6a31f4e7-1f94-45b7-9132-4cc8dfd61c5e
+  target_entity_type: ticket
+  target_entity_id: 75f48d21-7eac-4e34-9160-d498fedf0c91
+  dependency_type: depends_on
+  reason: declared by the stub's depends_on front-matter (ATLAS-153)
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
+- id: 760a1887-ca0a-4d7d-989e-abd602827a62
+  source_ticket_id: 6a31f4e7-1f94-45b7-9132-4cc8dfd61c5e
+  target_entity_type: ticket
+  target_entity_id: e13affa7-002f-4693-812a-5dea87c18b0c
+  dependency_type: depends_on
+  reason: declared by the stub's depends_on front-matter (ATLAS-153)
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
 - id: 4b0d9810-7e38-4eeb-8b78-37ccd1b2c730
   source_ticket_id: 6af1cf1e-8279-42bc-8991-a023c7c52925
   target_entity_type: ticket
@@ -859,6 +1066,33 @@ dependencies:
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-07-04T18:05:38.538342Z'
+- id: 3b49ced7-7172-450e-a920-998172c2cd7d
+  source_ticket_id: 6c4595ff-5d69-443f-8d38-374b84534001
+  target_entity_type: ticket
+  target_entity_id: 880da2b6-7dea-420f-b291-cb29a358afdf
+  dependency_type: depends_on
+  reason: declared by the stub's depends_on front-matter (ATLAS-153)
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
+- id: 973c6a00-173d-44ee-be2f-6491eced7dfe
+  source_ticket_id: 6c4595ff-5d69-443f-8d38-374b84534001
+  target_entity_type: ticket
+  target_entity_id: b4eb662f-6c1a-4591-821f-e5b3903020e3
+  dependency_type: depends_on
+  reason: declared by the stub's depends_on front-matter (ATLAS-153)
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
+- id: 53296496-7446-495b-99e2-f1225fffa6da
+  source_ticket_id: 6c4595ff-5d69-443f-8d38-374b84534001
+  target_entity_type: ticket
+  target_entity_id: e87fd13a-6c0a-4c92-ac07-02bc47f99d98
+  dependency_type: depends_on
+  reason: declared by the stub's depends_on front-matter (ATLAS-153)
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
 - id: fc5dc126-6d32-4770-b78b-eeab947505b8
   source_ticket_id: 6f589650-96c7-49c9-ae07-69b15590950d
   target_entity_type: ticket
@@ -1066,6 +1300,33 @@ dependencies:
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-07-30T16:33:30.340654Z'
+- id: 39a621e6-e574-4a03-b090-501e3eff9955
+  source_ticket_id: 85658732-3eac-4a49-b97a-1a0d67d8f170
+  target_entity_type: ticket
+  target_entity_id: 63d5e97e-f35b-4817-9a50-0ea48044a548
+  dependency_type: depends_on
+  reason: declared by the stub's depends_on front-matter (ATLAS-153)
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
+- id: fa10de03-59e8-41de-bc3e-6da59bc301a0
+  source_ticket_id: 85658732-3eac-4a49-b97a-1a0d67d8f170
+  target_entity_type: ticket
+  target_entity_id: 9e9a21ec-7f7b-45b8-9915-060c7eb024e1
+  dependency_type: depends_on
+  reason: declared by the stub's depends_on front-matter (ATLAS-153)
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
+- id: 0c16d427-5bb5-472f-a7ec-97a746d07ac4
+  source_ticket_id: 85658732-3eac-4a49-b97a-1a0d67d8f170
+  target_entity_type: ticket
+  target_entity_id: 9ed2bc93-92f4-4e51-a2bb-8008698b079c
+  dependency_type: depends_on
+  reason: declared by the stub's depends_on front-matter (ATLAS-153)
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
 - id: 717e3177-065c-409b-a073-a6b97eccf714
   source_ticket_id: 86051f46-754b-40f9-8856-4c2dbec18ed8
   target_entity_type: ticket
@@ -1138,6 +1399,33 @@ dependencies:
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-07-04T18:05:38.538342Z'
+- id: e6a9d04d-62bf-4a01-ae78-5a02e69f2e5c
+  source_ticket_id: 956be8cf-3c9f-4a50-a361-8126c9ad5e1a
+  target_entity_type: ticket
+  target_entity_id: 8503da2f-ae10-4244-a4e2-9fc3346322f5
+  dependency_type: depends_on
+  reason: declared by the stub's depends_on front-matter (ATLAS-153)
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
+- id: 73473694-2182-469b-bb06-dd7da6d9608d
+  source_ticket_id: 956be8cf-3c9f-4a50-a361-8126c9ad5e1a
+  target_entity_type: ticket
+  target_entity_id: a8863030-7b1c-4ee6-b50a-be8d202bdca1
+  dependency_type: depends_on
+  reason: declared by the stub's depends_on front-matter (ATLAS-153)
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
+- id: 7e67a058-e190-46c3-acfd-eb3625c8567b
+  source_ticket_id: 956be8cf-3c9f-4a50-a361-8126c9ad5e1a
+  target_entity_type: ticket
+  target_entity_id: e87fd13a-6c0a-4c92-ac07-02bc47f99d98
+  dependency_type: depends_on
+  reason: declared by the stub's depends_on front-matter (ATLAS-153)
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
 - id: c636d5e0-bee4-4636-97a9-a71751ae6c15
   source_ticket_id: 9580f968-be68-43c8-8f93-d90f76198f0b
   target_entity_type: ticket
@@ -1210,6 +1498,33 @@ dependencies:
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-07-26T18:32:14.708576Z'
+- id: 80625dc9-d956-41d7-b137-157e6d58d365
+  source_ticket_id: 9e9a21ec-7f7b-45b8-9915-060c7eb024e1
+  target_entity_type: ticket
+  target_entity_id: 8e18d44c-aa63-4692-ab1f-67082b61c77a
+  dependency_type: depends_on
+  reason: declared by the stub's depends_on front-matter (ATLAS-153)
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
+- id: e916c4c8-c2b3-457e-a3a7-8624add5b67d
+  source_ticket_id: 9e9a21ec-7f7b-45b8-9915-060c7eb024e1
+  target_entity_type: ticket
+  target_entity_id: 956be8cf-3c9f-4a50-a361-8126c9ad5e1a
+  dependency_type: depends_on
+  reason: declared by the stub's depends_on front-matter (ATLAS-153)
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
+- id: ca52bfc1-fc3e-4c6f-b4f7-4ef8825f485c
+  source_ticket_id: 9e9a21ec-7f7b-45b8-9915-060c7eb024e1
+  target_entity_type: ticket
+  target_entity_id: b2fa9fbf-26e3-46e3-ae1e-a4c265bacc72
+  dependency_type: depends_on
+  reason: declared by the stub's depends_on front-matter (ATLAS-153)
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
 - id: 5a0e5fda-3408-458b-8c70-ede2bedb8a7d
   source_ticket_id: 9ed2bc93-92f4-4e51-a2bb-8008698b079c
   target_entity_type: ticket
@@ -1291,6 +1606,51 @@ dependencies:
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-07-04T18:05:38.538342Z'
+- id: 6f812a26-e727-4ee1-abf4-0e17328d4bc6
+  source_ticket_id: a2caf27e-bac7-4733-80d7-c97cbf6522f2
+  target_entity_type: ticket
+  target_entity_id: 475d004b-7249-4b37-a5c6-e79f64dc1554
+  dependency_type: depends_on
+  reason: declared by the stub's depends_on front-matter (ATLAS-153)
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
+- id: a6375792-7ae2-48fd-b76d-583e6cea3152
+  source_ticket_id: a2caf27e-bac7-4733-80d7-c97cbf6522f2
+  target_entity_type: ticket
+  target_entity_id: 593f1b8f-4852-42f3-b09b-270eb9500080
+  dependency_type: depends_on
+  reason: declared by the stub's depends_on front-matter (ATLAS-153)
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
+- id: 97f94efd-bcd4-4c76-801c-344a75d302f4
+  source_ticket_id: a2caf27e-bac7-4733-80d7-c97cbf6522f2
+  target_entity_type: ticket
+  target_entity_id: 75f48d21-7eac-4e34-9160-d498fedf0c91
+  dependency_type: depends_on
+  reason: declared by the stub's depends_on front-matter (ATLAS-153)
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
+- id: 1d43a5c0-64ef-4269-a1bd-be03eaf129b2
+  source_ticket_id: a2caf27e-bac7-4733-80d7-c97cbf6522f2
+  target_entity_type: ticket
+  target_entity_id: 96705873-9a00-41ec-b249-b7f8d1d84893
+  dependency_type: depends_on
+  reason: declared by the stub's depends_on front-matter (ATLAS-153)
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
+- id: 0d32c8c6-1bf6-46fd-b148-fe3010713141
+  source_ticket_id: a2caf27e-bac7-4733-80d7-c97cbf6522f2
+  target_entity_type: ticket
+  target_entity_id: b627cd9c-660f-4f01-9bd6-60b3fc3f87da
+  dependency_type: depends_on
+  reason: declared by the stub's depends_on front-matter (ATLAS-153)
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
 - id: f81d7500-9b34-4d59-b981-1965808a97be
   source_ticket_id: a6184394-931b-4dd1-8507-56758aa2878b
   target_entity_type: ticket
@@ -1336,6 +1696,33 @@ dependencies:
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-07-04T18:05:38.538342Z'
+- id: fd6665c8-6cec-4d0a-8893-3b143cd2f8d6
+  source_ticket_id: aeb60ef6-d301-4ee1-9857-b41e4b646527
+  target_entity_type: ticket
+  target_entity_id: 9ed2bc93-92f4-4e51-a2bb-8008698b079c
+  dependency_type: depends_on
+  reason: declared by the stub's depends_on front-matter (ATLAS-153)
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
+- id: d42bb109-3a11-4826-9127-bd3fb6182176
+  source_ticket_id: b2fa9fbf-26e3-46e3-ae1e-a4c265bacc72
+  target_entity_type: ticket
+  target_entity_id: 593f1b8f-4852-42f3-b09b-270eb9500080
+  dependency_type: depends_on
+  reason: declared by the stub's depends_on front-matter (ATLAS-153)
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
+- id: 913bbaa0-e7c1-43c0-bb7b-9cbd2edcd33e
+  source_ticket_id: b2fa9fbf-26e3-46e3-ae1e-a4c265bacc72
+  target_entity_type: ticket
+  target_entity_id: 62ff7096-98cb-45d0-bed9-72e1343dba42
+  dependency_type: depends_on
+  reason: declared by the stub's depends_on front-matter (ATLAS-153)
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
 - id: 2e8d6200-b663-419c-abf9-aa146f25b563
   source_ticket_id: b3b6c3ac-a583-43bf-a129-50611ada5da9
   target_entity_type: ticket
@@ -1462,6 +1849,42 @@ dependencies:
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-07-04T18:05:38.538342Z'
+- id: fa739294-ff2a-4b49-ac44-bc722bbf08f9
+  source_ticket_id: b627cd9c-660f-4f01-9bd6-60b3fc3f87da
+  target_entity_type: ticket
+  target_entity_id: 5743680a-448a-408a-b18e-df2d9c99678c
+  dependency_type: depends_on
+  reason: declared by the stub's depends_on front-matter (ATLAS-153)
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
+- id: 7b755edd-7a9f-496c-94a3-a1f6ee323337
+  source_ticket_id: b627cd9c-660f-4f01-9bd6-60b3fc3f87da
+  target_entity_type: ticket
+  target_entity_id: b2fa9fbf-26e3-46e3-ae1e-a4c265bacc72
+  dependency_type: depends_on
+  reason: declared by the stub's depends_on front-matter (ATLAS-153)
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
+- id: 395f5d36-1a71-4562-8c70-f0de768667d6
+  source_ticket_id: b627cd9c-660f-4f01-9bd6-60b3fc3f87da
+  target_entity_type: ticket
+  target_entity_id: f08de9e4-217e-4be0-845e-0d1398417b81
+  dependency_type: depends_on
+  reason: declared by the stub's depends_on front-matter (ATLAS-153)
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
+- id: 914b72c4-8946-46dc-8787-815cb606eb1f
+  source_ticket_id: b627cd9c-660f-4f01-9bd6-60b3fc3f87da
+  target_entity_type: ticket
+  target_entity_id: fe844acc-692d-4676-8978-ebc6e4c67376
+  dependency_type: depends_on
+  reason: declared by the stub's depends_on front-matter (ATLAS-153)
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
 - id: ad73baac-6440-42fa-be55-13829b362824
   source_ticket_id: bb319d89-ee32-40cc-9b20-2d2280aa93a7
   target_entity_type: ticket
@@ -1651,6 +2074,42 @@ dependencies:
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-07-04T18:05:38.538342Z'
+- id: 11407dfb-cb90-49d6-ba82-14510916c46e
+  source_ticket_id: c8f6b393-7ab4-4b33-80cd-3d2bb4078c10
+  target_entity_type: ticket
+  target_entity_id: 155963ee-136e-4207-8a27-82fa14e289ff
+  dependency_type: depends_on
+  reason: declared by the stub's depends_on front-matter (ATLAS-153)
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
+- id: c2cd1772-3980-407c-b859-ff2c3c6f767a
+  source_ticket_id: c8f6b393-7ab4-4b33-80cd-3d2bb4078c10
+  target_entity_type: ticket
+  target_entity_id: 2b304313-1c85-4f6b-a3c1-debe816d195e
+  dependency_type: depends_on
+  reason: declared by the stub's depends_on front-matter (ATLAS-153)
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
+- id: 2dae3c07-768c-4bc4-9b40-39ac7cf7deaa
+  source_ticket_id: c8f6b393-7ab4-4b33-80cd-3d2bb4078c10
+  target_entity_type: ticket
+  target_entity_id: 96705873-9a00-41ec-b249-b7f8d1d84893
+  dependency_type: depends_on
+  reason: declared by the stub's depends_on front-matter (ATLAS-153)
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
+- id: 4e3e3afe-da41-4555-9cde-46e5021d74d6
+  source_ticket_id: c8f6b393-7ab4-4b33-80cd-3d2bb4078c10
+  target_entity_type: ticket
+  target_entity_id: cad2eae9-1bd4-44cb-8d86-0bb7345ac881
+  dependency_type: depends_on
+  reason: declared by the stub's depends_on front-matter (ATLAS-153)
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
 - id: 0c0eb369-b74c-4648-97ee-2cf5d220a4a9
   source_ticket_id: ca93c441-66a0-4c14-bf3d-c42d853b2b2f
   target_entity_type: ticket
@@ -1903,6 +2362,24 @@ dependencies:
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-07-26T18:32:14.708576Z'
+- id: 0e8f0007-defd-4cb8-b91e-69dca9199ffe
+  source_ticket_id: e13affa7-002f-4693-812a-5dea87c18b0c
+  target_entity_type: ticket
+  target_entity_id: 85658732-3eac-4a49-b97a-1a0d67d8f170
+  dependency_type: depends_on
+  reason: declared by the stub's depends_on front-matter (ATLAS-153)
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
+- id: 77dab143-b727-45ef-8f69-8208bae73fcc
+  source_ticket_id: e13affa7-002f-4693-812a-5dea87c18b0c
+  target_entity_type: ticket
+  target_entity_id: b2fa9fbf-26e3-46e3-ae1e-a4c265bacc72
+  dependency_type: depends_on
+  reason: declared by the stub's depends_on front-matter (ATLAS-153)
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
 - id: 89d8cccf-b046-4ecf-89b6-4268dc48b9eb
   source_ticket_id: e1f347c6-440a-4690-ba8a-1adf08ae7660
   target_entity_type: ticket
@@ -1948,6 +2425,15 @@ dependencies:
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-07-04T18:05:38.538342Z'
+- id: f4c2ba81-d000-484f-ba27-ece2d94f9cbe
+  source_ticket_id: e87fd13a-6c0a-4c92-ac07-02bc47f99d98
+  target_entity_type: ticket
+  target_entity_id: 62ff7096-98cb-45d0-bed9-72e1343dba42
+  dependency_type: depends_on
+  reason: declared by the stub's depends_on front-matter (ATLAS-153)
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
 - id: b7c6099d-3cc5-4a49-9133-21218855027b
   source_ticket_id: eacc2ace-4ca8-4917-a4be-7dc606e91fca
   target_entity_type: ticket
@@ -2092,6 +2578,15 @@ dependencies:
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-07-04T18:05:38.538342Z'
+- id: efc2cec6-2761-4d5b-b10b-9c213b864a08
+  source_ticket_id: f08de9e4-217e-4be0-845e-0d1398417b81
+  target_entity_type: ticket
+  target_entity_id: e87fd13a-6c0a-4c92-ac07-02bc47f99d98
+  dependency_type: depends_on
+  reason: declared by the stub's depends_on front-matter (ATLAS-153)
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
 - id: f47598cb-49b3-4317-b2a7-60e2f0afccff
   source_ticket_id: f31af522-c92f-4571-be60-0d2fb336be3a
   target_entity_type: ticket
@@ -2200,3 +2695,30 @@ dependencies:
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-07-04T18:05:38.538342Z'
+- id: 850be40e-8c2a-48b4-b1e3-7f508bf9d2a7
+  source_ticket_id: fd56ed56-6f52-4f9a-ba23-f5074024abb4
+  target_entity_type: ticket
+  target_entity_id: d3656909-ccf7-44a3-b3e6-87e3e3b6f939
+  dependency_type: depends_on
+  reason: declared by the stub's depends_on front-matter (ATLAS-153)
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
+- id: c2a4c880-f922-4957-ada0-f851127392b3
+  source_ticket_id: fe844acc-692d-4676-8978-ebc6e4c67376
+  target_entity_type: ticket
+  target_entity_id: 07094c14-7d88-44b4-820a-11399c4c7faf
+  dependency_type: depends_on
+  reason: declared by the stub's depends_on front-matter (ATLAS-153)
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
+- id: 4ee609b1-24ba-44b5-9b22-ca1f2a4294f4
+  source_ticket_id: fe844acc-692d-4676-8978-ebc6e4c67376
+  target_entity_type: ticket
+  target_entity_id: d3656909-ccf7-44a3-b3e6-87e3e3b6f939
+  dependency_type: depends_on
+  reason: declared by the stub's depends_on front-matter (ATLAS-153)
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-02T12:32:32.638319Z'
