@@ -1,7 +1,7 @@
 """operator action idempotency reservations and append-only receipts.
 
-Revision ID: 0022
-Revises: 0021
+Revision ID: 0023
+Revises: 0022
 """
 
 from __future__ import annotations
@@ -14,8 +14,8 @@ from sqlalchemy.dialects import postgresql
 
 from atlas.storage.tables import UTCDateTime
 
-revision: str = "0022"
-down_revision: str | None = "0021"
+revision: str = "0023"
+down_revision: str | None = "0022"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

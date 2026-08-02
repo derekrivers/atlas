@@ -693,7 +693,7 @@ def test_operator_action_ledger_migration_upgrade_and_downgrade(
     url = f"sqlite:///{tmp_path}/operator-actions.db"
     config = _alembic_config(url)
 
-    command.upgrade(config, "0022")
+    command.upgrade(config, "0023")
 
     engine = sa.create_engine(url)
     with engine.connect() as connection:
@@ -716,10 +716,11 @@ def test_operator_action_ledger_migration_upgrade_and_downgrade(
         "operator_action_receipts_no_delete",
     } <= triggers
 
-    command.downgrade(config, "0021")
+    command.downgrade(config, "0022")
 
     with engine.connect() as connection:
         inspector = sa.inspect(connection)
+        assert "pm_sync_receipts" in inspector.get_table_names()
         assert "operator_action_keys" not in inspector.get_table_names()
         assert "operator_action_receipts" not in inspector.get_table_names()
         triggers = {
