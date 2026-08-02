@@ -9,6 +9,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
+from types import MappingProxyType
 from typing import Any, Protocol, TypeVar, cast
 from uuid import UUID, uuid4
 
@@ -86,42 +87,40 @@ class OperatorActionEnvelope:
     request_fingerprint: str
 
 
-class OperatorActionUnitOfWork:
-    """Narrow command facade over the gateway-owned transaction.
+@dataclass(frozen=True)
+class OperatorActionEntityLoad:
+    """One gateway-owned load to expose to a command as a detached value."""
 
-    Commands may load detached domain rows and merge their changed values, but
-    never receive an ORM entity attached to the gateway-owned session.
-    Transaction lifecycle methods deliberately do not exist on this surface.
-    Commit, rollback, close and flush remain exclusively owned by
-    :class:`OperatorActionGateway`.
-    """
+    name: str
+    entity_type: type[Any]
+    entity_id: object
 
-    __slots__ = ("__session",)
 
-    def __init__(self, session: Session) -> None:
-        self.__session = session
+@dataclass(frozen=True)
+class OperatorActionMutation:
+    """One detached ORM value for the gateway to merge transactionally."""
 
-    def add(self, entity: object) -> None:
-        """Merge one detached entity without attaching the caller's object."""
-        self.__session.merge(entity)
-        self.__session.flush()
-        self.__session.expunge_all()
-
-    def get(self, entity_type: type[_Entity], entity_id: object) -> _Entity | None:
-        """Load one domain entity and detach every loaded ORM value."""
-        entity = cast(_Entity | None, self.__session.get(entity_type, entity_id))
-        self.__session.expunge_all()
-        return entity
+    entity: object
 
 
 @dataclass(frozen=True)
 class OperatorActionCommandContext:
-    """Transaction context supplied to the injected command."""
+    """Session-free, detached inputs supplied to the injected command."""
 
-    unit_of_work: OperatorActionUnitOfWork
+    loaded_entities: Mapping[str, object]
     receipt_id: UUID
     correlation_id: UUID
     created_at: datetime
+
+    def entity(self, name: str, entity_type: type[_Entity]) -> _Entity | None:
+        """Return one named detached value with a runtime type check."""
+
+        entity = self.loaded_entities.get(name)
+        if entity is None:
+            return None
+        if not isinstance(entity, entity_type):
+            raise TypeError("loaded entity has an unexpected type")
+        return entity
 
 
 @dataclass(frozen=True)
@@ -133,6 +132,7 @@ class OperatorActionCommandResult:
     result_metadata: Mapping[str, Any] = field(default_factory=dict)
     before_status: EntityStatus | None = None
     after_status: EntityStatus | None = None
+    mutations: tuple[OperatorActionMutation, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -275,6 +275,8 @@ class OperatorActionGateway:
         self,
         envelope: OperatorActionEnvelope,
         command: Command,
+        *,
+        loads: tuple[OperatorActionEntityLoad, ...] = (),
     ) -> OperatorActionGatewayResult:
         """Execute ``command`` once for one idempotency key identity."""
 
@@ -282,7 +284,7 @@ class OperatorActionGateway:
             raise ValueError("created_by_type must be a server-resolved ActorType")
         key_identity = idempotency_key_identity(envelope.idempotency_key)
         try:
-            return self._execute_owned(envelope, key_identity, command)
+            return self._execute_owned(envelope, key_identity, command, loads)
         except _ReservationConflict:
             return self._result_for_existing_reservation(envelope, key_identity)
         except _CommandFailed:
@@ -308,6 +310,7 @@ class OperatorActionGateway:
         envelope: OperatorActionEnvelope,
         key_identity: str,
         command: Command,
+        loads: tuple[OperatorActionEntityLoad, ...],
     ) -> OperatorActionGatewayResult:
         created_at = self._clock()
         _reject_naive_datetime(created_at, "OperatorActionReceipt", "created_at")
@@ -341,14 +344,18 @@ class OperatorActionGateway:
 
                     reservation_owned = True
 
-                    context = OperatorActionCommandContext(
-                        unit_of_work=OperatorActionUnitOfWork(session),
-                        receipt_id=receipt_id,
-                        correlation_id=correlation_id,
-                        created_at=created_at,
-                    )
                     try:
+                        loaded_entities = _load_detached_entities(session, loads)
+                        context = OperatorActionCommandContext(
+                            loaded_entities=MappingProxyType(loaded_entities),
+                            receipt_id=receipt_id,
+                            correlation_id=correlation_id,
+                            created_at=created_at,
+                        )
                         command_result = command(context)
+                        _apply_operator_action_mutations(
+                            session, command_result.mutations
+                        )
                         session.flush()
                     except Exception as exc:
                         raise _CommandFailed from exc
@@ -474,6 +481,38 @@ def _approved_operator_action_metadata(
             if key in metadata
         },
     )
+
+
+def _load_detached_entities(
+    session: Session,
+    loads: tuple[OperatorActionEntityLoad, ...],
+) -> dict[str, object]:
+    """Load declared command inputs without retaining or exposing ``session``."""
+
+    loaded: dict[str, object] = {}
+    for item in loads:
+        if not item.name or item.name in loaded:
+            raise ValueError("operator action load names must be unique and non-empty")
+        entity = session.get(item.entity_type, item.entity_id)
+        if entity is not None:
+            session.expunge(entity)
+            loaded[item.name] = entity
+    return loaded
+
+
+def _apply_operator_action_mutations(
+    session: Session,
+    mutations: tuple[OperatorActionMutation, ...],
+) -> None:
+    """Validate and merge a command's detached mutation plan."""
+
+    for mutation in mutations:
+        state = sa.inspect(mutation.entity, raiseerr=False)
+        if state is None:
+            raise ValueError("operator action mutations must be mapped entities")
+        if getattr(state, "session", None) is not None:
+            raise ValueError("operator action mutations must be detached")
+        session.merge(mutation.entity)
 
 
 def _storage_failure_result() -> OperatorActionGatewayResult:

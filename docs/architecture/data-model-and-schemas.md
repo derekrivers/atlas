@@ -1194,9 +1194,12 @@ Receipts never store raw idempotency keys, token/session/CSRF values, full
 request bodies, raw evidence payloads, lesson content or exception traces.
 Receipt result codes and before/after states are closed, server-controlled
 vocabularies rather than command-authored strings. Result codes are one of
-`action_succeeded`, `action_refused`, `stale_state` or `action_conflict`;
-before/after states, where present, are `EntityStatus` values. Receipt metadata
-is default-deny. The only approved keys are `changed`
+`action_succeeded`, `action_refused`, `stale_state`, `action_failed` or
+`action_conflict`; before/after states, where present, are `EntityStatus`
+values. Outcome/result pairs are constrained: `succeeded` pairs only with
+`action_succeeded`; `refused` with `action_refused` or `stale_state`; `failed`
+with `action_failed`; and `conflict` with `action_conflict`. Receipt metadata is
+default-deny. The only approved keys are `changed`
 (strict boolean), `affected_count` (strict integer `0..1000000`) and
 `confidence` (strict finite float `0.0..1.0`); string, object and list values
 are never valid metadata. The gateway drops unapproved command-result fields
@@ -1221,6 +1224,7 @@ class OperatorActionResultCode(str, Enum):
     ACTION_SUCCEEDED = "action_succeeded"
     ACTION_REFUSED = "action_refused"
     STALE_STATE = "stale_state"
+    ACTION_FAILED = "action_failed"
     ACTION_CONFLICT = "action_conflict"
 
 class OperatorActionReceipt(BaseModel):
@@ -1265,7 +1269,13 @@ CREATE TABLE operator_action_receipts (
     before_status TEXT,
     after_status TEXT,
     created_at TIMESTAMPTZ NOT NULL,
-    completed_at TIMESTAMPTZ NOT NULL
+    completed_at TIMESTAMPTZ NOT NULL,
+    CONSTRAINT operator_action_receipts_outcome_result_code CHECK (
+        (outcome = 'succeeded' AND result_code = 'action_succeeded') OR
+        (outcome = 'refused' AND result_code IN ('action_refused', 'stale_state')) OR
+        (outcome = 'failed' AND result_code = 'action_failed') OR
+        (outcome = 'conflict' AND result_code = 'action_conflict')
+    )
 );
 ```
 

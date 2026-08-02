@@ -700,6 +700,12 @@ def test_operator_action_ledger_migration_upgrade_and_downgrade(
         inspector = sa.inspect(connection)
         assert "operator_action_keys" in inspector.get_table_names()
         assert "operator_action_receipts" in inspector.get_table_names()
+        assert {
+            constraint["name"]
+            for constraint in inspector.get_check_constraints(
+                "operator_action_receipts"
+            )
+        } == {"operator_action_receipts_outcome_result_code"}
         triggers = {
             row[0]
             for row in connection.execute(

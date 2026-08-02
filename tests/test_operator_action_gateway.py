@@ -17,7 +17,10 @@ import sqlalchemy as sa
 from pydantic import ValidationError
 from sqlalchemy.orm import Session, object_session
 from test_models_validation import product_kwargs
-from test_operator_action_receipt_model import operator_action_receipt_kwargs
+from test_operator_action_receipt_model import (
+    VALID_OUTCOME_RESULT_PAIRS,
+    operator_action_receipt_kwargs,
+)
 
 from atlas.core.enums import ActorType, EntityStatus
 from atlas.core.models import OperatorActionOutcome, OperatorActionReceipt, Product
@@ -26,10 +29,12 @@ from atlas.orchestration import (
     OperatorActionCommandContext,
     OperatorActionCommandResult,
     OperatorActionConflictCode,
+    OperatorActionEntityLoad,
     OperatorActionEnvelope,
     OperatorActionFailureCode,
     OperatorActionGateway,
     OperatorActionGatewayStatus,
+    OperatorActionMutation,
     OperatorActionResultCode,
     canonical_request_fingerprint,
     idempotency_key_identity,
@@ -109,20 +114,24 @@ def mutate_product_command(
 ) -> Any:
     def _command(context: OperatorActionCommandContext) -> OperatorActionCommandResult:
         calls.append(str(context.correlation_id))
-        row = context.unit_of_work.get(ProductRow, product_id)
+        row = context.entity("target", ProductRow)
         assert row is not None
         before = EntityStatus(row.status)
         row.status = status.value
-        context.unit_of_work.add(row)
         return OperatorActionCommandResult(
             outcome=OperatorActionOutcome.SUCCEEDED,
             result_code=OperatorActionResultCode.ACTION_SUCCEEDED,
             result_metadata={"changed": True},
             before_status=before,
             after_status=status,
+            mutations=(OperatorActionMutation(row),),
         )
 
     return _command
+
+
+def product_load(product_id: UUID) -> tuple[OperatorActionEntityLoad, ...]:
+    return (OperatorActionEntityLoad("target", ProductRow, product_id),)
 
 
 def seed_in_progress_reservation(db: Database, request: OperatorActionEnvelope) -> UUID:
@@ -267,10 +276,15 @@ def test_same_key_same_fingerprint_replays_terminal_success_without_command(
         ),
     )
 
-    first = gateway.execute(request, mutate_product_command(product.id, calls))
+    first = gateway.execute(
+        request,
+        mutate_product_command(product.id, calls),
+        loads=product_load(product.id),
+    )
     second = gateway.execute(
         request,
         mutate_product_command(product.id, calls, status=EntityStatus.ARCHIVED),
+        loads=product_load(product.id),
     )
 
     assert first.status is OperatorActionGatewayStatus.EXECUTED
@@ -300,8 +314,16 @@ def test_same_key_different_fingerprint_returns_typed_conflict_without_command(
         payload={"reason": "different command"},
     )
 
-    assert gateway.execute(first, mutate_product_command(product.id, calls)).receipt
-    conflict = gateway.execute(changed, mutate_product_command(product.id, calls))
+    assert gateway.execute(
+        first,
+        mutate_product_command(product.id, calls),
+        loads=product_load(product.id),
+    ).receipt
+    conflict = gateway.execute(
+        changed,
+        mutate_product_command(product.id, calls),
+        loads=product_load(product.id),
+    )
 
     assert conflict.status is OperatorActionGatewayStatus.CONFLICT
     assert conflict.conflict is not None
@@ -334,6 +356,85 @@ def test_terminal_refusal_is_recorded_and_replayed_without_success_masquerade(
     assert second.status is OperatorActionGatewayStatus.REPLAYED
     assert second.receipt == first.receipt
     assert calls == 1
+
+
+@pytest.mark.parametrize(
+    ("outcome", "result_code"),
+    VALID_OUTCOME_RESULT_PAIRS,
+)
+def test_every_valid_terminal_outcome_replays_the_same_receipt(
+    db: Database,
+    outcome: OperatorActionOutcome,
+    result_code: OperatorActionResultCode,
+) -> None:
+    calls = 0
+    request = envelope(key=f"idem-matrix-{outcome.value}-{result_code.value}")
+    gateway = OperatorActionGateway(db, clock=FrozenClock())
+
+    def command(_: OperatorActionCommandContext) -> OperatorActionCommandResult:
+        nonlocal calls
+        calls += 1
+        return OperatorActionCommandResult(outcome=outcome, result_code=result_code)
+
+    first = gateway.execute(request, command)
+    replay = gateway.execute(request, command)
+
+    assert first.status is OperatorActionGatewayStatus.EXECUTED
+    assert first.receipt is not None
+    assert (first.receipt.outcome, first.receipt.result_code) == (
+        outcome,
+        result_code,
+    )
+    assert replay.status is OperatorActionGatewayStatus.REPLAYED
+    assert replay.receipt == first.receipt
+    assert calls == 1
+
+
+@pytest.mark.parametrize(
+    ("outcome", "result_code"),
+    [
+        (outcome, result_code)
+        for outcome in OperatorActionOutcome
+        for result_code in OperatorActionResultCode
+        if (outcome, result_code) not in VALID_OUTCOME_RESULT_PAIRS
+    ],
+)
+def test_gateway_rejects_every_contradictory_terminal_claim(
+    db: Database,
+    outcome: OperatorActionOutcome,
+    result_code: OperatorActionResultCode,
+) -> None:
+    request = envelope(key=f"idem-invalid-{outcome.value}-{result_code.value}")
+    gateway = OperatorActionGateway(db, clock=FrozenClock())
+
+    result = gateway.execute(
+        request,
+        lambda _: OperatorActionCommandResult(
+            outcome=outcome,
+            result_code=result_code,
+        ),
+    )
+
+    assert result.status is OperatorActionGatewayStatus.FAILED
+    assert result.failure is not None
+    assert result.failure.code is OperatorActionFailureCode.RECEIPT_COMMIT_FAILED
+    with db.session() as session:
+        assert session.scalars(sa.select(OperatorActionKeyRow)).all() == []
+        assert session.scalars(sa.select(OperatorActionReceiptRow)).all() == []
+
+
+def test_presentation_rejects_contradictory_terminal_claim() -> None:
+    contradictory = OperatorActionReceipt(
+        **operator_action_receipt_kwargs()
+    ).model_copy(
+        update={
+            "outcome": OperatorActionOutcome.SUCCEEDED,
+            "result_code": OperatorActionResultCode.STALE_STATE,
+        }
+    )
+
+    with pytest.raises(ValidationError, match="outcome and result_code"):
+        present_operator_action_receipt(contradictory)
 
 
 def test_in_progress_recovery_returns_named_conflict_and_invokes_no_command(
@@ -371,13 +472,12 @@ def test_mutation_failure_rolls_back_state_and_leaves_no_replayable_success(
     def failing_command(
         context: OperatorActionCommandContext,
     ) -> OperatorActionCommandResult:
-        row = context.unit_of_work.get(ProductRow, product.id)
+        row = context.entity("target", ProductRow)
         assert row is not None
         row.status = EntityStatus.DEPRECATED.value
-        context.unit_of_work.add(row)
         raise RuntimeError("domain mutation failed")
 
-    result = gateway.execute(request, failing_command)
+    result = gateway.execute(request, failing_command, loads=product_load(product.id))
 
     assert result.status is OperatorActionGatewayStatus.FAILED
     assert result.failure is not None
@@ -405,16 +505,17 @@ def test_command_cannot_end_or_flush_gateway_owned_transaction(
     def escaping_command(
         context: OperatorActionCommandContext,
     ) -> OperatorActionCommandResult:
-        row = context.unit_of_work.get(ProductRow, product.id)
+        row = context.entity("target", ProductRow)
         assert row is not None
         row.status = EntityStatus.DEPRECATED.value
-        getattr(context.unit_of_work, lifecycle_method)()
+        getattr(context, lifecycle_method)()
         return OperatorActionCommandResult(
             outcome=OperatorActionOutcome.SUCCEEDED,
             result_code=OperatorActionResultCode.ACTION_SUCCEEDED,
+            mutations=(OperatorActionMutation(row),),
         )
 
-    result = gateway.execute(request, escaping_command)
+    result = gateway.execute(request, escaping_command, loads=product_load(product.id))
 
     assert result.status is OperatorActionGatewayStatus.FAILED
     assert result.failure is not None
@@ -446,7 +547,7 @@ def test_detached_domain_row_cannot_recover_gateway_transaction(
     def command(
         context: OperatorActionCommandContext,
     ) -> OperatorActionCommandResult:
-        row = context.unit_of_work.get(ProductRow, product.id)
+        row = context.entity("target", ProductRow)
         assert row is not None
         owning_session = object_session(row)
         assert owning_session is None
@@ -455,7 +556,6 @@ def test_detached_domain_row_cannot_recover_gateway_transaction(
             getattr(owning_session, lifecycle_method)()
 
         row.status = EntityStatus.DEPRECATED.value
-        context.unit_of_work.add(row)
         assert object_session(row) is None
         assert sa.inspect(row).session is None
         return OperatorActionCommandResult(
@@ -464,9 +564,10 @@ def test_detached_domain_row_cannot_recover_gateway_transaction(
             result_metadata={"changed": True},
             before_status=EntityStatus.ACTIVE,
             after_status=EntityStatus.DEPRECATED,
+            mutations=(OperatorActionMutation(row),),
         )
 
-    result = gateway.execute(request, command)
+    result = gateway.execute(request, command, loads=product_load(product.id))
 
     assert result.status is OperatorActionGatewayStatus.EXECUTED
     assert result.receipt is not None
@@ -475,7 +576,7 @@ def test_detached_domain_row_cannot_recover_gateway_transaction(
     assert stored.status is EntityStatus.DEPRECATED
 
 
-def test_receipt_insert_failure_rolls_back_mutation_and_leaves_no_success(
+def test_name_mangled_session_escape_and_receipt_failure_roll_back_everything(
     db: Database,
 ) -> None:
     product = seed_product(db)
@@ -499,7 +600,25 @@ def test_receipt_insert_failure_rolls_back_mutation_and_leaves_no_success(
         ),
     )
 
-    result = gateway.execute(request, mutate_product_command(product.id, []))
+    def attempted_escape(
+        context: OperatorActionCommandContext,
+    ) -> OperatorActionCommandResult:
+        row = context.entity("target", ProductRow)
+        assert row is not None
+        row.status = EntityStatus.DEPRECATED.value
+        facade_attribute = "unit_of_work"
+        raw_session_attribute = "_OperatorActionUnitOfWork__session"
+        with pytest.raises(AttributeError):
+            facade = getattr(context, facade_attribute)
+            raw_session = getattr(facade, raw_session_attribute)
+            raw_session.commit()
+        return OperatorActionCommandResult(
+            outcome=OperatorActionOutcome.SUCCEEDED,
+            result_code=OperatorActionResultCode.ACTION_SUCCEEDED,
+            mutations=(OperatorActionMutation(row),),
+        )
+
+    result = gateway.execute(request, attempted_escape, loads=product_load(product.id))
 
     assert result.status is OperatorActionGatewayStatus.FAILED
     assert result.failure is not None
@@ -541,7 +660,11 @@ def test_actual_transaction_commit_failure_rolls_back_mutation_and_receipt(
 
     sa.event.listen(Session, "before_commit", fail_commit)
     try:
-        result = gateway.execute(request, mutate_product_command(product.id, []))
+        result = gateway.execute(
+            request,
+            mutate_product_command(product.id, []),
+            loads=product_load(product.id),
+        )
     finally:
         sa.event.remove(Session, "before_commit", fail_commit)
 

@@ -151,17 +151,18 @@ rerun a possibly started command. A storage `OperationalError` is reported as
 in-progress only after a separate read proves that reservation; an error with
 no visible owner is a typed storage failure.
 
-Injected commands receive a transaction-scoped unit-of-work facade with only
-domain `get` and `add` operations. `get` detaches every ORM value loaded in the
-gateway session before returning the requested row. `add` merges and flushes a
-copy without attaching the command-owned object, then detaches the gateway's
-loaded values again. A command therefore cannot recover the gateway session
-through `inspect(row).session` or `object_session(row)`. The facade exposes no
-session and no `flush`, `commit`, `rollback` or `close`, so only the gateway can
-end its transaction. The gateway flushes command mutations and receipt
-insertion separately for classification, then catches failure from the actual
-transaction commit as a receipt-commit failure. Any such failure rolls back
-the reservation, mutation and receipt together.
+The gateway loads command-declared domain inputs inside its transaction and
+detaches them before invoking the command. The command receives only a
+session-free context containing those detached values and returns a mutation
+plan of detached ORM values. It never receives a facade, callable or other
+object that retains the gateway's SQLAlchemy session. The gateway validates
+and merges the plan after the command returns, without attaching the
+command-owned values, so `inspect(row).session` and `object_session(row)` cannot
+recover the transaction. Only the gateway can flush, commit, roll back or close
+that transaction. It flushes planned mutations and receipt insertion
+separately for classification, then catches failure from the actual transaction
+commit as a receipt-commit failure. Any such failure rolls back the reservation,
+mutation and receipt together.
 
 An append-only `OperatorActionReceipt` records:
 
@@ -171,7 +172,7 @@ An append-only `OperatorActionReceipt` records:
 - idempotency key identity and request fingerprint reference;
 - before and after `EntityStatus` values where applicable;
 - a server-controlled result code from `action_succeeded`, `action_refused`,
-  `stale_state` or `action_conflict`;
+  `stale_state`, `action_failed` or `action_conflict`;
 - default-deny result metadata limited to `changed` (boolean),
   `affected_count` (integer `0..1000000`) and `confidence` (finite float
   `0.0..1.0`);
@@ -181,11 +182,14 @@ The lesson mutation and successful receipt commit atomically. If the receipt
 cannot be persisted, the lesson is not changed. Secrets, full request bodies,
 raw evidence payloads, lesson content and exception traces are not copied into
 receipts or rendered receipt JSON. Result codes and before/after states are
-closed enums rather than free-form command strings. The gateway discards every
-unapproved metadata field without inspecting its value; the canonical model,
-presentation path and public repository writers revalidate every receipt, so
-callers cannot bypass either controlled vocabulary or the metadata default-deny
-boundary.
+closed enums rather than free-form command strings. Outcomes and result codes
+also form one enforced matrix: success uses `action_succeeded`; refusal uses
+`action_refused` or `stale_state`; failure uses `action_failed`; and conflict
+uses `action_conflict`. The database, gateway, canonical model, presentation
+path and public repository writers all enforce that matrix. The gateway
+discards every unapproved metadata field without inspecting its value, so
+callers cannot bypass either the terminal-claim invariant, controlled
+vocabularies or the metadata default-deny boundary.
 
 ## Lesson disposition contract
 

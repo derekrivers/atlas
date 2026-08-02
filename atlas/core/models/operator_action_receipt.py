@@ -9,7 +9,7 @@ import json
 import math
 from datetime import datetime
 from enum import StrEnum
-from typing import Any, Literal
+from typing import Any, Literal, Self
 from uuid import UUID
 
 from pydantic import (
@@ -20,6 +20,7 @@ from pydantic import (
     StrictFloat,
     StrictInt,
     field_validator,
+    model_validator,
 )
 
 from atlas.core.enums import ActorType, EntityStatus
@@ -48,7 +49,22 @@ class OperatorActionResultCode(StrEnum):
     ACTION_SUCCEEDED = "action_succeeded"
     ACTION_REFUSED = "action_refused"
     STALE_STATE = "stale_state"
+    ACTION_FAILED = "action_failed"
     ACTION_CONFLICT = "action_conflict"
+
+
+_VALID_OPERATOR_ACTION_OUTCOME_RESULTS = frozenset(
+    {
+        (
+            OperatorActionOutcome.SUCCEEDED,
+            OperatorActionResultCode.ACTION_SUCCEEDED,
+        ),
+        (OperatorActionOutcome.REFUSED, OperatorActionResultCode.ACTION_REFUSED),
+        (OperatorActionOutcome.REFUSED, OperatorActionResultCode.STALE_STATE),
+        (OperatorActionOutcome.FAILED, OperatorActionResultCode.ACTION_FAILED),
+        (OperatorActionOutcome.CONFLICT, OperatorActionResultCode.ACTION_CONFLICT),
+    }
+)
 
 
 class OperatorActionReceipt(BaseModel):
@@ -74,6 +90,15 @@ class OperatorActionReceipt(BaseModel):
     after_status: EntityStatus | None = None
     created_at: datetime
     completed_at: datetime
+
+    @model_validator(mode="after")
+    def _outcome_matches_result_code(self) -> Self:
+        if (
+            self.outcome,
+            self.result_code,
+        ) not in _VALID_OPERATOR_ACTION_OUTCOME_RESULTS:
+            raise ValueError("outcome and result_code are incompatible")
+        return self
 
     @field_validator("result_metadata", mode="before")
     @classmethod

@@ -58,6 +58,12 @@ JSONB = postgresql.JSONB().with_variant(sa.JSON(), "sqlite")
 
 _EMPTY_LIST = sa.text("'[]'")
 _EMPTY_DICT = sa.text("'{}'")
+_OPERATOR_ACTION_OUTCOME_RESULT_CHECK = """
+    (outcome = 'succeeded' AND result_code = 'action_succeeded') OR
+    (outcome = 'refused' AND result_code IN ('action_refused', 'stale_state')) OR
+    (outcome = 'failed' AND result_code = 'action_failed') OR
+    (outcome = 'conflict' AND result_code = 'action_conflict')
+"""
 
 
 class Base(DeclarativeBase):
@@ -465,6 +471,10 @@ class OperatorActionReceiptRow(Base):
     __table_args__ = (
         sa.UniqueConstraint("idempotency_key_identity"),
         sa.UniqueConstraint("correlation_id"),
+        sa.CheckConstraint(
+            _OPERATOR_ACTION_OUTCOME_RESULT_CHECK,
+            name="operator_action_receipts_outcome_result_code",
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(sa.Uuid, primary_key=True)

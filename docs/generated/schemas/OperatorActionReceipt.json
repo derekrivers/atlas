@@ -38,6 +38,7 @@
         "action_succeeded",
         "action_refused",
         "stale_state",
+        "action_failed",
         "action_conflict"
       ],
       "title": "OperatorActionResultCode",

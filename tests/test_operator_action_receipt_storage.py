@@ -11,7 +11,11 @@ from pydantic import ValidationError
 from test_debt_item_storage import public_methods
 from test_operator_action_receipt_model import operator_action_receipt_kwargs
 
-from atlas.core.models import OperatorActionReceipt
+from atlas.core.models import (
+    OperatorActionOutcome,
+    OperatorActionReceipt,
+    OperatorActionResultCode,
+)
 from atlas.storage import Database, NaiveDatetimeError, OperatorActionReceiptRepo
 from atlas.storage.tables import OperatorActionKeyRow, OperatorActionReceiptRow
 
@@ -132,6 +136,55 @@ def test_public_writers_revalidate_controlled_receipt_vocabularies(
     assert prohibited not in str(raised.value)
     with db.session() as session:
         assert session.get(OperatorActionReceiptRow, unsafe.id) is None
+
+
+@pytest.mark.parametrize("method_name", ["add", "record"])
+@pytest.mark.parametrize(
+    ("outcome", "result_code"),
+    [
+        (OperatorActionOutcome.SUCCEEDED, OperatorActionResultCode.STALE_STATE),
+        (OperatorActionOutcome.FAILED, OperatorActionResultCode.ACTION_REFUSED),
+        (OperatorActionOutcome.REFUSED, OperatorActionResultCode.ACTION_FAILED),
+        (OperatorActionOutcome.CONFLICT, OperatorActionResultCode.ACTION_SUCCEEDED),
+    ],
+)
+def test_public_writers_reject_contradictory_terminal_claims(
+    db: Database,
+    method_name: str,
+    outcome: OperatorActionOutcome,
+    result_code: OperatorActionResultCode,
+) -> None:
+    unsafe = OperatorActionReceipt(**operator_action_receipt_kwargs()).model_copy(
+        update={"outcome": outcome, "result_code": result_code}
+    )
+    seed_reservation(db, unsafe)
+
+    with pytest.raises(ValidationError, match="outcome and result_code"):
+        getattr(OperatorActionReceiptRepo(db), method_name)(unsafe)
+
+    with db.session() as session:
+        assert session.get(OperatorActionReceiptRow, unsafe.id) is None
+
+
+def test_database_rejects_contradictory_terminal_claim() -> None:
+    db = Database("sqlite://")
+    db.create_all()
+    unsafe = OperatorActionReceipt(**operator_action_receipt_kwargs()).model_copy(
+        update={
+            "outcome": OperatorActionOutcome.SUCCEEDED,
+            "result_code": OperatorActionResultCode.STALE_STATE,
+        }
+    )
+    seed_reservation(db, unsafe)
+    payload = unsafe.model_dump()
+    payload["result_metadata"] = unsafe.model_dump(mode="json")["result_metadata"]
+
+    with (
+        pytest.raises(sa.exc.IntegrityError),
+        db.session() as session,
+        session.begin(),
+    ):
+        session.add(OperatorActionReceiptRow(**payload))
 
 
 def test_database_rejects_receipt_update_and_delete(db: Database) -> None:

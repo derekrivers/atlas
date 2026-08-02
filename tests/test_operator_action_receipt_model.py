@@ -160,6 +160,7 @@ def test_result_code_and_status_vocabularies_are_bounded() -> None:
         "action_succeeded",
         "action_refused",
         "stale_state",
+        "action_failed",
         "action_conflict",
     }
     assert {status.value for status in EntityStatus} == {
@@ -168,3 +169,50 @@ def test_result_code_and_status_vocabularies_are_bounded() -> None:
         "archived",
         "deprecated",
     }
+
+
+VALID_OUTCOME_RESULT_PAIRS: tuple[
+    tuple[OperatorActionOutcome, OperatorActionResultCode], ...
+] = (
+    (OperatorActionOutcome.SUCCEEDED, OperatorActionResultCode.ACTION_SUCCEEDED),
+    (OperatorActionOutcome.REFUSED, OperatorActionResultCode.ACTION_REFUSED),
+    (OperatorActionOutcome.REFUSED, OperatorActionResultCode.STALE_STATE),
+    (OperatorActionOutcome.FAILED, OperatorActionResultCode.ACTION_FAILED),
+    (OperatorActionOutcome.CONFLICT, OperatorActionResultCode.ACTION_CONFLICT),
+)
+
+
+@pytest.mark.parametrize(
+    ("outcome", "result_code"),
+    VALID_OUTCOME_RESULT_PAIRS,
+)
+def test_valid_outcome_result_code_matrix(
+    outcome: OperatorActionOutcome,
+    result_code: OperatorActionResultCode,
+) -> None:
+    receipt = OperatorActionReceipt(
+        **operator_action_receipt_kwargs()
+        | {"outcome": outcome, "result_code": result_code}
+    )
+
+    assert (receipt.outcome, receipt.result_code) == (outcome, result_code)
+
+
+@pytest.mark.parametrize(
+    ("outcome", "result_code"),
+    [
+        (outcome, result_code)
+        for outcome in OperatorActionOutcome
+        for result_code in OperatorActionResultCode
+        if (outcome, result_code) not in VALID_OUTCOME_RESULT_PAIRS
+    ],
+)
+def test_invalid_outcome_result_code_matrix_is_rejected(
+    outcome: OperatorActionOutcome,
+    result_code: OperatorActionResultCode,
+) -> None:
+    with pytest.raises(ValidationError, match="outcome and result_code"):
+        OperatorActionReceipt(
+            **operator_action_receipt_kwargs()
+            | {"outcome": outcome, "result_code": result_code}
+        )

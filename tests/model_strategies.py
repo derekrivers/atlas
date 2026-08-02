@@ -84,6 +84,15 @@ operator_action_metadata = st.fixed_dictionaries(
         "confidence": unit_floats,
     },
 )
+operator_action_outcome_result = st.sampled_from(
+    [
+        (OperatorActionOutcome.SUCCEEDED, OperatorActionResultCode.ACTION_SUCCEEDED),
+        (OperatorActionOutcome.REFUSED, OperatorActionResultCode.ACTION_REFUSED),
+        (OperatorActionOutcome.REFUSED, OperatorActionResultCode.STALE_STATE),
+        (OperatorActionOutcome.FAILED, OperatorActionResultCode.ACTION_FAILED),
+        (OperatorActionOutcome.CONFLICT, OperatorActionResultCode.ACTION_CONFLICT),
+    ]
+)
 
 
 def optional(strategy: st.SearchStrategy[object]) -> st.SearchStrategy[object]:
@@ -219,24 +228,26 @@ STRATEGIES: dict[type[BaseModel], st.SearchStrategy[BaseModel]] = {
         created_at=aware_datetimes,
         updated_at=aware_datetimes,
     ),
-    OperatorActionReceipt: st.builds(
-        OperatorActionReceipt,
-        id=uuids,
-        correlation_id=uuids,
-        action=texts.filter(bool),
-        target_type=texts.filter(bool),
-        target_id=texts.filter(bool),
-        created_by_type=st.sampled_from(ActorType),
-        created_by_id=texts.filter(bool),
-        idempotency_key_identity=texts.filter(bool),
-        request_fingerprint=texts.filter(bool),
-        outcome=st.sampled_from(OperatorActionOutcome),
-        result_code=st.sampled_from(OperatorActionResultCode),
-        result_metadata=operator_action_metadata,
-        before_status=optional(st.sampled_from(EntityStatus)),
-        after_status=optional(st.sampled_from(EntityStatus)),
-        created_at=aware_datetimes,
-        completed_at=aware_datetimes,
+    OperatorActionReceipt: operator_action_outcome_result.flatmap(
+        lambda pair: st.builds(
+            OperatorActionReceipt,
+            id=uuids,
+            correlation_id=uuids,
+            action=texts.filter(bool),
+            target_type=texts.filter(bool),
+            target_id=texts.filter(bool),
+            created_by_type=st.sampled_from(ActorType),
+            created_by_id=texts.filter(bool),
+            idempotency_key_identity=texts.filter(bool),
+            request_fingerprint=texts.filter(bool),
+            outcome=st.just(pair[0]),
+            result_code=st.just(pair[1]),
+            result_metadata=operator_action_metadata,
+            before_status=optional(st.sampled_from(EntityStatus)),
+            after_status=optional(st.sampled_from(EntityStatus)),
+            created_at=aware_datetimes,
+            completed_at=aware_datetimes,
+        )
     ),
     # System-tier evidence is commit-pinned: EvidenceRepo.add (ADR-0008,
     # ATLAS-61) refuses a system-tier record missing any of commit_sha /

@@ -20,6 +20,12 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 JSONB = postgresql.JSONB().with_variant(sa.JSON(), "sqlite")
+OPERATOR_ACTION_OUTCOME_RESULT_CHECK = """
+    (outcome = 'succeeded' AND result_code = 'action_succeeded') OR
+    (outcome = 'refused' AND result_code IN ('action_refused', 'stale_state')) OR
+    (outcome = 'failed' AND result_code = 'action_failed') OR
+    (outcome = 'conflict' AND result_code = 'action_conflict')
+"""
 
 
 def _create_sqlite_append_only_triggers(table_name: str) -> None:
@@ -113,6 +119,10 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(
             ["idempotency_key_identity"],
             ["operator_action_keys.idempotency_key_identity"],
+        ),
+        sa.CheckConstraint(
+            OPERATOR_ACTION_OUTCOME_RESULT_CHECK,
+            name="operator_action_receipts_outcome_result_code",
         ),
         sa.UniqueConstraint("idempotency_key_identity"),
         sa.UniqueConstraint("correlation_id"),
