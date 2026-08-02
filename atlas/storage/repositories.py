@@ -32,9 +32,6 @@ from sqlalchemy.orm import Session
 from atlas.core.enums import ActorType, EntityStatus, EvidenceStatus
 from atlas.core.models import (
     SUCCESSFUL_PM_SYNC_RESULTS,
-    AcceptanceSession,
-    AcceptanceSessionBlockingReason,
-    AcceptanceSessionLifecycle,
     AgentRun,
     AnomalyType,
     ArchitectureDecisionRecord,
@@ -56,6 +53,11 @@ from atlas.core.models import (
     TickFailure,
     VerificationCheck,
 )
+from atlas.core.models import AcceptanceSession as _AcceptanceModel
+from atlas.core.models import (
+    AcceptanceSessionBlockingReason as _AcceptanceReason,
+)
+from atlas.core.models import AcceptanceSessionLifecycle as _AcceptanceLifecycle
 from atlas.core.trust import evidence_tier
 from atlas.storage.db import Database
 from atlas.storage.tables import (
@@ -135,7 +137,7 @@ class LessonValidationError(ValueError):
 class AcceptanceSessionStateError(ValueError):
     """An acceptance-session create or transition violated stored state."""
 
-    def __init__(self, reason: AcceptanceSessionBlockingReason) -> None:
+    def __init__(self, reason: _AcceptanceReason) -> None:
         self.reason = reason
         super().__init__(reason.value)
 
@@ -163,8 +165,11 @@ class StaleLessonReview:
 class AcceptanceSessionCreateRecord:
     """Repository result distinguishing one insert from a durable replay."""
 
-    session: AcceptanceSession
+    session: _AcceptanceModel
     created: bool
+
+
+_AcceptanceCreateResult = AcceptanceSessionCreateRecord
 
 
 @dataclass(frozen=True)
@@ -1393,13 +1398,13 @@ class VerificationCheckRepo(_Repo[VerificationCheck]):
             return [self._to_model(row) for row in rows]
 
 
-class AcceptanceSessionRepo(_Repo[AcceptanceSession]):
+class AcceptanceSessionRepo(_Repo[_AcceptanceModel]):
     """Pinned-identity acceptance sessions with narrow lifecycle mutation."""
 
     def __init__(self, db: Database) -> None:
-        super().__init__(db, AcceptanceSession, AcceptanceSessionRow)
+        super().__init__(db, _AcceptanceModel, AcceptanceSessionRow)
 
-    def create(self, model: AcceptanceSession) -> AcceptanceSessionCreateRecord:
+    def create(self, model: _AcceptanceModel) -> _AcceptanceCreateResult:
         """Insert one session or return the row that won a concurrent create.
 
         The partial unique index serialises all non-terminal attempts for one
@@ -1429,7 +1434,7 @@ class AcceptanceSessionRepo(_Repo[AcceptanceSession]):
                         session=by_command, created=False
                     )
                 raise AcceptanceSessionStateError(
-                    AcceptanceSessionBlockingReason.IDEMPOTENCY_KEY_REUSED
+                    _AcceptanceReason.IDEMPOTENCY_KEY_REUSED
                 ) from error
 
             active = self.get_non_terminal_for_pr(
@@ -1441,13 +1446,13 @@ class AcceptanceSessionRepo(_Repo[AcceptanceSession]):
                 return AcceptanceSessionCreateRecord(session=active, created=False)
             if active is not None:
                 raise AcceptanceSessionStateError(
-                    AcceptanceSessionBlockingReason.ACTIVE_SESSION_EXISTS
+                    _AcceptanceReason.ACTIVE_SESSION_EXISTS
                 ) from error
             raise
 
     def get_by_creation_idempotency_key_identity(
         self, identity: str
-    ) -> AcceptanceSession | None:
+    ) -> _AcceptanceModel | None:
         """Return the immutable outcome owned by one creation command."""
 
         with self._db.session() as session:
@@ -1460,11 +1465,11 @@ class AcceptanceSessionRepo(_Repo[AcceptanceSession]):
 
     def get_non_terminal_for_pr(
         self, repository_owner: str, repository_name: str, pr_number: int
-    ) -> AcceptanceSession | None:
+    ) -> _AcceptanceModel | None:
         """Return the sole non-terminal attempt for a repository/PR."""
 
         terminal = tuple(
-            status.value for status in AcceptanceSessionLifecycle if status.is_terminal
+            status.value for status in _AcceptanceLifecycle if status.is_terminal
         )
         with self._db.session() as session:
             row = session.scalars(
@@ -1479,7 +1484,7 @@ class AcceptanceSessionRepo(_Repo[AcceptanceSession]):
 
     def list_for_pr(
         self, repository_owner: str, repository_name: str, pr_number: int
-    ) -> list[AcceptanceSession]:
+    ) -> list[_AcceptanceModel]:
         """Return every immutable-head attempt in historical order."""
 
         with self._db.session() as session:
@@ -1500,10 +1505,10 @@ class AcceptanceSessionRepo(_Repo[AcceptanceSession]):
     def mark_stale(
         self,
         session_id: UUID,
-        reasons: tuple[AcceptanceSessionBlockingReason, ...],
+        reasons: tuple[_AcceptanceReason, ...],
         *,
         staled_at: datetime,
-    ) -> AcceptanceSession:
+    ) -> _AcceptanceModel:
         """Atomically terminalise a moved session while preserving history."""
 
         if staled_at.utcoffset() is None:
@@ -1513,35 +1518,31 @@ class AcceptanceSessionRepo(_Repo[AcceptanceSession]):
         with self._db.session() as session, session.begin():
             row = session.get(AcceptanceSessionRow, session_id)
             if row is None:
-                raise AcceptanceSessionStateError(
-                    AcceptanceSessionBlockingReason.SESSION_STALE
-                )
-            current = AcceptanceSessionLifecycle(row.lifecycle)
+                raise AcceptanceSessionStateError(_AcceptanceReason.SESSION_STALE)
+            current = _AcceptanceLifecycle(row.lifecycle)
             if current.is_terminal:
                 return self._to_model(row)
 
             existing_reasons = [
-                AcceptanceSessionBlockingReason(reason)
-                for reason in row.blocking_reasons
+                _AcceptanceReason(reason) for reason in row.blocking_reasons
             ]
             row.blocking_reasons = [
                 reason.value for reason in dict.fromkeys([*existing_reasons, *reasons])
             ]
             historical = [
-                AcceptanceSessionBlockingReason(reason)
-                for reason in row.historical_readiness_reasons
+                _AcceptanceReason(reason) for reason in row.historical_readiness_reasons
             ]
             row.historical_readiness_reasons = [
                 reason.value
                 for reason in dict.fromkeys(
                     [
                         *historical,
-                        AcceptanceSessionBlockingReason.SESSION_STALE,
+                        _AcceptanceReason.SESSION_STALE,
                         *reasons,
                     ]
                 )
             ]
-            row.lifecycle = AcceptanceSessionLifecycle.STALE.value
+            row.lifecycle = _AcceptanceLifecycle.STALE.value
             row.updated_at = staled_at
             row.staled_at = staled_at
             session.flush()
