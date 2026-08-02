@@ -1,8 +1,9 @@
 # Phase 13–20 Programme Horizon
 
-Status: Architectural direction recorded after Phase 12 closure. Phases 13–15
-form the next rolling-wave planning horizon. Phases 16–20 are provisional
-programme commitments that require later design gates before ticket creation.
+Status: Architectural direction recorded after Phase 12 closure. Detailed
+Wave A planning inputs for Phases 13–15 are prepared for governed plan/apply.
+Phases 16–20 are provisional programme commitments that require later design
+gates before ticket creation.
 
 ## Authority of this document
 
@@ -203,8 +204,13 @@ prove Atlas never exceeds either budget, review pressure halts admission,
 Changes Requested work is not starved, lane limits prevent conflicting work,
 and pause/drain preserve active agents. Stale sync, partial Linear failure,
 concurrent admission and duplicate commands must admit nobody unexpectedly.
-Only after the three-to-five-to-seven-to-ten ramp passes may the Symphony
-ceiling be set to ten.
+After the 3, 5 and 7 gates pass, the operator sets `WORKFLOW.md` on the
+dedicated milestone branch to `max_concurrent_agents: 10` and runs the
+ten-agent exercise. Only after that gate passes may the Phase 15
+milestone/closure change merge `max_concurrent_agents: 10` to `main`. A failed
+gate restores or retains the last proven branch value, records the failure,
+leaves Phase 15 open and merges no ceiling change to `main`; closure below ten
+is not permitted.
 
 ## Phase 16 — Delivery Intelligence and Agent Evaluation
 
@@ -376,11 +382,13 @@ through the repaired canonical plan/apply path.
 
 ### Wave A — Phases 13–15
 
-After Gate 0 is satisfied, ticketise the prepared Phase 13–15 designs as one
-dependency graph through the repaired canonical plan/apply path. Only Phase 13
-becomes current work. Phase 14 and Phase 15 tickets may overlap where their
-actual prerequisites permit, but the Phase 15 ten-agent milestone remains
-gated on Phase 14 closure.
+Gate 0 is satisfied and the prepared Phase 13–15 designs and ordered stubs form
+one Wave A dependency graph. The inputs gain no operational authority until
+their planning change merges and the operator reviews and accepts the exact
+`atlas plan --stubs-only` proposal through `atlas apply`. Only Phase 13 becomes
+current work. Phase 14 and Phase 15 tickets may overlap where their actual
+prerequisites permit, but the Phase 15 ten-agent milestone remains gated on
+Phase 14 closure.
 
 ### Gate A — after Phase 15
 
@@ -427,7 +435,9 @@ enough independent work and review evidence:
 
 The configured ceiling is maximum available capacity. Atlas may intentionally
 leave slots idle when dependencies, risk lanes or review capacity say that no
-more work should be admitted.
+more work should be admitted. Ten is the mandatory Phase 15 exit condition,
+not an aspirational target: its successful gate and the landed
+`WORKFLOW.md` ceiling change are both required before closure.
 
 ## Explicit programme non-goals
 

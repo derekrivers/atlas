@@ -51,6 +51,15 @@ Phase design documents (one per engine; phase-readiness rule below):
   boundaries, binding constraints, deferred capabilities
 - `docs/atlas/operator-ui.md` — Phase 11: operator UI views, framework
   adoption boundary, additive v1 read routes, testing contract
+- `docs/atlas/governed-operator-actions.md` — Phase 13: loopback operator
+  authentication, server-owned actor context, idempotent commands, append-only
+  receipts and lesson disposition writes
+- `docs/atlas/review-acceptance-console.md` — Phase 14: immutable exact-head
+  acceptance sessions, evidence/confirmation/verification ordering and the
+  browser advisory boundary before manual merge
+- `docs/atlas/multi-agent-delivery-control.md` — Phase 15: operator-owned
+  capacity policy, coherent occupancy, deterministic admission, fail-closed
+  Linear promotion and the controlled agent-ceiling ramp
 
 Playbooks (generated canonical docs):
 

@@ -1,0 +1,86 @@
+schema_version: 1
+repository: "derekrivers/atlas"
+base_commit: "f6ff6fb5e21e40128e8a688193d4469f1514cbb8"
+repository_files:
+  - "ROADMAP.md"
+  - "docs/MANIFEST.md"
+  - "docs/atlas/governed-operator-actions.md"
+  - "docs/atlas/implementation-roadmap.md"
+  - "docs/atlas/multi-agent-delivery-control.md"
+  - "docs/atlas/phase-13-20-programme-horizon.md"
+  - "docs/atlas/review-acceptance-console.md"
+  - "docs/planning/inbox/inbox-stub-01-operator-session-security.md"
+  - "docs/planning/inbox/inbox-stub-02-operator-action-ledger.md"
+  - "docs/planning/inbox/inbox-stub-03-governed-lesson-disposition.md"
+  - "docs/planning/inbox/inbox-stub-04-lesson-mutation-api.md"
+  - "docs/planning/inbox/inbox-stub-05-lessons-ui-actions.md"
+  - "docs/planning/inbox/inbox-stub-06-writable-surface-acceptance.md"
+  - "docs/planning/inbox/inbox-stub-07-acceptance-zero-action-diagnostics.md"
+  - "docs/planning/inbox/inbox-stub-08-acceptance-session-model.md"
+  - "docs/planning/inbox/inbox-stub-09-acceptance-evidence-action.md"
+  - "docs/planning/inbox/inbox-stub-10-acceptance-confirmation-action.md"
+  - "docs/planning/inbox/inbox-stub-11-acceptance-verification-readiness.md"
+  - "docs/planning/inbox/inbox-stub-12-acceptance-workflow-api.md"
+  - "docs/planning/inbox/inbox-stub-13-review-acceptance-console-ui.md"
+  - "docs/planning/inbox/inbox-stub-14-acceptance-console-milestone.md"
+  - "docs/planning/inbox/inbox-stub-15-successful-sync-receipt.md"
+  - "docs/planning/inbox/inbox-stub-16-delivery-admission-policy.md"
+  - "docs/planning/inbox/inbox-stub-17-delivery-occupancy-snapshot.md"
+  - "docs/planning/inbox/inbox-stub-18-deterministic-admission-engine.md"
+  - "docs/planning/inbox/inbox-stub-19-fail-closed-admission-sync.md"
+  - "docs/planning/inbox/inbox-stub-20-delivery-control-api.md"
+  - "docs/planning/inbox/inbox-stub-21-delivery-control-ui.md"
+  - "docs/planning/inbox/inbox-stub-22-symphony-capacity-ramp-contract.md"
+  - "docs/planning/inbox/inbox-stub-23-delivery-control-milestone.md"
+  - "docs/planning/inbox/planning-batch-phase-13-15.yaml"
+future_document_paths:
+  - "docs/closure/phase-13-closure-report.md"
+  - "docs/closure/phase-14-closure-report.md"
+  - "docs/closure/phase-15-closure-report.md"
+stubs:
+  - path: "docs/planning/inbox/inbox-stub-01-operator-session-security.md"
+    phase: 13
+  - path: "docs/planning/inbox/inbox-stub-02-operator-action-ledger.md"
+    phase: 13
+  - path: "docs/planning/inbox/inbox-stub-03-governed-lesson-disposition.md"
+    phase: 13
+  - path: "docs/planning/inbox/inbox-stub-04-lesson-mutation-api.md"
+    phase: 13
+  - path: "docs/planning/inbox/inbox-stub-05-lessons-ui-actions.md"
+    phase: 13
+  - path: "docs/planning/inbox/inbox-stub-06-writable-surface-acceptance.md"
+    phase: 13
+  - path: "docs/planning/inbox/inbox-stub-07-acceptance-zero-action-diagnostics.md"
+    phase: 14
+  - path: "docs/planning/inbox/inbox-stub-08-acceptance-session-model.md"
+    phase: 14
+  - path: "docs/planning/inbox/inbox-stub-09-acceptance-evidence-action.md"
+    phase: 14
+  - path: "docs/planning/inbox/inbox-stub-10-acceptance-confirmation-action.md"
+    phase: 14
+  - path: "docs/planning/inbox/inbox-stub-11-acceptance-verification-readiness.md"
+    phase: 14
+  - path: "docs/planning/inbox/inbox-stub-12-acceptance-workflow-api.md"
+    phase: 14
+  - path: "docs/planning/inbox/inbox-stub-13-review-acceptance-console-ui.md"
+    phase: 14
+  - path: "docs/planning/inbox/inbox-stub-14-acceptance-console-milestone.md"
+    phase: 14
+  - path: "docs/planning/inbox/inbox-stub-15-successful-sync-receipt.md"
+    phase: 15
+  - path: "docs/planning/inbox/inbox-stub-16-delivery-admission-policy.md"
+    phase: 15
+  - path: "docs/planning/inbox/inbox-stub-17-delivery-occupancy-snapshot.md"
+    phase: 15
+  - path: "docs/planning/inbox/inbox-stub-18-deterministic-admission-engine.md"
+    phase: 15
+  - path: "docs/planning/inbox/inbox-stub-19-fail-closed-admission-sync.md"
+    phase: 15
+  - path: "docs/planning/inbox/inbox-stub-20-delivery-control-api.md"
+    phase: 15
+  - path: "docs/planning/inbox/inbox-stub-21-delivery-control-ui.md"
+    phase: 15
+  - path: "docs/planning/inbox/inbox-stub-22-symphony-capacity-ramp-contract.md"
+    phase: 15
+  - path: "docs/planning/inbox/inbox-stub-23-delivery-control-milestone.md"
+    phase: 15

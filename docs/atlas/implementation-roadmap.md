@@ -737,15 +737,25 @@ Carried forward:
 # Phase 13 — Governed Operator Actions
 
 Programme direction: `docs/atlas/phase-13-20-programme-horizon.md`.
-Planning state: NEXT WAVE; the pre-Wave-A Planning Engine integrity gate is
-satisfied by the hand-delivered Planning Batch Integrity Guard. Detailed
-design and governed ticket planning may proceed through the repaired path.
+Design authority: `docs/atlas/governed-operator-actions.md`.
+Planning state: WAVE A INPUTS PREPARED; implementation remains blocked until
+the planning-input change merges and the operator accepts the exact
+`atlas plan --stubs-only` proposal through `atlas apply`.
 
 Phase 13 introduces Atlas's first authenticated browser write. The single
 operator can promote or reject a DRAFT lesson through server-owned identity,
 idempotent commands, compare-and-set domain behaviour and append-only action
 receipts. The supported topology remains loopback-only and single-operator.
 No GitHub, Linear, plan-approval or merge write enters the phase.
+
+Planned delivery contracts (keys assigned only by `atlas apply`):
+
+1. Loopback operator session security and server-owned actor context.
+2. Append-only operator action ledger and idempotent command gateway.
+3. Governed lesson disposition service with atomic stale-state protection.
+4. Authenticated lesson promote and reject API commands.
+5. Lessons UI promote and reject workflow.
+6. Writable-surface security, accessibility and live-API acceptance.
 
 Milestone test: through a seeded live UI and API, promote one DRAFT lesson and
 reject another, then prove final states, server attribution, durable receipts
@@ -758,7 +768,9 @@ unintended lesson mutation.
 # Phase 14 — Review Acceptance Console
 
 Programme direction: `docs/atlas/phase-13-20-programme-horizon.md`.
-Planning state: NEXT WAVE; detailed design and governed ticket batch pending.
+Design authority: `docs/atlas/review-acceptance-console.md`.
+Planning state: WAVE A INPUTS PREPARED; foundations may overlap where the
+dependency graph permits, but Phase 14 cannot close before Phase 13.
 
 Phase 14 turns the delivered review queue into an authenticated exact-head
 acceptance workflow. One immutable session pins the repository, PR, close-set,
@@ -767,6 +779,17 @@ evidence, confirms criteria, runs verification and receives an advisory
 ready-for-manual-merge result. Phase 12 remains the freshness authority and
 Phase 13 supplies the authentication and action-receipt boundary. Atlas does
 not merge, rebase or change Linear from the console.
+
+Planned delivery contracts (keys assigned only by `atlas apply`):
+
+1. Acceptance and confirmation zero-action diagnostics.
+2. Durable exact-head acceptance session and status projection.
+3. Exact-head acceptance-session evidence pull action.
+4. Acceptance-session criteria confirmation and manual approval action.
+5. Exact-head verification and manual-merge readiness evaluator.
+6. Authenticated acceptance-session workflow API.
+7. Review queue acceptance console UI.
+8. Acceptance console security, concurrency and live-API milestone.
 
 Milestone test: take a seeded exact-main Review Required PR through preflight,
 evidence, confirmation and passed verification until the exact head is ready
@@ -779,7 +802,14 @@ session races must fail closed with typed reasons.
 # Phase 15 — Multi-Agent Delivery Control
 
 Programme direction: `docs/atlas/phase-13-20-programme-horizon.md`.
-Planning state: NEXT WAVE; detailed design and governed ticket batch pending.
+Design authority: `docs/atlas/multi-agent-delivery-control.md`.
+Planning state: WAVE A INPUTS PREPARED; deterministic foundations may overlap
+after their Phase 13 prerequisites, but the live ten-agent milestone remains
+blocked on Phase 14 closure. Committed `main` keeps `WORKFLOW.md` at three
+during delivery. The controlled milestone branch advances that file through
+5, 7 and 10 only after each preceding gate passes. Phase 15 cannot close until
+the ten-agent gate passes and the milestone/closure change lands
+`max_concurrent_agents: 10` on `main`.
 
 Phase 15 replaces promote-everything readiness with deterministic,
 capacity-aware admission. Operator-owned policy defines separate working and
@@ -789,12 +819,28 @@ Symphony remains the scheduler and runner. Policy changes use Phase 13's
 governed action framework, and the ten-agent closure milestone depends on Phase
 14 proving adequate review throughput.
 
+Planned delivery contracts (keys assigned only by `atlas apply`):
+
+1. Successful PM-sync receipt and truthful status timestamp.
+2. Versioned operator-owned delivery admission policy.
+3. Coherent delivery occupancy and review-pressure snapshot.
+4. Deterministic capacity-aware admission decision engine.
+5. Fail-closed single-write admission integration in the PM sync tick.
+6. Authenticated delivery-control policy and status API.
+7. Operator delivery-control and admission-explanation UI.
+8. Symphony ceiling contract and controlled-ramp runbook.
+9. Three-to-five-to-seven-to-ten delivery-control milestone.
+
 Milestone test: with more than ten independent seeded tickets and a controlled
 three-to-five-to-seven-to-ten live ramp, prove Atlas never exceeds working,
 review or lane limits; review pressure stops new admission; Changes Requested
 work is not starved; and pause/drain preserve active agents. Stale sync,
 partial Linear failure, concurrent ticks and duplicate commands must produce
-zero unintended promotion.
+zero unintended promotion. A failed gate restores or retains the last proven
+milestone-branch ceiling, records the failure, leaves Phase 15 open and merges
+nothing to `main`; closure below ten is prohibited. After the ten-agent gate
+passes, the Phase 15 milestone/closure change must commit and merge
+`WORKFLOW.md` at `max_concurrent_agents: 10`.
 
 ---
 
@@ -806,8 +852,9 @@ closure.
 
 Phase 16 establishes reproducible ticket, PR, CI, review, rebase, acceptance,
 completion, queue and cost observations. It evaluates agent/model performance
-by work type and risk, exposes missing data and sample size, and corrects the
-last-successful Linear sync projection. It observes and recommends; no opaque
+by work type and risk, exposes missing data and sample size, and consumes the
+truthful successful-sync receipt established in Phase 15. It observes and
+recommends; no opaque
 score may automatically route work, select a model or change capacity.
 
 Milestone test: replay a seeded delivery corpus to identical metrics and
