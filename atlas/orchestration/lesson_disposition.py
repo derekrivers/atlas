@@ -278,7 +278,7 @@ def _present_gateway_result(
         if receipt.result_code is OperatorActionResultCode.ACTION_SUCCEEDED:
             return LessonDispositionResult(
                 status=LessonDispositionStatus.REPLAYED,
-                lesson=replayed_lesson,
+                lesson=_replayed_success_lesson(replayed_lesson, receipt),
                 receipt=receipt,
             )
         if receipt.result_code is OperatorActionResultCode.STALE_STATE:
@@ -341,3 +341,23 @@ def _present_gateway_result(
         status=LessonDispositionStatus.COMMAND_FAILED,
         message="lesson disposition command failed",
     )
+
+
+def _replayed_success_lesson(
+    current_lesson: Lesson | None,
+    receipt: OperatorActionReceipt,
+) -> Lesson | None:
+    """Reconstruct the original terminal projection from its durable receipt."""
+
+    if current_lesson is None or receipt.after_status is None:
+        return None
+    updates: dict[str, object] = {
+        "status": receipt.after_status,
+        "updated_at": receipt.created_at,
+    }
+    if receipt.after_status is EntityStatus.ACTIVE:
+        confidence = receipt.result_metadata.get("confidence")
+        if type(confidence) is not float:
+            return None
+        updates["confidence"] = confidence
+    return current_lesson.model_copy(deep=True, update=updates)

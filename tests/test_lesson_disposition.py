@@ -361,6 +361,30 @@ def test_ac5_replay_and_altered_replay_are_distinct_and_do_not_repeat_write(
     assert stored.confidence == 0.8
 
 
+def test_ac5_success_replay_retains_original_projection_after_later_archive(
+    db: Database,
+) -> None:
+    lesson = seed_lesson(db)
+    disposition = service(db)
+    context = command_context("ac5-replay-after-archive")
+
+    first = disposition.execute(PromoteLesson(lesson.id, 0.8), context)
+    archived = LessonRepo(db).archive(lesson.id, now=NOW + timedelta(hours=1))
+    replay = disposition.execute(PromoteLesson(lesson.id, 0.8), context)
+    altered_confidence = disposition.execute(PromoteLesson(lesson.id, 0.9), context)
+    altered_action = disposition.execute(RejectLesson(lesson.id), context)
+
+    assert first.status is LessonDispositionStatus.SUCCEEDED
+    assert first.lesson is not None
+    assert replay.status is LessonDispositionStatus.REPLAYED
+    assert replay.lesson == first.lesson
+    assert replay.receipt == first.receipt
+    assert altered_confidence.status is LessonDispositionStatus.IDEMPOTENCY_CONFLICT
+    assert altered_action.status is LessonDispositionStatus.IDEMPOTENCY_CONFLICT
+    assert receipt_count(db) == 1
+    assert LessonRepo(db).get(lesson.id) == archived
+
+
 def test_ac5_receipt_persistence_failure_rolls_back_lesson_and_reservation(
     db: Database,
     monkeypatch: pytest.MonkeyPatch,

@@ -556,6 +556,10 @@ def test_ac6_same_key_same_body_replays_byte_equivalent_success_without_mutation
             json={"confidence": 0.8},
             headers=headers,
         )
+        archived = LessonRepo(database).archive(
+            lesson.id,
+            now=NOW.replace(hour=13),
+        )
         replay = client.post(
             f"/api/v1/lessons/{lesson.id}/promote",
             json={"confidence": 0.8},
@@ -567,7 +571,8 @@ def test_ac6_same_key_same_body_replays_byte_equivalent_success_without_mutation
     assert len(OperatorActionReceiptRepo(database).list()) == 1
     stored = LessonRepo(database).get(lesson.id)
     assert stored is not None
-    assert stored.status is EntityStatus.ACTIVE
+    assert stored == archived
+    assert stored.status is EntityStatus.ARCHIVED
     assert stored.confidence == 0.8
 
 
