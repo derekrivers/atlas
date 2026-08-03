@@ -798,6 +798,7 @@ def test_pm_sync_receipt_migration_preserves_ticket_definition_cursors(
 def test_alembic_upgrades_fresh_db_and_matches_metadata(tmp_path: Path) -> None:
     url = f"sqlite:///{tmp_path}/migrated.db"
     config = _alembic_config(url)
+    assert ScriptDirectory.from_config(config).get_heads() == ["0028"]
     command.upgrade(config, "head")
 
     engine = sa.create_engine(url)
@@ -1026,14 +1027,14 @@ def test_acceptance_evidence_receipt_outcomes_migrate_without_losing_guards(
 ) -> None:
     url = f"sqlite:///{tmp_path}/acceptance-evidence-outcomes.db"
     config = _alembic_config(url)
-    assert ScriptDirectory.from_config(config).get_heads() == ["0027"]
+    assert ScriptDirectory.from_config(config).get_heads() == ["0028"]
     command.upgrade(config, "head")
 
     engine = sa.create_engine(url)
     with engine.connect() as connection:
-        constraints = sa.inspect(connection).get_check_constraints(
-            "operator_action_receipts"
-        )
+        inspector = sa.inspect(connection)
+        assert "admission_runs" in inspector.get_table_names()
+        constraints = inspector.get_check_constraints("operator_action_receipts")
         assert len(constraints) == 1
         sqltext = constraints[0]["sqltext"]
         assert sqltext is not None
@@ -1041,7 +1042,7 @@ def test_acceptance_evidence_receipt_outcomes_migrate_without_losing_guards(
         assert "evidence_authentication_failed" in sqltext
         assert "evidence_rate_limit_failed" in sqltext
         assert "evidence_malformed_source" in sqltext
-        triggers = {
+        receipt_triggers = {
             row[0]
             for row in connection.execute(
                 sa.text(
@@ -1050,21 +1051,34 @@ def test_acceptance_evidence_receipt_outcomes_migrate_without_losing_guards(
                 )
             )
         }
-        assert triggers == {
+        admission_triggers = {
+            row[0]
+            for row in connection.execute(
+                sa.text(
+                    "SELECT name FROM sqlite_master WHERE type = 'trigger' "
+                    "AND name LIKE 'admission_runs_%'"
+                )
+            )
+        }
+        assert receipt_triggers == {
             "operator_action_receipts_no_update",
             "operator_action_receipts_no_delete",
         }
+        assert admission_triggers == {
+            "admission_runs_no_update",
+            "admission_runs_no_delete",
+        }
 
-    command.downgrade(config, "0026")
+    command.downgrade(config, "0027")
     with engine.connect() as connection:
-        constraints = sa.inspect(connection).get_check_constraints(
-            "operator_action_receipts"
-        )
+        inspector = sa.inspect(connection)
+        assert "admission_runs" in inspector.get_table_names()
+        constraints = inspector.get_check_constraints("operator_action_receipts")
         assert len(constraints) == 1
         sqltext = constraints[0]["sqltext"]
         assert sqltext is not None
         assert "evidence_transport_failed" not in sqltext
-        triggers = {
+        receipt_triggers = {
             row[0]
             for row in connection.execute(
                 sa.text(
@@ -1073,9 +1087,22 @@ def test_acceptance_evidence_receipt_outcomes_migrate_without_losing_guards(
                 )
             )
         }
-        assert triggers == {
+        admission_triggers = {
+            row[0]
+            for row in connection.execute(
+                sa.text(
+                    "SELECT name FROM sqlite_master WHERE type = 'trigger' "
+                    "AND name LIKE 'admission_runs_%'"
+                )
+            )
+        }
+        assert receipt_triggers == {
             "operator_action_receipts_no_update",
             "operator_action_receipts_no_delete",
+        }
+        assert admission_triggers == {
+            "admission_runs_no_update",
+            "admission_runs_no_delete",
         }
 
 
