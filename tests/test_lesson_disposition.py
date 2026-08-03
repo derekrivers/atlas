@@ -44,7 +44,11 @@ from atlas.storage import (
     OperatorActionReceiptRepo,
     TicketRepo,
 )
-from atlas.storage.tables import LessonRow, OperatorActionKeyRow
+from atlas.storage.tables import (
+    LessonDispositionResultSnapshotRow,
+    LessonRow,
+    OperatorActionKeyRow,
+)
 
 NOW = datetime(2026, 8, 2, 15, tzinfo=UTC)
 CLI_PATH = Path(__file__).resolve().parents[1] / "atlas" / "cli.py"
@@ -91,6 +95,11 @@ def service(db: Database) -> LessonDispositionService:
 
 def receipt_count(db: Database) -> int:
     return len(OperatorActionReceiptRepo(db).list())
+
+
+def snapshot_count(db: Database) -> int:
+    with db.session() as session:
+        return len(session.scalars(sa.select(LessonDispositionResultSnapshotRow)).all())
 
 
 def test_ac1_shared_service_returns_typed_updated_lesson_and_outcome(
@@ -382,7 +391,87 @@ def test_ac5_success_replay_retains_original_projection_after_later_archive(
     assert altered_confidence.status is LessonDispositionStatus.IDEMPOTENCY_CONFLICT
     assert altered_action.status is LessonDispositionStatus.IDEMPOTENCY_CONFLICT
     assert receipt_count(db) == 1
+    assert snapshot_count(db) == 1
     assert LessonRepo(db).get(lesson.id) == archived
+
+
+@pytest.mark.parametrize(
+    ("action", "key", "terminal_status"),
+    [
+        ("promote", "ac5-promote-replay-after-citation", EntityStatus.ACTIVE),
+        ("reject", "ac5-reject-replay-after-citation", EntityStatus.ARCHIVED),
+    ],
+    ids=["promote", "reject"],
+)
+def test_ac5_success_replay_retains_every_original_field_after_later_citation(
+    db: Database,
+    action: str,
+    key: str,
+    terminal_status: EntityStatus,
+) -> None:
+    lesson = seed_lesson(db, related_ticket_ids=[])
+    disposition = service(db)
+    context = command_context(key)
+    request = (
+        PromoteLesson(lesson.id, 0.8)
+        if action == "promote"
+        else RejectLesson(lesson.id)
+    )
+
+    first = disposition.execute(request, context)
+    later_ticket_id = uuid4()
+    [cited] = LessonRepo(db).record_ticket_citation(
+        lesson_ids=[lesson.id],
+        ticket_id=later_ticket_id,
+    )
+    replay = disposition.execute(request, context)
+
+    assert first.status is LessonDispositionStatus.SUCCEEDED
+    assert first.lesson is not None
+    assert first.lesson.status is terminal_status
+    assert first.lesson.related_ticket_ids == []
+    assert replay.status is LessonDispositionStatus.REPLAYED
+    assert replay.lesson == first.lesson
+    assert replay.receipt == first.receipt
+    assert cited.related_ticket_ids == [later_ticket_id]
+    assert LessonRepo(db).get(lesson.id) == cited
+    assert receipt_count(db) == 1
+    assert snapshot_count(db) == 1
+
+
+@pytest.mark.parametrize("operation", ["update", "delete"])
+def test_ac5_success_snapshot_is_append_only(
+    db: Database,
+    operation: str,
+) -> None:
+    lesson = seed_lesson(db)
+    result = service(db).execute(
+        PromoteLesson(lesson.id, 0.8),
+        command_context(f"ac5-immutable-snapshot-{operation}"),
+    )
+    assert result.receipt is not None
+
+    statement = (
+        sa.update(LessonDispositionResultSnapshotRow)
+        .where(
+            LessonDispositionResultSnapshotRow.idempotency_key_identity
+            == result.receipt.idempotency_key_identity
+        )
+        .values(title="later mutable title")
+        if operation == "update"
+        else sa.delete(LessonDispositionResultSnapshotRow).where(
+            LessonDispositionResultSnapshotRow.idempotency_key_identity
+            == result.receipt.idempotency_key_identity
+        )
+    )
+    with (
+        pytest.raises(sa.exc.IntegrityError),
+        db.session() as session,
+        session.begin(),
+    ):
+        session.execute(statement)
+
+    assert snapshot_count(db) == 1
 
 
 def test_ac5_receipt_persistence_failure_rolls_back_lesson_and_reservation(
@@ -408,6 +497,7 @@ def test_ac5_receipt_persistence_failure_rolls_back_lesson_and_reservation(
     with db.session() as session:
         assert session.scalars(sa.select(OperatorActionKeyRow)).all() == []
     assert receipt_count(db) == 0
+    assert snapshot_count(db) == 0
 
 
 def test_ac6_cli_delegates_and_preserves_output_with_operator_attribution(

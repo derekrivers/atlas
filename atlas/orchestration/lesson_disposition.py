@@ -34,11 +34,13 @@ from atlas.orchestration.operator_actions import (
     OperatorActionGatewayStatus,
     OperatorActionMutation,
     canonical_request_fingerprint,
+    idempotency_key_identity,
 )
 from atlas.storage import Database
-from atlas.storage.tables import LessonRow
+from atlas.storage.tables import LessonDispositionResultSnapshotRow, LessonRow
 
 _LESSON_LOAD = "lesson"
+_SUCCESS_SNAPSHOT_LOAD = "lesson_disposition_result_snapshot"
 _OPERATOR_ACTOR_TYPE = ActorType.HUMAN
 _OPERATOR_ACTOR_ID = "operator"
 
@@ -142,6 +144,7 @@ class LessonDispositionService:
                 payload=payload,
             ),
         )
+        key_identity = idempotency_key_identity(context.idempotency_key)
         decision: LessonDispositionDecision | None = None
 
         def run_domain_command(
@@ -161,7 +164,7 @@ class LessonDispositionService:
                 actor_type=gateway_context.created_by_type,
                 actor_id=gateway_context.created_by_id,
             )
-            return _command_result(decision, row)
+            return _command_result(decision, row, key_identity)
 
         gateway_result = self._gateway.execute(
             envelope,
@@ -171,6 +174,11 @@ class LessonDispositionService:
                     name=_LESSON_LOAD,
                     entity_type=LessonRow,
                     entity_id=command.lesson_id,
+                ),
+                OperatorActionEntityLoad(
+                    name=_SUCCESS_SNAPSHOT_LOAD,
+                    entity_type=LessonDispositionResultSnapshotRow,
+                    entity_id=key_identity,
                 ),
             ),
         )
@@ -196,6 +204,7 @@ def _validate_command_context(
 def _command_result(
     decision: LessonDispositionDecision,
     row: LessonRow | None,
+    key_identity: str,
 ) -> OperatorActionCommandResult:
     if decision.status is LessonDispositionDecisionStatus.NOT_FOUND:
         return OperatorActionCommandResult(
@@ -236,7 +245,38 @@ def _command_result(
                 expected_values={"status": EntityStatus.DRAFT.value},
                 updated_fields=("status", "confidence", "updated_at"),
             ),
+            OperatorActionMutation(
+                entity=_success_snapshot_row(key_identity, updated),
+            ),
         ),
+    )
+
+
+def _success_snapshot_row(
+    key_identity: str,
+    lesson: Lesson,
+) -> LessonDispositionResultSnapshotRow:
+    """Build the complete safe success projection stored for exact replay."""
+
+    return LessonDispositionResultSnapshotRow(
+        idempotency_key_identity=key_identity,
+        id=lesson.id,
+        product_id=lesson.product_id,
+        status=lesson.status.value,
+        category=lesson.category.value,
+        title=lesson.title,
+        problem=lesson.problem,
+        solution=lesson.solution,
+        outcome=lesson.outcome,
+        confidence=lesson.confidence,
+        source_ticket_id=lesson.source_ticket_id,
+        related_ticket_ids=[str(ticket_id) for ticket_id in lesson.related_ticket_ids],
+        related_adr_ids=[str(adr_id) for adr_id in lesson.related_adr_ids],
+        tags=list(lesson.tags),
+        created_by_type=lesson.created_by_type.value,
+        created_by_id=lesson.created_by_id,
+        created_at=lesson.created_at,
+        updated_at=lesson.updated_at,
     )
 
 
@@ -276,9 +316,15 @@ def _present_gateway_result(
         )
         assert receipt is not None
         if receipt.result_code is OperatorActionResultCode.ACTION_SUCCEEDED:
+            snapshot_row = gateway_result.loaded_entities.get(_SUCCESS_SNAPSHOT_LOAD)
+            if not isinstance(snapshot_row, LessonDispositionResultSnapshotRow):
+                return LessonDispositionResult(
+                    status=LessonDispositionStatus.STORAGE_FAILED,
+                    message="lesson disposition result snapshot was unavailable",
+                )
             return LessonDispositionResult(
                 status=LessonDispositionStatus.REPLAYED,
-                lesson=_replayed_success_lesson(replayed_lesson, receipt),
+                lesson=Lesson.model_validate(snapshot_row, from_attributes=True),
                 receipt=receipt,
             )
         if receipt.result_code is OperatorActionResultCode.STALE_STATE:
@@ -341,23 +387,3 @@ def _present_gateway_result(
         status=LessonDispositionStatus.COMMAND_FAILED,
         message="lesson disposition command failed",
     )
-
-
-def _replayed_success_lesson(
-    current_lesson: Lesson | None,
-    receipt: OperatorActionReceipt,
-) -> Lesson | None:
-    """Reconstruct the original terminal projection from its durable receipt."""
-
-    if current_lesson is None or receipt.after_status is None:
-        return None
-    updates: dict[str, object] = {
-        "status": receipt.after_status,
-        "updated_at": receipt.created_at,
-    }
-    if receipt.after_status is EntityStatus.ACTIVE:
-        confidence = receipt.result_metadata.get("confidence")
-        if type(confidence) is not float:
-            return None
-        updates["confidence"] = confidence
-    return current_lesson.model_copy(deep=True, update=updates)

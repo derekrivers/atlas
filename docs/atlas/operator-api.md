@@ -161,10 +161,12 @@ The command presenter maps an unknown lesson to `404`, invalid command input to
 `422`, a non-DRAFT or compare-and-set stale lesson to `409`, and a changed
 idempotency fingerprint or in-progress owner to `409`. A stale conflict includes
 the safe current lesson when the disposition service supplies one. Repeating
-the same key and command returns the original `200` lesson and receipt without a
-second mutation. A different confidence, target or action under that key is a
-conflict. There is no generic lesson `PATCH` or `PUT`, no extra action route and
-no unversioned duplicate.
+the same key and command returns the original `200` lesson and receipt from the
+immutable disposition-time safe projection without a second mutation. Later
+archive, citation or metadata changes remain in canonical lesson storage but do
+not alter that replay. A different confidence, target or action under that key
+is a conflict. There is no generic lesson `PATCH` or `PUT`, no extra action
+route and no unversioned duplicate.
 
 `GET /api/v1/tickets/{key}/dependencies` returns one ticket's dependency
 blockers, reverse dependency readiness impact, and all readiness reasons from

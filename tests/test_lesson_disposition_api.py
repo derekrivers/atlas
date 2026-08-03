@@ -577,6 +577,48 @@ def test_ac6_same_key_same_body_replays_byte_equivalent_success_without_mutation
 
 
 @pytest.mark.parametrize(
+    ("action", "body", "terminal_status"),
+    [
+        ("promote", {"confidence": 0.8}, EntityStatus.ACTIVE),
+        ("reject", {}, EntityStatus.ARCHIVED),
+    ],
+)
+def test_ac6_same_key_replay_ignores_later_citation_and_preserves_canonical_state(
+    database: Database,
+    action: str,
+    body: dict[str, Any],
+    terminal_status: EntityStatus,
+) -> None:
+    lesson = _lesson(database)
+    later_ticket_id = uuid4()
+    with TestClient(_writable_app(database)) as client:
+        csrf_token = _login(client)
+        headers = _headers(csrf_token, idempotency_key=f"citation-{action}")
+        first = client.post(
+            f"/api/v1/lessons/{lesson.id}/{action}",
+            json=body,
+            headers=headers,
+        )
+        [cited] = LessonRepo(database).record_ticket_citation(
+            lesson_ids=[lesson.id],
+            ticket_id=later_ticket_id,
+        )
+        replay = client.post(
+            f"/api/v1/lessons/{lesson.id}/{action}",
+            json=body,
+            headers=headers,
+        )
+
+    assert first.status_code == replay.status_code == 200
+    assert replay.content == first.content
+    assert first.json()["lesson"]["status"] == terminal_status.value
+    assert first.json()["lesson"]["related_ticket_ids"] == []
+    assert cited.related_ticket_ids == [later_ticket_id]
+    assert LessonRepo(database).get(lesson.id) == cited
+    assert len(OperatorActionReceiptRepo(database).list()) == 1
+
+
+@pytest.mark.parametrize(
     ("altered_action", "altered_body"),
     [
         ("promote", {"confidence": 0.9}),

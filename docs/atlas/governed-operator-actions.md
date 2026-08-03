@@ -169,6 +169,14 @@ planned mutations and receipt insertion separately for classification, then
 catches failure from the actual transaction commit as a receipt-commit failure.
 Any such failure rolls back the reservation, mutation and receipt together.
 
+Successful lesson dispositions include one purpose-specific, append-only safe
+result snapshot in that mutation plan. It contains the complete disposition-time
+`Lesson` projection, is keyed by the hashed idempotency identity, and commits in
+the same transaction. On successful replay the gateway loads that immutable
+snapshot alongside its receipt; it does not rebuild the response from the
+mutable current lesson. This snapshot is not generic receipt metadata and has
+no public write surface.
+
 An append-only `OperatorActionReceipt` records:
 
 - receipt and correlation IDs;
@@ -183,10 +191,11 @@ An append-only `OperatorActionReceipt` records:
   `0.0..1.0`);
 - created/completed timestamps.
 
-The lesson mutation and successful receipt commit atomically. If the receipt
-cannot be persisted, the lesson is not changed. Secrets, full request bodies,
-raw evidence payloads, lesson content and exception traces are not copied into
-receipts or rendered receipt JSON. Result codes and before/after states are
+The lesson mutation, immutable success snapshot and successful receipt commit
+atomically. If either durable result record cannot be persisted, the lesson is
+not changed. Secrets, full request bodies, raw evidence payloads, lesson content
+and exception traces are not copied into receipts or rendered receipt JSON.
+Result codes and before/after states are
 closed enums rather than free-form command strings. Outcomes and result codes
 also form one enforced matrix: success uses `action_succeeded`; refusal uses
 `action_refused` or `stale_state`; failure uses `action_failed`; and conflict
@@ -249,8 +258,10 @@ compare-and-set, altered replay or in-progress idempotency owner returns `409`.
 Unauthenticated requests return `401`; authenticated requests failing
 origin/CSRF policy return `403`, and a non-strict content type returns `415`.
 A replay with the same key and fingerprint returns the byte-equivalent semantic
-success and receipt without a second mutation. Reusing the key with a different
-confidence, target or action returns `409` without mutation. No generic
+success and receipt from the immutable disposition-time snapshot without a
+second mutation, even if a later archive, citation or metadata change updates
+the canonical lesson. Reusing the key with a different confidence, target or
+action returns `409` without mutation. No generic
 `PATCH`/`PUT`, extra lesson action or unversioned duplicate route exists.
 
 ## UI workflow
