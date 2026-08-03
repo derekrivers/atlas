@@ -146,7 +146,13 @@ canonical `EntityStatus`. It is a single-repository projection over
 promotes, rejects, archives, or merges a lesson.
 
 `POST /api/v1/lessons/{lesson_id}/promote` accepts exactly one finite numeric
-`confidence` in the inclusive range `0.0..1.0`.
+`confidence` in the inclusive range `0.0..1.0`. Before the domain mutation,
+Atlas canonicalises an accepted value to the PostgreSQL `NUMERIC(4,3)` scale
+using decimal round-half-up (`0.0004` becomes `0.0`; `0.9999` becomes `1.0`).
+The canonical value is used by the lesson row, immutable replay snapshot,
+receipt metadata and first success response. The request fingerprint retains
+the submitted value, so two different confidence values still conflict even
+when they canonicalise to the same stored value.
 `POST /api/v1/lessons/{lesson_id}/reject` accepts exactly an empty JSON object.
 Both reject actor, status, content and unknown request fields, require
 `Idempotency-Key`, and call `LessonDispositionService` once with the actor from

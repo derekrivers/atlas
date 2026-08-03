@@ -5,11 +5,14 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 from datetime import datetime
+from decimal import ROUND_HALF_UP, Decimal
 from enum import StrEnum
 from uuid import UUID
 
 from atlas.core.enums import ActorType, EntityStatus
 from atlas.core.models import Lesson
+
+_CONFIDENCE_QUANTUM = Decimal("0.001")
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,6 +80,16 @@ def validate_lesson_disposition_command(
     return None
 
 
+def _canonical_confidence(confidence: int | float) -> float:
+    """Match PostgreSQL ``NUMERIC(4,3)`` before any observable success value."""
+
+    rounded = Decimal(str(confidence)).quantize(
+        _CONFIDENCE_QUANTUM,
+        rounding=ROUND_HALF_UP,
+    )
+    return 0.0 if rounded.is_zero() else float(rounded)
+
+
 def decide_lesson_disposition(
     command: LessonDispositionCommand,
     lesson: Lesson | None,
@@ -137,7 +150,7 @@ def decide_lesson_disposition(
             deep=True,
             update={
                 "status": EntityStatus.ACTIVE,
-                "confidence": float(command.confidence),
+                "confidence": _canonical_confidence(command.confidence),
                 "updated_at": now,
             },
         )

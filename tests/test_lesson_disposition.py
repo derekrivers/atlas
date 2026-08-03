@@ -102,6 +102,16 @@ def snapshot_count(db: Database) -> int:
         return len(session.scalars(sa.select(LessonDispositionResultSnapshotRow)).all())
 
 
+def snapshot_confidence(db: Database, key_identity: str) -> float | None:
+    with db.session() as session:
+        return session.scalar(
+            sa.select(LessonDispositionResultSnapshotRow.confidence).where(
+                LessonDispositionResultSnapshotRow.idempotency_key_identity
+                == key_identity
+            )
+        )
+
+
 def test_ac1_shared_service_returns_typed_updated_lesson_and_outcome(
     db: Database,
 ) -> None:
@@ -206,6 +216,45 @@ def test_ac2_promote_accepts_inclusive_confidence_boundaries_and_preserves_recor
         )
         == preserved
     )
+
+
+@pytest.mark.parametrize(
+    ("submitted", "canonical"),
+    [
+        (0.0004, 0.0),
+        (0.0005, 0.001),
+        (0.123456, 0.123),
+        (0.9999, 1.0),
+    ],
+    ids=["lower-round-down", "postgres-tie-up", "fractional-scale", "upper-round-up"],
+)
+def test_ac2_promote_canonicalizes_confidence_before_storage_receipt_and_result(
+    db: Database,
+    submitted: float,
+    canonical: float,
+) -> None:
+    lesson = seed_lesson(db)
+    disposition = service(db)
+    context = command_context(f"ac2-canonical-{submitted}")
+
+    first = disposition.execute(PromoteLesson(lesson.id, submitted), context)
+    replay = disposition.execute(PromoteLesson(lesson.id, submitted), context)
+
+    assert first.status is LessonDispositionStatus.SUCCEEDED
+    assert first.lesson is not None
+    assert first.lesson.confidence == canonical
+    assert first.receipt is not None
+    assert first.receipt.result_metadata == {
+        "changed": True,
+        "confidence": canonical,
+    }
+    assert replay.status is LessonDispositionStatus.REPLAYED
+    assert replay.lesson == first.lesson
+    assert replay.receipt == first.receipt
+    stored = LessonRepo(db).get(lesson.id)
+    assert stored is not None
+    assert stored.confidence == canonical
+    assert snapshot_confidence(db, first.receipt.idempotency_key_identity) == canonical
 
 
 @pytest.mark.parametrize(
@@ -368,6 +417,27 @@ def test_ac5_replay_and_altered_replay_are_distinct_and_do_not_repeat_write(
     stored = LessonRepo(db).get(lesson.id)
     assert stored is not None
     assert stored.confidence == 0.8
+
+
+def test_ac5_altered_raw_confidence_conflicts_when_canonical_values_match(
+    db: Database,
+) -> None:
+    lesson = seed_lesson(db)
+    disposition = service(db)
+    context = command_context("ac5-canonical-collision")
+
+    first = disposition.execute(PromoteLesson(lesson.id, 0.123456), context)
+    altered = disposition.execute(PromoteLesson(lesson.id, 0.123499), context)
+
+    assert first.status is LessonDispositionStatus.SUCCEEDED
+    assert first.lesson is not None
+    assert first.lesson.confidence == 0.123
+    assert altered.status is LessonDispositionStatus.IDEMPOTENCY_CONFLICT
+    assert receipt_count(db) == 1
+    assert snapshot_count(db) == 1
+    stored = LessonRepo(db).get(lesson.id)
+    assert stored is not None
+    assert stored.confidence == 0.123
 
 
 def test_ac5_success_replay_retains_original_projection_after_later_archive(

@@ -220,9 +220,15 @@ Promote accepts only:
 {"confidence": 0.8}
 ```
 
-Confidence is finite and in the inclusive range `0.0..1.0`. Reject accepts an
-empty strict JSON object. Actor, status, content and unknown fields are rejected
-with `422` before the service runs. Both commands require the current stored
+Confidence is finite and in the inclusive range `0.0..1.0`. An accepted value
+is canonicalised before the domain mutation to the PostgreSQL `NUMERIC(4,3)`
+scale using decimal round-half-up (`0.0004` becomes `0.0`; `0.9999` becomes
+`1.0`). The canonical lesson, immutable result snapshot, receipt metadata and
+first response therefore agree exactly. The fingerprint retains the submitted
+value, so distinct confidence values remain altered replays even when their
+canonical values match. Reject accepts an empty strict JSON object. Actor,
+status, content and unknown fields are rejected with `422` before the service
+runs. Both commands require the current stored
 lesson to be DRAFT. The state transition is a compare-and-set operation; if
 another browser or CLI command has already changed the lesson, the loser returns
 `409 Conflict`

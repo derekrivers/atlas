@@ -577,6 +577,48 @@ def test_ac6_same_key_same_body_replays_byte_equivalent_success_without_mutation
 
 
 @pytest.mark.parametrize(
+    ("submitted", "canonical"),
+    [
+        (0.0004, 0.0),
+        (0.123456, 0.123),
+        (0.9999, 1.0),
+    ],
+    ids=["lower-bound-rounding", "fractional-scale", "upper-bound-rounding"],
+)
+def test_ac6_high_precision_confidence_has_byte_equivalent_canonical_replay(
+    database: Database,
+    submitted: float,
+    canonical: float,
+) -> None:
+    lesson = _lesson(database)
+    with TestClient(_writable_app(database)) as client:
+        csrf_token = _login(client)
+        headers = _headers(
+            csrf_token,
+            idempotency_key=f"canonical-confidence-{submitted}",
+        )
+        first = client.post(
+            f"/api/v1/lessons/{lesson.id}/promote",
+            json={"confidence": submitted},
+            headers=headers,
+        )
+        replay = client.post(
+            f"/api/v1/lessons/{lesson.id}/promote",
+            json={"confidence": submitted},
+            headers=headers,
+        )
+
+    assert first.status_code == replay.status_code == 200
+    assert replay.content == first.content
+    assert first.json()["lesson"]["confidence"] == canonical
+    assert first.json()["receipt"]["result_metadata"]["confidence"] == canonical
+    stored = LessonRepo(database).get(lesson.id)
+    assert stored is not None
+    assert stored.confidence == canonical
+    assert len(OperatorActionReceiptRepo(database).list()) == 1
+
+
+@pytest.mark.parametrize(
     ("action", "body", "terminal_status"),
     [
         ("promote", {"confidence": 0.8}, EntityStatus.ACTIVE),
