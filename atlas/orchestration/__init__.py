@@ -1,6 +1,13 @@
 """Cross-layer orchestration shared by Atlas presentation surfaces."""
 
 from atlas.core.models import OperatorActionResultCode
+from atlas.orchestration.acceptance_confirmation import (
+    AcceptanceConfirmationRequest,
+    AcceptanceConfirmationResult,
+    AcceptanceConfirmationStatus,
+    AcceptanceConfirmationValidationCode,
+    AcceptanceSessionConfirmationService,
+)
 from atlas.orchestration.acceptance_sessions import (
     AcceptanceSessionCreationResult,
     AcceptanceSessionCreationService,
@@ -14,6 +21,7 @@ from atlas.orchestration.acceptance_sessions import (
 from atlas.orchestration.confirm import (
     ConfirmCaptureResult,
     ConfirmPrompts,
+    build_confirmation_records,
     capture_ticket,
     capture_ticket_result,
 )
@@ -105,6 +113,11 @@ from atlas.orchestration.ticket_evidence import (
 from atlas.orchestration.verify import VerifyResult, run_verify
 
 __all__ = [
+    "AcceptanceConfirmationRequest",
+    "AcceptanceConfirmationResult",
+    "AcceptanceConfirmationStatus",
+    "AcceptanceConfirmationValidationCode",
+    "AcceptanceSessionConfirmationService",
     "AcceptanceSessionCreationResult",
     "AcceptanceSessionCreationService",
     "AcceptanceSessionCreationStatus",
@@ -162,6 +175,7 @@ __all__ = [
     "acceptance_criteria_fingerprint",
     "acceptance_criteria_snapshot",
     "assess_pr_integration",
+    "build_confirmation_records",
     "build_tick_config",
     "canonical_request_fingerprint",
     "capture_ticket",

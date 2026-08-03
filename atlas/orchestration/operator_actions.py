@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 
 from atlas.core.enums import ActorType, EntityStatus
 from atlas.core.models import (
+    Evidence,
     OperatorActionOutcome,
     OperatorActionReceipt,
     OperatorActionResultCode,
@@ -31,6 +32,7 @@ from atlas.core.models.operator_action_receipt import (
 from atlas.storage import Database
 from atlas.storage.repositories import (
     NaiveDatetimeError,
+    _add_evidence,
     _add_operator_action_receipt,
     _add_operator_action_reservation,
     _get_operator_action_receipt_by_identity,
@@ -145,6 +147,7 @@ class OperatorActionCommandResult:
     before_status: EntityStatus | None = None
     after_status: EntityStatus | None = None
     mutations: tuple[OperatorActionMutation, ...] = ()
+    evidence_appends: tuple[Evidence, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -382,6 +385,8 @@ class OperatorActionGateway:
                         _apply_operator_action_mutations(
                             session, command_result.mutations
                         )
+                        for evidence in command_result.evidence_appends:
+                            _add_evidence(session, evidence)
                         session.flush()
                     except _MutationStale:
                         raise

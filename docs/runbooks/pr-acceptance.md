@@ -113,6 +113,25 @@ empty close-set or an unknown-only close-set prints
 fix the close-set instead of treating that result as successful exhaustion. This
 — not a GitHub review — is the human gate.
 
+The governed acceptance-session form of this same gate is an application
+action, not a second approval model. It accepts the session ID, pinned criteria
+fingerprint, every stable integer criterion index exactly once and explicit
+manual approval true. Stable indexes resolve through the server-owned canonical
+snapshot (sorted ticket key, then stored list index); the caller cannot submit
+criterion text, actor, repository, ticket key or head SHA. Missing, duplicate,
+unknown or extra indexes, a mismatched fingerprint or false manual approval are
+validation-only outcomes and persist nothing.
+
+For a valid submission, Atlas locks the session, re-runs the shared exact-head
+assessment and re-reads all close-set ticket definitions before the write.
+Head, live `main`, close-set, ticket status or criteria movement makes the
+session terminal stale and writes no confirmation. Otherwise the same domain
+service and evidence writer used by `atlas confirm` append the per-criterion
+confirmations and ticket-scoped `MANUAL_APPROVAL` records at the pinned head.
+The records, `confirmations_ready` advance and action receipt are one atomic
+commit; verification is still the separate next step. Same-key retries replay
+the receipt, and concurrent or altered retries cannot append another set.
+
 ## 5. Verify
 
 ```

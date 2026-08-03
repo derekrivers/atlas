@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from datetime import datetime
 from typing import Literal, NamedTuple, Protocol, runtime_checkable
 from uuid import UUID
@@ -57,6 +57,52 @@ class ConfirmCaptureResult(NamedTuple):
     def pending_actions(self) -> int:
         """Actions presented during this capture, including skipped actions."""
         return self.recorded + self.skipped
+
+
+def build_confirmation_records(
+    ticket: Ticket,
+    *,
+    confirmed_criteria: Sequence[str],
+    manual_approval: bool | None,
+    head_commit: str,
+    product_id: UUID,
+    operator_id: str,
+    now: datetime,
+    new_id: Callable[[], UUID],
+) -> tuple[Evidence, ...]:
+    """Build the canonical evaluator-compatible confirmation record set.
+
+    Both the interactive CLI and governed acceptance-session action delegate to
+    this service. ``None`` means the CLI did not rule on blanket approval;
+    otherwise the boolean is recorded explicitly. Persistence remains the
+    caller's transaction boundary.
+    """
+
+    records = [
+        build_acceptance_confirmation(
+            criterion,
+            ticket_id=ticket.id,
+            head_commit=head_commit,
+            product_id=product_id,
+            operator_id=operator_id,
+            evidence_id=new_id(),
+            now=now,
+        )
+        for criterion in confirmed_criteria
+    ]
+    if manual_approval is not None:
+        records.append(
+            build_blanket_approval(
+                approved=manual_approval,
+                ticket_id=ticket.id,
+                head_commit=head_commit,
+                product_id=product_id,
+                operator_id=operator_id,
+                evidence_id=new_id(),
+                now=now,
+            )
+        )
+    return tuple(records)
 
 
 def capture_ticket(
@@ -120,17 +166,17 @@ def capture_ticket_result(
 
     for prompt in pending.unconfirmed_criteria:
         if prompts.acceptance(prompt.criterion):
-            evidence_repo.add(
-                build_acceptance_confirmation(
-                    prompt.criterion,
-                    ticket_id=ticket.id,
-                    head_commit=head_commit,
-                    product_id=product_id,
-                    operator_id=operator_id,
-                    evidence_id=new_id(),
-                    now=now,
-                )
+            (record,) = build_confirmation_records(
+                ticket,
+                confirmed_criteria=(prompt.criterion,),
+                manual_approval=None,
+                head_commit=head_commit,
+                product_id=product_id,
+                operator_id=operator_id,
+                now=now,
+                new_id=new_id,
             )
+            evidence_repo.add(record)
             passed_or_approved += 1
         else:
             skipped += 1
@@ -160,17 +206,17 @@ def capture_ticket_result(
     if pending.human_approval_required_and_missing:
         approval_decision = prompts.approval()
         if approval_decision in ("approve", "reject"):
-            evidence_repo.add(
-                build_blanket_approval(
-                    approved=approval_decision == "approve",
-                    ticket_id=ticket.id,
-                    head_commit=head_commit,
-                    product_id=product_id,
-                    operator_id=operator_id,
-                    evidence_id=new_id(),
-                    now=now,
-                )
+            (record,) = build_confirmation_records(
+                ticket,
+                confirmed_criteria=(),
+                manual_approval=approval_decision == "approve",
+                head_commit=head_commit,
+                product_id=product_id,
+                operator_id=operator_id,
+                now=now,
+                new_id=new_id,
             )
+            evidence_repo.add(record)
             if approval_decision == "approve":
                 passed_or_approved += 1
             else:
