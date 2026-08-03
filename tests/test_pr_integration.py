@@ -18,6 +18,7 @@ from github_fakes import FakeGitHubClient
 from atlas.github import GitHubAPIError, GitHubCompare, GitHubCompareStatus
 from atlas.orchestration import (
     PRAncestryStatus,
+    PRBaseSHASource,
     PRIntegrationAssessment,
     PRIntegrationEligibility,
     PRIntegrationStatus,
@@ -105,6 +106,7 @@ def test_current_ahead_pr_uses_exact_shas_from_snapshot() -> None:
     assert assessment.ahead_by == 1
     assert assessment.behind_by == 0
     assert assessment.merge_base_sha == BASE_SHA
+    assert assessment.base_sha_source is PRBaseSHASource.LIVE_BRANCH
     assert fake.calls == [
         ("pull_request", OWNER, REPO, PR_NUMBER),
         ("branch_head", OWNER, REPO, "main"),
@@ -208,6 +210,7 @@ def test_ineligible_prs_are_named_and_do_not_compare(
     assessment, fake = assess(pull_request=payload)
 
     assert assessment.eligibility is eligibility
+    assert assessment.base_sha_source is PRBaseSHASource.HISTORICAL_PR_SNAPSHOT
     assert assessment.integration_status is PRIntegrationStatus.INELIGIBLE
     assert assessment.ancestry is PRAncestryStatus.INDETERMINATE
     assert assessment.compare_status is None

@@ -55,6 +55,13 @@ class PRIntegrationStatus(StrEnum):
     INELIGIBLE = "ineligible"
 
 
+class PRBaseSHASource(StrEnum):
+    """Whether ``base_sha`` is live branch identity or PR snapshot history."""
+
+    LIVE_BRANCH = "live_branch"
+    HISTORICAL_PR_SNAPSHOT = "historical_pr_snapshot"
+
+
 @dataclass(frozen=True)
 class PRIntegrationAssessment:
     """Immutable proof record for one exact-head assessment."""
@@ -73,6 +80,7 @@ class PRIntegrationAssessment:
     base_ref: str
     base_sha: str
     base_repository: str
+    base_sha_source: PRBaseSHASource
     merge_base_sha: str | None
     ahead_by: int | None
     behind_by: int | None
@@ -131,6 +139,7 @@ def assess_pr_integration(
             base_ref=snapshot.base_ref,
             base_sha=snapshot.base_sha,
             base_repository=snapshot.base_repository,
+            base_sha_source=PRBaseSHASource.HISTORICAL_PR_SNAPSHOT,
             merge_base_sha=None,
             ahead_by=None,
             behind_by=None,
@@ -168,6 +177,7 @@ def assess_pr_integration(
         base_ref=snapshot.base_ref,
         base_sha=current_base_sha,
         base_repository=snapshot.base_repository,
+        base_sha_source=PRBaseSHASource.LIVE_BRANCH,
         merge_base_sha=compare.merge_base_sha,
         ahead_by=compare.ahead_by,
         behind_by=compare.behind_by,
@@ -204,6 +214,7 @@ def pr_integration_assessment_json(
             "ref": assessment.base_ref,
             "sha": assessment.base_sha,
             "repository": assessment.base_repository,
+            "sha_source": assessment.base_sha_source.value,
         },
         "compare": {
             "status": (

@@ -234,12 +234,15 @@ State vocabulary:
 
 The assessment carries the repository, PR number/state/draft/merged flags,
 head ref/SHA/repository, base ref/SHA/repository, compare status, ahead/behind
-counts, merge-base SHA, and all derived statuses. `--json` emits the same typed
-fields for automation. The command writes nothing: no Git fetch, branch update,
-GitHub mutation, Atlas-store row, or Linear transition. Exit code is zero only
-for `integration_status: current`; any rendered non-current, indeterminate, or
-ineligible assessment exits non-zero. Setup and transport failures render a
-single clean error line and no traceback.
+counts, merge-base SHA, and all derived statuses. Its base SHA source is
+`live_branch` when the eligible assessment resolved the branch independently,
+and `historical_pr_snapshot` when ineligibility stopped before that read;
+consumers cannot mistake the latter for movement of live `main`. `--json` emits
+the same typed fields for automation. The command writes nothing: no Git fetch,
+branch update, GitHub mutation, Atlas-store row, or Linear transition. Exit
+code is zero only for `integration_status: current`; any rendered non-current,
+indeterminate, or ineligible assessment exits non-zero. Setup and transport
+failures render a single clean error line and no traceback.
 
 The canonical close driver uses the same assessment in process. Its initial
 freshness assessment runs after local/token/operator preflight but before
@@ -273,16 +276,21 @@ without retargeting or deleting the old row.
 
 Creation-command replay is reserved for the same idempotency identity. A new
 command colliding with an active session compares every pinned identity,
-close-set and criteria fingerprint. An identical collision is refused as
-`active_session_exists`; any movement stales the old row and returns the typed
-mismatches so a retry starts a new durable lifecycle.
+close-set, current ticket existence/status and criteria fingerprint. An
+identical collision is refused as `active_session_exists`; any movement stales
+the old row and returns the typed mismatches so a retry starts a new durable
+lifecycle. Creation that discovers a missing or non-`review_required` ticket
+also terminalises the previously active session before returning its typed
+preflight refusal.
 
-The shared pure freshness comparator reports all head, base, ref, repository,
-eligibility and criteria mismatches. A mutation that observes any mismatch
-atomically marks the session stale. Read use is non-mutating: the stored-status
-projection labels any persisted readiness `historical_only` and explicitly not
-current merge authority. The later live-readiness service composes fresh
-bounded reads separately; there is no polling or hidden refresh write.
+The shared pure freshness comparator reports all head, live-base, ref,
+repository, eligibility, ticket existence/status and criteria mismatches. It
+does not compare an ineligible assessment's `historical_pr_snapshot` base as a
+live identity. A mutation that observes any mismatch atomically marks the
+session stale. Read use is non-mutating: the stored-status projection labels
+any persisted readiness `historical_only` and explicitly not current merge
+authority. The later live-readiness service composes fresh bounded reads
+separately; there is no polling or hidden refresh write.
 
 Behind, diverged and conflicted creation preflight returns the existing exact
 `atlas pr rebase prepare --pr <N> --repo <owner>/<repo>` operator recovery

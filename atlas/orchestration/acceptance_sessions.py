@@ -30,6 +30,7 @@ from atlas.github import GitHubAPIError, GitHubClient
 from atlas.orchestration.operator_actions import idempotency_key_identity
 from atlas.orchestration.pr_integration import (
     PRAncestryStatus,
+    PRBaseSHASource,
     PRIntegrationAssessment,
     PRIntegrationEligibility,
     PRIntegrationStatus,
@@ -118,11 +119,12 @@ def acceptance_criteria_fingerprint(
 def compare_acceptance_session_freshness(
     session: AcceptanceSession,
     live_assessment: PRIntegrationAssessment | None,
-    live_criteria: Sequence[AcceptanceCriterionSnapshot] | None,
+    live_tickets: Sequence[Ticket] | None,
 ) -> tuple[AcceptanceSessionBlockingReason, ...]:
-    """Return every live identity/eligibility/criteria mismatch, without I/O."""
+    """Return every live identity, eligibility and ticket mismatch, without I/O."""
 
     reasons: list[AcceptanceSessionBlockingReason] = []
+    live_close_set = session.close_set
     if live_assessment is None:
         reasons.append(AcceptanceSessionBlockingReason.EXTERNAL_STATE_INDETERMINATE)
     else:
@@ -153,7 +155,10 @@ def compare_acceptance_session_freshness(
             reasons.append(AcceptanceSessionBlockingReason.HEAD_REPOSITORY_MISMATCH)
         if live_assessment.base_ref != session.base_ref:
             reasons.append(AcceptanceSessionBlockingReason.BASE_REF_MISMATCH)
-        if live_assessment.base_sha != session.base_sha:
+        if (
+            live_assessment.base_sha_source is PRBaseSHASource.LIVE_BRANCH
+            and live_assessment.base_sha != session.base_sha
+        ):
             reasons.append(AcceptanceSessionBlockingReason.BASE_SHA_MISMATCH)
         if live_assessment.base_repository != session.base_repository:
             reasons.append(AcceptanceSessionBlockingReason.BASE_REPOSITORY_MISMATCH)
@@ -168,10 +173,34 @@ def compare_acceptance_session_freshness(
         ):
             reasons.append(AcceptanceSessionBlockingReason.EXTERNAL_STATE_INDETERMINATE)
 
-    if live_criteria is None:
+    if live_tickets is None:
         reasons.append(AcceptanceSessionBlockingReason.EXTERNAL_STATE_INDETERMINATE)
-    elif acceptance_criteria_fingerprint(live_criteria) != session.criteria_fingerprint:
-        reasons.append(AcceptanceSessionBlockingReason.CRITERIA_MISMATCH)
+    else:
+        tickets_by_key: dict[str, Ticket] = {}
+        duplicate_key = False
+        for ticket in live_tickets:
+            if ticket.key in tickets_by_key:
+                duplicate_key = True
+            tickets_by_key[ticket.key] = ticket
+        expected_keys = set(live_close_set)
+        actual_keys = set(tickets_by_key)
+        if expected_keys - actual_keys:
+            reasons.append(AcceptanceSessionBlockingReason.UNKNOWN_TICKET)
+        if duplicate_key or actual_keys - expected_keys:
+            reasons.append(AcceptanceSessionBlockingReason.EXTERNAL_STATE_INDETERMINATE)
+        if any(
+            ticket.status is not TicketStatus.REVIEW_REQUIRED
+            for key, ticket in tickets_by_key.items()
+            if key in expected_keys
+        ):
+            reasons.append(AcceptanceSessionBlockingReason.TICKET_NOT_REVIEW_REQUIRED)
+        if not duplicate_key and actual_keys == expected_keys:
+            live_criteria = acceptance_criteria_snapshot(live_close_set, live_tickets)
+            if (
+                acceptance_criteria_fingerprint(live_criteria)
+                != session.criteria_fingerprint
+            ):
+                reasons.append(AcceptanceSessionBlockingReason.CRITERIA_MISMATCH)
     return tuple(dict.fromkeys(reasons))
 
 
@@ -179,14 +208,14 @@ def mark_acceptance_session_stale_for_mutation(
     repository: AcceptanceSessionRepo,
     session: AcceptanceSession,
     live_assessment: PRIntegrationAssessment | None,
-    live_criteria: Sequence[AcceptanceCriterionSnapshot] | None,
+    live_tickets: Sequence[Ticket] | None,
     *,
     observed_at: datetime,
 ) -> AcceptanceSession:
     """Atomically terminalise a mutation target when the pure check moved."""
 
     reasons = compare_acceptance_session_freshness(
-        session, live_assessment, live_criteria
+        session, live_assessment, live_tickets
     )
     if not reasons:
         return session
@@ -364,6 +393,13 @@ class AcceptanceSessionCreationService:
             else:
                 tickets.append(ticket)
         if unknown_keys:
+            self._stale_active_session_for_observed_movement(
+                owner,
+                name,
+                pr_number,
+                assessment,
+                tickets,
+            )
             return AcceptanceSessionCreationResult(
                 status=AcceptanceSessionCreationStatus.REFUSED,
                 reasons=(AcceptanceSessionBlockingReason.UNKNOWN_TICKET,),
@@ -376,6 +412,13 @@ class AcceptanceSessionCreationService:
             if ticket.status is not TicketStatus.REVIEW_REQUIRED
         ]
         if wrong_state:
+            self._stale_active_session_for_observed_movement(
+                owner,
+                name,
+                pr_number,
+                assessment,
+                tickets,
+            )
             return AcceptanceSessionCreationResult(
                 status=AcceptanceSessionCreationStatus.REFUSED,
                 reasons=(AcceptanceSessionBlockingReason.TICKET_NOT_REVIEW_REQUIRED,),
@@ -383,9 +426,7 @@ class AcceptanceSessionCreationService:
             )
 
         criteria = acceptance_criteria_snapshot(close_set, tickets)
-        now = self._clock()
-        if now.utcoffset() is None:
-            raise ValueError("acceptance-session clock must be timezone-aware")
+        now = self._now()
         session = AcceptanceSession(
             id=self._id_factory(),
             repository_owner=owner,
@@ -430,14 +471,14 @@ class AcceptanceSessionCreationService:
                     movement = compare_acceptance_session_freshness(
                         active,
                         assessment,
-                        criteria,
+                        tickets,
                     )
                     if movement:
                         mark_acceptance_session_stale_for_mutation(
                             self._repository,
                             active,
                             assessment,
-                            criteria,
+                            tickets,
                             observed_at=max(now, active.updated_at),
                         )
                         return AcceptanceSessionCreationResult(
@@ -456,6 +497,38 @@ class AcceptanceSessionCreationService:
             ),
             session=stored.session,
         )
+
+    def _stale_active_session_for_observed_movement(
+        self,
+        owner: str,
+        name: str,
+        pr_number: int,
+        assessment: PRIntegrationAssessment,
+        tickets: Sequence[Ticket],
+    ) -> tuple[AcceptanceSessionBlockingReason, ...]:
+        active = self._repository.get_non_terminal_for_pr(owner, name, pr_number)
+        if active is None:
+            return ()
+        movement = compare_acceptance_session_freshness(
+            active,
+            assessment,
+            tickets,
+        )
+        if movement:
+            mark_acceptance_session_stale_for_mutation(
+                self._repository,
+                active,
+                assessment,
+                tickets,
+                observed_at=max(self._now(), active.updated_at),
+            )
+        return movement
+
+    def _now(self) -> datetime:
+        now = self._clock()
+        if now.utcoffset() is None:
+            raise ValueError("acceptance-session clock must be timezone-aware")
+        return now
 
 
 def _initial_step_summaries(
@@ -481,6 +554,7 @@ def _assessment_snapshot(
         pr_state=assessment.pr_state,
         pr_draft=assessment.pr_draft,
         pr_merged=assessment.pr_merged,
+        base_sha_source=assessment.base_sha_source.value,
         merge_base_sha=assessment.merge_base_sha,
         ahead_by=assessment.ahead_by,
         behind_by=assessment.behind_by,

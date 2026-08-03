@@ -102,6 +102,7 @@ def test_current_status_json_exits_zero_and_carries_exact_proof(
     assert payload["ancestry"] == "current"
     assert payload["mergeability"] == "mergeable"
     assert payload["base"]["sha"] == BASE_SHA
+    assert payload["base"]["sha_source"] == "live_branch"
     assert payload["head"]["sha"] == HEAD_SHA
     assert payload["compare"] == {
         "status": "ahead",
@@ -197,6 +198,7 @@ def test_ineligible_status_renders_named_state_without_compare(
     assert code == EXIT_RECORDED_FAILURE
     assert payload["integration_status"] == "ineligible"
     assert payload["eligibility"] == eligibility
+    assert payload["base"]["sha_source"] == "historical_pr_snapshot"
     assert payload["compare"]["status"] is None
     assert client.calls == [("pull_request", OWNER, REPO, PR_NUMBER)]
 

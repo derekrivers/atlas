@@ -26,6 +26,14 @@
           "title": "Ancestry",
           "type": "string"
         },
+        "base_sha_source": {
+          "enum": [
+            "live_branch",
+            "historical_pr_snapshot"
+          ],
+          "title": "Base Sha Source",
+          "type": "string"
+        },
         "behind_by": {
           "anyOf": [
             {
@@ -119,6 +127,7 @@
         "pr_state",
         "pr_draft",
         "pr_merged",
+        "base_sha_source",
         "mergeability",
         "ancestry",
         "eligibility",

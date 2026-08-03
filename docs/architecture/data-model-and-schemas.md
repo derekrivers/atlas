@@ -1304,9 +1304,11 @@ step summaries for `preflight`, `evidence`, `confirmations`, `verification`
 and `readiness`. A summary has a `pending`, `complete`, `blocked` or `failed`
 state, typed reasons, receipt IDs and its occurrence timestamp. The
 top-level typed reason vocabulary distinguishes PR eligibility, exact-head,
-base/ref/repository, external-state, close-set, ticket-state, criteria,
-session and historical-step failures; presentation never stores or returns a
-foreign exception message as a reason.
+base/ref/repository, external-state, close-set, missing-ticket, ticket-state,
+criteria, session and historical-step failures; presentation never stores or
+returns a foreign exception message as a reason. Freshness consumes the current
+ticket models as values, so ticket existence, `review_required` status and
+criteria are one pure comparison input rather than separately cached claims.
 
 `stored_merge_ready` and `historical_readiness_reasons` are historical state.
 The pure stored projection labels them `historical_only` and always emits
@@ -1324,9 +1326,13 @@ session only after the old row is terminal, normally `stale`. The creation-key
 identity is unique for all time and only that same command replays its original
 result. A different command that collides with an active row compares every
 pinned repository/PR, close-set, head/base identity and criteria fingerprint.
-An identical candidate returns `active_session_exists`; movement atomically
-stales the old row and returns the typed mismatch before a retry may create the
-replacement lifecycle.
+An identical candidate returns `active_session_exists`; repository/PR/head,
+live-base, ref, close-set, eligibility, ticket existence/status or criteria
+movement atomically stales the old row and returns the typed mismatch before a
+retry may create the replacement lifecycle. A base SHA mismatch is emitted
+only when the shared integration assessment labels that SHA `live_branch`;
+`historical_pr_snapshot` identifies an ineligible PR's old base snapshot and
+cannot assert movement of live `main`.
 
 ## Pydantic Model
 

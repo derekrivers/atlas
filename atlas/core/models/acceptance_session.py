@@ -112,6 +112,7 @@ class AcceptanceAssessmentSnapshot(BaseModel):
     pr_state: str
     pr_draft: bool
     pr_merged: bool
+    base_sha_source: Literal["live_branch", "historical_pr_snapshot"]
     merge_base_sha: str | None = None
     ahead_by: int | None = Field(default=None, ge=0)
     behind_by: int | None = Field(default=None, ge=0)
@@ -223,6 +224,7 @@ class AcceptanceSession(BaseModel):
             assessment.pr_state != "open"
             or assessment.pr_draft
             or assessment.pr_merged
+            or assessment.base_sha_source != "live_branch"
             or assessment.eligibility != "eligible"
             or assessment.ancestry != "current"
             or assessment.mergeability != "mergeable"

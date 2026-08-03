@@ -57,6 +57,7 @@ from atlas.orchestration.pr_context import (
 )
 from atlas.orchestration.pr_integration import (
     PRAncestryStatus,
+    PRBaseSHASource,
     PRIntegrationAssessment,
     PRIntegrationEligibility,
     PRIntegrationStatus,
@@ -119,6 +120,7 @@ __all__ = [
     "OperatorActionMutation",
     "OperatorActionResultCode",
     "PRAncestryStatus",
+    "PRBaseSHASource",
     "PRContext",
     "PRIntegrationAssessment",
     "PRIntegrationEligibility",

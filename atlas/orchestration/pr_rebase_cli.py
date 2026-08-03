@@ -172,7 +172,8 @@ def _status_text(assessment: PRIntegrationAssessment) -> str:
             f"mergeability: {assessment.mergeability.value}",
             (
                 f"base: {assessment.base_repository} "
-                f"{assessment.base_ref}@{assessment.base_sha}"
+                f"{assessment.base_ref}@{assessment.base_sha} "
+                f"({assessment.base_sha_source.value})"
             ),
             (
                 f"head: {assessment.head_repository} "

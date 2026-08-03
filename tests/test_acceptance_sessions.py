@@ -47,6 +47,7 @@ from atlas.orchestration import (
 )
 from atlas.orchestration.pr_integration import (
     PRAncestryStatus,
+    PRBaseSHASource,
     PRIntegrationAssessment,
     PRIntegrationEligibility,
     PRIntegrationStatus,
@@ -123,6 +124,7 @@ def assessment(**overrides: Any) -> PRIntegrationAssessment:
         "base_ref": "main",
         "base_sha": BASE,
         "base_repository": SLUG,
+        "base_sha_source": PRBaseSHASource.LIVE_BRANCH,
         "merge_base_sha": BASE,
         "ahead_by": 1,
         "behind_by": 0,
@@ -133,6 +135,12 @@ def assessment(**overrides: Any) -> PRIntegrationAssessment:
         "integration_status": PRIntegrationStatus.CURRENT,
     }
     values.update(overrides)
+    if "base_sha_source" not in overrides:
+        values["base_sha_source"] = (
+            PRBaseSHASource.LIVE_BRANCH
+            if values["eligibility"] is PRIntegrationEligibility.ELIGIBLE
+            else PRBaseSHASource.HISTORICAL_PR_SNAPSHOT
+        )
     return PRIntegrationAssessment(**values)
 
 
@@ -523,6 +531,27 @@ def test_ac4_new_command_same_head_criteria_movement_stales_before_retry(
     assert replacement.session.criteria_snapshot[0].text == "changed live criterion"
 
 
+def test_ac4_new_command_ticket_status_movement_stales_active_session(
+    db: Database, tickets: TicketFake
+) -> None:
+    first = stored_session(db, tickets)
+    tickets.tickets["ATLAS-1"].status = TicketStatus.CHANGES_REQUESTED
+
+    refused = create(
+        creator(db, tickets, exact_assessment=assessment()),
+        key="ticket-status-moved",
+    )
+
+    assert refused.status is CreationStatus.REFUSED
+    assert refused.reasons == (Reason.TICKET_NOT_REVIEW_REQUIRED,)
+    assert refused.ticket_keys == ("ATLAS-1",)
+    stale = AcceptanceSessionRepo(db).get(first.id)
+    assert stale is not None
+    assert stale.lifecycle is AcceptanceSessionLifecycle.STALE
+    assert stale.blocking_reasons == (Reason.TICKET_NOT_REVIEW_REQUIRED,)
+    assert stale.criteria_fingerprint == first.criteria_fingerprint
+
+
 def test_ac4_new_command_close_set_movement_stales_when_fingerprint_is_unchanged(
     db: Database,
 ) -> None:
@@ -565,10 +594,12 @@ def test_ac5_freshness_comparator_returns_every_typed_mismatch(
         ancestry=PRAncestryStatus.INDETERMINATE,
         mergeability=PRMergeabilityStatus.INDETERMINATE,
     )
-    live_criteria = list(session.criteria_snapshot)
-    live_criteria[0] = live_criteria[0].model_copy(update={"text": "drift"})
+    live_tickets = [
+        ticket("ATLAS-1", "drift", "second criterion"),
+        ticket("ATLAS-2", "only criterion"),
+    ]
 
-    reasons = compare_acceptance_session_freshness(session, live, live_criteria)
+    reasons = compare_acceptance_session_freshness(session, live, live_tickets)
 
     assert set(reasons) == {
         Reason.REPOSITORY_MISMATCH,
@@ -597,7 +628,7 @@ def test_ac5_mutation_freshness_atomically_marks_terminal_stale(
         AcceptanceSessionRepo(db),
         session,
         live,
-        session.criteria_snapshot,
+        list(tickets.tickets.values()),
         observed_at=NOW + timedelta(minutes=1),
     )
 
@@ -612,12 +643,97 @@ def test_ac5_mutation_freshness_atomically_marks_terminal_stale(
     assert AcceptanceSessionRepo(db).get_non_terminal_for_pr(OWNER, REPO, PR) is None
 
 
+def test_ac5_unchanged_criteria_ticket_status_movement_is_stale_for_mutation(
+    db: Database, tickets: TicketFake
+) -> None:
+    session = stored_session(db, tickets)
+    tickets.tickets["ATLAS-2"].status = TicketStatus.CHANGES_REQUESTED
+
+    reasons = compare_acceptance_session_freshness(
+        session,
+        assessment(),
+        list(tickets.tickets.values()),
+    )
+    assert reasons == (Reason.TICKET_NOT_REVIEW_REQUIRED,)
+
+    stale = mark_acceptance_session_stale_for_mutation(
+        AcceptanceSessionRepo(db),
+        session,
+        assessment(),
+        list(tickets.tickets.values()),
+        observed_at=NOW + timedelta(minutes=1),
+    )
+    assert stale.lifecycle is AcceptanceSessionLifecycle.STALE
+    assert stale.blocking_reasons == (Reason.TICKET_NOT_REVIEW_REQUIRED,)
+
+
+def test_ac5_missing_close_set_ticket_is_never_fresh(
+    db: Database, tickets: TicketFake
+) -> None:
+    session = stored_session(db, tickets)
+
+    reasons = compare_acceptance_session_freshness(
+        session,
+        assessment(),
+        [tickets.tickets["ATLAS-1"]],
+    )
+
+    assert reasons == (Reason.UNKNOWN_TICKET,)
+
+
+@pytest.mark.parametrize(
+    ("ineligible", "overrides"),
+    [
+        (
+            PRIntegrationEligibility.DRAFT,
+            {"pr_draft": True},
+        ),
+        (
+            PRIntegrationEligibility.CLOSED,
+            {"pr_state": "closed"},
+        ),
+    ],
+)
+def test_ac5_ineligible_pr_snapshot_does_not_claim_live_base_movement(
+    db: Database,
+    tickets: TicketFake,
+    ineligible: PRIntegrationEligibility,
+    overrides: dict[str, object],
+) -> None:
+    session = stored_session(db, tickets)
+    live = assessment(
+        **overrides,
+        base_sha="9" * 40,
+        base_sha_source=PRBaseSHASource.HISTORICAL_PR_SNAPSHOT,
+        eligibility=ineligible,
+        ancestry=PRAncestryStatus.INDETERMINATE,
+        integration_status=PRIntegrationStatus.INELIGIBLE,
+        merge_base_sha=None,
+        ahead_by=None,
+        behind_by=None,
+        compare_status=None,
+    )
+
+    reasons = compare_acceptance_session_freshness(
+        session,
+        live,
+        list(tickets.tickets.values()),
+    )
+
+    assert Reason.BASE_SHA_MISMATCH not in reasons
+    assert set(reasons) == {
+        Reason.ELIGIBILITY_MISMATCH,
+        Reason.INTEGRATION_STATUS_MISMATCH,
+        Reason.EXTERNAL_STATE_INDETERMINATE,
+    }
+
+
 def test_ac5_indeterminate_external_state_never_counts_as_fresh(
     db: Database, tickets: TicketFake
 ) -> None:
     session = stored_session(db, tickets)
     assert compare_acceptance_session_freshness(
-        session, None, session.criteria_snapshot
+        session, None, list(tickets.tickets.values())
     ) == (Reason.EXTERNAL_STATE_INDETERMINATE,)
     assert compare_acceptance_session_freshness(session, assessment(), None) == (
         Reason.EXTERNAL_STATE_INDETERMINATE,

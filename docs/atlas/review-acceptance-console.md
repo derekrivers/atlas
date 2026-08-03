@@ -28,10 +28,11 @@ outside the browser workflow in this phase.
   current with main. The API and UI never recreate that classifier.
 - Evidence, confirmations and verification are authoritative only for the
   session's exact head.
-- Any PR head, main/base SHA, repository identity, eligibility or criteria
-  movement closes the live readiness gate. A mutation that observes movement
-  marks the session stale; a GET reports the mismatch without rewriting stored
-  history.
+- Any PR head, live main/base SHA, repository identity, eligibility, close-set
+  ticket existence/status or criteria movement closes the live readiness gate.
+  A mutation that observes movement marks the session stale; a GET reports the
+  mismatch without rewriting stored history. A historical PR `base.sha` from
+  an ineligible assessment is not evidence that live `main` moved.
 - A stale session is immutable history. The operator starts a new session;
   Atlas never retargets an old session to a new head.
 - The final readiness result is advisory authority for the operator's manual
@@ -109,17 +110,21 @@ creation-command identity replays its original row, including during a
 concurrent create; a different command colliding with an identical active
 session returns `active_session_exists`. Before returning a collision, creation
 compares the live repository/PR, close-set, head/base refs, SHAs and repository
-identities, eligibility and criteria fingerprint with the active row. Movement
-atomically marks that row terminal `stale` and returns every typed mismatch;
-the caller must retry to create the new exact-head lifecycle. Both histories
+identities, eligibility, ticket existence/status and criteria fingerprint with
+the active row. Movement atomically marks that row terminal `stale` and returns
+every typed mismatch; this also applies when creation's ticket preflight finds
+a formerly eligible close-set ticket missing or no longer `review_required`.
+The caller must retry to create the new exact-head lifecycle. Both histories
 remain queryable, and no command retargets the old row.
 
 `compare_acceptance_session_freshness` is pure and returns all typed
 repository, PR, close-set, head/base ref/SHA/repository, eligibility,
-integration and criteria mismatches. Missing or indeterminate external state
-is never fresh. Mutation callers compose those reasons with one atomic
-`mark_stale`; read callers use the comparison result without changing the
-stored row.
+integration, ticket existence/status and criteria mismatches from supplied
+assessment and ticket values. Missing, non-`review_required` or indeterminate
+external state is never fresh. It compares a base SHA only when the assessment
+labels it `live_branch`, never when it is a `historical_pr_snapshot`. Mutation
+callers compose those reasons with one atomic `mark_stale`; read callers use
+the comparison result without changing the stored row.
 
 `stored_acceptance_session_status` is also pure. It projects pinned identity,
 criteria, lifecycle, every step summary, receipt IDs, blocking reasons and
