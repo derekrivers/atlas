@@ -101,6 +101,14 @@ being relabelled as policy holds. Policy may hold a ready candidate for
 capacity, snapshot coherence or the single-write boundary, but can never make
 a non-ready ticket eligible.
 
+Admission first fingerprints that exact graph, including readiness node state
+and dependency topology, identity and target state, and requires it to match
+the graph revision pinned by the delivery snapshot. It also requires the
+matching complete product-ticket revision. A mismatch raises typed
+`AdmissionInputMismatchError` before `ready_tickets`, ranking or run creation,
+so a snapshot from one graph/store state can neither authorise nor audit a
+decision over another.
+
 For each ready key, admission consumes the existing advisory `unlocks` count
 and current `critical_path` membership/position as rank inputs. Those analyses
 remain read-only and do not alter readiness. Every remaining rank input comes

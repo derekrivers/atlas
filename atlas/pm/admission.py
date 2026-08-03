@@ -6,6 +6,7 @@ import hashlib
 import json
 from collections.abc import Callable, Iterable, Mapping
 from datetime import UTC, datetime
+from enum import StrEnum
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 import networkx as nx
@@ -33,7 +34,9 @@ from atlas.pm.delivery_snapshot import (
     DeliverySnapshot,
     OccupancyDimension,
     SnapshotIncompletenessReason,
+    delivery_graph_revision,
     delivery_policy_fingerprint,
+    delivery_store_revision,
 )
 
 _RISK_SEVERITY: dict[RiskLevel, int] = {
@@ -42,6 +45,22 @@ _RISK_SEVERITY: dict[RiskLevel, int] = {
     RiskLevel.HIGH: 2,
     RiskLevel.CRITICAL: 3,
 }
+
+
+class AdmissionInputMismatchCode(StrEnum):
+    """Snapshot revision whose live evaluation input no longer matches."""
+
+    ATLAS_STORE_REVISION = "atlas_store_revision"
+    ATLAS_GRAPH_REVISION = "atlas_graph_revision"
+
+
+class AdmissionInputMismatchError(ValueError):
+    """Reject incoherent state before readiness, ranking or run creation."""
+
+    def __init__(self, mismatches: Iterable[AdmissionInputMismatchCode]) -> None:
+        self.mismatches = tuple(mismatches)
+        joined = ", ".join(mismatch.value for mismatch in self.mismatches)
+        super().__init__(f"admission inputs do not match snapshot: {joined}")
 
 
 def _normalise_time(value: datetime, *, name: str) -> datetime:
@@ -272,10 +291,22 @@ def evaluate_admission(
     rejected rather than guessed from creation or status timestamps.
     """
 
+    materialised_tickets = tuple(tickets)
+    mismatches: list[AdmissionInputMismatchCode] = []
+    if (
+        delivery_store_revision(snapshot.product_id, materialised_tickets)
+        != snapshot.atlas_store_revision
+    ):
+        mismatches.append(AdmissionInputMismatchCode.ATLAS_STORE_REVISION)
+    if delivery_graph_revision(graph) != snapshot.atlas_graph_revision:
+        mismatches.append(AdmissionInputMismatchCode.ATLAS_GRAPH_REVISION)
+    if mismatches:
+        raise AdmissionInputMismatchError(mismatches)
+
     evaluated_at = _normalise_time(clock(), name="admission evaluation time")
     candidates = ready_tickets(graph)
     ticket_by_key: dict[str, Ticket] = {}
-    for item in tickets:
+    for item in materialised_tickets:
         if item.product_id != snapshot.product_id:
             continue
         if item.key in ticket_by_key:

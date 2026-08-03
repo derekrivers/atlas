@@ -113,8 +113,9 @@ the policy service has no Symphony or Linear dependency.
 ## Occupancy snapshot
 
 One admission evaluation consumes a single immutable `DeliverySnapshot` built
-from the project-scoped Linear pull, Atlas ticket/dependency store, current
-policy revision and status-map revision. The existing
+from the project-scoped Linear pull, materialised Atlas tickets, the exact
+projected dependency graph, current policy revision and status-map revision.
+The existing
 `LinearClient.fetch_project_issues` request remains the only board read: its
 materialised result is frozen in a `LinearBoardPull` envelope that records
 whether pagination reached `hasNextPage=false` and any discontinuous cursor
@@ -155,12 +156,15 @@ The snapshot pins product id, Linear project id, immutable policy id/revision
 and mode, a canonical policy fingerprint, the configured state-id map
 fingerprint, the fetched-board fingerprint and count, Atlas store and graph
 revision fingerprints, and an injected UTC observation time. The store
-revision covers the ticket identity/join/status/lane inputs; the graph revision
-covers ticket graph attributes and dependency edges. Its complete canonical
-JSON representation is key-sorted and compact, all repeated fields are sorted,
-and its SHA-256 fingerprint excludes no decision field. Identical inputs
-therefore produce byte-identical counts, reasons, canonical bytes and
-fingerprint regardless of source iteration order.
+revision covers complete product-ticket membership, ticket and Linear
+identities, status, acceptance criteria, priority, risk, component and effort.
+The graph revision covers every projected node identity and readiness/rank
+attribute plus dependency topology, type, identity and reason, including
+ticket and ADR target state. Its complete canonical JSON representation is
+key-sorted and compact, all repeated fields are sorted, and its SHA-256
+fingerprint excludes no decision field. Identical inputs therefore produce
+byte-identical counts, reasons, canonical bytes and fingerprint regardless of
+source iteration order.
 
 Unknown or unmapped state ids, state-id/type contradictions, incomplete pulls,
 pagination gaps, missing or duplicate issue identities, duplicate Atlas joins,
@@ -187,6 +191,15 @@ matching materialised `Ticket` supplies only policy/rank attributes. The caller
 must supply an aware `continuously_eligible_since` value for every ready key;
 the evaluator rejects a missing or future value rather than guessing from the
 ticket's creation or status-entry timestamp.
+
+Before sampling the evaluation clock or invoking readiness, the evaluator
+recomputes the canonical product-ticket and exact projected-graph revisions
+from its live inputs and compares both with the snapshot pins. Any membership,
+identity, status, acceptance-criteria, rank/lane attribute, dependency edge or
+dependency-target state drift raises typed `AdmissionInputMismatchError` with
+every mismatched revision. Rejected inputs produce no ranking, selection or
+`AdmissionRun`; the orchestration layer therefore cannot persist a run whose
+snapshot fingerprint describes different state from the decision inputs.
 
 Candidates are ordered by this stable tuple:
 

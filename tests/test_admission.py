@@ -5,12 +5,14 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from types import SimpleNamespace
 from typing import Any
+from uuid import uuid4
 
 import pytest
 from hypothesis import given
 from hypothesis import strategies as st
-from test_delivery_snapshot import NOW, issue, policy, snapshot, ticket
+from test_delivery_snapshot import NOW, dependency, issue, policy, snapshot, ticket
 
+from atlas.core.enums import RiskLevel
 from atlas.core.models import Ticket
 from atlas.core.models.admission_run import (
     AdmissionDecisionType,
@@ -18,7 +20,12 @@ from atlas.core.models.admission_run import (
 )
 from atlas.core.models.ticket import TicketStatus
 from atlas.dependencies import CriticalPath, CriticalPathStep, project_graph
-from atlas.pm import LinearBoardPull, evaluate_admission
+from atlas.pm import (
+    AdmissionInputMismatchCode,
+    AdmissionInputMismatchError,
+    LinearBoardPull,
+    evaluate_admission,
+)
 from atlas.pm import admission as admission_module
 
 
@@ -403,6 +410,195 @@ def test_ac6_uninjected_time_and_random_ids_do_not_change_selection() -> None:
     assert first.id != second.id
     assert first_run.selected_ticket_key == second_run.selected_ticket_key == "ATLAS-2"
     assert first_run.decisions[0].decision is second_run.decisions[0].decision
+
+
+def test_snapshot_from_unrelated_ticket_set_is_rejected_before_decision() -> None:
+    snapshotted = ticket("ATLAS-1", TicketStatus.PLANNED)
+    live = ticket("ATLAS-2", TicketStatus.PLANNED)
+    observed = snapshot([snapshotted], [issue(snapshotted)])
+    clock = FrozenClock()
+
+    with pytest.raises(AdmissionInputMismatchError) as raised:
+        evaluate_admission(
+            graph=project_graph([live], [], [], []),
+            tickets=[live],
+            policy=policy(),
+            snapshot=observed,
+            continuously_eligible_since={live.key: NOW},
+            clock=clock,
+        )
+
+    assert raised.value.mismatches == (
+        AdmissionInputMismatchCode.ATLAS_STORE_REVISION,
+        AdmissionInputMismatchCode.ATLAS_GRAPH_REVISION,
+    )
+    assert clock.calls == 0
+
+
+@pytest.mark.parametrize(
+    ("case", "overrides", "expected_mismatches"),
+    [
+        (
+            "ticket-id",
+            {"id": uuid4()},
+            {
+                AdmissionInputMismatchCode.ATLAS_STORE_REVISION,
+                AdmissionInputMismatchCode.ATLAS_GRAPH_REVISION,
+            },
+        ),
+        (
+            "status",
+            {"status": TicketStatus.BACKLOG},
+            {
+                AdmissionInputMismatchCode.ATLAS_STORE_REVISION,
+                AdmissionInputMismatchCode.ATLAS_GRAPH_REVISION,
+            },
+        ),
+        (
+            "external-linear-id",
+            {"external_linear_id": "issue-replaced"},
+            {AdmissionInputMismatchCode.ATLAS_STORE_REVISION},
+        ),
+        (
+            "priority",
+            {"priority": 99},
+            {
+                AdmissionInputMismatchCode.ATLAS_STORE_REVISION,
+                AdmissionInputMismatchCode.ATLAS_GRAPH_REVISION,
+            },
+        ),
+        (
+            "risk",
+            {"risk_level": RiskLevel.CRITICAL},
+            {
+                AdmissionInputMismatchCode.ATLAS_STORE_REVISION,
+                AdmissionInputMismatchCode.ATLAS_GRAPH_REVISION,
+            },
+        ),
+        (
+            "component",
+            {"component": "atlas.linear"},
+            {AdmissionInputMismatchCode.ATLAS_STORE_REVISION},
+        ),
+        (
+            "acceptance-criteria",
+            {"acceptance_criteria": ["changed but still non-empty"]},
+            {AdmissionInputMismatchCode.ATLAS_STORE_REVISION},
+        ),
+    ],
+)
+def test_same_key_with_changed_decision_state_is_rejected(
+    case: str,
+    overrides: dict[str, Any],
+    expected_mismatches: set[AdmissionInputMismatchCode],
+) -> None:
+    del case
+    snapshotted = ticket(
+        "ATLAS-1",
+        TicketStatus.PLANNED,
+        priority=3,
+        risk_level="low",
+        component="atlas.pm",
+    )
+    observed = snapshot([snapshotted], [issue(snapshotted)])
+    live = snapshotted.model_copy(update=overrides)
+
+    with pytest.raises(AdmissionInputMismatchError) as raised:
+        evaluate_admission(
+            graph=project_graph([live], [], [], []),
+            tickets=[live],
+            policy=policy(),
+            snapshot=observed,
+            continuously_eligible_since={live.key: NOW},
+            clock=FrozenClock(),
+        )
+
+    assert set(raised.value.mismatches) == expected_mismatches
+
+
+def test_changed_dependency_state_is_rejected_before_readiness() -> None:
+    candidate = ticket("ATLAS-1", TicketStatus.PLANNED)
+    prerequisite = ticket("ATLAS-2", TicketStatus.DONE)
+    edge = dependency(candidate, prerequisite)
+    items = [candidate, prerequisite]
+    observed = snapshot(
+        items,
+        [issue(candidate), issue(prerequisite)],
+        dependencies=[edge],
+    )
+    changed_edge = edge.model_copy(update={"reason": "changed after snapshot"})
+
+    with pytest.raises(AdmissionInputMismatchError) as raised:
+        evaluate_admission(
+            graph=project_graph(items, [], [], [changed_edge]),
+            tickets=items,
+            policy=policy(),
+            snapshot=observed,
+            continuously_eligible_since={candidate.key: NOW},
+            clock=FrozenClock(),
+        )
+
+    assert raised.value.mismatches == (AdmissionInputMismatchCode.ATLAS_GRAPH_REVISION,)
+
+
+def test_changed_adr_target_state_is_rejected_before_readiness() -> None:
+    candidate = ticket("ATLAS-1", TicketStatus.PLANNED)
+    graph = project_graph([candidate], [], [], [])
+    graph.add_node(
+        "ADR-0001",
+        node_type="adr",
+        entity_id=uuid4(),
+        present=True,
+        status="accepted",
+    )
+    graph.add_edge(
+        candidate.key,
+        "ADR-0001",
+        dependency_id=uuid4(),
+        dependency_type="depends_on",
+        reason="governing decision",
+    )
+    observed = snapshot([candidate], [issue(candidate)], graph=graph)
+    changed = graph.copy()
+    changed.nodes["ADR-0001"]["status"] = "proposed"
+
+    with pytest.raises(AdmissionInputMismatchError) as raised:
+        evaluate_admission(
+            graph=changed,
+            tickets=[candidate],
+            policy=policy(),
+            snapshot=observed,
+            continuously_eligible_since={candidate.key: NOW},
+            clock=FrozenClock(),
+        )
+
+    assert raised.value.mismatches == (AdmissionInputMismatchCode.ATLAS_GRAPH_REVISION,)
+
+
+def test_exact_snapshot_graph_and_ticket_inputs_retain_one_selection() -> None:
+    candidate = ticket("ATLAS-1", TicketStatus.PLANNED)
+    prerequisite = ticket("ATLAS-2", TicketStatus.DONE)
+    edge = dependency(candidate, prerequisite)
+    items = [candidate, prerequisite]
+    graph = project_graph(items, [], [], [edge])
+    observed = snapshot(
+        items,
+        [issue(candidate), issue(prerequisite)],
+        dependencies=[edge],
+        graph=graph,
+    )
+
+    run = evaluate_admission(
+        graph=graph,
+        tickets=reversed(items),
+        policy=policy(),
+        snapshot=observed,
+        continuously_eligible_since={candidate.key: NOW},
+        clock=FrozenClock(),
+    )
+
+    assert run.selected_ticket_key == candidate.key
+    assert [decision.ticket_key for decision in run.decisions] == [candidate.key]
 
 
 def test_continuous_eligibility_is_required_and_must_not_be_guessed() -> None:

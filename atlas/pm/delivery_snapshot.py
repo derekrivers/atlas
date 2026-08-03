@@ -18,6 +18,7 @@ from enum import StrEnum
 from typing import Literal
 from uuid import UUID
 
+import networkx as nx
 from pydantic import BaseModel, ConfigDict, Field
 
 from atlas.core.enums import RiskLevel
@@ -266,44 +267,75 @@ def _store_payload(tickets: Iterable[Ticket]) -> list[dict[str, object]]:
         {
             "id": str(ticket.id),
             "product_id": str(ticket.product_id),
+            "epic_id": str(ticket.epic_id) if ticket.epic_id is not None else None,
             "key": ticket.key,
             "external_linear_id": ticket.external_linear_id,
             "status": ticket.status.value,
+            "priority": ticket.priority,
             "risk_level": ticket.risk_level.value,
             "component": ticket.component,
+            "estimated_effort": ticket.estimated_effort,
+            "acceptance_criteria": ticket.acceptance_criteria,
         }
         for ticket in sorted(tickets, key=lambda item: (item.key, str(item.id)))
     ]
 
 
-def _graph_payload(
-    tickets: Iterable[Ticket], dependencies: Iterable[TicketDependency]
-) -> dict[str, object]:
+def delivery_store_revision(product_id: UUID, tickets: Iterable[Ticket]) -> str:
+    """Fingerprint every materialised ticket input admission may consume."""
+
+    return _canonical_hash(
+        _store_payload(ticket for ticket in tickets if ticket.product_id == product_id)
+    )
+
+
+def _graph_payload(graph: nx.DiGraph[str]) -> dict[str, object]:
+    """Canonicalise the exact projected state used by dependency analyses."""
+
     nodes = [
         {
-            "id": str(ticket.id),
-            "key": ticket.key,
-            "status": ticket.status.value,
-            "priority": ticket.priority,
-            "risk_level": ticket.risk_level.value,
-            "estimated_effort": ticket.estimated_effort,
-            "acceptance_criteria_count": len(ticket.acceptance_criteria),
-            "epic_id": str(ticket.epic_id) if ticket.epic_id is not None else None,
+            "key": str(key),
+            "node_type": data.get("node_type"),
+            "entity_id": (
+                str(data["entity_id"]) if data.get("entity_id") is not None else None
+            ),
+            "present": data.get("present", True),
+            "status": data.get("status"),
+            "priority": data.get("priority"),
+            "risk_level": data.get("risk_level"),
+            "estimated_effort": data.get("estimated_effort"),
+            "acceptance_criteria_count": data.get("acceptance_criteria_count"),
         }
-        for ticket in sorted(tickets, key=lambda item: (item.key, str(item.id)))
+        for key, data in sorted(graph.nodes(data=True), key=lambda item: str(item[0]))
     ]
     edges = [
         {
-            "id": str(dependency.id),
-            "source_ticket_id": str(dependency.source_ticket_id),
-            "target_entity_type": dependency.target_entity_type,
-            "target_entity_id": str(dependency.target_entity_id),
-            "dependency_type": dependency.dependency_type.value,
-            "reason": dependency.reason,
+            "source": str(source),
+            "target": str(target),
+            "dependency_id": (
+                str(data["dependency_id"])
+                if data.get("dependency_id") is not None
+                else None
+            ),
+            "dependency_type": data.get("dependency_type"),
+            "reason": data.get("reason"),
         }
-        for dependency in sorted(dependencies, key=lambda item: str(item.id))
+        for source, target, data in sorted(
+            graph.edges(data=True),
+            key=lambda item: (
+                str(item[0]),
+                str(item[1]),
+                str(item[2].get("dependency_id", "")),
+            ),
+        )
     ]
     return {"nodes": nodes, "edges": edges}
+
+
+def delivery_graph_revision(graph: nx.DiGraph[str]) -> str:
+    """Fingerprint the exact graph input used by readiness and ranking."""
+
+    return _canonical_hash(_graph_payload(graph))
 
 
 def _reason_sort_key(reason: SnapshotIncompletenessReason) -> tuple[str, ...]:
@@ -338,6 +370,7 @@ def build_delivery_snapshot(
     tickets: Iterable[Ticket],
     dependencies: Iterable[TicketDependency],
     clock: Callable[[], datetime],
+    graph: nx.DiGraph[str] | None = None,
 ) -> DeliverySnapshot:
     """Build one deterministic snapshot without performing any side effect."""
 
@@ -355,6 +388,10 @@ def build_delivery_snapshot(
         for dependency in dependencies
         if dependency.source_ticket_id in product_ticket_ids
     )
+    if graph is None:
+        from atlas.dependencies import project_graph
+
+        graph = project_graph(product_tickets, (), (), product_dependencies)
     issues = tuple(board_pull.issues)
     reasons: list[SnapshotIncompletenessReason] = []
 
@@ -584,10 +621,8 @@ def build_delivery_snapshot(
         status_map_fingerprint=_canonical_hash(status_map.snapshot()),
         fetched_board_fingerprint=_canonical_hash(_board_payload(issues)),
         fetched_board_issue_count=len(issues),
-        atlas_store_revision=_canonical_hash(_store_payload(product_tickets)),
-        atlas_graph_revision=_canonical_hash(
-            _graph_payload(product_tickets, product_dependencies)
-        ),
+        atlas_store_revision=delivery_store_revision(product_id, product_tickets),
+        atlas_graph_revision=delivery_graph_revision(graph),
         observed_at=_normalise_time(clock()),
         status_occupancy=status_occupancy,
         working_occupancy=working,

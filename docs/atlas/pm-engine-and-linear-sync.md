@@ -223,6 +223,15 @@ snapshot, explicit uninterrupted-eligibility starts and one injected clock
 sample are its complete inputs. A missing/future eligibility start is rejected,
 not approximated from unrelated ticket timestamps.
 
+The snapshot pins canonical revisions of the complete product-ticket set and
+the exact projected graph supplied to the dependency analyses. Before sampling
+the clock or calling readiness, admission recomputes both revisions from its
+live ticket/graph inputs. Membership, identity, status, acceptance-criteria,
+rank/lane attribute, dependency topology or target-state drift raises typed
+`AdmissionInputMismatchError`, retaining every mismatched revision; no
+candidate is ranked, no selection is returned and no `AdmissionRun` exists to
+persist. Only an exact coherence match can reach the zero/one decision path.
+
 Ranking is unlock count descending, critical-path membership then zero-based
 execution position, priority descending, risk severity low-to-critical,
 eligibility start oldest first and the shared natural ticket-key order. The
