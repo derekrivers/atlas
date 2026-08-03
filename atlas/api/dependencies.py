@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 from typing import Annotated
+from uuid import UUID
 
-from fastapi import Depends, HTTPException, Request, Response, Security, status
+from fastapi import Depends, Header, HTTPException, Request, Response, Security, status
+from fastapi.responses import JSONResponse
 from fastapi.security import APIKeyCookie, APIKeyHeader
 
 from atlas.api.presenters import (
     present_dependency_critical_path,
     present_dependency_graph,
     present_epics,
+    present_lesson_disposition,
     present_lessons,
     present_review_queue,
     present_system_status,
@@ -23,7 +26,10 @@ from atlas.api.schemas import (
     DependencyCriticalPathResponse,
     DependencyGraphResponse,
     EpicsResponse,
+    LessonDispositionResponse,
     LessonsResponse,
+    PromoteLessonRequest,
+    RejectLessonRequest,
     ReviewQueueResponse,
     SessionLoginRequest,
     SessionLoginResponse,
@@ -42,7 +48,10 @@ from atlas.api.security import (
 )
 from atlas.core.enums import EntityStatus
 from atlas.core.models import TicketStatus
+from atlas.learning import PromoteLesson, RejectLesson
 from atlas.orchestration import (
+    LessonDispositionCommandContext,
+    LessonDispositionService,
     dependency_critical_path,
     dependency_graph,
     review_queue,
@@ -135,6 +144,15 @@ MutationContextDependency = Annotated[
     Depends(resolve_mutation_context),
 ]
 
+IdempotencyKeyHeader = Annotated[
+    str,
+    Header(
+        alias="Idempotency-Key",
+        min_length=1,
+        pattern=r".*\S.*",
+    ),
+]
+
 
 def revoke_operator_session_response(
     response: Response,
@@ -165,6 +183,19 @@ def get_lesson_repo(database: DatabaseDependency) -> LessonRepo:
 
 
 LessonRepoDependency = Annotated[LessonRepo, Depends(get_lesson_repo)]
+
+
+def get_lesson_disposition_service(
+    database: DatabaseDependency,
+) -> LessonDispositionService:
+    """Build the shared governed lesson disposition application service."""
+    return LessonDispositionService(database)
+
+
+LessonDispositionServiceDependency = Annotated[
+    LessonDispositionService,
+    Depends(get_lesson_disposition_service),
+]
 
 
 def get_epic_repo(database: DatabaseDependency) -> EpicRepo:
@@ -237,6 +268,59 @@ def get_lessons(
 
 
 LessonsDependency = Annotated[LessonsResponse, Depends(get_lessons)]
+
+
+def _lesson_disposition_context(
+    context: MutationContext,
+    idempotency_key: str,
+) -> LessonDispositionCommandContext:
+    return LessonDispositionCommandContext(
+        created_by_type=context.actor.created_by_type,
+        created_by_id=context.actor.created_by_id,
+        idempotency_key=idempotency_key,
+    )
+
+
+def promote_lesson_response(
+    lesson_id: UUID,
+    body: PromoteLessonRequest,
+    context: MutationContextDependency,
+    idempotency_key: IdempotencyKeyHeader,
+    service: LessonDispositionServiceDependency,
+) -> LessonDispositionResponse | JSONResponse:
+    """Execute one governed promote command and present its typed result."""
+    result = service.execute(
+        PromoteLesson(lesson_id=lesson_id, confidence=body.confidence),
+        _lesson_disposition_context(context, idempotency_key),
+    )
+    return present_lesson_disposition(result)
+
+
+PromotedLessonDependency = Annotated[
+    LessonDispositionResponse | JSONResponse,
+    Depends(promote_lesson_response),
+]
+
+
+def reject_lesson_response(
+    lesson_id: UUID,
+    body: RejectLessonRequest,
+    context: MutationContextDependency,
+    idempotency_key: IdempotencyKeyHeader,
+    service: LessonDispositionServiceDependency,
+) -> LessonDispositionResponse | JSONResponse:
+    """Execute one governed reject command and present its typed result."""
+    result = service.execute(
+        RejectLesson(lesson_id=lesson_id),
+        _lesson_disposition_context(context, idempotency_key),
+    )
+    return present_lesson_disposition(result)
+
+
+RejectedLessonDependency = Annotated[
+    LessonDispositionResponse | JSONResponse,
+    Depends(reject_lesson_response),
+]
 
 
 def get_epics(epics: EpicRepoDependency) -> EpicsResponse:

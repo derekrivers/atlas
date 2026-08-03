@@ -521,6 +521,19 @@ def test_api_no_logic_sensor_allows_lessons_parameter_selection() -> None:
     assert violations == []
 
 
+def test_api_no_logic_sensor_allows_one_lesson_disposition_call_then_present() -> None:
+    """Each lesson command dependency calls only the shared application service."""
+    source = DEPENDENCIES_PATH.read_text(encoding="utf-8")
+    violations = [
+        violation
+        for violation in _api_no_logic_violations(DEPENDENCIES_PATH, source)
+        if violation.function_name
+        in {"promote_lesson_response", "reject_lesson_response"}
+    ]
+
+    assert violations == []
+
+
 def test_api_no_logic_sensor_fires_on_seeded_extra_service_call() -> None:
     # Seeded red first with `assert 1 == 2` (B011); the wrong answer was a
     # dependency quietly making a second lower-layer operation call.
@@ -568,6 +581,52 @@ def test_api_no_logic_sensor_fires_on_seeded_lessons_extra_call() -> None:
     )
 
     assert any("must make exactly one" in violation.reason for violation in violations)
+
+
+def test_api_no_logic_sensor_fires_on_seeded_disposition_extra_service_call() -> None:
+    # Seeded red first with `assert 1 == 2` (B011); a command dependency may
+    # never retry or issue a second application-service operation itself.
+    violations = _dependency_violations_for(
+        """
+        from atlas.api.dependencies import LessonDispositionServiceDependency
+        from atlas.api.presenters import present_lesson_disposition
+        from atlas.api.schemas import LessonDispositionResponse
+
+        def get_seeded_disposition(
+            service: LessonDispositionServiceDependency,
+        ) -> LessonDispositionResponse:
+            result = service.execute(None, None)
+            service.execute(None, None)
+            assert 1 == 2  # type: ignore[comparison-overlap]
+            return present_lesson_disposition(result)
+        """
+    )
+
+    assert any("must make exactly one" in violation.reason for violation in violations)
+
+
+def test_api_no_logic_sensor_fires_on_seeded_disposition_state_branch() -> None:
+    # Seeded red first with `assert 1 == 2` (B011); typed outcome mapping belongs
+    # in the presenter and never in the service-calling dependency.
+    violations = _dependency_violations_for(
+        """
+        from atlas.api.dependencies import LessonDispositionServiceDependency
+        from atlas.api.presenters import present_lesson_disposition
+        from atlas.api.schemas import LessonDispositionResponse
+
+        def get_seeded_disposition(
+            service: LessonDispositionServiceDependency,
+        ) -> LessonDispositionResponse:
+            result = service.execute(None, None)
+            if result.status == "succeeded":
+                assert 1 == 2  # type: ignore[comparison-overlap]
+            return present_lesson_disposition(result)
+        """
+    )
+
+    assert any(
+        "branches on domain state" in violation.reason for violation in violations
+    )
 
 
 def test_api_no_logic_sensor_allows_single_read_not_found_mapping() -> None:
@@ -874,6 +933,8 @@ def test_writable_routes_require_shared_security_dependency() -> None:
                 context_aliases=context_aliases,
             )
         )
+
+    assert violations == []
 
 
 def _fastapi_imports_in_source(source: str) -> list[int]:

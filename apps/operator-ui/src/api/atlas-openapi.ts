@@ -72,6 +72,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/lessons/{lesson_id}/promote": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Promote Lesson */
+        post: operations["promote_lesson_api_v1_lessons__lesson_id__promote_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/lessons/{lesson_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reject Lesson */
+        post: operations["reject_lesson_api_v1_lessons__lesson_id__reject_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/reviews": {
         parameters: {
             query?: never;
@@ -401,6 +435,31 @@ export interface components {
          */
         LessonCategory: "success_pattern" | "failure_pattern" | "architecture" | "testing" | "delivery" | "product" | "research" | "tech_debt";
         /**
+         * LessonDispositionConflictResponse
+         * @description Typed command conflict with the safe current lesson when available.
+         */
+        LessonDispositionConflictResponse: {
+            /** Detail */
+            detail: string;
+            lesson: components["schemas"]["LessonItemSchema"] | null;
+        };
+        /**
+         * LessonDispositionErrorResponse
+         * @description Non-secret command error without internal failure material.
+         */
+        LessonDispositionErrorResponse: {
+            /** Detail */
+            detail: string;
+        };
+        /**
+         * LessonDispositionResponse
+         * @description Updated safe lesson projection and its durable action receipt.
+         */
+        LessonDispositionResponse: {
+            lesson: components["schemas"]["LessonItemSchema"];
+            receipt: components["schemas"]["OperatorActionReceiptSchema"];
+        };
+        /**
          * LessonItemSchema
          * @description One stored lesson exposed as a read-only projection.
          */
@@ -480,6 +539,108 @@ export interface components {
             /** Target */
             target: string | null;
         };
+        /**
+         * OperatorActionActorSchema
+         * @description Server-owned actor recorded by an operator-action receipt.
+         */
+        OperatorActionActorSchema: {
+            /**
+             * Id
+             * @constant
+             */
+            id: "operator";
+            /**
+             * Type
+             * @constant
+             */
+            type: "human";
+        };
+        /**
+         * OperatorActionOutcome
+         * @description Terminal outcome stored on an operator action receipt.
+         * @enum {string}
+         */
+        OperatorActionOutcome: "succeeded" | "refused" | "failed" | "conflict";
+        /**
+         * OperatorActionReceiptSchema
+         * @description Safe, bounded operator-action receipt returned by a command.
+         */
+        OperatorActionReceiptSchema: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "lesson.promote" | "lesson.reject";
+            actor: components["schemas"]["OperatorActionActorSchema"];
+            after_status: components["schemas"]["EntityStatus"] | null;
+            before_status: components["schemas"]["EntityStatus"] | null;
+            /**
+             * Completed At
+             * Format: date-time
+             */
+            completed_at: string;
+            /**
+             * Correlation Id
+             * Format: uuid
+             */
+            correlation_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Idempotency Key Identity */
+            idempotency_key_identity: string;
+            outcome: components["schemas"]["OperatorActionOutcome"];
+            /**
+             * Receipt Id
+             * Format: uuid
+             */
+            receipt_id: string;
+            /** Request Fingerprint */
+            request_fingerprint: string;
+            result_code: components["schemas"]["OperatorActionResultCode"];
+            /** Result Metadata */
+            result_metadata: {
+                [key: string]: boolean | number;
+            };
+            target: components["schemas"]["OperatorActionTargetSchema"];
+        };
+        /**
+         * OperatorActionResultCode
+         * @description Server-controlled terminal result vocabulary for operator commands.
+         * @enum {string}
+         */
+        OperatorActionResultCode: "action_succeeded" | "action_refused" | "stale_state" | "action_failed" | "action_conflict";
+        /**
+         * OperatorActionTargetSchema
+         * @description Bounded lesson target recorded by an operator-action receipt.
+         */
+        OperatorActionTargetSchema: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Type
+             * @constant
+             */
+            type: "lesson";
+        };
+        /**
+         * PromoteLessonRequest
+         * @description Exact command payload for promoting one DRAFT lesson.
+         */
+        PromoteLessonRequest: {
+            /** Confidence */
+            confidence: number;
+        };
+        /**
+         * RejectLessonRequest
+         * @description Exact empty command payload for rejecting one DRAFT lesson.
+         */
+        RejectLessonRequest: Record<string, never>;
         /**
          * ReviewCheckSchema
          * @description One persisted verification outcome in a review item.
@@ -859,6 +1020,188 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    promote_lesson_api_v1_lessons__lesson_id__promote_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+            };
+            path: {
+                lesson_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PromoteLessonRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LessonDispositionResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LessonDispositionErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LessonDispositionErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LessonDispositionErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LessonDispositionConflictResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LessonDispositionErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LessonDispositionErrorResponse"];
+                };
+            };
+        };
+    };
+    reject_lesson_api_v1_lessons__lesson_id__reject_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+            };
+            path: {
+                lesson_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RejectLessonRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LessonDispositionResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LessonDispositionErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LessonDispositionErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LessonDispositionErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LessonDispositionConflictResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LessonDispositionErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LessonDispositionErrorResponse"];
                 };
             };
         };

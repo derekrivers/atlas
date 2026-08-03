@@ -1,9 +1,12 @@
-"""Pure schema presenters for HTTP responses."""
+"""Schema presenters and typed command-to-HTTP outcome mapping."""
 
 from __future__ import annotations
 
 from collections.abc import Sequence
 from typing import TypedDict, cast
+
+from fastapi import status
+from fastapi.responses import JSONResponse
 
 from atlas.api.schemas import (
     CriticalPathStepSchema,
@@ -14,9 +17,13 @@ from atlas.api.schemas import (
     DependencyGraphResponse,
     EpicItemSchema,
     EpicsResponse,
+    LessonDispositionConflictResponse,
+    LessonDispositionErrorResponse,
+    LessonDispositionResponse,
     LessonItemSchema,
     LessonsResponse,
     NotReadyReasonSchema,
+    OperatorActionReceiptSchema,
     ReviewCheckSchema,
     ReviewQueueItemSchema,
     ReviewQueueResponse,
@@ -39,11 +46,14 @@ from atlas.dependencies.views import (
 )
 from atlas.orchestration import (
     DependencyGraphState,
+    LessonDispositionResult,
+    LessonDispositionStatus,
     SystemStatus,
     TicketBoardItemState,
     TicketDependencyState,
     TicketEvidenceRecordState,
     TicketReviewState,
+    present_operator_action_receipt,
 )
 
 
@@ -149,31 +159,110 @@ def present_ticket_evidence(
     )
 
 
+def _present_lesson(lesson: Lesson) -> LessonItemSchema:
+    return LessonItemSchema(
+        id=lesson.id,
+        product_id=lesson.product_id,
+        status=lesson.status,
+        category=lesson.category,
+        title=lesson.title,
+        problem=lesson.problem,
+        solution=lesson.solution,
+        outcome=lesson.outcome,
+        confidence=lesson.confidence,
+        source_ticket_id=lesson.source_ticket_id,
+        related_ticket_ids=lesson.related_ticket_ids,
+        related_adr_ids=lesson.related_adr_ids,
+        tags=lesson.tags,
+        created_by_type=lesson.created_by_type,
+        created_by_id=lesson.created_by_id,
+        created_at=lesson.created_at,
+        updated_at=lesson.updated_at,
+    )
+
+
 def present_lessons(lessons: Sequence[Lesson]) -> LessonsResponse:
     """Present stored lessons without cross-resource assembly."""
-    return LessonsResponse(
-        lessons=[
-            LessonItemSchema(
-                id=lesson.id,
-                product_id=lesson.product_id,
-                status=lesson.status,
-                category=lesson.category,
-                title=lesson.title,
-                problem=lesson.problem,
-                solution=lesson.solution,
-                outcome=lesson.outcome,
-                confidence=lesson.confidence,
-                source_ticket_id=lesson.source_ticket_id,
-                related_ticket_ids=lesson.related_ticket_ids,
-                related_adr_ids=lesson.related_adr_ids,
-                tags=lesson.tags,
-                created_by_type=lesson.created_by_type,
-                created_by_id=lesson.created_by_id,
-                created_at=lesson.created_at,
-                updated_at=lesson.updated_at,
+    return LessonsResponse(lessons=[_present_lesson(lesson) for lesson in lessons])
+
+
+def _lesson_disposition_error(
+    status_code: int,
+    detail: str,
+) -> JSONResponse:
+    response = LessonDispositionErrorResponse(detail=detail)
+    return JSONResponse(
+        status_code=status_code,
+        content=response.model_dump(mode="json"),
+    )
+
+
+def _lesson_disposition_conflict(
+    detail: str,
+    lesson: Lesson | None,
+) -> JSONResponse:
+    response = LessonDispositionConflictResponse(
+        detail=detail,
+        lesson=_present_lesson(lesson) if lesson is not None else None,
+    )
+    return JSONResponse(
+        status_code=status.HTTP_409_CONFLICT,
+        content=response.model_dump(mode="json"),
+    )
+
+
+def present_lesson_disposition(
+    result: LessonDispositionResult,
+) -> LessonDispositionResponse | JSONResponse:
+    """Map one typed disposition outcome without inspecting lesson state."""
+    if result.status in {
+        LessonDispositionStatus.SUCCEEDED,
+        LessonDispositionStatus.REPLAYED,
+    }:
+        if result.lesson is None or result.receipt is None:
+            return _lesson_disposition_error(
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+                "lesson disposition failed",
             )
-            for lesson in lessons
-        ]
+        return LessonDispositionResponse(
+            lesson=_present_lesson(result.lesson),
+            receipt=OperatorActionReceiptSchema.model_validate(
+                present_operator_action_receipt(result.receipt)
+            ),
+        )
+    if result.status is LessonDispositionStatus.NOT_FOUND:
+        return _lesson_disposition_error(
+            status.HTTP_404_NOT_FOUND,
+            "lesson was not found",
+        )
+    if result.status is LessonDispositionStatus.INVALID:
+        return _lesson_disposition_error(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "lesson disposition request was invalid",
+        )
+    if result.status is LessonDispositionStatus.NOT_DRAFT:
+        return _lesson_disposition_conflict(
+            "lesson is not DRAFT",
+            result.lesson,
+        )
+    if result.status is LessonDispositionStatus.STALE_STATE:
+        return _lesson_disposition_conflict(
+            "lesson state changed before disposition committed",
+            result.lesson,
+        )
+    if result.status is LessonDispositionStatus.IDEMPOTENCY_CONFLICT:
+        return _lesson_disposition_conflict(
+            "idempotency key conflicts with an existing command",
+            None,
+        )
+    if result.status is LessonDispositionStatus.IN_PROGRESS:
+        return _lesson_disposition_conflict(
+            "idempotent command is still in progress",
+            None,
+        )
+    return _lesson_disposition_error(
+        status.HTTP_500_INTERNAL_SERVER_ERROR,
+        "lesson disposition failed",
     )
 
 

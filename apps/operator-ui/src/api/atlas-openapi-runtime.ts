@@ -62,6 +62,19 @@ export const atlasOpenApiEnums = {
     "no_acceptance_criteria",
     "dangling_target"
   ],
+  "OperatorActionOutcome": [
+    "succeeded",
+    "refused",
+    "failed",
+    "conflict"
+  ],
+  "OperatorActionResultCode": [
+    "action_succeeded",
+    "action_refused",
+    "stale_state",
+    "action_failed",
+    "action_conflict"
+  ],
   "RiskLevel": [
     "low",
     "medium",

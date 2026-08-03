@@ -1,7 +1,16 @@
 import { ATLAS_API_BASE_URL } from '@/api/config'
 import type { components, paths } from '@/api/atlas-openapi'
 
-type OperationFor<Path extends keyof paths> = paths[Path]['get']
+export type AtlasApiRoute = {
+  [Path in keyof paths]: Exclude<paths[Path]['get'], undefined> extends never
+    ? never
+    : Path
+}[keyof paths]
+
+type OperationFor<Path extends AtlasApiRoute> = Exclude<
+  paths[Path]['get'],
+  undefined
+>
 type PostOperationFor<Path extends keyof paths> = paths[Path]['post']
 type DeleteOperationFor<Path extends keyof paths> = paths[Path]['delete']
 
@@ -27,20 +36,22 @@ type JsonRequest<Operation> = Operation extends {
   ? Request
   : never
 
-type OperationParameters<Path extends keyof paths> =
-  OperationFor<Path>['parameters']
+type OperationParameters<Path extends AtlasApiRoute> =
+  OperationFor<Path> extends { parameters: infer Parameters }
+    ? Parameters
+    : never
 
-type PathParameters<Path extends keyof paths> = Exclude<
-  OperationParameters<Path>['path'],
-  undefined
->
+type PathParameters<Path extends AtlasApiRoute> =
+  OperationParameters<Path> extends { path?: infer Parameters }
+    ? Exclude<Parameters, undefined>
+    : never
 
-type QueryParameters<Path extends keyof paths> = Exclude<
-  OperationParameters<Path>['query'],
-  undefined
->
+type QueryParameters<Path extends AtlasApiRoute> =
+  OperationParameters<Path> extends { query?: infer Parameters }
+    ? Exclude<Parameters, undefined>
+    : never
 
-type AtlasRequestOptions<Path extends keyof paths> =
+type AtlasRequestOptions<Path extends AtlasApiRoute> =
   (PathParameters<Path> extends never
     ? { path?: never }
     : { path: PathParameters<Path> }) &
@@ -48,14 +59,13 @@ type AtlasRequestOptions<Path extends keyof paths> =
       ? { query?: never }
       : { query?: QueryParameters<Path> })
 
-type RequestArguments<Path extends keyof paths> =
+type RequestArguments<Path extends AtlasApiRoute> =
   PathParameters<Path> extends never
     ? QueryParameters<Path> extends never
       ? [options?: AtlasRequestOptions<Path>]
       : [options: AtlasRequestOptions<Path>]
     : [options: AtlasRequestOptions<Path>]
 
-export type AtlasApiRoute = keyof paths
 export type AtlasRouteResponse<Path extends AtlasApiRoute> = JsonResponse<
   OperationFor<Path>
 >
