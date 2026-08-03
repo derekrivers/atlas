@@ -104,6 +104,52 @@ def test_ac1_shared_service_returns_typed_updated_lesson_and_outcome(
     assert result.receipt.created_by_id == "operator"
 
 
+@pytest.mark.parametrize(
+    ("actor_type", "actor_id"),
+    [
+        (ActorType.AGENT, "autonomous-agent"),
+        (ActorType.SYSTEM, "atlas"),
+        (ActorType.HUMAN, "alternate-human"),
+    ],
+    ids=["agent", "system", "alternate-human"],
+)
+def test_ac1_non_operator_actor_cannot_pass_the_lesson_gate(
+    db: Database,
+    actor_type: ActorType,
+    actor_id: str,
+) -> None:
+    lesson = seed_lesson(db)
+    context = LessonDispositionCommandContext(
+        created_by_type=actor_type,
+        created_by_id=actor_id,
+        idempotency_key=f"forged-{actor_type.value}-{actor_id}",
+    )
+
+    result = service(db).execute(PromoteLesson(lesson.id, 0.8), context)
+
+    assert result.status is LessonDispositionStatus.INVALID
+    assert result.message == (
+        "lesson disposition requires the ADR-0009 human/operator actor"
+    )
+    assert LessonRepo(db).get(lesson.id) == lesson
+    assert receipt_count(db) == 0
+
+
+@pytest.mark.parametrize("method_name", ["promote", "reject"])
+def test_ac1_lesson_repository_exposes_no_ungoverned_disposition_writer(
+    db: Database,
+    method_name: str,
+) -> None:
+    lesson = seed_lesson(db)
+    repo = LessonRepo(db)
+
+    with pytest.raises(AttributeError):
+        getattr(repo, method_name)
+
+    assert repo.get(lesson.id) == lesson
+    assert receipt_count(db) == 0
+
+
 @pytest.mark.parametrize("confidence", [0.0, 1.0])
 def test_ac2_promote_accepts_inclusive_confidence_boundaries_and_preserves_record(
     db: Database,
@@ -122,6 +168,7 @@ def test_ac2_promote_accepts_inclusive_confidence_boundaries_and_preserves_recor
     assert result.status is LessonDispositionStatus.SUCCEEDED
     assert result.lesson is not None
     assert result.lesson.confidence == confidence
+    assert result.lesson.updated_at == NOW
     assert (
         result.lesson.model_dump(
             exclude={"status", "confidence", "updated_at"}, mode="json"
@@ -161,6 +208,7 @@ def test_ac3_reject_has_no_editable_fields_and_archives_for_audit(
     assert result.status is LessonDispositionStatus.SUCCEEDED
     assert result.lesson is not None
     assert result.lesson.status is EntityStatus.ARCHIVED
+    assert result.lesson.updated_at == NOW
     assert LessonRepo(db).get(lesson.id) == result.lesson
 
 

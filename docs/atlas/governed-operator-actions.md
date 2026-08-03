@@ -35,7 +35,9 @@ make exactly one application-service call and present its result. Branching on
 lesson state, replay state or actor identity belongs below `atlas.api`.
 
 The CLI and HTTP surfaces call the same lesson disposition service. Phase 13
-must not create a second promotion implementation.
+must not create a second promotion implementation. The service accepts only
+the server-owned ADR-0009 actor (`human` / `operator`); agent, system and
+alternate-human contexts fail before idempotency reservation or mutation.
 
 ## Threat model and supported topology
 
@@ -222,7 +224,9 @@ used by the CLI and future HTTP presenters for these commands. It loads the
 target once inside the gateway-owned unit of work, delegates the transition
 decision to `atlas.learning`, and returns a typed outcome plus updated or safe
 current `Lesson`. The command context supplies the actor; promote/reject payloads
-cannot override it. Invalid confidence is rejected before reservation or write.
+cannot override it. The public lesson repository exposes no direct promote or
+reject writer, so the governed service is the sole persistence path for those
+dispositions. Invalid confidence is rejected before reservation or write.
 Receipt persistence failure rolls back the lesson CAS, reservation and receipt
 together.
 

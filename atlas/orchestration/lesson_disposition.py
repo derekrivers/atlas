@@ -39,6 +39,8 @@ from atlas.storage import Database
 from atlas.storage.tables import LessonRow
 
 _LESSON_LOAD = "lesson"
+_OPERATOR_ACTOR_TYPE = ActorType.HUMAN
+_OPERATOR_ACTOR_ID = "operator"
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,7 +55,7 @@ class LessonDispositionCommandContext:
     def operator(cls, idempotency_key: str) -> LessonDispositionCommandContext:
         """Build the ADR-0009 single-operator context for a local adapter."""
 
-        return cls(ActorType.HUMAN, "operator", idempotency_key)
+        return cls(_OPERATOR_ACTOR_TYPE, _OPERATOR_ACTOR_ID, idempotency_key)
 
 
 class LessonDispositionStatus(StrEnum):
@@ -178,10 +180,11 @@ class LessonDispositionService:
 def _validate_command_context(
     context: LessonDispositionCommandContext,
 ) -> str | None:
-    if not isinstance(context.created_by_type, ActorType):
-        return "lesson disposition actor type is invalid"
-    if not isinstance(context.created_by_id, str) or not context.created_by_id.strip():
-        return "lesson disposition actor id must be non-empty"
+    if (
+        context.created_by_type is not _OPERATOR_ACTOR_TYPE
+        or context.created_by_id != _OPERATOR_ACTOR_ID
+    ):
+        return "lesson disposition requires the ADR-0009 human/operator actor"
     if (
         not isinstance(context.idempotency_key, str)
         or not context.idempotency_key.strip()

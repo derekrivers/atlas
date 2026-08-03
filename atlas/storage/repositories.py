@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import builtins
 import json
-import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
@@ -748,59 +747,6 @@ class LessonRepo(_Repo[Lesson]):
                 .order_by(LessonRow.created_at, LessonRow.id)
             )
             return [self._to_model(row) for row in rows]
-
-    def promote(self, lesson_id: UUID, *, confidence: float, now: datetime) -> Lesson:
-        """Promote one DRAFT lesson to ACTIVE with operator confidence.
-
-        Confidence is the operator's judgement at the promotion gate, never an
-        extractor/model output. The repository validates the lifecycle input so
-        every caller, including the CLI, shares the same state-machine contract.
-        """
-        if now.utcoffset() is None:
-            raise NaiveDatetimeError("Lesson", "updated_at")
-        if not math.isfinite(confidence) or confidence < 0.0 or confidence > 1.0:
-            raise LessonValidationError(
-                "confidence must be between 0.0 and 1.0 inclusive and finite; "
-                f"got {confidence!r}"
-            )
-        with self._db.session() as session, session.begin():
-            row = self._get_lesson_row(session, lesson_id)
-            self._require_status(row, EntityStatus.DRAFT, action="promote")
-            session.expunge(row)
-            row.status = EntityStatus.ACTIVE.value
-            row.confidence = confidence
-            row.updated_at = now
-            if not compare_and_set_entity(
-                session,
-                row,
-                expected_values={"status": EntityStatus.DRAFT.value},
-                updated_fields=("status", "confidence", "updated_at"),
-            ):
-                raise LessonStateError(
-                    f"lesson {lesson_id} changed after DRAFT was observed"
-                )
-            return self._to_model(row)
-
-    def reject(self, lesson_id: UUID, *, now: datetime) -> Lesson:
-        """Reject a DRAFT lesson, retaining it as ARCHIVED."""
-        if now.utcoffset() is None:
-            raise NaiveDatetimeError("Lesson", "updated_at")
-        with self._db.session() as session, session.begin():
-            row = self._get_lesson_row(session, lesson_id)
-            self._require_status(row, EntityStatus.DRAFT, action="reject")
-            session.expunge(row)
-            row.status = EntityStatus.ARCHIVED.value
-            row.updated_at = now
-            if not compare_and_set_entity(
-                session,
-                row,
-                expected_values={"status": EntityStatus.DRAFT.value},
-                updated_fields=("status", "confidence", "updated_at"),
-            ):
-                raise LessonStateError(
-                    f"lesson {lesson_id} changed after DRAFT was observed"
-                )
-            return self._to_model(row)
 
     def archive(self, lesson_id: UUID, *, now: datetime) -> Lesson:
         """Archive a DRAFT or ACTIVE lesson without deleting it."""

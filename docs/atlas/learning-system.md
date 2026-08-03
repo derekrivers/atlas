@@ -66,11 +66,14 @@ Promotion and rejection share one API-independent disposition service. The
 service accepts only a typed promote command (lesson ID plus finite confidence
 in the inclusive range `0.0..1.0`) or a typed reject command (lesson ID only),
 and receives operator identity from trusted command context rather than lesson
-fields. `atlas lessons promote` and `atlas lessons reject` are presentation
-adapters over that service; they do not implement lifecycle transitions. The
-service preserves lesson identity, content, provenance and creation metadata,
-and changes only status, operator confidence where applicable, and the action
-timestamp.
+fields. The boundary accepts exactly the ADR-0009 `human` / `operator` actor;
+agent, system and alternate-human contexts cannot reserve an action, mutate a
+lesson or create a receipt. `atlas lessons promote` and `atlas lessons reject`
+are presentation adapters over that service; they do not implement lifecycle
+transitions. The lesson repository exposes no direct promote or reject method,
+so callers cannot bypass the governed service. The service preserves lesson
+identity, content, provenance and creation metadata, and changes only status,
+operator confidence where applicable, and the action timestamp.
 
 Both commands observe exactly one lesson inside the operator-action unit of
 work. Only DRAFT may proceed: promote plans ACTIVE and reject plans ARCHIVED.
