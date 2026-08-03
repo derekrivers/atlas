@@ -1,8 +1,18 @@
-import { useQuery, type UseQueryResult } from '@tanstack/react-query'
+import {
+  useMutation,
+  useQuery,
+  type UseMutationResult,
+  type UseQueryResult,
+} from '@tanstack/react-query'
 import {
   atlasGet,
+  atlasPromoteLesson,
+  atlasRejectLesson,
   type AtlasApiRoute,
+  type AtlasLessonDispositionResponse,
+  type AtlasPromoteLessonRequest,
   type AtlasQueryError,
+  type AtlasRejectLessonRequest,
   type AtlasRouteResponse,
 } from '@/api/client'
 import type { components } from '@/api/atlas-openapi'
@@ -12,6 +22,16 @@ type AtlasQueryResult<Path extends AtlasApiRoute> = UseQueryResult<
   AtlasRouteResponse<Path>,
   AtlasQueryError
 >
+type PromoteLessonVariables = {
+  idempotencyKey: string
+  lessonId: string
+  request: AtlasPromoteLessonRequest
+}
+type RejectLessonVariables = {
+  idempotencyKey: string
+  lessonId: string
+  request: AtlasRejectLessonRequest
+}
 
 export const ATLAS_QUERY_ROUTES = [
   '/api/v1/tickets',
@@ -105,6 +125,22 @@ export function useLessonsQuery(
     queryKey: atlasQueryKeys.lessons(status),
     queryFn: () => atlasGet('/api/v1/lessons', { query: { status } }),
   })
+}
+
+export function usePromoteLessonMutation(): UseMutationResult<
+  AtlasLessonDispositionResponse,
+  AtlasQueryError,
+  PromoteLessonVariables
+> {
+  return useMutation({ mutationFn: atlasPromoteLesson })
+}
+
+export function useRejectLessonMutation(): UseMutationResult<
+  AtlasLessonDispositionResponse,
+  AtlasQueryError,
+  RejectLessonVariables
+> {
+  return useMutation({ mutationFn: atlasRejectLesson })
 }
 
 export function useDependencyCriticalPathQuery(): AtlasQueryResult<'/api/v1/dependencies/critical-path'> {

@@ -4,6 +4,7 @@ import { createAtlasQueryClient } from '@/api/query-policy'
 import { DirectionProvider } from '@/context/direction-provider'
 import { FontProvider } from '@/context/font-provider'
 import { ThemeProvider } from '@/context/theme-provider'
+import { OperatorSessionProvider } from '@/context/operator-session-provider'
 
 const defaultQueryClient = createAtlasQueryClient()
 
@@ -18,11 +19,13 @@ export function AppProviders({
 }: AppProvidersProps) {
   return (
     <QueryClientProvider client={queryClient}>
-      <ThemeProvider>
-        <FontProvider>
-          <DirectionProvider>{children}</DirectionProvider>
-        </FontProvider>
-      </ThemeProvider>
+      <OperatorSessionProvider>
+        <ThemeProvider>
+          <FontProvider>
+            <DirectionProvider>{children}</DirectionProvider>
+          </FontProvider>
+        </ThemeProvider>
+      </OperatorSessionProvider>
     </QueryClientProvider>
   )
 }

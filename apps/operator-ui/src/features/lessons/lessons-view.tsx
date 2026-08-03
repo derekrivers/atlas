@@ -25,6 +25,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { LessonDispositionControls } from '@/features/lessons/lesson-disposition-controls'
 
 type Schema = components['schemas']
 type EntityStatus = Schema['EntityStatus']
@@ -224,8 +225,18 @@ function LessonDetailDrawer({
   lesson: LessonItem | undefined
   onOpenChange: (open: boolean) => void
 }) {
+  const [commandLifecycleActive, setCommandLifecycleActive] = useState(false)
+
   return (
-    <Sheet open={lesson !== undefined} onOpenChange={onOpenChange}>
+    <Sheet
+      open={lesson !== undefined}
+      onOpenChange={(open) => {
+        if (!open && commandLifecycleActive) {
+          return
+        }
+        onOpenChange(open)
+      }}
+    >
       {lesson ? (
         <SheetContent className='w-full overflow-hidden p-0 sm:max-w-2xl'>
           <SheetHeader className='border-b p-6 pe-12'>
@@ -274,6 +285,11 @@ function LessonDetailDrawer({
                   <LiteralUuidList values={lesson.related_ticket_ids} />
                 </div>
               </section>
+              <LessonDispositionControls
+                lesson={lesson}
+                onClose={() => onOpenChange(false)}
+                onCommandLifecycleChange={setCommandLifecycleActive}
+              />
             </div>
           </ScrollArea>
         </SheetContent>
@@ -294,8 +310,9 @@ export function LessonsView() {
   const [selectedStatus, setSelectedStatus] = useState<EntityStatus>(
     DEFAULT_LESSON_STATUS
   )
-  const [selectedLesson, setSelectedLesson] = useState<LessonItem | undefined>()
+  const [selectedLessonId, setSelectedLessonId] = useState<string | undefined>()
   const lessons = lessonsQuery.data?.lessons ?? EMPTY_LESSONS
+  const selectedLesson = lessons.find((lesson) => lesson.id === selectedLessonId)
   const filteredLessons = useMemo(
     () => lessons.filter((lesson) => lesson.status === selectedStatus),
     [lessons, selectedStatus]
@@ -377,7 +394,7 @@ export function LessonsView() {
                   ) : (
                     <LessonsTable
                       lessons={statusLessons}
-                      onSelectLesson={setSelectedLesson}
+                      onSelectLesson={(lesson) => setSelectedLessonId(lesson.id)}
                     />
                   )
                 ) : null}
@@ -390,7 +407,7 @@ export function LessonsView() {
         lesson={selectedLesson}
         onOpenChange={(open) => {
           if (!open) {
-            setSelectedLesson(undefined)
+            setSelectedLessonId(undefined)
           }
         }}
       />

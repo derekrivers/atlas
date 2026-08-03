@@ -279,7 +279,7 @@ describe('lessons view browser rendering', () => {
     ).toEqual([])
   })
 
-  it('does not expose promote, reject, archive, or merge controls in any state', async () => {
+  it('exposes disposition only for DRAFT and no edit, merge, or ACTIVE archive affordance', async () => {
     originalFetch = window.fetch
     const lessons = atlasOpenApiEnums.EntityStatus.map((status) =>
       makeLesson(status)
@@ -295,6 +295,19 @@ describe('lessons view browser rendering', () => {
       observedLabels.push(...visibleInteractiveLabels())
     }
 
+    await clickStatus('draft')
+    await clickButton(/View lesson details: Draft lesson/)
+    await waitForAssertion(() => {
+      expect(bodyText()).toContain('Promote')
+      expect(bodyText()).toContain('Reject')
+    })
+
+    const closeButton = Array.from(
+      document.querySelectorAll<HTMLButtonElement>('button')
+    ).find((button) => button.textContent?.includes('Close'))
+    await act(async () => closeButton?.click())
+
+    await clickStatus('deprecated')
     await clickButton(/View lesson details: Deprecated lesson/)
     await waitForAssertion(() => {
       expect(bodyText()).toContain('Full deprecated outcome text.')
@@ -302,9 +315,10 @@ describe('lessons view browser rendering', () => {
     observedLabels.push(...visibleInteractiveLabels())
 
     const offenders = observedLabels.filter((label) =>
-      /\b(promote|reject|archive|merge)\b/i.test(label)
+      /\b(edit|merge|archive|rebase|pull request)\b/i.test(label)
     )
     expect(offenders).toEqual([])
+    expect(visibleInteractiveLabels().filter((label) => /\b(promote|reject)\b/i.test(label))).toEqual([])
   })
 
   it('renders the shared empty state when the lesson collection is empty', async () => {
