@@ -4,6 +4,12 @@ Public currency is Pydantic models only; ORM rows and sessions stay
 inside this package.
 """
 
+from atlas.storage.admission_coordination import (
+    AdmissionCoordinationRepo,
+    AdmissionLeaseLostError,
+    AdmissionWriteFence,
+    AdmissionWriteFenceError,
+)
 from atlas.storage.apply import apply_backlog
 from atlas.storage.db import Database
 from atlas.storage.maintenance import clear_all_data
@@ -50,7 +56,11 @@ __all__ = [
     "AcceptanceSessionCreateRecord",
     "AcceptanceSessionRepo",
     "AcceptanceSessionStateError",
+    "AdmissionCoordinationRepo",
+    "AdmissionLeaseLostError",
     "AdmissionRunRepo",
+    "AdmissionWriteFence",
+    "AdmissionWriteFenceError",
     "AgentRunRepo",
     "ContextPackRepo",
     "Database",

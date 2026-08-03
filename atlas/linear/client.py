@@ -120,6 +120,26 @@ class LinearIssue:
     identifier: str | None = None
 
 
+class LinearProjectIssues(list[LinearIssue]):
+    """Materialised project pull with bounded pagination completeness metadata.
+
+    It remains a ``list`` for source compatibility with the ATLAS-148 boundary,
+    while allowing the PM admission path to fail closed when a cursor chain is
+    malformed instead of treating a partial prefix as a complete board.
+    """
+
+    def __init__(
+        self,
+        issues: list[LinearIssue] | None = None,
+        *,
+        complete: bool = True,
+        pagination_gaps: tuple[str, ...] = (),
+    ) -> None:
+        super().__init__(issues or [])
+        self.complete = complete
+        self.pagination_gaps = pagination_gaps
+
+
 @dataclass(frozen=True)
 class WorkflowState:
     id: str
@@ -469,6 +489,7 @@ class LinearGraphQLClient:
         # as issue-missing and leaves statuses unchanged, never a crash).
         issues: list[LinearIssue] = []
         after: str | None = None
+        seen_cursors: set[str] = set()
         while True:
             data = self._execute(
                 _PROJECT_ISSUES_QUERY,
@@ -476,13 +497,39 @@ class LinearGraphQLClient:
             )
             project = data.get("project")
             if not project:
-                return []
-            connection = project["issues"]
-            issues.extend(_issue_from_node(node) for node in connection["nodes"])
-            page_info = connection["pageInfo"]
-            if not page_info["hasNextPage"]:
-                return issues
-            after = page_info["endCursor"]
+                return LinearProjectIssues()
+            try:
+                connection = project["issues"]
+                nodes = connection["nodes"]
+                page_info = connection["pageInfo"]
+                has_next_page = page_info["hasNextPage"]
+                end_cursor = page_info["endCursor"]
+                if not isinstance(nodes, list) or not isinstance(has_next_page, bool):
+                    raise TypeError
+                issues.extend(_issue_from_node(node) for node in nodes)
+            except (KeyError, TypeError):
+                return LinearProjectIssues(
+                    issues,
+                    complete=False,
+                    pagination_gaps=("malformed-page",),
+                )
+            if not has_next_page:
+                return LinearProjectIssues(issues)
+            if (
+                not isinstance(end_cursor, str)
+                or not end_cursor
+                or end_cursor == after
+                or end_cursor in seen_cursors
+            ):
+                return LinearProjectIssues(
+                    issues,
+                    complete=False,
+                    pagination_gaps=(
+                        end_cursor if isinstance(end_cursor, str) else "invalid-cursor",
+                    ),
+                )
+            seen_cursors.add(end_cursor)
+            after = end_cursor
 
     def fetch_workflow_states(self, team_id: str) -> list[WorkflowState]:
         # Team-scoped (ATLAS-148): only the given team's states, so same-named

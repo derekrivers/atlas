@@ -86,6 +86,7 @@ from atlas.storage import (
     ContextPackRepo,
     Database,
     DebtItemRepo,
+    DeliveryAdmissionPolicyRepo,
     LessonRepo,
     PmSyncReceiptRepo,
     ProductRepo,
@@ -93,6 +94,10 @@ from atlas.storage import (
     TicketRepo,
     TicketStatusTransitionRepo,
     VerificationCheckRepo,
+)
+from atlas.storage.tables import (
+    DeliveryAdmissionPolicyActiveRow,
+    DeliveryAdmissionPolicyRevisionRow,
 )
 from atlas.verification import required_checks
 
@@ -134,6 +139,50 @@ PACK_DOC = SourceDocument(
     sha="sha-pack-doc",
     content="# Phase 1\n\nA resolvable fixture section for sync tests.\n",
 )
+
+
+def seed_default_admission_policy(
+    db: Database, product_id: UUID, *, created_at: datetime = NOW
+) -> None:
+    """Mirror migration 0025's revision-one bootstrap in create_all fixtures."""
+
+    if ProductRepo(db).get(product_id) is None:
+        product_key = (
+            "ATLAS" if not ProductRepo(db).list() else f"ATLAS-{str(product_id)[:8]}"
+        )
+        ProductRepo(db).add(
+            Product(
+                **product_kwargs()
+                | {
+                    "id": product_id,
+                    "key": product_key,
+                    "created_at": created_at,
+                    "updated_at": created_at,
+                }
+            )
+        )
+    if DeliveryAdmissionPolicyRepo(db).get_active(product_id) is not None:
+        return
+    policy_id = uuid4()
+    with db.session() as session, session.begin():
+        session.add(
+            DeliveryAdmissionPolicyRevisionRow(
+                id=policy_id,
+                product_id=product_id,
+                revision=1,
+                mode="running",
+                approved_symphony_ceiling=3,
+                working_budget=3,
+                review_budget=3,
+                changes_requested_reserve=0,
+                risk_lane_limits=[],
+                component_lane_limits=[],
+                created_by_type="system",
+                created_by_id="migration-0025",
+                created_at=created_at,
+            )
+        )
+        session.add(DeliveryAdmissionPolicyActiveRow(product_id=product_id, revision=1))
 
 
 class RecordingClient(InMemoryLinearClient):
@@ -297,6 +346,7 @@ def seed_ticket(
     with_issue: bool = True,
     issue_state: WorkflowState | None = None,
     issue_title: str = "Linear Title",
+    product_id: UUID | None = None,
 ) -> Ticket:
     """Insert a ticket, optionally joined to a fake Linear issue in
     ``issue_state`` titled ``issue_title`` (defaults deliberately differ from
@@ -314,10 +364,18 @@ def seed_ticket(
         external_id = issue.id
         if issue_state is not None:
             client.simulate_linear_state(external_id, issue_state)
+    base_ticket = ticket_kwargs()
+    existing_products = ProductRepo(db).list()
+    resolved_product_id = product_id or (
+        existing_products[0].id
+        if len(existing_products) == 1
+        else base_ticket["product_id"]
+    )
     ticket = Ticket(
-        **ticket_kwargs()
+        **base_ticket
         | {
             "id": uuid4(),
+            "product_id": resolved_product_id,
             "key": key,
             "status": status,
             "title": title,
@@ -332,6 +390,7 @@ def seed_ticket(
             "review_cycle_count": review_cycle_count,
         }
     )
+    seed_default_admission_policy(db, ticket.product_id, created_at=updated_at)
     TicketRepo(db).add(ticket)
     client.creates.clear()
     client.create_scopes.clear()
@@ -390,6 +449,9 @@ def debt_rows(
 
 
 def seed_product_identity(db: Database, ticket: Ticket) -> Product:
+    existing = ProductRepo(db).get(ticket.product_id)
+    if existing is not None:
+        return existing
     return ProductRepo(db).add(
         Product(**product_kwargs() | {"id": ticket.product_id, "key": "ATLAS"})
     )
@@ -1109,7 +1171,7 @@ def test_blocked_planned_ticket_created_planned_and_not_promoted(
     assert after_second is not None and after_second.status == TicketStatus.PLANNED
 
 
-def test_dependency_ready_new_issue_asserts_planned_then_promotes(
+def test_dependency_ready_new_issue_waits_for_complete_pull_then_promotes(
     db: Database,
 ) -> None:
     client = RecordingClient()
@@ -1122,13 +1184,19 @@ def test_dependency_ready_new_issue_asserts_planned_then_promotes(
         with_issue=False,
     )
 
-    result = run(db, client)
+    first = run(db, client)
 
     synced = TicketRepo(db).get_by_key("ATLAS-215")
     assert synced is not None and synced.external_linear_id is not None
     issue_id = synced.external_linear_id
-    assert result.pushed_created == 1
-    assert result.promoted == 1
+    assert first.pushed_created == 1
+    assert first.promoted == 0
+    assert first.stale == 1
+
+    second = run(db, client)
+
+    assert second.admitted == 1
+    assert second.promoted == 1
     assert client.write_events == [
         ("create_issue", issue_id),
         ("set_state", issue_id, UNSTARTED.id),

@@ -309,6 +309,7 @@ def _format_sync_result(result: SyncResult, *, verbose: bool = False) -> str:
             f"{decision.phase} {decision.outcome} {decision.ticket_key}: "
             f"{decision.reason}"
         )
+    lines.extend(result.safe_admission_summaries(verbose=verbose))
     return "\n".join(lines)
 
 

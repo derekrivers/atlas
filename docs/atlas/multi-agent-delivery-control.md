@@ -248,26 +248,51 @@ payloads.
 
 ## PM-sync write protocol
 
-The periodic tick acquires one database-backed admission lease. A concurrent
-tick that cannot acquire it records a held/no-write outcome.
+The periodic and `--once` paths enter the same `sync_tick` body and acquire the
+same product-scoped row in `admission_leases`. The row has an opaque owner and
+expiry; an expired owner may be replaced atomically, while a concurrent live
+owner records a typed `lease_unavailable` held/no-write outcome and never runs
+the evaluator. The owner reconciles `admission_eligibility` rows before
+evaluation so every ready candidate has the start of its uninterrupted
+eligibility episode rather than a guessed ticket timestamp.
 
 For a selected candidate the PM Engine:
 
-1. builds the initial complete snapshot and deterministic decision;
-2. re-reads current policy and the project-scoped Linear board immediately
-   before the write;
-3. requires the second fingerprint, candidate state and every occupancy count
-   to match the decision inputs;
-4. writes only that candidate to the uniquely mapped `Ready for Agent` state;
-5. records the admission outcome and sync receipt; and
+1. freezes the normal initial project pull, rejects incomplete or discontinuous
+   pagination, builds the complete snapshot and records the deterministic
+   `AdmissionRun`;
+2. re-reads current policy and the complete project-scoped Linear board
+   immediately before the write;
+3. requires the second snapshot fingerprint, policy fingerprint/revision,
+   candidate state, Atlas store/graph revisions and every occupancy count to
+   match the decision inputs, then verifies the lease owner again;
+4. commits one `admission_write_fences` row naming the selected issue, source
+   state and unique `Ready for Agent` target before making any external call;
+5. calls only `LinearClient.set_state(selected_issue_id,
+   ready_for_agent_state_id)`, confirms the returned issue/state, clears the
+   fence and records `admitted` in the successful sync receipt; and
 6. relies on the next normal pull to reconcile Atlas status, preserving the
-   existing single-writer boundary.
+   existing single-writer boundary. An admitted, stale or indeterminate result
+   ends the tick at this boundary, so later status routes cannot become a
+   second external mutation in the same decision window.
 
-A stale second read, policy revision, lease loss or malformed/partial Linear
-response produces no write. A transport-ambiguous single write marks the run
-`indeterminate`, admits no second candidate and blocks further admission until
-a fresh pull reconciles the issue. Retrying the same state change is
-idempotent. The protocol never attempts compensating status writes.
+A stale second read, policy revision, lease loss, candidate movement or
+malformed/partial Linear response records `stale` and produces no write. A
+transport failure or non-confirming response after `set_state` marks the fence
+`indeterminate`, records a partial sync receipt, admits no second candidate and
+blocks further admission. A later complete normal pull must observe the exact
+issue: the target or a downstream Symphony-active state reconciles as admitted;
+the original state reconciles as no-write; an absent, unmapped or contradictory
+issue leaves the fence blocking. The reconciliation tick itself performs no new
+admission. Retrying the state change on a later tick is idempotent, and the
+protocol never attempts a compensating status write.
+
+`SyncResult` and `PmSyncReceipt.counters` expose fixed integer counters for
+`admitted`, `held`, `over_capacity`, `stale` and `indeterminate` (with the
+legacy `promoted` counter retained as the admitted compatibility projection).
+One bounded presentation detail names only outcome/reason, ticket key and
+policy revision/fingerprint; it excludes descriptions, issue bodies, exception
+text, tokens and credentials.
 
 ## API and UI contract
 

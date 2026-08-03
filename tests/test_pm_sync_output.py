@@ -246,7 +246,8 @@ def test_cursor_already_stamped_push_skips_are_routine_not_itemised(
         args=["--once"],
     )
 
-    assert len(lines) == 2
+    assert len(lines) == 3
     assert lines[1].startswith("pm sync actions:")
+    assert lines[2].startswith("admission stale none: reason=snapshot_incomplete")
     assert "push_skipped=3 (cursor already stamped=3)" in lines[0]
     assert not any(line.startswith("push skipped ") for line in lines)

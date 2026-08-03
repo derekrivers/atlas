@@ -1608,6 +1608,59 @@ persistence cannot change rank, reasons or selection.
 
 ---
 
+## 5.15 Admission Sync Coordination
+
+The fail-closed PM write protocol uses three mutable operational tables. They
+are coordination state, not evidence and not a replacement for the immutable
+`AdmissionRun` decision or append-only `PmSyncReceipt` outcome counters.
+
+`admission_leases` has one expiring owner per product. Atomic insert after
+removing only an expired row elects the single evaluator/writer; release deletes
+only the exact owner. `admission_eligibility` retains the start of each current
+uninterrupted readiness episode and is reconciled only by the lease owner.
+`admission_write_fences` is committed immediately before `LinearClient.set_state`
+and names the exact run, ticket, issue, source and target. Confirmed success or a
+later complete-pull reconciliation deletes it. A transport-ambiguous write
+changes only its bounded state to `indeterminate`; while either `pending` or
+`indeterminate` exists, no new admission is evaluated for the product.
+
+```sql
+CREATE TABLE admission_leases (
+    product_id UUID PRIMARY KEY REFERENCES products(id),
+    owner_id UUID NOT NULL,
+    acquired_at TIMESTAMPTZ NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL
+);
+
+CREATE TABLE admission_eligibility (
+    ticket_id UUID PRIMARY KEY REFERENCES tickets(id),
+    product_id UUID NOT NULL REFERENCES products(id),
+    continuously_eligible_since TIMESTAMPTZ NOT NULL
+);
+
+CREATE TABLE admission_write_fences (
+    product_id UUID PRIMARY KEY REFERENCES products(id),
+    admission_run_id UUID NOT NULL UNIQUE REFERENCES admission_runs(id),
+    ticket_id UUID NOT NULL REFERENCES tickets(id),
+    ticket_key TEXT NOT NULL,
+    issue_id TEXT NOT NULL,
+    source_state_id TEXT NOT NULL,
+    target_state_id TEXT NOT NULL,
+    policy_revision INTEGER NOT NULL CHECK (policy_revision >= 1),
+    state TEXT NOT NULL CHECK (state IN ('pending', 'indeterminate')),
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL
+);
+```
+
+No table stores a Linear description, raw issue body, GraphQL response,
+exception message, token or credential. The fence is deliberately not an
+outbox that retries arbitrary work: reconciliation ends its tick without a new
+admission, and a later fresh evaluation may attempt only its newly selected
+candidate.
+
+---
+
 ## 5.13 Lesson Disposition Result Snapshot
 
 Each successful lesson promotion or rejection stores the complete safe lesson

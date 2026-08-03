@@ -62,7 +62,17 @@ Decisions encoded here:
   the ticket back to `Changes Requested` and the agent resumes in the same
   workspace.
 - **`Changes Requested` is active**, so review feedback re-dispatches
-  automatically with workspace continuity.
+  automatically with workspace continuity. The PM admission snapshot counts it
+  as working occupancy before considering new tickets and preserves any
+  configured Changes Requested reserve. Admission never demotes it, delays its
+  re-dispatch with an Atlas status write, cancels its worker or consumes its
+  workspace-lifecycle authority.
+- **Admission is a single Linear state edge, not scheduling.** The periodic and
+  one-shot PM sync paths share a database lease and may move at most one
+  revalidated dependency-ready issue into `Ready for Agent`. A stale or
+  transport-ambiguous decision writes no second issue; an unresolved write is
+  fenced until a later complete Linear pull reconciles the selected issue.
+  Symphony alone decides when an active issue runs and owns the workspace.
 - Symphony front matter (see Workflow contract):
   `active_states: [Ready for Agent, In Progress, PR Open, Changes Requested]`,
   `terminal_states: [Done, Canceled, Duplicate]`.

@@ -426,6 +426,31 @@ DOCUMENTED_COLUMNS: dict[str, dict[str, tuple[bool, str | None]]] = {
         "created_by_type": (NN, None),
         "created_by_id": (NN, None),
     },
+    # Phase-15 single-write admission coordination state.
+    "admission_leases": {
+        "product_id": (NN, None),
+        "owner_id": (NN, None),
+        "acquired_at": (NN, None),
+        "expires_at": (NN, None),
+    },
+    "admission_eligibility": {
+        "ticket_id": (NN, None),
+        "product_id": (NN, None),
+        "continuously_eligible_since": (NN, None),
+    },
+    "admission_write_fences": {
+        "product_id": (NN, None),
+        "admission_run_id": (NN, None),
+        "ticket_id": (NN, None),
+        "ticket_key": (NN, None),
+        "issue_id": (NN, None),
+        "source_state_id": (NN, None),
+        "target_state_id": (NN, None),
+        "policy_revision": (NN, None),
+        "state": (NN, None),
+        "created_at": (NN, None),
+        "updated_at": (NN, None),
+    },
 }
 
 # Transcribed FK targets: table -> {column: referred table}. Absence is
@@ -465,6 +490,16 @@ DOCUMENTED_FOREIGN_KEYS: dict[str, dict[str, str]] = {
         "policy_id": "delivery_admission_policy_revisions",
         "selected_ticket_id": "tickets",
     },
+    "admission_leases": {"product_id": "products"},
+    "admission_eligibility": {
+        "ticket_id": "tickets",
+        "product_id": "products",
+    },
+    "admission_write_fences": {
+        "product_id": "products",
+        "admission_run_id": "admission_runs",
+        "ticket_id": "tickets",
+    },
 }
 
 DOCUMENTED_UNIQUES: dict[str, list[list[str]]] = {
@@ -479,6 +514,9 @@ DOCUMENTED_UNIQUES: dict[str, list[list[str]]] = {
     "acceptance_sessions": [["creation_idempotency_key_identity"]],
     "delivery_admission_policy_revisions": [["product_id", "revision"]],
     "admission_runs": [],
+    "admission_leases": [],
+    "admission_eligibility": [],
+    "admission_write_fences": [["admission_run_id"]],
 }
 
 

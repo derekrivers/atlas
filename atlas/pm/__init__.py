@@ -23,6 +23,14 @@ from atlas.pm.admission import (
     AdmissionInputMismatchError,
     evaluate_admission,
 )
+from atlas.pm.admission_sync import (
+    ADMISSION_LEASE_TTL,
+    AdmissionSyncHooks,
+    AdmissionSyncOutcome,
+    AdmissionSyncReason,
+    AdmissionSyncResult,
+    admit_one_ready,
+)
 from atlas.pm.agent_runs import (
     AgentRunReconstructionResult,
     agent_run_observation,
@@ -75,11 +83,16 @@ from atlas.pm.sync import (
 )
 
 __all__ = [
+    "ADMISSION_LEASE_TTL",
     "CRASH_DEDUP_WINDOW",
     "DEFAULT_INTERVAL_SECONDS",
     "PUSHABLE_STATUSES",
     "AdmissionInputMismatchCode",
     "AdmissionInputMismatchError",
+    "AdmissionSyncHooks",
+    "AdmissionSyncOutcome",
+    "AdmissionSyncReason",
+    "AdmissionSyncResult",
     "AgentRunMetric",
     "AgentRunReconstructionResult",
     "AnomalyCount",
@@ -102,6 +115,7 @@ __all__ = [
     "SyncResult",
     "ThroughputBucket",
     "TickConfig",
+    "admit_one_ready",
     "agent_run_observation",
     "build_delivery_report",
     "build_delivery_snapshot",
