@@ -377,6 +377,19 @@ class LinearStatusMap:
             return None
         return self._mapping.get(state_id)
 
+    def state_type_is_compatible(
+        self, state_id: str | None, state_type: str | None
+    ) -> bool:
+        """Whether observed Linear metadata corroborates the configured map.
+
+        The stable state id remains the only lookup key.  The coarse, mutable
+        workflow type is used solely as the same contradiction check applied
+        by :meth:`validate_against_states`; names never participate.
+        """
+
+        status = self.status_for(state_id)
+        return status is not None and state_type in _ACCEPTED_TYPES[status]
+
     def state_id_for(self, status: TicketStatus) -> str:
         """The unique Linear state id mapped to ``status`` -- the inverse of the
         forward map, for the sanctioned PM-Engine promotion write (ATLAS-43).
