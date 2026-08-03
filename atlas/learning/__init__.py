@@ -1,5 +1,14 @@
 """Learning-system public surface."""
 
+from atlas.learning.disposition import (
+    LessonDispositionCommand,
+    LessonDispositionDecision,
+    LessonDispositionDecisionStatus,
+    PromoteLesson,
+    RejectLesson,
+    decide_lesson_disposition,
+    validate_lesson_disposition_command,
+)
 from atlas.learning.extractor import (
     DEFAULT_RAW_DIFF_SIZE_CAP_BYTES,
     ExtractionTrigger,
@@ -82,6 +91,9 @@ __all__ = [
     "ExtractionTrigger",
     "GeneratedPlaybook",
     "InvalidPlaybookTagError",
+    "LessonDispositionCommand",
+    "LessonDispositionDecision",
+    "LessonDispositionDecisionStatus",
     "LessonDwellBreach",
     "LessonExtractionError",
     "LessonModelClient",
@@ -97,6 +109,8 @@ __all__ = [
     "PlaybookGenerationError",
     "PlaybookGitError",
     "PlaybookModelClient",
+    "PromoteLesson",
+    "RejectLesson",
     "RenderedPlaybookPrompt",
     "ScheduledExtraction",
     "StatusLessonGroup",
@@ -105,6 +119,7 @@ __all__ = [
     "assemble_evidence_bundle",
     "build_lessons_report",
     "build_playbook_markdown",
+    "decide_lesson_disposition",
     "detect_pattern_candidates",
     "draft_playbook_branch",
     "extract_lesson_for_ticket",
@@ -125,5 +140,6 @@ __all__ = [
     "search_lessons",
     "source_ticket_label",
     "ticket_labels",
+    "validate_lesson_disposition_command",
     "validate_playbook_tag",
 ]

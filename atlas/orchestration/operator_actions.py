@@ -35,6 +35,7 @@ from atlas.storage.repositories import (
     _add_operator_action_reservation,
     _get_operator_action_receipt_by_identity,
     _get_operator_action_reservation,
+    compare_and_set_entity,
 )
 
 _HASH_PREFIX = "sha256:"
@@ -60,10 +61,11 @@ class OperatorActionGatewayStatus(StrEnum):
 
 
 class OperatorActionConflictCode(StrEnum):
-    """Conflict reasons that never invoke the command."""
+    """Typed replay, ownership, and compare-and-set conflict reasons."""
 
     IDEMPOTENCY_KEY_REUSED = "idempotency_key_reused"
     IN_PROGRESS = "in_progress"
+    STALE_STATE = "stale_state"
 
 
 class OperatorActionFailureCode(StrEnum):
@@ -98,9 +100,16 @@ class OperatorActionEntityLoad:
 
 @dataclass(frozen=True)
 class OperatorActionMutation:
-    """One detached ORM value for the gateway to merge transactionally."""
+    """One detached ORM mutation for the gateway to apply transactionally.
+
+    Empty compare-and-set fields retain the original unconditional merge
+    behaviour for commands without an observed-state contract.  Supplying
+    both fields makes the repository update conditional at the SQL boundary.
+    """
 
     entity: object
+    expected_values: Mapping[str, object] = field(default_factory=dict)
+    updated_fields: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -111,6 +120,8 @@ class OperatorActionCommandContext:
     receipt_id: UUID
     correlation_id: UUID
     created_at: datetime
+    created_by_type: ActorType
+    created_by_id: str
 
     def entity(self, name: str, entity_type: type[_Entity]) -> _Entity | None:
         """Return one named detached value with a runtime type check."""
@@ -139,6 +150,7 @@ class OperatorActionCommandResult:
 class OperatorActionConflict:
     code: OperatorActionConflictCode
     correlation_id: UUID | None = None
+    current_entity: object | None = None
 
 
 @dataclass(frozen=True)
@@ -154,6 +166,7 @@ class OperatorActionGatewayResult:
     receipt: OperatorActionReceipt | None = None
     conflict: OperatorActionConflict | None = None
     failure: OperatorActionFailure | None = None
+    loaded_entities: Mapping[str, object] = field(default_factory=dict)
 
 
 class Clock(Protocol):
@@ -183,6 +196,13 @@ class _ReceiptFailed(Exception):
 
 class _ReservationStorageFailed(Exception):
     pass
+
+
+class _MutationStale(Exception):
+    def __init__(self, entity_type: type[Any], entity_id: object) -> None:
+        super().__init__("compare-and-set predicate did not match")
+        self.entity_type = entity_type
+        self.entity_id = entity_id
 
 
 def canonical_request_fingerprint(
@@ -286,7 +306,9 @@ class OperatorActionGateway:
         try:
             return self._execute_owned(envelope, key_identity, command, loads)
         except _ReservationConflict:
-            return self._result_for_existing_reservation(envelope, key_identity)
+            return self._result_for_existing_reservation(envelope, key_identity, loads)
+        except _MutationStale as stale:
+            return self._stale_result(stale)
         except _CommandFailed:
             return OperatorActionGatewayResult(
                 status=OperatorActionGatewayStatus.FAILED,
@@ -303,6 +325,7 @@ class OperatorActionGateway:
             return self._result_for_existing_reservation(
                 envelope,
                 key_identity,
+                loads,
             )
 
     def _execute_owned(
@@ -351,12 +374,16 @@ class OperatorActionGateway:
                             receipt_id=receipt_id,
                             correlation_id=correlation_id,
                             created_at=created_at,
+                            created_by_type=envelope.created_by_type,
+                            created_by_id=envelope.created_by_id,
                         )
                         command_result = command(context)
                         _apply_operator_action_mutations(
                             session, command_result.mutations
                         )
                         session.flush()
+                    except _MutationStale:
+                        raise
                     except Exception as exc:
                         raise _CommandFailed from exc
 
@@ -383,6 +410,7 @@ class OperatorActionGateway:
                 _ReservationStorageFailed,
                 _CommandFailed,
                 _ReceiptFailed,
+                _MutationStale,
             ):
                 raise
             except sa.exc.SQLAlchemyError as exc:
@@ -433,6 +461,7 @@ class OperatorActionGateway:
         self,
         envelope: OperatorActionEnvelope,
         key_identity: str,
+        loads: tuple[OperatorActionEntityLoad, ...],
     ) -> OperatorActionGatewayResult:
         try:
             with self._db.session() as session:
@@ -460,12 +489,33 @@ class OperatorActionGateway:
                         ),
                     )
 
+                loaded_entities = _load_detached_entities(session, loads)
                 return OperatorActionGatewayResult(
                     status=OperatorActionGatewayStatus.REPLAYED,
                     receipt=receipt,
+                    loaded_entities=MappingProxyType(loaded_entities),
                 )
         except sa.exc.SQLAlchemyError:
             return _storage_failure_result()
+
+    def _stale_result(self, stale: _MutationStale) -> OperatorActionGatewayResult:
+        """Reload the winner's safe current row after rolling back the loser."""
+
+        try:
+            with self._db.session() as session:
+                current = session.get(stale.entity_type, stale.entity_id)
+                if current is None:
+                    return _storage_failure_result()
+                session.expunge(current)
+        except sa.exc.SQLAlchemyError:
+            return _storage_failure_result()
+        return OperatorActionGatewayResult(
+            status=OperatorActionGatewayStatus.CONFLICT,
+            conflict=OperatorActionConflict(
+                code=OperatorActionConflictCode.STALE_STATE,
+                current_entity=current,
+            ),
+        )
 
 
 def _approved_operator_action_metadata(
@@ -512,6 +562,27 @@ def _apply_operator_action_mutations(
             raise ValueError("operator action mutations must be mapped entities")
         if getattr(state, "session", None) is not None:
             raise ValueError("operator action mutations must be detached")
+        uses_compare_and_set = bool(mutation.expected_values or mutation.updated_fields)
+        if uses_compare_and_set:
+            if not mutation.expected_values or not mutation.updated_fields:
+                raise ValueError(
+                    "compare-and-set requires predicates and updated fields"
+                )
+            if not compare_and_set_entity(
+                session,
+                mutation.entity,
+                expected_values=mutation.expected_values,
+                updated_fields=mutation.updated_fields,
+            ):
+                mapper = state.mapper
+                if len(mapper.primary_key) != 1:
+                    raise ValueError("compare-and-set requires one primary-key column")
+                primary_key = mapper.primary_key[0]
+                raise _MutationStale(
+                    type(mutation.entity),
+                    getattr(mutation.entity, primary_key.key),
+                )
+            continue
         session.merge(mutation.entity)
 
 

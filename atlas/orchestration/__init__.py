@@ -31,6 +31,12 @@ from atlas.orchestration.dependency_projection import (
     dependency_graph,
     ticket_dependencies,
 )
+from atlas.orchestration.lesson_disposition import (
+    LessonDispositionCommandContext,
+    LessonDispositionResult,
+    LessonDispositionService,
+    LessonDispositionStatus,
+)
 from atlas.orchestration.operator_actions import (
     CanonicalFingerprintError,
     OperatorActionCommandContext,
@@ -105,6 +111,10 @@ __all__ = [
     "DependencyGraphNodeState",
     "DependencyGraphState",
     "GitRunner",
+    "LessonDispositionCommandContext",
+    "LessonDispositionResult",
+    "LessonDispositionService",
+    "LessonDispositionStatus",
     "OperatorActionCommandContext",
     "OperatorActionCommandResult",
     "OperatorActionConflict",

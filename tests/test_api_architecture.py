@@ -12,6 +12,7 @@ ATLAS_ROOT = API_ROOT.parent
 ROUTERS_ROOT = API_ROOT / "routers"
 DEPENDENCIES_PATH = API_ROOT / "dependencies.py"
 LOWER_LAYER_OPERATION_MODULES = ("atlas.orchestration",)
+LESSON_LIFECYCLE_STATUSES = frozenset({"DRAFT", "ACTIVE", "ARCHIVED"})
 
 
 @dataclass(frozen=True)
@@ -35,6 +36,52 @@ class _ApiNoLogicViolation:
     lineno: int
     function_name: str
     reason: str
+
+
+def _lesson_lifecycle_status_references(source: str) -> list[ast.Attribute]:
+    """Find lifecycle decisions that belong in ``atlas.learning`` only."""
+
+    tree = ast.parse(source)
+    return [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Attribute)
+        and isinstance(node.value, ast.Name)
+        and node.value.id == "EntityStatus"
+        and node.attr in LESSON_LIFECYCLE_STATUSES
+    ]
+
+
+def test_api_contains_no_lesson_lifecycle_decisions() -> None:
+    violations = {
+        path.relative_to(API_ROOT): references
+        for path in API_ROOT.rglob("*.py")
+        if (
+            references := _lesson_lifecycle_status_references(
+                path.read_text(encoding="utf-8")
+            )
+        )
+    }
+
+    assert violations == {}
+
+
+def test_api_lesson_lifecycle_sensor_fires_on_seeded_transition() -> None:
+    references = _lesson_lifecycle_status_references(
+        dedent(
+            """
+            from atlas.core.enums import EntityStatus
+
+            def promote_in_route(lesson):
+                if lesson.status is EntityStatus.DRAFT:
+                    assert 1 == 2  # type: ignore[comparison-overlap]
+                    lesson.status = EntityStatus.ACTIVE
+                return lesson
+            """
+        )
+    )
+
+    assert {reference.attr for reference in references} == {"DRAFT", "ACTIVE"}
 
 
 def _is_route_handler(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:

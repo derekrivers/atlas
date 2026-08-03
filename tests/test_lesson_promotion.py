@@ -21,7 +21,6 @@ from atlas.storage import (
     ContextPackRepo,
     Database,
     LessonRepo,
-    LessonValidationError,
     TicketRepo,
 )
 
@@ -99,27 +98,6 @@ def make_pack(
     )
 
 
-def test_promote_draft_sets_active_confidence_and_timestamp(db: Database) -> None:
-    lesson = seed_lesson(db, make_lesson(confidence=None))
-
-    promoted = LessonRepo(db).promote(lesson.id, confidence=0.8, now=NOW)
-
-    assert promoted.status is EntityStatus.ACTIVE
-    assert promoted.confidence == 0.8
-    assert promoted.updated_at == NOW
-    assert LessonRepo(db).get(lesson.id) == promoted
-
-
-def test_reject_draft_sets_archived(db: Database) -> None:
-    lesson = seed_lesson(db, make_lesson(confidence=None))
-
-    rejected = LessonRepo(db).reject(lesson.id, now=NOW)
-
-    assert rejected.status is EntityStatus.ARCHIVED
-    assert rejected.confidence is None
-    assert rejected.updated_at == NOW
-
-
 def test_archive_active_sets_archived(db: Database) -> None:
     lesson = seed_lesson(db, make_lesson(status="active"))
 
@@ -127,21 +105,6 @@ def test_archive_active_sets_archived(db: Database) -> None:
 
     assert archived.status is EntityStatus.ARCHIVED
     assert archived.confidence == 0.7
-
-
-@pytest.mark.parametrize("confidence", [-0.01, 1.01])
-def test_promote_out_of_range_confidence_raises_typed_validation_error(
-    db: Database, confidence: float
-) -> None:
-    lesson = seed_lesson(db, make_lesson(confidence=None))
-
-    with pytest.raises(LessonValidationError, match=r"between 0\.0 and 1\.0"):
-        LessonRepo(db).promote(lesson.id, confidence=confidence, now=NOW)
-
-    stored = LessonRepo(db).get(lesson.id)
-    assert stored is not None
-    assert stored.status is EntityStatus.DRAFT
-    assert stored.confidence is None
 
 
 def test_merge_archives_draft_and_updates_target_related_tickets(

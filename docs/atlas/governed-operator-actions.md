@@ -35,7 +35,9 @@ make exactly one application-service call and present its result. Branching on
 lesson state, replay state or actor identity belongs below `atlas.api`.
 
 The CLI and HTTP surfaces call the same lesson disposition service. Phase 13
-must not create a second promotion implementation.
+must not create a second promotion implementation. The service accepts only
+the server-owned ADR-0009 actor (`human` / `operator`); agent, system and
+alternate-human contexts fail before idempotency reservation or mutation.
 
 ## Threat model and supported topology
 
@@ -153,16 +155,19 @@ no visible owner is a typed storage failure.
 
 The gateway loads command-declared domain inputs inside its transaction and
 detaches them before invoking the command. The command receives only a
-session-free context containing those detached values and returns a mutation
-plan of detached ORM values. It never receives a facade, callable or other
-object that retains the gateway's SQLAlchemy session. The gateway validates
-and merges the plan after the command returns, without attaching the
-command-owned values, so `inspect(row).session` and `object_session(row)` cannot
-recover the transaction. Only the gateway can flush, commit, roll back or close
-that transaction. It flushes planned mutations and receipt insertion
-separately for classification, then catches failure from the actual transaction
-commit as a receipt-commit failure. Any such failure rolls back the reservation,
-mutation and receipt together.
+session-free context containing those detached values, the server-resolved
+actor and returns a mutation plan of detached ORM values. It never receives a
+facade, callable or other object that retains the gateway's SQLAlchemy session.
+The gateway validates and applies the plan after the command returns, without
+attaching the command-owned values, so `inspect(row).session` and
+`object_session(row)` cannot recover the transaction. A plain plan retains the
+generic merge behaviour; a compare-and-set plan declares its observed values
+and exact update fields, and the repository emits one conditional SQL update.
+It never falls back to an unconditional save when the predicate misses. Only
+the gateway can flush, commit, roll back or close that transaction. It flushes
+planned mutations and receipt insertion separately for classification, then
+catches failure from the actual transaction commit as a receipt-commit failure.
+Any such failure rolls back the reservation, mutation and receipt together.
 
 An append-only `OperatorActionReceipt` records:
 
@@ -210,7 +215,21 @@ Confidence is finite and in the inclusive range `0.0..1.0`. Reject accepts an
 empty JSON object. Both commands require the current stored lesson to be
 DRAFT. The state transition is a compare-and-set operation; if another browser
 or CLI command has already changed the lesson, the loser returns `409 Conflict`
-with the safe current lesson representation and performs no mutation.
+with the safe current lesson representation and performs no mutation. The
+loser's transaction, including its idempotency reservation, is rolled back, so
+the concurrent ruling produces no second receipt.
+
+`LessonDispositionService` is independent of FastAPI and is the only service
+used by the CLI and future HTTP presenters for these commands. It loads the
+target once inside the gateway-owned unit of work, delegates the transition
+decision to `atlas.learning`, and returns a typed outcome plus updated or safe
+current `Lesson`. The command context supplies the actor; promote/reject payloads
+cannot override it. The public lesson repository exposes no direct promote or
+reject writer, and its separate archive operation accepts ACTIVE lessons only,
+so the governed service is the sole persistence path for DRAFT dispositions.
+Invalid confidence is rejected before reservation or write.
+Receipt persistence failure rolls back the lesson CAS, reservation and receipt
+together.
 
 Outcomes:
 
