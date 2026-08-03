@@ -9,6 +9,7 @@ from uuid import UUID
 from atlas.core.models.evidence import Evidence
 from atlas.evidence.ingest import ingest_checks, ingest_docs, ingest_reviews
 from atlas.github import (
+    GitHubAPIError,
     GitHubClient,
     normalise_check_runs,
     normalise_pr_files,
@@ -28,7 +29,41 @@ class PullResult(NamedTuple):
     docs: list[Evidence]
 
 
+class EvidencePullMalformedSourceError(ValueError):
+    """A source payload could not satisfy the canonical evidence contract."""
+
+
 def drive_evidence_pull(
+    client: GitHubClient,
+    owner: str,
+    repo: str,
+    pr_number: int,
+    *,
+    evidence_repo: EvidenceRepo,
+    product_id: UUID,
+    now: datetime,
+) -> PullResult:
+    """Run the canonical pull and type malformed source/pin failures."""
+
+    try:
+        return _drive_evidence_pull_unchecked(
+            client,
+            owner,
+            repo,
+            pr_number,
+            evidence_repo=evidence_repo,
+            product_id=product_id,
+            now=now,
+        )
+    except GitHubAPIError:
+        raise
+    except (KeyError, TypeError, ValueError) as error:
+        raise EvidencePullMalformedSourceError(
+            "GitHub evidence source did not satisfy the canonical contract"
+        ) from error
+
+
+def _drive_evidence_pull_unchecked(
     client: GitHubClient,
     owner: str,
     repo: str,

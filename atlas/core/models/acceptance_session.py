@@ -134,6 +134,70 @@ class AcceptanceAssessmentSnapshot(BaseModel):
         return value
 
 
+class AcceptanceEvidenceSummary(BaseModel):
+    """Bounded, payload-free projection of evidence at one exact head."""
+
+    model_config = ConfigDict(frozen=True, hide_input_in_errors=True)
+
+    total_count: int = Field(ge=0, le=1_000_000)
+    new_count: int = Field(ge=0, le=1_000_000)
+    checks_count: int = Field(ge=0, le=1_000_000)
+    reviews_count: int = Field(ge=0, le=1_000_000)
+    docs_count: int = Field(ge=0, le=1_000_000)
+    system_count: int = Field(ge=0, le=1_000_000)
+    human_count: int = Field(ge=0, le=1_000_000)
+    agent_count: int = Field(ge=0, le=1_000_000)
+    pending_count: int = Field(ge=0, le=1_000_000)
+    passed_count: int = Field(ge=0, le=1_000_000)
+    failed_count: int = Field(ge=0, le=1_000_000)
+    warning_count: int = Field(ge=0, le=1_000_000)
+    not_applicable_count: int = Field(ge=0, le=1_000_000)
+    complete_pin_count: int = Field(ge=0, le=1_000_000)
+    exact_head_pin_count: int = Field(ge=0, le=1_000_000)
+    pin_complete: bool
+    exact_head_pin_complete: bool
+    oldest_source_event_at: datetime | None = None
+    latest_source_event_at: datetime | None = None
+
+    @model_validator(mode="after")
+    def _counts_and_timestamps_are_coherent(self) -> Self:
+        if self.new_count > self.total_count:
+            raise ValueError("new_count cannot exceed total_count")
+        if self.checks_count + self.reviews_count + self.docs_count != self.total_count:
+            raise ValueError("source counts must sum to total_count")
+        if self.system_count + self.human_count + self.agent_count != self.total_count:
+            raise ValueError("trust counts must sum to total_count")
+        if (
+            self.pending_count
+            + self.passed_count
+            + self.failed_count
+            + self.warning_count
+            + self.not_applicable_count
+            != self.total_count
+        ):
+            raise ValueError("status counts must sum to total_count")
+        if self.complete_pin_count > self.total_count:
+            raise ValueError("complete_pin_count cannot exceed total_count")
+        if self.exact_head_pin_count > self.complete_pin_count:
+            raise ValueError("exact-head pins must also be complete pins")
+        if self.pin_complete != (self.complete_pin_count == self.total_count):
+            raise ValueError("pin_complete contradicts the pin counts")
+        if self.exact_head_pin_complete != (
+            self.exact_head_pin_count == self.total_count
+        ):
+            raise ValueError("exact_head_pin_complete contradicts the pin counts")
+        timestamps = (self.oldest_source_event_at, self.latest_source_event_at)
+        if (timestamps[0] is None) != (timestamps[1] is None):
+            raise ValueError("source timestamp bounds must both be present or absent")
+        if (
+            timestamps[0] is not None
+            and timestamps[1] is not None
+            and timestamps[1] < timestamps[0]
+        ):
+            raise ValueError("latest source timestamp cannot precede oldest")
+        return self
+
+
 class AcceptanceStepSummary(BaseModel):
     """Bounded historical status for one acceptance step."""
 
@@ -143,6 +207,7 @@ class AcceptanceStepSummary(BaseModel):
     reasons: tuple[AcceptanceSessionBlockingReason, ...] = ()
     receipt_ids: tuple[UUID, ...] = ()
     occurred_at: datetime | None = None
+    evidence: AcceptanceEvidenceSummary | None = None
 
 
 class AcceptanceSession(BaseModel):

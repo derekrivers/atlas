@@ -77,6 +77,38 @@ record missing any of the three regardless of `evidence_type` — there is no
 CI-evidence-type allowlist. Agent-submitted records remain capped at PENDING
 by the knowledge-core repository rule.
 
+## Exact-head acceptance-session composition
+
+The Phase 14 acceptance evidence action is an application-layer consumer of
+this pipeline, not another ingestion path. Given only a durable session ID and
+authenticated operator command context, it resolves repository, PR, close-set,
+product and pinned head from canonical state and calls `drive_evidence_pull`
+in-process with the injected `GitHubClient` and `EvidenceRepo`. It never spawns
+`atlas evidence pull`, parses CLI output or duplicates normalisation.
+
+The action runs the shared acceptance-session freshness comparator immediately
+before and after the bounded pull. A stale or indeterminate pre-check performs
+no evidence request. Post-pull movement leaves already appended evidence at its
+exact commit as immutable history and stales the session; it cannot promote the
+moved session or make evidence at a different head authoritative.
+
+After a fresh post-check, `EvidenceRepo.list_for_product_commit` re-reads only
+the product/head projection. The session retains a bounded aggregate: total and
+new/source counts, trust-tier counts, status counts, complete/exact-head pin
+counts and booleans, and oldest/latest GitHub source-event timestamps. Canonical
+evidence remains here, including raw payloads subject to the retention cap;
+session state and operator receipts contain no evidence IDs, summaries, source
+URIs, payloads, job logs, credentials or foreign errors. Existing
+`(external_run_id, payload_hash)` dedup means an unchanged source can advance a
+fresh session once with `new_count: 0` and the existing exact-head aggregate.
+
+The governed action distinguishes transport, authentication, exhausted
+rate-limit and malformed-source outcomes. These append a typed, secret-free
+receipt but do not advance the session. Same-key replay never re-enters this
+pipeline; after freshness is assessed again, a new key may retry. The session
+transition and receipt commit atomically, while evidence already committed by
+the append-only pull is never deleted or rewritten if receipt storage fails.
+
 ## Retention
 
 `raw_payload` is capped at 64KB; a larger payload is replaced by a compact

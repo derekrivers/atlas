@@ -163,15 +163,53 @@ recovery command. Foreign exception text is never returned.
 
 ## Evidence action
 
-The evidence step calls the existing evidence-pull service for the pinned PR
-head. It preserves source idempotency and append-only evidence semantics. After
-the pull it re-reads the stored evidence projection and records only a bounded
-summary on the session; evidence itself remains in the canonical evidence
-store.
+The API-independent evidence operation accepts exactly an acceptance-session ID
+and authenticated operator command context. Repository owner/name, PR number,
+close-set, product and pinned head are resolved from the stored session and its
+canonical close-set tickets; the operation accepts no caller SHA, repository,
+ticket key, product, GitHub token or raw payload. Only a `preflight_passed`
+session is retryable. A completed, stale or otherwise out-of-order session is
+refused before GitHub or evidence work.
 
-Before and after the external GitHub read, the operation proves the live PR
-identity and head still match the session. Movement makes the session stale and
-the pulled old-head records remain history, not authority for a new session.
+The operation invokes the shared `drive_evidence_pull` service directly with
+the injected GitHub client and canonical `EvidenceRepo`. It does not execute or
+parse the CLI and contains no second GitHub mapper. Consequently conditional
+requests, bounded rate-limit handling, trust-tier mapping, the system pin
+triple and `(external_run_id, payload_hash)` source idempotency remain owned by
+the existing evidence path. The call is synchronous and bounded; there is no
+partial session state or background-job protocol.
+
+Immediately before that external pull, the action runs
+`compare_acceptance_session_freshness` over a new shared PR assessment and live
+close-set tickets. Every mismatch is retained. Stale or indeterminate state
+atomically marks the evidence step blocked and the session `stale`, records the
+action receipt, and performs no evidence pull. Immediately after the pull, the
+same assessment and comparison run again. Movement then marks the session
+stale; evidence already appended at the observed commit remains canonical
+history but no evidence summary or readiness is attached to the moved session.
+
+On success the action re-reads canonical evidence for the session product and
+exact head. The evidence step stores only bounded source counts (checks,
+reviews and documentation, plus newly appended count), trust-tier counts,
+status counts, complete-pin and exact-head-pin counts/booleans, oldest/latest
+source-event timestamps and the receipt ID. Evidence IDs, summaries, source
+URIs, raw payloads, job logs, tokens and foreign error text are absent. A
+source-idempotent no-op therefore records `new_count: 0` while summarising the
+already stored exact-head records; evidence from another head is excluded.
+
+The Phase 13 gateway commits the action-key reservation before bounded external
+work, then commits the session transition and terminal receipt atomically. A
+receipt failure rolls back the session advance without deleting evidence that
+the canonical pull already appended. Same-key replay and altered replay invoke
+neither GitHub nor the evidence service. A per-session server-side guard admits
+one synchronous action at a time, so a concurrent tab cannot duplicate the
+pull or overwrite the first transition.
+
+Transport, authentication, exhausted rate-limit and malformed-source failures
+are separate receipt result codes. They leave the session at
+`preflight_passed`; exact same-key replay returns the stored failure without
+external work. After a new freshness assessment, the operator may retry with a
+new action key. No failure code is accepted as `evidence_ready`.
 
 ## Confirmation action
 

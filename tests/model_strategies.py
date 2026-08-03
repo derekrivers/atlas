@@ -90,6 +90,22 @@ operator_action_outcome_result = st.sampled_from(
         (OperatorActionOutcome.REFUSED, OperatorActionResultCode.ACTION_REFUSED),
         (OperatorActionOutcome.REFUSED, OperatorActionResultCode.STALE_STATE),
         (OperatorActionOutcome.FAILED, OperatorActionResultCode.ACTION_FAILED),
+        (
+            OperatorActionOutcome.FAILED,
+            OperatorActionResultCode.EVIDENCE_TRANSPORT_FAILED,
+        ),
+        (
+            OperatorActionOutcome.FAILED,
+            OperatorActionResultCode.EVIDENCE_AUTHENTICATION_FAILED,
+        ),
+        (
+            OperatorActionOutcome.FAILED,
+            OperatorActionResultCode.EVIDENCE_RATE_LIMIT_FAILED,
+        ),
+        (
+            OperatorActionOutcome.FAILED,
+            OperatorActionResultCode.EVIDENCE_MALFORMED_SOURCE,
+        ),
         (OperatorActionOutcome.CONFLICT, OperatorActionResultCode.ACTION_CONFLICT),
     ]
 )

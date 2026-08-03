@@ -88,16 +88,22 @@ def _is_40_hex_sha(value: str) -> bool:
 def _required_str(payload: Mapping[str, Any], key: str, *, label: str) -> str:
     value = payload.get(key)
     if not isinstance(value, str) or not value:
-        raise GitHubAPIError(f"GitHub API {label} missing string field {key!r}")
+        raise GitHubMalformedResponseError(
+            f"GitHub API {label} missing string field {key!r}"
+        )
     return value
 
 
 def _required_int(payload: Mapping[str, Any], key: str, *, label: str) -> int:
     value = payload.get(key)
     if not isinstance(value, int) or isinstance(value, bool):
-        raise GitHubAPIError(f"GitHub API {label} missing integer field {key!r}")
+        raise GitHubMalformedResponseError(
+            f"GitHub API {label} missing integer field {key!r}"
+        )
     if value < 0:
-        raise GitHubAPIError(f"GitHub API {label} field {key!r} was negative")
+        raise GitHubMalformedResponseError(
+            f"GitHub API {label} field {key!r} was negative"
+        )
     return value
 
 
@@ -106,7 +112,9 @@ def _required_object(
 ) -> Mapping[str, Any]:
     value = payload.get(key)
     if not isinstance(value, dict):
-        raise GitHubAPIError(f"GitHub API {label} missing object field {key!r}")
+        raise GitHubMalformedResponseError(
+            f"GitHub API {label} missing object field {key!r}"
+        )
     return cast(Mapping[str, Any], value)
 
 
@@ -116,7 +124,7 @@ def _parse_compare_payload(payload: Mapping[str, Any]) -> GitHubCompare:
     try:
         status = GitHubCompareStatus(raw_status)
     except ValueError as error:
-        raise GitHubAPIError(
+        raise GitHubMalformedResponseError(
             f"GitHub API compare response had unsupported status {raw_status!r}"
         ) from error
 
@@ -125,7 +133,9 @@ def _parse_compare_payload(payload: Mapping[str, Any]) -> GitHubCompare:
     merge_base = _required_object(payload, "merge_base_commit", label=label)
     merge_base_sha = _required_str(merge_base, "sha", label="merge_base_commit")
     if not _is_40_hex_sha(merge_base_sha):
-        raise GitHubAPIError("GitHub API compare response merge-base was not a SHA")
+        raise GitHubMalformedResponseError(
+            "GitHub API compare response merge-base was not a SHA"
+        )
 
     expected = {
         GitHubCompareStatus.AHEAD: ahead_by > 0 and behind_by == 0,
@@ -134,7 +144,7 @@ def _parse_compare_payload(payload: Mapping[str, Any]) -> GitHubCompare:
         GitHubCompareStatus.IDENTICAL: ahead_by == 0 and behind_by == 0,
     }[status]
     if not expected:
-        raise GitHubAPIError(
+        raise GitHubMalformedResponseError(
             "GitHub API compare response status contradicted ahead/behind counts"
         )
 
@@ -156,6 +166,22 @@ class MissingGitHubTokenError(GitHubClientError):
 
 class GitHubAPIError(GitHubClientError):
     """A GitHub REST request failed (transport, HTTP, rate-limit, or JSON)."""
+
+
+class GitHubAuthenticationError(GitHubAPIError):
+    """GitHub rejected the configured server-side credentials."""
+
+
+class GitHubRateLimitError(GitHubAPIError):
+    """GitHub's bounded rate-limit retries were exhausted."""
+
+
+class GitHubTransportError(GitHubAPIError):
+    """GitHub could not be reached or returned a non-auth HTTP failure."""
+
+
+class GitHubMalformedResponseError(GitHubAPIError):
+    """GitHub returned a response that violated the typed source contract."""
 
 
 @runtime_checkable
@@ -453,18 +479,24 @@ class GitHubRESTClient:
                     self._sleep(self._retry_after_seconds(error))
                     continue
                 if self._is_rate_limited(error):
-                    raise GitHubAPIError(
+                    raise GitHubRateLimitError(
                         f"GitHub rate limit not cleared after "
                         f"{MAX_RATE_LIMIT_RETRIES} retries: {error}"
                     ) from error
-                raise GitHubAPIError(
+                if error.code in (401, 403):
+                    raise GitHubAuthenticationError(
+                        f"GitHub API authentication failed with HTTP {error.code}"
+                    ) from error
+                raise GitHubTransportError(
                     f"GitHub API HTTP {error.code}: {error}"
                 ) from error
             except (urllib_error.URLError, OSError) as error:
-                raise GitHubAPIError(f"GitHub API request failed: {error}") from error
+                raise GitHubTransportError(
+                    f"GitHub API request failed: {error}"
+                ) from error
 
         # Unreachable: the loop returns or raises on every path.
-        raise GitHubAPIError("GitHub API request exhausted retries unexpectedly")
+        raise GitHubTransportError("GitHub API request exhausted retries unexpectedly")
 
     def _headers(self, url: str) -> dict[str, str]:
         headers = {
@@ -487,13 +519,15 @@ class GitHubRESTClient:
         try:
             body = json.loads(response.read().decode())
         except json.JSONDecodeError as error:
-            raise GitHubAPIError(f"GitHub API returned non-JSON: {error}") from error
+            raise GitHubMalformedResponseError(
+                f"GitHub API returned non-JSON: {error}"
+            ) from error
         # result_key=None: the body IS the list (bare-array endpoints, e.g. PR
         # reviews); otherwise unwrap the envelope's result_key array (ATLAS-65).
         items = body if result_key is None else body.get(result_key, [])
         if not isinstance(items, list):
             label = result_key or "response body"
-            raise GitHubAPIError(f"GitHub API {label} was not a list")
+            raise GitHubMalformedResponseError(f"GitHub API {label} was not a list")
         page = (items, next_url)
         self._page_cache[url] = page
         return page
@@ -516,9 +550,11 @@ class GitHubRESTClient:
         try:
             body = json.loads(response.read().decode())
         except json.JSONDecodeError as error:
-            raise GitHubAPIError(f"GitHub API returned non-JSON: {error}") from error
+            raise GitHubMalformedResponseError(
+                f"GitHub API returned non-JSON: {error}"
+            ) from error
         if not isinstance(body, dict):
-            raise GitHubAPIError(f"GitHub API {label} was not an object")
+            raise GitHubMalformedResponseError(f"GitHub API {label} was not an object")
         self._object_cache[url] = body
         return body
 

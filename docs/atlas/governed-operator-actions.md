@@ -177,6 +177,16 @@ snapshot alongside its receipt; it does not rebuild the response from the
 mutable current lesson. This snapshot is not generic receipt metadata and has
 no public write surface.
 
+Commands that must append through an independently transactional canonical
+store use the gateway's bounded-external variant. It commits the same
+idempotency reservation before external work, loads a detached command input
+without retaining a database transaction, and then atomically commits only the
+domain transition and receipt. A missing receipt remains an explicit
+in-progress owner. Receipt failure rolls back the domain transition but does
+not delete or rewrite independently appended canonical history. The acceptance
+evidence action is the first consumer; its per-session synchronous guard also
+prevents two different keys from entering external work concurrently.
+
 An append-only `OperatorActionReceipt` records:
 
 - receipt and correlation IDs;
@@ -185,7 +195,10 @@ An append-only `OperatorActionReceipt` records:
 - idempotency key identity and request fingerprint reference;
 - before and after `EntityStatus` values where applicable;
 - a server-controlled result code from `action_succeeded`, `action_refused`,
-  `stale_state`, `action_failed` or `action_conflict`;
+  `stale_state`, `action_failed`, the four bounded acceptance-evidence failure
+  codes (`evidence_transport_failed`, `evidence_authentication_failed`,
+  `evidence_rate_limit_failed`, `evidence_malformed_source`) or
+  `action_conflict`;
 - default-deny result metadata limited to `changed` (boolean),
   `affected_count` (integer `0..1000000`) and `confidence` (finite float
   `0.0..1.0`);
@@ -198,8 +211,9 @@ and exception traces are not copied into receipts or rendered receipt JSON.
 Result codes and before/after states are
 closed enums rather than free-form command strings. Outcomes and result codes
 also form one enforced matrix: success uses `action_succeeded`; refusal uses
-`action_refused` or `stale_state`; failure uses `action_failed`; and conflict
-uses `action_conflict`. The database, gateway, canonical model, presentation
+`action_refused` or `stale_state`; failure uses `action_failed` or one of the
+four acceptance-evidence failure codes; and conflict uses `action_conflict`.
+The database, gateway, canonical model, presentation
 path and public repository writers all enforce that matrix. The gateway
 discards every unapproved metadata field without inspecting its value, so
 callers cannot bypass either the terminal-claim invariant, controlled

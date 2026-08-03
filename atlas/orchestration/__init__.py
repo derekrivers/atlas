@@ -8,6 +8,11 @@ from atlas.orchestration.acceptance_confirmation import (
     AcceptanceConfirmationValidationCode,
     AcceptanceSessionConfirmationService,
 )
+from atlas.orchestration.acceptance_evidence import (
+    AcceptanceEvidencePullContext,
+    AcceptanceEvidencePullResult,
+    AcceptanceSessionEvidencePullService,
+)
 from atlas.orchestration.acceptance_sessions import (
     AcceptanceSessionCreationResult,
     AcceptanceSessionCreationService,
@@ -119,9 +124,12 @@ __all__ = [
     "AcceptanceConfirmationStatus",
     "AcceptanceConfirmationValidationCode",
     "AcceptanceSessionConfirmationService",
+    "AcceptanceEvidencePullContext",
+    "AcceptanceEvidencePullResult",
     "AcceptanceSessionCreationResult",
     "AcceptanceSessionCreationService",
     "AcceptanceSessionCreationStatus",
+    "AcceptanceSessionEvidencePullService",
     "CanonicalFingerprintError",
     "ConfirmCaptureResult",
     "ConfirmPrompts",

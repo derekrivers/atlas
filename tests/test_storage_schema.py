@@ -1020,6 +1020,50 @@ def test_delivery_policy_migration_bootstraps_three_without_workflow_change(
     assert (REPO_ROOT / "WORKFLOW.md").read_bytes() == workflow_before
 
 
+def test_acceptance_evidence_receipt_outcomes_migrate_without_losing_guards(
+    tmp_path: Path,
+) -> None:
+    url = f"sqlite:///{tmp_path}/acceptance-evidence-outcomes.db"
+    config = _alembic_config(url)
+    command.upgrade(config, "0026")
+
+    engine = sa.create_engine(url)
+    with engine.connect() as connection:
+        constraints = sa.inspect(connection).get_check_constraints(
+            "operator_action_receipts"
+        )
+        assert len(constraints) == 1
+        sqltext = constraints[0]["sqltext"]
+        assert sqltext is not None
+        assert "evidence_transport_failed" in sqltext
+        assert "evidence_authentication_failed" in sqltext
+        assert "evidence_rate_limit_failed" in sqltext
+        assert "evidence_malformed_source" in sqltext
+        triggers = {
+            row[0]
+            for row in connection.execute(
+                sa.text(
+                    "SELECT name FROM sqlite_master WHERE type = 'trigger' "
+                    "AND name LIKE 'operator_action_receipts_no_%'"
+                )
+            )
+        }
+        assert triggers == {
+            "operator_action_receipts_no_update",
+            "operator_action_receipts_no_delete",
+        }
+
+    command.downgrade(config, "0025")
+    with engine.connect() as connection:
+        constraints = sa.inspect(connection).get_check_constraints(
+            "operator_action_receipts"
+        )
+        assert len(constraints) == 1
+        sqltext = constraints[0]["sqltext"]
+        assert sqltext is not None
+        assert "evidence_transport_failed" not in sqltext
+
+
 def test_ddl_compiles_under_postgresql_dialect() -> None:
     # PostgreSQL compatibility is kept honest at compile level on a
     # SQLite-only CI (knowledge-core: no SQLite-only features); a real

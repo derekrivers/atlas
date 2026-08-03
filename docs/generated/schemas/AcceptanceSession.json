@@ -162,6 +162,156 @@
       "title": "AcceptanceCriterionSnapshot",
       "type": "object"
     },
+    "AcceptanceEvidenceSummary": {
+      "description": "Bounded, payload-free projection of evidence at one exact head.",
+      "properties": {
+        "agent_count": {
+          "maximum": 1000000,
+          "minimum": 0,
+          "title": "Agent Count",
+          "type": "integer"
+        },
+        "checks_count": {
+          "maximum": 1000000,
+          "minimum": 0,
+          "title": "Checks Count",
+          "type": "integer"
+        },
+        "complete_pin_count": {
+          "maximum": 1000000,
+          "minimum": 0,
+          "title": "Complete Pin Count",
+          "type": "integer"
+        },
+        "docs_count": {
+          "maximum": 1000000,
+          "minimum": 0,
+          "title": "Docs Count",
+          "type": "integer"
+        },
+        "exact_head_pin_complete": {
+          "title": "Exact Head Pin Complete",
+          "type": "boolean"
+        },
+        "exact_head_pin_count": {
+          "maximum": 1000000,
+          "minimum": 0,
+          "title": "Exact Head Pin Count",
+          "type": "integer"
+        },
+        "failed_count": {
+          "maximum": 1000000,
+          "minimum": 0,
+          "title": "Failed Count",
+          "type": "integer"
+        },
+        "human_count": {
+          "maximum": 1000000,
+          "minimum": 0,
+          "title": "Human Count",
+          "type": "integer"
+        },
+        "latest_source_event_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Latest Source Event At"
+        },
+        "new_count": {
+          "maximum": 1000000,
+          "minimum": 0,
+          "title": "New Count",
+          "type": "integer"
+        },
+        "not_applicable_count": {
+          "maximum": 1000000,
+          "minimum": 0,
+          "title": "Not Applicable Count",
+          "type": "integer"
+        },
+        "oldest_source_event_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Oldest Source Event At"
+        },
+        "passed_count": {
+          "maximum": 1000000,
+          "minimum": 0,
+          "title": "Passed Count",
+          "type": "integer"
+        },
+        "pending_count": {
+          "maximum": 1000000,
+          "minimum": 0,
+          "title": "Pending Count",
+          "type": "integer"
+        },
+        "pin_complete": {
+          "title": "Pin Complete",
+          "type": "boolean"
+        },
+        "reviews_count": {
+          "maximum": 1000000,
+          "minimum": 0,
+          "title": "Reviews Count",
+          "type": "integer"
+        },
+        "system_count": {
+          "maximum": 1000000,
+          "minimum": 0,
+          "title": "System Count",
+          "type": "integer"
+        },
+        "total_count": {
+          "maximum": 1000000,
+          "minimum": 0,
+          "title": "Total Count",
+          "type": "integer"
+        },
+        "warning_count": {
+          "maximum": 1000000,
+          "minimum": 0,
+          "title": "Warning Count",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "total_count",
+        "new_count",
+        "checks_count",
+        "reviews_count",
+        "docs_count",
+        "system_count",
+        "human_count",
+        "agent_count",
+        "pending_count",
+        "passed_count",
+        "failed_count",
+        "warning_count",
+        "not_applicable_count",
+        "complete_pin_count",
+        "exact_head_pin_count",
+        "pin_complete",
+        "exact_head_pin_complete"
+      ],
+      "title": "AcceptanceEvidenceSummary",
+      "type": "object"
+    },
     "AcceptanceSessionBlockingReason": {
       "description": "Closed, secret-free reasons used by preflight, freshness and history.",
       "enum": [
@@ -242,6 +392,17 @@
     "AcceptanceStepSummary": {
       "description": "Bounded historical status for one acceptance step.",
       "properties": {
+        "evidence": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AcceptanceEvidenceSummary"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "occurred_at": {
           "anyOf": [
             {
