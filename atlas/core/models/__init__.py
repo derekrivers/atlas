@@ -13,6 +13,7 @@ from atlas.core.models.acceptance_session import (
     AcceptanceSessionStep,
     AcceptanceSessionStepState,
 )
+from atlas.core.models.admission_run import AdmissionRun
 from atlas.core.models.adr import ADRStatus, ArchitectureDecisionRecord
 from atlas.core.models.agent_run import AgentProvider, AgentRun, AgentRunStatus
 from atlas.core.models.context_pack import ContextPack
@@ -53,6 +54,7 @@ __all__ = [
     "AcceptanceSessionLifecycle",
     "AcceptanceSessionStep",
     "AcceptanceSessionStepState",
+    "AdmissionRun",
     "AgentProvider",
     "AgentRun",
     "AgentRunStatus",

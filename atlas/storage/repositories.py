@@ -33,6 +33,7 @@ from sqlalchemy.orm import Session
 from atlas.core.enums import ActorType, EntityStatus, EvidenceStatus
 from atlas.core.models import (
     SUCCESSFUL_PM_SYNC_RESULTS,
+    AdmissionRun,
     AgentRun,
     AnomalyType,
     ArchitectureDecisionRecord,
@@ -64,6 +65,7 @@ from atlas.core.trust import evidence_tier
 from atlas.storage.db import Database
 from atlas.storage.tables import (
     AcceptanceSessionRow,
+    AdmissionRunRow,
     AgentRunRow,
     ArchitectureDecisionRecordRow,
     Base,
@@ -1411,6 +1413,29 @@ def _delivery_admission_policy_model(
     if row is None:
         return None
     return DeliveryAdmissionPolicyRevision.model_validate(row, from_attributes=True)
+
+
+class AdmissionRunRepo(_Repo[AdmissionRun]):
+    """Append-only admission evaluation history."""
+
+    def __init__(self, db: Database) -> None:
+        super().__init__(db, AdmissionRun, AdmissionRunRow)
+
+    def record(self, model: AdmissionRun) -> AdmissionRun:
+        """Append one already-calculated run without changing its decision."""
+
+        return self.add(model)
+
+    def list_for_product(self, product_id: UUID) -> list[AdmissionRun]:
+        """Return a product's runs in evaluation order."""
+
+        with self._db.session() as session:
+            rows = session.scalars(
+                sa.select(AdmissionRunRow)
+                .where(AdmissionRunRow.product_id == product_id)
+                .order_by(AdmissionRunRow.evaluated_at, AdmissionRunRow.id)
+            )
+            return [self._to_model(row) for row in rows]
 
 
 class TicketStatusTransitionRepo(_Repo[TicketStatusTransition]):

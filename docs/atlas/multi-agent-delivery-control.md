@@ -113,8 +113,9 @@ the policy service has no Symphony or Linear dependency.
 ## Occupancy snapshot
 
 One admission evaluation consumes a single immutable `DeliverySnapshot` built
-from the project-scoped Linear pull, Atlas ticket/dependency store, current
-policy revision and status-map revision. The existing
+from the project-scoped Linear pull, materialised Atlas tickets, the exact
+projected dependency graph, current policy revision and status-map revision.
+The existing
 `LinearClient.fetch_project_issues` request remains the only board read: its
 materialised result is frozen in a `LinearBoardPull` envelope that records
 whether pagination reached `hasNextPage=false` and any discontinuous cursor
@@ -155,12 +156,15 @@ The snapshot pins product id, Linear project id, immutable policy id/revision
 and mode, a canonical policy fingerprint, the configured state-id map
 fingerprint, the fetched-board fingerprint and count, Atlas store and graph
 revision fingerprints, and an injected UTC observation time. The store
-revision covers the ticket identity/join/status/lane inputs; the graph revision
-covers ticket graph attributes and dependency edges. Its complete canonical
-JSON representation is key-sorted and compact, all repeated fields are sorted,
-and its SHA-256 fingerprint excludes no decision field. Identical inputs
-therefore produce byte-identical counts, reasons, canonical bytes and
-fingerprint regardless of source iteration order.
+revision covers complete product-ticket membership, ticket and Linear
+identities, status, acceptance criteria, priority, risk, component and effort.
+The graph revision covers every projected node identity and readiness/rank
+attribute plus dependency topology, type, identity and reason, including
+ticket and ADR target state. Its complete canonical JSON representation is
+key-sorted and compact, all repeated fields are sorted, and its SHA-256
+fingerprint excludes no decision field. Identical inputs therefore produce
+byte-identical counts, reasons, canonical bytes and fingerprint regardless of
+source iteration order.
 
 Unknown or unmapped state ids, state-id/type contradictions, incomplete pulls,
 pagination gaps, missing or duplicate issue identities, duplicate Atlas joins,
@@ -180,25 +184,67 @@ Phase 15 does not reimplement dependency readiness. The engine returns one
 append-only `AdmissionRun` with the snapshot/policy fingerprints and one
 decision per candidate.
 
+`evaluate_admission` calls `ready_tickets(graph)` itself. Its considered key
+set is therefore exactly the existing Phase 3 result; a caller cannot supply a
+broader candidate list or turn a readiness failure into a policy hold. The
+matching materialised `Ticket` supplies only policy/rank attributes. The caller
+must supply an aware `continuously_eligible_since` value for every ready key;
+the evaluator rejects a missing or future value rather than guessing from the
+ticket's creation or status-entry timestamp.
+
+Before sampling the evaluation clock or invoking readiness, the evaluator
+recomputes the canonical product-ticket and exact projected-graph revisions
+from its live inputs and compares both with the snapshot pins. Any membership,
+identity, status, acceptance-criteria, rank/lane attribute, dependency edge or
+dependency-target state drift raises typed `AdmissionInputMismatchError` with
+every mismatched revision. Rejected inputs produce no ranking, selection or
+`AdmissionRun`; the orchestration layer therefore cannot persist a run whose
+snapshot fingerprint describes different state from the decision inputs.
+
 Candidates are ordered by this stable tuple:
 
 1. number of currently blocked non-terminal tickets the candidate would
    unlock, descending;
 2. membership and position on the current critical path, critical first;
 3. Atlas priority, descending;
-4. risk severity, lower first unless a policy lane explicitly permits more;
-5. time continuously eligible, oldest first; and
-6. ticket key, natural-key ascending.
+4. risk severity (`low`, `medium`, `high`, `critical`), lower first;
+5. uninterrupted eligibility start, oldest first; and
+6. ticket key through the shared natural-key ordering, ascending.
+
+Critical-path position is its zero-based execution-order position, earlier
+first; a non-member sorts after every member. A configured risk lane does not
+rewrite rank or invert severity: it is an exact capacity permission evaluated
+after ranking. Rank inputs store the unlock count, membership/position,
+priority, risk ordinal, eligibility start and exact injected-clock age, so the
+order is reconstructable without consulting Linear list order or a model.
 
 The engine never uses an agent score, model opinion, title similarity or
-Linear display order. Each decision is `admit` or `hold` with all applicable
-typed reasons, including mode, stale snapshot, working budget, review budget,
-rework reserve, risk lane, component lane and dependency status.
+Linear display order. Each decision is `admit` or `hold`. Typed reasons retain
+paused/draining mode, policy/snapshot mismatch, every snapshot-incompleteness
+reason, full or breached working/review budgets, remaining Changes Requested
+reserve, every matching risk/component lane, missing external identity and the
+single-write limit. A candidate is simulated at working occupancy plus one,
+including remaining reserve and every matching lane, before `admit` is
+returned. Review occupancy is a pressure gate even though promotion does not
+increase it. Existing over-capacity dimensions remain reasons for every
+candidate; no evaluator response demotes existing work.
 
 An admission pass selects at most one external promotion. This deliberately
 trades a few five-second polling intervals for a safe external-write boundary:
 Linear offers no multi-issue transaction, so Atlas never constructs a batch
 that could partially succeed.
+
+The highest ranked candidate with no reason is selected. Evaluation continues
+after held candidates; after selection, every otherwise-feasible lower-ranked
+candidate receives `single_write_limit`. The immutable `AdmissionRun` records
+all considered candidates in rank order, the zero/one selected ticket, exact
+policy/snapshot fingerprints and the one injected evaluation timestamp. Its id
+is UUIDv5 over the canonical decision payload, so random UUID generation and
+timestamps outside the injected clock cannot affect ordering or decisions.
+`admission_runs` rejects update/delete on SQLite and PostgreSQL. The evaluator
+has no repository; `atlas.orchestration.record_admission_run` appends the
+already-returned run and stores bounded decision JSON, never raw Linear
+payloads.
 
 ## PM-sync write protocol
 

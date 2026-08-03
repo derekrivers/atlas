@@ -18,6 +18,7 @@ from atlas.orchestration.acceptance_sessions import (
     mark_acceptance_session_stale_for_mutation,
     stored_acceptance_session_status,
 )
+from atlas.orchestration.admission import record_admission_run
 from atlas.orchestration.confirm import (
     ConfirmCaptureResult,
     ConfirmPrompts,
@@ -191,6 +192,7 @@ __all__ = [
     "prepare_pr_rebase",
     "present_operator_action_receipt",
     "publish_pr_rebase",
+    "record_admission_run",
     "resolve_github_client",
     "resolve_pr_context",
     "review_queue",

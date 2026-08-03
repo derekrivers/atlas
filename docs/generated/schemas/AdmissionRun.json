@@ -1,0 +1,410 @@
+{
+  "$defs": {
+    "ActorType": {
+      "description": "Who or what created a record (data-model §2.2, attribution §1.5).",
+      "enum": [
+        "human",
+        "agent",
+        "system"
+      ],
+      "title": "ActorType",
+      "type": "string"
+    },
+    "AdmissionCandidateDecision": {
+      "description": "The rank, policy result and complete reasons for one candidate.",
+      "properties": {
+        "decision": {
+          "$ref": "#/$defs/AdmissionDecisionType"
+        },
+        "external_linear_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "External Linear Id"
+        },
+        "rank": {
+          "minimum": 1,
+          "title": "Rank",
+          "type": "integer"
+        },
+        "rank_inputs": {
+          "$ref": "#/$defs/AdmissionRankInputs"
+        },
+        "reasons": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/AdmissionHoldReason"
+          },
+          "title": "Reasons",
+          "type": "array"
+        },
+        "ticket_id": {
+          "format": "uuid",
+          "title": "Ticket Id",
+          "type": "string"
+        },
+        "ticket_key": {
+          "title": "Ticket Key",
+          "type": "string"
+        }
+      },
+      "required": [
+        "ticket_id",
+        "ticket_key",
+        "rank",
+        "rank_inputs",
+        "decision"
+      ],
+      "title": "AdmissionCandidateDecision",
+      "type": "object"
+    },
+    "AdmissionDecisionType": {
+      "description": "The bounded policy result for one dependency-ready candidate.",
+      "enum": [
+        "admit",
+        "hold"
+      ],
+      "title": "AdmissionDecisionType",
+      "type": "string"
+    },
+    "AdmissionHoldCode": {
+      "description": "Closed reasons why a dependency-ready candidate cannot enter now.",
+      "enum": [
+        "policy_paused",
+        "policy_draining",
+        "snapshot_policy_mismatch",
+        "snapshot_incomplete",
+        "working_budget",
+        "review_budget",
+        "changes_requested_reserve",
+        "risk_lane",
+        "component_lane",
+        "missing_external_linear_id",
+        "single_write_limit"
+      ],
+      "title": "AdmissionHoldCode",
+      "type": "string"
+    },
+    "AdmissionHoldReason": {
+      "description": "One typed and deterministically sortable hold explanation.\n\nThe optional identity fields retain bounded snapshot diagnostics without\nembedding a raw Linear response. Capacity reasons use ``observed`` and\n``limit``; lane reasons also carry their exact canonical ``selector``.",
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/AdmissionHoldCode"
+        },
+        "issue_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Issue Id"
+        },
+        "issue_identifier": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Issue Identifier"
+        },
+        "limit": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Limit"
+        },
+        "observed": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Observed"
+        },
+        "pagination_cursor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Pagination Cursor"
+        },
+        "reserved_capacity": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reserved Capacity"
+        },
+        "selector": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Selector"
+        },
+        "source_code": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Code"
+        },
+        "state_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "State Id"
+        },
+        "ticket_key": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ticket Key"
+        }
+      },
+      "required": [
+        "code"
+      ],
+      "title": "AdmissionHoldReason",
+      "type": "object"
+    },
+    "AdmissionRankInputs": {
+      "description": "Every input to the documented stable candidate ordering.",
+      "properties": {
+        "continuously_eligible_age_microseconds": {
+          "minimum": 0,
+          "title": "Continuously Eligible Age Microseconds",
+          "type": "integer"
+        },
+        "continuously_eligible_since": {
+          "format": "date-time",
+          "title": "Continuously Eligible Since",
+          "type": "string"
+        },
+        "critical_path_member": {
+          "title": "Critical Path Member",
+          "type": "boolean"
+        },
+        "critical_path_position": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Critical Path Position"
+        },
+        "priority": {
+          "title": "Priority",
+          "type": "integer"
+        },
+        "risk_level": {
+          "$ref": "#/$defs/RiskLevel"
+        },
+        "risk_severity": {
+          "maximum": 3,
+          "minimum": 0,
+          "title": "Risk Severity",
+          "type": "integer"
+        },
+        "unlock_count": {
+          "minimum": 0,
+          "title": "Unlock Count",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "unlock_count",
+        "critical_path_member",
+        "priority",
+        "risk_level",
+        "risk_severity",
+        "continuously_eligible_since",
+        "continuously_eligible_age_microseconds"
+      ],
+      "title": "AdmissionRankInputs",
+      "type": "object"
+    },
+    "RiskLevel": {
+      "description": "Risk classification shared by epics and tickets (data-model §2.4).",
+      "enum": [
+        "low",
+        "medium",
+        "high",
+        "critical"
+      ],
+      "title": "RiskLevel",
+      "type": "string"
+    }
+  },
+  "description": "One immutable, append-only deterministic admission evaluation.",
+  "properties": {
+    "created_by_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Created By Id",
+      "type": "string"
+    },
+    "created_by_type": {
+      "$ref": "#/$defs/ActorType"
+    },
+    "decisions": {
+      "items": {
+        "$ref": "#/$defs/AdmissionCandidateDecision"
+      },
+      "title": "Decisions",
+      "type": "array"
+    },
+    "evaluated_at": {
+      "format": "date-time",
+      "title": "Evaluated At",
+      "type": "string"
+    },
+    "id": {
+      "format": "uuid",
+      "title": "Id",
+      "type": "string"
+    },
+    "policy_fingerprint": {
+      "maxLength": 64,
+      "minLength": 64,
+      "title": "Policy Fingerprint",
+      "type": "string"
+    },
+    "policy_id": {
+      "format": "uuid",
+      "title": "Policy Id",
+      "type": "string"
+    },
+    "policy_revision": {
+      "minimum": 1,
+      "title": "Policy Revision",
+      "type": "integer"
+    },
+    "product_id": {
+      "format": "uuid",
+      "title": "Product Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "admission-run-v1",
+      "default": "admission-run-v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "selected_ticket_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Selected Ticket Id"
+    },
+    "selected_ticket_key": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Selected Ticket Key"
+    },
+    "snapshot_fingerprint": {
+      "maxLength": 64,
+      "minLength": 64,
+      "title": "Snapshot Fingerprint",
+      "type": "string"
+    },
+    "snapshot_observed_at": {
+      "format": "date-time",
+      "title": "Snapshot Observed At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "product_id",
+    "policy_id",
+    "policy_revision",
+    "policy_fingerprint",
+    "snapshot_fingerprint",
+    "snapshot_observed_at",
+    "evaluated_at",
+    "decisions",
+    "created_by_type",
+    "created_by_id"
+  ],
+  "title": "AdmissionRun",
+  "type": "object"
+}

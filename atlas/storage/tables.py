@@ -518,6 +518,43 @@ class DeliveryAdmissionPolicyActiveRow(Base):
     )
 
 
+class AdmissionRunRow(Base):
+    """One immutable admission evaluation with bounded decision JSON."""
+
+    __tablename__ = "admission_runs"
+    __table_args__ = (
+        sa.CheckConstraint(
+            "schema_version = 'admission-run-v1'",
+            name="admission_runs_schema_version",
+        ),
+        sa.CheckConstraint(
+            "policy_revision >= 1",
+            name="admission_runs_policy_revision_positive",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(sa.Uuid, primary_key=True)
+    schema_version: Mapped[str] = mapped_column(sa.Text)
+    product_id: Mapped[UUID] = mapped_column(sa.Uuid, sa.ForeignKey("products.id"))
+    policy_id: Mapped[UUID] = mapped_column(
+        sa.Uuid, sa.ForeignKey("delivery_admission_policy_revisions.id")
+    )
+    policy_revision: Mapped[int] = mapped_column(sa.Integer)
+    policy_fingerprint: Mapped[str] = mapped_column(sa.Text)
+    snapshot_fingerprint: Mapped[str] = mapped_column(sa.Text)
+    snapshot_observed_at: Mapped[datetime] = mapped_column(UTCDateTime())
+    evaluated_at: Mapped[datetime] = mapped_column(UTCDateTime())
+    selected_ticket_id: Mapped[UUID | None] = mapped_column(
+        sa.Uuid, sa.ForeignKey("tickets.id")
+    )
+    selected_ticket_key: Mapped[str | None] = mapped_column(sa.Text)
+    decisions: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB, server_default=_EMPTY_LIST
+    )
+    created_by_type: Mapped[str] = mapped_column(sa.Text)
+    created_by_id: Mapped[str] = mapped_column(sa.Text)
+
+
 class OperatorActionKeyRow(Base):
     """One idempotency-key reservation for governed operator writes.
 
@@ -741,6 +778,7 @@ def _drop_sqlite_trigger(table_name: str, operation: str) -> sa.DDL:
 
 
 _APPEND_ONLY_TABLES = (
+    cast(sa.Table, AdmissionRunRow.__table__),
     cast(sa.Table, DeliveryAdmissionPolicyRevisionRow.__table__),
     cast(sa.Table, LessonDispositionResultSnapshotRow.__table__),
     cast(sa.Table, OperatorActionKeyRow.__table__),

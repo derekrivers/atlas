@@ -18,6 +18,11 @@ record. A layer above ``atlas.storage``/``atlas.linear``/``atlas.core`` in the
 import spine.
 """
 
+from atlas.pm.admission import (
+    AdmissionInputMismatchCode,
+    AdmissionInputMismatchError,
+    evaluate_admission,
+)
 from atlas.pm.agent_runs import (
     AgentRunReconstructionResult,
     agent_run_observation,
@@ -35,6 +40,9 @@ from atlas.pm.delivery_snapshot import (
     SnapshotIncompletenessReason,
     StatusOccupancy,
     build_delivery_snapshot,
+    delivery_graph_revision,
+    delivery_policy_fingerprint,
+    delivery_store_revision,
 )
 from atlas.pm.promotion import promote_ready
 from atlas.pm.report import (
@@ -70,6 +78,8 @@ __all__ = [
     "CRASH_DEDUP_WINDOW",
     "DEFAULT_INTERVAL_SECONDS",
     "PUSHABLE_STATUSES",
+    "AdmissionInputMismatchCode",
+    "AdmissionInputMismatchError",
     "AgentRunMetric",
     "AgentRunReconstructionResult",
     "AnomalyCount",
@@ -96,6 +106,10 @@ __all__ = [
     "build_delivery_report",
     "build_delivery_snapshot",
     "complete_verified",
+    "delivery_graph_revision",
+    "delivery_policy_fingerprint",
+    "delivery_store_revision",
+    "evaluate_admission",
     "promote_ready",
     "reconstruct_agent_runs",
     "render_markdown",

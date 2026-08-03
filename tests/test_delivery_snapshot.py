@@ -143,6 +143,7 @@ def snapshot(
     clock: FrozenClock | None = None,
     product_id: UUID = PRODUCT_ID,
     project_id: str = PROJECT_ID,
+    graph: Any | None = None,
 ) -> DeliverySnapshot:
     return build_delivery_snapshot(
         product_id=product_id,
@@ -153,6 +154,7 @@ def snapshot(
         tickets=items,
         dependencies=dependencies or [],
         clock=clock or FrozenClock(),
+        graph=graph,
     )
 
 
