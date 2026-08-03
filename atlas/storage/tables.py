@@ -441,6 +441,83 @@ class VerificationCheckRow(Base):
     completed_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
 
 
+class DeliveryAdmissionPolicyRevisionRow(Base):
+    """One immutable, product-scoped delivery admission policy revision."""
+
+    __tablename__ = "delivery_admission_policy_revisions"
+    __table_args__ = (
+        sa.UniqueConstraint("product_id", "revision"),
+        sa.CheckConstraint(
+            "mode IN ('running', 'paused', 'draining')",
+            name="delivery_admission_policy_mode",
+        ),
+        sa.CheckConstraint(
+            "approved_symphony_ceiling >= 1 AND approved_symphony_ceiling <= 10",
+            name="delivery_admission_policy_ceiling_bounds",
+        ),
+        sa.CheckConstraint(
+            "working_budget >= 1 AND working_budget <= approved_symphony_ceiling",
+            name="delivery_admission_policy_working_bounds",
+        ),
+        sa.CheckConstraint(
+            "review_budget >= 1 AND review_budget <= 10",
+            name="delivery_admission_policy_review_bounds",
+        ),
+        sa.CheckConstraint(
+            "changes_requested_reserve >= 0 "
+            "AND changes_requested_reserve <= working_budget",
+            name="delivery_admission_policy_reserve_bounds",
+        ),
+        sa.CheckConstraint(
+            "revision >= 1",
+            name="delivery_admission_policy_revision_positive",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(sa.Uuid, primary_key=True)
+    product_id: Mapped[UUID] = mapped_column(sa.Uuid, sa.ForeignKey("products.id"))
+    revision: Mapped[int] = mapped_column(sa.Integer)
+    mode: Mapped[str] = mapped_column(sa.Text)
+    approved_symphony_ceiling: Mapped[int] = mapped_column(sa.Integer)
+    working_budget: Mapped[int] = mapped_column(sa.Integer)
+    review_budget: Mapped[int] = mapped_column(sa.Integer)
+    changes_requested_reserve: Mapped[int] = mapped_column(sa.Integer)
+    risk_lane_limits: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB, server_default=_EMPTY_LIST
+    )
+    component_lane_limits: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB, server_default=_EMPTY_LIST
+    )
+    created_by_type: Mapped[str] = mapped_column(sa.Text)
+    created_by_id: Mapped[str] = mapped_column(sa.Text)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime())
+
+
+class DeliveryAdmissionPolicyActiveRow(Base):
+    """Mutable pointer to one product's authoritative policy revision."""
+
+    __tablename__ = "delivery_admission_policy_active"
+    product_id: Mapped[UUID] = mapped_column(
+        sa.Uuid,
+        primary_key=True,
+    )
+    revision: Mapped[int] = mapped_column(sa.Integer)
+
+    __table_args__ = (
+        sa.CheckConstraint(
+            "revision >= 1",
+            name="delivery_admission_policy_active_revision_positive",
+        ),
+        sa.ForeignKeyConstraint(
+            ["product_id", "revision"],
+            [
+                "delivery_admission_policy_revisions.product_id",
+                "delivery_admission_policy_revisions.revision",
+            ],
+        ),
+    )
+
+
 class OperatorActionKeyRow(Base):
     """One idempotency-key reservation for governed operator writes.
 
@@ -624,12 +701,13 @@ def _drop_sqlite_trigger(table_name: str, operation: str) -> sa.DDL:
     )
 
 
-_APPEND_ONLY_OPERATOR_ACTION_TABLES = (
+_APPEND_ONLY_TABLES = (
+    cast(sa.Table, DeliveryAdmissionPolicyRevisionRow.__table__),
     cast(sa.Table, OperatorActionKeyRow.__table__),
     cast(sa.Table, OperatorActionReceiptRow.__table__),
 )
 
-for _append_only_table in _APPEND_ONLY_OPERATOR_ACTION_TABLES:
+for _append_only_table in _APPEND_ONLY_TABLES:
     _append_only_table_name = _append_only_table.name
     for _operation in ("UPDATE", "DELETE"):
         sa.event.listen(

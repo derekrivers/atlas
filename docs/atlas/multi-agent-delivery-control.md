@@ -63,21 +63,52 @@ creates an immutable revision and an append-only Phase 13 action receipt.
 
 The policy contains:
 
-- `revision`, `mode` (`running`, `paused`, `draining`) and `updated_at`;
+- `revision`, `mode` (`running`, `paused`, `draining`) and `created_at`;
 - `working_budget`, bounded from 1 to the approved Symphony ceiling;
 - `review_budget`, bounded from 1 to 10;
 - `changes_requested_reserve`, bounded from 0 to `working_budget`;
-- zero or more risk-lane and component-lane limits; and
+- zero or more exact risk-lane and canonical component-lane limits, each
+  bounded from 0 to `working_budget`; and
 - the operator-approved Symphony ceiling, initially 3.
 
-The migration/bootstrap revision preserves the current live ceiling of three.
-If existing occupancy already exceeds a new limit, Atlas reports
-over-capacity and admits nobody; it never demotes, cancels or terminates work.
+Risk selectors use the four closed `RiskLevel` values and may occur once each.
+Component selectors are NFKC-normalised, trimmed and case-folded exact strings;
+selectors that canonicalise to the same value are ambiguous and rejected. The
+policy accepts at most four risk rules and 64 component rules. The approved
+ceiling, budgets, reserve and lane limits are strict integers: booleans and
+numeric strings are not accepted as capacity.
 
-Policy updates are compare-and-set on the expected revision. Paused and
-draining both stop new admission. Draining additionally communicates operator
-intent that the current active set should finish; neither mode changes an
-existing ticket, workspace or agent.
+The store uses an append-only `delivery_admission_policy_revisions` history and
+one mutable `delivery_admission_policy_active` pointer per product. A composite
+foreign key prevents the pointer from selecting another product's revision.
+Database triggers reject update or deletion of history on both SQLite and
+PostgreSQL, and the public repository exposes reads only. Migration `0025`
+creates explicit revision one for every existing product with mode `running`,
+ceiling `3`, working budget `3`, review budget `3`, reserve `0` and empty lane
+sets. The migration changes neither `WORKFLOW.md` nor live Symphony
+configuration, so it cannot raise the existing ceiling as a side effect.
+
+Every post-bootstrap creation or replacement goes through the Phase 13
+operator-action gateway as `delivery_admission_policy.revise`. The service
+supplies the authenticated single-operator actor (`human/operator`); callers
+cannot submit actor identity. The canonical fingerprint covers the product,
+complete validated policy and `expected_revision`. The transaction locks the
+product before reading its active pointer, compares zero for creation or the
+current monotonic revision for replacement, then commits the new history row,
+advanced pointer, idempotency reservation and append-only action receipt
+together. A stale expected revision returns a recorded conflict with no new
+policy row. Exact replay returns the original receipt and revision; reuse of the
+key for an altered fingerprint returns conflict without invoking the command.
+Mutation, receipt-flush or commit failure rolls back the entire transaction and
+leaves the prior pointer authoritative.
+
+If existing occupancy already exceeds a new limit, the later admission
+evaluator reports over-capacity and admits nobody; policy replacement itself
+never demotes, cancels or terminates work. `running` permits evaluation to
+continue to occupancy checks. `paused` and `draining` both stop new admission.
+Draining additionally communicates operator intent that the current active set
+should finish; neither mode changes an existing ticket, workspace or agent, and
+the policy service has no Symphony or Linear dependency.
 
 ## Occupancy snapshot
 

@@ -139,6 +139,32 @@ client and the status map directly, so CI runs with no network and no
 secrets. An opt-in live smoke test (`ATLAS_LIVE_TESTS=1` plus the token)
 exercises the real workspace and is skipped in default CI.
 
+## Delivery admission policy ownership
+
+Phase 15 separates dependency eligibility from delivery admission. The PM
+Engine remains the only Atlas component permitted to promote an externally
+eligible ticket to Linear `Ready for Agent`, but readiness alone no longer
+grants delivery authority once the admission evaluator is connected. The
+operator-owned `DeliveryAdmissionPolicyRevision` is the bounded input to that
+later decision: approved Symphony ceiling, working/review budgets, Changes
+Requested reserve, exact risk/component lanes and mode for one product.
+
+ATLAS-246 delivers only that versioned policy boundary. It adds no candidate
+ranking and makes no Linear write. Policy creation and complete replacement run
+through the Phase 13 command gateway with a server-resolved `human/operator`
+actor, a hashed idempotency identity, canonical request fingerprint and
+expected-revision compare-and-set. The immutable revision, active pointer and
+successful append-only action receipt commit together. Stale revision, altered
+replay or transaction failure produces no new authoritative policy.
+
+The bootstrap revision is explicit `running` policy at ceiling/working/review
+three; it does not change the `WORKFLOW.md` agent ceiling. `paused` and
+`draining` are fail-closed inputs to admission and never trigger a status
+transition, agent cancellation or workspace lifecycle action. The existing PM
+sync promotion path is replaced by the coherent snapshot/admission protocol in
+the later Phase 15 tickets; the policy module itself cannot import or invoke
+Symphony.
+
 ## Sync loop
 
 Pull-based, consistent with ADR-0008 (no webhooks before hosting):

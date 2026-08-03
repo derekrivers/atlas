@@ -366,6 +366,27 @@ DOCUMENTED_COLUMNS: dict[str, dict[str, tuple[bool, str | None]]] = {
         "updated_at": (NN, None),
         "staled_at": (True, None),
     },
+    # §5.10 immutable delivery-admission policy revision.
+    "delivery_admission_policy_revisions": {
+        "id": (NN, None),
+        "product_id": (NN, None),
+        "revision": (NN, None),
+        "mode": (NN, None),
+        "approved_symphony_ceiling": (NN, None),
+        "working_budget": (NN, None),
+        "review_budget": (NN, None),
+        "changes_requested_reserve": (NN, None),
+        "risk_lane_limits": (NN, "'[]'"),
+        "component_lane_limits": (NN, "'[]'"),
+        "created_by_type": (NN, None),
+        "created_by_id": (NN, None),
+        "created_at": (NN, None),
+    },
+    # §5.12 one mutable active pointer per product.
+    "delivery_admission_policy_active": {
+        "product_id": (NN, None),
+        "revision": (NN, None),
+    },
 }
 
 # Transcribed FK targets: table -> {column: referred table}. Absence is
@@ -393,6 +414,10 @@ DOCUMENTED_FOREIGN_KEYS: dict[str, dict[str, str]] = {
     "operator_action_keys": {},
     "operator_action_receipts": {"idempotency_key_identity": "operator_action_keys"},
     "acceptance_sessions": {},
+    "delivery_admission_policy_revisions": {"product_id": "products"},
+    "delivery_admission_policy_active": {
+        "product_id": "delivery_admission_policy_revisions"
+    },
 }
 
 DOCUMENTED_UNIQUES: dict[str, list[list[str]]] = {
@@ -405,6 +430,7 @@ DOCUMENTED_UNIQUES: dict[str, list[list[str]]] = {
         ["correlation_id"],
     ],
     "acceptance_sessions": [["creation_idempotency_key_identity"]],
+    "delivery_admission_policy_revisions": [["product_id", "revision"]],
 }
 
 
@@ -808,6 +834,77 @@ def test_acceptance_session_migration_pins_identity_and_active_pr(
     command.downgrade(config, "0023")
     with engine.connect() as connection:
         assert "acceptance_sessions" not in sa.inspect(connection).get_table_names()
+
+
+def test_delivery_policy_migration_bootstraps_three_without_workflow_change(
+    tmp_path: Path,
+) -> None:
+    url = f"sqlite:///{tmp_path}/delivery-policy.db"
+    config = _alembic_config(url)
+    command.upgrade(config, "0023")
+    product_id = UUID("11111111-1111-4111-8111-111111111111")
+    now = datetime(2026, 8, 2, 14, tzinfo=UTC)
+    engine = sa.create_engine(url)
+    products = sa.Table("products", sa.MetaData(), autoload_with=engine)
+    with engine.begin() as connection:
+        connection.execute(
+            products.insert().values(
+                id=product_id.hex,
+                key="ATLAS",
+                name="Atlas",
+                description="Atlas product",
+                vision="Repeatable delivery",
+                status="active",
+                goals=[],
+                non_goals=[],
+                constraints=[],
+                created_by_type="human",
+                created_by_id="operator",
+                created_at=now,
+                updated_at=now,
+            )
+        )
+    workflow_before = (REPO_ROOT / "WORKFLOW.md").read_bytes()
+
+    command.upgrade(config, "head")
+
+    with engine.connect() as connection:
+        row = connection.execute(
+            sa.text(
+                "SELECT revision, mode, approved_symphony_ceiling, "
+                "working_budget, review_budget, changes_requested_reserve, "
+                "risk_lane_limits, component_lane_limits "
+                "FROM delivery_admission_policy_revisions "
+                "WHERE product_id = :product_id"
+            ),
+            {"product_id": product_id.hex},
+        ).one()
+        active_revision = connection.execute(
+            sa.text(
+                "SELECT revision FROM delivery_admission_policy_active "
+                "WHERE product_id = :product_id"
+            ),
+            {"product_id": product_id.hex},
+        ).scalar_one()
+        triggers = {
+            item[0]
+            for item in connection.execute(
+                sa.text(
+                    "SELECT name FROM sqlite_master WHERE type = 'trigger' "
+                    "AND name LIKE 'delivery_admission_policy_revisions_%'"
+                )
+            )
+        }
+
+    assert row[:6] == (1, "running", 3, 3, 3, 0)
+    assert json.loads(row.risk_lane_limits) == []
+    assert json.loads(row.component_lane_limits) == []
+    assert active_revision == 1
+    assert triggers == {
+        "delivery_admission_policy_revisions_no_update",
+        "delivery_admission_policy_revisions_no_delete",
+    }
+    assert (REPO_ROOT / "WORKFLOW.md").read_bytes() == workflow_before
 
 
 def test_ddl_compiles_under_postgresql_dialect() -> None:

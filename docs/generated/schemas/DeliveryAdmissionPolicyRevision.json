@@ -1,0 +1,168 @@
+{
+  "$defs": {
+    "ActorType": {
+      "description": "Who or what created a record (data-model §2.2, attribution §1.5).",
+      "enum": [
+        "human",
+        "agent",
+        "system"
+      ],
+      "title": "ActorType",
+      "type": "string"
+    },
+    "ComponentLaneLimit": {
+      "description": "Maximum working occupancy for one canonical component selector.",
+      "properties": {
+        "component": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Component",
+          "type": "string"
+        },
+        "limit": {
+          "maximum": 10,
+          "minimum": 0,
+          "title": "Limit",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "component",
+        "limit"
+      ],
+      "title": "ComponentLaneLimit",
+      "type": "object"
+    },
+    "DeliveryAdmissionMode": {
+      "description": "Operator-selected admission posture.",
+      "enum": [
+        "running",
+        "paused",
+        "draining"
+      ],
+      "title": "DeliveryAdmissionMode",
+      "type": "string"
+    },
+    "RiskLaneLimit": {
+      "description": "Maximum working occupancy for one exact risk level.",
+      "properties": {
+        "limit": {
+          "maximum": 10,
+          "minimum": 0,
+          "title": "Limit",
+          "type": "integer"
+        },
+        "risk_level": {
+          "$ref": "#/$defs/RiskLevel"
+        }
+      },
+      "required": [
+        "risk_level",
+        "limit"
+      ],
+      "title": "RiskLaneLimit",
+      "type": "object"
+    },
+    "RiskLevel": {
+      "description": "Risk classification shared by epics and tickets (data-model §2.4).",
+      "enum": [
+        "low",
+        "medium",
+        "high",
+        "critical"
+      ],
+      "title": "RiskLevel",
+      "type": "string"
+    }
+  },
+  "description": "One immutable policy revision for one product.",
+  "properties": {
+    "approved_symphony_ceiling": {
+      "maximum": 10,
+      "minimum": 1,
+      "title": "Approved Symphony Ceiling",
+      "type": "integer"
+    },
+    "changes_requested_reserve": {
+      "maximum": 10,
+      "minimum": 0,
+      "title": "Changes Requested Reserve",
+      "type": "integer"
+    },
+    "component_lane_limits": {
+      "items": {
+        "$ref": "#/$defs/ComponentLaneLimit"
+      },
+      "maxItems": 64,
+      "title": "Component Lane Limits",
+      "type": "array"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "created_by_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Created By Id",
+      "type": "string"
+    },
+    "created_by_type": {
+      "$ref": "#/$defs/ActorType"
+    },
+    "id": {
+      "format": "uuid",
+      "title": "Id",
+      "type": "string"
+    },
+    "mode": {
+      "$ref": "#/$defs/DeliveryAdmissionMode"
+    },
+    "product_id": {
+      "format": "uuid",
+      "title": "Product Id",
+      "type": "string"
+    },
+    "review_budget": {
+      "maximum": 10,
+      "minimum": 1,
+      "title": "Review Budget",
+      "type": "integer"
+    },
+    "revision": {
+      "minimum": 1,
+      "title": "Revision",
+      "type": "integer"
+    },
+    "risk_lane_limits": {
+      "items": {
+        "$ref": "#/$defs/RiskLaneLimit"
+      },
+      "maxItems": 4,
+      "title": "Risk Lane Limits",
+      "type": "array"
+    },
+    "working_budget": {
+      "maximum": 10,
+      "minimum": 1,
+      "title": "Working Budget",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "mode",
+    "approved_symphony_ceiling",
+    "working_budget",
+    "review_budget",
+    "changes_requested_reserve",
+    "id",
+    "product_id",
+    "revision",
+    "created_by_type",
+    "created_by_id",
+    "created_at"
+  ],
+  "title": "DeliveryAdmissionPolicyRevision",
+  "type": "object"
+}
