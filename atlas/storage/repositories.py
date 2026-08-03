@@ -749,19 +749,12 @@ class LessonRepo(_Repo[Lesson]):
             return [self._to_model(row) for row in rows]
 
     def archive(self, lesson_id: UUID, *, now: datetime) -> Lesson:
-        """Archive a DRAFT or ACTIVE lesson without deleting it."""
+        """Archive an obsolete ACTIVE lesson without deleting it."""
         if now.utcoffset() is None:
             raise NaiveDatetimeError("Lesson", "updated_at")
         with self._db.session() as session, session.begin():
             row = self._get_lesson_row(session, lesson_id)
-            if row.status not in {
-                EntityStatus.DRAFT.value,
-                EntityStatus.ACTIVE.value,
-            }:
-                raise LessonStateError(
-                    "only DRAFT or ACTIVE lessons can be archived; "
-                    f"lesson {lesson_id} is {row.status!r}"
-                )
+            self._require_status(row, EntityStatus.ACTIVE, action="archive")
             row.status = EntityStatus.ARCHIVED.value
             row.updated_at = now
             return self._to_model(row)

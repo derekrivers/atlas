@@ -71,7 +71,8 @@ agent, system and alternate-human contexts cannot reserve an action, mutate a
 lesson or create a receipt. `atlas lessons promote` and `atlas lessons reject`
 are presentation adapters over that service; they do not implement lifecycle
 transitions. The lesson repository exposes no direct promote or reject method,
-so callers cannot bypass the governed service. The service preserves lesson
+and its separate archive operation accepts ACTIVE lessons only, so DRAFT
+disposition cannot bypass the governed service. The service preserves lesson
 identity, content, provenance and creation metadata, and changes only status,
 operator confidence where applicable, and the action timestamp.
 

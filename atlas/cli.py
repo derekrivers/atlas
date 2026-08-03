@@ -2159,7 +2159,7 @@ def _add_lessons_parser(subcommands: argparse._SubParsersAction) -> None:  # typ
 
     archive = lessons_sub.add_parser(
         "archive",
-        help="Archive a DRAFT or ACTIVE lesson without deleting it",
+        help="Archive an obsolete ACTIVE lesson without deleting it",
     )
     archive.add_argument("lesson_id", type=UUID, help="lesson UUID to archive")
     archive.add_argument("--db", default=None, help="database URL")

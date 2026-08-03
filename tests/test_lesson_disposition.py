@@ -15,7 +15,7 @@ import sqlalchemy as sa
 from test_lesson_model import lesson_kwargs
 from test_models_validation import ticket_kwargs
 
-from atlas.cli import EXIT_OK, main
+from atlas.cli import EXIT_OK, EXIT_PRECONDITION, main
 from atlas.context import retrieve_lessons
 from atlas.core.enums import ActorType, EntityStatus
 from atlas.core.models import Lesson, OperatorActionOutcome, Ticket
@@ -37,7 +37,13 @@ from atlas.orchestration import (
     OperatorActionResultCode,
     canonical_request_fingerprint,
 )
-from atlas.storage import Database, LessonRepo, OperatorActionReceiptRepo, TicketRepo
+from atlas.storage import (
+    Database,
+    LessonRepo,
+    LessonStateError,
+    OperatorActionReceiptRepo,
+    TicketRepo,
+)
 from atlas.storage.tables import LessonRow, OperatorActionKeyRow
 
 NOW = datetime(2026, 8, 2, 15, tzinfo=UTC)
@@ -145,6 +151,22 @@ def test_ac1_lesson_repository_exposes_no_ungoverned_disposition_writer(
 
     with pytest.raises(AttributeError):
         getattr(repo, method_name)
+
+    assert repo.get(lesson.id) == lesson
+    assert receipt_count(db) == 0
+
+
+def test_ac1_public_archive_cannot_bypass_governed_draft_rejection(
+    db: Database,
+) -> None:
+    lesson = seed_lesson(db)
+    repo = LessonRepo(db)
+
+    with pytest.raises(
+        LessonStateError,
+        match=rf"can only archive ACTIVE lessons; lesson {lesson.id} is 'draft'",
+    ):
+        repo.archive(lesson.id, now=NOW)
 
     assert repo.get(lesson.id) == lesson
     assert receipt_count(db) == 0
@@ -394,6 +416,24 @@ def test_ac6_cli_delegates_and_preserves_output_with_operator_attribution(
         and node.func.attr in {"promote", "reject"}
     ]
     assert forbidden_calls == []
+
+
+def test_ac6_cli_archive_rejects_draft_without_mutation_or_receipt(
+    db: Database,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    lesson = seed_lesson(db)
+
+    code = main(["lessons", "archive", str(lesson.id)], database=db)
+    captured = capsys.readouterr()
+
+    assert code == EXIT_PRECONDITION
+    assert captured.out == ""
+    assert captured.err == (
+        f"can only archive ACTIVE lessons; lesson {lesson.id} is 'draft'\n"
+    )
+    assert LessonRepo(db).get(lesson.id) == lesson
+    assert receipt_count(db) == 0
 
 
 def test_ac7_active_retrieval_and_pattern_detection_semantics_after_disposition(

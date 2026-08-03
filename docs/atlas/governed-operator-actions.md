@@ -225,8 +225,9 @@ target once inside the gateway-owned unit of work, delegates the transition
 decision to `atlas.learning`, and returns a typed outcome plus updated or safe
 current `Lesson`. The command context supplies the actor; promote/reject payloads
 cannot override it. The public lesson repository exposes no direct promote or
-reject writer, so the governed service is the sole persistence path for those
-dispositions. Invalid confidence is rejected before reservation or write.
+reject writer, and its separate archive operation accepts ACTIVE lessons only,
+so the governed service is the sole persistence path for DRAFT dispositions.
+Invalid confidence is rejected before reservation or write.
 Receipt persistence failure rolls back the lesson CAS, reservation and receipt
 together.
 
