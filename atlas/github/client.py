@@ -327,7 +327,9 @@ class GitHubRESTClient:
         def _on_not_modified() -> dict[str, Any]:
             cached = self._object_cache.get(url)
             if cached is None:
-                raise GitHubAPIError("PR object returned 304 with no cached body")
+                raise GitHubMalformedResponseError(
+                    "PR object returned 304 with no cached body"
+                )
             return cached
 
         return self._send(
@@ -349,7 +351,9 @@ class GitHubRESTClient:
         def _on_not_modified() -> dict[str, Any]:
             cached = self._object_cache.get(url)
             if cached is None:
-                raise GitHubAPIError("branch object returned 304 with no cached body")
+                raise GitHubMalformedResponseError(
+                    "branch object returned 304 with no cached body"
+                )
             return cached
 
         body = self._send(
@@ -362,7 +366,7 @@ class GitHubRESTClient:
         commit = _required_object(body, "commit", label="branch response")
         sha = _required_str(commit, "sha", label="branch commit")
         if not _is_40_hex_sha(sha):
-            raise GitHubAPIError("GitHub API branch commit was not a SHA")
+            raise GitHubMalformedResponseError("GitHub API branch commit was not a SHA")
         return sha
 
     def compare_commits(
@@ -384,7 +388,9 @@ class GitHubRESTClient:
         def _on_not_modified() -> GitHubCompare:
             cached = self._compare_cache.get(url)
             if cached is None:
-                raise GitHubAPIError("GitHub compare returned 304 with no cached body")
+                raise GitHubMalformedResponseError(
+                    "GitHub compare returned 304 with no cached body"
+                )
             return cached
 
         def _parse_compare(response: Any) -> GitHubCompare:
@@ -421,7 +427,9 @@ class GitHubRESTClient:
         items: list[dict[str, Any]] = []
         while next_url is not None:
             if next_url in visited:
-                raise GitHubAPIError("GitHub pagination returned a Link cycle")
+                raise GitHubMalformedResponseError(
+                    "GitHub pagination returned a Link cycle"
+                )
             visited.add(next_url)
             page_url = next_url
 
@@ -430,7 +438,9 @@ class GitHubRESTClient:
             ) -> tuple[list[dict[str, Any]], str | None]:
                 cached = self._page_cache.get(current_url)
                 if cached is None:
-                    raise GitHubAPIError("GitHub page returned 304 with no cached body")
+                    raise GitHubMalformedResponseError(
+                        "GitHub page returned 304 with no cached body"
+                    )
                 return cached
 
             def _parse_page(
@@ -513,22 +523,33 @@ class GitHubRESTClient:
         self, response: Any, result_key: str | None, url: str
     ) -> tuple[list[dict[str, Any]], str | None]:
         etag = response.headers.get("ETag")
-        if etag is not None:
-            self._etags[url] = etag
         next_url = self._next_link(response.headers.get("Link"))
         try:
             body = json.loads(response.read().decode())
-        except json.JSONDecodeError as error:
+        except (UnicodeDecodeError, json.JSONDecodeError) as error:
             raise GitHubMalformedResponseError(
                 f"GitHub API returned non-JSON: {error}"
             ) from error
         # result_key=None: the body IS the list (bare-array endpoints, e.g. PR
         # reviews); otherwise unwrap the envelope's result_key array (ATLAS-65).
-        items = body if result_key is None else body.get(result_key, [])
+        if result_key is None:
+            items = body
+        else:
+            if not isinstance(body, dict):
+                raise GitHubMalformedResponseError(
+                    "GitHub API response envelope was not an object"
+                )
+            if result_key not in body:
+                raise GitHubMalformedResponseError(
+                    f"GitHub API response envelope missing field {result_key!r}"
+                )
+            items = body[result_key]
         if not isinstance(items, list):
             label = result_key or "response body"
             raise GitHubMalformedResponseError(f"GitHub API {label} was not a list")
         page = (items, next_url)
+        if etag is not None:
+            self._etags[url] = etag
         self._page_cache[url] = page
         return page
 
@@ -545,16 +566,16 @@ class GitHubRESTClient:
         silently returned. No Link/pagination applies to a single object.
         """
         etag = response.headers.get("ETag")
-        if etag is not None:
-            self._etags[url] = etag
         try:
             body = json.loads(response.read().decode())
-        except json.JSONDecodeError as error:
+        except (UnicodeDecodeError, json.JSONDecodeError) as error:
             raise GitHubMalformedResponseError(
                 f"GitHub API returned non-JSON: {error}"
             ) from error
         if not isinstance(body, dict):
             raise GitHubMalformedResponseError(f"GitHub API {label} was not an object")
+        if etag is not None:
+            self._etags[url] = etag
         self._object_cache[url] = body
         return body
 
@@ -564,18 +585,24 @@ class GitHubRESTClient:
 
         if not link_header:
             return None
+        if not isinstance(link_header, str):
+            raise GitHubMalformedResponseError(
+                "GitHub pagination Link header was not a string"
+            )
         for part in link_header.split(","):
             target, *parameters = part.split(";")
             if not any(parameter.strip() == 'rel="next"' for parameter in parameters):
                 continue
             target = target.strip()
             if not (target.startswith("<") and target.endswith(">")):
-                raise GitHubAPIError("GitHub pagination Link target was malformed")
+                raise GitHubMalformedResponseError(
+                    "GitHub pagination Link target was malformed"
+                )
             url = target[1:-1]
             parsed = urllib_parse.urlsplit(url)
             root = urllib_parse.urlsplit(API_ROOT)
             if (parsed.scheme, parsed.netloc) != (root.scheme, root.netloc):
-                raise GitHubAPIError(
+                raise GitHubMalformedResponseError(
                     "GitHub pagination Link target was outside api.github.com"
                 )
             return url

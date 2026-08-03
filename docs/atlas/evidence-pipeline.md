@@ -86,6 +86,12 @@ product and pinned head from canonical state and calls `drive_evidence_pull`
 in-process with the injected `GitHubClient` and `EvidenceRepo`. It never spawns
 `atlas evidence pull`, parses CLI output or duplicates normalisation.
 
+The shared REST boundary validates source shape before mapping: envelope
+endpoints must return an object containing their required list field, while
+bare-array endpoints must return a top-level list. Malformed, cyclic or
+off-origin pagination is a malformed-source failure, never an empty successful
+pull or a transport failure.
+
 The action runs the shared acceptance-session freshness comparator immediately
 before and after the bounded pull. A stale or indeterminate pre-check performs
 no evidence request. Post-pull movement leaves already appended evidence at its

@@ -19,6 +19,7 @@ from alembic import command
 from alembic.autogenerate import compare_metadata
 from alembic.config import Config
 from alembic.migration import MigrationContext
+from alembic.script import ScriptDirectory
 from sqlalchemy.dialects import postgresql
 
 from atlas.storage.db import Database
@@ -1025,7 +1026,8 @@ def test_acceptance_evidence_receipt_outcomes_migrate_without_losing_guards(
 ) -> None:
     url = f"sqlite:///{tmp_path}/acceptance-evidence-outcomes.db"
     config = _alembic_config(url)
-    command.upgrade(config, "0026")
+    assert ScriptDirectory.from_config(config).get_heads() == ["0027"]
+    command.upgrade(config, "head")
 
     engine = sa.create_engine(url)
     with engine.connect() as connection:
@@ -1053,7 +1055,7 @@ def test_acceptance_evidence_receipt_outcomes_migrate_without_losing_guards(
             "operator_action_receipts_no_delete",
         }
 
-    command.downgrade(config, "0025")
+    command.downgrade(config, "0026")
     with engine.connect() as connection:
         constraints = sa.inspect(connection).get_check_constraints(
             "operator_action_receipts"
@@ -1062,6 +1064,19 @@ def test_acceptance_evidence_receipt_outcomes_migrate_without_losing_guards(
         sqltext = constraints[0]["sqltext"]
         assert sqltext is not None
         assert "evidence_transport_failed" not in sqltext
+        triggers = {
+            row[0]
+            for row in connection.execute(
+                sa.text(
+                    "SELECT name FROM sqlite_master WHERE type = 'trigger' "
+                    "AND name LIKE 'operator_action_receipts_no_%'"
+                )
+            )
+        }
+        assert triggers == {
+            "operator_action_receipts_no_update",
+            "operator_action_receipts_no_delete",
+        }
 
 
 def test_ddl_compiles_under_postgresql_dialect() -> None:

@@ -33,6 +33,7 @@ from atlas.core.models import (
     AcceptanceSessionStep,
     Evidence,
     EvidenceType,
+    OperatorActionOutcome,
     OperatorActionReceipt,
     OperatorActionResultCode,
 )
@@ -40,6 +41,7 @@ from atlas.evidence import EvidencePullMalformedSourceError, PullResult
 from atlas.github import (
     GitHubAuthenticationError,
     GitHubRateLimitError,
+    GitHubRESTClient,
     GitHubTransportError,
 )
 from atlas.orchestration import (
@@ -57,6 +59,23 @@ OTHER_BASE = "4" * 40
 SOURCE_AT = datetime(2026, 8, 2, 12, 58, tzinfo=UTC)
 TOKEN_CANARY = "ghp_atlas239_token_canary_do_not_persist"
 PAYLOAD_CANARY = "raw-job-log-atlas239-do-not-copy"
+
+
+class _RESTResponse:
+    """Minimal urllib response used by real-client action regressions."""
+
+    def __init__(self, body: bytes, *, link: str | None = None) -> None:
+        self._body = body
+        self.headers = {} if link is None else {"Link": link}
+
+    def __enter__(self) -> _RESTResponse:
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        return None
+
+    def read(self) -> bytes:
+        return self._body
 
 
 @pytest.fixture
@@ -529,6 +548,114 @@ def test_ac7_external_failures_are_distinct_nonadvancing_and_retryable(
     assert retried.session is not None
     assert retried.session.lifecycle is AcceptanceSessionLifecycle.EVIDENCE_READY
     assert len(pulled.calls) == 2
+
+
+@pytest.mark.parametrize(
+    "scenario",
+    [
+        "empty-envelope",
+        "top-level-list-envelope",
+        "missing-list-field",
+        "wrong-list-field",
+        "malformed-pagination",
+        "out-of-origin-pagination",
+        "cyclic-pagination",
+        "object-for-bare-array",
+    ],
+)
+def test_real_client_malformed_source_is_terminal_and_replays_without_requests(
+    db: Database,
+    monkeypatch: pytest.MonkeyPatch,
+    scenario: str,
+) -> None:
+    session, tickets, product_id = acceptance_fixture(db)
+    requests: list[str] = []
+    cycle_url = "https://api.github.com/atlas-test-cycle?page=2"
+
+    def _urlopen(request: Any, *args: Any, **kwargs: Any) -> _RESTResponse:
+        url = request.full_url
+        requests.append(url)
+        pr_url = (
+            f"https://api.github.com/repos/{session.repository_owner}/"
+            f"{session.repository_name}/pulls/{session.pr_number}"
+        )
+        if url == pr_url:
+            return _RESTResponse(json.dumps({"head": {"sha": HEAD}}).encode())
+        if url == cycle_url:
+            return _RESTResponse(
+                b'{"workflow_runs": []}', link=f'<{cycle_url}>; rel="next"'
+            )
+        if "/actions/runs?" in url:
+            if scenario == "empty-envelope":
+                return _RESTResponse(b"{}")
+            if scenario == "top-level-list-envelope":
+                return _RESTResponse(b"[]")
+            if scenario == "missing-list-field":
+                return _RESTResponse(b'{"unexpected": []}')
+            if scenario == "wrong-list-field":
+                return _RESTResponse(b'{"workflow_runs": {}}')
+            if scenario == "malformed-pagination":
+                return _RESTResponse(
+                    b'{"workflow_runs": []}',
+                    link='https://api.github.com/page/2; rel="next"',
+                )
+            if scenario == "out-of-origin-pagination":
+                return _RESTResponse(
+                    b'{"workflow_runs": []}',
+                    link='<https://example.com/page/2>; rel="next"',
+                )
+            if scenario == "cyclic-pagination":
+                return _RESTResponse(
+                    b'{"workflow_runs": []}', link=f'<{cycle_url}>; rel="next"'
+                )
+            return _RESTResponse(b'{"workflow_runs": []}')
+        if "/check-runs?" in url:
+            return _RESTResponse(b'{"check_runs": []}')
+        if "/reviews?" in url:
+            if scenario == "object-for-bare-array":
+                return _RESTResponse(b"{}")
+            return _RESTResponse(b"[]")
+        if "/files?" in url:
+            return _RESTResponse(b"[]")
+        raise AssertionError(f"unexpected GitHub request: {url}")
+
+    monkeypatch.setattr("atlas.github.client.urllib_request.urlopen", _urlopen)
+    service = AcceptanceSessionEvidencePullService(
+        github_client=GitHubRESTClient(token=TOKEN_CANARY),
+        ticket_lookup=tickets,
+        session_repository=AcceptanceSessionRepo(db),
+        evidence_repository=EvidenceRepo(db),
+        gateway=OperatorActionGateway(db, clock=FrozenClock()),
+        clock=FrozenClock(),
+        assessment_service=AssessmentFake(assessment()),
+    )
+    context = action_context(f"malformed-source-{scenario}")
+
+    result = service.execute(session.id, context)
+
+    assert result.status is OperatorActionGatewayStatus.EXECUTED
+    assert result.failure is None
+    assert result.receipt is not None
+    assert result.receipt.outcome is OperatorActionOutcome.FAILED
+    assert (
+        result.receipt.result_code is OperatorActionResultCode.EVIDENCE_MALFORMED_SOURCE
+    )
+    assert result.session is not None
+    assert result.session.lifecycle is AcceptanceSessionLifecycle.PREFLIGHT_PASSED
+    assert EvidenceRepo(db).list_for_product_commit(product_id, HEAD) == []
+    retained = json.dumps(
+        present_operator_action_receipt(result.receipt), sort_keys=True
+    )
+    assert TOKEN_CANARY not in retained
+
+    request_count = len(requests)
+    replay = service.execute(session.id, context)
+
+    assert replay.status is OperatorActionGatewayStatus.REPLAYED
+    assert replay.receipt is not None
+    assert replay.receipt.id == result.receipt.id
+    assert replay.receipt.outcome is OperatorActionOutcome.FAILED
+    assert len(requests) == request_count
 
 
 def test_old_head_evidence_cannot_satisfy_a_new_exact_head_summary(

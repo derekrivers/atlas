@@ -1209,6 +1209,10 @@ without inspecting their values. Canonical model validation and every public
 repository writer reject unapproved fields and wrongly typed approved fields,
 including models constructed without initial validation.
 
+Migration `0027`, based on the single mainline `0026` head, adds the four typed
+evidence-failure outcomes to the receipt constraint while preserving the
+append-only update/delete guards.
+
 ## Pydantic Model
 
 ```python
