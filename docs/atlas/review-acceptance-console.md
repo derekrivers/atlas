@@ -177,13 +177,43 @@ the pulled old-head records remain history, not authority for a new session.
 
 The console renders every live criterion from the session snapshot. The
 operator must explicitly confirm each criterion and the manual approval gate.
-The request identifies criteria by stable index plus the session's criteria
-fingerprint; it cannot submit replacement criterion text or actor identity.
+The API-independent request contains only the session ID, exact pinned criteria
+fingerprint, a tuple of integer criterion indexes and an explicit manual
+approval boolean. The stable indexes enumerate the canonical session snapshot,
+whose ordering is itself derived from sorted close-set ticket key and each
+ticket's stored list index; browser display order is not an identity source.
+The request cannot carry criterion text, actor, repository, ticket key or head
+SHA. Strict request validation rejects every such extra field.
 
-The server re-reads the ticket definitions and exact-head assessment before
-writing. Any criteria or head drift stales the session. Successful
-confirmations use the existing human-tier confirmation/evidence semantics,
-pinned to the session head and attributed from the authenticated session.
+Every snapshot index must appear exactly once and manual approval must be
+literal true. A missing, duplicate, unknown or extra index, or a fingerprint
+that differs from the pinned value, is a validation result: it reserves no
+action key and writes no confirmation, receipt or session advance. A valid
+action runs only from `evidence_ready`.
+
+Inside the Phase 13 gateway transaction, the action locks and re-reads the
+session, invokes the shared Phase 12 exact-head assessment, and re-reads every
+close-set ticket definition. The shared freshness comparator checks repository,
+PR, close-set, head/base refs and SHAs, repository identities, eligibility,
+integration status, ticket existence/status and the live criteria fingerprint.
+Any mismatch advances the locked session only to terminal `stale`, records the
+typed reasons and commits that change with a refused action receipt; it appends
+no human-tier record.
+
+On a fresh session, the action delegates to the same confirmation domain
+service and evidence writer as `atlas confirm`. It appends one acceptance
+confirmation per criterion and one blanket `MANUAL_APPROVAL` per close-set
+ticket, all pinned to the session head and attributed by the server as
+`human/operator`. Those records, the `confirmations` step receipt reference and
+the `confirmations_ready` lifecycle advance commit in the gateway's one
+transaction. A confirmation-write or receipt failure rolls the complete set
+back. The action does not invoke verification.
+
+The gateway locks the session row for the transition as well as reserving the
+idempotency key. An exact same-key replay returns the original receipt without
+new records. Reusing the key with an altered ordered request conflicts, while a
+concurrent different key observes the completed locked transition and cannot
+append a second set or replace the recorded receipt reference.
 
 ## Verification and merge readiness
 

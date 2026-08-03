@@ -1011,6 +1011,91 @@ def _raw_payload_marker(model: Evidence, original_bytes: int) -> dict[str, Any]:
     }
 
 
+def _prepare_evidence_append(model: Evidence) -> Evidence:
+    """Apply the canonical evidence write guards without opening a transaction."""
+
+    _reject_naive(model)
+    if (
+        evidence_tier(model.created_by_type) == "agent"
+        and model.status is not EvidenceStatus.PENDING
+    ):
+        raise TrustTierError(
+            "agent-tier evidence is capped at PENDING (ADR-0008); "
+            f"got status {model.status.value!r}. Corroboration comes "
+            "from a system-tier record or human approval, not a bypass."
+        )
+    if evidence_tier(model.created_by_type) == "system":
+        missing = [
+            name
+            for name in ("commit_sha", "external_run_id", "payload_hash")
+            if getattr(model, name) is None
+        ]
+        if missing:
+            raise TrustTierError(
+                "system-tier evidence must be commit-pinned (ADR-0008); "
+                f"missing {missing}. Ingestion rejects records without "
+                "commit_sha, external_run_id, and payload_hash."
+            )
+
+    size = _serialised_len(model.raw_payload)
+    if size > RAW_PAYLOAD_CAP_BYTES:
+        return model.model_copy(
+            update={"raw_payload": _raw_payload_marker(model, size)}
+        )
+    return model
+
+
+def _evidence_row(model: Evidence) -> EvidenceRow:
+    payload = model.model_dump()
+    payload["raw_payload"] = model.model_dump(mode="json")["raw_payload"]
+    return EvidenceRow(**payload)
+
+
+def _get_evidence_by_dedup_key(
+    session: Session,
+    external_run_id: str,
+    payload_hash: str,
+    *,
+    require_job_metadata: bool = False,
+) -> Evidence | None:
+    """Return one immutable system observation inside the caller's transaction."""
+
+    statement = sa.select(EvidenceRow).where(
+        EvidenceRow.external_run_id == external_run_id,
+        EvidenceRow.payload_hash == payload_hash,
+    )
+    if require_job_metadata:
+        statement = statement.where(EvidenceRow.job_name.is_not(None))
+    row = session.scalars(
+        statement.order_by(EvidenceRow.created_at, EvidenceRow.id)
+    ).first()
+    return None if row is None else Evidence.model_validate(row, from_attributes=True)
+
+
+def _add_evidence(session: Session, model: Evidence) -> Evidence:
+    """Canonically append evidence inside a caller-owned transaction.
+
+    This is the transaction-aware form of :meth:`EvidenceRepo.add`: it applies
+    every trust/retention guard and preserves the immutable system-source dedup
+    identity without opening or committing a second transaction.
+    """
+
+    prepared = _prepare_evidence_append(model)
+    if evidence_tier(prepared.created_by_type) == "system":
+        assert prepared.external_run_id is not None
+        assert prepared.payload_hash is not None
+        existing = _get_evidence_by_dedup_key(
+            session,
+            prepared.external_run_id,
+            prepared.payload_hash,
+            require_job_metadata=prepared.job_name is not None,
+        )
+        if existing is not None:
+            return existing
+    session.add(_evidence_row(prepared))
+    return prepared
+
+
 class EvidenceRepo(_Repo[Evidence]):
     """Append-only: add and queries only (ADR-0008).
 
@@ -1044,61 +1129,16 @@ class EvidenceRepo(_Repo[Evidence]):
         """
 
         with self._db.session() as session:
-            statement = sa.select(EvidenceRow).where(
-                EvidenceRow.external_run_id == external_run_id,
-                EvidenceRow.payload_hash == payload_hash,
+            return _get_evidence_by_dedup_key(
+                session,
+                external_run_id,
+                payload_hash,
+                require_job_metadata=require_job_metadata,
             )
-            if require_job_metadata:
-                statement = statement.where(EvidenceRow.job_name.is_not(None))
-            row = session.scalars(
-                statement.order_by(EvidenceRow.created_at, EvidenceRow.id)
-            ).first()
-            return None if row is None else self._to_model(row)
 
     def add(self, model: Evidence) -> Evidence:
-        if (
-            evidence_tier(model.created_by_type) == "agent"
-            and model.status is not EvidenceStatus.PENDING
-        ):
-            raise TrustTierError(
-                f"agent-tier evidence is capped at PENDING (ADR-0008); "
-                f"got status {model.status.value!r}. Corroboration comes "
-                "from a system-tier record or human approval, not a bypass."
-            )
-        if evidence_tier(model.created_by_type) == "system":
-            missing = [
-                name
-                for name in ("commit_sha", "external_run_id", "payload_hash")
-                if getattr(model, name) is None
-            ]
-            if missing:
-                raise TrustTierError(
-                    "system-tier evidence must be commit-pinned (ADR-0008); "
-                    f"missing {missing}. Ingestion rejects records without "
-                    "commit_sha, external_run_id, and payload_hash."
-                )
-            assert model.external_run_id is not None
-            assert model.payload_hash is not None
-            existing = self.get_by_dedup_key(
-                model.external_run_id,
-                model.payload_hash,
-                require_job_metadata=model.job_name is not None,
-            )
-            if existing is not None:
-                return existing
-        # Retention cap (evidence-pipeline.md "Retention", ATLAS-69): AFTER the
-        # trust-tier/pin guard (an oversized system-tier record is still pinned,
-        # since the marker leaves the triple intact) and BEFORE super().add().
-        # Larger-than-cap (strict ``>``; exactly at the cap is stored verbatim)
-        # replaces only the stored bytes — payload_hash is never recomputed, so
-        # the pin is untouched. The persisted-and-returned model agree (D6):
-        # super().add returns the same model it stored.
-        size = _serialised_len(model.raw_payload)
-        if size > RAW_PAYLOAD_CAP_BYTES:
-            model = model.model_copy(
-                update={"raw_payload": _raw_payload_marker(model, size)}
-            )
-        return super().add(model)
+        with self._db.session() as session, session.begin():
+            return _add_evidence(session, model)
 
     def list_for_ticket(self, ticket_id: UUID) -> list[Evidence]:
         """Return one ticket's evidence, oldest record first."""

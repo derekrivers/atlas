@@ -68,6 +68,14 @@ For each required check on ticket T with PR head commit C:
   re-confirmation is required. LLM-assisted pre-assessment (agent proposes
   pass/fail with cited diff lines, operator confirms) is a later
   enhancement, not v1.
+  The governed acceptance-session action preserves this evaluator contract; it
+  does not introduce a session-only approval model. Its caller selects the
+  complete pinned snapshot by stable integer indexes and fingerprint, while the
+  server resolves the live criterion text, ticket identity, exact head and
+  `human/operator` actor. It delegates to the shared confirmation-record service
+  used by `atlas confirm`, so both paths write the same criterion hash and
+  human-tier shape through the same evidence write guard. Old-head records stay
+  append-only history and cannot satisfy a session or evaluator at a new head.
 - **scope (v1, heuristic):** the PR file list is compared against the
   declared in-scope set — the union of `relevant_docs` and the path part of
   `source_anchor` (`source_anchor.split("#", 1)[0]`); there is NO
@@ -162,6 +170,11 @@ zero-action success and prints `No outstanding confirmations ...` with exit 0.
 An empty close-set or one made entirely of unknown ticket keys performs no
 assessment, prints `No confirmation assessment performed ...`, and exits with
 the precondition code; it cannot be mistaken for exhausted confirmation work.
+The governed session action is stricter but compatible: it permits no partial
+save, negative criterion ruling or caller-supplied record fields, and advances
+only after every criterion plus blanket approval is explicitly positive. It
+reuses the CLI's confirmation-record service and canonical evidence writer;
+the existing CLI output and evaluator behaviour are unchanged.
 
 ## Open items
 
