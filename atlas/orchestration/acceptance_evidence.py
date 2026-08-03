@@ -463,15 +463,35 @@ def _summarise_evidence(
 ) -> AcceptanceEvidenceSummary:
     new_records = [*pulled.checks, *pulled.reviews, *pulled.docs]
     if any(
-        record.commit_sha != head_sha
+        record.commit_sha is None
         or record.external_run_id is None
         or record.payload_hash is None
         for record in new_records
     ):
         raise EvidencePullMalformedSourceError(
-            "pulled evidence was not completely pinned to the session head"
+            "pulled evidence did not carry a complete pin triple"
         )
-    if len(new_records) > len(records):
+    if (
+        any(record.evidence_type not in _CHECK_TYPES for record in pulled.checks)
+        or any(
+            record.evidence_type is not EvidenceType.PR_REVIEW
+            for record in pulled.reviews
+        )
+        or any(
+            record.evidence_type is not EvidenceType.DOCUMENTATION_UPDATE
+            for record in pulled.docs
+        )
+        or any(record.commit_sha != head_sha for record in pulled.checks)
+        or any(record.commit_sha != head_sha for record in pulled.docs)
+    ):
+        raise EvidencePullMalformedSourceError(
+            "pulled evidence was inconsistent with its source or session head"
+        )
+
+    new_head_records = [
+        record for record in new_records if record.commit_sha == head_sha
+    ]
+    if any(record not in records for record in new_head_records):
         raise EvidencePullMalformedSourceError(
             "pulled evidence was absent from the canonical exact-head projection"
         )
@@ -496,7 +516,7 @@ def _summarise_evidence(
     )
     return AcceptanceEvidenceSummary(
         total_count=total,
-        new_count=len(new_records),
+        new_count=len(new_head_records),
         checks_count=sum(record.evidence_type in _CHECK_TYPES for record in records),
         reviews_count=sum(
             record.evidence_type is EvidenceType.PR_REVIEW for record in records

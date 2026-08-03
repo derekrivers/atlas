@@ -120,6 +120,36 @@ class PullFake:
         )
 
 
+class UnpersistedPullFake(PullFake):
+    """Return a claimed pull result without adding it to canonical storage."""
+
+    def __call__(
+        self,
+        client: Any,
+        owner: str,
+        repo: str,
+        pr_number: int,
+        *,
+        evidence_repo: EvidenceRepo,
+        product_id: UUID,
+        now: datetime,
+    ) -> PullResult:
+        self.calls.append(
+            {
+                "client": client,
+                "owner": owner,
+                "repo": repo,
+                "pr_number": pr_number,
+                "evidence_repo": evidence_repo,
+                "product_id": product_id,
+                "now": now,
+            }
+        )
+        outcome = self.outcomes[min(len(self.calls) - 1, len(self.outcomes) - 1)]
+        assert isinstance(outcome, PullResult)
+        return outcome
+
+
 def an_evidence(
     product_id: UUID,
     *,
@@ -519,6 +549,72 @@ def test_old_head_evidence_cannot_satisfy_a_new_exact_head_summary(
     assert summary.total_count == 0
     assert summary.new_count == 0
     assert summary.exact_head_pin_complete is True
+
+
+def test_historical_review_is_preserved_but_excluded_from_exact_head_summary(
+    db: Database,
+) -> None:
+    session, tickets, product_id = acceptance_fixture(db)
+    current_check = an_evidence(product_id)
+    historical_review = an_evidence(
+        product_id,
+        head=OTHER_HEAD,
+        evidence_type=EvidenceType.PR_REVIEW,
+    )
+    pulled = PullFake(PullResult([current_check], [historical_review], []))
+    service = action_service(
+        db, tickets, AssessmentFake(assessment(), assessment()), pulled
+    )
+
+    result = service.execute(session.id, action_context("mixed-history"))
+    replay = service.execute(session.id, action_context("mixed-history"))
+
+    assert result.session is not None
+    assert result.session.lifecycle is AcceptanceSessionLifecycle.EVIDENCE_READY
+    summary = result.session.step_summaries[AcceptanceSessionStep.EVIDENCE].evidence
+    assert summary is not None
+    assert (summary.total_count, summary.new_count) == (1, 1)
+    assert (summary.checks_count, summary.reviews_count, summary.docs_count) == (
+        1,
+        0,
+        0,
+    )
+    assert EvidenceRepo(db).list_for_product_commit(product_id, HEAD) == [current_check]
+    assert EvidenceRepo(db).list_for_product_commit(product_id, OTHER_HEAD) == [
+        historical_review
+    ]
+    assert replay.status is OperatorActionGatewayStatus.REPLAYED
+    assert len(pulled.calls) == 1
+
+
+@pytest.mark.parametrize(
+    "record",
+    [
+        an_evidence(uuid4()).model_copy(update={"external_run_id": None}),
+        an_evidence(uuid4()),
+    ],
+    ids=["incomplete-pin", "absent-canonical-current-head"],
+)
+def test_malformed_or_falsely_current_pull_result_does_not_advance(
+    db: Database,
+    record: Evidence,
+) -> None:
+    session, tickets, product_id = acceptance_fixture(db)
+    claimed = record.model_copy(update={"product_id": product_id})
+    pulled = UnpersistedPullFake(PullResult([claimed], [], []))
+    service = action_service(
+        db, tickets, AssessmentFake(assessment(), assessment()), pulled
+    )
+
+    result = service.execute(session.id, action_context("invalid-result"))
+
+    assert result.receipt is not None
+    assert (
+        result.receipt.result_code is OperatorActionResultCode.EVIDENCE_MALFORMED_SOURCE
+    )
+    assert result.session is not None
+    assert result.session.lifecycle is AcceptanceSessionLifecycle.PREFLIGHT_PASSED
+    assert EvidenceRepo(db).list_for_product_commit(product_id, HEAD) == []
 
 
 def test_unchanged_source_replay_summarises_canonical_head_without_new_rows(

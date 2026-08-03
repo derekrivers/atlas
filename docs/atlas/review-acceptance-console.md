@@ -190,12 +190,16 @@ history but no evidence summary or readiness is attached to the moved session.
 
 On success the action re-reads canonical evidence for the session product and
 exact head. The evidence step stores only bounded source counts (checks,
-reviews and documentation, plus newly appended count), trust-tier counts,
-status counts, complete-pin and exact-head-pin counts/booleans, oldest/latest
-source-event timestamps and the receipt ID. Evidence IDs, summaries, source
-URIs, raw payloads, job logs, tokens and foreign error text are absent. A
-source-idempotent no-op therefore records `new_count: 0` while summarising the
-already stored exact-head records; evidence from another head is excluded.
+reviews and documentation, plus the newly appended exact-head count), trust-tier
+counts, status counts, complete-pin and exact-head-pin counts/booleans,
+oldest/latest source-event timestamps and the receipt ID. A historical review
+remains valid canonical evidence at the commit it attested but is excluded from
+both that exact-head aggregate and its new count. Every current-head record
+returned by the pull must be present in the canonical projection. Evidence IDs,
+summaries, source URIs, raw payloads, job logs, tokens and foreign error text are
+absent. A source-idempotent no-op therefore records `new_count: 0` while
+summarising the already stored exact-head records; evidence from another head is
+excluded.
 
 The Phase 13 gateway commits the action-key reservation before bounded external
 work, then commits the session transition and terminal receipt atomically. A

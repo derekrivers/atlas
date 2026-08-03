@@ -93,9 +93,13 @@ exact commit as immutable history and stales the session; it cannot promote the
 moved session or make evidence at a different head authoritative.
 
 After a fresh post-check, `EvidenceRepo.list_for_product_commit` re-reads only
-the product/head projection. The session retains a bounded aggregate: total and
-new/source counts, trust-tier counts, status counts, complete/exact-head pin
-counts and booleans, and oldest/latest GitHub source-event timestamps. Canonical
+the product/head projection. Reviews remain pinned to the commit each reviewer
+attested, so a pull can append reviews for older heads as canonical history;
+those records are valid but cannot enter the session's exact-head projection.
+Every newly returned current-head record must be present in that canonical
+projection. The session retains a bounded aggregate: total and exact-head-new
+source counts, trust-tier counts, status counts, complete/exact-head pin counts
+and booleans, and oldest/latest GitHub source-event timestamps. Canonical
 evidence remains here, including raw payloads subject to the retention cap;
 session state and operator receipts contain no evidence IDs, summaries, source
 URIs, payloads, job logs, credentials or foreign errors. Existing
