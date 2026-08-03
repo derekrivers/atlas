@@ -1279,6 +1279,139 @@ CREATE TABLE operator_action_receipts (
 );
 ```
 
+## 5.7 Acceptance Session
+
+An `AcceptanceSession` is the durable, immutable-head history for one PR
+acceptance attempt. Creation pins the requested repository and PR, the
+canonical close-set, the exact head and live `main` identities, a structured
+snapshot of the shared PR integration assessment, the live ticket acceptance
+criteria and their canonical SHA-256 fingerprint, the creation-command key
+identity and the server-resolved `human/operator` actor. Raw GitHub payloads,
+PR title/body text, raw idempotency keys, credentials, evidence payloads and
+logs are not stored.
+
+The close-set is unique and sorted by ticket key. Criteria are stored in that
+key order and then by their zero-based index in each ticket's current
+`acceptance_criteria` list. The fingerprint input is the UTF-8 canonical JSON
+array of `{ticket_key, criterion_index, text}` objects: keys sorted, no
+insignificant whitespace, Unicode unescaped, then prefixed `sha256:`. Callers
+cannot provide criterion text to session creation.
+
+Lifecycle values are `preflight_passed`, `evidence_ready`,
+`confirmations_ready`, `verification_passed`, `merge_ready`, `stale`,
+`blocked` and `failed`; the last three are terminal. Every row retains bounded
+step summaries for `preflight`, `evidence`, `confirmations`, `verification`
+and `readiness`. A summary has a `pending`, `complete`, `blocked` or `failed`
+state, typed reasons, receipt IDs and its occurrence timestamp. The
+top-level typed reason vocabulary distinguishes PR eligibility, exact-head,
+base/ref/repository, external-state, close-set, missing-ticket, ticket-state,
+criteria, session and historical-step failures; presentation never stores or
+returns a foreign exception message as a reason. Freshness consumes the current
+ticket models as values, so ticket existence, `review_required` status and
+criteria are one pure comparison input rather than separately cached claims.
+
+`stored_merge_ready` and `historical_readiness_reasons` are historical state.
+The pure stored projection labels them `historical_only` and always emits
+`is_current_merge_authority: false`. A later bounded live-readiness service
+must compose that stored projection with new external reads; cached true is
+never current merge authority.
+
+The canonical model is a frozen value snapshot. Storage permits only the
+narrow lifecycle-summary transition surface. Database triggers reject changes
+to `id`, repository/PR, close-set, head/base, initial assessment, criteria,
+fingerprints, creation-command identity, actor or `created_at`. There is no
+general update or retarget operation. A partial unique index permits at most
+one non-terminal row per repository/PR; consequently a moved head starts a new
+session only after the old row is terminal, normally `stale`. The creation-key
+identity is unique for all time and only that same command replays its original
+result. A different command that collides with an active row compares every
+pinned repository/PR, close-set, head/base identity and criteria fingerprint.
+An identical candidate returns `active_session_exists`; repository/PR/head,
+live-base, ref, close-set, eligibility, ticket existence/status or criteria
+movement atomically stales the old row and returns the typed mismatch before a
+retry may create the replacement lifecycle. A base SHA mismatch is emitted
+only when the shared integration assessment labels that SHA `live_branch`;
+`historical_pr_snapshot` identifies an ineligible PR's old base snapshot and
+cannot assert movement of live `main`.
+
+## Pydantic Model
+
+```python
+class AcceptanceSession(BaseModel):
+    model_config = ConfigDict(frozen=True, hide_input_in_errors=True)
+
+    id: UUID
+    repository_owner: str
+    repository_name: str
+    pr_number: int
+    close_set: tuple[str, ...]
+    head_ref: str
+    head_sha: str
+    head_repository: str
+    base_ref: str
+    base_sha: str
+    base_repository: str
+    initial_assessment: AcceptanceAssessmentSnapshot
+    criteria_snapshot: tuple[AcceptanceCriterionSnapshot, ...]
+    criteria_fingerprint: str
+    creation_idempotency_key_identity: str
+    created_by_type: ActorType
+    created_by_id: str
+    lifecycle: AcceptanceSessionLifecycle
+    step_summaries: dict[AcceptanceSessionStep, AcceptanceStepSummary]
+    blocking_reasons: tuple[AcceptanceSessionBlockingReason, ...] = ()
+    stored_merge_ready: bool = False
+    historical_readiness_reasons: tuple[
+        AcceptanceSessionBlockingReason, ...
+    ] = ()
+    created_at: datetime
+    updated_at: datetime
+    staled_at: datetime | None = None
+```
+
+## 5.8 PostgreSQL Table
+
+```sql
+CREATE TABLE acceptance_sessions (
+    id UUID PRIMARY KEY,
+    repository_owner TEXT NOT NULL,
+    repository_name TEXT NOT NULL,
+    pr_number INTEGER NOT NULL,
+    close_set JSONB NOT NULL,
+    head_ref TEXT NOT NULL,
+    head_sha TEXT NOT NULL,
+    head_repository TEXT NOT NULL,
+    base_ref TEXT NOT NULL,
+    base_sha TEXT NOT NULL,
+    base_repository TEXT NOT NULL,
+    initial_assessment JSONB NOT NULL,
+    criteria_snapshot JSONB NOT NULL,
+    criteria_fingerprint TEXT NOT NULL,
+    creation_idempotency_key_identity TEXT NOT NULL UNIQUE,
+    created_by_type TEXT NOT NULL,
+    created_by_id TEXT NOT NULL,
+    lifecycle TEXT NOT NULL,
+    step_summaries JSONB NOT NULL,
+    blocking_reasons JSONB NOT NULL,
+    stored_merge_ready BOOLEAN NOT NULL DEFAULT FALSE,
+    historical_readiness_reasons JSONB NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL,
+    staled_at TIMESTAMPTZ,
+    CONSTRAINT acceptance_sessions_operator_actor CHECK (
+        created_by_type = 'human' AND created_by_id = 'operator'
+    ),
+    CONSTRAINT acceptance_sessions_stale_timestamp CHECK (
+        (lifecycle = 'stale' AND staled_at IS NOT NULL) OR
+        (lifecycle <> 'stale' AND staled_at IS NULL)
+    )
+);
+
+CREATE UNIQUE INDEX uq_acceptance_sessions_non_terminal_pr
+    ON acceptance_sessions (repository_owner, repository_name, pr_number)
+    WHERE lifecycle NOT IN ('stale', 'blocked', 'failed');
+```
+
 ---
 
 # 6. Delivery-Anomaly Schema

@@ -16,6 +16,7 @@ import pytest
 from atlas.github import GitHubAPIError, GitHubCompareStatus
 from atlas.orchestration import (
     PRAncestryStatus,
+    PRBaseSHASource,
     PRIntegrationAssessment,
     PRIntegrationEligibility,
     PRIntegrationStatus,
@@ -115,6 +116,7 @@ def assessment(
     behind_by: int | None = 0,
     compare_status: GitHubCompareStatus | None = GitHubCompareStatus.AHEAD,
     merge_base_sha: str | None = BASE,
+    base_sha_source: PRBaseSHASource = PRBaseSHASource.LIVE_BRANCH,
 ) -> PRIntegrationAssessment:
     return PRIntegrationAssessment(
         owner="acme",
@@ -131,6 +133,7 @@ def assessment(
         base_ref=base_ref,
         base_sha=base_sha,
         base_repository=base_repository,
+        base_sha_source=base_sha_source,
         merge_base_sha=merge_base_sha,
         ahead_by=ahead_by,
         behind_by=behind_by,
@@ -166,6 +169,7 @@ def ineligible_assessment(
         behind_by=None,
         compare_status=None,
         merge_base_sha=None,
+        base_sha_source=PRBaseSHASource.HISTORICAL_PR_SNAPSHOT,
     )
 
 

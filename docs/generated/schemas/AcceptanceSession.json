@@ -1,0 +1,472 @@
+{
+  "$defs": {
+    "AcceptanceAssessmentSnapshot": {
+      "description": "Structured derived fields from the initial exact-head assessment.",
+      "properties": {
+        "ahead_by": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ahead By"
+        },
+        "ancestry": {
+          "enum": [
+            "current",
+            "behind",
+            "diverged",
+            "indeterminate"
+          ],
+          "title": "Ancestry",
+          "type": "string"
+        },
+        "base_sha_source": {
+          "enum": [
+            "live_branch",
+            "historical_pr_snapshot"
+          ],
+          "title": "Base Sha Source",
+          "type": "string"
+        },
+        "behind_by": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Behind By"
+        },
+        "compare_status": {
+          "anyOf": [
+            {
+              "enum": [
+                "ahead",
+                "behind",
+                "diverged",
+                "identical"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Compare Status"
+        },
+        "eligibility": {
+          "enum": [
+            "eligible",
+            "merged",
+            "closed",
+            "draft",
+            "fork_head",
+            "non_main"
+          ],
+          "title": "Eligibility",
+          "type": "string"
+        },
+        "integration_status": {
+          "enum": [
+            "current",
+            "behind",
+            "diverged",
+            "conflicted",
+            "indeterminate",
+            "ineligible"
+          ],
+          "title": "Integration Status",
+          "type": "string"
+        },
+        "merge_base_sha": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Merge Base Sha"
+        },
+        "mergeability": {
+          "enum": [
+            "mergeable",
+            "conflicted",
+            "indeterminate"
+          ],
+          "title": "Mergeability",
+          "type": "string"
+        },
+        "pr_draft": {
+          "title": "Pr Draft",
+          "type": "boolean"
+        },
+        "pr_merged": {
+          "title": "Pr Merged",
+          "type": "boolean"
+        },
+        "pr_state": {
+          "title": "Pr State",
+          "type": "string"
+        }
+      },
+      "required": [
+        "pr_state",
+        "pr_draft",
+        "pr_merged",
+        "base_sha_source",
+        "mergeability",
+        "ancestry",
+        "eligibility",
+        "integration_status"
+      ],
+      "title": "AcceptanceAssessmentSnapshot",
+      "type": "object"
+    },
+    "AcceptanceCriterionSnapshot": {
+      "description": "One server-read criterion identified by ticket key and stored index.",
+      "properties": {
+        "criterion_index": {
+          "minimum": 0,
+          "title": "Criterion Index",
+          "type": "integer"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        },
+        "ticket_key": {
+          "pattern": "^ATLAS-[0-9]+$",
+          "title": "Ticket Key",
+          "type": "string"
+        }
+      },
+      "required": [
+        "ticket_key",
+        "criterion_index",
+        "text"
+      ],
+      "title": "AcceptanceCriterionSnapshot",
+      "type": "object"
+    },
+    "AcceptanceSessionBlockingReason": {
+      "description": "Closed, secret-free reasons used by preflight, freshness and history.",
+      "enum": [
+        "pr_unknown",
+        "pr_merged",
+        "pr_closed",
+        "pr_draft",
+        "pr_fork_head",
+        "pr_non_main",
+        "integration_behind",
+        "integration_diverged",
+        "integration_conflicted",
+        "integration_indeterminate",
+        "external_state_indeterminate",
+        "close_set_empty",
+        "unknown_ticket",
+        "ticket_not_review_required",
+        "active_session_exists",
+        "idempotency_key_reused",
+        "repository_mismatch",
+        "pr_number_mismatch",
+        "head_ref_mismatch",
+        "head_sha_mismatch",
+        "head_repository_mismatch",
+        "base_ref_mismatch",
+        "base_sha_mismatch",
+        "base_repository_mismatch",
+        "close_set_mismatch",
+        "eligibility_mismatch",
+        "integration_status_mismatch",
+        "criteria_mismatch",
+        "session_stale",
+        "evidence_not_ready",
+        "confirmations_not_ready",
+        "verification_not_passed"
+      ],
+      "title": "AcceptanceSessionBlockingReason",
+      "type": "string"
+    },
+    "AcceptanceSessionLifecycle": {
+      "description": "Stored state-machine milestones and terminal outcomes.",
+      "enum": [
+        "preflight_passed",
+        "evidence_ready",
+        "confirmations_ready",
+        "verification_passed",
+        "merge_ready",
+        "stale",
+        "blocked",
+        "failed"
+      ],
+      "title": "AcceptanceSessionLifecycle",
+      "type": "string"
+    },
+    "AcceptanceSessionStep": {
+      "description": "The historical summaries retained on every acceptance session.",
+      "enum": [
+        "preflight",
+        "evidence",
+        "confirmations",
+        "verification",
+        "readiness"
+      ],
+      "title": "AcceptanceSessionStep",
+      "type": "string"
+    },
+    "AcceptanceSessionStepState": {
+      "description": "Stored state for one historical step summary.",
+      "enum": [
+        "pending",
+        "complete",
+        "blocked",
+        "failed"
+      ],
+      "title": "AcceptanceSessionStepState",
+      "type": "string"
+    },
+    "AcceptanceStepSummary": {
+      "description": "Bounded historical status for one acceptance step.",
+      "properties": {
+        "occurred_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Occurred At"
+        },
+        "reasons": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/AcceptanceSessionBlockingReason"
+          },
+          "title": "Reasons",
+          "type": "array"
+        },
+        "receipt_ids": {
+          "default": [],
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "title": "Receipt Ids",
+          "type": "array"
+        },
+        "state": {
+          "$ref": "#/$defs/AcceptanceSessionStepState"
+        }
+      },
+      "required": [
+        "state"
+      ],
+      "title": "AcceptanceStepSummary",
+      "type": "object"
+    },
+    "ActorType": {
+      "description": "Who or what created a record (data-model §2.2, attribution §1.5).",
+      "enum": [
+        "human",
+        "agent",
+        "system"
+      ],
+      "title": "ActorType",
+      "type": "string"
+    }
+  },
+  "description": "One immutable-head, durable PR acceptance attempt.",
+  "properties": {
+    "base_ref": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Base Ref",
+      "type": "string"
+    },
+    "base_repository": {
+      "maxLength": 257,
+      "minLength": 1,
+      "title": "Base Repository",
+      "type": "string"
+    },
+    "base_sha": {
+      "title": "Base Sha",
+      "type": "string"
+    },
+    "blocking_reasons": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/AcceptanceSessionBlockingReason"
+      },
+      "title": "Blocking Reasons",
+      "type": "array"
+    },
+    "close_set": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Close Set",
+      "type": "array"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "created_by_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Created By Id",
+      "type": "string"
+    },
+    "created_by_type": {
+      "$ref": "#/$defs/ActorType"
+    },
+    "creation_idempotency_key_identity": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Creation Idempotency Key Identity",
+      "type": "string"
+    },
+    "criteria_fingerprint": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Criteria Fingerprint",
+      "type": "string"
+    },
+    "criteria_snapshot": {
+      "items": {
+        "$ref": "#/$defs/AcceptanceCriterionSnapshot"
+      },
+      "title": "Criteria Snapshot",
+      "type": "array"
+    },
+    "head_ref": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Head Ref",
+      "type": "string"
+    },
+    "head_repository": {
+      "maxLength": 257,
+      "minLength": 1,
+      "title": "Head Repository",
+      "type": "string"
+    },
+    "head_sha": {
+      "title": "Head Sha",
+      "type": "string"
+    },
+    "historical_readiness_reasons": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/AcceptanceSessionBlockingReason"
+      },
+      "title": "Historical Readiness Reasons",
+      "type": "array"
+    },
+    "id": {
+      "format": "uuid",
+      "title": "Id",
+      "type": "string"
+    },
+    "initial_assessment": {
+      "$ref": "#/$defs/AcceptanceAssessmentSnapshot"
+    },
+    "lifecycle": {
+      "$ref": "#/$defs/AcceptanceSessionLifecycle"
+    },
+    "pr_number": {
+      "exclusiveMinimum": 0,
+      "title": "Pr Number",
+      "type": "integer"
+    },
+    "repository_name": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Repository Name",
+      "type": "string"
+    },
+    "repository_owner": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Repository Owner",
+      "type": "string"
+    },
+    "staled_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Staled At"
+    },
+    "step_summaries": {
+      "additionalProperties": {
+        "$ref": "#/$defs/AcceptanceStepSummary"
+      },
+      "propertyNames": {
+        "$ref": "#/$defs/AcceptanceSessionStep"
+      },
+      "title": "Step Summaries",
+      "type": "object"
+    },
+    "stored_merge_ready": {
+      "default": false,
+      "title": "Stored Merge Ready",
+      "type": "boolean"
+    },
+    "updated_at": {
+      "format": "date-time",
+      "title": "Updated At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "repository_owner",
+    "repository_name",
+    "pr_number",
+    "close_set",
+    "head_ref",
+    "head_sha",
+    "head_repository",
+    "base_ref",
+    "base_sha",
+    "base_repository",
+    "initial_assessment",
+    "criteria_snapshot",
+    "criteria_fingerprint",
+    "creation_idempotency_key_identity",
+    "created_by_type",
+    "created_by_id",
+    "lifecycle",
+    "step_summaries",
+    "created_at",
+    "updated_at"
+  ],
+  "title": "AcceptanceSession",
+  "type": "object"
+}

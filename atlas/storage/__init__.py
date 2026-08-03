@@ -9,6 +9,9 @@ from atlas.storage.db import Database
 from atlas.storage.maintenance import clear_all_data
 from atlas.storage.repositories import (
     RAW_PAYLOAD_CAP_BYTES,
+    AcceptanceSessionCreateRecord,
+    AcceptanceSessionRepo,
+    AcceptanceSessionStateError,
     ADRRepo,
     AgentRunRepo,
     ContextPackRepo,
@@ -42,6 +45,9 @@ from atlas.storage.repositories import (
 __all__ = [
     "RAW_PAYLOAD_CAP_BYTES",
     "ADRRepo",
+    "AcceptanceSessionCreateRecord",
+    "AcceptanceSessionRepo",
+    "AcceptanceSessionStateError",
     "AgentRunRepo",
     "ContextPackRepo",
     "Database",

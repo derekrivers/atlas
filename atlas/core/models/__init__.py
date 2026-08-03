@@ -6,6 +6,13 @@ adds PlanRun, ContextPack, and AgentRun, completing the Phase 1 model
 set.
 """
 
+from atlas.core.models.acceptance_session import (
+    AcceptanceSession,
+    AcceptanceSessionBlockingReason,
+    AcceptanceSessionLifecycle,
+    AcceptanceSessionStep,
+    AcceptanceSessionStepState,
+)
 from atlas.core.models.adr import ADRStatus, ArchitectureDecisionRecord
 from atlas.core.models.agent_run import AgentProvider, AgentRun, AgentRunStatus
 from atlas.core.models.context_pack import ContextPack
@@ -37,6 +44,11 @@ from atlas.core.models.verification_check import (
 __all__ = [
     "SUCCESSFUL_PM_SYNC_RESULTS",
     "ADRStatus",
+    "AcceptanceSession",
+    "AcceptanceSessionBlockingReason",
+    "AcceptanceSessionLifecycle",
+    "AcceptanceSessionStep",
+    "AcceptanceSessionStepState",
     "AgentProvider",
     "AgentRun",
     "AgentRunStatus",

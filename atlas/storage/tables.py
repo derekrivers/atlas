@@ -499,6 +499,61 @@ class OperatorActionReceiptRow(Base):
     completed_at: Mapped[datetime] = mapped_column(UTCDateTime())
 
 
+class AcceptanceSessionRow(Base):
+    """Durable summary for one immutable-head acceptance attempt."""
+
+    __tablename__ = "acceptance_sessions"
+    __table_args__ = (
+        sa.UniqueConstraint("creation_idempotency_key_identity"),
+        sa.CheckConstraint(
+            "created_by_type = 'human' AND created_by_id = 'operator'",
+            name="acceptance_sessions_operator_actor",
+        ),
+        sa.CheckConstraint(
+            "(lifecycle = 'stale' AND staled_at IS NOT NULL) OR "
+            "(lifecycle <> 'stale' AND staled_at IS NULL)",
+            name="acceptance_sessions_stale_timestamp",
+        ),
+        sa.Index(
+            "uq_acceptance_sessions_non_terminal_pr",
+            "repository_owner",
+            "repository_name",
+            "pr_number",
+            unique=True,
+            sqlite_where=sa.text("lifecycle NOT IN ('stale', 'blocked', 'failed')"),
+            postgresql_where=sa.text("lifecycle NOT IN ('stale', 'blocked', 'failed')"),
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(sa.Uuid, primary_key=True)
+    repository_owner: Mapped[str] = mapped_column(sa.Text)
+    repository_name: Mapped[str] = mapped_column(sa.Text)
+    pr_number: Mapped[int] = mapped_column(sa.Integer)
+    close_set: Mapped[list[str]] = mapped_column(JSONB)
+    head_ref: Mapped[str] = mapped_column(sa.Text)
+    head_sha: Mapped[str] = mapped_column(sa.Text)
+    head_repository: Mapped[str] = mapped_column(sa.Text)
+    base_ref: Mapped[str] = mapped_column(sa.Text)
+    base_sha: Mapped[str] = mapped_column(sa.Text)
+    base_repository: Mapped[str] = mapped_column(sa.Text)
+    initial_assessment: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    criteria_snapshot: Mapped[list[dict[str, Any]]] = mapped_column(JSONB)
+    criteria_fingerprint: Mapped[str] = mapped_column(sa.Text)
+    creation_idempotency_key_identity: Mapped[str] = mapped_column(sa.Text)
+    created_by_type: Mapped[str] = mapped_column(sa.Text)
+    created_by_id: Mapped[str] = mapped_column(sa.Text)
+    lifecycle: Mapped[str] = mapped_column(sa.Text)
+    step_summaries: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    blocking_reasons: Mapped[list[str]] = mapped_column(JSONB)
+    stored_merge_ready: Mapped[bool] = mapped_column(
+        sa.Boolean, server_default=sa.text("FALSE")
+    )
+    historical_readiness_reasons: Mapped[list[str]] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime())
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime())
+    staled_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+
+
 class KeyCounterRow(Base):
     """Monotonic per-prefix key counter (ATLAS-25, data-model §3.12).
 
@@ -591,3 +646,56 @@ for _append_only_table in _APPEND_ONLY_OPERATOR_ACTION_TABLES:
                 dialect="sqlite"
             ),
         )
+
+
+_ACCEPTANCE_SESSION_PINNED_COLUMNS = (
+    "id",
+    "repository_owner",
+    "repository_name",
+    "pr_number",
+    "close_set",
+    "head_ref",
+    "head_sha",
+    "head_repository",
+    "base_ref",
+    "base_sha",
+    "base_repository",
+    "initial_assessment",
+    "criteria_snapshot",
+    "criteria_fingerprint",
+    "creation_idempotency_key_identity",
+    "created_by_type",
+    "created_by_id",
+    "created_at",
+)
+
+
+def _acceptance_session_pins_sqlite_trigger() -> sa.DDL:
+    comparisons = " OR ".join(
+        f"NEW.{column} IS NOT OLD.{column}"
+        for column in _ACCEPTANCE_SESSION_PINNED_COLUMNS
+    )
+    return sa.DDL(  # type: ignore[no-untyped-call]
+        f"""
+        CREATE TRIGGER acceptance_sessions_pinned_identity
+        BEFORE UPDATE ON acceptance_sessions
+        WHEN {comparisons}
+        BEGIN
+            SELECT RAISE(ABORT, 'acceptance session pinned identity is immutable');
+        END
+        """
+    )
+
+
+sa.event.listen(
+    cast(sa.Table, AcceptanceSessionRow.__table__),
+    "after_create",
+    _acceptance_session_pins_sqlite_trigger().execute_if(dialect="sqlite"),
+)
+sa.event.listen(
+    cast(sa.Table, AcceptanceSessionRow.__table__),
+    "before_drop",
+    sa.DDL(  # type: ignore[no-untyped-call]
+        "DROP TRIGGER IF EXISTS acceptance_sessions_pinned_identity"
+    ).execute_if(dialect="sqlite"),
+)

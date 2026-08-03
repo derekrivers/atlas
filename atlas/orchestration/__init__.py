@@ -1,6 +1,16 @@
 """Cross-layer orchestration shared by Atlas presentation surfaces."""
 
 from atlas.core.models import OperatorActionResultCode
+from atlas.orchestration.acceptance_sessions import (
+    AcceptanceSessionCreationResult,
+    AcceptanceSessionCreationService,
+    AcceptanceSessionCreationStatus,
+    acceptance_criteria_fingerprint,
+    acceptance_criteria_snapshot,
+    compare_acceptance_session_freshness,
+    mark_acceptance_session_stale_for_mutation,
+    stored_acceptance_session_status,
+)
 from atlas.orchestration.confirm import (
     ConfirmCaptureResult,
     ConfirmPrompts,
@@ -47,6 +57,7 @@ from atlas.orchestration.pr_context import (
 )
 from atlas.orchestration.pr_integration import (
     PRAncestryStatus,
+    PRBaseSHASource,
     PRIntegrationAssessment,
     PRIntegrationEligibility,
     PRIntegrationStatus,
@@ -82,6 +93,9 @@ from atlas.orchestration.ticket_evidence import (
 from atlas.orchestration.verify import VerifyResult, run_verify
 
 __all__ = [
+    "AcceptanceSessionCreationResult",
+    "AcceptanceSessionCreationService",
+    "AcceptanceSessionCreationStatus",
     "CanonicalFingerprintError",
     "ConfirmCaptureResult",
     "ConfirmPrompts",
@@ -106,6 +120,7 @@ __all__ = [
     "OperatorActionMutation",
     "OperatorActionResultCode",
     "PRAncestryStatus",
+    "PRBaseSHASource",
     "PRContext",
     "PRIntegrationAssessment",
     "PRIntegrationEligibility",
@@ -124,16 +139,20 @@ __all__ = [
     "TicketReviewState",
     "VerifyResult",
     "abort_pr_rebase",
+    "acceptance_criteria_fingerprint",
+    "acceptance_criteria_snapshot",
     "assess_pr_integration",
     "build_tick_config",
     "canonical_request_fingerprint",
     "capture_ticket",
     "capture_ticket_result",
+    "compare_acceptance_session_freshness",
     "continue_pr_rebase",
     "dependency_critical_path",
     "dependency_graph",
     "idempotency_key_identity",
     "load_context_inputs",
+    "mark_acceptance_session_stale_for_mutation",
     "pr_integration_assessment_json",
     "prepare_pr_rebase",
     "present_operator_action_receipt",
@@ -143,6 +162,7 @@ __all__ = [
     "review_queue",
     "run_git",
     "run_verify",
+    "stored_acceptance_session_status",
     "system_status",
     "ticket_board",
     "ticket_dependencies",

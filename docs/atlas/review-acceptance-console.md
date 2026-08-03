@@ -28,10 +28,11 @@ outside the browser workflow in this phase.
   current with main. The API and UI never recreate that classifier.
 - Evidence, confirmations and verification are authoritative only for the
   session's exact head.
-- Any PR head, main/base SHA, repository identity, eligibility or criteria
-  movement closes the live readiness gate. A mutation that observes movement
-  marks the session stale; a GET reports the mismatch without rewriting stored
-  history.
+- Any PR head, live main/base SHA, repository identity, eligibility, close-set
+  ticket existence/status or criteria movement closes the live readiness gate.
+  A mutation that observes movement marks the session stale; a GET reports the
+  mismatch without rewriting stored history. A historical PR `base.sha` from
+  an ineligible assessment is not evidence that live `main` moved.
 - A stale session is immutable history. The operator starts a new session;
   Atlas never retargets an old session to a new head.
 - The final readiness result is advisory authority for the operator's manual
@@ -79,10 +80,63 @@ the same idempotency key replay their stored outcome. A recoverable transport
 failure does not advance the session and can be retried with a new key; it
 cannot erase prior history.
 
-The first version permits one non-terminal session per repository/PR/head.
+The first version permits one non-terminal session per repository/PR, and that
+session pins exactly one head.
 Creating it again with the same command key replays the existing result.
 Creating a new session after head movement creates a new record and leaves the
 old record intact.
+
+### Delivered durable-session foundation
+
+The durable foundation stores one canonical `AcceptanceSession` row. Its
+pinned fields are repository owner/name, PR number, sorted close-set, head and
+base refs/SHAs/repository identities, the structured initial assessment, the
+server-read criterion snapshot and fingerprint, the hashed creation-command
+identity and the `human/operator` actor. Pinned-field updates are rejected by
+the model/repository boundary and by database triggers; no operation can
+retarget a session.
+
+Creation first invokes the shared Phase 12 assessment. Only an `eligible`,
+`current`, open, non-draft, same-repository PR targeting literal `main`
+continues to close-set and ticket reads. Every key must resolve to a current
+stored ticket in `review_required`. The service then reads each ticket's
+canonical `acceptance_criteria`; no cached or caller-supplied criterion content
+is an input. It snapshots in sorted ticket-key and stored-index order and
+fingerprints canonical JSON with SHA-256. The session insert is the final
+operation.
+
+The database permits one non-terminal session per repository/PR. Only the same
+creation-command identity replays its original row, including during a
+concurrent create; a different command colliding with an identical active
+session returns `active_session_exists`. Before returning a collision, creation
+compares the live repository/PR, close-set, head/base refs, SHAs and repository
+identities, eligibility, ticket existence/status and criteria fingerprint with
+the active row. Movement atomically marks that row terminal `stale` and returns
+every typed mismatch; this also applies when creation's ticket preflight finds
+a formerly eligible close-set ticket missing or no longer `review_required`.
+The caller must retry to create the new exact-head lifecycle. Both histories
+remain queryable, and no command retargets the old row.
+
+`compare_acceptance_session_freshness` is pure and returns all typed
+repository, PR, close-set, head/base ref/SHA/repository, eligibility,
+integration, ticket existence/status and criteria mismatches from supplied
+assessment and ticket values. Missing, non-`review_required` or indeterminate
+external state is never fresh. It compares a base SHA only when the assessment
+labels it `live_branch`, never when it is a `historical_pr_snapshot`. Mutation
+callers compose those reasons with one atomic `mark_stale`; read callers use
+the comparison result without changing the stored row.
+
+`stored_acceptance_session_status` is also pure. It projects pinned identity,
+criteria, lifecycle, every step summary, receipt IDs, blocking reasons and
+timestamps from the supplied model only. Its readiness member is named
+`historical_readiness`, carries `authority: historical_only`, and fixes
+`is_current_merge_authority` to false. It performs no GitHub, ticket, evidence,
+confirmation, verification or storage operation. The later live-readiness
+service remains a separate composition boundary.
+
+This foundation adds no acceptance HTTP route and performs no evidence pull,
+confirmation, verification, readiness evaluation, Git operation, GitHub or
+Linear write, merge or background work.
 
 ## Preflight
 
@@ -99,6 +153,13 @@ Behind, diverged, conflicted or otherwise rebase-eligible states return the
 named Phase 12 recovery command but do not start a session. Draft, fork,
 non-main, closed, unknown and indeterminate states fail closed without writes
 other than the authenticated action outcome.
+
+The typed preflight result keeps `behind`, `diverged` and `conflicted`
+distinct and returns exactly
+`atlas pr rebase prepare --pr <N> --repo <owner>/<repo>` as bounded recovery
+data for those three states only. Merged, closed, draft, fork-head, non-main,
+unknown PR and indeterminate external state have separate reason codes and no
+recovery command. Foreign exception text is never returned.
 
 ## Evidence action
 

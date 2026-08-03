@@ -234,12 +234,15 @@ State vocabulary:
 
 The assessment carries the repository, PR number/state/draft/merged flags,
 head ref/SHA/repository, base ref/SHA/repository, compare status, ahead/behind
-counts, merge-base SHA, and all derived statuses. `--json` emits the same typed
-fields for automation. The command writes nothing: no Git fetch, branch update,
-GitHub mutation, Atlas-store row, or Linear transition. Exit code is zero only
-for `integration_status: current`; any rendered non-current, indeterminate, or
-ineligible assessment exits non-zero. Setup and transport failures render a
-single clean error line and no traceback.
+counts, merge-base SHA, and all derived statuses. Its base SHA source is
+`live_branch` when the eligible assessment resolved the branch independently,
+and `historical_pr_snapshot` when ineligibility stopped before that read;
+consumers cannot mistake the latter for movement of live `main`. `--json` emits
+the same typed fields for automation. The command writes nothing: no Git fetch,
+branch update, GitHub mutation, Atlas-store row, or Linear transition. Exit
+code is zero only for `integration_status: current`; any rendered non-current,
+indeterminate, or ineligible assessment exits non-zero. Setup and transport
+failures render a single clean error line and no traceback.
 
 The canonical close driver uses the same assessment in process. Its initial
 freshness assessment runs after local/token/operator preflight but before
@@ -252,6 +255,49 @@ PASSED `verify --json`, the driver performs a second fresh assessment before
 displaying the merge prompt. The live head must equal both the initial head and
 the verified head, and the live base SHA, branch identities, and repository
 identities must match the initial snapshot. Any movement restarts acceptance.
+
+### Durable acceptance-session consumer
+
+Phase 14's durable acceptance-session foundation consumes the exact same
+in-process assessment; it does not call `atlas pr status`, parse CLI output or
+reimplement the classifier. Creation accepts only an open, non-draft,
+same-repository PR targeting literal `main` whose shared assessment is
+`current`, then resolves the existing close-set parser and requires every live
+ticket to be `review_required`. It snapshots the current stored acceptance
+criteria in sorted ticket-key/index order before making the single session
+insert. Caller or cached UI criterion text is never authoritative.
+
+The session pins repository/PR, close-set, head and base refs/SHAs/repository
+identities, structured assessment fields, criteria fingerprint and the
+server-owned `human/operator` actor. Those identities cannot be updated.
+There is one non-terminal session per repository/PR; head movement must first
+make the old session terminal `stale`, after which creation records a new row
+without retargeting or deleting the old row.
+
+Creation-command replay is reserved for the same idempotency identity. A new
+command colliding with an active session compares every pinned identity,
+close-set, current ticket existence/status and criteria fingerprint. An
+identical collision is refused as `active_session_exists`; any movement stales
+the old row and returns the typed mismatches so a retry starts a new durable
+lifecycle. Creation that discovers a missing or non-`review_required` ticket
+also terminalises the previously active session before returning its typed
+preflight refusal.
+
+The shared pure freshness comparator reports all head, live-base, ref,
+repository, eligibility, ticket existence/status and criteria mismatches. It
+does not compare an ineligible assessment's `historical_pr_snapshot` base as a
+live identity. A mutation that observes any mismatch atomically marks the
+session stale. Read use is non-mutating: the stored-status projection labels
+any persisted readiness `historical_only` and explicitly not current merge
+authority. The later live-readiness service composes fresh bounded reads
+separately; there is no polling or hidden refresh write.
+
+Behind, diverged and conflicted creation preflight returns the existing exact
+`atlas pr rebase prepare --pr <N> --repo <owner>/<repo>` operator recovery
+command and creates no session. Draft, fork-head, non-main, merged, closed,
+unknown and indeterminate cases remain distinct typed refusals. This foundation
+adds no evidence, confirmation, verification, HTTP, GitHub/Linear write, Git
+operation or merge path.
 
 ### Operator-owned PR rebase lane
 

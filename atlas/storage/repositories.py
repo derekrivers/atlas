@@ -53,9 +53,15 @@ from atlas.core.models import (
     TickFailure,
     VerificationCheck,
 )
+from atlas.core.models import AcceptanceSession as _AcceptanceModel
+from atlas.core.models import (
+    AcceptanceSessionBlockingReason as _AcceptanceReason,
+)
+from atlas.core.models import AcceptanceSessionLifecycle as _AcceptanceLifecycle
 from atlas.core.trust import evidence_tier
 from atlas.storage.db import Database
 from atlas.storage.tables import (
+    AcceptanceSessionRow,
     AgentRunRow,
     ArchitectureDecisionRecordRow,
     Base,
@@ -128,6 +134,14 @@ class LessonValidationError(ValueError):
     """Operator-supplied lesson lifecycle input failed validation."""
 
 
+class AcceptanceSessionStateError(ValueError):
+    """An acceptance-session create or transition violated stored state."""
+
+    def __init__(self, reason: _AcceptanceReason) -> None:
+        self.reason = reason
+        super().__init__(reason.value)
+
+
 @dataclass(frozen=True)
 class Reservation:
     """The keys an apply reserved from one prefix's counter: the assigned
@@ -145,6 +159,17 @@ class StaleLessonReview:
 
     lesson: Lesson
     context_pack_count: int
+
+
+@dataclass(frozen=True)
+class AcceptanceSessionCreateRecord:
+    """Repository result distinguishing one insert from a durable replay."""
+
+    session: _AcceptanceModel
+    created: bool
+
+
+_AcceptanceCreateResult = AcceptanceSessionCreateRecord
 
 
 @dataclass(frozen=True)
@@ -1371,6 +1396,156 @@ class VerificationCheckRepo(_Repo[VerificationCheck]):
                 .order_by(VerificationCheckRow.created_at, VerificationCheckRow.id)
             )
             return [self._to_model(row) for row in rows]
+
+
+class AcceptanceSessionRepo(_Repo[_AcceptanceModel]):
+    """Pinned-identity acceptance sessions with narrow lifecycle mutation."""
+
+    def __init__(self, db: Database) -> None:
+        super().__init__(db, _AcceptanceModel, AcceptanceSessionRow)
+
+    def create(self, model: _AcceptanceModel) -> _AcceptanceCreateResult:
+        """Insert one session or replay the same creation command.
+
+        The partial unique index serialises all non-terminal attempts for one
+        repository/PR.  The all-time unique creation-key identity makes an
+        exact idempotent command replay its original immutable outcome.  A
+        different command never receives another command's active row.
+        """
+
+        _reject_naive(model)
+        try:
+            with self._db.session() as session, session.begin():
+                session.add(self._to_row(model))
+                session.flush()
+            return AcceptanceSessionCreateRecord(session=model, created=True)
+        except sa.exc.IntegrityError as error:
+            by_command = self.get_by_creation_idempotency_key_identity(
+                model.creation_idempotency_key_identity
+            )
+            if by_command is not None:
+                if (
+                    by_command.repository_owner == model.repository_owner
+                    and by_command.repository_name == model.repository_name
+                    and by_command.pr_number == model.pr_number
+                    and by_command.created_by_type == model.created_by_type
+                    and by_command.created_by_id == model.created_by_id
+                ):
+                    return AcceptanceSessionCreateRecord(
+                        session=by_command, created=False
+                    )
+                raise AcceptanceSessionStateError(
+                    _AcceptanceReason.IDEMPOTENCY_KEY_REUSED
+                ) from error
+
+            active = self.get_non_terminal_for_pr(
+                model.repository_owner,
+                model.repository_name,
+                model.pr_number,
+            )
+            if active is not None:
+                raise AcceptanceSessionStateError(
+                    _AcceptanceReason.ACTIVE_SESSION_EXISTS
+                ) from error
+            raise
+
+    def get_by_creation_idempotency_key_identity(
+        self, identity: str
+    ) -> _AcceptanceModel | None:
+        """Return the immutable outcome owned by one creation command."""
+
+        with self._db.session() as session:
+            row = session.scalars(
+                sa.select(AcceptanceSessionRow).where(
+                    AcceptanceSessionRow.creation_idempotency_key_identity == identity
+                )
+            ).first()
+            return None if row is None else self._to_model(row)
+
+    def get_non_terminal_for_pr(
+        self, repository_owner: str, repository_name: str, pr_number: int
+    ) -> _AcceptanceModel | None:
+        """Return the sole non-terminal attempt for a repository/PR."""
+
+        terminal = tuple(
+            status.value for status in _AcceptanceLifecycle if status.is_terminal
+        )
+        with self._db.session() as session:
+            row = session.scalars(
+                sa.select(AcceptanceSessionRow).where(
+                    AcceptanceSessionRow.repository_owner == repository_owner,
+                    AcceptanceSessionRow.repository_name == repository_name,
+                    AcceptanceSessionRow.pr_number == pr_number,
+                    AcceptanceSessionRow.lifecycle.not_in(terminal),
+                )
+            ).first()
+            return None if row is None else self._to_model(row)
+
+    def list_for_pr(
+        self, repository_owner: str, repository_name: str, pr_number: int
+    ) -> list[_AcceptanceModel]:
+        """Return every immutable-head attempt in historical order."""
+
+        with self._db.session() as session:
+            rows = session.scalars(
+                sa.select(AcceptanceSessionRow)
+                .where(
+                    AcceptanceSessionRow.repository_owner == repository_owner,
+                    AcceptanceSessionRow.repository_name == repository_name,
+                    AcceptanceSessionRow.pr_number == pr_number,
+                )
+                .order_by(
+                    AcceptanceSessionRow.created_at,
+                    AcceptanceSessionRow.id,
+                )
+            )
+            return [self._to_model(row) for row in rows]
+
+    def mark_stale(
+        self,
+        session_id: UUID,
+        reasons: tuple[_AcceptanceReason, ...],
+        *,
+        staled_at: datetime,
+    ) -> _AcceptanceModel:
+        """Atomically terminalise a moved session while preserving history."""
+
+        if staled_at.utcoffset() is None:
+            raise NaiveDatetimeError("AcceptanceSession", "staled_at")
+        if not reasons:
+            raise ValueError("mark_stale requires at least one typed reason")
+        with self._db.session() as session, session.begin():
+            row = session.get(AcceptanceSessionRow, session_id)
+            if row is None:
+                raise AcceptanceSessionStateError(_AcceptanceReason.SESSION_STALE)
+            current = _AcceptanceLifecycle(row.lifecycle)
+            if current.is_terminal:
+                return self._to_model(row)
+
+            existing_reasons = [
+                _AcceptanceReason(reason) for reason in row.blocking_reasons
+            ]
+            row.blocking_reasons = [
+                reason.value for reason in dict.fromkeys([*existing_reasons, *reasons])
+            ]
+            historical = [
+                _AcceptanceReason(reason) for reason in row.historical_readiness_reasons
+            ]
+            row.historical_readiness_reasons = [
+                reason.value
+                for reason in dict.fromkeys(
+                    [
+                        *historical,
+                        _AcceptanceReason.SESSION_STALE,
+                        *reasons,
+                    ]
+                )
+            ]
+            row.lifecycle = _AcceptanceLifecycle.STALE.value
+            row.updated_at = staled_at
+            row.staled_at = staled_at
+            session.flush()
+            return self._to_model(row)
 
 
 class OperatorActionReceiptRepo(_Repo[OperatorActionReceipt]):
