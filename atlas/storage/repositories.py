@@ -1051,10 +1051,47 @@ def _evidence_row(model: Evidence) -> EvidenceRow:
     return EvidenceRow(**payload)
 
 
+def _get_evidence_by_dedup_key(
+    session: Session,
+    external_run_id: str,
+    payload_hash: str,
+    *,
+    require_job_metadata: bool = False,
+) -> Evidence | None:
+    """Return one immutable system observation inside the caller's transaction."""
+
+    statement = sa.select(EvidenceRow).where(
+        EvidenceRow.external_run_id == external_run_id,
+        EvidenceRow.payload_hash == payload_hash,
+    )
+    if require_job_metadata:
+        statement = statement.where(EvidenceRow.job_name.is_not(None))
+    row = session.scalars(
+        statement.order_by(EvidenceRow.created_at, EvidenceRow.id)
+    ).first()
+    return None if row is None else Evidence.model_validate(row, from_attributes=True)
+
+
 def _add_evidence(session: Session, model: Evidence) -> Evidence:
-    """Append evidence inside a caller-owned transaction using repo guards."""
+    """Canonically append evidence inside a caller-owned transaction.
+
+    This is the transaction-aware form of :meth:`EvidenceRepo.add`: it applies
+    every trust/retention guard and preserves the immutable system-source dedup
+    identity without opening or committing a second transaction.
+    """
 
     prepared = _prepare_evidence_append(model)
+    if evidence_tier(prepared.created_by_type) == "system":
+        assert prepared.external_run_id is not None
+        assert prepared.payload_hash is not None
+        existing = _get_evidence_by_dedup_key(
+            session,
+            prepared.external_run_id,
+            prepared.payload_hash,
+            require_job_metadata=prepared.job_name is not None,
+        )
+        if existing is not None:
+            return existing
     session.add(_evidence_row(prepared))
     return prepared
 
@@ -1092,31 +1129,16 @@ class EvidenceRepo(_Repo[Evidence]):
         """
 
         with self._db.session() as session:
-            statement = sa.select(EvidenceRow).where(
-                EvidenceRow.external_run_id == external_run_id,
-                EvidenceRow.payload_hash == payload_hash,
+            return _get_evidence_by_dedup_key(
+                session,
+                external_run_id,
+                payload_hash,
+                require_job_metadata=require_job_metadata,
             )
-            if require_job_metadata:
-                statement = statement.where(EvidenceRow.job_name.is_not(None))
-            row = session.scalars(
-                statement.order_by(EvidenceRow.created_at, EvidenceRow.id)
-            ).first()
-            return None if row is None else self._to_model(row)
 
     def add(self, model: Evidence) -> Evidence:
-        prepared = _prepare_evidence_append(model)
-        if evidence_tier(prepared.created_by_type) == "system":
-            assert prepared.external_run_id is not None
-            assert prepared.payload_hash is not None
-            existing = self.get_by_dedup_key(
-                prepared.external_run_id,
-                prepared.payload_hash,
-                require_job_metadata=prepared.job_name is not None,
-            )
-            if existing is not None:
-                return existing
         with self._db.session() as session, session.begin():
-            return _add_evidence(session, prepared)
+            return _add_evidence(session, model)
 
     def list_for_ticket(self, ticket_id: UUID) -> list[Evidence]:
         """Return one ticket's evidence, oldest record first."""

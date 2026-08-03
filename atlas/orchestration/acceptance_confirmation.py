@@ -159,7 +159,7 @@ class AcceptanceSessionConfirmationService:
 
         payload = {
             "criteria_fingerprint": request.criteria_fingerprint,
-            "criterion_indexes": list(request.criterion_indexes),
+            "criterion_indexes": sorted(request.criterion_indexes),
             "manual_approval": request.manual_approval,
         }
         envelope = OperatorActionEnvelope(

@@ -16,14 +16,20 @@ import pytest
 import sqlalchemy as sa
 from pydantic import ValidationError
 from sqlalchemy.orm import Session, object_session
+from test_evidence_model import evidence_kwargs
 from test_models_validation import product_kwargs
 from test_operator_action_receipt_model import (
     VALID_OUTCOME_RESULT_PAIRS,
     operator_action_receipt_kwargs,
 )
 
-from atlas.core.enums import ActorType, EntityStatus
-from atlas.core.models import OperatorActionOutcome, OperatorActionReceipt, Product
+from atlas.core.enums import ActorType, EntityStatus, EvidenceStatus
+from atlas.core.models import (
+    Evidence,
+    OperatorActionOutcome,
+    OperatorActionReceipt,
+    Product,
+)
 from atlas.orchestration import (
     CanonicalFingerprintError,
     OperatorActionCommandContext,
@@ -40,7 +46,12 @@ from atlas.orchestration import (
     idempotency_key_identity,
     present_operator_action_receipt,
 )
-from atlas.storage import Database, OperatorActionReceiptRepo, ProductRepo
+from atlas.storage import (
+    Database,
+    EvidenceRepo,
+    OperatorActionReceiptRepo,
+    ProductRepo,
+)
 from atlas.storage.tables import (
     OperatorActionKeyRow,
     OperatorActionReceiptRow,
@@ -79,14 +90,16 @@ def envelope(
     target_type: str = "product",
     target_id: str = "ATLAS",
     payload: dict[str, Any] | None = None,
+    created_by_type: ActorType = ActorType.HUMAN,
+    created_by_id: str = "operator",
 ) -> OperatorActionEnvelope:
     body = {"reason": "operator requested"} if payload is None else payload
     return OperatorActionEnvelope(
         action=action,
         target_type=target_type,
         target_id=target_id,
-        created_by_type=ActorType.HUMAN,
-        created_by_id="operator",
+        created_by_type=created_by_type,
+        created_by_id=created_by_id,
         idempotency_key=key,
         request_fingerprint=canonical_request_fingerprint(
             action=action,
@@ -329,6 +342,97 @@ def test_same_key_different_fingerprint_returns_typed_conflict_without_command(
     assert conflict.conflict is not None
     assert conflict.conflict.code is OperatorActionConflictCode.IDEMPOTENCY_KEY_REUSED
     assert len(calls) == 1
+
+
+def test_gateway_canonical_append_deduplicates_contradictory_system_identity(
+    db: Database,
+) -> None:
+    product = seed_product(db)
+    first = Evidence(
+        **evidence_kwargs()
+        | {
+            "id": uuid4(),
+            "product_id": product.id,
+            "external_run_id": "run-duplicate",
+            "payload_hash": "sha256:immutable-source",
+            "status": EvidenceStatus.PASSED,
+            "summary": "source passed",
+            "created_by_id": "github-actions",
+        }
+    )
+    contradictory = first.model_copy(
+        update={
+            "id": uuid4(),
+            "status": EvidenceStatus.FAILED,
+            "summary": "same source failed",
+        }
+    )
+    request = envelope(
+        key="idem-system-evidence-dedup",
+        action="evidence.ingest",
+        target_type="evidence_source",
+        target_id="run-duplicate",
+        created_by_type=ActorType.SYSTEM,
+        created_by_id="github-actions",
+    )
+
+    result = OperatorActionGateway(db, clock=FrozenClock()).execute(
+        request,
+        lambda _context: OperatorActionCommandResult(
+            outcome=OperatorActionOutcome.SUCCEEDED,
+            result_code=OperatorActionResultCode.ACTION_SUCCEEDED,
+            evidence_appends=(first, contradictory),
+        ),
+    )
+
+    assert result.status is OperatorActionGatewayStatus.EXECUTED
+    assert EvidenceRepo(db).list() == [first]
+
+
+def test_gateway_rejects_actor_mismatched_evidence_and_rolls_back_atomically(
+    db: Database,
+) -> None:
+    product = seed_product(db)
+    spoofed = Evidence(
+        **evidence_kwargs()
+        | {
+            "id": uuid4(),
+            "product_id": product.id,
+            "created_by_type": ActorType.HUMAN,
+            "created_by_id": "spoofed-operator",
+        }
+    )
+    request = envelope(key="idem-spoofed-evidence", target_id=product.key)
+
+    def command(
+        context: OperatorActionCommandContext,
+    ) -> OperatorActionCommandResult:
+        row = context.entity("target", ProductRow)
+        assert row is not None
+        row.status = EntityStatus.DEPRECATED.value
+        return OperatorActionCommandResult(
+            outcome=OperatorActionOutcome.SUCCEEDED,
+            result_code=OperatorActionResultCode.ACTION_SUCCEEDED,
+            mutations=(OperatorActionMutation(row),),
+            evidence_appends=(spoofed,),
+        )
+
+    result = OperatorActionGateway(db, clock=FrozenClock()).execute(
+        request,
+        command,
+        loads=product_load(product.id),
+    )
+
+    assert result.status is OperatorActionGatewayStatus.FAILED
+    assert result.failure is not None
+    assert result.failure.code is OperatorActionFailureCode.COMMAND_FAILED
+    assert EvidenceRepo(db).list() == []
+    assert OperatorActionReceiptRepo(db).list() == []
+    stored = ProductRepo(db).get(product.id)
+    assert stored is not None
+    assert stored.status is EntityStatus.ACTIVE
+    with db.session() as session:
+        assert session.scalars(sa.select(OperatorActionKeyRow)).all() == []
 
 
 def test_terminal_refusal_is_recorded_and_replayed_without_success_masquerade(

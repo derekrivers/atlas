@@ -501,7 +501,7 @@ def test_ac5_write_or_receipt_failure_rolls_back_complete_confirmation_set(
     assert AcceptanceSessionRepo(db).get(session.id) == session
 
 
-def test_ac6_same_key_and_altered_replays_cannot_duplicate_or_replace_set(
+def test_ac6_same_key_reordered_set_replays_without_duplicate_or_replacement(
     db: Database,
 ) -> None:
     session, _tickets = seed_session(db)
@@ -509,7 +509,7 @@ def test_ac6_same_key_and_altered_replays_cannot_duplicate_or_replace_set(
 
     first = action.confirm(request(session), idempotency_key="replay-key")
     replay = action.confirm(request(session), idempotency_key="replay-key")
-    altered = action.confirm(
+    reordered = action.confirm(
         request(session, indexes=(2, 1, 0)),
         idempotency_key="replay-key",
     )
@@ -518,7 +518,8 @@ def test_ac6_same_key_and_altered_replays_cannot_duplicate_or_replace_set(
     assert first.receipt is not None
     assert replay.status is AcceptanceConfirmationStatus.REPLAYED
     assert replay.receipt == first.receipt
-    assert altered.status is AcceptanceConfirmationStatus.CONFLICT
+    assert reordered.status is AcceptanceConfirmationStatus.REPLAYED
+    assert reordered.receipt == first.receipt
     assert len(EvidenceRepo(db).list()) == 5
     stored = AcceptanceSessionRepo(db).get(session.id)
     assert stored is not None

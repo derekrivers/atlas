@@ -386,6 +386,7 @@ class OperatorActionGateway:
                             session, command_result.mutations
                         )
                         for evidence in command_result.evidence_appends:
+                            _require_server_resolved_evidence_actor(evidence, context)
                             _add_evidence(session, evidence)
                         session.flush()
                     except _MutationStale:
@@ -522,6 +523,19 @@ class OperatorActionGateway:
                 current_entity=current,
             ),
         )
+
+
+def _require_server_resolved_evidence_actor(
+    evidence: Evidence,
+    context: OperatorActionCommandContext,
+) -> None:
+    """Prevent an injected command from changing server-owned attribution."""
+
+    if (
+        evidence.created_by_type is not context.created_by_type
+        or evidence.created_by_id != context.created_by_id
+    ):
+        raise ValueError("evidence actor must match server-resolved command actor")
 
 
 def _approved_operator_action_metadata(
