@@ -1321,7 +1321,12 @@ fingerprints, creation-command identity, actor or `created_at`. There is no
 general update or retarget operation. A partial unique index permits at most
 one non-terminal row per repository/PR; consequently a moved head starts a new
 session only after the old row is terminal, normally `stale`. The creation-key
-identity is unique for all time and replays its original result.
+identity is unique for all time and only that same command replays its original
+result. A different command that collides with an active row compares every
+pinned repository/PR, close-set, head/base identity and criteria fingerprint.
+An identical candidate returns `active_session_exists`; movement atomically
+stales the old row and returns the typed mismatch before a retry may create the
+replacement lifecycle.
 
 ## Pydantic Model
 

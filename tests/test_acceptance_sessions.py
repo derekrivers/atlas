@@ -413,8 +413,8 @@ def test_ac4_idempotent_and_concurrent_creation_yield_one_record(
 
     results: list[Any] = []
     threads = [
-        threading.Thread(target=concurrent_create, args=(f"race-{index}", results))
-        for index in range(2)
+        threading.Thread(target=concurrent_create, args=("race-command", results))
+        for _index in range(2)
     ]
     for thread in threads:
         thread.start()
@@ -429,6 +429,22 @@ def test_ac4_idempotent_and_concurrent_creation_yield_one_record(
     assert len(AcceptanceSessionRepo(db).list_for_pr(OWNER, REPO, PR + 1)) == 1
 
 
+def test_ac4_new_command_for_identical_active_session_conflicts_without_replay(
+    db: Database, tickets: TicketFake
+) -> None:
+    first = stored_session(db, tickets)
+
+    collision = create(
+        creator(db, tickets, exact_assessment=assessment()),
+        key="new-command",
+    )
+
+    assert collision.status is CreationStatus.CONFLICT
+    assert collision.session is None
+    assert collision.reasons == (Reason.ACTIVE_SESSION_EXISTS,)
+    assert AcceptanceSessionRepo(db).get(first.id) == first
+
+
 def test_ac4_different_head_waits_for_old_session_to_be_stale(
     db: Database, tickets: TicketFake
 ) -> None:
@@ -437,18 +453,96 @@ def test_ac4_different_head_waits_for_old_session_to_be_stale(
 
     blocked = create(creator(db, tickets, exact_assessment=moved), key="different-head")
     assert blocked.status is CreationStatus.CONFLICT
-    assert blocked.reasons == (Reason.ACTIVE_SESSION_EXISTS,)
+    assert blocked.session is None
+    assert blocked.reasons == (Reason.HEAD_SHA_MISMATCH,)
+    stale = AcceptanceSessionRepo(db).get(first.id)
+    assert stale is not None
+    assert stale.lifecycle is AcceptanceSessionLifecycle.STALE
+    assert stale.blocking_reasons == (Reason.HEAD_SHA_MISMATCH,)
 
-    AcceptanceSessionRepo(db).mark_stale(
-        first.id,
-        (Reason.HEAD_SHA_MISMATCH,),
-        staled_at=NOW + timedelta(minutes=1),
-    )
     created = create(creator(db, tickets, exact_assessment=moved), key="different-head")
     assert created.status is CreationStatus.CREATED
     assert created.session is not None
     assert created.session.head_sha == "3" * 40
     assert len(AcceptanceSessionRepo(db).list_for_pr(OWNER, REPO, PR)) == 2
+
+
+def test_ac4_new_command_same_head_base_movement_stales_before_retry(
+    db: Database, tickets: TicketFake
+) -> None:
+    first = stored_session(db, tickets)
+    moved_base = "4" * 40
+    live = assessment(base_sha=moved_base, merge_base_sha=moved_base)
+
+    collision = create(creator(db, tickets, exact_assessment=live), key="base-moved")
+
+    assert collision.status is CreationStatus.CONFLICT
+    assert collision.session is None
+    assert collision.reasons == (Reason.BASE_SHA_MISMATCH,)
+    stale = AcceptanceSessionRepo(db).get(first.id)
+    assert stale is not None
+    assert stale.lifecycle is AcceptanceSessionLifecycle.STALE
+    assert stale.base_sha == BASE
+    assert stale.blocking_reasons == (Reason.BASE_SHA_MISMATCH,)
+
+    replacement = create(
+        creator(db, tickets, exact_assessment=live),
+        key="base-moved",
+    )
+    assert replacement.status is CreationStatus.CREATED
+    assert replacement.session is not None
+    assert replacement.session.base_sha == moved_base
+
+
+def test_ac4_new_command_same_head_criteria_movement_stales_before_retry(
+    db: Database, tickets: TicketFake
+) -> None:
+    first = stored_session(db, tickets)
+    tickets.tickets["ATLAS-1"].acceptance_criteria[0] = "changed live criterion"
+
+    collision = create(
+        creator(db, tickets, exact_assessment=assessment()),
+        key="criteria-moved",
+    )
+
+    assert collision.status is CreationStatus.CONFLICT
+    assert collision.session is None
+    assert collision.reasons == (Reason.CRITERIA_MISMATCH,)
+    stale = AcceptanceSessionRepo(db).get(first.id)
+    assert stale is not None
+    assert stale.lifecycle is AcceptanceSessionLifecycle.STALE
+    assert stale.criteria_snapshot[0].text == "first criterion"
+    assert stale.blocking_reasons == (Reason.CRITERIA_MISMATCH,)
+
+    replacement = create(
+        creator(db, tickets, exact_assessment=assessment()),
+        key="criteria-moved",
+    )
+    assert replacement.status is CreationStatus.CREATED
+    assert replacement.session is not None
+    assert replacement.session.criteria_snapshot[0].text == "changed live criterion"
+
+
+def test_ac4_new_command_close_set_movement_stales_when_fingerprint_is_unchanged(
+    db: Database,
+) -> None:
+    empty_criteria = TicketFake(ticket("ATLAS-1"), ticket("ATLAS-2"))
+    first = create(creator(db, empty_criteria, exact_assessment=assessment()))
+    assert first.session is not None
+    assert first.session.criteria_snapshot == ()
+
+    moved = assessment(pr_title="ATLAS-1")
+    collision = create(
+        creator(db, empty_criteria, exact_assessment=moved),
+        key="close-set-moved",
+    )
+
+    assert collision.status is CreationStatus.CONFLICT
+    assert collision.reasons == (Reason.CLOSE_SET_MISMATCH,)
+    stale = AcceptanceSessionRepo(db).get(first.session.id)
+    assert stale is not None
+    assert stale.lifecycle is AcceptanceSessionLifecycle.STALE
+    assert stale.blocking_reasons == (Reason.CLOSE_SET_MISMATCH,)
 
 
 def test_ac5_freshness_comparator_returns_every_typed_mismatch(

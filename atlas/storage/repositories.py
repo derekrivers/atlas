@@ -1405,11 +1405,12 @@ class AcceptanceSessionRepo(_Repo[_AcceptanceModel]):
         super().__init__(db, _AcceptanceModel, AcceptanceSessionRow)
 
     def create(self, model: _AcceptanceModel) -> _AcceptanceCreateResult:
-        """Insert one session or return the row that won a concurrent create.
+        """Insert one session or replay the same creation command.
 
         The partial unique index serialises all non-terminal attempts for one
         repository/PR.  The all-time unique creation-key identity makes an
-        exact idempotent command replay its original immutable outcome.
+        exact idempotent command replay its original immutable outcome.  A
+        different command never receives another command's active row.
         """
 
         _reject_naive(model)
@@ -1442,8 +1443,6 @@ class AcceptanceSessionRepo(_Repo[_AcceptanceModel]):
                 model.repository_name,
                 model.pr_number,
             )
-            if active is not None and active.head_sha == model.head_sha:
-                return AcceptanceSessionCreateRecord(session=active, created=False)
             if active is not None:
                 raise AcceptanceSessionStateError(
                     _AcceptanceReason.ACTIVE_SESSION_EXISTS

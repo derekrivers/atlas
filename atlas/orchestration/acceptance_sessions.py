@@ -133,6 +133,18 @@ def compare_acceptance_session_freshness(
             reasons.append(AcceptanceSessionBlockingReason.REPOSITORY_MISMATCH)
         if live_assessment.pr_number != session.pr_number:
             reasons.append(AcceptanceSessionBlockingReason.PR_NUMBER_MISMATCH)
+        live_close_set = tuple(
+            sorted(
+                set(
+                    parse_close_set(
+                        live_assessment.pr_title,
+                        live_assessment.pr_body,
+                    )
+                )
+            )
+        )
+        if live_close_set != session.close_set:
+            reasons.append(AcceptanceSessionBlockingReason.CLOSE_SET_MISMATCH)
         if live_assessment.head_ref != session.head_ref:
             reasons.append(AcceptanceSessionBlockingReason.HEAD_REF_MISMATCH)
         if live_assessment.head_sha != session.head_sha:
@@ -408,6 +420,30 @@ class AcceptanceSessionCreationService:
         try:
             stored = self._repository.create(session)
         except AcceptanceSessionStateError as error:
+            if error.reason is AcceptanceSessionBlockingReason.ACTIVE_SESSION_EXISTS:
+                active = self._repository.get_non_terminal_for_pr(
+                    owner,
+                    name,
+                    pr_number,
+                )
+                if active is not None:
+                    movement = compare_acceptance_session_freshness(
+                        active,
+                        assessment,
+                        criteria,
+                    )
+                    if movement:
+                        mark_acceptance_session_stale_for_mutation(
+                            self._repository,
+                            active,
+                            assessment,
+                            criteria,
+                            observed_at=max(now, active.updated_at),
+                        )
+                        return AcceptanceSessionCreationResult(
+                            status=AcceptanceSessionCreationStatus.CONFLICT,
+                            reasons=movement,
+                        )
             return AcceptanceSessionCreationResult(
                 status=AcceptanceSessionCreationStatus.CONFLICT,
                 reasons=(error.reason,),

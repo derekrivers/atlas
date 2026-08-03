@@ -180,6 +180,7 @@
         "base_ref_mismatch",
         "base_sha_mismatch",
         "base_repository_mismatch",
+        "close_set_mismatch",
         "eligibility_mismatch",
         "integration_status_mismatch",
         "criteria_mismatch",

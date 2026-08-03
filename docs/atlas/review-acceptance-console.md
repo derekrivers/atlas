@@ -104,18 +104,22 @@ is an input. It snapshots in sorted ticket-key and stored-index order and
 fingerprints canonical JSON with SHA-256. The session insert is the final
 operation.
 
-The database permits one non-terminal session per repository/PR. A concurrent
-same-head create yields one row and the other call returns that row; the same
-creation-command identity always replays its original row. A different live
-head cannot create beside an older non-terminal session. Once a mutation's
-freshness check atomically marks the old row terminal `stale`, a new exact-head
-row may be created; both histories remain queryable.
+The database permits one non-terminal session per repository/PR. Only the same
+creation-command identity replays its original row, including during a
+concurrent create; a different command colliding with an identical active
+session returns `active_session_exists`. Before returning a collision, creation
+compares the live repository/PR, close-set, head/base refs, SHAs and repository
+identities, eligibility and criteria fingerprint with the active row. Movement
+atomically marks that row terminal `stale` and returns every typed mismatch;
+the caller must retry to create the new exact-head lifecycle. Both histories
+remain queryable, and no command retargets the old row.
 
 `compare_acceptance_session_freshness` is pure and returns all typed
-repository, PR, head/base ref/SHA/repository, eligibility, integration and
-criteria mismatches. Missing or indeterminate external state is never fresh.
-Mutation callers compose those reasons with one atomic `mark_stale`; read
-callers use the comparison result without changing the stored row.
+repository, PR, close-set, head/base ref/SHA/repository, eligibility,
+integration and criteria mismatches. Missing or indeterminate external state
+is never fresh. Mutation callers compose those reasons with one atomic
+`mark_stale`; read callers use the comparison result without changing the
+stored row.
 
 `stored_acceptance_session_status` is also pure. It projects pinned identity,
 criteria, lifecycle, every step summary, receipt IDs, blocking reasons and

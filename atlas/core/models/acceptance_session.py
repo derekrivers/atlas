@@ -84,6 +84,7 @@ class AcceptanceSessionBlockingReason(StrEnum):
     BASE_REF_MISMATCH = "base_ref_mismatch"
     BASE_SHA_MISMATCH = "base_sha_mismatch"
     BASE_REPOSITORY_MISMATCH = "base_repository_mismatch"
+    CLOSE_SET_MISMATCH = "close_set_mismatch"
     ELIGIBILITY_MISMATCH = "eligibility_mismatch"
     INTEGRATION_STATUS_MISMATCH = "integration_status_mismatch"
     CRITERIA_MISMATCH = "criteria_mismatch"

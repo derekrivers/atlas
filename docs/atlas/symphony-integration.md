@@ -271,6 +271,12 @@ There is one non-terminal session per repository/PR; head movement must first
 make the old session terminal `stale`, after which creation records a new row
 without retargeting or deleting the old row.
 
+Creation-command replay is reserved for the same idempotency identity. A new
+command colliding with an active session compares every pinned identity,
+close-set and criteria fingerprint. An identical collision is refused as
+`active_session_exists`; any movement stales the old row and returns the typed
+mismatches so a retry starts a new durable lifecycle.
+
 The shared pure freshness comparator reports all head, base, ref, repository,
 eligibility and criteria mismatches. A mutation that observes any mismatch
 atomically marks the session stale. Read use is non-mutating: the stored-status
