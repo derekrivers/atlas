@@ -1518,6 +1518,57 @@ attributed and must pass the governed action gateway.
 
 ---
 
+## 5.13 Lesson Disposition Result Snapshot
+
+Each successful lesson promotion or rejection stores the complete safe lesson
+projection returned to the caller in an append-only, purpose-specific result
+snapshot. The snapshot is keyed by the same hashed idempotency identity as the
+command reservation. It commits atomically with the lesson compare-and-set and
+terminal receipt, and the disposition service loads it for a successful replay
+instead of rebuilding a result from the later mutable lesson row.
+
+The columns mirror the safe `Lesson` projection deliberately. Lesson content
+does not enter generic `OperatorActionReceipt.result_metadata`, whose bounded
+default-deny contract is unchanged. The snapshot has no public repository or
+generic API schema, and database triggers reject update or deletion. Later
+archive, merge, citation or metadata changes remain authoritative in `lessons`
+but cannot change the original disposition response. Stale-state and refused
+outcomes continue to present the current canonical lesson and do not create a
+success snapshot.
+
+## 5.14 PostgreSQL Table
+
+```sql
+CREATE TABLE lesson_disposition_result_snapshots (
+    idempotency_key_identity TEXT PRIMARY KEY
+        REFERENCES operator_action_keys(idempotency_key_identity),
+    id UUID NOT NULL,
+    product_id UUID NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('active', 'archived')),
+    category TEXT NOT NULL,
+    title TEXT NOT NULL,
+    problem TEXT NOT NULL,
+    solution TEXT NOT NULL,
+    outcome TEXT NOT NULL,
+    confidence NUMERIC(4,3)
+        CHECK (confidence IS NULL OR (confidence >= 0 AND confidence <= 1)),
+    source_ticket_id UUID NOT NULL,
+    related_ticket_ids JSONB NOT NULL,
+    related_adr_ids JSONB NOT NULL,
+    tags JSONB NOT NULL,
+    created_by_type TEXT NOT NULL,
+    created_by_id TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL
+);
+```
+
+Migration `0026` adds the empty snapshot ledger. Existing receipts are not
+backfilled from mutable current lesson state because doing so would invent a
+historical response that Atlas did not persist.
+
+---
+
 # 6. Delivery-Anomaly Schema
 
 The PM Engine records delivery anomalies as it reconciles Atlas and

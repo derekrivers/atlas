@@ -338,6 +338,27 @@ DOCUMENTED_COLUMNS: dict[str, dict[str, tuple[bool, str | None]]] = {
         "created_at": (NN, None),
         "completed_at": (NN, None),
     },
+    # §5.14 complete immutable safe result for successful lesson disposition.
+    "lesson_disposition_result_snapshots": {
+        "idempotency_key_identity": (NN, None),
+        "id": (NN, None),
+        "product_id": (NN, None),
+        "status": (NN, None),
+        "category": (NN, None),
+        "title": (NN, None),
+        "problem": (NN, None),
+        "solution": (NN, None),
+        "outcome": (NN, None),
+        "confidence": (True, None),
+        "source_ticket_id": (NN, None),
+        "related_ticket_ids": (NN, None),
+        "related_adr_ids": (NN, None),
+        "tags": (NN, None),
+        "created_by_type": (NN, None),
+        "created_by_id": (NN, None),
+        "created_at": (NN, None),
+        "updated_at": (NN, None),
+    },
     # §5.8 acceptance session: pinned identity plus append-oriented summaries.
     "acceptance_sessions": {
         "id": (NN, None),
@@ -413,6 +434,9 @@ DOCUMENTED_FOREIGN_KEYS: dict[str, dict[str, str]] = {
     "verification_checks": {"ticket_id": "tickets"},
     "operator_action_keys": {},
     "operator_action_receipts": {"idempotency_key_identity": "operator_action_keys"},
+    "lesson_disposition_result_snapshots": {
+        "idempotency_key_identity": "operator_action_keys"
+    },
     "acceptance_sessions": {},
     "delivery_admission_policy_revisions": {"product_id": "products"},
     "delivery_admission_policy_active": {
@@ -538,6 +562,22 @@ def test_operator_action_keys_primary_key_is_idempotency_identity(
     inspector = sa.inspect(migrated_db.engine)
     pk = inspector.get_pk_constraint("operator_action_keys")
     assert pk["constrained_columns"] == ["idempotency_key_identity"]
+
+
+def test_lesson_disposition_snapshot_is_keyed_by_idempotency_identity(
+    migrated_db: Database,
+) -> None:
+    inspector = sa.inspect(migrated_db.engine)
+    table = "lesson_disposition_result_snapshots"
+    assert inspector.get_pk_constraint(table)["constrained_columns"] == [
+        "idempotency_key_identity"
+    ]
+    checks = " ".join(
+        constraint["sqltext"] for constraint in inspector.get_check_constraints(table)
+    )
+    assert "status IN ('active', 'archived')" in checks
+    assert "confidence >= 0" in checks
+    assert "confidence <= 1" in checks
 
 
 def test_lesson_source_ticket_migration_splits_old_positional_related_ids(
@@ -791,6 +831,56 @@ def test_operator_action_ledger_migration_upgrade_and_downgrade(
                 sa.text(
                     "SELECT name FROM sqlite_master "
                     "WHERE type = 'trigger' AND name LIKE 'operator_action_%'"
+                )
+            )
+        }
+    assert triggers == set()
+
+
+def test_lesson_disposition_snapshot_migration_is_append_only(
+    tmp_path: Path,
+) -> None:
+    url = f"sqlite:///{tmp_path}/lesson-disposition-snapshots.db"
+    config = _alembic_config(url)
+    command.upgrade(config, "0025")
+
+    engine = sa.create_engine(url)
+    with engine.connect() as connection:
+        assert (
+            "lesson_disposition_result_snapshots"
+            not in sa.inspect(connection).get_table_names()
+        )
+
+    command.upgrade(config, "0026")
+
+    with engine.connect() as connection:
+        inspector = sa.inspect(connection)
+        assert "lesson_disposition_result_snapshots" in inspector.get_table_names()
+        triggers = {
+            row[0]
+            for row in connection.execute(
+                sa.text(
+                    "SELECT name FROM sqlite_master WHERE type = 'trigger' "
+                    "AND name LIKE 'lesson_disposition_result_snapshots_%'"
+                )
+            )
+        }
+    assert triggers == {
+        "lesson_disposition_result_snapshots_no_update",
+        "lesson_disposition_result_snapshots_no_delete",
+    }
+
+    command.downgrade(config, "0025")
+
+    with engine.connect() as connection:
+        inspector = sa.inspect(connection)
+        assert "lesson_disposition_result_snapshots" not in inspector.get_table_names()
+        triggers = {
+            row[0]
+            for row in connection.execute(
+                sa.text(
+                    "SELECT name FROM sqlite_master WHERE type = 'trigger' "
+                    "AND name LIKE 'lesson_disposition_result_snapshots_%'"
                 )
             )
         }

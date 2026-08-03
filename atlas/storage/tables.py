@@ -576,6 +576,45 @@ class OperatorActionReceiptRow(Base):
     completed_at: Mapped[datetime] = mapped_column(UTCDateTime())
 
 
+class LessonDispositionResultSnapshotRow(Base):
+    """Immutable safe lesson projection for one successful disposition."""
+
+    __tablename__ = "lesson_disposition_result_snapshots"
+    __table_args__ = (
+        sa.CheckConstraint(
+            "status IN ('active', 'archived')",
+            name="lesson_disposition_result_snapshots_terminal_status",
+        ),
+        sa.CheckConstraint(
+            "confidence IS NULL OR (confidence >= 0 AND confidence <= 1)",
+            name="lesson_disposition_result_snapshots_confidence_bounds",
+        ),
+    )
+
+    idempotency_key_identity: Mapped[str] = mapped_column(
+        sa.Text,
+        sa.ForeignKey("operator_action_keys.idempotency_key_identity"),
+        primary_key=True,
+    )
+    id: Mapped[UUID] = mapped_column(sa.Uuid)
+    product_id: Mapped[UUID] = mapped_column(sa.Uuid)
+    status: Mapped[str] = mapped_column(sa.Text)
+    category: Mapped[str] = mapped_column(sa.Text)
+    title: Mapped[str] = mapped_column(sa.Text)
+    problem: Mapped[str] = mapped_column(sa.Text)
+    solution: Mapped[str] = mapped_column(sa.Text)
+    outcome: Mapped[str] = mapped_column(sa.Text)
+    confidence: Mapped[float | None] = mapped_column(sa.Numeric(4, 3, asdecimal=False))
+    source_ticket_id: Mapped[UUID] = mapped_column(sa.Uuid)
+    related_ticket_ids: Mapped[list[str]] = mapped_column(JSONB)
+    related_adr_ids: Mapped[list[str]] = mapped_column(JSONB)
+    tags: Mapped[list[str]] = mapped_column(JSONB)
+    created_by_type: Mapped[str] = mapped_column(sa.Text)
+    created_by_id: Mapped[str] = mapped_column(sa.Text)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime())
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime())
+
+
 class AcceptanceSessionRow(Base):
     """Durable summary for one immutable-head acceptance attempt."""
 
@@ -703,6 +742,7 @@ def _drop_sqlite_trigger(table_name: str, operation: str) -> sa.DDL:
 
 _APPEND_ONLY_TABLES = (
     cast(sa.Table, DeliveryAdmissionPolicyRevisionRow.__table__),
+    cast(sa.Table, LessonDispositionResultSnapshotRow.__table__),
     cast(sa.Table, OperatorActionKeyRow.__table__),
     cast(sa.Table, OperatorActionReceiptRow.__table__),
 )

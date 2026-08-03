@@ -1,7 +1,15 @@
 import type { components, paths } from '../../src/api/atlas-openapi'
 
 type Schema = components['schemas']
-type GetOperation<Path extends keyof paths> = paths[Path]['get']
+export type LiveApiGetRoute = {
+  [Path in keyof paths]: Exclude<paths[Path]['get'], undefined> extends never
+    ? never
+    : Path
+}[keyof paths]
+type GetOperation<Path extends LiveApiGetRoute> = Exclude<
+  paths[Path]['get'],
+  undefined
+>
 type JsonResponse<Operation> = Operation extends {
   responses: {
     200: {
@@ -13,7 +21,9 @@ type JsonResponse<Operation> = Operation extends {
 }
   ? Response
   : never
-type RouteResponse<Path extends keyof paths> = JsonResponse<GetOperation<Path>>
+type RouteResponse<Path extends LiveApiGetRoute> = JsonResponse<
+  GetOperation<Path>
+>
 
 type JsonObject = Record<string, unknown>
 
@@ -590,5 +600,7 @@ export const liveApiShapeAssertions = {
   '/api/v1/session': assertSessionStateResponse,
   '/api/v1/status': assertSystemStatusResponse,
 } satisfies {
-  [Path in keyof paths]: (value: unknown) => asserts value is RouteResponse<Path>
+  [Path in LiveApiGetRoute]: (
+    value: unknown
+  ) => asserts value is RouteResponse<Path>
 }

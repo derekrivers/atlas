@@ -3,11 +3,15 @@ import {
   assertReviewQueueResponse,
   assertTicketBoardResponse,
   liveApiShapeAssertions,
+  type LiveApiGetRoute,
 } from './live-api-shape'
 import { startAtlasApiServer } from './atlas-api-server'
 import type { paths } from '../../src/api/atlas-openapi'
 
-type GetOperation<Path extends keyof paths> = paths[Path]['get']
+type GetOperation<Path extends LiveApiGetRoute> = Exclude<
+  paths[Path]['get'],
+  undefined
+>
 type JsonResponse<Operation> = Operation extends {
   responses: {
     200: {
@@ -19,7 +23,9 @@ type JsonResponse<Operation> = Operation extends {
 }
   ? Response
   : never
-type RouteResponse<Path extends keyof paths> = JsonResponse<GetOperation<Path>>
+type RouteResponse<Path extends LiveApiGetRoute> = JsonResponse<
+  GetOperation<Path>
+>
 
 const apiBaseURL =
   process.env.ATLAS_OPERATOR_E2E_API_URL ?? 'http://127.0.0.1:18000'
@@ -35,7 +41,7 @@ test.afterAll(async () => {
   apiServer = undefined
 })
 
-async function getJson<Path extends keyof paths>(
+async function getJson<Path extends LiveApiGetRoute>(
   request: APIRequestContext,
   path: Path
 ): Promise<RouteResponse<Path>> {

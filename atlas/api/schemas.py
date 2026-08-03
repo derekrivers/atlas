@@ -12,9 +12,15 @@ from atlas.core.models import (
     EpicStatus,
     EvidenceType,
     LessonCategory,
+    OperatorActionOutcome,
+    OperatorActionResultCode,
     TicketStatus,
     TicketType,
     VerificationCheckType,
+)
+from atlas.core.models.operator_action_receipt import (
+    OperatorActionMetadataKey,
+    OperatorActionMetadataValue,
 )
 from atlas.dependencies import NotReadyCode
 
@@ -167,6 +173,80 @@ class LessonsResponse(BaseModel):
     """Stored lessons for the operator."""
 
     lessons: list[LessonItemSchema]
+
+
+class PromoteLessonRequest(BaseModel):
+    """Exact command payload for promoting one DRAFT lesson."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    confidence: float = Field(
+        strict=True,
+        ge=0.0,
+        le=1.0,
+        allow_inf_nan=False,
+    )
+
+
+class RejectLessonRequest(BaseModel):
+    """Exact empty command payload for rejecting one DRAFT lesson."""
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class OperatorActionTargetSchema(BaseModel):
+    """Bounded lesson target recorded by an operator-action receipt."""
+
+    type: Literal["lesson"]
+    id: UUID
+
+
+class OperatorActionActorSchema(BaseModel):
+    """Server-owned actor recorded by an operator-action receipt."""
+
+    type: Literal[ActorType.HUMAN]
+    id: Literal["operator"]
+
+
+class OperatorActionReceiptSchema(BaseModel):
+    """Safe, bounded operator-action receipt returned by a command."""
+
+    receipt_id: UUID
+    correlation_id: UUID
+    action: Literal["lesson.promote", "lesson.reject"]
+    target: OperatorActionTargetSchema
+    actor: OperatorActionActorSchema
+    idempotency_key_identity: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    request_fingerprint: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    outcome: OperatorActionOutcome
+    result_code: OperatorActionResultCode
+    result_metadata: dict[
+        OperatorActionMetadataKey,
+        OperatorActionMetadataValue,
+    ]
+    before_status: EntityStatus | None
+    after_status: EntityStatus | None
+    created_at: datetime
+    completed_at: datetime
+
+
+class LessonDispositionResponse(BaseModel):
+    """Updated safe lesson projection and its durable action receipt."""
+
+    lesson: LessonItemSchema
+    receipt: OperatorActionReceiptSchema
+
+
+class LessonDispositionErrorResponse(BaseModel):
+    """Non-secret command error without internal failure material."""
+
+    detail: str
+
+
+class LessonDispositionConflictResponse(LessonDispositionErrorResponse):
+    """Typed command conflict with the safe current lesson when available."""
+
+    lesson: LessonItemSchema | None
 
 
 class DependencyBlockerSchema(BaseModel):

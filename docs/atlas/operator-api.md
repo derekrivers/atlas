@@ -2,9 +2,9 @@
 
 Status: Active design document for Phase 10, amended by Phase 11 OP-2 for
 exactly two additive read routes and by Phase 13 for loopback operator session
-authentication. Describes the HTTP projection surface delivered by
-ATLAS-187..191, the Phase 11 additions that follow it, and the Phase 13 session
-boundary that gates later writes.
+authentication and governed lesson disposition commands. Describes the HTTP
+projection surface delivered by ATLAS-187..191, the Phase 11 additions that
+follow it, and the Phase 13 boundary for authenticated local writes.
 
 ## Purpose and scope
 
@@ -17,9 +17,9 @@ session boundary, not a new source of truth and not a second place to implement
 domain behaviour.
 
 The original Phase 10 operator API was a read-only projection surface. Phase 13
-adds authenticated session lifecycle routes and the shared mutation-security
-dependency, but no resource mutation. Lesson or other writable commands remain
-absent until they can depend on that shared boundary.
+adds authenticated session lifecycle routes, the shared mutation-security
+dependency, and exactly two governed lesson commands over the shared lesson
+disposition service. No generic resource update route is introduced.
 
 ## Position in the architecture
 
@@ -92,6 +92,8 @@ additions as phase authority, is:
 | GET    | `/api/v1/tickets/{key}/dependencies` | ticket key | `TicketDependenciesResponse` | Phase 10 |
 | GET    | `/api/v1/epics`         | none             | `EpicsResponse`           | Phase 11 OP-2 |
 | GET    | `/api/v1/lessons`       | optional `status` query parameter | `LessonsResponse` | Phase 10 |
+| POST   | `/api/v1/lessons/{lesson_id}/promote` | strict `PromoteLessonRequest` plus `Idempotency-Key` | `LessonDispositionResponse` | Phase 13 |
+| POST   | `/api/v1/lessons/{lesson_id}/reject` | strict empty `RejectLessonRequest` plus `Idempotency-Key` | `LessonDispositionResponse` | Phase 13 |
 | GET    | `/api/v1/dependencies/critical-path` | none | `DependencyCriticalPathResponse` | Phase 10 |
 | GET    | `/api/v1/dependencies/graph` | none | `DependencyGraphResponse` | Phase 11 OP-2 |
 | GET    | `/api/v1/reviews`       | none             | `ReviewQueueResponse`     | Phase 10 |
@@ -143,6 +145,35 @@ canonical `EntityStatus`. It is a single-repository projection over
 `LessonRepo.list` or `LessonRepo.list_by_status`; it is read-only and never
 promotes, rejects, archives, or merges a lesson.
 
+`POST /api/v1/lessons/{lesson_id}/promote` accepts exactly one finite numeric
+`confidence` in the inclusive range `0.0..1.0`. Before the domain mutation,
+Atlas canonicalises an accepted value to the PostgreSQL `NUMERIC(4,3)` scale
+using decimal round-half-up (`0.0004` becomes `0.0`; `0.9999` becomes `1.0`).
+The canonical value is used by the lesson row, immutable replay snapshot,
+receipt metadata and first success response. The request fingerprint retains
+the submitted value, so two different confidence values still conflict even
+when they canonicalise to the same stored value.
+`POST /api/v1/lessons/{lesson_id}/reject` accepts exactly an empty JSON object.
+Both reject actor, status, content and unknown request fields, require
+`Idempotency-Key`, and call `LessonDispositionService` once with the actor from
+the authenticated mutation context. Success returns the updated
+`LessonItemSchema` and a bounded `OperatorActionReceiptSchema`. The receipt
+contains only server-owned action, target and `human` / `operator` actor data,
+hashed idempotency identity, request fingerprint, bounded result metadata,
+before/after status and timestamps; it never returns the raw key, session,
+CSRF value, credential, request body or internal exception.
+
+The command presenter maps an unknown lesson to `404`, invalid command input to
+`422`, a non-DRAFT or compare-and-set stale lesson to `409`, and a changed
+idempotency fingerprint or in-progress owner to `409`. A stale conflict includes
+the safe current lesson when the disposition service supplies one. Repeating
+the same key and command returns the original `200` lesson and receipt from the
+immutable disposition-time safe projection without a second mutation. Later
+archive, citation or metadata changes remain in canonical lesson storage but do
+not alter that replay. A different confidence, target or action under that key
+is a conflict. There is no generic lesson `PATCH` or `PUT`, no extra action
+route and no unversioned duplicate.
+
 `GET /api/v1/tickets/{key}/dependencies` returns one ticket's dependency
 blockers, reverse dependency readiness impact, and all readiness reasons from
 the dependency projection.
@@ -177,13 +208,15 @@ authenticated state and expiry metadata. `DELETE /api/v1/session` uses the
 same mutation-security dependency as future writes and revokes the exact live
 session. Session responses use `Cache-Control: no-store`.
 
-Every mutation route, including session revocation and future lesson
-commands, must resolve `MutationContextDependency`. That dependency requires a
+Every mutation route, including session revocation and lesson commands, must
+resolve `MutationContextDependency`. That dependency requires a
 loopback Host, an exact `http://<Host>` Origin, strict
 `Content-Type: application/json`, a live `atlas_session` cookie and a matching
 `X-Atlas-CSRF` value. The resolved actor is always
 `created_by_type: human, created_by_id: "operator"` and cannot be supplied or
-overridden by request JSON or headers.
+overridden by request JSON or headers. The two lesson commands additionally
+require a non-blank `Idempotency-Key` before their application-service
+dependency can run.
 
 The API installs no CORS middleware. Session and mutation responses are
 `no-store`; all API responses include `X-Frame-Options: DENY` and the CSP:
@@ -207,8 +240,8 @@ bespoke error envelope in this phase.
 
 ## Deferred capabilities
 
-- **Resource writeable commands** — enter only behind the Phase 13 session,
-  CSRF, origin and server-owned actor boundary.
+- **Additional resource writable commands** — enter only behind the Phase 13
+  session, CSRF, origin, idempotency and server-owned actor boundary.
 - **Remote authentication and hosting** — remain unsupported; HTTPS, Secure
   cookies, remote origins and deployment topology require a later design gate.
 - **Pagination** — enters when measured collection size or response cost shows

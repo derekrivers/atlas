@@ -7,6 +7,9 @@ from contextlib import asynccontextmanager
 from typing import Any, cast
 
 from fastapi import FastAPI, Request
+from fastapi import status as http_status
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import RequestResponseEndpoint
 from starlette.responses import Response
@@ -144,6 +147,34 @@ def create_app(
             },
         )
 
+    @application.exception_handler(RequestValidationError)
+    async def request_validation_failed(
+        request: Request,
+        error: RequestValidationError,
+    ) -> Response:
+        is_lesson_command = (
+            request.method == "POST"
+            and (
+                request.url.path.endswith("/promote")
+                or request.url.path.endswith("/reject")
+            )
+            and request.url.path.startswith(f"{API_V1_PREFIX}/lessons/")
+        )
+        if not is_lesson_command:
+            return await request_validation_exception_handler(request, error)
+        safe_errors = [
+            {
+                key: value
+                for key, value in item.items()
+                if key not in {"ctx", "input", "url"}
+            }
+            for item in error.errors()
+        ]
+        return JSONResponse(
+            status_code=http_status.HTTP_422_UNPROCESSABLE_CONTENT,
+            content={"detail": safe_errors},
+        )
+
     application.include_router(tickets.router, prefix=API_V1_PREFIX)
     application.include_router(epics.router, prefix=API_V1_PREFIX)
     application.include_router(lessons.router, prefix=API_V1_PREFIX)
@@ -152,6 +183,7 @@ def create_app(
     application.include_router(status.router, prefix=API_V1_PREFIX)
     if enable_writes:
         application.include_router(session.router, prefix=API_V1_PREFIX)
+        application.include_router(lessons.writable_router, prefix=API_V1_PREFIX)
         _install_openapi_contract(application)
     return application
 

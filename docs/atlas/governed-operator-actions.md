@@ -1,6 +1,6 @@
 # Governed Operator Actions Design (Phase 13)
 
-Status: Planned Phase 13 design authority. Defines the first writable Operator
+Status: Active Phase 13 design authority. Defines the first writable Operator
 API and UI slice, the single-operator authentication boundary, server-owned
 actor context, idempotent action receipts, and lesson promotion/rejection.
 
@@ -169,6 +169,14 @@ planned mutations and receipt insertion separately for classification, then
 catches failure from the actual transaction commit as a receipt-commit failure.
 Any such failure rolls back the reservation, mutation and receipt together.
 
+Successful lesson dispositions include one purpose-specific, append-only safe
+result snapshot in that mutation plan. It contains the complete disposition-time
+`Lesson` projection, is keyed by the hashed idempotency identity, and commits in
+the same transaction. On successful replay the gateway loads that immutable
+snapshot alongside its receipt; it does not rebuild the response from the
+mutable current lesson. This snapshot is not generic receipt metadata and has
+no public write surface.
+
 An append-only `OperatorActionReceipt` records:
 
 - receipt and correlation IDs;
@@ -183,10 +191,11 @@ An append-only `OperatorActionReceipt` records:
   `0.0..1.0`);
 - created/completed timestamps.
 
-The lesson mutation and successful receipt commit atomically. If the receipt
-cannot be persisted, the lesson is not changed. Secrets, full request bodies,
-raw evidence payloads, lesson content and exception traces are not copied into
-receipts or rendered receipt JSON. Result codes and before/after states are
+The lesson mutation, immutable success snapshot and successful receipt commit
+atomically. If either durable result record cannot be persisted, the lesson is
+not changed. Secrets, full request bodies, raw evidence payloads, lesson content
+and exception traces are not copied into receipts or rendered receipt JSON.
+Result codes and before/after states are
 closed enums rather than free-form command strings. Outcomes and result codes
 also form one enforced matrix: success uses `action_succeeded`; refusal uses
 `action_refused` or `stale_state`; failure uses `action_failed`; and conflict
@@ -211,10 +220,18 @@ Promote accepts only:
 {"confidence": 0.8}
 ```
 
-Confidence is finite and in the inclusive range `0.0..1.0`. Reject accepts an
-empty JSON object. Both commands require the current stored lesson to be
-DRAFT. The state transition is a compare-and-set operation; if another browser
-or CLI command has already changed the lesson, the loser returns `409 Conflict`
+Confidence is finite and in the inclusive range `0.0..1.0`. An accepted value
+is canonicalised before the domain mutation to the PostgreSQL `NUMERIC(4,3)`
+scale using decimal round-half-up (`0.0004` becomes `0.0`; `0.9999` becomes
+`1.0`). The canonical lesson, immutable result snapshot, receipt metadata and
+first response therefore agree exactly. The fingerprint retains the submitted
+value, so distinct confidence values remain altered replays even when their
+canonical values match. Reject accepts an empty strict JSON object. Actor,
+status, content and unknown fields are rejected with `422` before the service
+runs. Both commands require the current stored
+lesson to be DRAFT. The state transition is a compare-and-set operation; if
+another browser or CLI command has already changed the lesson, the loser returns
+`409 Conflict`
 with the safe current lesson representation and performs no mutation. The
 loser's transaction, including its idempotency reservation, is rolled back, so
 the concurrent ruling produces no second receipt.
@@ -238,11 +255,20 @@ Outcomes:
 | Promote | DRAFT | ACTIVE with operator confidence |
 | Reject | DRAFT | ARCHIVED |
 
-An unknown lesson returns `404`. Validation failure returns `422`.
+Success returns `200` with the updated safe lesson representation and its
+bounded action receipt. Receipt attribution is server-owned `human` /
+`operator`; credentials, the raw idempotency key, session and CSRF values, raw
+request bodies and internal exceptions are never returned. An unknown lesson
+returns `404`. Validation failure returns `422`; a non-DRAFT lesson, stale
+compare-and-set, altered replay or in-progress idempotency owner returns `409`.
 Unauthenticated requests return `401`; authenticated requests failing
-origin/CSRF policy return `403`. A replay with the same key and fingerprint
-returns the original success response. No generic `PATCH /lessons/{id}` route
-exists.
+origin/CSRF policy return `403`, and a non-strict content type returns `415`.
+A replay with the same key and fingerprint returns the byte-equivalent semantic
+success and receipt from the immutable disposition-time snapshot without a
+second mutation, even if a later archive, citation or metadata change updates
+the canonical lesson. Reusing the key with a different confidence, target or
+action returns `409` without mutation. No generic
+`PATCH`/`PUT`, extra lesson action or unversioned duplicate route exists.
 
 ## UI workflow
 
