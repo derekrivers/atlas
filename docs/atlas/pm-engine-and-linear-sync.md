@@ -213,6 +213,36 @@ mutation, demotion or Symphony action. Canonical compact JSON, sorted repeated
 inputs and SHA-256 hashing make counts, reasons, revision pins and snapshot
 fingerprint byte-stable for identical inputs regardless of iteration order.
 
+## Deterministic admission calculation and record
+
+The Phase 15 evaluator is a pure PM calculation after snapshot construction.
+It derives candidates by calling the existing dependency
+`ready_tickets(graph)` predicate; callers cannot submit or score an alternative
+candidate list. Materialised tickets, the active policy, the one coherent
+snapshot, explicit uninterrupted-eligibility starts and one injected clock
+sample are its complete inputs. A missing/future eligibility start is rejected,
+not approximated from unrelated ticket timestamps.
+
+Ranking is unlock count descending, critical-path membership then zero-based
+execution position, priority descending, risk severity low-to-critical,
+eligibility start oldest first and the shared natural ticket-key order. The
+evaluator retains those values in each decision. It then simulates working plus
+one, remaining Changes Requested reserve, review pressure and every exact
+matching risk/component lane. Paused/draining mode, policy/snapshot mismatch,
+each incompleteness reason, each full/breached budget or lane and missing Linear
+identity are bounded typed holds. The first reason-free candidate is the sole
+`admit`; later feasible candidates are held by the single-write limit.
+
+The returned immutable `AdmissionRun` pins policy and snapshot fingerprints,
+records every ready candidate in rank order and names zero or one selection. A
+canonical UUIDv5 makes identical injected inputs replay to byte-identical run
+content. Calculation performs no Linear write and opens no repository. The
+orchestration-level `record_admission_run` appends the returned model to
+`admission_runs`; database triggers reject update/delete and the row contains
+decision JSON only, never a raw Linear payload. Connecting this result to the
+sync tick and its single external state write remains the later fail-closed
+integration step.
+
 ## Sync loop
 
 Pull-based, consistent with ADR-0008 (no webhooks before hosting):

@@ -408,6 +408,23 @@ DOCUMENTED_COLUMNS: dict[str, dict[str, tuple[bool, str | None]]] = {
         "product_id": (NN, None),
         "revision": (NN, None),
     },
+    # §5.14 immutable deterministic admission evaluation.
+    "admission_runs": {
+        "id": (NN, None),
+        "schema_version": (NN, None),
+        "product_id": (NN, None),
+        "policy_id": (NN, None),
+        "policy_revision": (NN, None),
+        "policy_fingerprint": (NN, None),
+        "snapshot_fingerprint": (NN, None),
+        "snapshot_observed_at": (NN, None),
+        "evaluated_at": (NN, None),
+        "selected_ticket_id": (True, None),
+        "selected_ticket_key": (True, None),
+        "decisions": (NN, "'[]'"),
+        "created_by_type": (NN, None),
+        "created_by_id": (NN, None),
+    },
 }
 
 # Transcribed FK targets: table -> {column: referred table}. Absence is
@@ -442,6 +459,11 @@ DOCUMENTED_FOREIGN_KEYS: dict[str, dict[str, str]] = {
     "delivery_admission_policy_active": {
         "product_id": "delivery_admission_policy_revisions"
     },
+    "admission_runs": {
+        "product_id": "products",
+        "policy_id": "delivery_admission_policy_revisions",
+        "selected_ticket_id": "tickets",
+    },
 }
 
 DOCUMENTED_UNIQUES: dict[str, list[list[str]]] = {
@@ -455,6 +477,7 @@ DOCUMENTED_UNIQUES: dict[str, list[list[str]]] = {
     ],
     "acceptance_sessions": [["creation_idempotency_key_identity"]],
     "delivery_admission_policy_revisions": [["product_id", "revision"]],
+    "admission_runs": [],
 }
 
 

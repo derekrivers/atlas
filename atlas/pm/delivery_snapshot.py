@@ -255,6 +255,12 @@ def _policy_payload(policy: DeliveryAdmissionPolicyRevision) -> dict[str, object
     }
 
 
+def delivery_policy_fingerprint(policy: DeliveryAdmissionPolicyRevision) -> str:
+    """Canonical fingerprint shared by snapshot and admission evaluation."""
+
+    return _canonical_hash(_policy_payload(policy))
+
+
 def _store_payload(tickets: Iterable[Ticket]) -> list[dict[str, object]]:
     return [
         {
@@ -574,7 +580,7 @@ def build_delivery_snapshot(
         policy_id=policy.id,
         policy_revision=policy.revision,
         policy_mode=policy.mode,
-        policy_fingerprint=_canonical_hash(_policy_payload(policy)),
+        policy_fingerprint=delivery_policy_fingerprint(policy),
         status_map_fingerprint=_canonical_hash(status_map.snapshot()),
         fetched_board_fingerprint=_canonical_hash(_board_payload(issues)),
         fetched_board_issue_count=len(issues),

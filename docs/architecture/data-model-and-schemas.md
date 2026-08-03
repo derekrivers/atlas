@@ -1516,6 +1516,48 @@ system bootstrap state: `running`, ceiling `3`, working `3`, review `3`, reserve
 edit `WORKFLOW.md`. Subsequent creation or replacement is human/operator
 attributed and must pass the governed action gateway.
 
+## 5.13 Admission Run
+
+`AdmissionRun` is one immutable result of the deterministic capacity-aware
+admission evaluator. It pins the exact policy and coherent delivery-snapshot
+fingerprints plus their revision/time provenance. `decisions` is ordered by
+the evaluator's stable rank and records every dependency-ready candidate's
+ticket identity, complete rank inputs, `admit` or `hold` result and every typed
+hold reason. A model invariant permits zero or one `admit`; the nullable
+selected-ticket fields must identify that same decision. There is no Linear
+response body, model output, agent score or mutable outcome field.
+
+The run id is UUIDv5 over the canonical decision payload. The evaluator takes
+one injected clock sample and rejects a missing continuously-eligible start
+instead of guessing from creation or status timestamps. Identical inputs
+therefore produce the same id, canonical bytes, ordering and decisions.
+
+## 5.14 PostgreSQL Table
+
+```sql
+CREATE TABLE admission_runs (
+    id UUID PRIMARY KEY,
+    schema_version TEXT NOT NULL CHECK (schema_version = 'admission-run-v1'),
+    product_id UUID NOT NULL REFERENCES products(id),
+    policy_id UUID NOT NULL REFERENCES delivery_admission_policy_revisions(id),
+    policy_revision INTEGER NOT NULL CHECK (policy_revision >= 1),
+    policy_fingerprint TEXT NOT NULL,
+    snapshot_fingerprint TEXT NOT NULL,
+    snapshot_observed_at TIMESTAMPTZ NOT NULL,
+    evaluated_at TIMESTAMPTZ NOT NULL,
+    selected_ticket_id UUID NULL REFERENCES tickets(id),
+    selected_ticket_key TEXT NULL,
+    decisions JSONB NOT NULL DEFAULT '[]',
+    created_by_type TEXT NOT NULL,
+    created_by_id TEXT NOT NULL
+);
+```
+
+`admission_runs` is append-only at both the repository and database boundary:
+SQLite and PostgreSQL triggers reject `UPDATE` and `DELETE`. The pure evaluator
+does not persist. The PM orchestration seam appends the already-returned run so
+persistence cannot change rank, reasons or selection.
+
 ---
 
 ## 5.13 Lesson Disposition Result Snapshot

@@ -18,6 +18,7 @@ record. A layer above ``atlas.storage``/``atlas.linear``/``atlas.core`` in the
 import spine.
 """
 
+from atlas.pm.admission import evaluate_admission
 from atlas.pm.agent_runs import (
     AgentRunReconstructionResult,
     agent_run_observation,
@@ -35,6 +36,7 @@ from atlas.pm.delivery_snapshot import (
     SnapshotIncompletenessReason,
     StatusOccupancy,
     build_delivery_snapshot,
+    delivery_policy_fingerprint,
 )
 from atlas.pm.promotion import promote_ready
 from atlas.pm.report import (
@@ -96,6 +98,8 @@ __all__ = [
     "build_delivery_report",
     "build_delivery_snapshot",
     "complete_verified",
+    "delivery_policy_fingerprint",
+    "evaluate_admission",
     "promote_ready",
     "reconstruct_agent_runs",
     "render_markdown",

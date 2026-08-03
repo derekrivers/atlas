@@ -180,25 +180,58 @@ Phase 15 does not reimplement dependency readiness. The engine returns one
 append-only `AdmissionRun` with the snapshot/policy fingerprints and one
 decision per candidate.
 
+`evaluate_admission` calls `ready_tickets(graph)` itself. Its considered key
+set is therefore exactly the existing Phase 3 result; a caller cannot supply a
+broader candidate list or turn a readiness failure into a policy hold. The
+matching materialised `Ticket` supplies only policy/rank attributes. The caller
+must supply an aware `continuously_eligible_since` value for every ready key;
+the evaluator rejects a missing or future value rather than guessing from the
+ticket's creation or status-entry timestamp.
+
 Candidates are ordered by this stable tuple:
 
 1. number of currently blocked non-terminal tickets the candidate would
    unlock, descending;
 2. membership and position on the current critical path, critical first;
 3. Atlas priority, descending;
-4. risk severity, lower first unless a policy lane explicitly permits more;
-5. time continuously eligible, oldest first; and
-6. ticket key, natural-key ascending.
+4. risk severity (`low`, `medium`, `high`, `critical`), lower first;
+5. uninterrupted eligibility start, oldest first; and
+6. ticket key through the shared natural-key ordering, ascending.
+
+Critical-path position is its zero-based execution-order position, earlier
+first; a non-member sorts after every member. A configured risk lane does not
+rewrite rank or invert severity: it is an exact capacity permission evaluated
+after ranking. Rank inputs store the unlock count, membership/position,
+priority, risk ordinal, eligibility start and exact injected-clock age, so the
+order is reconstructable without consulting Linear list order or a model.
 
 The engine never uses an agent score, model opinion, title similarity or
-Linear display order. Each decision is `admit` or `hold` with all applicable
-typed reasons, including mode, stale snapshot, working budget, review budget,
-rework reserve, risk lane, component lane and dependency status.
+Linear display order. Each decision is `admit` or `hold`. Typed reasons retain
+paused/draining mode, policy/snapshot mismatch, every snapshot-incompleteness
+reason, full or breached working/review budgets, remaining Changes Requested
+reserve, every matching risk/component lane, missing external identity and the
+single-write limit. A candidate is simulated at working occupancy plus one,
+including remaining reserve and every matching lane, before `admit` is
+returned. Review occupancy is a pressure gate even though promotion does not
+increase it. Existing over-capacity dimensions remain reasons for every
+candidate; no evaluator response demotes existing work.
 
 An admission pass selects at most one external promotion. This deliberately
 trades a few five-second polling intervals for a safe external-write boundary:
 Linear offers no multi-issue transaction, so Atlas never constructs a batch
 that could partially succeed.
+
+The highest ranked candidate with no reason is selected. Evaluation continues
+after held candidates; after selection, every otherwise-feasible lower-ranked
+candidate receives `single_write_limit`. The immutable `AdmissionRun` records
+all considered candidates in rank order, the zero/one selected ticket, exact
+policy/snapshot fingerprints and the one injected evaluation timestamp. Its id
+is UUIDv5 over the canonical decision payload, so random UUID generation and
+timestamps outside the injected clock cannot affect ordering or decisions.
+`admission_runs` rejects update/delete on SQLite and PostgreSQL. The evaluator
+has no repository; `atlas.orchestration.record_admission_run` appends the
+already-returned run and stores bounded decision JSON, never raw Linear
+payloads.
 
 ## PM-sync write protocol
 

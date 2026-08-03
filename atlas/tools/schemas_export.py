@@ -22,6 +22,7 @@ from pydantic import BaseModel
 
 from atlas.core.models import (
     AcceptanceSession,
+    AdmissionRun,
     AgentRun,
     ArchitectureDecisionRecord,
     ContextPack,
@@ -53,6 +54,7 @@ from atlas.planning.proposal import (
 # atlas.planning (D1, ATLAS-23).
 CORE_MODELS: tuple[type[BaseModel], ...] = (
     AcceptanceSession,
+    AdmissionRun,
     AgentRun,
     ArchitectureDecisionRecord,
     ContextPack,

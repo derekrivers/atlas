@@ -90,6 +90,24 @@ against a `present=False` target by reporting a not-ready `DANGLING_TARGET`
 reason rather than crashing or treating it as satisfied. A dangling target
 is therefore never silently ready on either side.
 
+### Admission consumption of readiness
+
+Phase 15 admission remains downstream of this predicate. The deterministic
+evaluator calls `ready_tickets(graph)` and considers exactly those returned
+keys; it does not accept a caller-authored candidate collection and does not
+reimplement status, acceptance-criteria, ticket dependency, ADR or dangling
+target rules. Non-ready tickets are absent from an `AdmissionRun`, rather than
+being relabelled as policy holds. Policy may hold a ready candidate for
+capacity, snapshot coherence or the single-write boundary, but can never make
+a non-ready ticket eligible.
+
+For each ready key, admission consumes the existing advisory `unlocks` count
+and current `critical_path` membership/position as rank inputs. Those analyses
+remain read-only and do not alter readiness. Every remaining rank input comes
+from the materialised ticket or an explicit continuous-eligibility timestamp;
+no Linear issue order, title/model similarity or learned score enters the
+dependency layer.
+
 ## Effort population
 
 `estimated_effort` is operator-supplied and NEVER computed: no heuristic
