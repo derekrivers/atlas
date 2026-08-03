@@ -24,6 +24,18 @@ from atlas.pm.agent_runs import (
     reconstruct_agent_runs,
 )
 from atlas.pm.completion import complete_verified
+from atlas.pm.delivery_snapshot import (
+    ComponentLaneOccupancy,
+    DeliverySnapshot,
+    LinearBoardPull,
+    OccupancyBreach,
+    OccupancyDimension,
+    RiskLaneOccupancy,
+    SnapshotIncompletenessCode,
+    SnapshotIncompletenessReason,
+    StatusOccupancy,
+    build_delivery_snapshot,
+)
 from atlas.pm.promotion import promote_ready
 from atlas.pm.report import (
     AgentRunMetric,
@@ -61,11 +73,20 @@ __all__ = [
     "AgentRunMetric",
     "AgentRunReconstructionResult",
     "AnomalyCount",
+    "ComponentLaneOccupancy",
     "CycleTimeStat",
     "DeliveryReport",
+    "DeliverySnapshot",
     "DraftLesson",
     "DwellBreach",
+    "LinearBoardPull",
     "MalformedLinearPullError",
+    "OccupancyBreach",
+    "OccupancyDimension",
+    "RiskLaneOccupancy",
+    "SnapshotIncompletenessCode",
+    "SnapshotIncompletenessReason",
+    "StatusOccupancy",
     "SyncDecisionClassification",
     "SyncReceiptPersistenceError",
     "SyncResult",
@@ -73,6 +94,7 @@ __all__ = [
     "TickConfig",
     "agent_run_observation",
     "build_delivery_report",
+    "build_delivery_snapshot",
     "complete_verified",
     "promote_ready",
     "reconstruct_agent_runs",

@@ -17,6 +17,19 @@ MAX_COMPONENT_LANES = 64
 MAX_COMPONENT_SELECTOR_LENGTH = 128
 
 
+def canonical_component_selector(value: str) -> str:
+    """Return the exact canonical form used by component-lane selectors."""
+
+    canonical = unicodedata.normalize("NFKC", value).strip().casefold()
+    if not canonical:
+        raise ValueError("component lane selector must be non-empty")
+    if len(canonical) > MAX_COMPONENT_SELECTOR_LENGTH:
+        raise ValueError("component lane selector is too long")
+    if any(ord(character) < 32 or ord(character) == 127 for character in canonical):
+        raise ValueError("component lane selector contains a control character")
+    return canonical
+
+
 class DeliveryAdmissionMode(StrEnum):
     """Operator-selected admission posture."""
 
@@ -54,14 +67,7 @@ class ComponentLaneLimit(BaseModel):
     def _canonical_component_selector(cls, value: Any) -> str:
         if not isinstance(value, str):
             raise ValueError("component lane selector must be a string")
-        canonical = unicodedata.normalize("NFKC", value).strip().casefold()
-        if not canonical:
-            raise ValueError("component lane selector must be non-empty")
-        if len(canonical) > MAX_COMPONENT_SELECTOR_LENGTH:
-            raise ValueError("component lane selector is too long")
-        if any(ord(character) < 32 or ord(character) == 127 for character in canonical):
-            raise ValueError("component lane selector contains a control character")
-        return canonical
+        return canonical_component_selector(value)
 
     @field_validator("limit", mode="before")
     @classmethod

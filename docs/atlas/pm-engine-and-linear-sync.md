@@ -165,6 +165,54 @@ sync promotion path is replaced by the coherent snapshot/admission protocol in
 the later Phase 15 tickets; the policy module itself cannot import or invoke
 Symphony.
 
+## Coherent delivery occupancy snapshot
+
+`build_delivery_snapshot` is the pure read-side boundary between the existing
+project-scoped board pull and the later admission decision engine. The caller
+freezes the list returned by `LinearClient.fetch_project_issues` in one
+immutable `LinearBoardPull`; the envelope states whether the cursor chain
+completed and retains any pagination-gap references. It does not issue another
+request, and the builder accepts no Linear client or repository capable of a
+write.
+
+The builder maps each issue by the configured stable state id. Linear state
+names are fingerprinted as observed provenance but never consulted to infer a
+status. The issue's coarse state type corroborates the configured mapping using
+the same contradiction table as status-map preflight. Working occupancy is the
+sum of `ready_for_agent`, `in_progress`, `pr_open` and
+`changes_requested`; review occupancy independently sums `review_required` and
+`needs_human_decision`. Changes Requested has its own count so the configured
+reserve remaining and new-admission working capacity are explicit.
+
+Every working issue joined to an Atlas ticket by `external_linear_id` consumes
+all matching configured risk and canonical component lanes. No title or Linear
+identifier join is permitted. A complete status count includes every
+`TicketStatus`, including zeroes, so no source order or omitted empty bucket can
+alter the canonical result.
+
+An Atlas ticket in any working or review state without an `external_linear_id`
+is a typed `missing_external_linear_id` incompleteness reason. The builder does
+not infer Linear state or occupancy from Atlas state alone, so the observed
+count remains zero and admission fails closed. Backlog, planned and blocked are
+pre-delivery states that do not consume either occupancy budget and may
+legitimately precede issue creation; a missing id in those states is not a join
+gap. After an id exists, every non-terminal ticket still requires that exact id
+in the complete project pull.
+
+The immutable snapshot pins product/project, policy id and revision, policy and
+status-map fingerprints, fetched-board fingerprint/count, Atlas store and graph
+revision fingerprints and an injected observation time. It reports every
+working, review, risk and component over-capacity dimension. Incomplete pulls,
+pagination gaps, missing/duplicate issue identities, duplicate joins, unmapped
+or contradictory states, working/review tickets without an external Linear id,
+absent joined issues, board issues without a local non-terminal join, and
+Atlas/Linear status disagreement are typed incompleteness reasons. Any reason,
+over-capacity result, paused mode or draining mode sets
+`admission_allowed=false`. Construction performs no Linear write, ticket
+mutation, demotion or Symphony action. Canonical compact JSON, sorted repeated
+inputs and SHA-256 hashing make counts, reasons, revision pins and snapshot
+fingerprint byte-stable for identical inputs regardless of iteration order.
+
 ## Sync loop
 
 Pull-based, consistent with ADR-0008 (no webhooks before hosting):
