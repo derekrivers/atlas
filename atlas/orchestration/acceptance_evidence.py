@@ -262,6 +262,13 @@ class AcceptanceSessionEvidencePullService:
         if len(product_ids) != 1:
             return _refused()
         product_id = next(iter(product_ids))
+        existing_head_record_ids = {
+            record.id
+            for record in self._evidence_repository.list_for_product_commit(
+                product_id, session.head_sha
+            )
+            if record.evidence_type in _PULL_TYPES
+        }
         pull_started_at = self._now_not_before(session.updated_at)
         try:
             pulled = self._evidence_pull_service(
@@ -298,7 +305,12 @@ class AcceptanceSessionEvidencePullService:
             if record.evidence_type in _PULL_TYPES
         ]
         try:
-            summary = _summarise_evidence(session.head_sha, pulled, projected)
+            summary = _summarise_evidence(
+                session.head_sha,
+                pulled,
+                projected,
+                existing_head_record_ids=existing_head_record_ids,
+            )
         except EvidencePullMalformedSourceError:
             return _failed(OperatorActionResultCode.EVIDENCE_MALFORMED_SOURCE)
 
@@ -460,6 +472,8 @@ def _summarise_evidence(
     head_sha: str,
     pulled: PullResult,
     records: Sequence[Evidence],
+    *,
+    existing_head_record_ids: set[UUID],
 ) -> AcceptanceEvidenceSummary:
     new_records = [*pulled.checks, *pulled.reviews, *pulled.docs]
     if any(
@@ -516,7 +530,9 @@ def _summarise_evidence(
     )
     return AcceptanceEvidenceSummary(
         total_count=total,
-        new_count=len(new_head_records),
+        new_count=sum(
+            record.id not in existing_head_record_ids for record in new_head_records
+        ),
         checks_count=sum(record.evidence_type in _CHECK_TYPES for record in records),
         reviews_count=sum(
             record.evidence_type is EvidenceType.PR_REVIEW for record in records

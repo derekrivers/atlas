@@ -551,17 +551,22 @@ def test_old_head_evidence_cannot_satisfy_a_new_exact_head_summary(
     assert summary.exact_head_pin_complete is True
 
 
-def test_historical_review_is_preserved_but_excluded_from_exact_head_summary(
+def test_mixed_pull_counts_only_new_exact_head_rows_and_preserves_history(
     db: Database,
 ) -> None:
     session, tickets, product_id = acceptance_fixture(db)
-    current_check = an_evidence(product_id)
+    existing_check = EvidenceRepo(db).add(an_evidence(product_id))
+    unchanged_check = existing_check.model_copy(update={"id": uuid4()})
+    new_docs = an_evidence(
+        product_id,
+        evidence_type=EvidenceType.DOCUMENTATION_UPDATE,
+    )
     historical_review = an_evidence(
         product_id,
         head=OTHER_HEAD,
         evidence_type=EvidenceType.PR_REVIEW,
     )
-    pulled = PullFake(PullResult([current_check], [historical_review], []))
+    pulled = PullFake(PullResult([unchanged_check], [historical_review], [new_docs]))
     service = action_service(
         db, tickets, AssessmentFake(assessment(), assessment()), pulled
     )
@@ -573,13 +578,16 @@ def test_historical_review_is_preserved_but_excluded_from_exact_head_summary(
     assert result.session.lifecycle is AcceptanceSessionLifecycle.EVIDENCE_READY
     summary = result.session.step_summaries[AcceptanceSessionStep.EVIDENCE].evidence
     assert summary is not None
-    assert (summary.total_count, summary.new_count) == (1, 1)
+    assert (summary.total_count, summary.new_count) == (2, 1)
     assert (summary.checks_count, summary.reviews_count, summary.docs_count) == (
         1,
         0,
-        0,
+        1,
     )
-    assert EvidenceRepo(db).list_for_product_commit(product_id, HEAD) == [current_check]
+    assert {
+        record.id
+        for record in EvidenceRepo(db).list_for_product_commit(product_id, HEAD)
+    } == {existing_check.id, new_docs.id}
     assert EvidenceRepo(db).list_for_product_commit(product_id, OTHER_HEAD) == [
         historical_review
     ]
@@ -617,12 +625,13 @@ def test_malformed_or_falsely_current_pull_result_does_not_advance(
     assert EvidenceRepo(db).list_for_product_commit(product_id, HEAD) == []
 
 
-def test_unchanged_source_replay_summarises_canonical_head_without_new_rows(
+def test_source_idempotent_return_of_existing_row_reports_zero_new(
     db: Database,
 ) -> None:
     session, tickets, product_id = acceptance_fixture(db)
-    EvidenceRepo(db).add(an_evidence(product_id))
-    pulled = PullFake(PullResult([], [], []))
+    existing = EvidenceRepo(db).add(an_evidence(product_id))
+    unchanged_source = existing.model_copy(update={"id": uuid4()})
+    pulled = PullFake(PullResult([unchanged_source], [], []))
     service = action_service(
         db, tickets, AssessmentFake(assessment(), assessment()), pulled
     )
@@ -634,3 +643,24 @@ def test_unchanged_source_replay_summarises_canonical_head_without_new_rows(
     assert summary is not None
     assert summary.total_count == 1
     assert summary.new_count == 0
+    assert EvidenceRepo(db).list_for_product_commit(product_id, HEAD) == [existing]
+
+
+def test_genuinely_appended_current_head_record_reports_one_new(
+    db: Database,
+) -> None:
+    session, tickets, product_id = acceptance_fixture(db)
+    record = an_evidence(product_id)
+    pulled = PullFake(PullResult([record], [], []))
+    service = action_service(
+        db, tickets, AssessmentFake(assessment(), assessment()), pulled
+    )
+
+    result = service.execute(session.id, action_context())
+
+    assert result.session is not None
+    summary = result.session.step_summaries[AcceptanceSessionStep.EVIDENCE].evidence
+    assert summary is not None
+    assert summary.total_count == 1
+    assert summary.new_count == 1
+    assert EvidenceRepo(db).list_for_product_commit(product_id, HEAD) == [record]
