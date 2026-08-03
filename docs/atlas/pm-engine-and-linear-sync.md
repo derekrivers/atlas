@@ -190,19 +190,28 @@ identifier join is permitted. A complete status count includes every
 `TicketStatus`, including zeroes, so no source order or omitted empty bucket can
 alter the canonical result.
 
+An Atlas ticket in any working or review state without an `external_linear_id`
+is a typed `missing_external_linear_id` incompleteness reason. The builder does
+not infer Linear state or occupancy from Atlas state alone, so the observed
+count remains zero and admission fails closed. Backlog, planned and blocked are
+pre-delivery states that do not consume either occupancy budget and may
+legitimately precede issue creation; a missing id in those states is not a join
+gap. After an id exists, every non-terminal ticket still requires that exact id
+in the complete project pull.
+
 The immutable snapshot pins product/project, policy id and revision, policy and
 status-map fingerprints, fetched-board fingerprint/count, Atlas store and graph
 revision fingerprints and an injected observation time. It reports every
 working, review, risk and component over-capacity dimension. Incomplete pulls,
 pagination gaps, missing/duplicate issue identities, duplicate joins, unmapped
-or contradictory states, absent joined issues, board issues without a local
-non-terminal join, and Atlas/Linear status disagreement are typed
-incompleteness reasons. Any reason, over-capacity result, paused mode or
-draining mode sets `admission_allowed=false`. Construction performs no Linear
-write, ticket mutation, demotion or Symphony action. Canonical compact JSON,
-sorted repeated inputs and SHA-256 hashing make counts, reasons, revision pins
-and snapshot fingerprint byte-stable for identical inputs regardless of
-iteration order.
+or contradictory states, working/review tickets without an external Linear id,
+absent joined issues, board issues without a local non-terminal join, and
+Atlas/Linear status disagreement are typed incompleteness reasons. Any reason,
+over-capacity result, paused mode or draining mode sets
+`admission_allowed=false`. Construction performs no Linear write, ticket
+mutation, demotion or Symphony action. Canonical compact JSON, sorted repeated
+inputs and SHA-256 hashing make counts, reasons, revision pins and snapshot
+fingerprint byte-stable for identical inputs regardless of iteration order.
 
 ## Sync loop
 

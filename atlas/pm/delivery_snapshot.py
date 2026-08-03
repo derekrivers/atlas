@@ -42,6 +42,9 @@ WORKING_STATUSES: frozenset[TicketStatus] = frozenset(
 REVIEW_STATUSES: frozenset[TicketStatus] = frozenset(
     {TicketStatus.REVIEW_REQUIRED, TicketStatus.NEEDS_HUMAN_DECISION}
 )
+DELIVERY_OCCUPANCY_STATUSES: frozenset[TicketStatus] = (
+    WORKING_STATUSES | REVIEW_STATUSES
+)
 TERMINAL_STATUSES: frozenset[TicketStatus] = frozenset(
     {TicketStatus.DONE, TicketStatus.REJECTED}
 )
@@ -58,6 +61,7 @@ class SnapshotIncompletenessCode(StrEnum):
     DUPLICATE_ATLAS_JOIN = "duplicate_atlas_join"
     UNMAPPED_STATE = "unmapped_state"
     CONTRADICTORY_STATE = "contradictory_state"
+    MISSING_EXTERNAL_LINEAR_ID = "missing_external_linear_id"
     MISSING_JOINED_ISSUE = "missing_joined_issue"
     MISSING_ATLAS_TICKET = "missing_atlas_ticket"
     ATLAS_LINEAR_STATE_MISMATCH = "atlas_linear_state_mismatch"
@@ -408,6 +412,16 @@ def build_delivery_snapshot(
 
     fetched_ids = {issue.id for issue in issues}
     for ticket in product_tickets:
+        if (
+            ticket.status in DELIVERY_OCCUPANCY_STATUSES
+            and ticket.external_linear_id is None
+        ):
+            reasons.append(
+                SnapshotIncompletenessReason(
+                    code=SnapshotIncompletenessCode.MISSING_EXTERNAL_LINEAR_ID,
+                    ticket_key=ticket.key,
+                )
+            )
         if (
             ticket.external_linear_id is not None
             and ticket.status not in TERMINAL_STATUSES

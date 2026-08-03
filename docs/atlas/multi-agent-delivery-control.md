@@ -142,6 +142,15 @@ canonical form. Changes Requested occupancy is retained separately, and the
 snapshot derives both the remaining Changes Requested reserve and working
 capacity available to a new admission after that reserve.
 
+Every Atlas ticket in a working or review status must have an
+`external_linear_id`. If it does not, the snapshot reports a typed
+`missing_external_linear_id` reason and fails closed without guessing occupancy
+from the Atlas status alone. Backlog, planned and blocked tickets are outside
+delivery occupancy and may legitimately precede Linear issue creation, so a
+missing id in those states is not an occupancy join gap. Once any non-terminal
+ticket has an id, however, absence of that exact issue from the complete project
+pull remains a typed `missing_joined_issue` failure.
+
 The snapshot pins product id, Linear project id, immutable policy id/revision
 and mode, a canonical policy fingerprint, the configured state-id map
 fingerprint, the fetched-board fingerprint and count, Atlas store and graph
@@ -155,14 +164,14 @@ fingerprint regardless of source iteration order.
 
 Unknown or unmapped state ids, state-id/type contradictions, incomplete pulls,
 pagination gaps, missing or duplicate issue identities, duplicate Atlas joins,
-missing joined issues, unjoined non-terminal board issues, and disagreement
-between the joined Atlas and Linear status are typed incompleteness reasons.
-Any such reason sets `admission_allowed=false`; display names are provenance
-only and are never status lookup keys. Existing occupancy above the working,
-review, risk-lane or component-lane limit reports every breached dimension and
-also prohibits admission. Paused or draining policy likewise makes the
-snapshot ineligible for admission without misclassifying the coherent
-observation as incomplete.
+working or review tickets without an external Linear id, missing joined issues,
+unjoined non-terminal board issues, and disagreement between the joined Atlas
+and Linear status are typed incompleteness reasons. Any such reason sets
+`admission_allowed=false`; display names are provenance only and are never
+status lookup keys. Existing occupancy above the working, review, risk-lane or
+component-lane limit reports every breached dimension and also prohibits
+admission. Paused or draining policy likewise makes the snapshot ineligible for
+admission without misclassifying the coherent observation as incomplete.
 
 ## Deterministic admission decision
 

@@ -388,6 +388,53 @@ def test_ac4_incomplete_or_contradictory_inputs_fail_closed_with_typed_reasons(
     assert result.admission_allowed is False
 
 
+@pytest.mark.parametrize(
+    "status",
+    [
+        TicketStatus.READY_FOR_AGENT,
+        TicketStatus.IN_PROGRESS,
+        TicketStatus.PR_OPEN,
+        TicketStatus.CHANGES_REQUESTED,
+        TicketStatus.REVIEW_REQUIRED,
+        TicketStatus.NEEDS_HUMAN_DECISION,
+    ],
+    ids=lambda status: status.value,
+)
+def test_ac4_unjoined_delivery_occupancy_ticket_fails_closed_without_guessing_count(
+    status: TicketStatus,
+) -> None:
+    item = ticket("ATLAS-1", status, external_linear_id=None)
+
+    result = snapshot([item], [])
+
+    assert result.working_occupancy == 0
+    assert result.review_occupancy == 0
+    assert len(result.incompleteness_reasons) == 1
+    reason = result.incompleteness_reasons[0]
+    assert reason.code is SnapshotIncompletenessCode.MISSING_EXTERNAL_LINEAR_ID
+    assert reason.ticket_key == item.key
+    assert reason.issue_id is None
+    assert result.admission_allowed is False
+
+
+@pytest.mark.parametrize(
+    "status",
+    [TicketStatus.BACKLOG, TicketStatus.PLANNED, TicketStatus.BLOCKED],
+    ids=lambda status: status.value,
+)
+def test_ac4_unjoined_pre_delivery_ticket_is_not_an_occupancy_join_gap(
+    status: TicketStatus,
+) -> None:
+    item = ticket("ATLAS-1", status, external_linear_id=None)
+
+    result = snapshot([item], [])
+
+    assert result.incompleteness_reasons == ()
+    assert result.working_occupancy == 0
+    assert result.review_occupancy == 0
+    assert result.admission_allowed is True
+
+
 def test_ac5_over_capacity_reports_every_breached_dimension_without_action() -> None:
     working = [
         ticket(
@@ -463,6 +510,11 @@ def test_ac6_snapshot_and_fingerprint_are_order_independent_and_byte_stable() ->
         risk_level="critical",
         component="atlas.core",
     )
+    unjoined = ticket(
+        "ATLAS-3",
+        TicketStatus.REVIEW_REQUIRED,
+        external_linear_id=None,
+    )
     edges = [dependency(second, first), dependency(first, second)]
     issues = [issue(first), issue(second)]
     forward_policy = policy(
@@ -489,14 +541,14 @@ def test_ac6_snapshot_and_fingerprint_are_order_independent_and_byte_stable() ->
     )
 
     forward = snapshot(
-        [first, second],
+        [first, second, unjoined],
         issues,
         selected_policy=forward_policy,
         board_pull=forward_pull,
         dependencies=edges,
     )
     reverse = snapshot(
-        [second, first],
+        [unjoined, second, first],
         list(reversed(issues)),
         selected_policy=reverse_policy,
         board_pull=reverse_pull,
