@@ -25,10 +25,16 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { useOperatorSession } from '@/context/operator-session-provider'
+import { LessonDispositionControls } from '@/features/lessons/lesson-disposition-controls'
 
 type Schema = components['schemas']
 type EntityStatus = Schema['EntityStatus']
 type LessonItem = Schema['LessonItemSchema']
+type SelectedLessonReview = {
+  lessonDecisionRevision: number
+  lessonId: string
+}
 
 const DEFAULT_LESSON_STATUS: EntityStatus = 'draft'
 const LESSON_STATUS_FACETS: readonly EntityStatus[] = atlasOpenApiEnums.EntityStatus
@@ -224,8 +230,18 @@ function LessonDetailDrawer({
   lesson: LessonItem | undefined
   onOpenChange: (open: boolean) => void
 }) {
+  const [commandLifecycleActive, setCommandLifecycleActive] = useState(false)
+
   return (
-    <Sheet open={lesson !== undefined} onOpenChange={onOpenChange}>
+    <Sheet
+      open={lesson !== undefined}
+      onOpenChange={(open) => {
+        if (!open && commandLifecycleActive) {
+          return
+        }
+        onOpenChange(open)
+      }}
+    >
       {lesson ? (
         <SheetContent className='w-full overflow-hidden p-0 sm:max-w-2xl'>
           <SheetHeader className='border-b p-6 pe-12'>
@@ -274,6 +290,11 @@ function LessonDetailDrawer({
                   <LiteralUuidList values={lesson.related_ticket_ids} />
                 </div>
               </section>
+              <LessonDispositionControls
+                lesson={lesson}
+                onClose={() => onOpenChange(false)}
+                onCommandLifecycleChange={setCommandLifecycleActive}
+              />
             </div>
           </ScrollArea>
         </SheetContent>
@@ -291,11 +312,18 @@ function lessonCountForStatus(
 
 export function LessonsView() {
   const lessonsQuery = useLessonsQuery()
+  const { lessonDecisionRevision } = useOperatorSession()
   const [selectedStatus, setSelectedStatus] = useState<EntityStatus>(
     DEFAULT_LESSON_STATUS
   )
-  const [selectedLesson, setSelectedLesson] = useState<LessonItem | undefined>()
+  const [selectedLessonReview, setSelectedLessonReview] = useState<
+    SelectedLessonReview | undefined
+  >()
   const lessons = lessonsQuery.data?.lessons ?? EMPTY_LESSONS
+  const selectedLesson =
+    selectedLessonReview?.lessonDecisionRevision === lessonDecisionRevision
+      ? lessons.find((lesson) => lesson.id === selectedLessonReview.lessonId)
+      : undefined
   const filteredLessons = useMemo(
     () => lessons.filter((lesson) => lesson.status === selectedStatus),
     [lessons, selectedStatus]
@@ -377,7 +405,12 @@ export function LessonsView() {
                   ) : (
                     <LessonsTable
                       lessons={statusLessons}
-                      onSelectLesson={setSelectedLesson}
+                      onSelectLesson={(lesson) =>
+                        setSelectedLessonReview({
+                          lessonDecisionRevision,
+                          lessonId: lesson.id,
+                        })
+                      }
                     />
                   )
                 ) : null}
@@ -390,7 +423,7 @@ export function LessonsView() {
         lesson={selectedLesson}
         onOpenChange={(open) => {
           if (!open) {
-            setSelectedLesson(undefined)
+            setSelectedLessonReview(undefined)
           }
         }}
       />

@@ -78,6 +78,15 @@ export type AtlasSessionLoginRequest = JsonRequest<
 export type AtlasSessionLoginResponse = JsonResponse<
   PostOperationFor<'/api/v1/session'>
 >
+export type AtlasPromoteLessonRequest = JsonRequest<
+  PostOperationFor<'/api/v1/lessons/{lesson_id}/promote'>
+>
+export type AtlasRejectLessonRequest = JsonRequest<
+  PostOperationFor<'/api/v1/lessons/{lesson_id}/reject'>
+>
+export type AtlasLessonDispositionResponse = JsonResponse<
+  PostOperationFor<'/api/v1/lessons/{lesson_id}/promote'>
+>
 
 export type AtlasValidationError = components['schemas']['HTTPValidationError']
 
@@ -192,13 +201,15 @@ let atlasCsrfToken: string | null = null
 async function atlasJsonRequest<ResponseBody>({
   body,
   includeCsrf,
+  idempotencyKey,
   method,
-  route,
+  requestPath,
 }: {
   body?: unknown
   includeCsrf: boolean
+  idempotencyKey?: string
   method: 'DELETE' | 'POST'
-  route: AtlasApiRoute
+  requestPath: string
 }): Promise<ResponseBody> {
   const headers: Record<string, string> = {
     Accept: 'application/json',
@@ -207,10 +218,13 @@ async function atlasJsonRequest<ResponseBody>({
   if (includeCsrf && atlasCsrfToken) {
     headers['X-Atlas-CSRF'] = atlasCsrfToken
   }
+  if (idempotencyKey) {
+    headers['Idempotency-Key'] = idempotencyKey
+  }
 
   let response: Response
   try {
-    response = await fetch(requestUrl(route, undefined), {
+    response = await fetch(requestPath, {
       body: body === undefined ? undefined : JSON.stringify(body),
       credentials: 'same-origin',
       headers,
@@ -274,7 +288,7 @@ export async function atlasLogin(
     body: request,
     includeCsrf: false,
     method: 'POST',
-    route: '/api/v1/session',
+    requestPath: '/api/v1/session',
   })
   atlasCsrfToken = response.csrf_token
   return response
@@ -285,13 +299,55 @@ export async function atlasSessionState(): Promise<AtlasSessionState> {
 }
 
 export async function atlasLogout(): Promise<AtlasSessionState> {
-  const response = await atlasJsonRequest<
-    JsonResponse<DeleteOperationFor<'/api/v1/session'>>
-  >({
-    includeCsrf: true,
-    method: 'DELETE',
-    route: '/api/v1/session',
-  })
+  try {
+    return await atlasJsonRequest<
+      JsonResponse<DeleteOperationFor<'/api/v1/session'>>
+    >({
+      includeCsrf: true,
+      method: 'DELETE',
+      requestPath: '/api/v1/session',
+    })
+  } finally {
+    atlasForgetSession()
+  }
+}
+
+export function atlasForgetSession(): void {
   atlasCsrfToken = null
-  return response
+}
+
+export async function atlasPromoteLesson({
+  idempotencyKey,
+  lessonId,
+  request,
+}: {
+  idempotencyKey: string
+  lessonId: string
+  request: AtlasPromoteLessonRequest
+}): Promise<AtlasLessonDispositionResponse> {
+  return atlasJsonRequest<AtlasLessonDispositionResponse>({
+    body: request,
+    idempotencyKey,
+    includeCsrf: true,
+    method: 'POST',
+    requestPath: `/api/v1/lessons/${encodeURIComponent(lessonId)}/promote`,
+  })
+}
+
+export async function atlasRejectLesson({
+  idempotencyKey,
+  lessonId,
+  request,
+}: {
+  idempotencyKey: string
+  lessonId: string
+  request: AtlasRejectLessonRequest
+}): Promise<AtlasLessonDispositionResponse> {
+  return atlasJsonRequest<AtlasLessonDispositionResponse>({
+    body: request,
+    idempotencyKey,
+    includeCsrf: true,
+    method: 'POST',
+    requestPath: `/api/v1/lessons/${encodeURIComponent(lessonId)}/reject`,
+  })
 }

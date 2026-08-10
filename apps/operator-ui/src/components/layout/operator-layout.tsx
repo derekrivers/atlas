@@ -10,6 +10,7 @@ import { OperatorStatusFooter } from '@/components/layout/operator-status-footer
 import { Search } from '@/components/search'
 import { SkipToMain } from '@/components/skip-to-main'
 import { ThemeSwitch } from '@/components/theme-switch'
+import { OperatorSessionControl } from '@/context/operator-session-provider'
 
 type OperatorLayoutProps = {
   children?: React.ReactNode
@@ -34,6 +35,7 @@ export function OperatorLayout({ children }: OperatorLayoutProps) {
             <Header fixed>
               <Search placeholder='Search routes' />
               <div className='ms-auto flex items-center gap-2'>
+                <OperatorSessionControl />
                 <ThemeSwitch />
               </div>
             </Header>

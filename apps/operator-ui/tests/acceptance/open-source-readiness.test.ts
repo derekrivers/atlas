@@ -37,7 +37,7 @@ describe('Operator UI open-source readiness', () => {
       'mkdir -p .atlas',
       'export ATLAS_DATABASE_URL="sqlite:///$PWD/.atlas/operator-ui-dev.db"',
       'uv run python -m atlas.tools.operator_ui_e2e_seed --db "$ATLAS_DATABASE_URL"',
-      'uv run atlas api serve --host 127.0.0.1 --port 8000',
+      'uv run atlas api serve --enable-writes --host 127.0.0.1 --port 8000',
       'npm --prefix apps/operator-ui ci',
       'VITE_ATLAS_API_BASE_URL=http://127.0.0.1:8000 npm --prefix apps/operator-ui run dev -- --port 4173 --strictPort',
     ]) {
@@ -60,30 +60,30 @@ describe('Operator UI open-source readiness', () => {
     expect(runbook).toContain('VITE_ATLAS_API_BASE_URL')
   })
 
-  it('states the read-only contribution boundary and writeable-phase gate', () => {
+  it('states the bounded governed-write contribution boundary', () => {
     const readme = readAppFile('README.md')
     const contributing = markdownSection(
       readme,
       '## Contributing to the Operator UI'
     )
+    const prose = contributing.replace(/\s+/g, ' ')
 
-    expect(contributing).toContain('This phase is read-only')
+    expect(prose).toContain('permits only authenticated promote/reject')
     for (const forbiddenScope of [
-      'writes',
-      'mutations',
-      'authentication',
+      'lesson editing',
+      'merging',
+      'ACTIVE archival',
+      'generic mutations',
       'Linear writes',
       'GitHub writes',
       'approval controls',
-      'promotion controls',
-      'retry controls',
     ]) {
-      expect(contributing).toContain(forbiddenScope)
+      expect(prose).toContain(forbiddenScope)
     }
-    expect(contributing).toMatch(
-      /authentication,\s+actor-context,\s+and\s+threat-model/
+    expect(prose).toMatch(
+      /memory-only local session,\s+server-owned actor context/
     )
-    expect(contributing).toMatch(/read-only\s+behaviour\s+only/)
+    expect(prose).toContain('stable command-lifecycle idempotency')
   })
 
   it('records the known contract limits in one named place', () => {
@@ -97,6 +97,7 @@ describe('Operator UI open-source readiness', () => {
     expect(limits).toContain('Polling, not push')
     expect(limits).toContain('server-sent event')
     expect(limits).toContain('websocket')
+    expect(limits).toContain('Refresh loses write authority')
   })
 
   it('keeps the canonical design doc pointed at the contributor-facing record', () => {

@@ -154,21 +154,29 @@ test('lesson ticket UUIDs are literal text, not interactive links or controls', 
   ).toEqual([])
 })
 
-test('lesson facets and drawer do not expose write controls', async ({ page }) => {
+test('lesson facets expose disposition only for DRAFT lessons', async ({ page }) => {
   await page.goto('/lessons')
   const observedLabels: string[] = []
 
-  for (const label of ['Draft', 'Active', 'Archived', 'Deprecated']) {
+  for (const label of ['Archived', 'Deprecated']) {
     await page.getByRole('tab', { name: new RegExp(label) }).click()
     observedLabels.push(...(await visibleInteractiveLabels(page)))
   }
 
-  await page.getByRole('tab', { name: /Draft/ }).click()
-  await page.getByRole('button', { name: /View lesson details:/ }).click()
+  await page.getByRole('tab', { name: /Active/ }).click()
+  await page
+    .getByRole('button', { name: 'View lesson details: Keep ruled lessons read only' })
+    .click()
   observedLabels.push(...(await visibleInteractiveLabels(page)))
 
   const offenders = observedLabels.filter((label) =>
-    /\b(promote|reject|archive|merge)\b/i.test(label)
+    /\b(promote|reject|edit|archive|merge|rebase)\b/i.test(label)
   )
   expect(offenders).toEqual([])
+
+  await page.keyboard.press('Escape')
+  await page.getByRole('tab', { name: /Draft/ }).click()
+  await page.getByRole('button', { name: /View lesson details:/ }).first().click()
+  await expect(page.getByRole('button', { name: 'Promote' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Reject' })).toBeVisible()
 })

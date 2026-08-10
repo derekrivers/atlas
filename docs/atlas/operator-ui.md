@@ -1,23 +1,23 @@
 # Operator UI Design (Phase 11)
 
-Status: Delivered Phase 11 design. Defines the read-only browser surface over
-the Phase 10 Operator API, the framework adoption boundary, the two additive
-v1 read routes delivered by the phase, and the testing contract. Operator
-rulings recorded here were ratified in the reviewer session of 2026-07-26 and
-remain binding until superseded by a later canonical design.
+Status: Delivered Phase 11 read surface extended by the governed Phase 13
+lesson disposition workflow. Defines the browser surface over the Operator API,
+the framework adoption boundary, the bounded authentication/write entry, and the
+testing contract. Phase 11 operator rulings recorded in the reviewer session of
+2026-07-26 remain binding where Phase 13 does not explicitly supersede them.
 
 ## Purpose and scope
 
-The operator UI is a browser instrument for reading Atlas operational
-state. It renders the projections `docs/atlas/operator-api.md` already
-exposes, plus the two additive reads named below. It is not a second
-source of truth, it holds no domain logic, and it performs no writes.
+The operator UI is a browser instrument for reading Atlas operational state and
+for the one governed write that Phase 13 admits: an authenticated operator may
+promote or reject a DRAFT lesson. It is not a second source of truth and holds no
+domain lifecycle logic; the generated HTTP contract and the server disposition
+service remain authoritative.
 
-Every operator action — approving a plan gate, promoting a lesson,
-merging a PR, moving a Linear status — continues to happen in the CLI,
-GitHub, or Linear. The UI must not present affordances that imply
-otherwise; a disabled "Approve" control is a promise this phase does not
-keep, and is forbidden.
+Every other operator action — approving a plan gate, editing or merging a
+lesson, archiving an ACTIVE lesson, merging a PR, or moving a Linear status —
+continues to happen in its existing CLI, GitHub, or Linear surface. The UI must
+not present affordances that imply otherwise.
 
 ## Position in the architecture
 
@@ -69,10 +69,15 @@ assembled by an `atlas.orchestration` coordinating service. It
 reimplements no graph logic. Without it a whole-graph view over the live
 store is 162 requests, which is not a view.
 
-Nothing else enters v1 in this phase. In particular: no pagination, no
-search route, no lesson-to-ticket key resolution, no writes, no
-authentication, no health endpoints. Those boundaries stay exactly where
-`operator-api.md` places them.
+Nothing else entered v1 in Phase 11. In particular: no pagination, no search
+route, no lesson-to-ticket key resolution, no writes, no authentication, and no
+health endpoints entered that read-surface milestone.
+
+Phase 13 subsequently adds `GET`, `POST`, and `DELETE /api/v1/session` plus the
+two purpose-specific commands `POST /api/v1/lessons/{lesson_id}/promote` and
+`POST /api/v1/lessons/{lesson_id}/reject`. Their security, idempotency, response,
+and error contracts are canonical in `governed-operator-actions.md`. This is a
+bounded extension, not a generic browser mutation capability.
 
 ## Views
 
@@ -197,12 +202,35 @@ introduced, the cap must be stated on screen.
 
 ### Lessons — `/lessons`
 
-Consumes `/lessons` unfiltered, with client-side `EntityStatus` facets.
+Consumes `/lessons` unfiltered, with client-side `EntityStatus` facets, and the
+two Phase 13 lesson disposition commands for an authenticated ruling.
 
 A table with a detail drawer: category, title, problem, solution,
 outcome, confidence, tags, creator, timestamps. Drafts are the default
 filter, because DRAFT-until-operator-promotion (ADR-0009) makes the draft
 pile the operator's real queue.
+
+Only a lesson whose server-returned status is DRAFT exposes **Promote** and
+**Reject**. Promote requires a labelled finite confidence in `0.0..1.0` and a
+separate confirmation that ACTIVE lessons may enter future context packs.
+Reject uses a distinct destructive confirmation explaining archival. Both
+controls disable while the command is in flight. The browser generates one
+cryptographic idempotency key for the command lifecycle; an ambiguous response
+retains that key for an explicit safe retry, and starting over requires a lesson
+refresh first.
+
+Success consumes the server-returned lesson and receipt, updates the exact
+Lessons query, and lets the DRAFT facet remove the row without a reload. The UI
+never predicts ACTIVE or ARCHIVED. A `401`, timed expiry, or explicit sign-out
+invalidates the open decision lifecycle: Atlas clears in-memory write authority,
+closes the lesson drawer, resets its confirmation, confidence, mutation, and
+command-key state, and refreshes the exact Lessons query. Signing in again never
+restores that reviewed drawer; the operator must reopen the refetched lesson and
+review it again. A `401` also opens the session-expired flow; `403` names the
+security refusal; `409` renders the safe current lesson, refreshes the queue,
+blocks overwrite, and requires the drawer to be closed and re-reviewed; `422`
+is attached to confidence or the relevant confirmation. Success and failure are
+announced through live regions.
 
 Lessons carry `source_ticket_id` and `related_ticket_ids` as raw UUIDs.
 Resolving them to ticket keys would require a second source and move the
@@ -213,8 +241,17 @@ UUID keeps it visible.
 
 ### App shell
 
-Sidebar navigation, header, theme toggle, command palette, route-level
-error boundaries, a 404 page, and an explicit API-unreachable state.
+Sidebar navigation, header, theme toggle, command palette, route-level error
+boundaries, a 404 page, an explicit API-unreachable state, and the local operator
+session flow.
+
+The header opens an accessible bootstrap-token dialog. The token is posted once
+to `/api/v1/session`, then cleared from the form; it never enters web storage,
+URL state, query state, logs, or generated configuration. The returned CSRF
+token lives only in module memory. A refresh therefore loses browser write
+authority even if the HttpOnly server cookie remains valid and presents a
+restore-session flow before another ruling. Expiry does the same and requires
+the lesson to be re-reviewed after sign-in.
 
 The last is not decoration. A loopback API that is not running is the
 most likely failure the operator will meet, and it must produce a named,
@@ -224,10 +261,10 @@ page or a generic network error.
 
 ### Not buildable in this phase
 
-Agent-run history, PlanRun history, ticket status timelines, debt items,
-tick failures, context packs, lesson-to-ticket navigation, and every
-write, promote, approve or retry action. None has a read route, and
-adding routes beyond the two named above is out of scope.
+Agent-run history, PlanRun history, ticket status timelines, debt items, tick
+failures, context packs, lesson-to-ticket navigation, plan approval, lesson
+editing/merging/ACTIVE archival, bulk disposition, generic resource updates,
+GitHub writes, Linear writes, and acceptance-console actions remain absent.
 
 ## Framework adoption boundary
 
@@ -239,14 +276,12 @@ not a requirement to retain unused template dependencies.
 
 Three rulings govern the adoption:
 
-**It is a component collection, not a starter,** as its own README says.
-It ships Clerk authentication and `users`, `chats`, `tasks`, `apps`,
-`help-center` and `settings` demo domains built on `@faker-js/faker`
-fixtures. All of it is deleted in the scaffold ticket itself, in the same
-change that vendors the shell. Clerk in particular imports precisely the
-authentication surface `operator-api.md` defers to the writeable phase.
-If demo domains survive the first ticket, a real view gets built on
-faker data by the fifth.
+**It is a component collection, not a starter,** as its own README says. It
+ships Clerk authentication and `users`, `chats`, `tasks`, `apps`, `help-center`
+and `settings` demo domains built on `@faker-js/faker` fixtures. All of it was
+deleted in the scaffold ticket. The later Phase 13 session flow uses Atlas's
+loopback session contract directly and does not restore Clerk or any remote
+identity dependency.
 
 **Its theme is the theme** (ruled: OP-7). `src/styles/theme.css` is
 vendored intact and becomes the single token contract: every colour,
@@ -273,10 +308,10 @@ the place an outside contributor should check before treating missing pagination
 missing ticket-detail epic data, literal lesson ticket UUIDs, or polling instead
 of push as bugs.
 
-That README also records the read-only contribution boundary and points at the
-writeable-phase entry condition: authentication, actor context, and a threat
-model must land together before any UI write path, action control, or remote
-operator surface enters scope.
+That README also records the bounded contribution boundary: lesson promote and
+reject are the only browser writes, and they depend on the Phase 13 session,
+actor-context, idempotency, receipt, and threat-model contracts. No generic or
+remote operator surface follows from that exception.
 
 The upstream MIT attribution for retained `satnaing/shadcn-admin` source and the
 vendored theme lives in `apps/operator-ui/THIRD_PARTY_NOTICES.md`.
@@ -297,6 +332,9 @@ vendored theme lives in `apps/operator-ui/THIRD_PARTY_NOTICES.md`.
   `apps/operator-ui/tests/e2e/fixtures/live-api-seed.json`, starts
   `atlas api serve` on `127.0.0.1`, runs `@playwright/test`, then tears down
   the API process and temporary store.
+  The harness enables the governed write routes with an isolated runtime token;
+  browser tests cover promotion, rejection, stale CLI races, duplicate-click
+  suppression, memory-only session loss on refresh, and forbidden persistence.
 - **Accessibility and responsive tests** use `@axe-core/playwright` in the
   same seeded live-API harness. The enforced automated standard is axe-core's
   WCAG 2.2 AA rule set, expressed by the `wcag2a`, `wcag2aa`, `wcag21a`,
@@ -324,10 +362,10 @@ metadata pinned by `apps/operator-ui/package-lock.json`.
 
 ## Development and serving
 
-The Vite development server proxies `/api` to the loopback API (ruled:
-OP-3). No CORS middleware is added: introducing one reopens the allowed
-origins question, which is a security-boundary question, which
-`operator-api.md` binds to the writeable phase.
+The Vite development server proxies `/api` to the loopback API (ruled: OP-3).
+No CORS middleware is added. Phase 13 retains the same-origin proxy and adds the
+exact loopback Host/Origin, HttpOnly SameSite cookie, CSRF, strict JSON, and
+idempotency checks defined in `governed-operator-actions.md`.
 
 The proxy target is build-time configurable through
 `VITE_ATLAS_API_BASE_URL` and defaults to `http://127.0.0.1:8000`.
@@ -342,16 +380,17 @@ All Operator UI queries use the shared TanStack Query policy in
 timestamps remain the staleness signal rather than a bespoke real-time
 transport.
 
-How a production build is served is not designed in this phase. The
-development proxy is the supported path; anything else is a later
-decision made together with the binding and authentication questions it
-depends on.
+How a production build is served is not designed in these phases. The
+development proxy over loopback is the supported path; remote or HTTPS serving
+remains a separate security and deployment decision.
 
 ## Deferred
 
-- **Writes of any kind** — enter with the writeable API phase, behind the
-  same authentication, actor-context and threat-model boundary.
-- **Authentication and multi-operator use** — same boundary.
+- **Other writes** — Phase 13 admits only DRAFT lesson promote/reject. Lesson
+  editing, merging, ACTIVE archival, generic updates, approval, GitHub and
+  Linear writes require their own governed designs.
+- **Remote authentication and multi-operator use** — the delivered session is
+  single-operator and loopback-only under ADR-0009.
 - **Pagination-aware views** — enter when the API gains pagination. Every
   derived aggregate in the Overview and every client-side facet assumes
   complete collections and must be revisited together at that point.

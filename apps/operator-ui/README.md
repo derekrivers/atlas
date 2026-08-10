@@ -22,7 +22,10 @@ In a first terminal, serve the Atlas API over that store:
 
 ```bash
 export ATLAS_DATABASE_URL="sqlite:///$PWD/.atlas/operator-ui-dev.db"
-uv run atlas api serve --host 127.0.0.1 --port 8000
+read -r -s -p 'Choose a 32+ character bootstrap token for the browser sign-in dialog: ' ATLAS_OPERATOR_TOKEN
+printf '\n'
+export ATLAS_OPERATOR_TOKEN
+uv run atlas api serve --enable-writes --host 127.0.0.1 --port 8000
 ```
 
 In a second terminal, install the UI dependencies and start Vite:
@@ -88,16 +91,16 @@ hand.
 
 ## Contributing to the Operator UI
 
-This phase is read-only. Contributions must not add writes, mutations,
-authentication, Linear writes, GitHub writes, approval controls, promotion controls,
-retry controls, or disabled controls that imply those actions.
+The bounded Phase 13 write surface permits only authenticated promote/reject
+rulings for DRAFT lessons. Contributions must not add lesson editing, merging,
+ACTIVE archival, bulk disposition, generic mutations, Linear writes, GitHub
+writes, approval controls, or disabled controls that imply those actions.
 
-The writeable phase does not begin until the authentication, actor-context, and
-threat-model entry conditions in `docs/atlas/operator-api.md` and
-`docs/atlas/operator-ui.md` are designed and landed together. Until then, a UI
-change may read the existing `/api/v1` contract, compose projections in the
-browser where the design allows it, and update tests and docs for read-only
-behaviour only.
+The delivered commands must continue to use the generated API contract, the
+memory-only local session, server-owned actor context, strict confirmation,
+stable command-lifecycle idempotency, server-returned lesson state and receipts,
+and the typed error recovery defined in `docs/atlas/operator-ui.md` and
+`docs/atlas/governed-operator-actions.md`.
 
 `apps/operator-ui/THIRD_PARTY_NOTICES.md` records the upstream MIT attribution
 for the vendored `satnaing/shadcn-admin` source and the vendored
@@ -107,7 +110,7 @@ source or theme tokens.
 ## Operator UI contract limits
 
 This is the named contributor-facing record of the known contract limits for
-the current read-only phase:
+the current bounded operator surface:
 
 - **No pagination.** Collection views consume complete projections. Overview
   aggregates and board facets intentionally assume full `/tickets`, `/reviews`,
@@ -121,6 +124,9 @@ the current read-only phase:
 - **Polling, not push.** Shared TanStack Query hooks poll through
   `src/api/query-policy.ts`. There is no server-sent event, websocket, or other
   push contract in this phase.
+- **Refresh loses write authority.** The CSRF token is memory-only. A refreshed
+  page may retain an HttpOnly server cookie but must complete the restore-session
+  flow before another lesson ruling.
 
 The Vite development server proxies same-origin `/api` requests to the Atlas API
 URL configured by `VITE_ATLAS_API_BASE_URL`, defaulting to

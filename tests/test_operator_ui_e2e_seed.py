@@ -73,8 +73,10 @@ def test_operator_ui_e2e_seed_reproduces_live_api_edge_shapes(tmp_path: Path) ->
         }.issubset(reason_codes)
 
         stored_ticket_ids = {ticket.id for ticket in tickets}
-        [lesson] = LessonRepo(db).list()
-        assert lesson.source_ticket_id not in stored_ticket_ids
-        assert set(lesson.related_ticket_ids).isdisjoint(stored_ticket_ids)
+        lessons = LessonRepo(db).list()
+        assert len(lessons) == 7
+        for lesson in lessons:
+            assert lesson.source_ticket_id not in stored_ticket_ids
+            assert set(lesson.related_ticket_ids).isdisjoint(stored_ticket_ids)
     finally:
         db.engine.dispose()

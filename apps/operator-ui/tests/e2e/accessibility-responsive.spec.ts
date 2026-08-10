@@ -5,7 +5,7 @@ import {
   operatorSurfaces,
   type OperatorSurface,
 } from '../../src/app-shell/surfaces'
-import { startAtlasApiServer } from './atlas-api-server'
+import { E2E_OPERATOR_TOKEN, startAtlasApiServer } from './atlas-api-server'
 
 const appPort = Number(process.env.ATLAS_OPERATOR_UI_E2E_PORT ?? 4173)
 const appBaseURL = `http://127.0.0.1:${appPort}`
@@ -408,7 +408,7 @@ test('keyboard operates route controls and tab frames without pointer input @acc
   )
   const lessonDetailButton = page.getByRole('button', {
     name: /View lesson details:/,
-  })
+  }).first()
   const lessonDialogName = (
     await lessonDetailButton.getAttribute('aria-label')
   )?.replace('View lesson details: ', '')
@@ -420,6 +420,15 @@ test('keyboard operates route controls and tab frames without pointer input @acc
   await expect(
     page.getByRole('dialog', { name: lessonDialogName })
   ).toBeVisible()
+  const promoteButton = page.getByRole('button', { name: 'Promote' })
+  await tabTo(page, promoteButton, 'promote lesson')
+  await page.keyboard.press('Enter')
+  const loginDialog = page.getByRole('dialog', { name: 'Operator sign in' })
+  await expect(loginDialog).toBeVisible()
+  await expect(loginDialog.getByLabel('Bootstrap token')).toBeFocused()
+  await page.keyboard.press('Escape')
+  await expect(loginDialog).toBeHidden()
+  await expect(promoteButton).toBeFocused()
   await page.keyboard.press('Escape')
   await expect(
     page.getByRole('dialog', { name: lessonDialogName })
@@ -488,6 +497,40 @@ test('keyboard operates route controls and tab frames without pointer input @acc
   )
   await page.keyboard.press('Enter')
   await expect(page).toHaveURL(new RegExp(`/tickets/${seededCriticalPathHead}$`))
+})
+
+test('session and destructive confirmation dialogs trap and return focus without axe violations @accessibility', async ({
+  page,
+}) => {
+  await page.goto('/lessons')
+  await page.getByRole('button', { name: 'Sign in' }).click()
+  const loginDialog = page.getByRole('dialog', { name: 'Operator sign in' })
+  await expect(loginDialog.getByLabel('Bootstrap token')).toBeFocused()
+  expect(await axeViolations(page)).toEqual([])
+  await loginDialog.getByLabel('Bootstrap token').fill(E2E_OPERATOR_TOKEN)
+  await loginDialog.getByRole('button', { name: 'Sign in' }).click()
+  await expect(page.getByRole('button', { name: 'Sign out' })).toBeVisible()
+
+  await page.getByRole('button', { name: /View lesson details:/ }).first().click()
+  const rejectButton = page.getByRole('button', { name: 'Reject' })
+  await rejectButton.click()
+  const confirmation = page.getByRole('alertdialog', {
+    name: 'Confirm lesson rejection',
+  })
+  await expect(confirmation).toBeVisible()
+  await expect(confirmation).toContainText('archives it for audit')
+  expect(await axeViolations(page)).toEqual([])
+
+  for (let step = 0; step < 5; step += 1) {
+    await page.keyboard.press('Tab')
+    const focusInside = await page.evaluate(() =>
+      Boolean(document.activeElement?.closest('[role="alertdialog"]'))
+    )
+    expect(focusInside).toBe(true)
+  }
+  await page.keyboard.press('Escape')
+  await expect(confirmation).toBeHidden()
+  await expect(rejectButton).toBeFocused()
 })
 
 test('data tables and tab frames expose roles and accessible labels @accessibility', async ({

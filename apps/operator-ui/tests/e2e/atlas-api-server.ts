@@ -16,7 +16,7 @@ type StartAtlasApiServerOptions = {
   seedPath?: string
 }
 
-const E2E_OPERATOR_TOKEN =
+export const E2E_OPERATOR_TOKEN =
   'atlas-operator-e2e-token-0123456789ABCDEFGHJKLMNPQRSTxyz!@#'
 
 function runSeedCommand(command: string, args: string[], dbUrl: string): void {

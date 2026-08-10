@@ -3,12 +3,15 @@ import { dirname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import type { UseQueryResult } from '@tanstack/react-query'
+import type { components } from '@/api/atlas-openapi'
 import {
   ATLAS_QUERY_ROUTES,
   type useDependencyCriticalPathQuery,
   type useDependencyGraphQuery,
   type useEpicsQuery,
   type useLessonsQuery,
+  type usePromoteLessonMutation,
+  type useRejectLessonMutation,
   type useReviewsQuery,
   type useSessionQuery,
   type useSystemStatusQuery,
@@ -38,6 +41,9 @@ type NotAny<Value> = Equal<IsAny<Value>, false>
 type HookData<
   Hook extends (...args: never[]) => UseQueryResult<unknown, AtlasQueryError>,
 > = NonNullable<ReturnType<Hook>['data']>
+type MutationData<
+  Hook extends (...args: never[]) => object,
+> = ReturnType<Hook> extends { data: infer Data } ? NonNullable<Data> : never
 
 type CoveredRoute = (typeof ATLAS_QUERY_ROUTES)[number]
 type HookResponseParity = [
@@ -106,6 +112,20 @@ type HookAnyGuard = [
   Assert<NotAny<HookData<typeof useSessionQuery>>>,
   Assert<NotAny<HookData<typeof useSystemStatusQuery>>>,
 ]
+type MutationResponseParity = [
+  Assert<
+    Equal<
+      MutationData<typeof usePromoteLessonMutation>,
+      components['schemas']['LessonDispositionResponse']
+    >
+  >,
+  Assert<
+    Equal<
+      MutationData<typeof useRejectLessonMutation>,
+      components['schemas']['LessonDispositionResponse']
+    >
+  >,
+]
 
 const routeCoverage: Assert<Equal<CoveredRoute, AtlasApiRoute>> = true
 const hookResponseParity: HookResponseParity = [
@@ -136,6 +156,7 @@ const hookAnyGuard: HookAnyGuard = [
   true,
   true,
 ]
+const mutationResponseParity: MutationResponseParity = [true, true]
 
 describe('typed Atlas query hooks', () => {
   it('covers every generated current v1 GET route', () => {
@@ -154,5 +175,9 @@ describe('typed Atlas query hooks', () => {
         `${relative(appRoot, path)} must not use any`
       ).not.toMatch(/\bany\b/)
     }
+  })
+
+  it('types lesson disposition mutations from generated response contracts', () => {
+    expect(mutationResponseParity.every((value) => value)).toBe(true)
   })
 })
