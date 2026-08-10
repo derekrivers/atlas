@@ -176,6 +176,21 @@ only after every criterion plus blanket approval is explicitly positive. It
 reuses the CLI's confirmation-record service and canonical evidence writer;
 the existing CLI output and evaluator behaviour are unchanged.
 
+The governed acceptance-session verification action likewise reuses this
+engine rather than creating another verdict path. After exact-head evidence,
+confirmation and freshness prerequisites pass, its in-process adapter calls
+the same `run_verify(PRContext, close_set, db)` orchestration used by
+`atlas verify`; it does not execute a script, call the CLI or interpret an exit
+code. The adapter consumes the typed `PRVerification` directly. Only top-level
+PASSED with a valid `head_commit` equal to the session head and the complete
+session ticket identity set is admissible; contradictory check/ticket status,
+malformed output and historical stored checks fail closed. The action assigns a
+verdict UUID for the durable session milestone, then a fresh shared integration
+assessment and criteria fingerprint must still match before historical
+`stored_merge_ready` can be committed with its receipt. Later live readiness
+never reuses that stored boolean alone: it validates the stored verdict identity
+and performs fresh read-only assessment and criteria checks.
+
 ## Open items
 
 - Coverage minimums: start with "coverage evidence must exist", add a

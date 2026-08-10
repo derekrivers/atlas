@@ -13,6 +13,10 @@ from atlas.orchestration.acceptance_evidence import (
     AcceptanceEvidencePullResult,
     AcceptanceSessionEvidencePullService,
 )
+from atlas.orchestration.acceptance_readiness import (
+    AcceptanceSessionLiveReadinessService,
+    LiveAcceptanceReadinessResult,
+)
 from atlas.orchestration.acceptance_sessions import (
     AcceptanceSessionCreationResult,
     AcceptanceSessionCreationService,
@@ -22,6 +26,12 @@ from atlas.orchestration.acceptance_sessions import (
     compare_acceptance_session_freshness,
     mark_acceptance_session_stale_for_mutation,
     stored_acceptance_session_status,
+)
+from atlas.orchestration.acceptance_verification import (
+    AcceptanceSessionVerificationService,
+    AcceptanceVerificationContext,
+    AcceptanceVerificationResult,
+    AcceptanceVerificationStatus,
 )
 from atlas.orchestration.admission import record_admission_run
 from atlas.orchestration.confirm import (
@@ -130,6 +140,11 @@ __all__ = [
     "AcceptanceSessionCreationService",
     "AcceptanceSessionCreationStatus",
     "AcceptanceSessionEvidencePullService",
+    "AcceptanceSessionLiveReadinessService",
+    "AcceptanceSessionVerificationService",
+    "AcceptanceVerificationContext",
+    "AcceptanceVerificationResult",
+    "AcceptanceVerificationStatus",
     "CanonicalFingerprintError",
     "ConfirmCaptureResult",
     "ConfirmPrompts",
@@ -147,6 +162,7 @@ __all__ = [
     "LessonDispositionResult",
     "LessonDispositionService",
     "LessonDispositionStatus",
+    "LiveAcceptanceReadinessResult",
     "OperatorActionCommandContext",
     "OperatorActionCommandResult",
     "OperatorActionConflict",

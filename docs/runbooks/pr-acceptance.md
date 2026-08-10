@@ -162,6 +162,24 @@ uv run python scripts/close_ticket.py <N> --repo <owner>/<repo> \
   --operator <id>
 ```
 
+The governed acceptance-session form performs the same ordering without
+calling that script or parsing CLI JSON. Its verification action is available
+only after the session evidence and confirmation steps are complete. It runs a
+fresh exact-head/criteria check, calls the canonical verifier in process, and
+accepts only explicit top-level PASSED at the session head. It immediately
+repeats the exact-head/criteria check and stores historical readiness, verified
+head, verdict UUID, final assessment identity and the operator-action receipt
+atomically. Every non-PASSED verdict and every identity, eligibility or criteria
+mismatch is displayed as a typed blocker; a receipt/store failure is never
+reported as success.
+
+On every later console refresh, current authority comes from the bounded
+read-only live-readiness service, not from the stored milestone. A moved head,
+moved `main`, repository or eligibility change, criteria drift, timeout,
+malformed GitHub response or other failed live read closes the displayed gate
+without rewriting session history. Treat `merge_ready: true` only as advice to
+perform the exact-head GitHub merge manually during the existing one-PR freeze.
+
 ## 6. Merge — at the verdict commit
 
 Verdict PASSED plus the second exact-head assessment → merge now, while the

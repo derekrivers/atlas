@@ -312,6 +312,97 @@
       "title": "AcceptanceEvidenceSummary",
       "type": "object"
     },
+    "AcceptanceReadinessAssessment": {
+      "description": "The full final live identity that admitted manual-merge readiness.",
+      "properties": {
+        "base_ref": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Base Ref",
+          "type": "string"
+        },
+        "base_repository": {
+          "maxLength": 257,
+          "minLength": 1,
+          "title": "Base Repository",
+          "type": "string"
+        },
+        "base_sha": {
+          "title": "Base Sha",
+          "type": "string"
+        },
+        "criteria_fingerprint": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Criteria Fingerprint",
+          "type": "string"
+        },
+        "eligibility": {
+          "const": "eligible",
+          "title": "Eligibility",
+          "type": "string"
+        },
+        "head_ref": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Head Ref",
+          "type": "string"
+        },
+        "head_repository": {
+          "maxLength": 257,
+          "minLength": 1,
+          "title": "Head Repository",
+          "type": "string"
+        },
+        "head_sha": {
+          "title": "Head Sha",
+          "type": "string"
+        },
+        "integration_status": {
+          "const": "current",
+          "title": "Integration Status",
+          "type": "string"
+        },
+        "pr_number": {
+          "exclusiveMinimum": 0,
+          "title": "Pr Number",
+          "type": "integer"
+        },
+        "repository_name": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Repository Name",
+          "type": "string"
+        },
+        "repository_owner": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Repository Owner",
+          "type": "string"
+        },
+        "verdict_id": {
+          "format": "uuid",
+          "title": "Verdict Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "verdict_id",
+        "repository_owner",
+        "repository_name",
+        "pr_number",
+        "head_ref",
+        "head_sha",
+        "head_repository",
+        "base_ref",
+        "base_sha",
+        "base_repository",
+        "eligibility",
+        "integration_status",
+        "criteria_fingerprint"
+      ],
+      "title": "AcceptanceReadinessAssessment",
+      "type": "object"
+    },
     "AcceptanceSessionBlockingReason": {
       "description": "Closed, secret-free reasons used by preflight, freshness and history.",
       "enum": [
@@ -346,7 +437,23 @@
         "session_stale",
         "evidence_not_ready",
         "confirmations_not_ready",
-        "verification_not_passed"
+        "verification_not_passed",
+        "session_unknown",
+        "session_not_verifiable",
+        "verification_already_completed",
+        "verification_pending",
+        "verification_failed",
+        "verification_warning",
+        "verification_not_applicable",
+        "verification_malformed",
+        "verification_close_set_mismatch",
+        "verified_head_invalid",
+        "verified_head_mismatch",
+        "stored_history_invalid",
+        "readiness_persistence_failed",
+        "external_read_timeout",
+        "external_response_malformed",
+        "external_read_failed"
       ],
       "title": "AcceptanceSessionBlockingReason",
       "type": "string"
@@ -416,6 +523,17 @@
           "default": null,
           "title": "Occurred At"
         },
+        "readiness": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AcceptanceReadinessAssessment"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "reasons": {
           "default": [],
           "items": {
@@ -435,12 +553,68 @@
         },
         "state": {
           "$ref": "#/$defs/AcceptanceSessionStepState"
+        },
+        "verification": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AcceptanceVerificationSummary"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         }
       },
       "required": [
         "state"
       ],
       "title": "AcceptanceStepSummary",
+      "type": "object"
+    },
+    "AcceptanceVerificationSummary": {
+      "description": "Bounded identity and verdict from one canonical in-process evaluation.",
+      "properties": {
+        "blocking_check_count": {
+          "maximum": 1000000,
+          "minimum": 0,
+          "title": "Blocking Check Count",
+          "type": "integer"
+        },
+        "head_commit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Head Commit"
+        },
+        "status": {
+          "$ref": "#/$defs/EvidenceStatus"
+        },
+        "ticket_count": {
+          "maximum": 1000000,
+          "minimum": 0,
+          "title": "Ticket Count",
+          "type": "integer"
+        },
+        "verdict_id": {
+          "format": "uuid",
+          "title": "Verdict Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "verdict_id",
+        "status",
+        "ticket_count",
+        "blocking_check_count"
+      ],
+      "title": "AcceptanceVerificationSummary",
       "type": "object"
     },
     "ActorType": {
@@ -451,6 +625,18 @@
         "system"
       ],
       "title": "ActorType",
+      "type": "string"
+    },
+    "EvidenceStatus": {
+      "description": "Outcome of an evidence record or verification check (data-model §2.5).",
+      "enum": [
+        "pending",
+        "passed",
+        "failed",
+        "warning",
+        "not_applicable"
+      ],
+      "title": "EvidenceStatus",
       "type": "string"
     }
   },

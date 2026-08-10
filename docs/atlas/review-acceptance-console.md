@@ -259,33 +259,57 @@ append a second set or replace the recorded receipt reference.
 
 ## Verification and merge readiness
 
-Verification calls the existing verification engine over the session close-set
-and exact head. Only explicit top-level PASSED with a valid matching
-`head_commit` advances the session.
+The delivered verification action accepts only a session ID plus the
+authenticated `human/operator` command context. Repository, PR, close-set and
+head are resolved from the session. Before invoking verification it requires
+the evidence and confirmation summaries to be complete, re-runs the shared
+Phase 12 assessment, re-reads every close-set ticket and criteria definition,
+and compares all live identities with the pinned session. It then resolves the
+PR context and performs a second just-before-verifier assessment so head, main
+or close-set movement during the changed-file read cannot enter the engine.
+Every failed prerequisite is returned and stored on the verification step; no
+verifier call occurs in those cases.
 
-Immediately after verification, a fresh Phase 12 assessment must report:
+The action calls the canonical `run_verify` orchestration in process over the
+session close-set and PR context. It never executes `scripts/close_ticket.py`,
+invokes the CLI or parses CLI JSON. Only an explicit top-level `PASSED` verdict
+whose `head_commit` is a valid 40-hex SHA exactly equal to the session head and
+whose ticket identities equal the complete close-set can advance. Exit code,
+green CI, append-only checks from an earlier run and old-head evidence or
+confirmations are not verdict authority. Pending, failed, warning,
+not-applicable, malformed, wrong-close-set, invalid-head and mismatched-head
+outcomes have distinct typed blockers.
 
-- the same repository, PR, branch and head SHA as the session;
-- the same base identity and base SHA as the session;
-- overall integration status `current`;
-- a verified head equal to the session head;
-- unchanged acceptance-criteria fingerprint;
-- required evidence and human confirmations at that head.
+Immediately after PASSED, the action performs a third fresh shared assessment
+and live criteria read. Repository owner/name, PR number, close-set, head and
+base refs/SHAs/repositories, eligibility, integration status, ticket status and
+criteria fingerprint must still reproduce the session. Movement or
+indeterminate external state stores the exact-head PASSED verdict as history,
+marks readiness blocked and makes the session terminal `stale`; it never emits
+current authority.
 
-Only then may the server return `merge_ready: true`. Every failing reason is
-returned as a typed list and the UI displays all of them. Readiness is revoked
-on every later refresh if the live assessment has moved or become
-indeterminate.
+Success stores `merge_ready: true` only with a generated verdict UUID, verified
+head, ticket/blocking-check counts, the complete final assessment identity,
+criteria fingerprint and the shared verification/readiness receipt reference.
+The session mutation and terminal operator-action receipt commit in one
+transaction. A receipt or session-store failure rolls back readiness and the
+lifecycle advance; append-only verification checks already written by the
+canonical engine may remain historical. Same-key replay returns the original
+receipt without another assessment or verifier call, and a per-session guard
+prevents concurrent verifier work in the supported single-process server.
 
-The stored verification-time `merge_ready` result is historical evidence, not
-current merge authority. Every
-`GET /api/v1/acceptance-sessions/{session_id}` calls one bounded, read-only
-live-readiness application service. That service combines the stored session
-history with a fresh Phase 12 assessment and the current acceptance-criteria
-fingerprint. Head, main, repository, eligibility or criteria movement,
-indeterminate assessment, timeout, malformed response or other external-read
-failure returns `merge_ready: false` with every typed reason. The read does not
-rewrite, stale or otherwise mutate the stored session.
+The stored verification-time result remains historical evidence, not current
+merge authority. `AcceptanceSessionLiveReadinessService` is the single bounded,
+read-only operation for each later
+`GET /api/v1/acceptance-sessions/{session_id}`. It first validates that stored
+true has the PASSED exact-head verdict UUID, matching final identity and shared
+receipt, then makes one fresh Phase 12 assessment and re-reads the current
+close-set ticket definitions and criteria fingerprint. Any stored-history
+defect, head/main/repository/eligibility/criteria movement, indeterminate
+assessment, timeout, malformed response or other external-read failure returns
+`merge_ready: false` with every typed reason. It performs no session, receipt,
+evidence, verification-check, ticket or external-system write and never exposes
+cached true after a failed live read.
 
 The console displays the exact verified head and a clear instruction to merge
 that head manually in GitHub. It does not expose a merge button.
