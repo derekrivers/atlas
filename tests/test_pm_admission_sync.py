@@ -19,6 +19,7 @@ from test_models_validation import NOW
 from test_pm_sync import (
     CHANGES_REQUESTED_STATE,
     PACK_DOC,
+    PR_OPEN_STATE,
     PROJECT_ID,
     READY,
     STARTED,
@@ -344,6 +345,37 @@ def test_ac5_partial_initial_pagination_is_malformed_and_admits_nobody(
 
     assert client.state_writes == []
     assert PmSyncReceiptRepo(db).list()[-1].result is PmSyncReceiptResult.MALFORMED_PULL
+
+
+def test_snapshot_level_stale_stops_before_later_review_cycle_state_write(
+    db: Database,
+) -> None:
+    client = CountingPullClient()
+    review_ticket = seed_ticket(
+        db,
+        client,
+        key="ATLAS-248",
+        product_id=PRODUCT_ID,
+        status=TicketStatus.PR_OPEN,
+        issue_state=PR_OPEN_STATE,
+        review_cycle_count=4,
+        linear_synced_at=NOW,
+    )
+    client.create_issue(
+        {"title": "Unjoined issue", "description": "outside Atlas"},
+        team_id=TEAM_ID,
+        project_id=PROJECT_ID,
+    )
+
+    result = run(db, client)
+
+    assert result.stale == 1
+    assert result.admission_decisions[0].reason is (
+        AdmissionSyncReason.SNAPSHOT_INCOMPLETE
+    )
+    assert result.admission_decisions[0].ticket_key is None
+    assert review_ticket.review_cycle_count > 3
+    assert client.state_writes == []
 
 
 def test_ac4_ambiguous_success_fences_later_admission_until_fresh_pull(

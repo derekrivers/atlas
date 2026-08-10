@@ -836,11 +836,41 @@ def test_pm_sync_receipt_migration_preserves_ticket_definition_cursors(
 def test_alembic_upgrades_fresh_db_and_matches_metadata(tmp_path: Path) -> None:
     url = f"sqlite:///{tmp_path}/migrated.db"
     config = _alembic_config(url)
-    assert ScriptDirectory.from_config(config).get_heads() == ["0028"]
+    assert ScriptDirectory.from_config(config).get_heads() == ["0029"]
     command.upgrade(config, "head")
 
     engine = sa.create_engine(url)
     with engine.connect() as connection:
+        assert {
+            "admission_leases",
+            "admission_eligibility",
+            "admission_write_fences",
+        } <= set(sa.inspect(connection).get_table_names())
+        context = MigrationContext.configure(connection)
+        diff = compare_metadata(context, Base.metadata)
+    assert diff == [], f"migration drifts from ORM metadata: {diff}"
+
+
+def test_admission_coordination_upgrades_existing_0028_without_metadata_drift(
+    tmp_path: Path,
+) -> None:
+    url = f"sqlite:///{tmp_path}/admission-coordination-upgrade.db"
+    config = _alembic_config(url)
+    command.upgrade(config, "0028")
+
+    engine = sa.create_engine(url)
+    coordination_tables = {
+        "admission_leases",
+        "admission_eligibility",
+        "admission_write_fences",
+    }
+    with engine.connect() as connection:
+        assert coordination_tables.isdisjoint(sa.inspect(connection).get_table_names())
+
+    command.upgrade(config, "head")
+
+    with engine.connect() as connection:
+        assert coordination_tables <= set(sa.inspect(connection).get_table_names())
         context = MigrationContext.configure(connection)
         diff = compare_metadata(context, Base.metadata)
     assert diff == [], f"migration drifts from ORM metadata: {diff}"
@@ -1065,7 +1095,7 @@ def test_acceptance_evidence_receipt_outcomes_migrate_without_losing_guards(
 ) -> None:
     url = f"sqlite:///{tmp_path}/acceptance-evidence-outcomes.db"
     config = _alembic_config(url)
-    assert ScriptDirectory.from_config(config).get_heads() == ["0028"]
+    assert ScriptDirectory.from_config(config).get_heads() == ["0029"]
     command.upgrade(config, "head")
 
     engine = sa.create_engine(url)

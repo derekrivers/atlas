@@ -1873,11 +1873,9 @@ def _sync_tick_impl(
         # external mutation in the same decision window.
         if admission.outcome in {
             AdmissionSyncOutcome.ADMITTED,
+            AdmissionSyncOutcome.STALE,
             AdmissionSyncOutcome.INDETERMINATE,
-        } or (
-            admission.outcome is AdmissionSyncOutcome.STALE
-            and admission.ticket_key is not None
-        ):
+        }:
             return result
     # Step 3b (ATLAS-131): verified completion, immediately after admission. Move
     # every review_required ticket whose persisted Verification Engine verdict is

@@ -113,6 +113,11 @@ READY = WorkflowState(id="state-ready", name="Ready for Agent", type="unstarted"
 # A state mapped to pr_open — used to drive a real in_progress -> pr_open
 # transition (re-stamping status_entered_at) for the dwell episode-advance proof.
 PR_OPEN_STATE = WorkflowState(id="state-pr-open", name="PR Open", type="started")
+# A mapped review state keeps delivery snapshots complete in tests that exercise
+# post-admission read-only phases such as comment scanning.
+REVIEW_REQUIRED_STATE = WorkflowState(
+    id="state-review-required", name="Review Required", type="started"
+)
 # A state mapped to changes_requested — drives the changes_requested -> pr_open
 # round trip the review-cycling counter (ATLAS-120) counts.
 CHANGES_REQUESTED_STATE = WorkflowState(
@@ -197,6 +202,7 @@ class RecordingClient(InMemoryLinearClient):
                 UNMAPPED,
                 READY,
                 PR_OPEN_STATE,
+                REVIEW_REQUIRED_STATE,
                 CHANGES_REQUESTED_STATE,
                 NEEDS_HUMAN,
                 DONE_STATE,
@@ -290,6 +296,7 @@ def status_map() -> LinearStatusMap:
             STARTED.id: TicketStatus.IN_PROGRESS,
             READY.id: TicketStatus.READY_FOR_AGENT,
             PR_OPEN_STATE.id: TicketStatus.PR_OPEN,
+            REVIEW_REQUIRED_STATE.id: TicketStatus.REVIEW_REQUIRED,
             CHANGES_REQUESTED_STATE.id: TicketStatus.CHANGES_REQUESTED,
             # The unique Needs-Human state the review-cycling route resolves via
             # state_id_for(NEEDS_HUMAN_DECISION); sync_tick resolves it up front
@@ -1396,15 +1403,15 @@ INSIDE_IN_PROGRESS = NOW + timedelta(hours=23)  # still inside the 24h horizon
 
 def test_dwell_breach_logged_once_past_horizon(db: Database) -> None:
     client = RecordingClient()
-    # In Progress since NOW; no Linear issue, so pull/push/promote are all no-ops
-    # and only the step-5 dwell pass acts (in_progress is frozen, not promotable).
+    # In Progress since NOW, joined to a matching Linear issue so admission sees
+    # a complete snapshot, holds with no candidate, and the step-5 dwell pass acts.
     ticket = seed_ticket(
         db,
         client,
         key="ATLAS-220",
         status=TicketStatus.IN_PROGRESS,
         status_entered_at=NOW,
-        with_issue=False,
+        issue_state=STARTED,
     )
 
     result = run(db, client, now=PAST_IN_PROGRESS)
@@ -1435,7 +1442,7 @@ def test_dwell_breach_files_one_draft_lesson_and_second_tick_dedupes(
         key="ATLAS-219",
         status=TicketStatus.IN_PROGRESS,
         status_entered_at=NOW,
-        with_issue=False,
+        issue_state=STARTED,
     )
 
     first = run(db, client, now=PAST_IN_PROGRESS, lesson_client=lesson_client)
@@ -1470,7 +1477,7 @@ def test_no_breach_inside_horizon(db: Database) -> None:
         key="ATLAS-221",
         status=TicketStatus.IN_PROGRESS,
         status_entered_at=NOW,
-        with_issue=False,
+        issue_state=STARTED,
     )
 
     result = run(db, client, now=INSIDE_IN_PROGRESS)
@@ -1482,8 +1489,8 @@ def test_no_breach_inside_horizon(db: Database) -> None:
 
 def test_status_without_horizon_never_breaches(db: Database) -> None:
     client = RecordingClient()
-    # ready_for_agent carries no dwell horizon. Already synced (clean cursor) so
-    # the push is skipped; with no issue there is nothing to pull or promote.
+    # ready_for_agent carries no dwell horizon. Its matching issue keeps the
+    # admission snapshot complete while the clean cursor skips the push.
     seed_ticket(
         db,
         client,
@@ -1492,7 +1499,7 @@ def test_status_without_horizon_never_breaches(db: Database) -> None:
         status_entered_at=NOW,
         updated_at=EARLIER,
         linear_synced_at=EARLIER,
-        with_issue=False,
+        issue_state=READY,
     )
 
     # Far past any horizon: only a horizoned status could breach here.
@@ -1512,7 +1519,7 @@ def test_null_status_entered_at_is_skipped_not_breached(db: Database) -> None:
         key="ATLAS-223",
         status=TicketStatus.IN_PROGRESS,
         status_entered_at=None,
-        with_issue=False,
+        issue_state=STARTED,
     )
 
     result = run(db, client, now=NOW + timedelta(days=100))
@@ -1529,7 +1536,7 @@ def test_dwell_breach_logs_exactly_one_row_across_n_ticks(db: Database) -> None:
         key="ATLAS-224",
         status=TicketStatus.IN_PROGRESS,
         status_entered_at=NOW,
-        with_issue=False,
+        issue_state=STARTED,
     )
 
     # Five ticks, each well past the 24h horizon, the status never changing.
@@ -2295,9 +2302,8 @@ def _seed_110_ticket_board(db: Database, client: CountingClient) -> None:
     * 5 parked ``needs_human_decision`` — excluded from the comment scan;
     * 5 terminal ``done`` — neither pulled nor scanned;
     * 10 across the five ACTIVE_COMMENT_SCAN_STATUSES (2 each) — the ONLY
-      comment-scanned tickets. review_required has no mapped state in this
-      suite's map, so those two issues sit in UNMAPPED (the pull observes and
-      leaves them, which is itself a no-op for the budget).
+      comment-scanned tickets. Every issue uses a matching mapped state so the
+      admission snapshot is complete and the comment phase remains reachable.
 
     NO-OP MEANS THE PUSH IS CURRENT TOO: every ticket is seeded with
     ``linear_synced_at == updated_at``, so ZERO definition pushes run and the
@@ -2317,8 +2323,8 @@ def _seed_110_ticket_board(db: Database, client: CountingClient) -> None:
         (TicketStatus.IN_PROGRESS, STARTED),
         (TicketStatus.PR_OPEN, PR_OPEN_STATE),
         (TicketStatus.PR_OPEN, PR_OPEN_STATE),
-        (TicketStatus.REVIEW_REQUIRED, UNMAPPED),
-        (TicketStatus.REVIEW_REQUIRED, UNMAPPED),
+        (TicketStatus.REVIEW_REQUIRED, REVIEW_REQUIRED_STATE),
+        (TicketStatus.REVIEW_REQUIRED, REVIEW_REQUIRED_STATE),
         (TicketStatus.CHANGES_REQUESTED, CHANGES_REQUESTED_STATE),
         (TicketStatus.CHANGES_REQUESTED, CHANGES_REQUESTED_STATE),
     ]

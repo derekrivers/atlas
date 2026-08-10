@@ -40,10 +40,13 @@ from pathlib import Path
 import pytest
 from test_models_validation import NOW
 from test_pm_sync import (
+    CHANGES_REQUESTED_STATE,
     EARLIER,
     NEEDS_HUMAN,
+    PR_OPEN_STATE,
+    READY,
+    REVIEW_REQUIRED_STATE,
     STARTED,
-    UNMAPPED,
     RecordingClient,
     run,
     seed_ticket,
@@ -334,18 +337,26 @@ def test_in_progress_ticket_is_still_comment_scanned(
 def test_every_active_state_is_comment_scanned(
     status: TicketStatus, db: Database, tmp_path: Path
 ) -> None:
-    # Every member of the documented set is scanned. The issue sits in an
-    # UNMAPPED state so the pull leaves each seeded status exactly in place
-    # (one anomaly row, irrelevant here), and the stamped cursor
-    # (linear_synced_at == updated_at) suppresses the push for the pushable
-    # member (ready_for_agent) — isolating the scan.
+    # Every member of the documented set is scanned. Each issue sits in its
+    # matching mapped state so admission sees a complete snapshot and holds
+    # without ending the tick. The stamped cursor (linear_synced_at ==
+    # updated_at) suppresses the push for the pushable member
+    # (ready_for_agent), isolating the scan.
+    active_linear_states = {
+        TicketStatus.READY_FOR_AGENT: READY,
+        TicketStatus.IN_PROGRESS: STARTED,
+        TicketStatus.PR_OPEN: PR_OPEN_STATE,
+        TicketStatus.REVIEW_REQUIRED: REVIEW_REQUIRED_STATE,
+        TicketStatus.CHANGES_REQUESTED: CHANGES_REQUESTED_STATE,
+    }
+    assert set(active_linear_states) == ACTIVE_COMMENT_SCAN_STATUSES
     client = RecordingClient()
     ticket = seed_ticket(
         db,
         client,
         key="ATLAS-206",
         status=status,
-        issue_state=UNMAPPED,
+        issue_state=active_linear_states[status],
         linear_synced_at=EARLIER,
     )
     assert ticket.external_linear_id is not None
