@@ -67,6 +67,13 @@ v2 (ATLAS-16) adds, per knowledge-core.md "JSON Schema generation":
   when a caller supplies one, resolves through the same ``AnchorIndex`` and
   planner corpus that gate 4 uses. A path outside the indexed input set is
   SRC001; an indexed path with no matching heading is SRC002.
+- CEILING: when the repo-owned ``WORKFLOW.md`` is present, its Symphony ceiling
+  is a strict integer no greater than ten; an open Phase 15 pins ordinary
+  ``main`` to one, while a CLOSED Phase 15 closure report must prove and
+  accompany exactly ten. ``max_turns`` remains ten outside the ramp. Canonical
+  authority, current-policy reconciliation, five-level gate ordering, rollback
+  and no-agent-mutation wording remain mechanically present in the
+  controlled-ramp docs.
 
 Exit status: 0 when the doc set is clean, 1 when there are findings.
 This linter only reports; repairing drift is ATLAS-5.
@@ -125,6 +132,11 @@ CLOSURE_DIR = "docs/closure"
 # so the legacy-NAME check exempts them (D-1/D-2). Every other check still runs.
 INBOX_DIR = f"{PLANNING_DIR}/inbox"
 PROCESSED_INBOX_DIR = f"{INBOX_DIR}/processed"
+WORKFLOW_PATH = "WORKFLOW.md"
+SYMPHONY_INTEGRATION_PATH = "docs/atlas/symphony-integration.md"
+DELIVERY_CONTROL_PATH = "docs/atlas/multi-agent-delivery-control.md"
+OPERATOR_ENVIRONMENT_PATH = "docs/runbooks/operator-environment.md"
+PHASE_15_CLOSURE_PATH = "docs/closure/phase-15-closure-report.md"
 
 # Directories whose Markdown files at any depth must all be listed in the
 # MANIFEST.
@@ -645,6 +657,245 @@ def check_planning_renders(root: Path) -> list[Finding]:
                     "ADR-0007)",
                 )
             )
+    return findings
+
+
+_WORKFLOW_FRONT_MATTER_RE = re.compile(
+    r"\A---\n(?P<front>.*?)\n---(?:\n|\Z)", re.DOTALL
+)
+_PHASE_15_CLOSED_RE = re.compile(r"^Status:\s*CLOSED\b", re.IGNORECASE | re.MULTILINE)
+
+_CEILING_AUTHORITY_MARKERS = {
+    WORKFLOW_PATH: (
+        "single controlling Symphony worker",
+        "The operator is the sole owner of this value",
+        "observed occupied slots",
+    ),
+    SYMPHONY_INTEGRATION_PATH: (
+        "### Symphony ceiling ownership",
+        "It is not a second ceiling",
+        "Actual occupied slots",
+        "Historical migration `0025` and policy revision one remain immutable",
+    ),
+    DELIVERY_CONTROL_PATH: (
+        "There is one operator-owned Symphony ceiling",
+        "actual occupied slots are observed Symphony sessions",
+        "None is a utilisation target",
+        "Revision one is immutable historical bootstrap data",
+    ),
+}
+
+_CEILING_GATE_MARKERS = (
+    "### Gate 1 — serialized baseline admission, pause and rework",
+    "### Gate 3 — first controlled increase and review pressure",
+    "### Gate 5 — stable review and stale-write protection",
+    "### Gate 7 — lanes, recovery and acceptance capacity",
+    "### Gate 10 — maximum, not target, and closure",
+)
+
+_CEILING_RUNBOOK_MARKERS = (
+    "phase-15-atlas-253-ceiling-ramp",
+    "atlas:symphony-ceiling-gate v1",
+    "The only permitted sequence is `1 -> 3`, `3 -> 5`, `5 -> 7`, then `7 -> 10`",
+    "Every level has one fixed 60-minute window",
+    "Gate 3 cannot begin without the Gate 1 PASS receipt",
+    "Gate 5 cannot begin without the Gate 3 PASS receipt",
+    "Gate 7 cannot begin without the Gate 5 PASS receipt",
+    "Gate 10 cannot begin without the Gate 7 PASS receipt, Phase 14 closure",
+    "adequate exact-head acceptance throughput",
+    "Before the milestone branch is created or Gate 1 begins",
+    "Current `origin/main` declares exactly one and keeps `max_turns: 10`",
+    "Only the operator may change the milestone-branch declaration",
+    "Values 3, 5 and 7 are valid only on that branch",
+    "never independently mergeable to `main`",
+    "### Stop, rollback and non-closure",
+)
+
+
+def _finding_line(text: str, marker: str) -> int:
+    """Return a stable one-based line for a present marker, else line one."""
+    offset = text.find(marker)
+    return text.count("\n", 0, offset) + 1 if offset >= 0 else 1
+
+
+def check_symphony_ceiling_contract(root: Path) -> list[Finding]:
+    """Validate the governed 1→3→5→7→10 Symphony ceiling documentation.
+
+    The check is conditional on ``WORKFLOW.md`` so the doc-linter's deliberately
+    small unit-test repositories do not have to model Symphony. A real Atlas
+    checkout always has the workflow and therefore always exercises the gate.
+    Intermediate milestone-branch values intentionally fail SCG003 until the
+    successful Gate 10 closure report accompanies exactly ten; this prevents an
+    intermediate or unaccompanied ceiling commit from being independently
+    mergeable to ``main``.
+    """
+    workflow_path = root / WORKFLOW_PATH
+    if not workflow_path.is_file():
+        return []
+
+    findings: list[Finding] = []
+    workflow = workflow_path.read_text(encoding="utf-8")
+    front_match = _WORKFLOW_FRONT_MATTER_RE.match(workflow)
+    ceiling: object | None = None
+    max_turns: object | None = None
+    if front_match is None:
+        findings.append(
+            Finding(
+                WORKFLOW_PATH,
+                1,
+                "SCG001",
+                "WORKFLOW.md must open with parseable YAML front matter",
+            )
+        )
+    else:
+        try:
+            front = yaml.safe_load(front_match.group("front"))
+        except yaml.YAMLError:
+            front = None
+        if isinstance(front, dict):
+            agent = front.get("agent")
+            if isinstance(agent, dict):
+                ceiling = agent.get("max_concurrent_agents")
+                max_turns = agent.get("max_turns")
+        if isinstance(ceiling, bool) or not isinstance(ceiling, int):
+            findings.append(
+                Finding(
+                    WORKFLOW_PATH,
+                    _finding_line(workflow, "max_concurrent_agents"),
+                    "SCG001",
+                    "agent.max_concurrent_agents must be a strict integer",
+                )
+            )
+        elif not 1 <= ceiling <= 10:
+            findings.append(
+                Finding(
+                    WORKFLOW_PATH,
+                    _finding_line(workflow, "max_concurrent_agents"),
+                    "SCG002",
+                    "agent.max_concurrent_agents must be between 1 and 10",
+                )
+            )
+        if isinstance(max_turns, bool) or max_turns != 10:
+            findings.append(
+                Finding(
+                    WORKFLOW_PATH,
+                    _finding_line(workflow, "max_turns"),
+                    "SCG007",
+                    "agent.max_turns must remain exactly 10; it is outside "
+                    "the concurrency ramp",
+                )
+            )
+
+    closure_path = root / PHASE_15_CLOSURE_PATH
+    closure = closure_path.read_text(encoding="utf-8") if closure_path.is_file() else ""
+    closure_is_closed = bool(_PHASE_15_CLOSED_RE.search(closure))
+    if isinstance(ceiling, int) and not isinstance(ceiling, bool):
+        if not closure_is_closed and ceiling != 1:
+            findings.append(
+                Finding(
+                    WORKFLOW_PATH,
+                    _finding_line(workflow, "max_concurrent_agents"),
+                    "SCG003",
+                    "open Phase 15 requires the unaccompanied mainline ceiling "
+                    "to remain exactly 1",
+                )
+            )
+        elif closure_is_closed:
+            closure_markers = (
+                "## Symphony ceiling ramp",
+                "Gate 10 receipt",
+                "max_concurrent_agents: 10",
+            )
+            missing_closure = [
+                marker for marker in closure_markers if marker not in closure
+            ]
+            if ceiling != 10 or missing_closure:
+                detail = (
+                    f"; missing closure markers: {', '.join(missing_closure)}"
+                    if missing_closure
+                    else ""
+                )
+                findings.append(
+                    Finding(
+                        PHASE_15_CLOSURE_PATH,
+                        1,
+                        "SCG003",
+                        "CLOSED Phase 15 must accompany and prove exactly "
+                        f"max_concurrent_agents: 10{detail}",
+                    )
+                )
+
+    for rel, markers in _CEILING_AUTHORITY_MARKERS.items():
+        path = root / rel
+        text = path.read_text(encoding="utf-8") if path.is_file() else ""
+        flowed = " ".join(text.split())
+        missing = [marker for marker in markers if marker not in flowed]
+        if missing:
+            findings.append(
+                Finding(
+                    rel,
+                    1,
+                    "SCG004",
+                    "Symphony ceiling authority wording is incomplete; missing: "
+                    + ", ".join(missing),
+                )
+            )
+
+    runbook_path = root / OPERATOR_ENVIRONMENT_PATH
+    runbook = runbook_path.read_text(encoding="utf-8") if runbook_path.is_file() else ""
+    flowed_runbook = " ".join(runbook.split())
+    missing_runbook = [
+        marker for marker in _CEILING_RUNBOOK_MARKERS if marker not in flowed_runbook
+    ]
+    positions = [runbook.find(marker) for marker in _CEILING_GATE_MARKERS]
+    if (
+        missing_runbook
+        or any(position < 0 for position in positions)
+        or positions != sorted(positions)
+    ):
+        missing_gates = [
+            marker
+            for marker, position in zip(_CEILING_GATE_MARKERS, positions, strict=True)
+            if position < 0
+        ]
+        details = missing_runbook + missing_gates
+        if not details:
+            details = ["Gate 1, 3, 5, 7 and 10 headings must remain in order"]
+        findings.append(
+            Finding(
+                OPERATOR_ENVIRONMENT_PATH,
+                1,
+                "SCG005",
+                "controlled-ramp gate contract is incomplete; missing: "
+                + ", ".join(details),
+            )
+        )
+
+    runbook_heading = "## Symphony ceiling controlled-ramp runbook"
+    ramp = (
+        runbook[runbook.find(runbook_heading) :] if runbook_heading in runbook else ""
+    )
+    flowed_ramp = " ".join(ramp.split())
+    forbidden_mutation_path = re.search(
+        r"(?im)^\s*(?:GET|POST|PUT|PATCH|DELETE)\s+/|/api/|linear_graphql",
+        ramp,
+    )
+    authority_boundary = (
+        "No Atlas endpoint, CLI, agent or automation may edit `WORKFLOW.md`, "
+        "Symphony configuration, delivery policy, acceptance evidence or "
+        "milestone receipts"
+    )
+    if authority_boundary not in flowed_ramp or forbidden_mutation_path is not None:
+        findings.append(
+            Finding(
+                OPERATOR_ENVIRONMENT_PATH,
+                _finding_line(runbook, runbook_heading),
+                "SCG006",
+                "controlled-ramp procedure must expose no Atlas endpoint or "
+                "agent mutation path",
+            )
+        )
+
     return findings
 
 
@@ -1413,6 +1664,7 @@ def lint_repo(root: Path, database: Database | None = None) -> list[Finding]:
         *check_intra_doc_links(root),
         *check_backticked_paths(root),
         *check_planning_renders(root),
+        *check_symphony_ceiling_contract(root),
         *check_phase_status(root),
         *check_render_source_anchors(root),
         *check_json_examples(root),

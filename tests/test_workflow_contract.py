@@ -25,10 +25,14 @@ import yaml
 # The preflight's own model parser (D6): AC6 pins it against the *live*
 # codex.command so parser and command cannot silently drift apart.
 from atlas.linear.preflight import _parse_model
+from atlas.tools.doc_linter import check_symphony_ceiling_contract
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 WORKFLOW_PATH = REPO_ROOT / "WORKFLOW.md"
 SYMPHONY_DOC = REPO_ROOT / "docs" / "atlas" / "symphony-integration.md"
+DELIVERY_CONTROL_DOC = REPO_ROOT / "docs" / "atlas" / "multi-agent-delivery-control.md"
+OPERATOR_ENVIRONMENT_DOC = REPO_ROOT / "docs" / "runbooks" / "operator-environment.md"
+PHASE_15_CLOSURE_DOC = REPO_ROOT / "docs" / "closure" / "phase-15-closure-report.md"
 
 _FRONT_MATTER_RE = re.compile(r"\A---\n(?P<front>.*?)\n---\n(?P<body>.*)\Z", re.DOTALL)
 
@@ -125,11 +129,18 @@ def test_ac1_no_symphony_default_states() -> None:
 def test_ac2_max_concurrent_agents_matches_ruling() -> None:
     """AC-2 originally pinned serialized concurrency at 1. ATLAS-041M
     raised it to 3 by operator ruling; ATLAS-054M restores serialized
-    execution and lowers the per-run turn cap to 10. The pins move with
-    the ruling; the earlier values are recorded here, not erased.
+    execution and lowers the per-run turn cap to 10. ATLAS-252 permits the
+    concurrency pin to move only to exactly ten with its CLOSED Phase 15
+    report; intermediate branch values remain independently red.
     """
     front, _ = _split()
-    assert front["agent"]["max_concurrent_agents"] == 1
+    ceiling = front["agent"]["max_concurrent_agents"]
+    closure = _read(PHASE_15_CLOSURE_DOC) if PHASE_15_CLOSURE_DOC.is_file() else ""
+    phase_15_closed = bool(
+        re.search(r"^Status:\s*CLOSED\b", closure, re.IGNORECASE | re.MULTILINE)
+    )
+    assert ceiling == (10 if phase_15_closed else 1)
+    assert ceiling <= 10
     assert front["agent"]["max_turns"] == 10
 
 
@@ -492,3 +503,142 @@ def test_pack_reword_scope_confined_to_body() -> None:
     ]
     assert front["tracker"]["terminal_states"] == ["Done", "Canceled", "Duplicate"]
     assert _parse_model(front["codex"]["command"]) == "gpt-5.6-sol"
+
+
+# --- ATLAS-252: governed Symphony ceiling and controlled ramp -----------------
+
+
+def _ceiling_runbook() -> str:
+    document = _read(OPERATOR_ENVIRONMENT_DOC)
+    heading = "## Symphony ceiling controlled-ramp runbook"
+    assert heading in document
+    return document[document.index(heading) :]
+
+
+def test_atlas_252_ac1_one_operator_ceiling_is_distinct_from_budgets_and_slots() -> (
+    None
+):
+    front, _ = _split()
+    workflow = _read(WORKFLOW_PATH)
+    symphony = " ".join(_read(SYMPHONY_DOC).split())
+    delivery = " ".join(_read(DELIVERY_CONTROL_DOC).split())
+
+    assert front["agent"]["max_concurrent_agents"] == 1
+    assert front["agent"]["max_turns"] == 10
+    assert "single controlling Symphony worker" in workflow
+    assert "The operator is the sole owner of this value" in workflow
+    assert "It is not a second ceiling" in symphony
+    assert "Actual occupied slots" in symphony
+    assert (
+        "Historical migration `0025` and policy revision one remain immutable"
+        in symphony
+    )
+    assert "There is one operator-owned Symphony ceiling" in delivery
+    assert "actual occupied slots are observed Symphony sessions" in delivery
+    assert "Revision one is immutable historical bootstrap data" in delivery
+
+
+def test_atlas_252_ac2_runbook_pins_branch_edit_window_receipt_and_gate_order() -> None:
+    runbook = _ceiling_runbook()
+    assert "phase-15-atlas-253-ceiling-ramp" in runbook
+    assert "max_concurrent_agents: <next-level>" in runbook
+    assert "`1 -> 3`, `3 -> 5`, `5 -> 7`, then `7 -> 10`" in runbook
+    assert "one fixed 60-minute window" in runbook
+    assert "atlas:symphony-ceiling-gate v1" in runbook
+    for field in (
+        "head_sha:",
+        "workflow_blob_sha:",
+        "max_turns: 10",
+        "policy_revision:",
+        "pm_sync_receipt_ids:",
+        "symphony_session_ids_start_peak_end:",
+        "acceptance_session_ids:",
+        "outcome:",
+        "retained_or_restored_level:",
+    ):
+        assert field in runbook
+
+    headings = [
+        "### Gate 1 — serialized baseline admission, pause and rework",
+        "### Gate 3 — first controlled increase and review pressure",
+        "### Gate 5 — stable review and stale-write protection",
+        "### Gate 7 — lanes, recovery and acceptance capacity",
+        "### Gate 10 — maximum, not target, and closure",
+    ]
+    assert [runbook.index(heading) for heading in headings] == sorted(
+        runbook.index(heading) for heading in headings
+    )
+
+
+def test_atlas_252_ac3_higher_levels_require_preceding_exact_evidence() -> None:
+    runbook = _ceiling_runbook()
+    flowed = " ".join(runbook.split())
+    assert "Gate 3 cannot begin without the Gate 1 PASS receipt" in flowed
+    assert "serialized baseline admission, pause and rework" in flowed
+    assert "Gate 5 cannot begin without the Gate 3 PASS receipt" in flowed
+    assert "first controlled increase and review pressure" in flowed
+    assert "Gate 7 cannot begin without the Gate 5 PASS receipt" in flowed
+    assert "stable-review and stale-write evidence" in flowed
+    assert (
+        "Gate 10 cannot begin without the Gate 7 PASS receipt, Phase 14 closure"
+        in flowed
+    )
+    assert "at least three distinct acceptance sessions" in flowed
+    assert "exact-head completions are at least" in flowed
+
+
+def test_atlas_252_ac4_failure_rolls_back_without_terminating_or_closing() -> None:
+    runbook = _ceiling_runbook()
+    stop = runbook[runbook.index("### Stop, rollback and non-closure") :]
+    flowed = " ".join(stop.split())
+    assert "back to the last proven value" in flowed
+    assert "posts the FAIL receipt with the rollback commit" in flowed
+    assert "do not terminate sessions" in flowed
+    assert "cancel workers or delete workspaces" in flowed
+    assert "milestone PR stays unmerged" in flowed
+    assert "Phase 15 remains open" in flowed
+
+
+def test_atlas_252_ac5_open_phase_is_one_and_closure_can_only_be_exactly_ten() -> None:
+    front, _ = _split()
+    assert front["agent"]["max_concurrent_agents"] == 1
+    assert front["agent"]["max_turns"] == 10
+    assert not PHASE_15_CLOSURE_DOC.exists()
+    ceiling_findings = check_symphony_ceiling_contract(REPO_ROOT)
+    assert ceiling_findings == []
+
+
+def test_atlas_252_ac6_runbook_exposes_no_atlas_or_agent_mutation_path() -> None:
+    runbook = _ceiling_runbook()
+    flowed = " ".join(runbook.split())
+    assert (
+        "No Atlas endpoint, CLI, agent or automation may edit `WORKFLOW.md`, "
+        "Symphony configuration, delivery policy, acceptance evidence or "
+        "milestone receipts" in flowed
+    )
+    assert not re.search(
+        r"(?im)^\s*(?:GET|POST|PUT|PATCH|DELETE)\s+/|/api/|linear_graphql",
+        runbook,
+    )
+    assert "never starts a live worker from CI" in flowed
+
+
+def test_atlas_252_ac7_reconciles_current_policy_without_rewriting_history() -> None:
+    runbook = " ".join(_ceiling_runbook().split())
+    delivery = " ".join(_read(DELIVERY_CONTROL_DOC).split())
+
+    assert "Migration `0025` and policy revision one" in runbook
+    assert "remain immutable history" in runbook
+    assert "must not be cited as the current live policy" in runbook
+    assert "approved_symphony_ceiling=1" in runbook
+    assert "working_budget=1" in runbook
+    assert "Before any Phase 15 milestone activity" in delivery
+    assert "move the active pointer to that revision" in delivery
+
+
+def test_atlas_252_ac8_intermediate_values_are_milestone_branch_only() -> None:
+    runbook = " ".join(_ceiling_runbook().split())
+
+    assert "Values 3, 5 and 7 are valid only on that branch" in runbook
+    assert "never independently mergeable to `main`" in runbook
+    assert "ordinary committed `main` remains at one" in runbook
