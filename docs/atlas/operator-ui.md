@@ -221,11 +221,16 @@ refresh first.
 
 Success consumes the server-returned lesson and receipt, updates the exact
 Lessons query, and lets the DRAFT facet remove the row without a reload. The UI
-never predicts ACTIVE or ARCHIVED. A `401` clears in-memory write authority and
-opens the session-expired flow; `403` names the security refusal; `409` renders
-the safe current lesson, refreshes the queue, blocks overwrite, and requires the
-drawer to be closed and re-reviewed; `422` is attached to confidence or the
-relevant confirmation. Success and failure are announced through live regions.
+never predicts ACTIVE or ARCHIVED. A `401`, timed expiry, or explicit sign-out
+invalidates the open decision lifecycle: Atlas clears in-memory write authority,
+closes the lesson drawer, resets its confirmation, confidence, mutation, and
+command-key state, and refreshes the exact Lessons query. Signing in again never
+restores that reviewed drawer; the operator must reopen the refetched lesson and
+review it again. A `401` also opens the session-expired flow; `403` names the
+security refusal; `409` renders the safe current lesson, refreshes the queue,
+blocks overwrite, and requires the drawer to be closed and re-reviewed; `422`
+is attached to confidence or the relevant confirmation. Success and failure are
+announced through live regions.
 
 Lessons carry `source_ticket_id` and `related_ticket_ids` as raw UUIDs.
 Resolving them to ticket keys would require a second source and move the

@@ -39,10 +39,12 @@ test.afterAll(async () => {
   apiServer = undefined
 })
 
-async function signIn(page: Page): Promise<{ csrfToken: string }> {
-  await page.getByRole('button', { name: 'Sign in' }).click()
+async function completeSessionFlow(
+  page: Page,
+  dialogName: string | RegExp
+): Promise<{ csrfToken: string }> {
   const loginDialog = page.getByRole('dialog', {
-    name: /Operator sign in|Restore operator session/,
+    name: dialogName,
   })
   await expect(loginDialog).toBeVisible()
   await loginDialog.getByLabel('Bootstrap token').fill(E2E_OPERATOR_TOKEN)
@@ -57,6 +59,14 @@ async function signIn(page: Page): Promise<{ csrfToken: string }> {
   const payload = (await response.json()) as { csrf_token: string }
   await expect(page.getByRole('button', { name: 'Sign out' })).toBeVisible()
   return { csrfToken: payload.csrf_token }
+}
+
+async function signIn(page: Page): Promise<{ csrfToken: string }> {
+  await page.getByRole('button', { name: 'Sign in' }).click()
+  return completeSessionFlow(
+    page,
+    /Operator sign in|Restore operator session/
+  )
 }
 
 async function openLesson(page: Page, title: string) {
@@ -243,4 +253,173 @@ test('refresh loses in-memory write authority and persists neither operator toke
   }))
   expect(JSON.stringify(storedAfterRefresh)).not.toContain(E2E_OPERATOR_TOKEN)
   expect(JSON.stringify(storedAfterRefresh)).not.toContain(csrfToken)
+})
+
+test('timed expiry closes the reviewed drawer and requires a fresh fetch and review after sign-in', async ({
+  page,
+}) => {
+  let lessonRequestCount = 0
+  page.on('request', (request) => {
+    if (
+      request.method() === 'GET' &&
+      new URL(request.url()).pathname === '/api/v1/lessons'
+    ) {
+      lessonRequestCount += 1
+    }
+  })
+  await page.route('**/api/v1/session', async (route) => {
+    if (route.request().method() !== 'POST') {
+      await route.continue()
+      return
+    }
+    const response = await route.fetch()
+    const payload = (await response.json()) as {
+      authenticated: boolean
+      csrf_token: string
+      expires_at: string
+    }
+    await route.fulfill({
+      response,
+      json: {
+        ...payload,
+        expires_at: new Date(Date.now() + 1_500).toISOString(),
+      },
+    })
+  })
+
+  await page.goto('/lessons')
+  await signIn(page)
+  const drawer = await openLesson(page, lessonTitles.refresh)
+  await drawer.getByRole('button', { name: 'Promote' }).click()
+  await page
+    .getByRole('alertdialog', { name: 'Confirm lesson promotion' })
+    .getByLabel('Operator confidence (0.0–1.0)')
+    .fill('0.4')
+  const requestsBeforeExpiry = lessonRequestCount
+
+  await expect(
+    page.getByRole('dialog', { name: 'Session expired' })
+  ).toBeVisible()
+  await expect(
+    page.getByRole('dialog', { name: lessonTitles.refresh })
+  ).toHaveCount(0)
+  await expect.poll(() => lessonRequestCount).toBeGreaterThan(
+    requestsBeforeExpiry
+  )
+
+  await completeSessionFlow(page, 'Session expired')
+  await expect(
+    page.getByRole('dialog', { name: lessonTitles.refresh })
+  ).toHaveCount(0)
+  const freshDrawer = await openLesson(page, lessonTitles.refresh)
+  await freshDrawer.getByRole('button', { name: 'Promote' }).click()
+  await expect(
+    page
+      .getByRole('alertdialog', { name: 'Confirm lesson promotion' })
+      .getByLabel('Operator confidence (0.0–1.0)')
+  ).toHaveValue('')
+})
+
+test('sign out invalidates the open lesson decision lifecycle', async ({
+  page,
+}) => {
+  let lessonRequestCount = 0
+  page.on('request', (request) => {
+    if (
+      request.method() === 'GET' &&
+      new URL(request.url()).pathname === '/api/v1/lessons'
+    ) {
+      lessonRequestCount += 1
+    }
+  })
+
+  await page.goto('/lessons')
+  await signIn(page)
+  const drawer = await openLesson(page, lessonTitles.refresh)
+  await drawer.getByRole('button', { name: 'Promote' }).click()
+  const confirmation = page.getByRole('alertdialog', {
+    name: 'Confirm lesson promotion',
+  })
+  await confirmation.getByLabel('Operator confidence (0.0–1.0)').fill('0.4')
+  await confirmation.getByRole('button', { name: 'Cancel' }).click()
+  const requestsBeforeLogout = lessonRequestCount
+
+  await page
+    .locator('button')
+    .filter({ hasText: /^Sign out$/ })
+    .evaluate((element: HTMLButtonElement) => element.click())
+  await expect(
+    page.getByRole('dialog', { name: lessonTitles.refresh })
+  ).toHaveCount(0)
+  await expect.poll(() => lessonRequestCount).toBeGreaterThan(
+    requestsBeforeLogout
+  )
+
+  await signIn(page)
+  await expect(
+    page.getByRole('dialog', { name: lessonTitles.refresh })
+  ).toHaveCount(0)
+  const freshDrawer = await openLesson(page, lessonTitles.refresh)
+  await freshDrawer.getByRole('button', { name: 'Promote' }).click()
+  await expect(
+    page
+      .getByRole('alertdialog', { name: 'Confirm lesson promotion' })
+      .getByLabel('Operator confidence (0.0–1.0)')
+  ).toHaveValue('')
+})
+
+test('mutation 401 closes stale ruling state before session restoration', async ({
+  page,
+}) => {
+  let lessonRequestCount = 0
+  page.on('request', (request) => {
+    if (
+      request.method() === 'GET' &&
+      new URL(request.url()).pathname === '/api/v1/lessons'
+    ) {
+      lessonRequestCount += 1
+    }
+  })
+
+  await page.goto('/lessons')
+  const { csrfToken } = await signIn(page)
+  const drawer = await openLesson(page, lessonTitles.refresh)
+  await drawer.getByRole('button', { name: 'Promote' }).click()
+  const confirmation = page.getByRole('alertdialog', {
+    name: 'Confirm lesson promotion',
+  })
+  await confirmation.getByLabel('Operator confidence (0.0–1.0)').fill('0.5')
+  const logoutStatus = await page.evaluate(async (csrf) => {
+    const response = await fetch('/api/v1/session', {
+      credentials: 'same-origin',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        'X-Atlas-CSRF': csrf,
+      },
+      method: 'DELETE',
+    })
+    return response.status
+  }, csrfToken)
+  expect(logoutStatus).toBe(200)
+  const requestsBeforeMutation = lessonRequestCount
+
+  await confirmation.getByRole('button', { name: 'Confirm promotion' }).click()
+  await expect(
+    page.getByRole('dialog', { name: 'Session expired' })
+  ).toBeVisible()
+  await expect(
+    page.getByRole('dialog', { name: lessonTitles.refresh })
+  ).toHaveCount(0)
+  await expect.poll(() => lessonRequestCount).toBeGreaterThan(
+    requestsBeforeMutation
+  )
+
+  await completeSessionFlow(page, 'Session expired')
+  await expect(
+    page.getByRole('dialog', { name: lessonTitles.refresh })
+  ).toHaveCount(0)
+  const freshDrawer = await openLesson(page, lessonTitles.refresh)
+  await expect(freshDrawer.getByRole('button', { name: 'Promote' })).toBeVisible()
+  await expect(freshDrawer.getByRole('button', { name: 'Reject' })).toBeVisible()
 })

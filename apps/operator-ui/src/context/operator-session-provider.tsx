@@ -37,6 +37,7 @@ type OperatorSessionContextValue = {
   endSession: () => Promise<void>
   expireSession: () => Promise<void>
   expiresAt: string | null
+  lessonDecisionRevision: number
 }
 
 const OperatorSessionContext = createContext<OperatorSessionContextValue | null>(
@@ -83,6 +84,7 @@ export function OperatorSessionProvider({ children }: { children: ReactNode }) {
   const sessionQuery = useSessionQuery()
   const [authenticated, setAuthenticated] = useState(false)
   const [expiresAt, setExpiresAt] = useState<string | null>(null)
+  const [lessonDecisionRevision, setLessonDecisionRevision] = useState(0)
   const [flowOpen, setFlowOpen] = useState(false)
   const [flowReason, setFlowReason] = useState<SessionFlowReason>('sign-in')
   const [loginError, setLoginError] = useState<string | null>(null)
@@ -105,7 +107,16 @@ export function OperatorSessionProvider({ children }: { children: ReactNode }) {
     [sessionQuery.data?.authenticated]
   )
 
+  const invalidateLessonDecisionLifecycle = useCallback(() => {
+    setLessonDecisionRevision((revision) => revision + 1)
+    void queryClient.resetQueries({
+      exact: true,
+      queryKey: atlasQueryKeys.lessons(),
+    })
+  }, [queryClient])
+
   const expireSession = useCallback(async () => {
+    invalidateLessonDecisionLifecycle()
     atlasForgetSession()
     setAuthenticated(false)
     setExpiresAt(null)
@@ -116,9 +127,10 @@ export function OperatorSessionProvider({ children }: { children: ReactNode }) {
       exact: true,
       queryKey: atlasQueryKeys.session(),
     })
-  }, [queryClient])
+  }, [invalidateLessonDecisionLifecycle, queryClient])
 
   const endSession = useCallback(async () => {
+    invalidateLessonDecisionLifecycle()
     try {
       await atlasLogout()
     } finally {
@@ -130,7 +142,7 @@ export function OperatorSessionProvider({ children }: { children: ReactNode }) {
         expires_at: null,
       })
     }
-  }, [queryClient])
+  }, [invalidateLessonDecisionLifecycle, queryClient])
 
   useEffect(() => {
     if (!authenticated || !expiresAt) {
@@ -193,8 +205,16 @@ export function OperatorSessionProvider({ children }: { children: ReactNode }) {
       endSession,
       expireSession,
       expiresAt,
+      lessonDecisionRevision,
     }),
-    [authenticated, beginSessionFlow, endSession, expireSession, expiresAt]
+    [
+      authenticated,
+      beginSessionFlow,
+      endSession,
+      expireSession,
+      expiresAt,
+      lessonDecisionRevision,
+    ]
   )
   const copy = flowCopy(flowReason)
 

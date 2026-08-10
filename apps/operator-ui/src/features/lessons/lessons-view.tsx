@@ -25,11 +25,16 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { useOperatorSession } from '@/context/operator-session-provider'
 import { LessonDispositionControls } from '@/features/lessons/lesson-disposition-controls'
 
 type Schema = components['schemas']
 type EntityStatus = Schema['EntityStatus']
 type LessonItem = Schema['LessonItemSchema']
+type SelectedLessonReview = {
+  lessonDecisionRevision: number
+  lessonId: string
+}
 
 const DEFAULT_LESSON_STATUS: EntityStatus = 'draft'
 const LESSON_STATUS_FACETS: readonly EntityStatus[] = atlasOpenApiEnums.EntityStatus
@@ -307,12 +312,18 @@ function lessonCountForStatus(
 
 export function LessonsView() {
   const lessonsQuery = useLessonsQuery()
+  const { lessonDecisionRevision } = useOperatorSession()
   const [selectedStatus, setSelectedStatus] = useState<EntityStatus>(
     DEFAULT_LESSON_STATUS
   )
-  const [selectedLessonId, setSelectedLessonId] = useState<string | undefined>()
+  const [selectedLessonReview, setSelectedLessonReview] = useState<
+    SelectedLessonReview | undefined
+  >()
   const lessons = lessonsQuery.data?.lessons ?? EMPTY_LESSONS
-  const selectedLesson = lessons.find((lesson) => lesson.id === selectedLessonId)
+  const selectedLesson =
+    selectedLessonReview?.lessonDecisionRevision === lessonDecisionRevision
+      ? lessons.find((lesson) => lesson.id === selectedLessonReview.lessonId)
+      : undefined
   const filteredLessons = useMemo(
     () => lessons.filter((lesson) => lesson.status === selectedStatus),
     [lessons, selectedStatus]
@@ -394,7 +405,12 @@ export function LessonsView() {
                   ) : (
                     <LessonsTable
                       lessons={statusLessons}
-                      onSelectLesson={(lesson) => setSelectedLessonId(lesson.id)}
+                      onSelectLesson={(lesson) =>
+                        setSelectedLessonReview({
+                          lessonDecisionRevision,
+                          lessonId: lesson.id,
+                        })
+                      }
                     />
                   )
                 ) : null}
@@ -407,7 +423,7 @@ export function LessonsView() {
         lesson={selectedLesson}
         onOpenChange={(open) => {
           if (!open) {
-            setSelectedLessonId(undefined)
+            setSelectedLessonReview(undefined)
           }
         }}
       />

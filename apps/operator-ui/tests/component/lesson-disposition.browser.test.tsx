@@ -337,10 +337,10 @@ describe('lesson disposition browser workflow', () => {
     expect(keys[1]).toBe(keys[0])
   })
 
-  it.each([
-    [401, 'Session expired'],
-    [403, 'Security refusal'],
-  ])('maps HTTP %s to its typed operator recovery', async (status, expected) => {
+  it('invalidates the reviewed drawer and requires a fresh fetch after a mutation 401', async () => {
+    let commandCount = 0
+    let lessonRequestCount = 0
+    const idempotencyKeys: string[] = []
     window.fetch = vi.fn(async (input, init) => {
       const path = requestPath(input)
       if (path === '/api/v1/session' && init?.method === 'POST') {
@@ -351,10 +351,96 @@ describe('lesson disposition browser workflow', () => {
         })
       }
       if (path === '/api/v1/session') {
-        return jsonResponse({ authenticated: status !== 401, expires_at: null })
+        return jsonResponse({ authenticated: false, expires_at: null })
+      }
+      if (path.endsWith('/promote')) {
+        commandCount += 1
+        idempotencyKeys.push(
+          (init?.headers as Record<string, string>)['Idempotency-Key']
+        )
+        if (commandCount === 1) {
+          return jsonResponse({ detail: 'operator session required' }, 401)
+        }
+        return jsonResponse({ lesson: activeLesson, receipt })
+      }
+      lessonRequestCount += 1
+      return jsonResponse({ lessons: [draftLesson] })
+    })
+
+    await renderLessons(createAtlasQueryClient())
+    await login()
+    await click('Promote')
+    const originalConfidence = document.querySelector<HTMLInputElement>(
+      `#lesson-confidence-${draftLesson.id}`
+    )
+    if (!originalConfidence) throw new Error('Missing confidence input')
+    setInput(originalConfidence, '0.8')
+    await click('Confirm promotion')
+
+    await waitForAssertion(() => {
+      expect(document.body.textContent).toContain('Session expired')
+      expect(lessonRequestCount).toBeGreaterThanOrEqual(2)
+      expect(
+        Array.from(document.querySelectorAll('button')).filter((item) =>
+          ['Promote', 'Reject'].includes(item.textContent?.trim() ?? '')
+        )
+      ).toHaveLength(0)
+    })
+
+    const token = document.querySelector<HTMLInputElement>(
+      '#atlas-bootstrap-token'
+    )
+    if (!token) throw new Error('Missing bootstrap token input')
+    setInput(token, 'component-bootstrap-token-that-is-never-persisted')
+    await click('Sign in')
+    await waitForAssertion(() =>
+      expect(document.body.textContent).not.toContain('Session expired')
+    )
+    expect(
+      Array.from(document.querySelectorAll('button')).filter((item) =>
+        ['Promote', 'Reject'].includes(item.textContent?.trim() ?? '')
+      )
+    ).toHaveLength(0)
+
+    const details = document.querySelector<HTMLButtonElement>(
+      `[aria-label="View lesson details: ${draftLesson.title}"]`
+    )
+    if (!details) throw new Error('Missing refetched lesson detail button')
+    await act(async () => details.click())
+    await click('Promote')
+    const freshConfidence = document.querySelector<HTMLInputElement>(
+      `#lesson-confidence-${draftLesson.id}`
+    )
+    expect(freshConfidence?.value).toBe('')
+    if (!freshConfidence) throw new Error('Missing fresh confidence input')
+    setInput(freshConfidence, '0.6')
+    await click('Confirm promotion')
+    await waitForAssertion(() =>
+      expect(document.body.textContent).toContain('Server receipt')
+    )
+
+    expect(idempotencyKeys).toHaveLength(2)
+    expect(idempotencyKeys[1]).not.toBe(idempotencyKeys[0])
+  })
+
+  it('maps HTTP 403 to its typed operator recovery', async () => {
+    window.fetch = vi.fn(async (input, init) => {
+      const path = requestPath(input)
+      if (path === '/api/v1/session' && init?.method === 'POST') {
+        return jsonResponse({
+          authenticated: true,
+          csrf_token: 'component-csrf',
+          expires_at: '2099-08-03T10:30:00+00:00',
+        })
+      }
+      if (path === '/api/v1/session') {
+        return jsonResponse({ authenticated: true, expires_at: null })
       }
       if (path.endsWith('/reject')) {
-        return jsonResponse({ detail: 'security policy refused the command' }, status)
+        return jsonResponse(
+          { detail: 'security policy refused the command' },
+          403
+        )
       }
       return jsonResponse({ lessons: [draftLesson] })
     })
@@ -363,7 +449,9 @@ describe('lesson disposition browser workflow', () => {
     await login()
     await click('Reject')
     await click('Confirm rejection')
-    await waitForAssertion(() => expect(document.body.textContent).toContain(expected))
+    await waitForAssertion(() =>
+      expect(document.body.textContent).toContain('Security refusal')
+    )
   })
 
   it.each([
