@@ -30,6 +30,7 @@ from atlas.linear.client import (
     LinearAPIError,
     LinearClient,
     LinearGraphQLClient,
+    LinearProjectIssues,
     LinearRateLimitError,
     MissingLinearTokenError,
     UnownedFieldError,
@@ -567,6 +568,36 @@ def test_fetch_project_issues_paginates_until_exhausted(
     assert sent[0]["variables"]["after"] is None  # first page from the start
     assert sent[1]["variables"]["after"] == "2"  # then cursor-chained
     assert sent[2]["variables"]["after"] == "4"
+
+
+def test_fetch_project_issues_malformed_cursor_returns_typed_partial_pull(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payload = {
+        "data": {
+            "project": {
+                "issues": {
+                    "nodes": [],
+                    "pageInfo": {"hasNextPage": True, "endCursor": None},
+                }
+            }
+        }
+    }
+
+    def malformed_cursor_urlopen(request: Any, *args: Any, **kwargs: Any) -> _Response:
+        del request, args, kwargs
+        return _Response(payload)
+
+    monkeypatch.setattr(
+        "atlas.linear.client.urllib_request.urlopen", malformed_cursor_urlopen
+    )
+    client = LinearGraphQLClient(api_key="sk", team_id="team-1")
+
+    issues = client.fetch_project_issues("proj-1")
+
+    assert isinstance(issues, LinearProjectIssues)
+    assert issues.complete is False
+    assert issues.pagination_gaps == ("invalid-cursor",)
 
 
 def test_fetch_project_issues_missing_project_yields_empty(

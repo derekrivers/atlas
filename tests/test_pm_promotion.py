@@ -40,6 +40,7 @@ from test_pm_sync import (
     TEAM_ID,
     UNSTARTED,
     RecordingClient,
+    seed_default_admission_policy,
     status_map,
 )
 
@@ -103,6 +104,7 @@ def seed(
             "linear_synced_at": linear_synced_at,
         }
     )
+    seed_default_admission_policy(db, ticket.product_id, created_at=updated_at)
     TicketRepo(db).add(ticket)
     client.creates.clear()
     client.updates.clear()

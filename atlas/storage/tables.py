@@ -561,6 +561,64 @@ class AdmissionRunRow(Base):
     created_by_id: Mapped[str] = mapped_column(sa.Text)
 
 
+class AdmissionLeaseRow(Base):
+    """One expiring, product-scoped owner of the PM admission write lane."""
+
+    __tablename__ = "admission_leases"
+
+    product_id: Mapped[UUID] = mapped_column(
+        sa.Uuid, sa.ForeignKey("products.id"), primary_key=True
+    )
+    owner_id: Mapped[UUID] = mapped_column(sa.Uuid)
+    acquired_at: Mapped[datetime] = mapped_column(UTCDateTime())
+    expires_at: Mapped[datetime] = mapped_column(UTCDateTime())
+
+
+class AdmissionEligibilityRow(Base):
+    """Start of one ticket's uninterrupted dependency-ready episode."""
+
+    __tablename__ = "admission_eligibility"
+
+    ticket_id: Mapped[UUID] = mapped_column(
+        sa.Uuid, sa.ForeignKey("tickets.id"), primary_key=True
+    )
+    product_id: Mapped[UUID] = mapped_column(sa.Uuid, sa.ForeignKey("products.id"))
+    continuously_eligible_since: Mapped[datetime] = mapped_column(UTCDateTime())
+
+
+class AdmissionWriteFenceRow(Base):
+    """Durable pre-write fence retained while Linear success is ambiguous."""
+
+    __tablename__ = "admission_write_fences"
+    __table_args__ = (
+        sa.UniqueConstraint("admission_run_id"),
+        sa.CheckConstraint(
+            "state IN ('pending', 'indeterminate')",
+            name="admission_write_fences_state",
+        ),
+        sa.CheckConstraint(
+            "policy_revision >= 1",
+            name="admission_write_fences_policy_revision_positive",
+        ),
+    )
+
+    product_id: Mapped[UUID] = mapped_column(
+        sa.Uuid, sa.ForeignKey("products.id"), primary_key=True
+    )
+    admission_run_id: Mapped[UUID] = mapped_column(
+        sa.Uuid, sa.ForeignKey("admission_runs.id")
+    )
+    ticket_id: Mapped[UUID] = mapped_column(sa.Uuid, sa.ForeignKey("tickets.id"))
+    ticket_key: Mapped[str] = mapped_column(sa.Text)
+    issue_id: Mapped[str] = mapped_column(sa.Text)
+    source_state_id: Mapped[str] = mapped_column(sa.Text)
+    target_state_id: Mapped[str] = mapped_column(sa.Text)
+    policy_revision: Mapped[int] = mapped_column(sa.Integer)
+    state: Mapped[str] = mapped_column(sa.Text)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime())
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime())
+
+
 class OperatorActionKeyRow(Base):
     """One idempotency-key reservation for governed operator writes.
 

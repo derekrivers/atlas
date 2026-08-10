@@ -312,23 +312,40 @@ Pull-based, consistent with ADR-0008 (no webhooks before hosting):
    repair run over the same board is a zero-write no-op. The plain periodic
    tick does not run this branch and therefore keeps the ATLAS-148 request
    budget unchanged.
-3. Run the readiness predicate (dependency-engine.md#readiness-predicate);
-   for each newly ready ticket, write `Ready for Agent` in Linear through the
-   PM Engine's dedicated state-write path (`LinearClient.set_state`). The
-   definition (title/labels and human-readable summary) is already mirrored by
-   step 2's push, which is reused — step 3 adds only the state transition. The
-   PM Engine is the **sole writer** into this state. Like the create-time
-   assertion, it cannot carry a definition field, the general allow-list is
-   unchanged (`stateId` stays out of it), and definition updates remain
-   mechanically unable to write workflow state. The write is Linear-only:
-   Atlas's own `ready_for_agent` is
-   reconciled by step 1's next pull, which keeps the pull the single writer of
-   Atlas status (one tick of latency). The write is idempotent — setting the
-   already-set state is a no-op — so an interrupted or repeated promotion is
-   safe, and a ticket already in `ready_for_agent` is never re-promoted. The
-   target Linear state is resolved by inverting the configured status map
-   (exactly one state must map to `ready_for_agent`, validated at load), so the
-   state written is exactly the one the next pull reads back.
+3. Enter the lease-guarded single-write admission protocol. Both the recurring
+   scheduler and `--once` call this exact `sync_tick` step. One product-scoped
+   `admission_leases` row admits an evaluator owner; a concurrent owner records
+   `lease_unavailable` as a typed held/no-write result and does not evaluate a
+   second candidate set. The owner freezes step 1's complete project pull,
+   builds the coherent delivery snapshot, reconciles uninterrupted eligibility
+   episode starts, invokes the deterministic evaluator and appends its exact
+   `AdmissionRun`. An incomplete/discontinuous pull or snapshot records stale
+   and writes nothing.
+
+   If the run selects a ticket, re-fetch the complete project board and active
+   policy immediately before mutation. The second snapshot must exactly match
+   the first fingerprint, including candidate state, every occupancy value,
+   policy/status-map fingerprint, and Atlas store/graph revisions. Re-read the
+   policy and verify the lease owner once more after the deterministic race
+   boundary. Policy movement, candidate movement, lease loss, a malformed or
+   partial page chain, or any pre-write transport failure records `stale`, ends
+   the admission step and writes no state.
+
+   Before mutation, persist an `admission_write_fences` row naming the exact
+   run, candidate issue, observed source state and target. Then call only
+   `LinearClient.set_state(selected_issue_id, ready_for_agent_state_id)`. The
+   target is resolved by inverting the configured status map (exactly one state
+   must map to `ready_for_agent`). A confirming response clears the fence and
+   reports `admitted`; a transport failure or non-confirming response retains
+   it as `indeterminate`, records a partial receipt and stops the tick. A later
+   complete step-1 pull must reconcile that exact issue before the fence is
+   cleared, and the reconciliation tick performs no new admission.
+
+   The definition is already mirrored by step 2 and step 3 cannot carry a
+   definition field: `stateId` remains outside the owned-definition allow-list.
+   The write is Linear-only; step 1 of the next tick remains the sole Atlas
+   status writer. Setting the same target on a later retry is idempotent, but a
+   stale or ambiguous run never falls through to a different candidate.
 
    Context-pack rendering (Phase 5) is live, and embedding the pack into
    the issue description is delivered by ATLAS-164 at the definition-push
@@ -377,6 +394,14 @@ fetched issue count, the `SyncResult` integer counters, and a bounded result
 classification. It deliberately excludes Linear descriptions, issue bodies,
 comments, raw payloads, tokens and credentials.
 
+The fixed counter shape includes `admitted`, `held`, `over_capacity`, `stale`
+and `indeterminate`; `promoted` remains the compatibility projection of
+`admitted`. One safe presentation detail carries the bounded reason, selected
+ticket key and policy revision/fingerprint. A stale revalidation or unresolved
+write is a partial receipt and does not advance freshness. A coherent policy or
+capacity hold is a successful zero-action observation, and a confirmed
+admission is successful status-only.
+
 An unsuccessful receipt stores no arbitrary exception message. Its optional
 diagnostic is limited to a sanitized exception type and a controlled local
 error code; raw HTTP bodies, GraphQL errors and credential-bearing exception
@@ -387,9 +412,10 @@ completed but the receipt write fails, `sync_tick` returns a typed receipt
 persistence failure rather than reporting the tick as successful. Successful
 definition-changing, status-only and zero-action ticks are the only receipt
 classes that advance `last_successful_linear_sync_at`; degraded pack-render,
-unmapped-state, missing-issue, malformed-pull, cancelled and failed ticks keep
-their diagnostic receipts but do not advance freshness. `Ticket.linear_synced_at`
-remains only the definition-push cursor and is not a board freshness signal.
+unmapped-state, missing-issue, stale-admission, indeterminate-admission,
+malformed-pull, cancelled and failed ticks keep their diagnostic receipts but
+do not advance freshness. `Ticket.linear_synced_at` remains only the
+definition-push cursor and is not a board freshness signal.
 
 Ticks are idempotent; a missed tick costs latency only. The scheduler is a
 plain loop (or cron) — no distributed job system.
@@ -399,17 +425,19 @@ definitions) are ATLAS-42 (`atlas/pm/sync.py`, `sync_tick`). Step 1's "log
 anomalies otherwise" clause — an unmapped Linear state appends one
 `OUT_OF_OWNERSHIP_TRANSITION` `DebtItem` per transition — is ATLAS-118 (woven
 into `sync_tick`'s pull). AgentRun reconstruction after the pull is ATLAS-166.
-Step 3 (readiness promotion, sole writer into `Ready for Agent`) is ATLAS-43.
+Step 3's original readiness writer is ATLAS-43; ATLAS-249 replaces its
+promote-everything call site with the lease/revalidation/fence protocol while
+preserving `LinearClient.set_state` as the dedicated ownership boundary.
 Step 4 (the follow-up comment scan) is ATLAS-45.
 Step 5's anomaly checks split by mechanism, all woven into `sync_tick`'s final
-pass after `promote_ready`: dwell-breach logging is ATLAS-119 (a `_detect_dwell`
+pass after admission: dwell-breach logging is ATLAS-119 (a `_detect_dwell`
 pass keyed on `Ticket.status_entered_at`; report-only, never moves a ticket),
 review-cycling is ATLAS-120 (a `_detect_review_cycle` pass keyed on
 `Ticket.review_cycle_count`, routing over-threshold tickets to
 `needs_human_decision` via `set_state` and logging one `REVIEW_CYCLE` `DebtItem`
 — the one anomaly that moves a ticket), and stale-block detection is ATLAS-44 (a
 `_detect_stale_block` pass keyed on `blocked(graph, key)` over the same
-dependency graph `promote_ready` consumes; report-only, never moves a ticket).
+dependency graph admission consumes; report-only, never moves a ticket).
 The recurring scheduler that calls `sync_tick` on a cadence is ATLAS-50
 (`atlas/pm/scheduler.py`, driven by `atlas pm sync`). It
 also owns create-on-crash: when a `sync_tick` raises, the scheduler records one

@@ -4,7 +4,8 @@ ATLAS-45/-118/-119/-120/-148).
 One idempotent sync pass (:func:`sync_tick`) wiring the ATLAS-41 boundary
 primitives into steps 1-5 of the ``pm-engine-and-linear-sync.md`` "Sync loop":
 pull status Linear -> Atlas, push owned definitions Atlas -> Linear, promote
-dependency-ready tickets to ``Ready for Agent`` (:mod:`atlas.pm.promotion`),
+at most one lease-guarded, revalidated dependency-ready ticket to
+``Ready for Agent`` (:mod:`atlas.pm.admission_sync`),
 scan tagged comments into inbox proposal stubs, and *nothing else crossing*.
 Step 1's read is BATCHED (ATLAS-148): one paginated, project-scoped
 :meth:`LinearClient.fetch_project_issues` call replaces the per-ticket
@@ -127,9 +128,14 @@ from atlas.linear.ownership import (
     definition_payload,
     status_from_issue,
 )
+from atlas.pm.admission_sync import (
+    AdmissionSyncHooks,
+    AdmissionSyncOutcome,
+    AdmissionSyncResult,
+    admit_one_ready,
+)
 from atlas.pm.agent_runs import reconstruct_agent_runs
 from atlas.pm.completion import complete_verified
-from atlas.pm.promotion import promote_ready
 from atlas.storage.db import Database
 from atlas.storage.repositories import (
     ADRRepo,
@@ -421,6 +427,11 @@ class SyncResult:
     agent_runs_reconstructed: int = 0
     agent_runs_updated: int = 0
     promoted: int = 0
+    admitted: int = 0
+    held: int = 0
+    over_capacity: int = 0
+    stale: int = 0
+    indeterminate: int = 0
     completed: int = 0
     follow_ups_stubbed: int = 0
     dwell_breaches: int = 0
@@ -430,6 +441,16 @@ class SyncResult:
     draft_lessons_filed: int = 0
     push_decisions: list[SyncDecision] = field(default_factory=list)
     repair_pack_decisions: list[SyncDecision] = field(default_factory=list)
+    admission_decisions: list[AdmissionSyncResult] = field(default_factory=list)
+
+    def safe_admission_summaries(self, *, verbose: bool) -> tuple[str, ...]:
+        """Return bounded admission details suitable for operator output."""
+
+        return tuple(
+            detail.safe_summary
+            for detail in self.admission_decisions
+            if verbose or not detail.routine
+        )
 
 
 SYNC_RESULT_COUNTER_NAMES: tuple[str, ...] = (
@@ -448,6 +469,11 @@ SYNC_RESULT_COUNTER_NAMES: tuple[str, ...] = (
     "agent_runs_reconstructed",
     "agent_runs_updated",
     "promoted",
+    "admitted",
+    "held",
+    "over_capacity",
+    "stale",
+    "indeterminate",
     "completed",
     "follow_ups_stubbed",
     "dwell_breaches",
@@ -475,6 +501,11 @@ def sync_result_is_empty(result: SyncResult) -> bool:
         result.agent_runs_reconstructed,
         result.agent_runs_updated,
         result.promoted,
+        result.admitted,
+        result.held,
+        result.over_capacity,
+        result.stale,
+        result.indeterminate,
         result.completed,
         result.follow_ups_stubbed,
         result.dwell_breaches,
@@ -528,6 +559,14 @@ def _fetched_board_fingerprint(issues: list[LinearIssue]) -> str:
 def _validate_fetched_board(issues: list[LinearIssue]) -> None:
     """Reject malformed board pulls before they can look successful."""
 
+    if not bool(getattr(issues, "complete", True)):
+        raise MalformedLinearPullError(
+            "Linear project pull did not reach a complete pagination boundary"
+        )
+    if tuple(getattr(issues, "pagination_gaps", ())):
+        raise MalformedLinearPullError(
+            "Linear project pull returned a discontinuous pagination chain"
+        )
     seen: set[str] = set()
     for index, issue in enumerate(issues):
         if not isinstance(issue.id, str) or not issue.id.strip():
@@ -543,6 +582,25 @@ def _validate_fetched_board(issues: list[LinearIssue]) -> None:
 
 def _sync_result_counters(result: SyncResult) -> dict[str, int]:
     return {name: int(getattr(result, name)) for name in SYNC_RESULT_COUNTER_NAMES}
+
+
+def _apply_admission_result(result: SyncResult, admission: AdmissionSyncResult) -> None:
+    """Project one bounded admission outcome into counters and safe detail."""
+
+    result.admission_decisions.append(admission)
+    if admission.outcome is AdmissionSyncOutcome.ADMITTED:
+        result.admitted += 1
+        # Compatibility for existing PM reports and receipts while operator
+        # output moves to the precise Phase-15 term.
+        result.promoted += 1
+    elif admission.outcome is AdmissionSyncOutcome.HELD:
+        result.held += 1
+    elif admission.outcome is AdmissionSyncOutcome.OVER_CAPACITY:
+        result.over_capacity += 1
+    elif admission.outcome is AdmissionSyncOutcome.STALE:
+        result.stale += 1
+    else:
+        result.indeterminate += 1
 
 
 def _sanitized_error_summary(error: BaseException) -> str:
@@ -596,6 +654,8 @@ def _classify_successful_receipt(
         or result.unmapped > 0
         or result.missing_issues > 0
         or result.anomalies_logged > 0
+        or result.stale > 0
+        or result.indeterminate > 0
     ):
         return PmSyncReceiptResult.PARTIAL
     if result.pushed_created > 0 or result.pushed_updated > 0:
@@ -605,6 +665,7 @@ def _classify_successful_receipt(
         for counter in (
             result.status_pulled,
             result.promoted,
+            result.admitted,
             result.completed,
             result.routed_to_human,
             result.agent_runs_reconstructed,
@@ -1615,6 +1676,7 @@ def _sync_tick_impl(
     now: datetime,
     repair_packs: bool = False,
     lesson_client: LessonModelClient | None = None,
+    admission_hooks: AdmissionSyncHooks | None = None,
     receipt_context: _ReceiptContext | None = None,
 ) -> SyncResult:
     """Run one idempotent sync pass over every ticket (steps 1-5).
@@ -1654,12 +1716,13 @@ def _sync_tick_impl(
     whose descriptions already carry the header writes nothing. The plain tick
     does not run this branch and therefore keeps the ATLAS-148 request bound.
 
-    Then step 3 (ATLAS-43): project the dependency graph and promote every
-    dependency-ready ticket to ``Ready for Agent`` via the sanctioned
-    :meth:`LinearClient.set_state`. The graph is built AFTER the pull/push loop
-    so it reflects pulled statuses and any issue step 2 just created; the
-    promotion is Linear-only, so the next tick's pull reconciles Atlas (keeping
-    the pull the single Atlas-status writer).
+    Then step 3 (ATLAS-249 replacing ATLAS-43's call site): acquire the
+    product-scoped admission lease, build the complete coherent snapshot,
+    evaluate at most one candidate, re-pull/revalidate the policy and complete
+    board, persist the pre-write fence, and write only the selected issue to
+    ``Ready for Agent`` through :meth:`LinearClient.set_state`. A concurrent,
+    stale, over-capacity or indeterminate pass writes no second candidate. The
+    state write remains Linear-only, so the next tick's pull reconciles Atlas.
 
     Then step 3b (ATLAS-131): verified completion. Move every ``review_required``
     ticket whose persisted Verification Engine verdict is PASSED to ``Done`` via the
@@ -1667,7 +1730,7 @@ def _sync_tick_impl(
     is composed from the append-only ``VerificationCheck`` rows ``atlas verify`` wrote
     (never by re-running the evaluators), so a required check with no row composes to
     PENDING and holds the verdict. Its Done target is resolved ONCE up front (like
-    :func:`promote_ready`'s Ready-for-Agent resolution), so a status map missing a
+    admission's Ready-for-Agent resolution), so a status map missing a
     unique ``done`` state fails loudly even when nothing is completable; the write is
     Linear-only, so the next tick's pull reconciles Atlas.
 
@@ -1691,18 +1754,18 @@ def _sync_tick_impl(
     route a ticket over ``REVIEW_CYCLE_THRESHOLD`` round trips to ``Needs Human``
     via :meth:`LinearClient.set_state` and log one ``REVIEW_CYCLE`` note
     (:func:`_detect_review_cycle`) — the one anomaly that moves a ticket. The
-    Needs-Human target state is resolved ONCE up front (like
-    :func:`promote_ready`'s Ready-for-Agent resolution), so a status map missing
+    Needs-Human target state is resolved ONCE up front (like admission's
+    Ready-for-Agent resolution), so a status map missing
     a unique ``needs_human_decision`` state fails loudly even when nothing is
     cycling. Stale-block (ATLAS-44): append one ``STALE_BLOCK`` DebtItem per
     blocked episode for a ticket stranded in ``blocked`` whose structural blockers
     have all cleared (:func:`_detect_stale_block`, reusing the same ``graph``
-    built for promotion above) — report-only, it NEVER moves the ticket. Then
+    built for admission above) — report-only, it NEVER moves the ticket. Then
     ATLAS-99 extracts DRAFT lessons from the newly appended review-cycle and
-    dwell-breach rows. The pass runs after promotion so it sees this tick's
+    dwell-breach rows. The pass runs after admission so it sees this tick's
     pulled statuses and freshly stamped
     ``status_entered_at``; the graph reflects current Atlas state because
-    promotion writes Linear only. Returns per-tick counters.
+    admission writes Linear only. Returns per-tick counters.
 
     ``now`` is the injected tick clock (no hidden ``datetime.now``): it stamps
     the ``observed_at``/``created_at`` of any DebtItem this tick appends and the
@@ -1792,18 +1855,37 @@ def _sync_tick_impl(
             now=now,
         )
     graph = build_dependency_graph(db)
-    result.promoted = promote_ready(
-        tickets=tickets, graph=graph, client=client, status_map=status_map
-    )
-    # Step 3b (ATLAS-131): verified completion, immediately after promotion. Move
+    if pull_board or ProductRepo(db).list():
+        admission = admit_one_ready(
+            tickets=tickets,
+            db=db,
+            client=client,
+            status_map=status_map,
+            project_id=project_id,
+            initial_issues=fetched_issues,
+            now=now,
+            hooks=admission_hooks,
+        )
+        _apply_admission_result(result, admission)
+        # A selected, stale or ambiguous admission ends this tick at the
+        # sole-write boundary.  The next ordinary pull remains the Atlas-status
+        # writer and no later completion/anomaly route can become a second
+        # external mutation in the same decision window.
+        if admission.outcome in {
+            AdmissionSyncOutcome.ADMITTED,
+            AdmissionSyncOutcome.STALE,
+            AdmissionSyncOutcome.INDETERMINATE,
+        }:
+            return result
+    # Step 3b (ATLAS-131): verified completion, immediately after admission. Move
     # every review_required ticket whose persisted Verification Engine verdict is
-    # PASSED to Done via the sanctioned set_state. Like promote_ready it resolves
+    # PASSED to Done via the sanctioned set_state. Like admission it resolves
     # its Done target up front (the load-time guard, fired even when nothing is
     # completable) and writes Linear only, so the next tick's pull reconciles Atlas.
     result.completed = complete_verified(
         tickets=tickets, db=db, client=client, status_map=status_map
     )
-    # Step 4 (ATLAS-45): the follow-up comment scan, after promotion and before
+    # Step 4 (ATLAS-45): the follow-up comment scan, after admission and before
     # the step-5 anomaly passes (the loop order). The inbox is read once up front
     # for the dedup key set and per-ticket index; each newly-seen tagged comment
     # is written as one atomic inbox stub. Read-only on Linear (fetch_comments);
@@ -1811,12 +1893,12 @@ def _sync_tick_impl(
     seen_ids, max_index = _inbox_state(inbox_dir)
     for ticket in tickets.list():
         _scan_follow_ups(ticket, client, inbox_dir, seen_ids, max_index, result)
-    # Step 5: a sibling pass after promotion, re-reading tickets so it sees this
-    # tick's pulled statuses and freshly stamped ``status_entered_at`` (promotion
+    # Step 5: a sibling pass after admission, re-reading tickets so it sees this
+    # tick's pulled statuses and freshly stamped ``status_entered_at`` (admission
     # writes Linear only, so it does not perturb Atlas status). Dwell-breach
     # (ATLAS-119) is report-only; review-cycling (ATLAS-120) routes via
     # set_state. The Needs-Human target is resolved up front (the load-time
-    # guard, mirroring promote_ready), before the loop, so a misconfigured map
+    # guard, mirroring admission), before the loop, so a misconfigured map
     # fails loudly even when no ticket is over threshold.
     needs_human_state_id = status_map.state_id_for(TicketStatus.NEEDS_HUMAN_DECISION)
     step5_tickets = tickets.list()
@@ -1859,6 +1941,7 @@ def sync_tick(
     now: datetime,
     repair_packs: bool = False,
     lesson_client: LessonModelClient | None = None,
+    admission_hooks: AdmissionSyncHooks | None = None,
     completion_clock: Callable[[], datetime] = _utcnow,
 ) -> SyncResult:
     """Run one sync tick and append its durable PM sync receipt.
@@ -1886,6 +1969,7 @@ def sync_tick(
             now=now,
             repair_packs=repair_packs,
             lesson_client=lesson_client,
+            admission_hooks=admission_hooks,
             receipt_context=context,
         )
     except MalformedLinearPullError as error:

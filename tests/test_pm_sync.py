@@ -86,6 +86,7 @@ from atlas.storage import (
     ContextPackRepo,
     Database,
     DebtItemRepo,
+    DeliveryAdmissionPolicyRepo,
     LessonRepo,
     PmSyncReceiptRepo,
     ProductRepo,
@@ -93,6 +94,10 @@ from atlas.storage import (
     TicketRepo,
     TicketStatusTransitionRepo,
     VerificationCheckRepo,
+)
+from atlas.storage.tables import (
+    DeliveryAdmissionPolicyActiveRow,
+    DeliveryAdmissionPolicyRevisionRow,
 )
 from atlas.verification import required_checks
 
@@ -108,6 +113,11 @@ READY = WorkflowState(id="state-ready", name="Ready for Agent", type="unstarted"
 # A state mapped to pr_open — used to drive a real in_progress -> pr_open
 # transition (re-stamping status_entered_at) for the dwell episode-advance proof.
 PR_OPEN_STATE = WorkflowState(id="state-pr-open", name="PR Open", type="started")
+# A mapped review state keeps delivery snapshots complete in tests that exercise
+# post-admission read-only phases such as comment scanning.
+REVIEW_REQUIRED_STATE = WorkflowState(
+    id="state-review-required", name="Review Required", type="started"
+)
 # A state mapped to changes_requested — drives the changes_requested -> pr_open
 # round trip the review-cycling counter (ATLAS-120) counts.
 CHANGES_REQUESTED_STATE = WorkflowState(
@@ -136,6 +146,50 @@ PACK_DOC = SourceDocument(
 )
 
 
+def seed_default_admission_policy(
+    db: Database, product_id: UUID, *, created_at: datetime = NOW
+) -> None:
+    """Mirror migration 0025's revision-one bootstrap in create_all fixtures."""
+
+    if ProductRepo(db).get(product_id) is None:
+        product_key = (
+            "ATLAS" if not ProductRepo(db).list() else f"ATLAS-{str(product_id)[:8]}"
+        )
+        ProductRepo(db).add(
+            Product(
+                **product_kwargs()
+                | {
+                    "id": product_id,
+                    "key": product_key,
+                    "created_at": created_at,
+                    "updated_at": created_at,
+                }
+            )
+        )
+    if DeliveryAdmissionPolicyRepo(db).get_active(product_id) is not None:
+        return
+    policy_id = uuid4()
+    with db.session() as session, session.begin():
+        session.add(
+            DeliveryAdmissionPolicyRevisionRow(
+                id=policy_id,
+                product_id=product_id,
+                revision=1,
+                mode="running",
+                approved_symphony_ceiling=3,
+                working_budget=3,
+                review_budget=3,
+                changes_requested_reserve=0,
+                risk_lane_limits=[],
+                component_lane_limits=[],
+                created_by_type="system",
+                created_by_id="migration-0025",
+                created_at=created_at,
+            )
+        )
+        session.add(DeliveryAdmissionPolicyActiveRow(product_id=product_id, revision=1))
+
+
 class RecordingClient(InMemoryLinearClient):
     """An ``InMemoryLinearClient`` that records every write, so a test can
     assert exactly what crossed Atlas -> Linear (and how often)."""
@@ -148,6 +202,7 @@ class RecordingClient(InMemoryLinearClient):
                 UNMAPPED,
                 READY,
                 PR_OPEN_STATE,
+                REVIEW_REQUIRED_STATE,
                 CHANGES_REQUESTED_STATE,
                 NEEDS_HUMAN,
                 DONE_STATE,
@@ -241,6 +296,7 @@ def status_map() -> LinearStatusMap:
             STARTED.id: TicketStatus.IN_PROGRESS,
             READY.id: TicketStatus.READY_FOR_AGENT,
             PR_OPEN_STATE.id: TicketStatus.PR_OPEN,
+            REVIEW_REQUIRED_STATE.id: TicketStatus.REVIEW_REQUIRED,
             CHANGES_REQUESTED_STATE.id: TicketStatus.CHANGES_REQUESTED,
             # The unique Needs-Human state the review-cycling route resolves via
             # state_id_for(NEEDS_HUMAN_DECISION); sync_tick resolves it up front
@@ -297,6 +353,7 @@ def seed_ticket(
     with_issue: bool = True,
     issue_state: WorkflowState | None = None,
     issue_title: str = "Linear Title",
+    product_id: UUID | None = None,
 ) -> Ticket:
     """Insert a ticket, optionally joined to a fake Linear issue in
     ``issue_state`` titled ``issue_title`` (defaults deliberately differ from
@@ -314,10 +371,18 @@ def seed_ticket(
         external_id = issue.id
         if issue_state is not None:
             client.simulate_linear_state(external_id, issue_state)
+    base_ticket = ticket_kwargs()
+    existing_products = ProductRepo(db).list()
+    resolved_product_id = product_id or (
+        existing_products[0].id
+        if len(existing_products) == 1
+        else base_ticket["product_id"]
+    )
     ticket = Ticket(
-        **ticket_kwargs()
+        **base_ticket
         | {
             "id": uuid4(),
+            "product_id": resolved_product_id,
             "key": key,
             "status": status,
             "title": title,
@@ -332,6 +397,7 @@ def seed_ticket(
             "review_cycle_count": review_cycle_count,
         }
     )
+    seed_default_admission_policy(db, ticket.product_id, created_at=updated_at)
     TicketRepo(db).add(ticket)
     client.creates.clear()
     client.create_scopes.clear()
@@ -390,6 +456,9 @@ def debt_rows(
 
 
 def seed_product_identity(db: Database, ticket: Ticket) -> Product:
+    existing = ProductRepo(db).get(ticket.product_id)
+    if existing is not None:
+        return existing
     return ProductRepo(db).add(
         Product(**product_kwargs() | {"id": ticket.product_id, "key": "ATLAS"})
     )
@@ -1109,7 +1178,7 @@ def test_blocked_planned_ticket_created_planned_and_not_promoted(
     assert after_second is not None and after_second.status == TicketStatus.PLANNED
 
 
-def test_dependency_ready_new_issue_asserts_planned_then_promotes(
+def test_dependency_ready_new_issue_waits_for_complete_pull_then_promotes(
     db: Database,
 ) -> None:
     client = RecordingClient()
@@ -1122,13 +1191,19 @@ def test_dependency_ready_new_issue_asserts_planned_then_promotes(
         with_issue=False,
     )
 
-    result = run(db, client)
+    first = run(db, client)
 
     synced = TicketRepo(db).get_by_key("ATLAS-215")
     assert synced is not None and synced.external_linear_id is not None
     issue_id = synced.external_linear_id
-    assert result.pushed_created == 1
-    assert result.promoted == 1
+    assert first.pushed_created == 1
+    assert first.promoted == 0
+    assert first.stale == 1
+
+    second = run(db, client)
+
+    assert second.admitted == 1
+    assert second.promoted == 1
     assert client.write_events == [
         ("create_issue", issue_id),
         ("set_state", issue_id, UNSTARTED.id),
@@ -1328,15 +1403,15 @@ INSIDE_IN_PROGRESS = NOW + timedelta(hours=23)  # still inside the 24h horizon
 
 def test_dwell_breach_logged_once_past_horizon(db: Database) -> None:
     client = RecordingClient()
-    # In Progress since NOW; no Linear issue, so pull/push/promote are all no-ops
-    # and only the step-5 dwell pass acts (in_progress is frozen, not promotable).
+    # In Progress since NOW, joined to a matching Linear issue so admission sees
+    # a complete snapshot, holds with no candidate, and the step-5 dwell pass acts.
     ticket = seed_ticket(
         db,
         client,
         key="ATLAS-220",
         status=TicketStatus.IN_PROGRESS,
         status_entered_at=NOW,
-        with_issue=False,
+        issue_state=STARTED,
     )
 
     result = run(db, client, now=PAST_IN_PROGRESS)
@@ -1367,7 +1442,7 @@ def test_dwell_breach_files_one_draft_lesson_and_second_tick_dedupes(
         key="ATLAS-219",
         status=TicketStatus.IN_PROGRESS,
         status_entered_at=NOW,
-        with_issue=False,
+        issue_state=STARTED,
     )
 
     first = run(db, client, now=PAST_IN_PROGRESS, lesson_client=lesson_client)
@@ -1402,7 +1477,7 @@ def test_no_breach_inside_horizon(db: Database) -> None:
         key="ATLAS-221",
         status=TicketStatus.IN_PROGRESS,
         status_entered_at=NOW,
-        with_issue=False,
+        issue_state=STARTED,
     )
 
     result = run(db, client, now=INSIDE_IN_PROGRESS)
@@ -1414,8 +1489,8 @@ def test_no_breach_inside_horizon(db: Database) -> None:
 
 def test_status_without_horizon_never_breaches(db: Database) -> None:
     client = RecordingClient()
-    # ready_for_agent carries no dwell horizon. Already synced (clean cursor) so
-    # the push is skipped; with no issue there is nothing to pull or promote.
+    # ready_for_agent carries no dwell horizon. Its matching issue keeps the
+    # admission snapshot complete while the clean cursor skips the push.
     seed_ticket(
         db,
         client,
@@ -1424,7 +1499,7 @@ def test_status_without_horizon_never_breaches(db: Database) -> None:
         status_entered_at=NOW,
         updated_at=EARLIER,
         linear_synced_at=EARLIER,
-        with_issue=False,
+        issue_state=READY,
     )
 
     # Far past any horizon: only a horizoned status could breach here.
@@ -1444,7 +1519,7 @@ def test_null_status_entered_at_is_skipped_not_breached(db: Database) -> None:
         key="ATLAS-223",
         status=TicketStatus.IN_PROGRESS,
         status_entered_at=None,
-        with_issue=False,
+        issue_state=STARTED,
     )
 
     result = run(db, client, now=NOW + timedelta(days=100))
@@ -1461,7 +1536,7 @@ def test_dwell_breach_logs_exactly_one_row_across_n_ticks(db: Database) -> None:
         key="ATLAS-224",
         status=TicketStatus.IN_PROGRESS,
         status_entered_at=NOW,
-        with_issue=False,
+        issue_state=STARTED,
     )
 
     # Five ticks, each well past the 24h horizon, the status never changing.
@@ -2227,9 +2302,8 @@ def _seed_110_ticket_board(db: Database, client: CountingClient) -> None:
     * 5 parked ``needs_human_decision`` — excluded from the comment scan;
     * 5 terminal ``done`` — neither pulled nor scanned;
     * 10 across the five ACTIVE_COMMENT_SCAN_STATUSES (2 each) — the ONLY
-      comment-scanned tickets. review_required has no mapped state in this
-      suite's map, so those two issues sit in UNMAPPED (the pull observes and
-      leaves them, which is itself a no-op for the budget).
+      comment-scanned tickets. Every issue uses a matching mapped state so the
+      admission snapshot is complete and the comment phase remains reachable.
 
     NO-OP MEANS THE PUSH IS CURRENT TOO: every ticket is seeded with
     ``linear_synced_at == updated_at``, so ZERO definition pushes run and the
@@ -2249,8 +2323,8 @@ def _seed_110_ticket_board(db: Database, client: CountingClient) -> None:
         (TicketStatus.IN_PROGRESS, STARTED),
         (TicketStatus.PR_OPEN, PR_OPEN_STATE),
         (TicketStatus.PR_OPEN, PR_OPEN_STATE),
-        (TicketStatus.REVIEW_REQUIRED, UNMAPPED),
-        (TicketStatus.REVIEW_REQUIRED, UNMAPPED),
+        (TicketStatus.REVIEW_REQUIRED, REVIEW_REQUIRED_STATE),
+        (TicketStatus.REVIEW_REQUIRED, REVIEW_REQUIRED_STATE),
         (TicketStatus.CHANGES_REQUESTED, CHANGES_REQUESTED_STATE),
         (TicketStatus.CHANGES_REQUESTED, CHANGES_REQUESTED_STATE),
     ]
