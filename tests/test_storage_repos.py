@@ -52,6 +52,7 @@ def test_evidence_repo_exposes_add_and_queries_only() -> None:
         "get_by_dedup_key",
         "latest_system_created_at",
         "list",
+        "list_for_product_commit",
         "list_for_ticket",
     }
 

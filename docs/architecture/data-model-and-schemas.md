@@ -1194,18 +1194,24 @@ Receipts never store raw idempotency keys, token/session/CSRF values, full
 request bodies, raw evidence payloads, lesson content or exception traces.
 Receipt result codes and before/after states are closed, server-controlled
 vocabularies rather than command-authored strings. Result codes are one of
-`action_succeeded`, `action_refused`, `stale_state`, `action_failed` or
-`action_conflict`; before/after states, where present, are `EntityStatus`
-values. Outcome/result pairs are constrained: `succeeded` pairs only with
-`action_succeeded`; `refused` with `action_refused` or `stale_state`; `failed`
-with `action_failed`; and `conflict` with `action_conflict`. Receipt metadata is
-default-deny. The only approved keys are `changed`
+`action_succeeded`, `action_refused`, `stale_state`, `action_failed`,
+`evidence_transport_failed`, `evidence_authentication_failed`,
+`evidence_rate_limit_failed`, `evidence_malformed_source` or `action_conflict`;
+before/after states, where present, are `EntityStatus` values. Outcome/result
+pairs are constrained: `succeeded` pairs only with `action_succeeded`;
+`refused` with `action_refused` or `stale_state`; `failed` with
+`action_failed` or one of the four evidence failure codes; and `conflict` with
+`action_conflict`. Receipt metadata is default-deny. The only approved keys are `changed`
 (strict boolean), `affected_count` (strict integer `0..1000000`) and
 `confidence` (strict finite float `0.0..1.0`); string, object and list values
 are never valid metadata. The gateway drops unapproved command-result fields
 without inspecting their values. Canonical model validation and every public
 repository writer reject unapproved fields and wrongly typed approved fields,
 including models constructed without initial validation.
+
+Migration `0028`, based on the single mainline `0027` head, adds the four typed
+evidence-failure outcomes to the receipt constraint while preserving the
+append-only update/delete guards.
 
 ## Pydantic Model
 
@@ -1225,6 +1231,10 @@ class OperatorActionResultCode(str, Enum):
     ACTION_REFUSED = "action_refused"
     STALE_STATE = "stale_state"
     ACTION_FAILED = "action_failed"
+    EVIDENCE_TRANSPORT_FAILED = "evidence_transport_failed"
+    EVIDENCE_AUTHENTICATION_FAILED = "evidence_authentication_failed"
+    EVIDENCE_RATE_LIMIT_FAILED = "evidence_rate_limit_failed"
+    EVIDENCE_MALFORMED_SOURCE = "evidence_malformed_source"
     ACTION_CONFLICT = "action_conflict"
 
 class OperatorActionReceipt(BaseModel):
@@ -1273,7 +1283,13 @@ CREATE TABLE operator_action_receipts (
     CONSTRAINT operator_action_receipts_outcome_result_code CHECK (
         (outcome = 'succeeded' AND result_code = 'action_succeeded') OR
         (outcome = 'refused' AND result_code IN ('action_refused', 'stale_state')) OR
-        (outcome = 'failed' AND result_code = 'action_failed') OR
+        (outcome = 'failed' AND result_code IN (
+            'action_failed',
+            'evidence_transport_failed',
+            'evidence_authentication_failed',
+            'evidence_rate_limit_failed',
+            'evidence_malformed_source'
+        )) OR
         (outcome = 'conflict' AND result_code = 'action_conflict')
     )
 );
@@ -1302,7 +1318,11 @@ Lifecycle values are `preflight_passed`, `evidence_ready`,
 `blocked` and `failed`; the last three are terminal. Every row retains bounded
 step summaries for `preflight`, `evidence`, `confirmations`, `verification`
 and `readiness`. A summary has a `pending`, `complete`, `blocked` or `failed`
-state, typed reasons, receipt IDs and its occurrence timestamp. The
+state, typed reasons, receipt IDs and its occurrence timestamp. The evidence
+step may additionally carry its bounded exact-head aggregate: total/new and
+per-source counts, trust-tier and status counts, pin-completeness counts and
+booleans, plus oldest/latest source-event timestamps. It never carries evidence
+IDs, summaries, source URIs, payloads, job logs, credentials or foreign errors. The
 top-level typed reason vocabulary distinguishes PR eligibility, exact-head,
 base/ref/repository, external-state, close-set, missing-ticket, ticket-state,
 criteria, session and historical-step failures; presentation never stores or
@@ -1337,6 +1357,34 @@ cannot assert movement of live `main`.
 ## Pydantic Model
 
 ```python
+class AcceptanceEvidenceSummary(BaseModel):
+    total_count: int
+    new_count: int
+    checks_count: int
+    reviews_count: int
+    docs_count: int
+    system_count: int
+    human_count: int
+    agent_count: int
+    pending_count: int
+    passed_count: int
+    failed_count: int
+    warning_count: int
+    not_applicable_count: int
+    complete_pin_count: int
+    exact_head_pin_count: int
+    pin_complete: bool
+    exact_head_pin_complete: bool
+    oldest_source_event_at: datetime | None = None
+    latest_source_event_at: datetime | None = None
+
+class AcceptanceStepSummary(BaseModel):
+    state: AcceptanceSessionStepState
+    reasons: tuple[AcceptanceSessionBlockingReason, ...] = ()
+    receipt_ids: tuple[UUID, ...] = ()
+    occurred_at: datetime | None = None
+    evidence: AcceptanceEvidenceSummary | None = None
+
 class AcceptanceSession(BaseModel):
     model_config = ConfigDict(frozen=True, hide_input_in_errors=True)
 

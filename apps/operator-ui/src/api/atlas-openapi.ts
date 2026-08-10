@@ -611,7 +611,7 @@ export interface components {
          * @description Server-controlled terminal result vocabulary for operator commands.
          * @enum {string}
          */
-        OperatorActionResultCode: "action_succeeded" | "action_refused" | "stale_state" | "action_failed" | "action_conflict";
+        OperatorActionResultCode: "action_succeeded" | "action_refused" | "stale_state" | "action_failed" | "evidence_transport_failed" | "evidence_authentication_failed" | "evidence_rate_limit_failed" | "evidence_malformed_source" | "action_conflict";
         /**
          * OperatorActionTargetSchema
          * @description Bounded lesson target recorded by an operator-action receipt.

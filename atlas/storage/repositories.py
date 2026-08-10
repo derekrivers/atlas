@@ -1152,6 +1152,22 @@ class EvidenceRepo(_Repo[Evidence]):
             )
             return [self._to_model(row) for row in rows]
 
+    def list_for_product_commit(
+        self, product_id: UUID, commit_sha: str
+    ) -> list[Evidence]:
+        """Return one product's exact-commit evidence in stable history order."""
+
+        with self._db.session() as session:
+            rows = session.scalars(
+                sa.select(EvidenceRow)
+                .where(
+                    EvidenceRow.product_id == product_id,
+                    EvidenceRow.commit_sha == commit_sha,
+                )
+                .order_by(EvidenceRow.created_at, EvidenceRow.id)
+            )
+            return [self._to_model(row) for row in rows]
+
     def latest_system_created_at(self) -> datetime | None:
         """Return the newest system-tier evidence timestamp."""
         with self._db.session() as session:

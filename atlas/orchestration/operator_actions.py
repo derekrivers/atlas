@@ -332,6 +332,119 @@ class OperatorActionGateway:
                 loads,
             )
 
+    def execute_bounded_external(
+        self,
+        envelope: OperatorActionEnvelope,
+        command: Command,
+        *,
+        loads: tuple[OperatorActionEntityLoad, ...] = (),
+    ) -> OperatorActionGatewayResult:
+        """Reserve, run bounded external work, then commit mutation and receipt.
+
+        Unlike :meth:`execute`, this variant commits the key reservation before
+        invoking the command and does not retain a database transaction while
+        the command calls an append-only external-source store. The final
+        domain mutation and terminal receipt still commit atomically. A crash
+        after reservation remains an explicit in-progress owner; it is never
+        treated as permission to repeat possibly-started external work.
+        """
+
+        if not isinstance(envelope.created_by_type, ActorType):
+            raise ValueError("created_by_type must be a server-resolved ActorType")
+        key_identity = idempotency_key_identity(envelope.idempotency_key)
+        created_at = self._clock()
+        _reject_naive_datetime(created_at, "OperatorActionReceipt", "created_at")
+        receipt_id = self._receipt_id_factory()
+        correlation_id = self._correlation_id_factory()
+
+        try:
+            with self._db.session() as session, session.begin():
+                _add_operator_action_reservation(
+                    session,
+                    idempotency_key_identity=key_identity,
+                    request_fingerprint=envelope.request_fingerprint,
+                    receipt_id=receipt_id,
+                    correlation_id=correlation_id,
+                    action=envelope.action,
+                    target_type=envelope.target_type,
+                    target_id=envelope.target_id,
+                    created_by_type=envelope.created_by_type.value,
+                    created_by_id=envelope.created_by_id,
+                    created_at=created_at,
+                )
+                session.flush()
+        except sa.exc.IntegrityError:
+            return self._result_for_existing_reservation(envelope, key_identity, loads)
+        except sa.exc.SQLAlchemyError:
+            return self._result_for_existing_reservation(envelope, key_identity, loads)
+
+        try:
+            with self._db.session() as session:
+                loaded_entities = _load_detached_entities(session, loads)
+            context = OperatorActionCommandContext(
+                loaded_entities=MappingProxyType(loaded_entities),
+                receipt_id=receipt_id,
+                correlation_id=correlation_id,
+                created_at=created_at,
+                created_by_type=envelope.created_by_type,
+                created_by_id=envelope.created_by_id,
+            )
+            command_result = command(context)
+        except Exception:
+            return OperatorActionGatewayResult(
+                status=OperatorActionGatewayStatus.FAILED,
+                failure=OperatorActionFailure(OperatorActionFailureCode.COMMAND_FAILED),
+            )
+
+        receipt: OperatorActionReceipt | None = None
+        try:
+            with self._db.session() as session, session.begin():
+                try:
+                    _apply_operator_action_mutations(session, command_result.mutations)
+                    session.flush()
+                except _MutationStale:
+                    raise
+                except Exception as exc:
+                    raise _CommandFailed from exc
+                try:
+                    receipt = self._receipt_from_command_result(
+                        envelope=envelope,
+                        key_identity=key_identity,
+                        receipt_id=receipt_id,
+                        correlation_id=correlation_id,
+                        created_at=created_at,
+                        command_result=command_result,
+                    )
+                    _add_operator_action_receipt(session, receipt)
+                    session.flush()
+                except (
+                    sa.exc.SQLAlchemyError,
+                    TypeError,
+                    ValueError,
+                    ValidationError,
+                ) as exc:
+                    raise _ReceiptFailed from exc
+        except _MutationStale as stale:
+            return self._stale_result(stale)
+        except _CommandFailed:
+            return OperatorActionGatewayResult(
+                status=OperatorActionGatewayStatus.FAILED,
+                failure=OperatorActionFailure(OperatorActionFailureCode.COMMAND_FAILED),
+            )
+        except (_ReceiptFailed, sa.exc.SQLAlchemyError):
+            return OperatorActionGatewayResult(
+                status=OperatorActionGatewayStatus.FAILED,
+                failure=OperatorActionFailure(
+                    OperatorActionFailureCode.RECEIPT_COMMIT_FAILED
+                ),
+            )
+
+        assert receipt is not None
+        return OperatorActionGatewayResult(
+            status=OperatorActionGatewayStatus.EXECUTED,
+            receipt=receipt,
+        )
+
     def _execute_owned(
         self,
         envelope: OperatorActionEnvelope,

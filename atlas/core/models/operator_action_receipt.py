@@ -50,6 +50,10 @@ class OperatorActionResultCode(StrEnum):
     ACTION_REFUSED = "action_refused"
     STALE_STATE = "stale_state"
     ACTION_FAILED = "action_failed"
+    EVIDENCE_TRANSPORT_FAILED = "evidence_transport_failed"
+    EVIDENCE_AUTHENTICATION_FAILED = "evidence_authentication_failed"
+    EVIDENCE_RATE_LIMIT_FAILED = "evidence_rate_limit_failed"
+    EVIDENCE_MALFORMED_SOURCE = "evidence_malformed_source"
     ACTION_CONFLICT = "action_conflict"
 
 
@@ -62,6 +66,22 @@ _VALID_OPERATOR_ACTION_OUTCOME_RESULTS = frozenset(
         (OperatorActionOutcome.REFUSED, OperatorActionResultCode.ACTION_REFUSED),
         (OperatorActionOutcome.REFUSED, OperatorActionResultCode.STALE_STATE),
         (OperatorActionOutcome.FAILED, OperatorActionResultCode.ACTION_FAILED),
+        (
+            OperatorActionOutcome.FAILED,
+            OperatorActionResultCode.EVIDENCE_TRANSPORT_FAILED,
+        ),
+        (
+            OperatorActionOutcome.FAILED,
+            OperatorActionResultCode.EVIDENCE_AUTHENTICATION_FAILED,
+        ),
+        (
+            OperatorActionOutcome.FAILED,
+            OperatorActionResultCode.EVIDENCE_RATE_LIMIT_FAILED,
+        ),
+        (
+            OperatorActionOutcome.FAILED,
+            OperatorActionResultCode.EVIDENCE_MALFORMED_SOURCE,
+        ),
         (OperatorActionOutcome.CONFLICT, OperatorActionResultCode.ACTION_CONFLICT),
     }
 )

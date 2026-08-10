@@ -73,6 +73,10 @@ export const atlasOpenApiEnums = {
     "action_refused",
     "stale_state",
     "action_failed",
+    "evidence_transport_failed",
+    "evidence_authentication_failed",
+    "evidence_rate_limit_failed",
+    "evidence_malformed_source",
     "action_conflict"
   ],
   "RiskLevel": [

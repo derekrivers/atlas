@@ -19,6 +19,7 @@ from atlas.github.client import (
     MAX_RATE_LIMIT_RETRIES,
     GitHubAPIError,
     GitHubCompareStatus,
+    GitHubMalformedResponseError,
     GitHubRESTClient,
     MissingGitHubTokenError,
 )
@@ -129,6 +130,30 @@ def test_check_runs_uses_commit_endpoint(monkeypatch: pytest.MonkeyPatch) -> Non
     assert f"/repos/o/r/commits/{HEAD_SHA}/check-runs" in captured["url"]
 
 
+@pytest.mark.parametrize(
+    ("payload", "message"),
+    [
+        (b"{}", "missing field 'workflow_runs'"),
+        (b"[]", "envelope was not an object"),
+        (b'{"unexpected": []}', "missing field 'workflow_runs'"),
+        (b'{"workflow_runs": {}}', "workflow_runs was not a list"),
+    ],
+    ids=["empty-object", "top-level-list", "missing-field", "wrong-field-type"],
+)
+def test_envelope_endpoint_requires_object_with_required_list(
+    monkeypatch: pytest.MonkeyPatch,
+    payload: bytes,
+    message: str,
+) -> None:
+    def _urlopen(request: Any, *a: Any, **k: Any) -> _Response:
+        return _Response(payload, _headers())
+
+    monkeypatch.setattr("atlas.github.client.urllib_request.urlopen", _urlopen)
+
+    with pytest.raises(GitHubMalformedResponseError, match=message):
+        GitHubRESTClient(token="t").fetch_workflow_runs("o", "r", HEAD_SHA)
+
+
 # --- PR reviews: the bare-array (result_key=None) path (ATLAS-65) ------------
 
 
@@ -183,7 +208,7 @@ def test_fetch_pr_reviews_non_array_body_is_api_error(
         return _Response(b'{"message": "Not Found"}', _headers())
 
     monkeypatch.setattr("atlas.github.client.urllib_request.urlopen", _urlopen)
-    with pytest.raises(GitHubAPIError, match="was not a list"):
+    with pytest.raises(GitHubMalformedResponseError, match="was not a list"):
         GitHubRESTClient(token="t").fetch_pr_reviews("o", "r", 1)
 
 
@@ -607,5 +632,29 @@ def test_pagination_rejects_non_github_next_link(
         return _Response(b'{"workflow_runs": []}', _headers(Link=link))
 
     monkeypatch.setattr("atlas.github.client.urllib_request.urlopen", _urlopen)
-    with pytest.raises(GitHubAPIError, match=r"outside api\.github\.com"):
+    with pytest.raises(GitHubMalformedResponseError, match=r"outside api\.github\.com"):
+        GitHubRESTClient(token="t").fetch_workflow_runs("o", "r", HEAD_SHA)
+
+
+def test_pagination_rejects_malformed_next_link(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def _urlopen(request: Any, *a: Any, **k: Any) -> _Response:
+        link = 'https://api.github.com/x?page=2; rel="next"'
+        return _Response(b'{"workflow_runs": []}', _headers(Link=link))
+
+    monkeypatch.setattr("atlas.github.client.urllib_request.urlopen", _urlopen)
+    with pytest.raises(GitHubMalformedResponseError, match="target was malformed"):
+        GitHubRESTClient(token="t").fetch_workflow_runs("o", "r", HEAD_SHA)
+
+
+def test_pagination_rejects_link_cycle(monkeypatch: pytest.MonkeyPatch) -> None:
+    next_url = "https://api.github.com/x?page=2"
+
+    def _urlopen(request: Any, *a: Any, **k: Any) -> _Response:
+        link = f'<{next_url}>; rel="next"'
+        return _Response(b'{"workflow_runs": []}', _headers(Link=link))
+
+    monkeypatch.setattr("atlas.github.client.urllib_request.urlopen", _urlopen)
+    with pytest.raises(GitHubMalformedResponseError, match="Link cycle"):
         GitHubRESTClient(token="t").fetch_workflow_runs("o", "r", HEAD_SHA)
