@@ -18,6 +18,8 @@ const repoRoot = join(appRoot, '..', '..')
 const generatedClientPath = join(appRoot, 'src', 'api', 'atlas-openapi.ts')
 
 const expectedV1Routes = [
+  '/api/v1/delivery-control',
+  '/api/v1/delivery-control/policy',
   '/api/v1/tickets',
   '/api/v1/tickets/count',
   '/api/v1/tickets/{key}',
@@ -73,6 +75,13 @@ type JsonRequest<Operation> = Operation extends {
 type RouteResponse<Path extends keyof paths> = JsonResponse<GetOperation<Path>>
 
 type TicketBoardItem = RouteResponse<'/api/v1/tickets'>['tickets'][number]
+type DeliveryControl = RouteResponse<'/api/v1/delivery-control'>
+type PolicyRequest = JsonRequest<
+  PostOperation<'/api/v1/delivery-control/policy'>
+>
+type PolicyResponse = JsonResponse<
+  PostOperation<'/api/v1/delivery-control/policy'>
+>
 type TicketDetail = RouteResponse<'/api/v1/tickets/{key}'>
 type TicketEvidenceItem =
   RouteResponse<'/api/v1/tickets/{key}/evidence'>['evidence'][number]
@@ -158,6 +167,37 @@ const acceptanceSessionTypeParity: [
     >
   >,
 ] = [true, true, true, true, true, true]
+const deliveryControlTypeParity: [
+  Assert<Equal<DeliveryControl, Schema['DeliveryControlResponse']>>,
+  Assert<Equal<PolicyRequest, Schema['DeliveryAdmissionPolicyRequest']>>,
+  Assert<Equal<PolicyResponse, Schema['DeliveryAdmissionPolicyResponse']>>,
+  Assert<
+    Equal<
+      DeliveryControl['policy']['mode'],
+      Schema['DeliveryAdmissionMode']
+    >
+  >,
+  Assert<
+    Equal<
+      DeliveryControl['occupancy']['over_capacity_reasons'][number]['dimension'],
+      Schema['OccupancyDimension']
+    >
+  >,
+  Assert<
+    Equal<
+      NonNullable<
+        DeliveryControl['latest_admission']
+      >['decisions'][number]['reasons'][number]['code'],
+      Schema['AdmissionHoldCode']
+    >
+  >,
+  Assert<
+    Equal<
+      DeliveryControl['indeterminate_reasons'][number]['reason'],
+      Schema['AdmissionSyncReason']
+    >
+  >,
+] = [true, true, true, true, true, true, true]
 const closedValueFieldParity: [
   Assert<Equal<TicketBoardItem['status'], Schema['TicketStatus']>>,
   Assert<Equal<TicketBoardItem['ticket_type'], Schema['TicketType']>>,
@@ -248,7 +288,7 @@ function tsFiles(root: string): string[] {
 describe('generated OpenAPI TypeScript client contract', () => {
   it('represents every current v1 route in the generated types', () => {
     expect(routeTypeParity).toBe(true)
-    expect(expectedV1Routes).toHaveLength(19)
+    expect(expectedV1Routes).toHaveLength(21)
   })
 
   it('keeps lesson command request, response, actor and status types generated', () => {
@@ -261,6 +301,12 @@ describe('generated OpenAPI TypeScript client contract', () => {
       'external_read_timeout'
     )
     expect(atlasOpenApiEnums.AcceptanceSessionLifecycle).toContain('merge_ready')
+  })
+
+  it('keeps delivery-control read and complete policy types generated', () => {
+    expect(deliveryControlTypeParity.every((value) => value)).toBe(true)
+    expect(atlasOpenApiEnums.AdmissionHoldCode).toContain('review_budget')
+    expect(atlasOpenApiEnums.AdmissionSyncReason).toContain('write_indeterminate')
   })
 
   it('types closed-value response fields through generated schema enum members', () => {

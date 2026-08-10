@@ -56,6 +56,16 @@ from atlas.orchestration.delivery_admission_policy import (
     DeliveryAdmissionPolicyConflictCode,
     DeliveryAdmissionPolicyService,
 )
+from atlas.orchestration.delivery_control import (
+    MAX_DELIVERY_CONTROL_DECISIONS,
+    DeliveryControlAdmissionState,
+    DeliveryControlDecision,
+    DeliveryControlHoldReason,
+    DeliveryControlIndeterminateReason,
+    DeliveryControlReadStatus,
+    DeliveryControlState,
+    delivery_control_status,
+)
 from atlas.orchestration.dependency_projection import (
     DependencyGraphEdgeState,
     DependencyGraphNodeState,
@@ -133,6 +143,7 @@ from atlas.orchestration.ticket_evidence import (
 from atlas.orchestration.verify import VerifyResult, run_verify
 
 __all__ = [
+    "MAX_DELIVERY_CONTROL_DECISIONS",
     "AcceptanceConfirmationRequest",
     "AcceptanceConfirmationResult",
     "AcceptanceConfirmationStatus",
@@ -159,6 +170,12 @@ __all__ = [
     "DeliveryAdmissionPolicyChangeStatus",
     "DeliveryAdmissionPolicyConflictCode",
     "DeliveryAdmissionPolicyService",
+    "DeliveryControlAdmissionState",
+    "DeliveryControlDecision",
+    "DeliveryControlHoldReason",
+    "DeliveryControlIndeterminateReason",
+    "DeliveryControlReadStatus",
+    "DeliveryControlState",
     "DependencyGraphEdgeState",
     "DependencyGraphNodeState",
     "DependencyGraphState",
@@ -213,6 +230,7 @@ __all__ = [
     "capture_ticket_result",
     "compare_acceptance_session_freshness",
     "continue_pr_rebase",
+    "delivery_control_status",
     "dependency_critical_path",
     "dependency_graph",
     "idempotency_key_identity",

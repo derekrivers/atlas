@@ -17,6 +17,21 @@ from atlas.api.schemas import (
     AcceptanceSessionReadResponse,
     AcceptanceSessionSchema,
     CriticalPathStepSchema,
+    DeliveryAdmissionPolicyConflictResponse,
+    DeliveryAdmissionPolicyResponse,
+    DeliveryAdmissionPolicySchema,
+    DeliveryControlAdmissionSchema,
+    DeliveryControlComponentLaneOccupancySchema,
+    DeliveryControlDecisionSchema,
+    DeliveryControlErrorResponse,
+    DeliveryControlHoldReasonSchema,
+    DeliveryControlIndeterminateReasonSchema,
+    DeliveryControlOccupancySchema,
+    DeliveryControlOverCapacityReasonSchema,
+    DeliveryControlResponse,
+    DeliveryControlRiskLaneOccupancySchema,
+    DeliveryControlStatusOccupancySchema,
+    DeliveryPolicyActionReceiptSchema,
     DependencyBlockerSchema,
     DependencyCriticalPathResponse,
     DependencyGraphEdgeSchema,
@@ -47,6 +62,7 @@ from atlas.core.keys import natural_key
 from atlas.core.models import (
     AcceptanceSession,
     AcceptanceSessionBlockingReason,
+    DeliveryAdmissionPolicyRevision,
     Epic,
     Lesson,
     OperatorActionOutcome,
@@ -69,6 +85,11 @@ from atlas.orchestration import (
     AcceptanceSessionCreationStatus,
     AcceptanceVerificationResult,
     AcceptanceVerificationStatus,
+    DeliveryAdmissionPolicyChangeResult,
+    DeliveryAdmissionPolicyChangeStatus,
+    DeliveryAdmissionPolicyConflictCode,
+    DeliveryControlReadStatus,
+    DeliveryControlState,
     DependencyGraphState,
     LessonDispositionResult,
     LessonDispositionStatus,
@@ -768,4 +789,206 @@ def present_system_status(state: SystemStatus) -> SystemStatusResponse:
         evidence_count=state.evidence_count,
         last_linear_sync_at=state.last_linear_sync_at,
         last_evidence_pull_at=state.last_evidence_pull_at,
+    )
+
+
+def _present_delivery_policy(
+    policy: DeliveryAdmissionPolicyRevision,
+) -> DeliveryAdmissionPolicySchema:
+    return DeliveryAdmissionPolicySchema(
+        id=policy.id,
+        revision=policy.revision,
+        mode=policy.mode,
+        approved_symphony_ceiling=policy.approved_symphony_ceiling,
+        working_budget=policy.working_budget,
+        review_budget=policy.review_budget,
+        changes_requested_reserve=policy.changes_requested_reserve,
+        risk_lane_limits=list(policy.risk_lane_limits),
+        component_lane_limits=list(policy.component_lane_limits),
+        created_at=policy.created_at,
+    )
+
+
+def _delivery_control_error(status_code: int, detail: str) -> JSONResponse:
+    return JSONResponse(
+        status_code=status_code,
+        content=DeliveryControlErrorResponse(detail=detail).model_dump(mode="json"),
+    )
+
+
+def present_delivery_control(
+    state: DeliveryControlState,
+) -> DeliveryControlResponse | JSONResponse:
+    """Present one bounded read projection without consulting external state."""
+
+    if (
+        state.status is not DeliveryControlReadStatus.AVAILABLE
+        or state.policy is None
+        or state.occupancy is None
+    ):
+        return _delivery_control_error(
+            status.HTTP_409_CONFLICT,
+            "delivery control is unavailable",
+        )
+
+    occupancy = state.occupancy
+    latest = state.latest_admission
+    return DeliveryControlResponse(
+        policy=_present_delivery_policy(state.policy),
+        last_linear_sync_at=state.last_linear_sync_at,
+        occupancy=DeliveryControlOccupancySchema(
+            source="materialized_atlas_statuses",
+            status_occupancy=[
+                DeliveryControlStatusOccupancySchema(
+                    status=item.status,
+                    count=item.count,
+                )
+                for item in occupancy.status_occupancy
+            ],
+            working_occupancy=occupancy.working_occupancy,
+            review_occupancy=occupancy.review_occupancy,
+            changes_requested_occupancy=occupancy.changes_requested_occupancy,
+            changes_requested_reserve_remaining=(
+                occupancy.changes_requested_reserve_remaining
+            ),
+            new_admission_working_capacity=(occupancy.new_admission_working_capacity),
+            risk_lane_occupancy=[
+                DeliveryControlRiskLaneOccupancySchema(
+                    risk_level=item.risk_level,
+                    count=item.count,
+                    limit=item.limit,
+                )
+                for item in occupancy.risk_lane_occupancy
+            ],
+            component_lane_occupancy=[
+                DeliveryControlComponentLaneOccupancySchema(
+                    component=item.component,
+                    count=item.count,
+                    limit=item.limit,
+                )
+                for item in occupancy.component_lane_occupancy
+            ],
+            over_capacity_reasons=[
+                DeliveryControlOverCapacityReasonSchema(
+                    dimension=item.dimension,
+                    selector=item.selector,
+                    count=item.count,
+                    limit=item.limit,
+                )
+                for item in occupancy.over_capacity
+            ],
+        ),
+        latest_admission=(
+            None
+            if latest is None
+            else DeliveryControlAdmissionSchema(
+                run_id=latest.run_id,
+                policy_revision=latest.policy_revision,
+                policy_fingerprint=latest.policy_fingerprint,
+                snapshot_fingerprint=latest.snapshot_fingerprint,
+                snapshot_observed_at=latest.snapshot_observed_at,
+                evaluated_at=latest.evaluated_at,
+                selected_ticket_key=latest.selected_ticket_key,
+                decision_count=latest.decision_count,
+                decisions_truncated=latest.decisions_truncated,
+                decisions=[
+                    DeliveryControlDecisionSchema(
+                        ticket_key=decision.ticket_key,
+                        rank=decision.rank,
+                        decision=decision.decision,
+                        reasons=[
+                            DeliveryControlHoldReasonSchema(
+                                code=reason.code,
+                                source_code=reason.source_code,
+                                selector=reason.selector,
+                                observed=reason.observed,
+                                limit=reason.limit,
+                                reserved_capacity=reason.reserved_capacity,
+                            )
+                            for reason in decision.reasons
+                        ],
+                    )
+                    for decision in latest.decisions
+                ],
+            )
+        ),
+        indeterminate_reasons=[
+            DeliveryControlIndeterminateReasonSchema(
+                reason=item.reason,
+                state=item.state,
+                admission_run_id=item.admission_run_id,
+                ticket_key=item.ticket_key,
+                policy_revision=item.policy_revision,
+                observed_at=item.observed_at,
+            )
+            for item in state.indeterminate_reasons
+        ],
+    )
+
+
+def _present_policy_receipt(
+    receipt: OperatorActionReceipt,
+) -> DeliveryPolicyActionReceiptSchema:
+    return DeliveryPolicyActionReceiptSchema.model_validate(
+        present_operator_action_receipt(receipt)
+    )
+
+
+def _policy_conflict_detail(
+    code: DeliveryAdmissionPolicyConflictCode | None,
+) -> str:
+    if code is DeliveryAdmissionPolicyConflictCode.STALE_REVISION:
+        return "expected policy revision is stale"
+    if code is DeliveryAdmissionPolicyConflictCode.IDEMPOTENCY_KEY_REUSED:
+        return "idempotency key conflicts with an existing command"
+    if code is DeliveryAdmissionPolicyConflictCode.IN_PROGRESS:
+        return "idempotent command is still in progress"
+    return "policy replacement was refused"
+
+
+def present_delivery_admission_policy_change(
+    result: DeliveryAdmissionPolicyChangeResult,
+) -> DeliveryAdmissionPolicyResponse | JSONResponse:
+    """Map one governed policy result without recomputing policy state."""
+
+    if result.status in {
+        DeliveryAdmissionPolicyChangeStatus.APPLIED,
+        DeliveryAdmissionPolicyChangeStatus.REPLAYED,
+    }:
+        if result.policy is None or result.receipt is None:
+            return _delivery_control_error(
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+                "policy replacement failed",
+            )
+        return DeliveryAdmissionPolicyResponse(
+            policy=_present_delivery_policy(result.policy),
+            receipt=_present_policy_receipt(result.receipt),
+        )
+
+    if result.status in {
+        DeliveryAdmissionPolicyChangeStatus.CONFLICT,
+        DeliveryAdmissionPolicyChangeStatus.REFUSED,
+    }:
+        response = DeliveryAdmissionPolicyConflictResponse(
+            detail=_policy_conflict_detail(result.conflict_code),
+            conflict_code=result.conflict_code,
+            current_policy=(
+                None
+                if result.current_policy is None
+                else _present_delivery_policy(result.current_policy)
+            ),
+            receipt=(
+                None
+                if result.receipt is None
+                else _present_policy_receipt(result.receipt)
+            ),
+        )
+        return JSONResponse(
+            status_code=status.HTTP_409_CONFLICT,
+            content=response.model_dump(mode="json"),
+        )
+
+    return _delivery_control_error(
+        status.HTTP_500_INTERNAL_SERVER_ERROR,
+        "policy replacement failed",
     )

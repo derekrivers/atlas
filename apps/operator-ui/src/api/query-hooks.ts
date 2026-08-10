@@ -55,6 +55,7 @@ type AcceptanceStepVariables<Request> = {
 }
 
 export const ATLAS_QUERY_ROUTES = [
+  '/api/v1/delivery-control',
   '/api/v1/tickets',
   '/api/v1/tickets/count',
   '/api/v1/tickets/{key}',
@@ -75,6 +76,7 @@ export const atlasQueryKeys = {
     ['atlas', 'acceptance-sessions', sessionId] as const,
   criticalPath: () => ['atlas', 'dependencies', 'critical-path'] as const,
   dependencyGraph: () => ['atlas', 'dependencies', 'graph'] as const,
+  deliveryControl: () => ['atlas', 'delivery-control'] as const,
   epics: () => ['atlas', 'epics'] as const,
   lessons: (status?: Schema['EntityStatus'] | null) =>
     ['atlas', 'lessons', status ?? null] as const,
@@ -88,6 +90,13 @@ export const atlasQueryKeys = {
   ticketEvidence: (key: string) => ['atlas', 'tickets', key, 'evidence'] as const,
   tickets: (status?: Schema['TicketStatus'] | null) =>
     ['atlas', 'tickets', status ?? null] as const,
+}
+
+export function useDeliveryControlQuery(): AtlasQueryResult<'/api/v1/delivery-control'> {
+  return useQuery({
+    queryKey: atlasQueryKeys.deliveryControl(),
+    queryFn: () => atlasGet('/api/v1/delivery-control'),
+  })
 }
 
 export function useTicketsQuery(

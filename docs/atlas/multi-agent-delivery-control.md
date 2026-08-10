@@ -319,6 +319,48 @@ and all hold/over-capacity reasons. The POST accepts a complete policy plus
 `expected_revision`; Phase 13 supplies actor, CSRF, origin and idempotency.
 There is no generic patch or ticket-state action.
 
+The returned `approved_symphony_ceiling` is the active Atlas policy value. It
+is not an independent observation of the configured or running Symphony
+ceiling: `WORKFLOW.md.agent.max_concurrent_agents` remains authoritative for
+configuration, and this API reads neither `WORKFLOW.md` nor Symphony. Until the
+operator appends the governed reconciliation revision required above, a
+historical policy value of three may truthfully coexist with the serialized
+one-agent baseline without implying that Symphony is running three workers.
+
+The delivered API read requires the live shared session and is always
+`no-store`. It is deliberately observational: one orchestration operation
+reads the active policy, product-scoped latest successful sync time,
+materialised ticket statuses, latest immutable admission run and unresolved
+write fence. It does not acquire the admission lease, refresh Linear, rerun the
+evaluator, append a run or receipt, or mutate policy. Because no raw board is
+stored, the occupancy projection explicitly names its source as
+`materialized_atlas_statuses` and uses the successful-sync timestamp to convey
+freshness rather than claiming a new Linear observation.
+
+The read response is bounded. It returns at most the first 100 rank-ordered
+decisions from the latest run, plus the stored total and a truncation flag.
+Within those decisions, duplicate per-issue snapshot defects collapse to each
+distinct closed source code; all typed hold codes and capacity selectors remain
+visible. Current over-capacity dimensions are recomputed from the same Phase 15
+working, review, reserve and lane definitions. A durable unresolved write fence
+is exposed as `write_indeterminate`, whether its stored fence state is
+`pending` or `indeterminate`. Raw Linear issue/state identities, board payloads,
+pagination cursors, exception summaries, credentials and browser secrets are
+excluded.
+
+Policy replacement requires every policy field and both complete lane arrays
+in one strict JSON body. The API accepts no product, actor, action or current
+state from the client. After the shared Host/Origin, JSON, session, CSRF and
+idempotency dependencies resolve, the adapter invokes `revise_current` once;
+that service selects the single local product and delegates to the existing
+atomic policy command. Exact replay returns the original revision and receipt.
+Stale `expected_revision`, altered replay and an in-progress key return `409`
+without changing the active policy. The route inventory contains no
+ticket-status, dispatch, cancel, merge, rebase, arbitrary `PATCH`/`PUT`,
+agent-session or automatic-ceiling operation.
+Policy replacement changes only Atlas policy; it neither reads nor mutates
+`WORKFLOW.md` or Symphony.
+
 The Operator UI presents budgets as ceilings rather than targets, shows used
 versus available capacity, keeps working and review pressure separate, and
 explains why each eligible ticket was admitted or held. Policy changes require

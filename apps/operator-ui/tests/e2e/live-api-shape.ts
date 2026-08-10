@@ -590,7 +590,130 @@ function assertSessionStateResponse(
   assertIsoDateTimeOrNull(value.expires_at, 'SessionStateResponse.expires_at')
 }
 
+export function assertDeliveryControlResponse(
+  value: unknown
+): asserts value is RouteResponse<'/api/v1/delivery-control'> {
+  assertObject(value, 'DeliveryControlResponse')
+  assertExactKeys(
+    value,
+    [
+      'indeterminate_reasons',
+      'last_linear_sync_at',
+      'latest_admission',
+      'occupancy',
+      'policy',
+    ],
+    'DeliveryControlResponse'
+  )
+  assertObject(value.policy, 'DeliveryControlResponse.policy')
+  assertExactKeys(
+    value.policy,
+    [
+      'approved_symphony_ceiling',
+      'changes_requested_reserve',
+      'component_lane_limits',
+      'created_at',
+      'id',
+      'mode',
+      'review_budget',
+      'revision',
+      'risk_lane_limits',
+      'working_budget',
+    ],
+    'DeliveryControlResponse.policy'
+  )
+  assertUuidString(value.policy.id, 'DeliveryControlResponse.policy.id')
+  assertInteger(value.policy.revision, 'DeliveryControlResponse.policy.revision')
+  assertString(value.policy.mode, 'DeliveryControlResponse.policy.mode')
+  assertInteger(
+    value.policy.approved_symphony_ceiling,
+    'DeliveryControlResponse.policy.approved_symphony_ceiling'
+  )
+  assertInteger(
+    value.policy.working_budget,
+    'DeliveryControlResponse.policy.working_budget'
+  )
+  assertInteger(
+    value.policy.review_budget,
+    'DeliveryControlResponse.policy.review_budget'
+  )
+  assertInteger(
+    value.policy.changes_requested_reserve,
+    'DeliveryControlResponse.policy.changes_requested_reserve'
+  )
+  assertArray(
+    value.policy.risk_lane_limits,
+    'DeliveryControlResponse.policy.risk_lane_limits',
+    (item: unknown, path: string): asserts item is JsonObject => {
+      assertObject(item, path)
+    }
+  )
+  assertArray(
+    value.policy.component_lane_limits,
+    'DeliveryControlResponse.policy.component_lane_limits',
+    (item: unknown, path: string): asserts item is JsonObject => {
+      assertObject(item, path)
+    }
+  )
+  assertIsoDateTimeOrNull(
+    value.policy.created_at,
+    'DeliveryControlResponse.policy.created_at'
+  )
+  assertIsoDateTimeOrNull(
+    value.last_linear_sync_at,
+    'DeliveryControlResponse.last_linear_sync_at'
+  )
+  assertObject(value.occupancy, 'DeliveryControlResponse.occupancy')
+  assertExactKeys(
+    value.occupancy,
+    [
+      'changes_requested_occupancy',
+      'changes_requested_reserve_remaining',
+      'component_lane_occupancy',
+      'new_admission_working_capacity',
+      'over_capacity_reasons',
+      'review_occupancy',
+      'risk_lane_occupancy',
+      'source',
+      'status_occupancy',
+      'working_occupancy',
+    ],
+    'DeliveryControlResponse.occupancy'
+  )
+  assertString(value.occupancy.source, 'DeliveryControlResponse.occupancy.source')
+  assertInteger(
+    value.occupancy.working_occupancy,
+    'DeliveryControlResponse.occupancy.working_occupancy'
+  )
+  assertInteger(
+    value.occupancy.review_occupancy,
+    'DeliveryControlResponse.occupancy.review_occupancy'
+  )
+  assertArray(
+    value.occupancy.status_occupancy,
+    'DeliveryControlResponse.occupancy.status_occupancy',
+    (item: unknown, path: string): asserts item is JsonObject => {
+      assertObject(item, path)
+    }
+  )
+  assertArray(
+    value.occupancy.over_capacity_reasons,
+    'DeliveryControlResponse.occupancy.over_capacity_reasons',
+    (item: unknown, path: string): asserts item is JsonObject => {
+      assertObject(item, path)
+    }
+  )
+  assertArray(
+    value.indeterminate_reasons,
+    'DeliveryControlResponse.indeterminate_reasons',
+    (item: unknown, path: string): asserts item is JsonObject => {
+      assertObject(item, path)
+    }
+  )
+}
+
 export const liveApiShapeAssertions = {
+  '/api/v1/delivery-control': assertDeliveryControlResponse,
   '/api/v1/tickets': assertTicketBoardResponse,
   '/api/v1/tickets/count': assertTicketCountResponse,
   '/api/v1/tickets/{key}': assertTicketDetailResponse,

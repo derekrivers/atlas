@@ -72,6 +72,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/delivery-control": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Delivery Control */
+        get: operations["read_delivery_control_api_v1_delivery_control_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/delivery-control/policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Replace Delivery Admission Policy */
+        post: operations["replace_delivery_admission_policy_api_v1_delivery_control_policy_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/dependencies/critical-path": {
         parameters: {
             query?: never;
@@ -828,6 +862,34 @@ export interface components {
          */
         ActorType: "human" | "agent" | "system";
         /**
+         * AdmissionDecisionType
+         * @description The bounded policy result for one dependency-ready candidate.
+         * @enum {string}
+         */
+        AdmissionDecisionType: "admit" | "hold";
+        /**
+         * AdmissionHoldCode
+         * @description Closed reasons why a dependency-ready candidate cannot enter now.
+         * @enum {string}
+         */
+        AdmissionHoldCode: "policy_paused" | "policy_draining" | "snapshot_policy_mismatch" | "snapshot_incomplete" | "working_budget" | "review_budget" | "changes_requested_reserve" | "risk_lane" | "component_lane" | "missing_external_linear_id" | "single_write_limit";
+        /**
+         * AdmissionSyncReason
+         * @description Safe reason codes; none contains an external response or issue body.
+         * @enum {string}
+         */
+        AdmissionSyncReason: "lease_unavailable" | "product_ambiguous" | "policy_unavailable" | "snapshot_incomplete" | "no_candidate" | "policy_or_capacity_hold" | "over_capacity" | "revalidation_failed" | "revalidation_mismatch" | "policy_changed" | "candidate_moved" | "lease_lost" | "write_confirmed" | "write_indeterminate" | "indeterminate_still_unresolved" | "indeterminate_reconciled_admitted" | "indeterminate_reconciled_no_write" | "indeterminate_reconciled_moved";
+        /**
+         * ComponentLaneLimit
+         * @description Maximum working occupancy for one canonical component selector.
+         */
+        ComponentLaneLimit: {
+            /** Component */
+            component: string;
+            /** Limit */
+            limit: number;
+        };
+        /**
          * CreateAcceptanceSessionRequest
          * @description Repository policy selector; PR identity remains path/server owned.
          */
@@ -846,6 +908,343 @@ export interface components {
             effort: number;
             /** Key */
             key: string;
+        };
+        /**
+         * DeliveryAdmissionMode
+         * @description Operator-selected admission posture.
+         * @enum {string}
+         */
+        DeliveryAdmissionMode: "running" | "paused" | "draining";
+        /**
+         * DeliveryAdmissionPolicyConflictCode
+         * @description Conflict causes that never widen policy authority.
+         * @enum {string}
+         */
+        DeliveryAdmissionPolicyConflictCode: "stale_revision" | "idempotency_key_reused" | "in_progress";
+        /**
+         * DeliveryAdmissionPolicyConflictResponse
+         * @description Policy conflict with safe server-owned current state.
+         */
+        DeliveryAdmissionPolicyConflictResponse: {
+            conflict_code: components["schemas"]["DeliveryAdmissionPolicyConflictCode"] | null;
+            current_policy: components["schemas"]["DeliveryAdmissionPolicySchema"] | null;
+            /** Detail */
+            detail: string;
+            receipt: components["schemas"]["DeliveryPolicyActionReceiptSchema"] | null;
+        };
+        /**
+         * DeliveryAdmissionPolicyRequest
+         * @description Complete strict policy replacement plus compare-and-set revision.
+         */
+        DeliveryAdmissionPolicyRequest: {
+            /**
+             * Approved Symphony Ceiling
+             * @description Active Atlas delivery-policy value; not an independently observed Symphony or WORKFLOW.md configuration value.
+             */
+            approved_symphony_ceiling: number;
+            /** Changes Requested Reserve */
+            changes_requested_reserve: number;
+            /** Component Lane Limits */
+            component_lane_limits: components["schemas"]["ComponentLaneLimit"][];
+            /** Expected Revision */
+            expected_revision: number;
+            mode: components["schemas"]["DeliveryAdmissionMode"];
+            /** Review Budget */
+            review_budget: number;
+            /** Risk Lane Limits */
+            risk_lane_limits: components["schemas"]["RiskLaneLimit"][];
+            /** Working Budget */
+            working_budget: number;
+        };
+        /**
+         * DeliveryAdmissionPolicyResponse
+         * @description Applied or replayed policy revision and its original receipt.
+         */
+        DeliveryAdmissionPolicyResponse: {
+            policy: components["schemas"]["DeliveryAdmissionPolicySchema"];
+            receipt: components["schemas"]["DeliveryPolicyActionReceiptSchema"];
+        };
+        /**
+         * DeliveryAdmissionPolicySchema
+         * @description Safe active policy revision exposed to the local operator.
+         */
+        DeliveryAdmissionPolicySchema: {
+            /**
+             * Approved Symphony Ceiling
+             * @description Active Atlas delivery-policy value; not an independently observed Symphony or WORKFLOW.md configuration value.
+             */
+            approved_symphony_ceiling: number;
+            /** Changes Requested Reserve */
+            changes_requested_reserve: number;
+            /** Component Lane Limits */
+            component_lane_limits: components["schemas"]["ComponentLaneLimit"][];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            mode: components["schemas"]["DeliveryAdmissionMode"];
+            /** Review Budget */
+            review_budget: number;
+            /** Revision */
+            revision: number;
+            /** Risk Lane Limits */
+            risk_lane_limits: components["schemas"]["RiskLaneLimit"][];
+            /** Working Budget */
+            working_budget: number;
+        };
+        /**
+         * DeliveryControlAdmissionSchema
+         * @description Bounded latest admission-run state.
+         */
+        DeliveryControlAdmissionSchema: {
+            /** Decision Count */
+            decision_count: number;
+            /** Decisions */
+            decisions: components["schemas"]["DeliveryControlDecisionSchema"][];
+            /** Decisions Truncated */
+            decisions_truncated: boolean;
+            /**
+             * Evaluated At
+             * Format: date-time
+             */
+            evaluated_at: string;
+            /** Policy Fingerprint */
+            policy_fingerprint: string;
+            /** Policy Revision */
+            policy_revision: number;
+            /**
+             * Run Id
+             * Format: uuid
+             */
+            run_id: string;
+            /** Selected Ticket Key */
+            selected_ticket_key?: string | null;
+            /** Snapshot Fingerprint */
+            snapshot_fingerprint: string;
+            /**
+             * Snapshot Observed At
+             * Format: date-time
+             */
+            snapshot_observed_at: string;
+        };
+        /**
+         * DeliveryControlComponentLaneOccupancySchema
+         * @description Current stored occupancy for one configured component lane.
+         */
+        DeliveryControlComponentLaneOccupancySchema: {
+            /** Component */
+            component: string;
+            /** Count */
+            count: number;
+            /** Limit */
+            limit: number;
+        };
+        /**
+         * DeliveryControlDecisionSchema
+         * @description One candidate decision from the latest immutable admission run.
+         */
+        DeliveryControlDecisionSchema: {
+            decision: components["schemas"]["AdmissionDecisionType"];
+            /** Rank */
+            rank: number;
+            /** Reasons */
+            reasons: components["schemas"]["DeliveryControlHoldReasonSchema"][];
+            /** Ticket Key */
+            ticket_key: string;
+        };
+        /**
+         * DeliveryControlErrorResponse
+         * @description Bounded delivery-control error without internal failure material.
+         */
+        DeliveryControlErrorResponse: {
+            /** Detail */
+            detail: string;
+        };
+        /**
+         * DeliveryControlHoldReasonSchema
+         * @description One distinct typed hold reason without raw external identities.
+         */
+        DeliveryControlHoldReasonSchema: {
+            code: components["schemas"]["AdmissionHoldCode"];
+            /** Limit */
+            limit?: number | null;
+            /** Observed */
+            observed?: number | null;
+            /** Reserved Capacity */
+            reserved_capacity?: number | null;
+            /** Selector */
+            selector?: string | null;
+            source_code: components["schemas"]["SnapshotIncompletenessCode"] | null;
+        };
+        /**
+         * DeliveryControlIndeterminateReasonSchema
+         * @description One unresolved durable external-write fence.
+         */
+        DeliveryControlIndeterminateReasonSchema: {
+            /**
+             * Admission Run Id
+             * Format: uuid
+             */
+            admission_run_id: string;
+            /**
+             * Observed At
+             * Format: date-time
+             */
+            observed_at: string;
+            /** Policy Revision */
+            policy_revision: number;
+            reason: components["schemas"]["AdmissionSyncReason"];
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "pending" | "indeterminate";
+            /** Ticket Key */
+            ticket_key: string;
+        };
+        /**
+         * DeliveryControlOccupancySchema
+         * @description Current persisted occupancy with separate working and review pressure.
+         */
+        DeliveryControlOccupancySchema: {
+            /** Changes Requested Occupancy */
+            changes_requested_occupancy: number;
+            /** Changes Requested Reserve Remaining */
+            changes_requested_reserve_remaining: number;
+            /** Component Lane Occupancy */
+            component_lane_occupancy: components["schemas"]["DeliveryControlComponentLaneOccupancySchema"][];
+            /** New Admission Working Capacity */
+            new_admission_working_capacity: number;
+            /** Over Capacity Reasons */
+            over_capacity_reasons: components["schemas"]["DeliveryControlOverCapacityReasonSchema"][];
+            /** Review Occupancy */
+            review_occupancy: number;
+            /** Risk Lane Occupancy */
+            risk_lane_occupancy: components["schemas"]["DeliveryControlRiskLaneOccupancySchema"][];
+            /**
+             * Source
+             * @constant
+             */
+            source: "materialized_atlas_statuses";
+            /** Status Occupancy */
+            status_occupancy: components["schemas"]["DeliveryControlStatusOccupancySchema"][];
+            /** Working Occupancy */
+            working_occupancy: number;
+        };
+        /**
+         * DeliveryControlOverCapacityReasonSchema
+         * @description One currently breached capacity dimension.
+         */
+        DeliveryControlOverCapacityReasonSchema: {
+            /** Count */
+            count: number;
+            dimension: components["schemas"]["OccupancyDimension"];
+            /** Limit */
+            limit: number;
+            /** Selector */
+            selector?: string | null;
+        };
+        /**
+         * DeliveryControlResponse
+         * @description Authenticated, observational delivery policy and admission status.
+         */
+        DeliveryControlResponse: {
+            /** Indeterminate Reasons */
+            indeterminate_reasons: components["schemas"]["DeliveryControlIndeterminateReasonSchema"][];
+            /** Last Linear Sync At */
+            last_linear_sync_at: string | null;
+            latest_admission: components["schemas"]["DeliveryControlAdmissionSchema"] | null;
+            occupancy: components["schemas"]["DeliveryControlOccupancySchema"];
+            policy: components["schemas"]["DeliveryAdmissionPolicySchema"];
+        };
+        /**
+         * DeliveryControlRiskLaneOccupancySchema
+         * @description Current stored occupancy for one configured risk lane.
+         */
+        DeliveryControlRiskLaneOccupancySchema: {
+            /** Count */
+            count: number;
+            /** Limit */
+            limit: number;
+            risk_level: components["schemas"]["RiskLevel"];
+        };
+        /**
+         * DeliveryControlStatusOccupancySchema
+         * @description Current materialised ticket count for one canonical status.
+         */
+        DeliveryControlStatusOccupancySchema: {
+            /** Count */
+            count: number;
+            status: components["schemas"]["TicketStatus"];
+        };
+        /**
+         * DeliveryPolicyActionReceiptSchema
+         * @description Bounded append-only receipt for one policy replacement.
+         */
+        DeliveryPolicyActionReceiptSchema: {
+            /**
+             * Action
+             * @constant
+             */
+            action: "delivery_admission_policy.revise";
+            actor: components["schemas"]["OperatorActionActorSchema"];
+            /** After Status */
+            after_status: null;
+            /** Before Status */
+            before_status: null;
+            /**
+             * Completed At
+             * Format: date-time
+             */
+            completed_at: string;
+            /**
+             * Correlation Id
+             * Format: uuid
+             */
+            correlation_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Idempotency Key Identity */
+            idempotency_key_identity: string;
+            outcome: components["schemas"]["OperatorActionOutcome"];
+            /**
+             * Receipt Id
+             * Format: uuid
+             */
+            receipt_id: string;
+            /** Request Fingerprint */
+            request_fingerprint: string;
+            result_code: components["schemas"]["OperatorActionResultCode"];
+            /** Result Metadata */
+            result_metadata: {
+                [key: string]: boolean | number;
+            };
+            target: components["schemas"]["DeliveryPolicyActionTargetSchema"];
+        };
+        /**
+         * DeliveryPolicyActionTargetSchema
+         * @description Server-selected product target for a policy command receipt.
+         */
+        DeliveryPolicyActionTargetSchema: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Type
+             * @constant
+             */
+            type: "product";
         };
         /**
          * DependencyBlockerSchema
@@ -1121,6 +1520,12 @@ export interface components {
             target: string | null;
         };
         /**
+         * OccupancyDimension
+         * @description Configured capacity dimensions that existing work can breach.
+         * @enum {string}
+         */
+        OccupancyDimension: "working" | "review" | "risk_lane" | "component_lane";
+        /**
          * OperatorActionActorSchema
          * @description Server-owned actor recorded by an operator-action receipt.
          */
@@ -1270,6 +1675,15 @@ export interface components {
             reviews: components["schemas"]["ReviewQueueItemSchema"][];
         };
         /**
+         * RiskLaneLimit
+         * @description Maximum working occupancy for one exact risk level.
+         */
+        RiskLaneLimit: {
+            /** Limit */
+            limit: number;
+            risk_level: components["schemas"]["RiskLevel"];
+        };
+        /**
          * RiskLevel
          * @description Risk classification shared by epics and tickets (data-model §2.4).
          * @enum {string}
@@ -1314,6 +1728,12 @@ export interface components {
             /** Expires At */
             expires_at: string | null;
         };
+        /**
+         * SnapshotIncompletenessCode
+         * @description Closed reasons why an occupancy observation is unsafe for admission.
+         * @enum {string}
+         */
+        SnapshotIncompletenessCode: "incomplete_pull" | "pagination_gap" | "missing_issue_identity" | "duplicate_issue_id" | "duplicate_issue_identifier" | "duplicate_atlas_join" | "unmapped_state" | "contradictory_state" | "missing_external_linear_id" | "missing_joined_issue" | "missing_atlas_ticket" | "atlas_linear_state_mismatch";
         /**
          * SystemStatusResponse
          * @description Singleton operator-facing Atlas instance status.
@@ -1916,6 +2336,124 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AcceptanceSessionErrorResponse"];
+                };
+            };
+        };
+    };
+    read_delivery_control_api_v1_delivery_control_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeliveryControlResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeliveryControlErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeliveryControlErrorResponse"];
+                };
+            };
+        };
+    };
+    replace_delivery_admission_policy_api_v1_delivery_control_policy_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeliveryAdmissionPolicyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeliveryAdmissionPolicyResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeliveryControlErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeliveryControlErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeliveryAdmissionPolicyConflictResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeliveryControlErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeliveryControlErrorResponse"];
                 };
             };
         };

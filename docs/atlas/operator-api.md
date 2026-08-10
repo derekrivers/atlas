@@ -4,8 +4,10 @@ Status: Delivered design document for Phase 10, amended by Phase 11 OP-2 for
 exactly two additive read routes and by the closed Phase 13 loopback operator
 session and governed lesson disposition commands, then by the Phase 14
 authenticated acceptance-session resource closed by
-`docs/closure/phase-14-closure-report.md`. Describes the HTTP projection surface
-delivered by ATLAS-187..191 and the additive governed local resources.
+`docs/closure/phase-14-closure-report.md`, and by Phase 15 for authenticated
+delivery-control status and complete policy replacement. Describes the HTTP
+projection surface delivered by ATLAS-187..191 and the additive governed local
+resources.
 
 ## Purpose and scope
 
@@ -14,14 +16,17 @@ small, versioned HTTP contract. Its current resources are the ticket board,
 ticket count, ticket detail, ticket evidence, epics, lessons, dependency
 readiness, critical path, review queue, system status, and local browser
 session state. Phase 14 adds exact-head acceptance-session creation, live
-readiness, evidence, confirmation and verification. It is a projection of
-existing state plus a server-owned browser session boundary, not a new source
-of truth and not a second place to implement domain behaviour.
+readiness, evidence, confirmation and verification. Phase 15 also exposes
+delivery policy, materialised occupancy and admission explanations. It is a
+projection of existing state plus a server-owned browser session boundary, not
+a new source of truth and not a second place to implement domain behaviour.
 
 The original Phase 10 operator API was a read-only projection surface. Phase 13
 adds authenticated session lifecycle routes, the shared mutation-security
 dependency, and exactly two governed lesson commands over the shared lesson
-disposition service. No generic resource update route is introduced.
+disposition service. Phase 15 adds one authenticated observational
+delivery-control read and one complete-policy compare-and-set command. No
+generic resource update route is introduced.
 
 Phase 14 reuses that exact authentication and mutation boundary. Its GET is an
 authenticated, no-store observational read; each POST uses the shared
@@ -114,11 +119,14 @@ additions as phase authority, is:
 | POST   | `/api/v1/session`       | strict JSON `SessionLoginRequest` | `SessionLoginResponse` | Phase 13 |
 | DELETE | `/api/v1/session`       | live cookie + `X-Atlas-CSRF` | `SessionStateResponse` | Phase 13 |
 | GET    | `/api/v1/status`        | none             | `SystemStatusResponse`    | Phase 10 |
+| GET    | `/api/v1/delivery-control` | live session cookie | `DeliveryControlResponse` | Phase 15 |
+| POST   | `/api/v1/delivery-control/policy` | strict complete `DeliveryAdmissionPolicyRequest` plus `Idempotency-Key` | `DeliveryAdmissionPolicyResponse` | Phase 15 |
 
 An executable FastAPI route-inventory test asserts the complete method/path
 set. Beyond session login/revocation and the two lesson commands, the only
-writes are the four named acceptance POST actions above. The inventory rejects
-acceptance merge, rebase, arbitrary action/command, `PATCH` and `PUT` routes.
+writes are the four named acceptance POST actions and the complete-policy
+compare-and-set above. The inventory rejects acceptance merge, rebase, generic
+ticket or worker control, arbitrary action/command, `PATCH` and `PUT` routes.
 
 Phase 11, by authority of `docs/atlas/operator-ui.md` OP-2, permits exactly
 two additive read routes beyond the Phase 10 surface:
@@ -253,6 +261,55 @@ That finish time is sampled after the successful tick body completes, not
 copied from its entry time. It is null before the first successful receipt and
 ignores `Ticket.linear_synced_at`, which is only a definition-push cursor.
 
+`GET /api/v1/delivery-control` requires the same live session cookie as the
+writable operator surface, but no CSRF header because it is observational. It
+returns the active immutable policy revision including the approved Symphony
+ceiling, the product-scoped latest successful PM-sync finish time, occupancy
+from the currently materialised Atlas ticket statuses, the latest persisted
+admission run, and any unresolved admission write fence. The occupancy source
+is named `materialized_atlas_statuses`; its freshness is never overstated as a
+new Linear observation. Working, review, Changes Requested, risk-lane and
+component-lane counts use the Phase 15 capacity definitions. Every current
+over-capacity dimension is returned as a typed reason.
+
+`approved_symphony_ceiling` is the active Atlas delivery-policy value, not an
+independently observed live Symphony configuration value. The API never reads
+`WORKFLOW.md` or Symphony. A historical active policy may therefore report
+`approved_symphony_ceiling=3` while the authoritative configured Symphony
+ceiling in `WORKFLOW.md` is one; that mismatch is explicit
+operator-reconciliation state and does not claim three running workers.
+
+The latest admission response retains at most the first 100 ranked candidate
+decisions and reports both the complete stored decision count and whether the
+projection was truncated. Each included decision retains every distinct typed
+hold reason while duplicate per-issue instances collapse to their closed
+snapshot reason code. Raw Linear issue/state identities and pagination cursors
+are not projected. An unresolved `pending` or `indeterminate` durable write
+fence is returned as the typed `write_indeterminate` reason with only its run,
+ticket key, policy revision, state and observation time. GET never acquires an
+admission lease, reads Linear, evaluates or records a new admission run, writes
+an action receipt, or changes policy.
+
+`POST /api/v1/delivery-control/policy` accepts one strict complete policy:
+`expected_revision`, `mode`, approved ceiling, working and review budgets,
+Changes Requested reserve, and both complete lane-limit arrays. Every field is
+required; extra fields, booleans as integers, duplicate canonical selectors,
+client-supplied actor/action/product/current-state fields and partial policy
+patches are rejected. The route resolves the Phase 13 mutation context and
+`Idempotency-Key`, then calls the delivery admission policy service exactly
+once. Product, action identity, actor and current revision remain server-owned.
+Applied and exact-replay commands return the immutable policy revision and its
+bounded receipt. Stale revision, altered-key replay and an in-progress owner
+return `409` with safe current policy when available and no policy change.
+Policy replacement changes Atlas policy only; it neither reads nor mutates
+`WORKFLOW.md` or Symphony.
+
+Both delivery-control responses use `Cache-Control: no-store`. They exclude
+bootstrap tokens, raw idempotency keys, session and CSRF secrets, raw Linear
+payloads and stored exception text. The resource has no ticket-status,
+dispatch, cancel, merge, rebase, arbitrary `PATCH`/`PUT`, agent-session or
+automatic-ceiling route.
+
 `POST /api/v1/session` accepts only a strict JSON body containing the
 bootstrap operator token. Success returns authenticated state, an expiry
 timestamp and one CSRF token, while setting the opaque host-only HttpOnly
@@ -261,16 +318,16 @@ authenticated state and expiry metadata. `DELETE /api/v1/session` uses the
 same mutation-security dependency as future writes and revokes the exact live
 session. Session responses use `Cache-Control: no-store`.
 
-Every mutation route, including session revocation, lesson commands and
-acceptance commands, must
+Every mutation route, including session revocation, lesson commands,
+acceptance commands and policy commands, must
 resolve `MutationContextDependency`. That dependency requires a
 loopback Host, an exact `http://<Host>` Origin, strict
 `Content-Type: application/json`, a live `atlas_session` cookie and a matching
 `X-Atlas-CSRF` value. The resolved actor is always
 `created_by_type: human, created_by_id: "operator"` and cannot be supplied or
-overridden by request JSON or headers. Lesson and acceptance commands additionally
-require a non-blank `Idempotency-Key` before their application-service
-dependency can run.
+overridden by request JSON or headers. Lesson, acceptance and policy commands
+additionally require a non-blank `Idempotency-Key` before their
+application-service dependency can run.
 
 The API installs no CORS middleware. Session and mutation responses are
 `no-store`; all API responses include `X-Frame-Options: DENY` and the CSP:

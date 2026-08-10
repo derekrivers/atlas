@@ -1349,13 +1349,17 @@ class PmSyncReceiptRepo(_Repo[PmSyncReceipt]):
             )
             return [self._to_model(row) for row in rows]
 
-    def latest_successful_finished_at(self) -> datetime | None:
-        """Return the newest finished_at among genuinely successful receipts."""
+    def latest_successful_finished_at(
+        self, product_id: UUID | None = None
+    ) -> datetime | None:
+        """Return the newest genuinely successful finish, optionally by product."""
         successful = [result.value for result in SUCCESSFUL_PM_SYNC_RESULTS]
         with self._db.session() as session:
             statement = sa.select(sa.func.max(PmSyncReceiptRow.finished_at)).where(
                 PmSyncReceiptRow.result.in_(successful)
             )
+            if product_id is not None:
+                statement = statement.where(PmSyncReceiptRow.product_id == product_id)
             return cast(datetime | None, session.scalar(statement))
 
 
@@ -1452,6 +1456,21 @@ class AdmissionRunRepo(_Repo[AdmissionRun]):
                 .order_by(AdmissionRunRow.evaluated_at, AdmissionRunRow.id)
             )
             return [self._to_model(row) for row in rows]
+
+    def latest_for_product(self, product_id: UUID) -> AdmissionRun | None:
+        """Return the newest product run without loading its full history."""
+
+        with self._db.session() as session:
+            row = session.scalars(
+                sa.select(AdmissionRunRow)
+                .where(AdmissionRunRow.product_id == product_id)
+                .order_by(
+                    AdmissionRunRow.evaluated_at.desc(),
+                    AdmissionRunRow.id.desc(),
+                )
+                .limit(1)
+            ).one_or_none()
+            return None if row is None else self._to_model(row)
 
 
 class TicketStatusTransitionRepo(_Repo[TicketStatusTransition]):

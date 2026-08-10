@@ -195,6 +195,28 @@ class DeliverySnapshot(BaseModel):
         return hashlib.sha256(self.canonical_bytes()).hexdigest()
 
 
+class StoredDeliveryOccupancy(BaseModel):
+    """Current capacity use derived from materialised Atlas ticket statuses.
+
+    This is the read-side companion to :class:`DeliverySnapshot`.  It never
+    claims to be a fresh Linear observation: callers pair it with the latest
+    successful sync timestamp so the age of the materialised state remains
+    explicit.  It performs no repository read or external request.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    status_occupancy: tuple[StatusOccupancy, ...]
+    working_occupancy: int = Field(ge=0)
+    review_occupancy: int = Field(ge=0)
+    changes_requested_occupancy: int = Field(ge=0)
+    changes_requested_reserve_remaining: int = Field(ge=0)
+    new_admission_working_capacity: int = Field(ge=0)
+    risk_lane_occupancy: tuple[RiskLaneOccupancy, ...]
+    component_lane_occupancy: tuple[ComponentLaneOccupancy, ...]
+    over_capacity: tuple[OccupancyBreach, ...]
+
+
 def _canonical_hash(payload: object) -> str:
     rendered = json.dumps(payload, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(rendered.encode("utf-8")).hexdigest()
@@ -336,6 +358,118 @@ def delivery_graph_revision(graph: nx.DiGraph[str]) -> str:
     """Fingerprint the exact graph input used by readiness and ranking."""
 
     return _canonical_hash(_graph_payload(graph))
+
+
+def build_stored_delivery_occupancy(
+    *,
+    policy: DeliveryAdmissionPolicyRevision,
+    tickets: Iterable[Ticket],
+) -> StoredDeliveryOccupancy:
+    """Project current stored occupancy without refreshing or mutating Linear."""
+
+    product_tickets = tuple(
+        ticket for ticket in tickets if ticket.product_id == policy.product_id
+    )
+    status_counts = Counter(ticket.status for ticket in product_tickets)
+    working_tickets = tuple(
+        ticket for ticket in product_tickets if ticket.status in WORKING_STATUSES
+    )
+
+    configured_risks = {lane.risk_level for lane in policy.risk_lane_limits}
+    configured_components = {lane.component for lane in policy.component_lane_limits}
+    risk_counts: Counter[RiskLevel] = Counter()
+    component_counts: Counter[str] = Counter()
+    for ticket in working_tickets:
+        if ticket.risk_level in configured_risks:
+            risk_counts[ticket.risk_level] += 1
+        if ticket.component is None:
+            continue
+        try:
+            component = canonical_component_selector(ticket.component)
+        except ValueError:
+            continue
+        if component in configured_components:
+            component_counts[component] += 1
+
+    status_occupancy = tuple(
+        StatusOccupancy(status=status, count=status_counts[status])
+        for status in TicketStatus
+    )
+    working = len(working_tickets)
+    review = sum(status_counts[status] for status in REVIEW_STATUSES)
+    changes_requested = status_counts[TicketStatus.CHANGES_REQUESTED]
+    reserve_remaining = max(0, policy.changes_requested_reserve - changes_requested)
+    new_admission_capacity = max(0, policy.working_budget - working - reserve_remaining)
+    risk_lanes = tuple(
+        RiskLaneOccupancy(
+            risk_level=lane.risk_level,
+            count=risk_counts[lane.risk_level],
+            limit=lane.limit,
+        )
+        for lane in sorted(
+            policy.risk_lane_limits, key=lambda item: item.risk_level.value
+        )
+    )
+    component_lanes = tuple(
+        ComponentLaneOccupancy(
+            component=lane.component,
+            count=component_counts[lane.component],
+            limit=lane.limit,
+        )
+        for lane in sorted(
+            policy.component_lane_limits, key=lambda item: item.component
+        )
+    )
+
+    breaches: list[OccupancyBreach] = []
+    if working > policy.working_budget:
+        breaches.append(
+            OccupancyBreach(
+                dimension=OccupancyDimension.WORKING,
+                count=working,
+                limit=policy.working_budget,
+            )
+        )
+    if review > policy.review_budget:
+        breaches.append(
+            OccupancyBreach(
+                dimension=OccupancyDimension.REVIEW,
+                count=review,
+                limit=policy.review_budget,
+            )
+        )
+    breaches.extend(
+        OccupancyBreach(
+            dimension=OccupancyDimension.RISK_LANE,
+            selector=lane.risk_level.value,
+            count=lane.count,
+            limit=lane.limit,
+        )
+        for lane in risk_lanes
+        if lane.count > lane.limit
+    )
+    breaches.extend(
+        OccupancyBreach(
+            dimension=OccupancyDimension.COMPONENT_LANE,
+            selector=lane.component,
+            count=lane.count,
+            limit=lane.limit,
+        )
+        for lane in component_lanes
+        if lane.count > lane.limit
+    )
+
+    return StoredDeliveryOccupancy(
+        status_occupancy=status_occupancy,
+        working_occupancy=working,
+        review_occupancy=review,
+        changes_requested_occupancy=changes_requested,
+        changes_requested_reserve_remaining=reserve_remaining,
+        new_admission_working_capacity=new_admission_capacity,
+        risk_lane_occupancy=risk_lanes,
+        component_lane_occupancy=component_lanes,
+        over_capacity=tuple(sorted(breaches, key=_breach_sort_key)),
+    )
 
 
 def _reason_sort_key(reason: SnapshotIncompletenessReason) -> tuple[str, ...]:

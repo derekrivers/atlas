@@ -9,6 +9,7 @@ import {
   type useAcceptanceSessionQuery,
   type useConfirmAcceptanceSessionMutation,
   type useCreateAcceptanceSessionMutation,
+  type useDeliveryControlQuery,
   type useDependencyCriticalPathQuery,
   type useDependencyGraphQuery,
   type useEpicsQuery,
@@ -52,6 +53,12 @@ type MutationData<
 
 type CoveredRoute = (typeof ATLAS_QUERY_ROUTES)[number]
 type HookResponseParity = [
+  Assert<
+    Equal<
+      HookData<typeof useDeliveryControlQuery>,
+      AtlasRouteResponse<'/api/v1/delivery-control'>
+    >
+  >,
   Assert<Equal<HookData<typeof useTicketsQuery>, AtlasRouteResponse<'/api/v1/tickets'>>>,
   Assert<
     Equal<
@@ -110,6 +117,7 @@ type HookResponseParity = [
   >,
 ]
 type HookAnyGuard = [
+  Assert<NotAny<HookData<typeof useDeliveryControlQuery>>>,
   Assert<NotAny<HookData<typeof useTicketsQuery>>>,
   Assert<NotAny<HookData<typeof useTicketCountQuery>>>,
   Assert<NotAny<HookData<typeof useTicketDetailQuery>>>,
@@ -178,8 +186,10 @@ const hookResponseParity: HookResponseParity = [
   true,
   true,
   true,
+  true,
 ]
 const hookAnyGuard: HookAnyGuard = [
+  true,
   true,
   true,
   true,
@@ -206,7 +216,7 @@ const mutationResponseParity: MutationResponseParity = [
 describe('typed Atlas query hooks', () => {
   it('covers every generated current v1 GET route', () => {
     expect(routeCoverage).toBe(true)
-    expect(ATLAS_QUERY_ROUTES).toHaveLength(13)
+    expect(ATLAS_QUERY_ROUTES).toHaveLength(14)
   })
 
   it('returns generated response types without authored any escapes', () => {

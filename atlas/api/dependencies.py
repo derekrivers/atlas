@@ -20,6 +20,8 @@ from atlas.api.presenters import (
     present_acceptance_evidence,
     present_acceptance_session_creation,
     present_acceptance_verification,
+    present_delivery_admission_policy_change,
+    present_delivery_control,
     present_dependency_critical_path,
     present_dependency_graph,
     present_epics,
@@ -41,6 +43,9 @@ from atlas.api.schemas import (
     AcceptanceSessionReadResponse,
     AcceptanceVerificationRequest,
     CreateAcceptanceSessionRequest,
+    DeliveryAdmissionPolicyRequest,
+    DeliveryAdmissionPolicyResponse,
+    DeliveryControlResponse,
     DependencyCriticalPathResponse,
     DependencyGraphResponse,
     EpicsResponse,
@@ -64,6 +69,7 @@ from atlas.api.security import (
     AuthenticatedSessionContext,
     MutationContext,
     OperatorSessionService,
+    utc_now,
 )
 from atlas.core.enums import EntityStatus
 from atlas.core.models import TicketStatus
@@ -79,9 +85,11 @@ from atlas.orchestration import (
     AcceptanceSessionVerificationService,
     AcceptanceSessionWorkflowServices,
     AcceptanceVerificationContext,
+    DeliveryAdmissionPolicyService,
     LessonDispositionCommandContext,
     LessonDispositionService,
     build_acceptance_session_workflow,
+    delivery_control_status,
     dependency_critical_path,
     dependency_graph,
     review_queue,
@@ -525,6 +533,20 @@ LessonDispositionServiceDependency = Annotated[
 ]
 
 
+def get_delivery_admission_policy_service(
+    database: DatabaseDependency,
+) -> DeliveryAdmissionPolicyService:
+    """Build the governed delivery-policy service over the shared database."""
+
+    return DeliveryAdmissionPolicyService(database, clock=utc_now)
+
+
+DeliveryAdmissionPolicyServiceDependency = Annotated[
+    DeliveryAdmissionPolicyService,
+    Depends(get_delivery_admission_policy_service),
+]
+
+
 def get_epic_repo(database: DatabaseDependency) -> EpicRepo:
     """Build the single-domain epic service over the shared database."""
     return EpicRepo(database)
@@ -722,3 +744,43 @@ def get_system_status(database: DatabaseDependency) -> SystemStatusResponse:
 
 
 SystemStatusDependency = Annotated[SystemStatusResponse, Depends(get_system_status)]
+
+
+def get_delivery_control(
+    database: DatabaseDependency,
+    authenticated: AuthenticatedSessionDependency,
+) -> DeliveryControlResponse | JSONResponse:
+    """Read and present delivery control through one coordinating operation."""
+
+    del authenticated
+    state = delivery_control_status(database)
+    return present_delivery_control(state)
+
+
+DeliveryControlDependency = Annotated[
+    DeliveryControlResponse | JSONResponse,
+    Depends(get_delivery_control),
+]
+
+
+def replace_delivery_admission_policy(
+    body: DeliveryAdmissionPolicyRequest,
+    context: MutationContextDependency,
+    idempotency_key: IdempotencyKeyHeader,
+    service: DeliveryAdmissionPolicyServiceDependency,
+) -> DeliveryAdmissionPolicyResponse | JSONResponse:
+    """Execute one authenticated complete-policy compare-and-set command."""
+
+    del context
+    result = service.revise_current(
+        expected_revision=body.expected_revision,
+        idempotency_key=idempotency_key,
+        policy=body.policy_spec(),
+    )
+    return present_delivery_admission_policy_change(result)
+
+
+ReplacedDeliveryAdmissionPolicyDependency = Annotated[
+    DeliveryAdmissionPolicyResponse | JSONResponse,
+    Depends(replace_delivery_admission_policy),
+]
