@@ -1,9 +1,9 @@
 # Phase 13–20 Programme Horizon
 
-Status: Architectural direction recorded after Phase 12 closure. Detailed
-Wave A planning inputs for Phases 13–15 are prepared for governed plan/apply.
-Phases 16–20 are provisional programme commitments that require later design
-gates before ticket creation.
+Status: Architectural direction active after Phase 13 closure. The governed
+Wave A plan/apply introduced Phases 13–15; Phase 13 is closed and Phases 14–15
+remain the active delivery graph. Phases 16–20 are provisional programme
+commitments that require later design gates before ticket creation.
 
 ## Authority of this document
 
@@ -73,9 +73,9 @@ The following invariants apply through Phase 20:
 
 | Phase | Capability | New bounded authority | Human gate retained | Planning state |
 | --- | --- | --- | --- | --- |
-| 13 — Governed Operator Actions | Secure writable operator foundation | Promote or reject DRAFT lessons through authenticated, audited commands | Operator chooses every disposition | Next planning wave |
-| 14 — Review Acceptance Console | Exact-head browser acceptance | Pull evidence, record confirmations and run verification for one pinned PR head | Operator reviews and merges manually | Next planning wave |
-| 15 — Multi-Agent Delivery Control | Capacity-aware ticket admission | Admit or hold dependency-ready work within operator-owned policy | Operator changes policy and agent ceiling | Next planning wave |
+| 13 — Governed Operator Actions | Secure writable operator foundation | Promote or reject DRAFT lessons through authenticated, audited commands | Operator chooses every disposition | Closed 2026-08-11 |
+| 14 — Review Acceptance Console | Exact-head browser acceptance | Pull evidence, record confirmations and run verification for one pinned PR head | Operator reviews and merges manually | In delivery |
+| 15 — Multi-Agent Delivery Control | Capacity-aware ticket admission | Admit or hold dependency-ready work within operator-owned policy | Operator changes policy and agent ceiling | In delivery |
 | 16 — Delivery Intelligence and Agent Evaluation | Reproducible delivery measurement | Persist and compare observations; no delivery mutation | Operator interprets recommendations | Horizon; redesign gate after Phase 15 |
 | 17 — Technical Debt and Reliability Steward | Evidence-backed quality stewardship | Record code-quality debt and draft remediation proposals | Operator decides whether work enters planning | Horizon; redesign gate after Phase 15 |
 | 18 — Governed Adaptive Planning | Outcome-informed planning proposals | Assemble bounded, anchored plan amendments | `atlas apply` remains operator-controlled | Horizon; redesign gate after Phase 15 |
@@ -138,7 +138,9 @@ Through a seeded live UI and API, authenticate, promote one DRAFT lesson and
 reject another, then prove final states, server attribution, durable receipts
 and the ACTIVE-only context-retrieval effect. Hostile origin, missing CSRF,
 duplicate or altered replay, expired session, stale-state race and receipt
-failure must produce no unintended lesson mutation.
+failure must produce no unintended lesson mutation. **Passed:** executable
+evidence and residual risks are recorded in
+`docs/closure/phase-13-closure-report.md`.
 
 ## Phase 14 — Review Acceptance Console
 
@@ -382,13 +384,11 @@ through the repaired canonical plan/apply path.
 
 ### Wave A — Phases 13–15
 
-Gate 0 is satisfied and the prepared Phase 13–15 designs and ordered stubs form
-one Wave A dependency graph. The inputs gain no operational authority until
-their planning change merges and the operator reviews and accepts the exact
-`atlas plan --stubs-only` proposal through `atlas apply`. Only Phase 13 becomes
-current work. Phase 14 and Phase 15 tickets may overlap where their actual
-prerequisites permit, but the Phase 15 ten-agent milestone remains gated on
-Phase 14 closure.
+Gate 0 was satisfied and the prepared Phase 13–15 designs and ordered stubs
+entered one accepted Wave A dependency graph through the exact
+`atlas plan --stubs-only` and `atlas apply` boundary. Phase 13 is closed. Phase
+14 and Phase 15 delivery may overlap where their actual prerequisites permit,
+but the Phase 15 ten-agent milestone remains gated on Phase 14 closure.
 
 ### Gate A — after Phase 15
 

@@ -23,6 +23,15 @@ export default defineConfig({
       },
     },
   },
+  preview: {
+    host: '127.0.0.1',
+    proxy: {
+      '/api': {
+        target: atlasApiBaseUrl,
+        changeOrigin: false,
+      },
+    },
+  },
   build: {
     chunkSizeWarningLimit: 700,
   },

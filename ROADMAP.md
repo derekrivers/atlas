@@ -2,27 +2,25 @@
 
 The canonical roadmap lives at
 `docs/atlas/implementation-roadmap.md`. Phase closure is recorded
-in `docs/closure/` — Phases 1 through 12 are closed (Phase 12 closed
-2026-07-31).
+in `docs/closure/` — Phases 1 through 13 are closed (Phase 13 closed
+2026-08-11).
 
 The original bootstrap milestone — a dependency-aware backlog
 generated through the plan/apply loop with stable ticket identity
 (AT-1..AT-7, `docs/atlas/planning-engine-specification.md`) — is
 proven and closed; see the closure reports.
 
-Current work: Phase 13 — Governed Operator Actions is the next delivery phase.
-The architectural direction through Phase 20 is recorded in
-`docs/atlas/phase-13-20-programme-horizon.md`; Phases 13–15 form the next
-rolling-wave planning batch, while Phases 16–20 remain gated programme
-horizons. The detailed designs and governed ordered ticket inputs for Phases
-13–15 are prepared as one Wave A dependency graph. They remain planning inputs
-only until this change is reviewed, merged, proposed by `atlas plan
---stubs-only` and explicitly accepted through `atlas apply`. The hand-delivered
-Planning Batch Integrity Guard satisfies pre-Wave-A Gate 0 by validating exact
+Current work: Phase 14 — Review Acceptance Console. Phase 13's authenticated,
+audited loopback write boundary is closed by
+`docs/closure/phase-13-closure-report.md`; Phase 14 consumes that boundary but
+does not expand it to merge, GitHub or Linear writes. The architectural
+direction through Phase 20 is recorded in
+`docs/atlas/phase-13-20-programme-horizon.md`; Phases 14–15 remain the active
+Wave A delivery graph, while Phases 16–20 remain gated programme horizons. The
+hand-delivered Planning Batch Integrity Guard continues to validate exact
 paths, dependency identity/order/cycles and exact batch-manifest coverage in
-both plan and apply. Atlas retains no
-automatic conflict-resolution, plan-approval, review, merge, permission-
-expansion or deployment authority.
+both plan and apply. Atlas retains no automatic conflict-resolution,
+plan-approval, review, merge, permission-expansion or deployment authority.
 
 Committed `main` retains the repository-owned Symphony ceiling of three while
 Phase 15 is delivered. The operator performs the controlled 3 → 5 → 7 → 10

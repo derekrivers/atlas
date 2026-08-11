@@ -196,6 +196,9 @@ Phase closure reports (`docs/closure/`):
   Control) closure: exact-head and rebase-lane evidence, delivered ticket
   ledger, review corrections, incidents, carry-forwards and criteria
   self-assessment
+- `docs/closure/phase-13-closure-report.md` — Phase 13 (Governed Operator
+  Actions) closure: live writable-surface evidence, threat and race matrix,
+  route inventory, residual risks and criteria self-assessment
 
 Stubs awaiting content: `docs/product/`. `docs/tech-debt/` holds the
 debt register (`docs/tech-debt/debt-register.md`), a hand-maintained,

@@ -46,12 +46,15 @@ describe('Operator UI runner separation contract', () => {
     expect(readProjectFile('vitest.browser.config.ts')).toContain(
       "from '@vitest/browser-playwright'"
     )
-    expect(readProjectFile('playwright.config.ts')).toContain(
-      "testDir: './tests/e2e'"
+    const playwrightConfig = readProjectFile('playwright.config.ts')
+    expect(playwrightConfig).toContain("testDir: './tests/e2e'")
+    expect(playwrightConfig).toContain("from '@playwright/test'")
+    expect(playwrightConfig).toContain(
+      'npm run build:bundle && ./node_modules/.bin/vite preview'
     )
-    expect(readProjectFile('playwright.config.ts')).toContain(
-      "from '@playwright/test'"
-    )
+    expect(playwrightConfig).toContain("screenshot: 'off'")
+    expect(playwrightConfig).toContain("trace: 'off'")
+    expect(playwrightConfig).toContain("video: 'off'")
   })
 
   it(

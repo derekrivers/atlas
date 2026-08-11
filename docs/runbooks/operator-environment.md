@@ -134,6 +134,33 @@ The server refuses writable startup if the token is absent, is outside the
 entropy floor. Writable serving also refuses non-loopback bind hosts; remote
 serving remains unsupported until a later HTTPS/Secure-cookie design lands.
 
+For the supported browser topology, keep that writable API on
+`127.0.0.1:8000` and start the UI's Vite server on loopback in another shell:
+
+```bash
+npm --prefix apps/operator-ui run dev
+```
+
+Open the Vite URL and let its same-origin `/api` proxy reach the API. Do not
+open a direct cross-origin API URL, add CORS, expose either process remotely or
+put the operator token in a `VITE_` variable. Loopback HTTP is deliberately the
+only supported topology in Phase 13; it does not provide transport
+confidentiality and the session cookie cannot use `Secure` until a later HTTPS
+design is accepted.
+
+The seeded acceptance command builds and drives this topology with a fresh
+temporary store and deterministic test-only credentials:
+
+```bash
+npm --prefix apps/operator-ui run verify
+```
+
+The live browser suites exercise promote/reject, hostile requests, replay,
+races, receipt failure, accessibility and responsive states. Their Playwright
+configuration retains no screenshots, traces or videos. Never enable those
+artifacts for a credential-bearing run unless a separately approved redaction
+and retention design exists.
+
 ## Database
 
 - The store is a single SQLite file at

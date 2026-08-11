@@ -486,7 +486,10 @@ export function LessonDispositionControls({
         >
           <AlertDialogHeader>
             <AlertDialogTitle>Confirm lesson promotion</AlertDialogTitle>
-            <AlertDialogDescription id='promote-context-pack-confirmation'>
+            <AlertDialogDescription
+              id='promote-context-pack-confirmation'
+              className='text-foreground'
+            >
               Promoting this DRAFT makes it ACTIVE. ACTIVE lessons may enter future context packs used by delivery agents.
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -546,7 +549,7 @@ export function LessonDispositionControls({
         >
           <AlertDialogHeader>
             <AlertDialogTitle>Confirm lesson rejection</AlertDialogTitle>
-            <AlertDialogDescription>
+            <AlertDialogDescription className='text-foreground'>
               Rejecting this DRAFT archives it for audit. It will not become eligible for future context packs.
             </AlertDialogDescription>
           </AlertDialogHeader>

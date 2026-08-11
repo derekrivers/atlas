@@ -1,10 +1,11 @@
 # Operator UI Design (Phase 11)
 
-Status: Delivered Phase 11 read surface extended by the governed Phase 13
-lesson disposition workflow. Defines the browser surface over the Operator API,
-the framework adoption boundary, the bounded authentication/write entry, and the
-testing contract. Phase 11 operator rulings recorded in the reviewer session of
-2026-07-26 remain binding where Phase 13 does not explicitly supersede them.
+Status: Delivered Phase 11 read surface extended by the closed, governed Phase
+13 lesson disposition workflow. Defines the browser surface over the Operator
+API, the framework adoption boundary, the bounded authentication/write entry,
+and the testing contract. Phase 11 operator rulings recorded in the reviewer
+session of 2026-07-26 remain binding where Phase 13 does not explicitly
+supersede them.
 
 ## Purpose and scope
 
@@ -251,7 +252,8 @@ URL state, query state, logs, or generated configuration. The returned CSRF
 token lives only in module memory. A refresh therefore loses browser write
 authority even if the HttpOnly server cookie remains valid and presents a
 restore-session flow before another ruling. Expiry does the same and requires
-the lesson to be re-reviewed after sign-in.
+the lesson to be re-reviewed after sign-in. A refused login returns focus to
+the token field, and the lesson detail viewport is keyboard-scrollable.
 
 The last is not decoration. A loopback API that is not running is the
 most likely failure the operator will meet, and it must produce a named,
@@ -321,7 +323,8 @@ vendored theme lives in `apps/operator-ui/THIRD_PARTY_NOTICES.md`.
 - **Component and unit tests** use the template's Vitest browser-mode
   setup.
 - **End-to-end tests** use `@playwright/test` against a real
-  `atlas api serve` process bound to loopback over a seeded SQLite store
+  built UI preview and a real `atlas api serve` process bound to loopback over
+  a seeded SQLite store
   (ruled: OP-4). Fixture replay is not sufficient: the three data-shape
   facts that most affect these views — a board that is overwhelmingly
   terminal, lexicographic key ordering, and UUID-only lesson references —
@@ -333,8 +336,12 @@ vendored theme lives in `apps/operator-ui/THIRD_PARTY_NOTICES.md`.
   `atlas api serve` on `127.0.0.1`, runs `@playwright/test`, then tears down
   the API process and temporary store.
   The harness enables the governed write routes with an isolated runtime token;
-  browser tests cover promotion, rejection, stale CLI races, duplicate-click
-  suppression, memory-only session loss on refresh, and forbidden persistence.
+  browser tests cover promotion, rejection, hostile HTTP envelopes,
+  unauthenticated/expired/revoked sessions, same/altered replay, ambiguous
+  response retry, stale CLI and two-browser races, atomic receipt failure,
+  memory-only session loss on refresh, and forbidden persistence. The milestone
+  probes outcomes through the UI/API and repository interfaces rather than
+  rewriting the database.
 - **Accessibility and responsive tests** use `@axe-core/playwright` in the
   same seeded live-API harness. The enforced automated standard is axe-core's
   WCAG 2.2 AA rule set, expressed by the `wcag2a`, `wcag2aa`, `wcag21a`,
@@ -343,6 +350,11 @@ vendored theme lives in `apps/operator-ui/THIRD_PARTY_NOTICES.md`.
   visible keyboard surface with focus assertions, checks data table and tab
   labels, and asserts no horizontal scrolling at the named laptop
   `1366x768` and tablet `1024x768` viewports.
+- **Writable-state accessibility** covers login, confirmation, validation,
+  busy, success, security refusal, concurrent conflict, revoked session,
+  atomic receipt failure and API-unreachable states. It asserts keyboard focus,
+  live-region announcement, WCAG contrast and responsive layout across the
+  named viewports and both colour modes.
 - **Contract drift** is caught by regenerating the TypeScript client and
   runtime enum metadata from the running application's OpenAPI document in CI
   and failing on any diff against the committed outputs. The single
@@ -383,6 +395,14 @@ transport.
 How a production build is served is not designed in these phases. The
 development proxy over loopback is the supported path; remote or HTTPS serving
 remains a separate security and deployment decision.
+
+Playwright retains no screenshot, trace or video in CI. This prevents a failing
+writable test from turning a runtime credential or CSRF value into a retained
+artifact; dedicated canaries additionally scan storage, URLs, browser/API
+output, response errors, receipts and built assets. The remaining loopback-HTTP
+risk is the same one stated by `governed-operator-actions.md`: transport
+security and a `Secure` cookie are not claimed, and remote serving is not
+supported.
 
 ## Deferred
 

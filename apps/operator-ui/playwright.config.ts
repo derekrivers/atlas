@@ -20,10 +20,12 @@ export default defineConfig({
   use: {
     ...devices['Desktop Chrome'],
     baseURL: appBaseURL,
-    trace: 'on-first-retry',
+    screenshot: 'off',
+    trace: 'off',
+    video: 'off',
   },
   webServer: {
-    command: `npm run dev -- --port ${appPort} --strictPort`,
+    command: `npm run build:bundle && ./node_modules/.bin/vite preview --host 127.0.0.1 --port ${appPort} --strictPort`,
     env: {
       VITE_ATLAS_API_BASE_URL: apiBaseURL,
     },

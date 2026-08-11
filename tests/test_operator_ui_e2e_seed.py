@@ -74,7 +74,7 @@ def test_operator_ui_e2e_seed_reproduces_live_api_edge_shapes(tmp_path: Path) ->
 
         stored_ticket_ids = {ticket.id for ticket in tickets}
         lessons = LessonRepo(db).list()
-        assert len(lessons) == 7
+        assert len(lessons) == 10
         for lesson in lessons:
             assert lesson.source_ticket_id not in stored_ticket_ids
             assert set(lesson.related_ticket_ids).isdisjoint(stored_ticket_ids)

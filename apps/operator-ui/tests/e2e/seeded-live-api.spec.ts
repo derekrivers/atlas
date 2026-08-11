@@ -86,7 +86,7 @@ test('seeded live API exposes the operator edge-case data shapes', async ({
 
   const lessons = await getJson(request, '/api/v1/lessons')
   assertLessonsResponse(lessons)
-  expect(lessons.lessons).toHaveLength(7)
+  expect(lessons.lessons).toHaveLength(10)
   expect(lessons.lessons[0].source_ticket_id).toMatch(
     /^[0-9a-f-]{36}$/i
   )

@@ -175,6 +175,25 @@ def test_ac1_read_only_app_does_not_mount_resource_commands(
     )
 
 
+def test_ac1_executable_route_inventory_proves_no_other_write_exists(
+    database: Database,
+) -> None:
+    document = _writable_app(database).openapi()
+    write_operations = {
+        (method.upper(), path)
+        for path, operations in document["paths"].items()
+        for method in operations
+        if method.upper() in {"POST", "PUT", "PATCH", "DELETE"}
+    }
+
+    assert write_operations == {
+        ("POST", "/api/v1/session"),
+        ("DELETE", "/api/v1/session"),
+        ("POST", "/api/v1/lessons/{lesson_id}/promote"),
+        ("POST", "/api/v1/lessons/{lesson_id}/reject"),
+    }
+
+
 def test_ac1_openapi_pins_security_header_and_strict_command_schemas(
     database: Database,
 ) -> None:

@@ -738,9 +738,8 @@ Carried forward:
 
 Programme direction: `docs/atlas/phase-13-20-programme-horizon.md`.
 Design authority: `docs/atlas/governed-operator-actions.md`.
-Planning state: WAVE A INPUTS PREPARED; implementation remains blocked until
-the planning-input change merges and the operator accepts the exact
-`atlas plan --stubs-only` proposal through `atlas apply`.
+Status: CLOSED 2026-08-11 — see
+`docs/closure/phase-13-closure-report.md`.
 
 Phase 13 introduces Atlas's first authenticated browser write. The single
 operator can promote or reject a DRAFT lesson through server-owned identity,
@@ -748,20 +747,27 @@ idempotent commands, compare-and-set domain behaviour and append-only action
 receipts. The supported topology remains loopback-only and single-operator.
 No GitHub, Linear, plan-approval or merge write enters the phase.
 
-Planned delivery contracts (keys assigned only by `atlas apply`):
+Delivered contracts:
 
-1. Loopback operator session security and server-owned actor context.
-2. Append-only operator action ledger and idempotent command gateway.
-3. Governed lesson disposition service with atomic stale-state protection.
-4. Authenticated lesson promote and reject API commands.
-5. Lessons UI promote and reject workflow.
-6. Writable-surface security, accessibility and live-API acceptance.
+1. ATLAS-231 Loopback operator session security and server-owned actor context
+   — #300.
+2. ATLAS-232 Append-only operator action ledger and idempotent command gateway
+   — #301.
+3. ATLAS-233 Governed lesson disposition service with atomic stale-state
+   protection — #305.
+4. ATLAS-234 Authenticated lesson promote and reject API commands — #309.
+5. ATLAS-235 Lessons UI promote and reject workflow — #312.
+6. ATLAS-236 Writable-surface security, accessibility and live-API acceptance
+   — closure change.
 
 Milestone test: through a seeded live UI and API, promote one DRAFT lesson and
 reject another, then prove final states, server attribution, durable receipts
 and the ACTIVE-only retrieval effect. Hostile origin, missing CSRF, replay,
 expired session, stale-state race and receipt failure must produce no
-unintended lesson mutation.
+unintended lesson mutation. PASSED by the built-UI/live-FastAPI milestone,
+hostile HTTP, browser/CLI concurrency, atomic failure, secret-canary,
+accessibility, responsive and executable route-inventory suites recorded in
+the Phase 13 closure report.
 
 ---
 
@@ -769,8 +775,7 @@ unintended lesson mutation.
 
 Programme direction: `docs/atlas/phase-13-20-programme-horizon.md`.
 Design authority: `docs/atlas/review-acceptance-console.md`.
-Planning state: WAVE A INPUTS PREPARED; foundations may overlap where the
-dependency graph permits, but Phase 14 cannot close before Phase 13.
+Planning state: IN DELIVERY; the Phase 13 prerequisite is closed.
 
 Phase 14 turns the delivered review queue into an authenticated exact-head
 acceptance workflow. One immutable session pins the repository, PR, close-set,
