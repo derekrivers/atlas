@@ -208,7 +208,7 @@ rebase-onto-fresh-main-before-PR (the #188 conflict class)".
 
 GitHub merge queue or auto-merge branch update is the platform-level answer if
 agent-side rebasing stops scaling, but it is deferred from v1.
-This workflow sets `max_concurrent_agents: 3` (ATLAS-041M); the
+This workflow sets `max_concurrent_agents: 1` (ATLAS-054M); the
 bound is review throughput rather than agent capacity, and raising
 it further or configuring a merge queue remains a separate
 operator decision.

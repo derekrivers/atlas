@@ -6,7 +6,7 @@
 # below the front matter is the canonical, product-invariant Atlas execution
 # contract: it governs how every dispatched agent behaves and must not be
 # forked per product. The ONLY per-product knobs are:
-#   - tracker.project_slug   (the operator's Linear project)
+#   - tracker.provider.project_slug   (the operator's Linear project)
 #   - hooks.after_create     (the repository the workspace clones)
 # A future multi-product render injects exactly those two values per product
 # around this same body. Do not copy or diverge the contract body to adapt it
@@ -17,7 +17,8 @@
 # ─────────────────────────────────────────────────────────────────────────
 tracker:
   kind: linear
-  project_slug: "26cc58f4bc91"
+  provider:
+    project_slug: "26cc58f4bc91"
   required_labels: []
   active_states:
     - Ready for Agent
@@ -68,8 +69,8 @@ hooks:
 # most work, so a small number is honest headroom for genuinely
 # independent tickets. Raise deliberately, not aspirationally.
 agent:
-  max_concurrent_agents: 3
-  max_turns: 20
+  max_concurrent_agents: 1
+  max_turns: 10
 # ─────────────────────────────────────────────────────────────────────────
 # Codex model requirement — read before editing `codex.command` below.
 #   The pinned model="gpt-5.5" needs a current Codex CLI: verified working on

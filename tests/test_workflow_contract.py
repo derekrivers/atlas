@@ -124,12 +124,13 @@ def test_ac1_no_symphony_default_states() -> None:
 
 def test_ac2_max_concurrent_agents_matches_ruling() -> None:
     """AC-2 originally pinned serialized concurrency at 1. ATLAS-041M
-    raised it to 3 by operator ruling: the bound is review
-    throughput, not agent capacity. The pin moves with the ruling;
-    the original value is recorded here, not erased.
+    raised it to 3 by operator ruling; ATLAS-054M restores serialized
+    execution and lowers the per-run turn cap to 10. The pins move with
+    the ruling; the earlier values are recorded here, not erased.
     """
     front, _ = _split()
-    assert front["agent"]["max_concurrent_agents"] == 3
+    assert front["agent"]["max_concurrent_agents"] == 1
+    assert front["agent"]["max_turns"] == 10
 
 
 # --- AC-3: ADR-0007 — no agent-created tickets --------------------------------
@@ -190,7 +191,8 @@ def test_ac7_workspace_clones_atlas_with_operator_slug() -> None:
     assert "openai/symphony" not in after_create
     # project_slug is the operator's per-product knob; the placeholder has been
     # filled with the operator's real Linear project slug.
-    assert front["tracker"]["project_slug"] == "26cc58f4bc91"
+    assert "project_slug" not in front["tracker"]
+    assert front["tracker"]["provider"]["project_slug"] == "26cc58f4bc91"
 
 
 # --- ATLAS-168: mainline freshness before PRs, pushes, and handoff ------------
