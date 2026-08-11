@@ -7,6 +7,7 @@ replaced by the named behavioural assertions below.
 from __future__ import annotations
 
 import subprocess
+import threading
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -51,6 +52,7 @@ from atlas.orchestration import (
     AcceptanceSessionLiveReadinessService,
     AcceptanceSessionVerificationService,
     AcceptanceVerificationContext,
+    AcceptanceVerificationResult,
     AcceptanceVerificationStatus,
     OperatorActionFailureCode,
     OperatorActionGateway,
@@ -696,6 +698,56 @@ def test_ac4_same_key_replay_never_repeats_verifier_or_live_reads(
     assert replay.status is AcceptanceVerificationStatus.REPLAYED
     assert replay.receipt is not None and first.receipt is not None
     assert replay.receipt.id == first.receipt.id
+    assert len(verifier.calls) == 1
+    assert assessments.calls == 3
+
+
+def test_ac4_concurrent_different_keys_verify_once_and_return_typed_conflict(
+    db: Database,
+) -> None:
+    session, stored_ticket = seed_session(db)
+    assessments = AssessmentFake(assessment(), assessment(), assessment())
+    verifier = VerificationFake(verification(stored_ticket))
+    service = action_service(db, stored_ticket, assessments, verifier)
+    results: dict[str, AcceptanceVerificationResult] = {}
+    result_lock = threading.Lock()
+
+    def run(key: str) -> None:
+        result = service.execute(session.id, action_context(key))
+        with result_lock:
+            results[key] = result
+
+    threads = [
+        threading.Thread(target=run, args=(f"concurrent-{index}",))
+        for index in range(2)
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=10)
+
+    assert all(not thread.is_alive() for thread in threads)
+    assert {result.status for result in results.values()} == {
+        AcceptanceVerificationStatus.MERGE_READY,
+        AcceptanceVerificationStatus.CONFLICT,
+    }
+    conflict_key, conflict = next(
+        (key, result)
+        for key, result in results.items()
+        if result.status is AcceptanceVerificationStatus.CONFLICT
+    )
+    assert not conflict.merge_ready
+    assert conflict.receipt is not None
+    assert conflict.receipt.outcome is OperatorActionOutcome.CONFLICT
+    assert conflict.receipt.result_code is OperatorActionResultCode.ACTION_CONFLICT
+    assert len(verifier.calls) == 1
+    assert assessments.calls == 3
+
+    replay = service.execute(session.id, action_context(conflict_key))
+
+    assert replay.status is AcceptanceVerificationStatus.CONFLICT
+    assert not replay.merge_ready
+    assert replay.receipt == conflict.receipt
     assert len(verifier.calls) == 1
     assert assessments.calls == 3
 

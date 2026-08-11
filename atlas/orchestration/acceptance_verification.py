@@ -900,10 +900,15 @@ def _action_status(
     receipt: OperatorActionReceipt | None,
     session: AcceptanceSession | None,
 ) -> AcceptanceVerificationStatus:
-    if gateway_status is OperatorActionGatewayStatus.REPLAYED:
-        return AcceptanceVerificationStatus.REPLAYED
     if gateway_status is OperatorActionGatewayStatus.CONFLICT:
         return AcceptanceVerificationStatus.CONFLICT
+    if receipt is not None and (
+        receipt.outcome is OperatorActionOutcome.CONFLICT
+        or receipt.result_code is OperatorActionResultCode.ACTION_CONFLICT
+    ):
+        return AcceptanceVerificationStatus.CONFLICT
+    if gateway_status is OperatorActionGatewayStatus.REPLAYED:
+        return AcceptanceVerificationStatus.REPLAYED
     if gateway_status is OperatorActionGatewayStatus.IN_PROGRESS:
         return AcceptanceVerificationStatus.IN_PROGRESS
     if gateway_status is OperatorActionGatewayStatus.FAILED:
