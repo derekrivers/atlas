@@ -309,6 +309,28 @@ unknown and indeterminate cases remain distinct typed refusals. This foundation
 adds no evidence, confirmation, verification, HTTP, GitHub/Linear write, Git
 operation or merge path.
 
+The Phase 14 verification consumer preserves the same ordering. It refuses
+before the verifier unless evidence and confirmation summaries are complete and
+a fresh shared assessment plus live criteria reproduce the pinned session. It
+resolves changed files, performs another assessment to close the pre-verifier
+race, and invokes the canonical `run_verify` service in process over the pinned
+close-set. Only explicit top-level PASSED with a valid exact session
+`head_commit` is admissible; CLI exit status, CI state and stored old-head checks
+have no authority. A third assessment and live criteria read immediately after
+PASSED must reproduce repository, PR, head/base refs and SHAs, eligibility,
+integration and criteria identity.
+
+Historical `merge_ready` is committed only with the verified head, verdict UUID,
+final assessment identity, criteria fingerprint and operator-action receipt in
+one transaction. The later `AcceptanceSessionLiveReadinessService` is the sole
+GET-time authority: it validates that history, then performs one fresh shared
+assessment and current criteria read without writing. Movement, indeterminate
+state, timeout, malformed response or any other external-read failure returns
+false with all typed reasons and never falls back to cached true. Neither the
+action nor the read service runs Git, mutates GitHub or Linear, transitions a
+ticket, upgrades schema or invokes PM sync; Atlas continues to advise a manual
+GitHub merge only.
+
 ### Operator-owned PR rebase lane
 
 `atlas pr rebase` is the operator-owned lane for a mechanically stale PR after

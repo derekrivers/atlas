@@ -14,7 +14,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from atlas.core.enums import ActorType
+from atlas.core.enums import ActorType, EvidenceStatus
 
 
 class AcceptanceSessionLifecycle(StrEnum):
@@ -92,6 +92,22 @@ class AcceptanceSessionBlockingReason(StrEnum):
     EVIDENCE_NOT_READY = "evidence_not_ready"
     CONFIRMATIONS_NOT_READY = "confirmations_not_ready"
     VERIFICATION_NOT_PASSED = "verification_not_passed"
+    SESSION_UNKNOWN = "session_unknown"
+    SESSION_NOT_VERIFIABLE = "session_not_verifiable"
+    VERIFICATION_ALREADY_COMPLETED = "verification_already_completed"
+    VERIFICATION_PENDING = "verification_pending"
+    VERIFICATION_FAILED = "verification_failed"
+    VERIFICATION_WARNING = "verification_warning"
+    VERIFICATION_NOT_APPLICABLE = "verification_not_applicable"
+    VERIFICATION_MALFORMED = "verification_malformed"
+    VERIFICATION_CLOSE_SET_MISMATCH = "verification_close_set_mismatch"
+    VERIFIED_HEAD_INVALID = "verified_head_invalid"
+    VERIFIED_HEAD_MISMATCH = "verified_head_mismatch"
+    STORED_HISTORY_INVALID = "stored_history_invalid"
+    READINESS_PERSISTENCE_FAILED = "readiness_persistence_failed"
+    EXTERNAL_READ_TIMEOUT = "external_read_timeout"
+    EXTERNAL_RESPONSE_MALFORMED = "external_response_malformed"
+    EXTERNAL_READ_FAILED = "external_read_failed"
 
 
 class AcceptanceCriterionSnapshot(BaseModel):
@@ -198,6 +214,52 @@ class AcceptanceEvidenceSummary(BaseModel):
         return self
 
 
+class AcceptanceVerificationSummary(BaseModel):
+    """Bounded identity and verdict from one canonical in-process evaluation."""
+
+    model_config = ConfigDict(frozen=True, hide_input_in_errors=True)
+
+    verdict_id: UUID
+    status: EvidenceStatus
+    head_commit: str | None = None
+    ticket_count: int = Field(ge=0, le=1_000_000)
+    blocking_check_count: int = Field(ge=0, le=1_000_000)
+
+    @field_validator("head_commit")
+    @classmethod
+    def _optional_head_is_exact(cls, value: str | None) -> str | None:
+        if value is not None and not _is_sha(value):
+            raise ValueError("verified head must be a 40-character hexadecimal SHA")
+        return value.lower() if value is not None else None
+
+
+class AcceptanceReadinessAssessment(BaseModel):
+    """The full final live identity that admitted manual-merge readiness."""
+
+    model_config = ConfigDict(frozen=True, hide_input_in_errors=True)
+
+    verdict_id: UUID
+    repository_owner: str = Field(min_length=1, max_length=128)
+    repository_name: str = Field(min_length=1, max_length=128)
+    pr_number: int = Field(gt=0)
+    head_ref: str = Field(min_length=1, max_length=256)
+    head_sha: str
+    head_repository: str = Field(min_length=1, max_length=257)
+    base_ref: str = Field(min_length=1, max_length=256)
+    base_sha: str
+    base_repository: str = Field(min_length=1, max_length=257)
+    eligibility: Literal["eligible"]
+    integration_status: Literal["current"]
+    criteria_fingerprint: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+
+    @field_validator("head_sha", "base_sha")
+    @classmethod
+    def _readiness_sha_is_exact(cls, value: str) -> str:
+        if not _is_sha(value):
+            raise ValueError("readiness SHAs must be 40-character hexadecimal values")
+        return value.lower()
+
+
 class AcceptanceStepSummary(BaseModel):
     """Bounded historical status for one acceptance step."""
 
@@ -208,6 +270,8 @@ class AcceptanceStepSummary(BaseModel):
     receipt_ids: tuple[UUID, ...] = ()
     occurred_at: datetime | None = None
     evidence: AcceptanceEvidenceSummary | None = None
+    verification: AcceptanceVerificationSummary | None = None
+    readiness: AcceptanceReadinessAssessment | None = None
 
 
 class AcceptanceSession(BaseModel):
