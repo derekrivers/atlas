@@ -23,6 +23,7 @@ export type AtlasStoreProbe = {
 
 export type AtlasApiServer = {
   apiBaseURL: string
+  launchMode: () => 'production-cli' | 'test-factory'
   output: () => string
   probeStore: () => AtlasStoreProbe
   restart: (options?: StartAtlasApiServerOptions) => Promise<void>
@@ -32,7 +33,7 @@ export type AtlasApiServer = {
 }
 
 export type StartAtlasApiServerOptions = {
-  clock?: string
+  clock?: string | null
   receiptFailure?: boolean
   receiptFailureCanary?: string
   seedPath?: string
@@ -142,6 +143,7 @@ export async function startAtlasApiServer({
 
   let apiOutput = ''
   let apiProcess: ChildProcess
+  let launchMode: 'production-cli' | 'test-factory' = 'production-cli'
   let currentOptions: StartAtlasApiServerOptions = {
     clock,
     receiptFailure,
@@ -150,11 +152,11 @@ export async function startAtlasApiServer({
   }
 
   function spawnApi(): ChildProcess {
-    const usesTestFactory = Boolean(
-      currentOptions.clock ||
-        currentOptions.receiptFailure
-    )
-    const args = usesTestFactory
+    launchMode =
+      currentOptions.clock || currentOptions.receiptFailure
+        ? 'test-factory'
+        : 'production-cli'
+    const args = launchMode === 'test-factory'
       ? [
           'run',
           'uvicorn',
@@ -210,6 +212,7 @@ export async function startAtlasApiServer({
 
   return {
     apiBaseURL,
+    launchMode: () => launchMode,
     output: () => apiOutput,
     probeStore: () => {
       const result = spawnSync(
@@ -240,7 +243,7 @@ export async function startAtlasApiServer({
     restart: async (options = {}) => {
       await stopProcess(apiProcess)
       currentOptions = { ...currentOptions, ...options }
-      if (options.clock) {
+      if (typeof options.clock === 'string') {
         writeFileSync(clockPath, options.clock, 'utf8')
       }
       apiProcess = spawnApi()

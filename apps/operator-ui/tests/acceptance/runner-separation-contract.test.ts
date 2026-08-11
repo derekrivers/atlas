@@ -57,6 +57,21 @@ describe('Operator UI runner separation contract', () => {
     expect(playwrightConfig).toContain("video: 'off'")
   })
 
+  it('uses the production writable CLI for the ordinary milestone and scopes test-only factories', () => {
+    const milestone = readProjectFile(
+      'tests/e2e/writable-surface-milestone.spec.ts'
+    )
+
+    expect(milestone).toContain('apiServer = await startAtlasApiServer()')
+    expect(milestone).toContain(
+      "expect(server().launchMode()).toBe('production-cli')"
+    )
+    expect(milestone).toContain(
+      "expect(server().launchMode()).toBe('test-factory')"
+    )
+    expect(milestone).toContain('await server().restart({ clock: null })')
+  })
+
   it(
     'fails when an end-to-end spec is invoked through Vitest',
     () => {

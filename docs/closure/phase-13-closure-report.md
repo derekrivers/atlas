@@ -66,7 +66,8 @@ HTTP or CLI command path.
 | unauthenticated request | live mutation dependency | `401`; DRAFT; no action success |
 | expired session | deterministic live clock | `401`; DRAFT; no action success |
 | revoked session | live session deletion then mutation | `401`; DRAFT; no action success |
-| actor field/header injection | strict request schema/server actor | `422` or ignored header authority; no injected attribution |
+| actor body-field injection | strict request schema | `422`; DRAFT; no action success |
+| actor header injection | server-owned session actor | schema-valid success attributed to `human` / `operator`; never injected attribution |
 | concurrent duplicate with one key | live idempotency gateway | one transition and one success receipt |
 | same-key replay | immutable stored snapshot | equivalent original success; no second transition or receipt |
 | altered replay | fingerprint boundary | typed `409`; no second transition or receipt |

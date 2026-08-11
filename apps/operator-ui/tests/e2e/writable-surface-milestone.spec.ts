@@ -19,6 +19,7 @@ const apiBaseURL =
 const actorInjectionCanary = 'agent/canary-actor-injection-atl-424'
 const receiptFailureCanary = 'canary-receipt-failure-atl-424'
 const lessonIds = {
+  actorHeaders: '00000000-0000-4000-8000-00000000a410',
   cliRace: '00000000-0000-4000-8000-00000000a403',
   hostile: '00000000-0000-4000-8000-00000000a405',
   promote: '00000000-0000-4000-8000-00000000a401',
@@ -47,9 +48,7 @@ const secretCanaries = new Set<string>([
 ])
 
 test.beforeAll(async () => {
-  apiServer = await startAtlasApiServer({
-    clock: '2099-08-11T12:00:00+00:00',
-  })
+  apiServer = await startAtlasApiServer()
 })
 
 test.afterAll(async () => {
@@ -150,6 +149,7 @@ function expectSecretFree(value: string): void {
 test('operator-run milestone promotes and rejects through the built UI and proves repository outcomes', async ({
   page,
 }) => {
+  expect(server().launchMode()).toBe('production-cli')
   watchBrowserOutput(page)
   await page.goto('/lessons')
   await pageSignIn(page)
@@ -232,29 +232,32 @@ test('hostile HTTP envelopes, expired and revoked sessions all preserve zero act
   const baseHeaders = mutationHeaders(csrfToken, 'hostile-envelope')
   const cases: Array<{
     expected: number
-    response: Promise<APIResponse>
+    name: string
+    request: () => Promise<APIResponse>
   }> = [
     {
       expected: 403,
-      response: request.post(commandUrl, {
+      name: 'hostile Origin',
+      request: () => request.post(commandUrl, {
         data: { confidence: 0.5 },
         headers: { ...baseHeaders, Origin: 'http://evil.test' },
       }),
     },
     {
       expected: 403,
-      response: request.post(commandUrl, {
+      name: 'hostile Host with valid Origin and mutation envelope',
+      request: () => request.post(commandUrl, {
         data: { confidence: 0.5 },
         headers: {
           ...baseHeaders,
           Host: 'evil.test',
-          Origin: 'http://evil.test',
         },
       }),
     },
     {
       expected: 403,
-      response: request.post(commandUrl, {
+      name: 'missing CSRF',
+      request: () => request.post(commandUrl, {
         data: { confidence: 0.5 },
         headers: {
           'Content-Type': 'application/json',
@@ -265,14 +268,16 @@ test('hostile HTTP envelopes, expired and revoked sessions all preserve zero act
     },
     {
       expected: 403,
-      response: request.post(commandUrl, {
+      name: 'wrong CSRF',
+      request: () => request.post(commandUrl, {
         data: { confidence: 0.5 },
         headers: { ...baseHeaders, 'X-Atlas-CSRF': 'wrong-csrf-canary' },
       }),
     },
     {
       expected: 415,
-      response: request.post(commandUrl, {
+      name: 'simple form content type',
+      request: () => request.post(commandUrl, {
         form: { confidence: '0.5' },
         headers: {
           'Idempotency-Key': 'simple-form',
@@ -283,7 +288,8 @@ test('hostile HTTP envelopes, expired and revoked sessions all preserve zero act
     },
     {
       expected: 415,
-      response: request.post(commandUrl, {
+      name: 'non-strict JSON content type',
+      request: () => request.post(commandUrl, {
         data: { confidence: 0.5 },
         headers: {
           ...baseHeaders,
@@ -293,51 +299,91 @@ test('hostile HTTP envelopes, expired and revoked sessions all preserve zero act
     },
     {
       expected: 422,
-      response: request.post(commandUrl, {
+      name: 'actor body-field injection',
+      request: () => request.post(commandUrl, {
         data: { actor: actorInjectionCanary, confidence: 0.5 },
-        headers: {
-          ...baseHeaders,
-          'X-Atlas-Actor': actorInjectionCanary,
-          'X-Atlas-Created-By-Type': 'agent',
-        },
+        headers: baseHeaders,
       }),
     },
   ]
 
   for (const item of cases) {
-    const response = await item.response
-    expect(response.status()).toBe(item.expected)
+    const response = await item.request()
+    expect(response.status(), item.name).toBe(item.expected)
     responseErrors.push(await response.text())
   }
 
-  server().setClock('2099-08-11T12:31:00+00:00')
-  const expired = await request.post(commandUrl, {
-    data: { confidence: 0.5 },
-    headers: mutationHeaders(csrfToken, 'expired-session'),
-  })
-  expect(expired.status()).toBe(401)
-  responseErrors.push(await expired.text())
+  const rejectedProbe = server().probeStore()
+  expect(rejectedProbe.lessons[lessonIds.hostile].status).toBe('draft')
+  expect(rejectedProbe.receipts).toHaveLength(baselineReceiptCount)
+  expect(targetSuccessReceipts(rejectedProbe, lessonIds.hostile)).toHaveLength(0)
 
-  const revokedCsrf = await apiSignIn(request)
-  const revoked = await request.delete(`${apiBaseURL}/api/v1/session`, {
-    headers: {
-      'Content-Type': 'application/json',
-      Origin: apiBaseURL,
-      'X-Atlas-CSRF': revokedCsrf,
-    },
+  const headerInjection = await request.post(
+    `${apiBaseURL}/api/v1/lessons/${lessonIds.actorHeaders}/promote`,
+    {
+      data: { confidence: 0.55 },
+      headers: {
+        ...mutationHeaders(csrfToken, 'header-actor-injection'),
+        'X-Atlas-Actor': actorInjectionCanary,
+        'X-Atlas-Created-By-Type': 'agent',
+      },
+    }
+  )
+  expect(headerInjection.status()).toBe(200)
+  const headerInjectionBody = await headerInjection.text()
+  responseErrors.push(headerInjectionBody)
+  expectSecretFree(headerInjectionBody)
+  const injectedProbe = server().probeStore()
+  expect(injectedProbe.lessons[lessonIds.actorHeaders]).toMatchObject({
+    confidence: 0.55,
+    status: 'active',
   })
-  expect(revoked.status()).toBe(200)
-  const afterRevoke = await request.post(commandUrl, {
-    data: { confidence: 0.5 },
-    headers: mutationHeaders(revokedCsrf, 'revoked-session'),
+  const injectedReceipts = targetSuccessReceipts(
+    injectedProbe,
+    lessonIds.actorHeaders
+  )
+  expect(injectedReceipts).toHaveLength(1)
+  expect(injectedReceipts[0]?.actor).toEqual({ id: 'operator', type: 'human' })
+
+  await server().restart({
+    clock: '2099-08-11T12:00:00+00:00',
   })
-  expect(afterRevoke.status()).toBe(401)
-  responseErrors.push(await afterRevoke.text())
+  expect(server().launchMode()).toBe('test-factory')
+  try {
+    const expiringCsrf = await apiSignIn(request)
+    server().setClock('2099-08-11T12:31:00+00:00')
+    const expired = await request.post(commandUrl, {
+      data: { confidence: 0.5 },
+      headers: mutationHeaders(expiringCsrf, 'expired-session'),
+    })
+    expect(expired.status()).toBe(401)
+    responseErrors.push(await expired.text())
+
+    const revokedCsrf = await apiSignIn(request)
+    const revoked = await request.delete(`${apiBaseURL}/api/v1/session`, {
+      headers: {
+        'Content-Type': 'application/json',
+        Origin: apiBaseURL,
+        'X-Atlas-CSRF': revokedCsrf,
+      },
+    })
+    expect(revoked.status()).toBe(200)
+    const afterRevoke = await request.post(commandUrl, {
+      data: { confidence: 0.5 },
+      headers: mutationHeaders(revokedCsrf, 'revoked-session'),
+    })
+    expect(afterRevoke.status()).toBe(401)
+    responseErrors.push(await afterRevoke.text())
+  } finally {
+    await server().restart({ clock: null })
+  }
+  expect(server().launchMode()).toBe('production-cli')
 
   const after = server().probeStore()
   expect(after.lessons[lessonIds.hostile].status).toBe('draft')
-  expect(after.receipts).toHaveLength(baselineReceiptCount)
+  expect(after.receipts).toHaveLength(baselineReceiptCount + 1)
   expect(targetSuccessReceipts(after, lessonIds.hostile)).toHaveLength(0)
+  expect(targetSuccessReceipts(after, lessonIds.actorHeaders)).toHaveLength(1)
   for (const error of responseErrors) {
     expectSecretFree(error)
   }
@@ -542,6 +588,7 @@ test('receipt failure rolls back live state and restart exposes no unaudited suc
     receiptFailure: true,
     receiptFailureCanary,
   })
+  expect(server().launchMode()).toBe('test-factory')
   watchBrowserOutput(page)
   let commandKey = ''
   page.on('request', (requestEvent) => {
@@ -577,6 +624,7 @@ test('receipt failure rolls back live state and restart exposes no unaudited suc
   expect(server().output()).not.toContain(receiptFailureCanary)
 
   await server().restart({ receiptFailure: false })
+  expect(server().launchMode()).toBe('production-cli')
   const afterRestart = server().probeStore()
   expect(afterRestart.lessons[lessonIds.receiptFailure].status).toBe('draft')
   expect(targetSuccessReceipts(afterRestart, lessonIds.receiptFailure)).toHaveLength(

@@ -287,6 +287,20 @@
       "related_ticket_ids": [],
       "related_adr_ids": [],
       "tags": ["operator-ui", "idempotency"]
+    },
+    {
+      "id": "00000000-0000-4000-8000-00000000a410",
+      "status": "draft",
+      "category": "testing",
+      "title": "Keep browser actor attribution server owned",
+      "problem": "A hostile client can submit actor-shaped headers alongside a valid command.",
+      "solution": "Resolve the actor exclusively from the authenticated operator session.",
+      "outcome": "The receipt records human/operator and never trusts injected attribution.",
+      "confidence": null,
+      "source_ticket_id": "00000000-0000-4000-8000-00000000f110",
+      "related_ticket_ids": [],
+      "related_adr_ids": [],
+      "tags": ["operator-ui", "security"]
     }
   ]
 }
