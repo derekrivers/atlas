@@ -161,6 +161,34 @@ afterEach(() => {
 })
 
 describe('lesson disposition browser workflow', () => {
+  it('returns focus to the bootstrap token after a rejected login', async () => {
+    window.fetch = vi.fn(async (input, init) => {
+      const path = requestPath(input)
+      if (path === '/api/v1/session' && init?.method === 'POST') {
+        return jsonResponse({ detail: 'operator session required' }, 401)
+      }
+      if (path === '/api/v1/session') {
+        return jsonResponse({ authenticated: false, expires_at: null })
+      }
+      return jsonResponse({ lessons: [draftLesson] })
+    })
+
+    await renderLessons(createAtlasQueryClient())
+    await click('Promote')
+    const token = document.querySelector<HTMLInputElement>(
+      '#atlas-bootstrap-token'
+    )
+    if (!token) throw new Error('Missing bootstrap token input')
+    setInput(token, 'rejected-bootstrap-token')
+    await click('Sign in')
+
+    await waitForAssertion(() => {
+      expect(document.body.textContent).toContain('bootstrap token was refused')
+      expect(document.activeElement).toBe(token)
+      expect(token.getAttribute('aria-invalid')).toBe('true')
+    })
+  })
+
   it('logs in without retaining the bootstrap token in query or web storage', async () => {
     const queryClient = createAtlasQueryClient()
     window.fetch = vi.fn(async (input, init) => {

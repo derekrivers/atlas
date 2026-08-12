@@ -83,7 +83,7 @@
       "external_github_issue_id": "GH-seeded-atlas-1",
       "source_anchor": "docs/atlas/operator-ui.md#ticket-detail-ticketskey"
     },
-    { "id": "00000000-0000-4000-8000-000000000002", "key": "ATLAS-2", "status": "in_progress", "priority": 2, "risk_level": "high", "estimated_effort": 3, "acceptance_criteria": [] },
+    { "id": "00000000-0000-4000-8000-000000000002", "key": "ATLAS-2", "status": "in_progress", "priority": 2, "risk_level": "high", "estimated_effort": 3, "acceptance_criteria": [], "tags": ["operator-ui"] },
     { "id": "00000000-0000-4000-8000-000000000003", "key": "ATLAS-3", "status": "done", "priority": 3, "risk_level": "low", "estimated_effort": 1 },
     { "id": "00000000-0000-4000-8000-000000000004", "key": "ATLAS-4", "status": "rejected", "priority": 4, "risk_level": "medium", "estimated_effort": 1, "epic_key": "ATLAS-E2" },
     { "id": "00000000-0000-4000-8000-000000000005", "key": "ATLAS-5", "status": "done", "priority": 5, "risk_level": "low", "estimated_effort": 2 },
@@ -245,6 +245,62 @@
       "related_ticket_ids": [],
       "related_adr_ids": [],
       "tags": ["operator-ui", "governance"]
+    },
+    {
+      "id": "00000000-0000-4000-8000-00000000a407",
+      "status": "draft",
+      "category": "testing",
+      "title": "Resolve two browser tabs atomically",
+      "problem": "Two reviewed tabs can submit opposing rulings together.",
+      "solution": "Let the store compare-and-set boundary choose one terminal ruling.",
+      "outcome": "Exactly one tab records one success receipt and the loser renders a typed conflict.",
+      "confidence": null,
+      "source_ticket_id": "00000000-0000-4000-8000-00000000f107",
+      "related_ticket_ids": [],
+      "related_adr_ids": [],
+      "tags": ["operator-ui", "concurrency"]
+    },
+    {
+      "id": "00000000-0000-4000-8000-00000000a408",
+      "status": "draft",
+      "category": "testing",
+      "title": "Roll back a missing audit receipt",
+      "problem": "A domain transition without a durable receipt would be unaudited.",
+      "solution": "Inject receipt persistence failure at the live transaction boundary.",
+      "outcome": "The failed request leaves the lesson DRAFT and can be retried atomically after restart.",
+      "confidence": null,
+      "source_ticket_id": "00000000-0000-4000-8000-00000000f108",
+      "related_ticket_ids": [],
+      "related_adr_ids": [],
+      "tags": ["operator-ui", "failure"]
+    },
+    {
+      "id": "00000000-0000-4000-8000-00000000a409",
+      "status": "draft",
+      "category": "testing",
+      "title": "Replay an ambiguous browser result safely",
+      "problem": "A lost response cannot reveal whether the first request committed.",
+      "solution": "Retain the command key and replay the exact command after a transport failure.",
+      "outcome": "The retry renders the original success and never creates a second receipt.",
+      "confidence": null,
+      "source_ticket_id": "00000000-0000-4000-8000-00000000f109",
+      "related_ticket_ids": [],
+      "related_adr_ids": [],
+      "tags": ["operator-ui", "idempotency"]
+    },
+    {
+      "id": "00000000-0000-4000-8000-00000000a410",
+      "status": "draft",
+      "category": "testing",
+      "title": "Keep browser actor attribution server owned",
+      "problem": "A hostile client can submit actor-shaped headers alongside a valid command.",
+      "solution": "Resolve the actor exclusively from the authenticated operator session.",
+      "outcome": "The receipt records human/operator and never trusts injected attribution.",
+      "confidence": null,
+      "source_ticket_id": "00000000-0000-4000-8000-00000000f110",
+      "related_ticket_ids": [],
+      "related_adr_ids": [],
+      "tags": ["operator-ui", "security"]
     }
   ]
 }

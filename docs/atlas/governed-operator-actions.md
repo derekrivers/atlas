@@ -1,8 +1,10 @@
 # Governed Operator Actions Design (Phase 13)
 
-Status: Active Phase 13 design authority. Defines the first writable Operator
-API and UI slice, the single-operator authentication boundary, server-owned
-actor context, idempotent action receipts, and lesson promotion/rejection.
+Status: Delivered Phase 13 design authority. Defines the first writable
+Operator API and UI slice, the single-operator authentication boundary,
+server-owned actor context, idempotent action receipts, and lesson
+promotion/rejection. Closure evidence is recorded in
+`docs/closure/phase-13-closure-report.md`.
 
 ## Purpose and milestone
 
@@ -42,8 +44,10 @@ alternate-human contexts fail before idempotency reservation or mutation.
 ## Threat model and supported topology
 
 The supported deployment remains one operator on one machine with the API
-bound to loopback. Remote binding, multi-user identity and externally hosted
-operation remain unsupported.
+bound to `127.0.0.1` and the Vite UI bound separately to `127.0.0.1`. The
+browser sends same-origin `/api` requests through the Vite development proxy
+to the API. Remote binding, direct cross-origin browser use, multi-user
+identity and externally hosted operation remain unsupported.
 
 The protected assets are:
 
@@ -303,6 +307,11 @@ idempotency key.
 Keyboard operation, focus return, error announcement, confidence labelling and
 destructive-action confirmation are release gates.
 
+The release suite also treats the writable drawer as a scrollable keyboard
+region, returns focus to the bootstrap-token field after refused login, and
+checks every confirmation, busy, success and typed failure state in light and
+dark modes at `1366x768` and `1024x768`.
+
 ## Explicit non-goals
 
 - Editing or merging lessons.
@@ -316,10 +325,29 @@ destructive-action confirmation are release gates.
 
 ## Milestone test
 
-Against a seeded live API and UI, log in as the configured operator, promote
-one DRAFT lesson with confidence and reject another. Prove the final states,
-server-owned actor, append-only receipts and context-retrieval effect. Seed a
-hostile Origin, missing/wrong CSRF token, duplicate submission, altered replay,
-expired/revoked session, stale CLI race and audit-write failure; each must fail
-closed with no unintended lesson mutation. The full Python, OpenAPI/client
-drift, UI, accessibility and browser suites must pass.
+The seeded milestone builds the UI, starts a live writable FastAPI process over
+an isolated store, and uses browser, HTTP, CLI and repository observables. It
+promotes and rejects through the UI and proves ACTIVE/ARCHIVED storage,
+`human` / `operator` receipts and ACTIVE-only context retrieval. It also
+exercises hostile Origin and Host, missing/wrong CSRF, strict-content-type
+bypass, unauthenticated/expired/revoked sessions, actor injection, duplicate
+submission, same/altered replay, ambiguous response retry, browser/CLI and
+two-browser races, and receipt failure across restart.
+
+Every refused or failed path proves zero unintended lesson or receipt success.
+The route-inventory test fixes the complete writable HTTP surface at session
+creation, session revocation, lesson promotion and lesson rejection; the final
+two are the only domain writes. CI retains no Playwright screenshot, trace or
+video, and the canary scan covers browser storage, URLs, generated assets,
+process output, response errors and receipts. The full Python,
+OpenAPI/client-drift, UI, accessibility and browser gates remain binding.
+
+## Residual risks
+
+Supported operation still uses loopback HTTP, so transport confidentiality and
+a `Secure` session cookie cannot be claimed. A process or browser extension
+already running as the operator, a compromised operator account, and malware on
+the host remain outside this boundary. The milestone is a deterministic
+release acceptance suite, not a penetration-test claim, and it does not add
+remote deployment, HTTPS termination, multi-user identity, bulk actions,
+GitHub writes, Linear writes, acceptance-console actions or merge authority.

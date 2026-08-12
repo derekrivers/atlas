@@ -46,12 +46,30 @@ describe('Operator UI runner separation contract', () => {
     expect(readProjectFile('vitest.browser.config.ts')).toContain(
       "from '@vitest/browser-playwright'"
     )
-    expect(readProjectFile('playwright.config.ts')).toContain(
-      "testDir: './tests/e2e'"
+    const playwrightConfig = readProjectFile('playwright.config.ts')
+    expect(playwrightConfig).toContain("testDir: './tests/e2e'")
+    expect(playwrightConfig).toContain("from '@playwright/test'")
+    expect(playwrightConfig).toContain(
+      'npm run build:bundle && ./node_modules/.bin/vite preview'
     )
-    expect(readProjectFile('playwright.config.ts')).toContain(
-      "from '@playwright/test'"
+    expect(playwrightConfig).toContain("screenshot: 'off'")
+    expect(playwrightConfig).toContain("trace: 'off'")
+    expect(playwrightConfig).toContain("video: 'off'")
+  })
+
+  it('uses the production writable CLI for the ordinary milestone and scopes test-only factories', () => {
+    const milestone = readProjectFile(
+      'tests/e2e/writable-surface-milestone.spec.ts'
     )
+
+    expect(milestone).toContain('apiServer = await startAtlasApiServer()')
+    expect(milestone).toContain(
+      "expect(server().launchMode()).toBe('production-cli')"
+    )
+    expect(milestone).toContain(
+      "expect(server().launchMode()).toBe('test-factory')"
+    )
+    expect(milestone).toContain('await server().restart({ clock: null })')
   })
 
   it(

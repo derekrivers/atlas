@@ -1,10 +1,10 @@
 # Operator API Design (Phase 10)
 
-Status: Active design document for Phase 10, amended by Phase 11 OP-2 for
-exactly two additive read routes and by Phase 13 for loopback operator session
-authentication and governed lesson disposition commands. Describes the HTTP
-projection surface delivered by ATLAS-187..191, the Phase 11 additions that
-follow it, and the Phase 13 boundary for authenticated local writes.
+Status: Delivered design document for Phase 10, amended by Phase 11 OP-2 for
+exactly two additive read routes and by the closed Phase 13 loopback operator
+session and governed lesson disposition commands. Describes the HTTP projection
+surface delivered by ATLAS-187..191, the Phase 11 additions that follow it, and
+the Phase 13 boundary for authenticated local writes.
 
 ## Purpose and scope
 
@@ -101,6 +101,12 @@ additions as phase authority, is:
 | POST   | `/api/v1/session`       | strict JSON `SessionLoginRequest` | `SessionLoginResponse` | Phase 13 |
 | DELETE | `/api/v1/session`       | live cookie + `X-Atlas-CSRF` | `SessionStateResponse` | Phase 13 |
 | GET    | `/api/v1/status`        | none             | `SystemStatusResponse`    | Phase 10 |
+
+An executable FastAPI route-inventory test asserts that the non-read methods
+are exactly `POST /api/v1/session`, `DELETE /api/v1/session`, and the two
+lesson commands above. Session creation and revocation mutate session state;
+promote and reject are the only domain writes. No other mounted route accepts
+a write method.
 
 Phase 11, by authority of `docs/atlas/operator-ui.md` OP-2, permits exactly
 two additive read routes beyond the Phase 10 surface:
@@ -237,6 +243,14 @@ A keyed v1 resource that does not exist returns `404 Not Found` using FastAPI's
 native error body: `{"detail": "<Resource> <key> not found"}`. Collection routes
 continue to return successful empty collections. Atlas does not define a
 bespoke error envelope in this phase.
+
+Phase 13 release acceptance drives these routes through a live FastAPI process,
+including hostile Host/Origin, CSRF, content type, session, actor-injection,
+replay, concurrent browser/CLI and receipt-commit failures. Refused envelopes
+reach no lesson action. Receipt or store commit failure rolls back the lesson,
+reservation and receipt together; restart and repository reads cannot infer an
+unaudited success. The complete evidence is recorded in
+`docs/closure/phase-13-closure-report.md`.
 
 ## Deferred capabilities
 

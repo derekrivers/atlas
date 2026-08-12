@@ -1,18 +1,41 @@
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const appRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
 const repoRoot = join(appRoot, '..', '..')
+const atlasServeArgs = ['run', 'atlas', 'api', 'serve']
 
-type AtlasApiServer = {
+export type AtlasStoreProbe = {
+  context_lesson_ids: string[]
+  lessons: Record<string, { confidence: number | null; status: string; updated_at: string }>
+  receipts: Array<{
+    action: string
+    actor: { id: string; type: string }
+    idempotency_key_identity: string
+    outcome: string
+    result_code: string
+    target: { id: string; type: string }
+  }>
+}
+
+export type AtlasApiServer = {
   apiBaseURL: string
+  launchMode: () => 'production-cli' | 'test-factory'
+  output: () => string
+  probeStore: () => AtlasStoreProbe
+  restart: (options?: StartAtlasApiServerOptions) => Promise<void>
+  runCli: (args: string[]) => { status: number | null; stderr: string; stdout: string }
+  setClock: (timestamp: string) => void
   stop: () => Promise<void>
 }
 
-type StartAtlasApiServerOptions = {
+export type StartAtlasApiServerOptions = {
+  clock?: string | null
+  receiptFailure?: boolean
+  receiptFailureCanary?: string
   seedPath?: string
 }
 
@@ -91,6 +114,9 @@ async function stopProcess(apiProcess: ChildProcess): Promise<void> {
 }
 
 export async function startAtlasApiServer({
+  clock,
+  receiptFailure = false,
+  receiptFailureCanary = 'seeded-receipt-failure',
   seedPath,
 }: StartAtlasApiServerOptions = {}): Promise<AtlasApiServer> {
   const apiBaseURL =
@@ -98,6 +124,8 @@ export async function startAtlasApiServer({
   const apiPort = new URL(apiBaseURL).port
   const tempRoot = mkdtempSync(join(tmpdir(), 'atlas-operator-ui-e2e-'))
   const dbUrl = `sqlite:///${join(tempRoot, 'atlas.db')}`
+  const clockPath = join(tempRoot, 'clock.txt')
+  writeFileSync(clockPath, clock ?? '2026-08-11T12:00:00+00:00', 'utf8')
 
   const seedArgs = [
     'run',
@@ -114,36 +142,65 @@ export async function startAtlasApiServer({
   runSeedCommand('uv', seedArgs, dbUrl)
 
   let apiOutput = ''
-  const atlasApiServeArgs = ['run', 'atlas', 'api', 'serve']
-  const apiProcess = spawn(
-    'uv',
-    [
-      ...atlasApiServeArgs,
-      '--enable-writes',
-      '--host',
-      '127.0.0.1',
-      '--port',
-      apiPort,
-    ],
-    {
+  let apiProcess: ChildProcess
+  let launchMode: 'production-cli' | 'test-factory' = 'production-cli'
+  let currentOptions: StartAtlasApiServerOptions = {
+    clock,
+    receiptFailure,
+    receiptFailureCanary,
+    seedPath,
+  }
+
+  function spawnApi(): ChildProcess {
+    launchMode =
+      currentOptions.clock || currentOptions.receiptFailure
+        ? 'test-factory'
+        : 'production-cli'
+    const args = launchMode === 'test-factory'
+      ? [
+          'run',
+          'uvicorn',
+          '--app-dir',
+          join(appRoot, 'tests', 'e2e'),
+          'atlas_api_app:app',
+          '--host',
+          '127.0.0.1',
+          '--port',
+          apiPort,
+        ]
+      : [
+          ...atlasServeArgs,
+          '--enable-writes',
+          '--host',
+          '127.0.0.1',
+          '--port',
+          apiPort,
+        ]
+    const child = spawn('uv', args, {
       cwd: repoRoot,
       env: {
         ...process.env,
         ATLAS_DATABASE_URL: dbUrl,
+        ATLAS_E2E_CLOCK_FILE: clockPath,
+        ATLAS_E2E_RECEIPT_FAILURE: currentOptions.receiptFailure ? '1' : '0',
+        ATLAS_E2E_RECEIPT_FAILURE_CANARY:
+          currentOptions.receiptFailureCanary ?? 'seeded-receipt-failure',
         ATLAS_OPERATOR_TOKEN: E2E_OPERATOR_TOKEN,
         UV_CACHE_DIR: process.env.UV_CACHE_DIR ?? '/tmp/uv-cache',
         UV_LINK_MODE: process.env.UV_LINK_MODE ?? 'copy',
       },
       stdio: ['ignore', 'pipe', 'pipe'],
-    }
-  )
+    })
+    child.stdout?.on('data', (chunk: Buffer) => {
+      apiOutput += chunk.toString()
+    })
+    child.stderr?.on('data', (chunk: Buffer) => {
+      apiOutput += chunk.toString()
+    })
+    return child
+  }
 
-  apiProcess.stdout?.on('data', (chunk: Buffer) => {
-    apiOutput += chunk.toString()
-  })
-  apiProcess.stderr?.on('data', (chunk: Buffer) => {
-    apiOutput += chunk.toString()
-  })
+  apiProcess = spawnApi()
 
   try {
     await waitForApi(apiProcess, apiBaseURL, () => apiOutput)
@@ -155,6 +212,61 @@ export async function startAtlasApiServer({
 
   return {
     apiBaseURL,
+    launchMode: () => launchMode,
+    output: () => apiOutput,
+    probeStore: () => {
+      const result = spawnSync(
+        'uv',
+        [
+          'run',
+          'python',
+          '-m',
+          'atlas.tools.operator_ui_e2e_probe',
+          '--db',
+          dbUrl,
+        ],
+        {
+          cwd: repoRoot,
+          encoding: 'utf8',
+          env: {
+            ...process.env,
+            UV_CACHE_DIR: process.env.UV_CACHE_DIR ?? '/tmp/uv-cache',
+            UV_LINK_MODE: process.env.UV_LINK_MODE ?? 'copy',
+          },
+        }
+      )
+      if (result.status !== 0) {
+        throw new Error(`store probe failed:\n${result.stdout}\n${result.stderr}`)
+      }
+      return JSON.parse(result.stdout) as AtlasStoreProbe
+    },
+    restart: async (options = {}) => {
+      await stopProcess(apiProcess)
+      currentOptions = { ...currentOptions, ...options }
+      if (typeof options.clock === 'string') {
+        writeFileSync(clockPath, options.clock, 'utf8')
+      }
+      apiProcess = spawnApi()
+      await waitForApi(apiProcess, apiBaseURL, () => apiOutput)
+    },
+    runCli: (args) => {
+      const result = spawnSync('uv', ['run', 'atlas', ...args], {
+        cwd: repoRoot,
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          ATLAS_DATABASE_URL: dbUrl,
+          UV_CACHE_DIR: process.env.UV_CACHE_DIR ?? '/tmp/uv-cache',
+          UV_LINK_MODE: process.env.UV_LINK_MODE ?? 'copy',
+        },
+      })
+      return {
+        status: result.status,
+        stderr: result.stderr,
+        stdout: result.stdout,
+      }
+    },
+    setClock: (timestamp) => writeFileSync(clockPath, timestamp, 'utf8'),
     stop: async () => {
       await stopProcess(apiProcess)
       rmSync(tempRoot, { force: true, recursive: true })

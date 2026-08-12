@@ -90,6 +90,7 @@ export function OperatorSessionProvider({ children }: { children: ReactNode }) {
   const [loginError, setLoginError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const returnFocus = useRef<HTMLElement | null>(null)
+  const tokenInput = useRef<HTMLInputElement | null>(null)
 
   const beginSessionFlow = useCallback(
     (reason?: SessionFlowReason) => {
@@ -161,6 +162,12 @@ export function OperatorSessionProvider({ children }: { children: ReactNode }) {
     )
     return () => window.clearTimeout(timeout)
   }, [authenticated, expireSession, expiresAt])
+
+  useEffect(() => {
+    if (flowOpen && loginError && !submitting) {
+      tokenInput.current?.focus()
+    }
+  }, [flowOpen, loginError, submitting])
 
   async function submitLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -247,6 +254,7 @@ export function OperatorSessionProvider({ children }: { children: ReactNode }) {
             <div className='grid gap-2'>
               <Label htmlFor='atlas-bootstrap-token'>Bootstrap token</Label>
               <Input
+                ref={tokenInput}
                 id='atlas-bootstrap-token'
                 name='bootstrap-token'
                 type='password'
