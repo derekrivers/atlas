@@ -37,6 +37,7 @@ type OperatorSessionContextValue = {
   endSession: () => Promise<void>
   expireSession: () => Promise<void>
   expiresAt: string | null
+  acceptanceSessionRevision: number
   lessonDecisionRevision: number
 }
 
@@ -61,7 +62,7 @@ function flowCopy(reason: SessionFlowReason): {
   if (reason === 'expired') {
     return {
       description:
-        'Your operator session expired. Sign in again, then re-review the lesson before submitting another ruling.',
+        'Your operator session expired. Sign in again, then re-review the governed item before submitting another action.',
       title: 'Session expired',
     }
   }
@@ -85,6 +86,7 @@ export function OperatorSessionProvider({ children }: { children: ReactNode }) {
   const [authenticated, setAuthenticated] = useState(false)
   const [expiresAt, setExpiresAt] = useState<string | null>(null)
   const [lessonDecisionRevision, setLessonDecisionRevision] = useState(0)
+  const [acceptanceSessionRevision, setAcceptanceSessionRevision] = useState(0)
   const [flowOpen, setFlowOpen] = useState(false)
   const [flowReason, setFlowReason] = useState<SessionFlowReason>('sign-in')
   const [loginError, setLoginError] = useState<string | null>(null)
@@ -116,8 +118,16 @@ export function OperatorSessionProvider({ children }: { children: ReactNode }) {
     })
   }, [queryClient])
 
+  const invalidateAcceptanceSessionLifecycle = useCallback(() => {
+    setAcceptanceSessionRevision((revision) => revision + 1)
+    void queryClient.resetQueries({
+      queryKey: ['atlas', 'acceptance-sessions'],
+    })
+  }, [queryClient])
+
   const expireSession = useCallback(async () => {
     invalidateLessonDecisionLifecycle()
+    invalidateAcceptanceSessionLifecycle()
     atlasForgetSession()
     setAuthenticated(false)
     setExpiresAt(null)
@@ -128,10 +138,15 @@ export function OperatorSessionProvider({ children }: { children: ReactNode }) {
       exact: true,
       queryKey: atlasQueryKeys.session(),
     })
-  }, [invalidateLessonDecisionLifecycle, queryClient])
+  }, [
+    invalidateAcceptanceSessionLifecycle,
+    invalidateLessonDecisionLifecycle,
+    queryClient,
+  ])
 
   const endSession = useCallback(async () => {
     invalidateLessonDecisionLifecycle()
+    invalidateAcceptanceSessionLifecycle()
     try {
       await atlasLogout()
     } finally {
@@ -143,7 +158,11 @@ export function OperatorSessionProvider({ children }: { children: ReactNode }) {
         expires_at: null,
       })
     }
-  }, [invalidateLessonDecisionLifecycle, queryClient])
+  }, [
+    invalidateAcceptanceSessionLifecycle,
+    invalidateLessonDecisionLifecycle,
+    queryClient,
+  ])
 
   useEffect(() => {
     if (!authenticated || !expiresAt) {
@@ -208,6 +227,7 @@ export function OperatorSessionProvider({ children }: { children: ReactNode }) {
   const contextValue = useMemo<OperatorSessionContextValue>(
     () => ({
       authenticated,
+      acceptanceSessionRevision,
       beginSessionFlow,
       endSession,
       expireSession,
@@ -216,6 +236,7 @@ export function OperatorSessionProvider({ children }: { children: ReactNode }) {
     }),
     [
       authenticated,
+      acceptanceSessionRevision,
       beginSessionFlow,
       endSession,
       expireSession,

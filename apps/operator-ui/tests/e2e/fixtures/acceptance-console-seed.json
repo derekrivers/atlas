@@ -1,0 +1,74 @@
+{
+  "metadata": {
+    "description": "Deterministic acceptance-console seed for ATL-415.",
+    "expected_ticket": "ATLAS-243",
+    "expected_pr": 415,
+    "expected_head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "timestamp": "2026-08-11T12:00:00+00:00",
+  "product": {
+    "id": "00000000-0000-4000-8000-000000000415",
+    "key": "ATLAS",
+    "name": "Atlas",
+    "description": "Seeded Atlas acceptance-console product.",
+    "vision": "Exercise the governed exact-head review flow through a live API."
+  },
+  "epics": [
+    {
+      "id": "00000000-0000-4000-8000-000000000e15",
+      "key": "ATLAS-E1",
+      "title": "Acceptance console e2e seed",
+      "status": "planned",
+      "priority": 1,
+      "risk_level": "medium"
+    }
+  ],
+  "adrs": [],
+  "tickets": [
+    {
+      "id": "00000000-0000-4000-8000-000000000243",
+      "key": "ATLAS-243",
+      "status": "review_required",
+      "priority": 1,
+      "risk_level": "high",
+      "estimated_effort": 3,
+      "relevant_docs": ["docs/atlas/operator-ui.md"],
+      "acceptance_criteria": [
+        "The exact-head acceptance sequence reaches a server PASSED verdict.",
+        "Only a current live-readiness GET can display manual merge guidance."
+      ],
+      "documentation_requirements": [],
+      "external_github_issue_id": "415",
+      "source_anchor": "docs/atlas/operator-ui.md#acceptance-session"
+    }
+  ],
+  "dependencies": [],
+  "evidence": [
+    {
+      "id": "00000000-0000-4000-8000-00000000e415",
+      "ticket_key": "ATLAS-243",
+      "evidence_type": "test_result",
+      "status": "passed",
+      "summary": "Seeded system test evidence pinned to the exact PR head.",
+      "commit_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "external_run_id": "seeded-atl-415-tests",
+      "job_name": "operator-ui-tests",
+      "payload_hash": "1111111111111111111111111111111111111111111111111111111111111111",
+      "source_uri": "https://example.invalid/atlas/atl-415/tests"
+    },
+    {
+      "id": "00000000-0000-4000-8000-00000000e416",
+      "ticket_key": "ATLAS-243",
+      "evidence_type": "lint_result",
+      "status": "passed",
+      "summary": "Seeded system lint evidence pinned to the exact PR head.",
+      "commit_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "external_run_id": "seeded-atl-415-lint",
+      "job_name": "operator-ui-lint",
+      "payload_hash": "2222222222222222222222222222222222222222222222222222222222222222",
+      "source_uri": "https://example.invalid/atlas/atl-415/lint"
+    }
+  ],
+  "verification_checks": [],
+  "lessons": []
+}

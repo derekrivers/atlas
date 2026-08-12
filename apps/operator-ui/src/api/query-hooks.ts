@@ -6,8 +6,19 @@ import {
 } from '@tanstack/react-query'
 import {
   atlasGet,
+  atlasConfirmAcceptanceSession,
+  atlasCreateAcceptanceSession,
+  atlasPullAcceptanceEvidence,
   atlasPromoteLesson,
   atlasRejectLesson,
+  atlasVerifyAcceptanceSession,
+  type AtlasAcceptanceActionResponse,
+  type AtlasAcceptanceConfirmationRequest,
+  type AtlasAcceptanceCreationResponse,
+  type AtlasAcceptanceEvidenceRequest,
+  type AtlasAcceptanceReadResponse,
+  type AtlasAcceptanceVerificationRequest,
+  type AtlasCreateAcceptanceSessionRequest,
   type AtlasApiRoute,
   type AtlasLessonDispositionResponse,
   type AtlasPromoteLessonRequest,
@@ -32,6 +43,16 @@ type RejectLessonVariables = {
   lessonId: string
   request: AtlasRejectLessonRequest
 }
+type CreateAcceptanceSessionVariables = {
+  idempotencyKey: string
+  prNumber: number
+  request: AtlasCreateAcceptanceSessionRequest
+}
+type AcceptanceStepVariables<Request> = {
+  idempotencyKey: string
+  request: Request
+  sessionId: string
+}
 
 export const ATLAS_QUERY_ROUTES = [
   '/api/v1/tickets',
@@ -44,11 +65,14 @@ export const ATLAS_QUERY_ROUTES = [
   '/api/v1/dependencies/critical-path',
   '/api/v1/dependencies/graph',
   '/api/v1/reviews',
+  '/api/v1/acceptance-sessions/{session_id}',
   '/api/v1/session',
   '/api/v1/status',
 ] as const satisfies readonly AtlasApiRoute[]
 
 export const atlasQueryKeys = {
+  acceptanceSession: (sessionId: string) =>
+    ['atlas', 'acceptance-sessions', sessionId] as const,
   criticalPath: () => ['atlas', 'dependencies', 'critical-path'] as const,
   dependencyGraph: () => ['atlas', 'dependencies', 'graph'] as const,
   epics: () => ['atlas', 'epics'] as const,
@@ -162,6 +186,55 @@ export function useReviewsQuery(): AtlasQueryResult<'/api/v1/reviews'> {
     queryKey: atlasQueryKeys.reviews(),
     queryFn: () => atlasGet('/api/v1/reviews'),
   })
+}
+
+export function useAcceptanceSessionQuery(
+  sessionId: string | null
+): UseQueryResult<AtlasAcceptanceReadResponse, AtlasQueryError> {
+  return useQuery({
+    enabled: sessionId !== null,
+    queryKey: atlasQueryKeys.acceptanceSession(sessionId ?? 'not-loaded'),
+    queryFn: () => {
+      if (sessionId === null) {
+        throw new Error('Acceptance session ID is required')
+      }
+      return atlasGet('/api/v1/acceptance-sessions/{session_id}', {
+        path: { session_id: sessionId },
+      })
+    },
+  })
+}
+
+export function useCreateAcceptanceSessionMutation(): UseMutationResult<
+  AtlasAcceptanceCreationResponse,
+  AtlasQueryError,
+  CreateAcceptanceSessionVariables
+> {
+  return useMutation({ mutationFn: atlasCreateAcceptanceSession })
+}
+
+export function usePullAcceptanceEvidenceMutation(): UseMutationResult<
+  AtlasAcceptanceActionResponse,
+  AtlasQueryError,
+  AcceptanceStepVariables<AtlasAcceptanceEvidenceRequest>
+> {
+  return useMutation({ mutationFn: atlasPullAcceptanceEvidence })
+}
+
+export function useConfirmAcceptanceSessionMutation(): UseMutationResult<
+  AtlasAcceptanceActionResponse,
+  AtlasQueryError,
+  AcceptanceStepVariables<AtlasAcceptanceConfirmationRequest>
+> {
+  return useMutation({ mutationFn: atlasConfirmAcceptanceSession })
+}
+
+export function useVerifyAcceptanceSessionMutation(): UseMutationResult<
+  AtlasAcceptanceActionResponse,
+  AtlasQueryError,
+  AcceptanceStepVariables<AtlasAcceptanceVerificationRequest>
+> {
+  return useMutation({ mutationFn: atlasVerifyAcceptanceSession })
 }
 
 export function useSessionQuery(): AtlasQueryResult<'/api/v1/session'> {

@@ -10,7 +10,10 @@ import {
 import { atlasOpenApiEnums } from '@/api/atlas-openapi-runtime'
 import { useReviewsQuery } from '@/api/query-hooks'
 import type { components } from '@/api/atlas-openapi'
-import { ticketDetailHref } from '@/app-shell/surfaces'
+import {
+  reviewAcceptanceHref,
+  ticketDetailHref,
+} from '@/app-shell/surfaces'
 import { Main } from '@/components/layout/main'
 import {
   EmptyCollectionState,
@@ -208,6 +211,15 @@ function ReviewQueueItemCard({ review }: { review: ReviewItem }) {
           </div>
         </div>
         <VerdictBadge verdict={review.verdict} />
+      </div>
+
+      <div className='mt-4'>
+        <a
+          href={reviewAcceptanceHref(review.key)}
+          className='border-input bg-background hover:bg-accent hover:text-accent-foreground focus-visible:border-ring focus-visible:ring-ring/50 inline-flex h-9 items-center justify-center rounded-md border px-4 text-sm font-medium shadow-xs outline-none focus-visible:ring-[3px]'
+        >
+          Open acceptance panel
+        </a>
       </div>
 
       <div className='mt-4 grid gap-3 lg:grid-cols-[minmax(18rem,0.9fr)_minmax(0,1.4fr)]'>

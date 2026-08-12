@@ -1,19 +1,20 @@
 # Operator UI Design (Phase 11)
 
 Status: Delivered Phase 11 read surface extended by the closed, governed Phase
-13 lesson disposition workflow. Defines the browser surface over the Operator
-API, the framework adoption boundary, the bounded authentication/write entry,
-and the testing contract. Phase 11 operator rulings recorded in the reviewer
-session of 2026-07-26 remain binding where Phase 13 does not explicitly
-supersede them.
+13 lesson disposition workflow and the Phase 14 review-acceptance console.
+Defines the browser surface over the Operator API, the framework adoption
+boundary, the bounded authentication/write entries, and the testing contract.
+Phase 11 operator rulings recorded in the reviewer session of 2026-07-26 remain
+binding where a later governed workflow does not explicitly supersede them.
 
 ## Purpose and scope
 
 The operator UI is a browser instrument for reading Atlas operational state and
-for the one governed write that Phase 13 admits: an authenticated operator may
-promote or reject a DRAFT lesson. It is not a second source of truth and holds no
-domain lifecycle logic; the generated HTTP contract and the server disposition
-service remain authoritative.
+for two bounded governed workflows: an authenticated operator may promote or
+reject a DRAFT lesson, and may drive an exact-head acceptance session through
+evidence, confirmation, and verification. It is not a second source of truth
+and holds no domain lifecycle, verdict, freshness, or readiness logic; the
+generated HTTP contract and the server services remain authoritative.
 
 Every other operator action — approving a plan gate, editing or merging a
 lesson, archiving an ACTIVE lesson, merging a PR, or moving a Linear status —
@@ -80,9 +81,18 @@ two purpose-specific commands `POST /api/v1/lessons/{lesson_id}/promote` and
 and error contracts are canonical in `governed-operator-actions.md`. This is a
 bounded extension, not a generic browser mutation capability.
 
+Phase 14 consumes the acceptance-session HTTP contract delivered in Phase 13:
+`POST /api/v1/reviews/{pr_number}/acceptance-sessions`, `GET
+/api/v1/acceptance-sessions/{session_id}`, and the purpose-specific `evidence`,
+`confirm`, and `verify` subcommands. Their exact request/response models,
+security boundary, bounded live-readiness evaluation, and error semantics are
+canonical in `review-acceptance-console.md`. The browser imports those generated
+types and enum values; it does not maintain parallel response models or compute
+a transition from them.
+
 ## Views
 
-Seven routes, ratified. Each names what it cannot show, because the
+Eight routes, ratified. Each names what it cannot show, because the
 absences are contract facts, not backlog items.
 
 ### Overview — `/`
@@ -173,8 +183,51 @@ two gates are what strand tickets in practice — the Phase 10 incident
 ledger is largely a record of that — so they are rendered as first-class
 signals rather than as flags.
 
-Read-only. The page answers "what is waiting, and what would block
-acceptance"; the operator then acts elsewhere.
+The queue itself remains read-only. Each Review Required row links to its
+focused acceptance surface at `/reviews/$key/acceptance`; it does not acquire
+inline commands or infer whether the row is eligible for a later step.
+
+### Acceptance session — `/reviews/$key/acceptance`
+
+Consumes `/tickets/{key}` and `/reviews` for display context, then creates or
+loads one acceptance session through the generated acceptance-session client.
+The panel displays the server-pinned repository, PR number, head and base refs
+and SHAs, close-set, criteria fingerprint and snapshot, lifecycle, timestamps,
+ordered step summaries, bounded evidence summary, verification summary,
+canonical check matrix, receipts, and every blocking reason. Raw evidence
+payloads are never rendered.
+
+The server lifecycle determines the only primary action: pull evidence,
+confirm criteria, run verification, or refresh live readiness. Completed steps
+remain inspectable. A synchronous one-action guard disables conflicting
+controls, and the browser does not advance until the mutation returns and a
+fresh `GET /api/v1/acceptance-sessions/{session_id}` completes. Initial load,
+manual refresh, and every post-command refresh use that GET; historical session
+readiness and individual check rows never produce a local PASSED verdict or
+merge-ready decision.
+
+Confirmation renders every server-snapshot criterion as inert text with an
+explicit stable-index checkbox, plus a separate manual-approval checkbox. The
+request contains only `criteria_fingerprint`, `criterion_indexes`, and
+`manual_approval`; criterion text and actor authority never return to the
+server. Evidence rendering is similarly bounded to trust, status, count, and
+pin-completeness fields from the generated summary.
+
+Only a current successful GET with `merge_ready=true` opens the manual action
+instruction. It names the exact server-verified SHA and tells the operator to
+merge that SHA manually in GitHub. The panel has no GitHub action link or merge
+button. Refresh-in-flight, head/base/criteria movement, an indeterminate
+assessment, or an external-read failure closes the instruction immediately and
+shows all server reasons. Movement requires refresh and a new exact-head
+session; behind/diverged/conflicted recovery names the operator-owned Phase 12
+rebase lane outside this UI. Old command keys are never silently reused.
+
+Security refusal, stale state, replay conflict, timeout, blocked action,
+external failure, and session expiry have distinct accessible alerts and
+recovery. Only an ambiguous transport outcome retains its idempotency key for
+an explicit same-key retry. An unambiguous timeout requires a fresh GET before
+a newly keyed command. Sign-out or expiry clears the open session lifecycle;
+another tab may observe a session only by loading its ID through a fresh GET.
 
 ### Critical path — `/critical-path`
 
@@ -252,8 +305,9 @@ URL state, query state, logs, or generated configuration. The returned CSRF
 token lives only in module memory. A refresh therefore loses browser write
 authority even if the HttpOnly server cookie remains valid and presents a
 restore-session flow before another ruling. Expiry does the same and requires
-the lesson to be re-reviewed after sign-in. A refused login returns focus to
-the token field, and the lesson detail viewport is keyboard-scrollable.
+the governed lesson or acceptance session to be re-reviewed after sign-in. A
+refused login returns focus to the token field, and governed detail viewports
+are keyboard-scrollable.
 
 The last is not decoration. A loopback API that is not running is the
 most likely failure the operator will meet, and it must produce a named,
@@ -266,7 +320,8 @@ page or a generic network error.
 Agent-run history, PlanRun history, ticket status timelines, debt items, tick
 failures, context packs, lesson-to-ticket navigation, plan approval, lesson
 editing/merging/ACTIVE archival, bulk disposition, generic resource updates,
-GitHub writes, Linear writes, and acceptance-console actions remain absent.
+GitHub writes, Linear writes, rebase controls, post-merge completion, Symphony
+resume, schema upgrade, and PM-sync controls remain absent.
 
 ## Framework adoption boundary
 
@@ -310,10 +365,11 @@ the place an outside contributor should check before treating missing pagination
 missing ticket-detail epic data, literal lesson ticket UUIDs, or polling instead
 of push as bugs.
 
-That README also records the bounded contribution boundary: lesson promote and
-reject are the only browser writes, and they depend on the Phase 13 session,
-actor-context, idempotency, receipt, and threat-model contracts. No generic or
-remote operator surface follows from that exception.
+That README also records the bounded contribution boundary: lesson disposition
+and the acceptance-session step commands are the only browser writes. They
+depend on the session, actor-context, idempotency, receipt, exact-head, and
+threat-model contracts. No generic or remote operator surface follows from
+those exceptions.
 
 The upstream MIT attribution for retained `satnaing/shadcn-admin` source and the
 vendored theme lives in `apps/operator-ui/THIRD_PARTY_NOTICES.md`.
@@ -342,6 +398,15 @@ vendored theme lives in `apps/operator-ui/THIRD_PARTY_NOTICES.md`.
   memory-only session loss on refresh, and forbidden persistence. The milestone
   probes outcomes through the UI/API and repository interfaces rather than
   rewriting the database.
+- **Acceptance-console browser evidence** uses a dedicated committed seed and a
+  read-only, state-controlled GitHub boundary behind the real FastAPI acceptance
+  services. It covers the successful create/evidence/confirm/verify sequence,
+  fresh-GET-only merge guidance, movement and external-read revocation,
+  stale/new-session recovery, unambiguous timeout key discipline, cross-tab
+  observation, session expiry, forbidden controls, and the exact generated
+  confirmation request shape. Component/query tests cover every lifecycle and
+  typed error state, one-action-in-flight, completed-step inspection, and the
+  prohibition on local readiness derivation.
 - **Accessibility and responsive tests** use `@axe-core/playwright` in the
   same seeded live-API harness. The enforced automated standard is axe-core's
   WCAG 2.2 AA rule set, expressed by the `wcag2a`, `wcag2aa`, `wcag21a`,
@@ -386,6 +451,11 @@ URL is surfaced to the operator only when the named API-unreachable state
 renders. That state says the API is not reachable at the configured URL
 and that `atlas api serve` may not be running.
 
+`VITE_ATLAS_ACCEPTANCE_REPOSITORY` may prefill the server-allowlisted
+`owner/repository` selector for acceptance-session creation. It is a display
+input to the strict generated request, not a URL, token, or browser authority;
+the API validates it against its runtime repository policy.
+
 All Operator UI queries use the shared TanStack Query policy in
 `apps/operator-ui/src/api/query-policy.ts`. The polling interval is
 30,000 ms and views do not set their own `refetchInterval`; `/status`
@@ -406,9 +476,11 @@ supported.
 
 ## Deferred
 
-- **Other writes** — Phase 13 admits only DRAFT lesson promote/reject. Lesson
-  editing, merging, ACTIVE archival, generic updates, approval, GitHub and
-  Linear writes require their own governed designs.
+- **Other writes** — DRAFT lesson disposition and exact-head acceptance-session
+  steps are the only admitted browser mutations. Lesson editing, merging,
+  ACTIVE archival, generic updates, GitHub merge/rebase, Linear status,
+  Symphony resume, schema upgrade, and PM-sync writes require their own governed
+  designs.
 - **Remote authentication and multi-operator use** — the delivered session is
   single-operator and loopback-only under ADR-0009.
 - **Pagination-aware views** — enter when the API gains pagination. Every

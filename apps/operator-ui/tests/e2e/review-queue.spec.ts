@@ -138,6 +138,9 @@ test.describe('review queue view with a populated live queue', () => {
       })
 
       await expect(link).toHaveAttribute('href', `/tickets/${review.key}`)
+      await expect(
+        item.getByRole('link', { name: 'Open acceptance panel' })
+      ).toHaveAttribute('href', `/reviews/${review.key}/acceptance`)
       await expect(item).toContainText(`Verdict ${labelFromValue(review.verdict)}`)
 
       const systemGate = item.getByTestId('review-gate-system-evidence')

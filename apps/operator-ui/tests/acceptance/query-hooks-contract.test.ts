@@ -6,11 +6,15 @@ import type { UseQueryResult } from '@tanstack/react-query'
 import type { components } from '@/api/atlas-openapi'
 import {
   ATLAS_QUERY_ROUTES,
+  type useAcceptanceSessionQuery,
+  type useConfirmAcceptanceSessionMutation,
+  type useCreateAcceptanceSessionMutation,
   type useDependencyCriticalPathQuery,
   type useDependencyGraphQuery,
   type useEpicsQuery,
   type useLessonsQuery,
   type usePromoteLessonMutation,
+  type usePullAcceptanceEvidenceMutation,
   type useRejectLessonMutation,
   type useReviewsQuery,
   type useSessionQuery,
@@ -20,6 +24,7 @@ import {
   type useTicketDetailQuery,
   type useTicketEvidenceQuery,
   type useTicketsQuery,
+  type useVerifyAcceptanceSessionMutation,
 } from '@/api/query-hooks'
 import type {
   AtlasApiRoute,
@@ -46,7 +51,6 @@ type MutationData<
 > = ReturnType<Hook> extends { data: infer Data } ? NonNullable<Data> : never
 
 type CoveredRoute = (typeof ATLAS_QUERY_ROUTES)[number]
-type AcceptanceSessionRoute = '/api/v1/acceptance-sessions/{session_id}'
 type HookResponseParity = [
   Assert<Equal<HookData<typeof useTicketsQuery>, AtlasRouteResponse<'/api/v1/tickets'>>>,
   Assert<
@@ -93,6 +97,12 @@ type HookResponseParity = [
     Equal<HookData<typeof useReviewsQuery>, AtlasRouteResponse<'/api/v1/reviews'>>
   >,
   Assert<
+    Equal<
+      HookData<typeof useAcceptanceSessionQuery>,
+      AtlasRouteResponse<'/api/v1/acceptance-sessions/{session_id}'>
+    >
+  >,
+  Assert<
     Equal<HookData<typeof useSessionQuery>, AtlasRouteResponse<'/api/v1/session'>>
   >,
   Assert<
@@ -110,6 +120,7 @@ type HookAnyGuard = [
   Assert<NotAny<HookData<typeof useDependencyCriticalPathQuery>>>,
   Assert<NotAny<HookData<typeof useDependencyGraphQuery>>>,
   Assert<NotAny<HookData<typeof useReviewsQuery>>>,
+  Assert<NotAny<HookData<typeof useAcceptanceSessionQuery>>>,
   Assert<NotAny<HookData<typeof useSessionQuery>>>,
   Assert<NotAny<HookData<typeof useSystemStatusQuery>>>,
 ]
@@ -126,12 +137,35 @@ type MutationResponseParity = [
       components['schemas']['LessonDispositionResponse']
     >
   >,
+  Assert<
+    Equal<
+      MutationData<typeof useCreateAcceptanceSessionMutation>,
+      components['schemas']['AcceptanceSessionCreationResponse']
+    >
+  >,
+  Assert<
+    Equal<
+      MutationData<typeof usePullAcceptanceEvidenceMutation>,
+      components['schemas']['AcceptanceSessionActionResponse']
+    >
+  >,
+  Assert<
+    Equal<
+      MutationData<typeof useConfirmAcceptanceSessionMutation>,
+      components['schemas']['AcceptanceSessionActionResponse']
+    >
+  >,
+  Assert<
+    Equal<
+      MutationData<typeof useVerifyAcceptanceSessionMutation>,
+      components['schemas']['AcceptanceSessionActionResponse']
+    >
+  >,
 ]
 
-const routeCoverage: Assert<
-  Equal<CoveredRoute, Exclude<AtlasApiRoute, AcceptanceSessionRoute>>
-> = true
+const routeCoverage: Assert<Equal<CoveredRoute, AtlasApiRoute>> = true
 const hookResponseParity: HookResponseParity = [
+  true,
   true,
   true,
   true,
@@ -158,13 +192,21 @@ const hookAnyGuard: HookAnyGuard = [
   true,
   true,
   true,
+  true,
 ]
-const mutationResponseParity: MutationResponseParity = [true, true]
+const mutationResponseParity: MutationResponseParity = [
+  true,
+  true,
+  true,
+  true,
+  true,
+  true,
+]
 
 describe('typed Atlas query hooks', () => {
   it('covers every generated current v1 GET route', () => {
     expect(routeCoverage).toBe(true)
-    expect(ATLAS_QUERY_ROUTES).toHaveLength(12)
+    expect(ATLAS_QUERY_ROUTES).toHaveLength(13)
   })
 
   it('returns generated response types without authored any escapes', () => {
@@ -180,7 +222,7 @@ describe('typed Atlas query hooks', () => {
     }
   })
 
-  it('types lesson disposition mutations from generated response contracts', () => {
+  it('types governed mutations from generated response contracts', () => {
     expect(mutationResponseParity.every((value) => value)).toBe(true)
   })
 })

@@ -112,3 +112,7 @@ export function normaliseTicketKeySearch(value: string): string | undefined {
 export function ticketDetailHref(key: string): string {
   return `/tickets/${encodeURIComponent(key)}`
 }
+
+export function reviewAcceptanceHref(key: string): string {
+  return `/reviews/${encodeURIComponent(key)}/acceptance`
+}
