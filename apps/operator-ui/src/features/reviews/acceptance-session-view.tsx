@@ -215,6 +215,29 @@ function currentStep(action: NextAction | null): AcceptanceStep | undefined {
   return undefined
 }
 
+function commandRemainsUnresolved(
+  command: PendingCommand,
+  session: AcceptanceSession | undefined
+): boolean {
+  if (command.action === 'create') return session === undefined
+  return (
+    session === undefined ||
+    (session.session_id === command.sessionId &&
+      nextAction(session.lifecycle) === command.action)
+  )
+}
+
+function unresolvedCommandAfterRefresh(): PanelError {
+  return {
+    detail:
+      'The fresh server lifecycle has not advanced past this command. Its original command key remains available for an explicit safe retry.',
+    kind: 'external-read',
+    reasons: [],
+    title: 'Command outcome remains ambiguous',
+    validationErrors: [],
+  }
+}
+
 function Detail({ children, label }: { children: ReactNode; label: string }) {
   return (
     <div className='min-w-0'>
@@ -610,7 +633,7 @@ function EvidenceSummary({ session }: { session: AcceptanceSession }) {
 
 function CriteriaConfirmation({
   busy,
-  checkedIndexes,
+  checkedPositions,
   manualApproval,
   next,
   onCheckedChange,
@@ -619,18 +642,18 @@ function CriteriaConfirmation({
   session,
 }: {
   busy: boolean
-  checkedIndexes: ReadonlySet<number>
+  checkedPositions: ReadonlySet<number>
   manualApproval: boolean
   next: NextAction | null
-  onCheckedChange: (index: number, checked: boolean) => void
+  onCheckedChange: (position: number, checked: boolean) => void
   onManualApprovalChange: (checked: boolean) => void
   onSubmit: () => void
   session: AcceptanceSession
 }) {
   const completed = session.steps.confirmations?.state === 'complete'
   const enabled = next === 'confirm' && !busy
-  const everyChecked = session.criteria_snapshot.every((criterion) =>
-    checkedIndexes.has(criterion.criterion_index)
+  const everyChecked = session.criteria_snapshot.every((_criterion, position) =>
+    checkedPositions.has(position)
   )
   return (
     <Card>
@@ -645,8 +668,8 @@ function CriteriaConfirmation({
         </p>
         <fieldset className='grid gap-3' disabled={!enabled}>
           <legend className='sr-only'>Acceptance criteria</legend>
-          {session.criteria_snapshot.map((criterion) => {
-            const inputId = `criterion-${session.session_id}-${criterion.criterion_index}`
+          {session.criteria_snapshot.map((criterion, position) => {
+            const inputId = `criterion-${session.session_id}-${position}`
             return (
               <div
                 className='border-border grid grid-cols-[auto_minmax(0,1fr)] gap-3 rounded-lg border p-3'
@@ -654,9 +677,9 @@ function CriteriaConfirmation({
               >
                 <Checkbox
                   id={inputId}
-                  checked={completed || checkedIndexes.has(criterion.criterion_index)}
+                  checked={completed || checkedPositions.has(position)}
                   onCheckedChange={(checked) =>
-                    onCheckedChange(criterion.criterion_index, checked === true)
+                    onCheckedChange(position, checked === true)
                   }
                 />
                 <Label htmlFor={inputId} className='min-w-0 items-start leading-relaxed'>
@@ -914,7 +937,7 @@ export function AcceptanceSessionPanel({ ticketKey }: { ticketKey: string }) {
   const [repository, setRepository] = useState(ATLAS_ACCEPTANCE_REPOSITORY)
   const [prInput, setPrInput] = useState('')
   const [loadInput, setLoadInput] = useState('')
-  const [checkedIndexes, setCheckedIndexes] = useState<Set<number>>(new Set())
+  const [checkedPositions, setCheckedPositions] = useState<Set<number>>(new Set())
   const [manualApproval, setManualApproval] = useState(false)
   const [pendingCommand, setPendingCommand] = useState<PendingCommand | null>(null)
   const [lastReceipt, setLastReceipt] = useState<ActionReceipt | null>(null)
@@ -944,8 +967,10 @@ export function AcceptanceSessionPanel({ ticketKey }: { ticketKey: string }) {
   useEffect(() => {
     setSessionId(null)
     setPendingCommand(null)
-    setCheckedIndexes(new Set())
+    setCheckedPositions(new Set())
     setManualApproval(false)
+    setLastReceipt(null)
+    setCreationReceipt(null)
     setBusyAction(null)
     inFlight.current = false
   }, [operatorSession.acceptanceSessionRevision])
@@ -978,13 +1003,29 @@ export function AcceptanceSessionPanel({ ticketKey }: { ticketKey: string }) {
   const session = sessionQuery.data?.session
   const readIsCurrent =
     sessionQuery.isSuccess && !sessionQuery.isFetching && !sessionQuery.isError
-  const permittedAction = session && readIsCurrent ? nextAction(session.lifecycle) : null
+  const permittedAction =
+    session && readIsCurrent && pendingCommand === null
+      ? nextAction(session.lifecycle)
+      : null
   const liveReasons = sessionQuery.data?.reasons ?? session?.blocking_reasons ?? []
   const canStartNewSession =
     session !== undefined &&
     (['blocked', 'failed', 'stale'].includes(session.lifecycle) ||
       hasReason(liveReasons, newSessionReasons) ||
       hasReason(liveReasons, phase12RecoveryReasons))
+
+  function selectSession(
+    nextSessionId: string | null,
+    nextCreationReceipt: CreationReceipt | null = null
+  ): void {
+    if (nextSessionId === sessionId) return
+    setCheckedPositions(new Set())
+    setManualApproval(false)
+    setPendingCommand(null)
+    setLastReceipt(null)
+    setCreationReceipt(nextCreationReceipt)
+    setSessionId(nextSessionId)
+  }
 
   async function refreshCurrentState(): Promise<void> {
     if (!sessionId || inFlight.current) return
@@ -999,8 +1040,17 @@ export function AcceptanceSessionPanel({ ticketKey }: { ticketKey: string }) {
         reviewsQuery.refetch(),
       ])
       if (result.error) throw result.error
-      setPendingCommand(null)
-      setAnnouncement('Live acceptance state refreshed from the server.')
+      const retainedCommand =
+        pendingCommand && commandRemainsUnresolved(pendingCommand, result.data?.session)
+          ? pendingCommand
+          : null
+      setPendingCommand(retainedCommand)
+      setError(retainedCommand ? unresolvedCommandAfterRefresh() : null)
+      setAnnouncement(
+        retainedCommand
+          ? 'Live acceptance state refreshed; the ambiguous command remains unresolved and retains its original retry key.'
+          : 'Live acceptance state refreshed from the server.'
+      )
     } catch (refreshError) {
       setError(panelError(refreshError))
       setAnnouncement(null)
@@ -1043,9 +1093,7 @@ export function AcceptanceSessionPanel({ ticketKey }: { ticketKey: string }) {
           prNumber: command.prNumber,
           request: command.request,
         })
-        setCreationReceipt(response.receipt)
-        setPendingCommand(null)
-        setSessionId(response.session.session_id)
+        selectSession(response.session.session_id, response.receipt)
         setLoadInput(response.session.session_id)
         focusAfterRead.current = true
         setAnnouncement(
@@ -1115,7 +1163,11 @@ export function AcceptanceSessionPanel({ ticketKey }: { ticketKey: string }) {
     if (!id) return
     setError(null)
     setAnnouncement('Loading a fresh live-readiness GET for the requested session.')
-    setSessionId(id)
+    if (id === sessionId) {
+      void refreshCurrentState()
+      return
+    }
+    selectSession(id)
     focusAfterRead.current = true
   }
 
@@ -1123,8 +1175,8 @@ export function AcceptanceSessionPanel({ ticketKey }: { ticketKey: string }) {
     if (!sessionId || !session) return
     if (action === 'confirm') {
       const criterionIndexes = session.criteria_snapshot
-        .filter((criterion) => checkedIndexes.has(criterion.criterion_index))
-        .map((criterion) => criterion.criterion_index)
+        .map((_criterion, position) => position)
+        .filter((position) => checkedPositions.has(position))
       void execute({
         action,
         idempotencyKey: window.crypto.randomUUID(),
@@ -1146,11 +1198,8 @@ export function AcceptanceSessionPanel({ ticketKey }: { ticketKey: string }) {
   }
 
   function startNewSession(): void {
-    setSessionId(null)
+    selectSession(null)
     setLoadInput('')
-    setCheckedIndexes(new Set())
-    setManualApproval(false)
-    setPendingCommand(null)
     setError(null)
     setAnnouncement('Review the live repository and PR identity before creating a new session.')
     window.setTimeout(() => document.querySelector<HTMLInputElement>('#acceptance-repository')?.focus())
@@ -1304,14 +1353,14 @@ export function AcceptanceSessionPanel({ ticketKey }: { ticketKey: string }) {
             ) : null}
             <CriteriaConfirmation
               busy={busy}
-              checkedIndexes={checkedIndexes}
+              checkedPositions={checkedPositions}
               manualApproval={manualApproval}
               next={permittedAction}
-              onCheckedChange={(index, checked) => {
-                setCheckedIndexes((current) => {
+              onCheckedChange={(position, checked) => {
+                setCheckedPositions((current) => {
                   const next = new Set(current)
-                  if (checked) next.add(index)
-                  else next.delete(index)
+                  if (checked) next.add(position)
+                  else next.delete(position)
                   return next
                 })
               }}

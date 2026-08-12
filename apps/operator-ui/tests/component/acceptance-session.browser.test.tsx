@@ -14,6 +14,8 @@ type ReadResponse = Schema['AcceptanceSessionReadResponse']
 type ActionReceipt = Schema['AcceptanceActionReceiptSchema']
 
 const sessionId = '00000000-0000-4000-8000-000000000415'
+const secondSessionId = '00000000-0000-4000-8000-000000000416'
+const closeSetTicketKey = 'ATLAS-244'
 const head = 'a'.repeat(40)
 const base = 'b'.repeat(40)
 const fingerprint = `sha256:${'c'.repeat(64)}`
@@ -108,11 +110,16 @@ function sessionFor(lifecycle: Lifecycle): Session {
   return {
     actor: { id: 'operator', type: 'human' },
     blocking_reasons: terminal ? ['session_stale'] : [],
-    close_set: [ticket.key],
+    close_set: [ticket.key, closeSetTicketKey],
     criteria_fingerprint: fingerprint,
     criteria_snapshot: [
-      { criterion_index: 4, text: 'First criterion', ticket_key: ticket.key },
-      { criterion_index: 9, text: 'Second criterion', ticket_key: ticket.key },
+      { criterion_index: 0, text: 'First criterion', ticket_key: ticket.key },
+      { criterion_index: 1, text: 'Second criterion', ticket_key: ticket.key },
+      {
+        criterion_index: 0,
+        text: 'Close-set criterion with an overlapping local index',
+        ticket_key: closeSetTicketKey,
+      },
     ],
     historical_readiness: {
       authority: 'historical_only',
@@ -181,7 +188,7 @@ function sessionFor(lifecycle: Lifecycle): Session {
                 blocking_check_count: 0,
                 head_commit: head,
                 status: 'passed',
-                ticket_count: 1,
+                ticket_count: 2,
                 verdict_id: '00000000-0000-4000-8000-00000000f415',
               }
             : null,
@@ -202,6 +209,18 @@ function readFor(lifecycle: Lifecycle, mergeReady = lifecycle === 'merge_ready')
     merge_ready: mergeReady,
     reasons: mergeReady ? [] : ['verification_not_passed'],
     session: sessionFor(lifecycle),
+  }
+}
+
+function readForSession(
+  id: string,
+  lifecycle: Lifecycle,
+  mergeReady = lifecycle === 'merge_ready'
+): ReadResponse {
+  const response = readFor(lifecycle, mergeReady)
+  return {
+    ...response,
+    session: { ...response.session, session_id: id },
   }
 }
 
@@ -441,7 +460,7 @@ describe('acceptance session browser component', () => {
     const criterionInputs = Array.from(
       document.querySelectorAll<HTMLButtonElement>('[id^="criterion-"]')
     )
-    expect(criterionInputs).toHaveLength(2)
+    expect(criterionInputs).toHaveLength(3)
     for (const checkbox of criterionInputs) {
       await act(async () => checkbox.click())
     }
@@ -456,7 +475,7 @@ describe('acceptance session browser component', () => {
     )
     expect(JSON.parse(requests[2].body ?? '{}')).toEqual({
       criteria_fingerprint: fingerprint,
-      criterion_indexes: [4, 9],
+      criterion_indexes: [0, 1, 2],
       manual_approval: true,
     })
     expect(requests[2].body).not.toContain('First criterion')
@@ -581,8 +600,9 @@ describe('acceptance session browser component', () => {
     }
   )
 
-  it('retains one idempotency key only for an ambiguous transport failure', async () => {
-    const baseFetch = standardFetch(() => readFor('preflight_passed'))
+  it('retains one idempotency key through an unadvanced refresh and explicit retry', async () => {
+    let currentRead = readFor('preflight_passed')
+    const baseFetch = standardFetch(() => currentRead)
     const keys: string[] = []
     let attempt = 0
     window.fetch = vi.fn(async (input, init) => {
@@ -591,8 +611,9 @@ describe('acceptance session browser component', () => {
         keys.push((init?.headers as Record<string, string>)['Idempotency-Key'])
         attempt += 1
         if (attempt === 1) throw new TypeError('seeded ambiguous network loss')
+        currentRead = readFor('evidence_ready')
         return jsonResponse(
-          actionResponse(sessionFor('evidence_ready'), 'acceptance_session.pull_evidence')
+          actionResponse(currentRead.session, 'acceptance_session.pull_evidence')
         )
       }
       return baseFetch(input, init)
@@ -603,8 +624,153 @@ describe('acceptance session browser component', () => {
     await waitForAssertion(() =>
       expect(document.body.textContent).toContain('Retry same command key')
     )
+    await click('Refresh before new command')
+    await waitForAssertion(() => {
+      expect(document.body.textContent).toContain('Command outcome remains ambiguous')
+      expect(document.body.textContent).toContain('Retry same command key')
+    })
+    expect(
+      Array.from(document.querySelectorAll('button')).some(
+        (item) => item.textContent?.trim() === 'Pull evidence'
+      )
+    ).toBe(false)
     await click('Retry same command key')
     await waitForAssertion(() => expect(keys).toHaveLength(2))
     expect(keys[0]).toBe(keys[1])
+  })
+
+  it('clears an ambiguous command after a fresh lifecycle proves it advanced', async () => {
+    let currentRead = readFor('preflight_passed')
+    const baseFetch = standardFetch(() => currentRead)
+    const keys: string[] = []
+    window.fetch = vi.fn(async (input, init) => {
+      const path = requestPath(input)
+      if (path.endsWith('/evidence')) {
+        keys.push((init?.headers as Record<string, string>)['Idempotency-Key'])
+        currentRead = readFor('evidence_ready')
+        throw new TypeError('response lost after the server advanced')
+      }
+      return baseFetch(input, init)
+    }) as typeof window.fetch
+
+    await renderPanel()
+    await loadSession()
+    await click('Pull evidence')
+    await waitForAssertion(() =>
+      expect(document.body.textContent).toContain('Retry same command key')
+    )
+    await click('Refresh before new command')
+    await waitForAssertion(() => {
+      expect(document.body.textContent).toContain('Confirm every criterion')
+      expect(document.body.textContent).not.toContain('Retry same command key')
+    })
+    expect(keys).toHaveLength(1)
+  })
+
+  it('resets confirmation, retry, and transient receipts when session B replaces A', async () => {
+    let firstRead = readFor('preflight_passed')
+    const secondRead = readForSession(secondSessionId, 'evidence_ready')
+    const baseFetch = standardFetch(() => firstRead)
+    window.fetch = vi.fn(async (input, init) => {
+      const path = requestPath(input)
+      if (path === `/api/v1/acceptance-sessions/${secondSessionId}`) {
+        return jsonResponse(secondRead)
+      }
+      if (path === '/api/v1/reviews/415/acceptance-sessions') {
+        return jsonResponse({
+          receipt: {
+            action: 'acceptance_session.create',
+            actor: { id: 'operator', type: 'human' },
+            completed_at: '2026-08-12T12:00:00+00:00',
+            idempotency_key_identity: `sha256:${'1'.repeat(64)}`,
+            outcome: 'created',
+            target: { id: sessionId, type: 'acceptance_session' },
+          },
+          session: firstRead.session,
+        })
+      }
+      if (path.endsWith('/evidence')) {
+        firstRead = readFor('evidence_ready')
+        return jsonResponse(
+          actionResponse(firstRead.session, 'acceptance_session.pull_evidence')
+        )
+      }
+      if (path.endsWith('/confirm')) {
+        throw new TypeError('seeded ambiguous confirmation response')
+      }
+      return baseFetch(input, init)
+    }) as typeof window.fetch
+
+    await renderPanel()
+    const repository = document.querySelector<HTMLInputElement>(
+      '#acceptance-repository'
+    )
+    if (!repository) throw new Error('Missing repository input')
+    setInput(repository, 'acme/atlas')
+    await click('Create exact-head session')
+    await login()
+    await click('Create exact-head session')
+    await waitForAssertion(() =>
+      expect(document.body.textContent).toContain('Pull exact-head evidence')
+    )
+    await click('Pull evidence')
+    await waitForAssertion(() =>
+      expect(document.body.textContent).toContain('Confirm every criterion')
+    )
+
+    for (const checkbox of Array.from(
+      document.querySelectorAll<HTMLButtonElement>('[id^="criterion-"]')
+    )) {
+      await act(async () => checkbox.click())
+    }
+    await act(async () =>
+      document
+        .querySelector<HTMLButtonElement>('[id^="manual-approval-"]')
+        ?.click()
+    )
+    await click('Confirm every criterion')
+    await waitForAssertion(() => {
+      expect(document.body.textContent).toContain('Retry same command key')
+      expect(document.body.textContent).toContain('Session creation receipt')
+      expect(document.body.textContent).toContain('Latest server receipt')
+    })
+
+    firstRead = readFor('stale')
+    await click('Refresh before new command')
+    await waitForAssertion(() =>
+      expect(document.body.textContent).toContain('Start a new exact-head session')
+    )
+    await click('Start a new exact-head session')
+    await waitForAssertion(() =>
+      expect(
+        document.querySelector<HTMLInputElement>('#acceptance-session-id')
+      ).not.toBeNull()
+    )
+
+    const loadInput = document.querySelector<HTMLInputElement>(
+      '#acceptance-session-id'
+    )
+    if (!loadInput) throw new Error('Missing session ID input')
+    setInput(loadInput, secondSessionId)
+    await click('Load session with fresh GET')
+    await waitForAssertion(() =>
+      expect(document.body.textContent).toContain(secondSessionId)
+    )
+
+    const secondCriteria = Array.from(
+      document.querySelectorAll<HTMLButtonElement>('[id^="criterion-"]')
+    )
+    expect(secondCriteria).toHaveLength(3)
+    expect(secondCriteria.every((item) => item.getAttribute('aria-checked') === 'false')).toBe(
+      true
+    )
+    expect(
+      document
+        .querySelector<HTMLButtonElement>('[id^="manual-approval-"]')
+        ?.getAttribute('aria-checked')
+    ).toBe('false')
+    expect(document.body.textContent).not.toContain('Retry same command key')
+    expect(document.body.textContent).not.toContain('Session creation receipt')
+    expect(document.body.textContent).not.toContain('Latest server receipt')
   })
 })
