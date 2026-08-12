@@ -30,6 +30,11 @@ const expectedV1Routes = [
   '/api/v1/dependencies/critical-path',
   '/api/v1/dependencies/graph',
   '/api/v1/reviews',
+  '/api/v1/reviews/{pr_number}/acceptance-sessions',
+  '/api/v1/acceptance-sessions/{session_id}',
+  '/api/v1/acceptance-sessions/{session_id}/evidence',
+  '/api/v1/acceptance-sessions/{session_id}/confirm',
+  '/api/v1/acceptance-sessions/{session_id}/verify',
   '/api/v1/session',
   '/api/v1/status',
 ] as const satisfies readonly (keyof paths)[]
@@ -88,6 +93,18 @@ type RejectLessonResponse = JsonResponse<
   PostOperation<'/api/v1/lessons/{lesson_id}/reject'>
 >
 type LessonActionReceipt = PromoteLessonResponse['receipt']
+type AcceptanceSessionRead = RouteResponse<
+  '/api/v1/acceptance-sessions/{session_id}'
+>
+type AcceptanceSessionCreateRequest = JsonRequest<
+  PostOperation<'/api/v1/reviews/{pr_number}/acceptance-sessions'>
+>
+type AcceptanceConfirmationRequest = JsonRequest<
+  PostOperation<'/api/v1/acceptance-sessions/{session_id}/confirm'>
+>
+type AcceptanceActionResponse = JsonResponse<
+  PostOperation<'/api/v1/acceptance-sessions/{session_id}/verify'>
+>
 type ReviewItem = RouteResponse<'/api/v1/reviews'>['reviews'][number]
 type SessionState = RouteResponse<'/api/v1/session'>
 type SessionLoginRequest = JsonRequest<PostOperation<'/api/v1/session'>>
@@ -109,6 +126,38 @@ const lessonCommandTypeParity: [
   >,
   Assert<Equal<LessonActionReceipt['after_status'], Schema['EntityStatus'] | null>>,
 ] = [true, true, true, true, true, true, true, true]
+const acceptanceSessionTypeParity: [
+  Assert<
+    Equal<AcceptanceSessionRead, Schema['AcceptanceSessionReadResponse']>
+  >,
+  Assert<
+    Equal<
+      AcceptanceSessionCreateRequest,
+      Schema['CreateAcceptanceSessionRequest']
+    >
+  >,
+  Assert<
+    Equal<
+      AcceptanceConfirmationRequest,
+      Schema['AcceptanceConfirmationRequestSchema']
+    >
+  >,
+  Assert<
+    Equal<AcceptanceActionResponse, Schema['AcceptanceSessionActionResponse']>
+  >,
+  Assert<
+    Equal<
+      AcceptanceSessionRead['reasons'][number],
+      Schema['AcceptanceSessionBlockingReason']
+    >
+  >,
+  Assert<
+    Equal<
+      AcceptanceSessionRead['session']['lifecycle'],
+      Schema['AcceptanceSessionLifecycle']
+    >
+  >,
+] = [true, true, true, true, true, true]
 const closedValueFieldParity: [
   Assert<Equal<TicketBoardItem['status'], Schema['TicketStatus']>>,
   Assert<Equal<TicketBoardItem['ticket_type'], Schema['TicketType']>>,
@@ -199,11 +248,19 @@ function tsFiles(root: string): string[] {
 describe('generated OpenAPI TypeScript client contract', () => {
   it('represents every current v1 route in the generated types', () => {
     expect(routeTypeParity).toBe(true)
-    expect(expectedV1Routes).toHaveLength(14)
+    expect(expectedV1Routes).toHaveLength(19)
   })
 
   it('keeps lesson command request, response, actor and status types generated', () => {
     expect(lessonCommandTypeParity.every((value) => value)).toBe(true)
+  })
+
+  it('keeps acceptance-session requests, all reasons and receipts generated', () => {
+    expect(acceptanceSessionTypeParity.every((value) => value)).toBe(true)
+    expect(atlasOpenApiEnums.AcceptanceSessionBlockingReason).toContain(
+      'external_read_timeout'
+    )
+    expect(atlasOpenApiEnums.AcceptanceSessionLifecycle).toContain('merge_ready')
   })
 
   it('types closed-value response fields through generated schema enum members', () => {

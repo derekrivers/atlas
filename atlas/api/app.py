@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any, cast
@@ -14,7 +15,12 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.base import RequestResponseEndpoint
 from starlette.responses import Response
 
+from atlas.api.acceptance_policy import (
+    AcceptanceRepositoryPolicy,
+    acceptance_repositories_from_env,
+)
 from atlas.api.routers import (
+    acceptance_sessions,
     dependencies,
     epics,
     lessons,
@@ -23,6 +29,7 @@ from atlas.api.routers import (
     status,
     tickets,
 )
+from atlas.api.schemas import AcceptanceSessionErrorResponse
 from atlas.api.security import (
     Clock,
     InMemoryOperatorSessionStore,
@@ -31,6 +38,7 @@ from atlas.api.security import (
     utc_now,
 )
 from atlas.dependencies import GraphValidationFailed
+from atlas.github import GitHubClient
 from atlas.orchestration.operator_security import (
     bind_host_from_env,
     operator_token_from_env,
@@ -87,14 +95,39 @@ def create_app(
     clock: Clock | None = None,
     session_store: InMemoryOperatorSessionStore | None = None,
     login_throttle: LoginAttemptThrottle | None = None,
+    acceptance_repositories: tuple[str, ...] | None = None,
+    acceptance_github_client: GitHubClient | None = None,
+    acceptance_external_timeout_seconds: float = 15.0,
 ) -> FastAPI:
     """Build the HTTP adapter with one validated database handle per lifespan."""
+
+    if (
+        not math.isfinite(acceptance_external_timeout_seconds)
+        or acceptance_external_timeout_seconds <= 0
+    ):
+        raise ValueError("acceptance external timeout must be finite and positive")
+    repository_policy = AcceptanceRepositoryPolicy(
+        (
+            acceptance_repositories
+            if acceptance_repositories is not None
+            else acceptance_repositories_from_env()
+        )
+        if enable_writes
+        else ()
+    )
 
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         resolved_database = database or Database(resolve_url(database_url))
         assert_schema_at_head(resolved_database)
+        resolved_clock = clock or utc_now
         application.state.database = resolved_database
+        application.state.clock = resolved_clock
+        application.state.acceptance_repository_policy = repository_policy
+        application.state.acceptance_github_client = acceptance_github_client
+        application.state.acceptance_external_timeout_seconds = (
+            acceptance_external_timeout_seconds
+        )
         if enable_writes:
             application.state.operator_session_service = build_operator_session_service(
                 operator_token=(
@@ -103,7 +136,7 @@ def create_app(
                     else operator_token_from_env()
                 ),
                 bind_host=bind_host,
-                clock=clock or utc_now,
+                clock=resolved_clock,
                 store=session_store,
                 throttle=login_throttle,
             )
@@ -122,8 +155,10 @@ def create_app(
         response = await call_next(request)
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Content-Security-Policy"] = CONTENT_SECURITY_POLICY
-        if request.url.path.startswith(f"{API_V1_PREFIX}/session") or (
-            request.method not in {"GET", "HEAD", "OPTIONS"}
+        if (
+            request.url.path.startswith(f"{API_V1_PREFIX}/acceptance-sessions")
+            or request.url.path.startswith(f"{API_V1_PREFIX}/session")
+            or (request.method not in {"GET", "HEAD", "OPTIONS"})
         ):
             response.headers["Cache-Control"] = "no-store"
         return response
@@ -160,8 +195,23 @@ def create_app(
             )
             and request.url.path.startswith(f"{API_V1_PREFIX}/lessons/")
         )
-        if not is_lesson_command:
+        is_acceptance_command = request.method == "POST" and (
+            request.url.path.startswith(f"{API_V1_PREFIX}/acceptance-sessions/")
+            or (
+                request.url.path.startswith(f"{API_V1_PREFIX}/reviews/")
+                and request.url.path.endswith("/acceptance-sessions")
+            )
+        )
+        if not (is_lesson_command or is_acceptance_command):
             return await request_validation_exception_handler(request, error)
+        if is_acceptance_command:
+            bounded = AcceptanceSessionErrorResponse(
+                detail="acceptance session request was invalid"
+            )
+            return JSONResponse(
+                status_code=http_status.HTTP_422_UNPROCESSABLE_CONTENT,
+                content=bounded.model_dump(mode="json"),
+            )
         safe_errors = [
             {
                 key: value
@@ -184,6 +234,11 @@ def create_app(
     if enable_writes:
         application.include_router(session.router, prefix=API_V1_PREFIX)
         application.include_router(lessons.writable_router, prefix=API_V1_PREFIX)
+        application.include_router(
+            acceptance_sessions.create_router,
+            prefix=API_V1_PREFIX,
+        )
+        application.include_router(acceptance_sessions.router, prefix=API_V1_PREFIX)
         _install_openapi_contract(application)
     return application
 

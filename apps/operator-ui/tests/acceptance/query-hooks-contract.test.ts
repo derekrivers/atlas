@@ -46,6 +46,7 @@ type MutationData<
 > = ReturnType<Hook> extends { data: infer Data } ? NonNullable<Data> : never
 
 type CoveredRoute = (typeof ATLAS_QUERY_ROUTES)[number]
+type AcceptanceSessionRoute = '/api/v1/acceptance-sessions/{session_id}'
 type HookResponseParity = [
   Assert<Equal<HookData<typeof useTicketsQuery>, AtlasRouteResponse<'/api/v1/tickets'>>>,
   Assert<
@@ -127,7 +128,9 @@ type MutationResponseParity = [
   >,
 ]
 
-const routeCoverage: Assert<Equal<CoveredRoute, AtlasApiRoute>> = true
+const routeCoverage: Assert<
+  Equal<CoveredRoute, Exclude<AtlasApiRoute, AcceptanceSessionRoute>>
+> = true
 const hookResponseParity: HookResponseParity = [
   true,
   true,

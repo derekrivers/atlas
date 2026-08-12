@@ -92,6 +92,10 @@ operator_action_outcome_result = st.sampled_from(
         (OperatorActionOutcome.FAILED, OperatorActionResultCode.ACTION_FAILED),
         (
             OperatorActionOutcome.FAILED,
+            OperatorActionResultCode.EXTERNAL_TIMEOUT,
+        ),
+        (
+            OperatorActionOutcome.FAILED,
             OperatorActionResultCode.EVIDENCE_TRANSPORT_FAILED,
         ),
         (

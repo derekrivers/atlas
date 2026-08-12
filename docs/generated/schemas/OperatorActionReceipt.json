@@ -39,6 +39,7 @@
         "action_refused",
         "stale_state",
         "action_failed",
+        "external_timeout",
         "evidence_transport_failed",
         "evidence_authentication_failed",
         "evidence_rate_limit_failed",

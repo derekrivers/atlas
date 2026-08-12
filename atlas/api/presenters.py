@@ -9,6 +9,13 @@ from fastapi import status
 from fastapi.responses import JSONResponse
 
 from atlas.api.schemas import (
+    AcceptanceActionReceiptSchema,
+    AcceptanceCreationReceiptSchema,
+    AcceptanceSessionActionResponse,
+    AcceptanceSessionCreationResponse,
+    AcceptanceSessionErrorResponse,
+    AcceptanceSessionReadResponse,
+    AcceptanceSessionSchema,
     CriticalPathStepSchema,
     DependencyBlockerSchema,
     DependencyCriticalPathResponse,
@@ -37,7 +44,16 @@ from atlas.api.schemas import (
     TicketReadinessSchema,
 )
 from atlas.core.keys import natural_key
-from atlas.core.models import Epic, Lesson, Ticket
+from atlas.core.models import (
+    AcceptanceSession,
+    AcceptanceSessionBlockingReason,
+    Epic,
+    Lesson,
+    OperatorActionOutcome,
+    OperatorActionReceipt,
+    OperatorActionResultCode,
+    Ticket,
+)
 from atlas.dependencies import CriticalPath, NotReadyCode
 from atlas.dependencies.views import (
     blocked_payload,
@@ -45,15 +61,28 @@ from atlas.dependencies.views import (
     unlocks_payload,
 )
 from atlas.orchestration import (
+    AcceptanceConfirmationResult,
+    AcceptanceConfirmationStatus,
+    AcceptanceConfirmationValidationCode,
+    AcceptanceEvidencePullResult,
+    AcceptanceSessionCreationResult,
+    AcceptanceSessionCreationStatus,
+    AcceptanceVerificationResult,
+    AcceptanceVerificationStatus,
     DependencyGraphState,
     LessonDispositionResult,
     LessonDispositionStatus,
+    LiveAcceptanceReadinessResult,
+    OperatorActionConflictCode,
+    OperatorActionFailureCode,
+    OperatorActionGatewayStatus,
     SystemStatus,
     TicketBoardItemState,
     TicketDependencyState,
     TicketEvidenceRecordState,
     TicketReviewState,
     present_operator_action_receipt,
+    stored_acceptance_session_status,
 )
 
 
@@ -184,6 +213,361 @@ def _present_lesson(lesson: Lesson) -> LessonItemSchema:
 def present_lessons(lessons: Sequence[Lesson]) -> LessonsResponse:
     """Present stored lessons without cross-resource assembly."""
     return LessonsResponse(lessons=[_present_lesson(lesson) for lesson in lessons])
+
+
+def _present_acceptance_session(session: AcceptanceSession) -> AcceptanceSessionSchema:
+    return AcceptanceSessionSchema.model_validate(
+        stored_acceptance_session_status(session)
+    )
+
+
+def _present_acceptance_receipt(
+    receipt: OperatorActionReceipt,
+) -> AcceptanceActionReceiptSchema:
+    return AcceptanceActionReceiptSchema.model_validate(
+        present_operator_action_receipt(receipt)
+    )
+
+
+def _acceptance_error(
+    status_code: int,
+    detail: str,
+    *,
+    reasons: Sequence[AcceptanceSessionBlockingReason] = (),
+    validation_errors: Sequence[AcceptanceConfirmationValidationCode] = (),
+    result_code: OperatorActionResultCode | None = None,
+    conflict_code: OperatorActionConflictCode | None = None,
+    failure_code: OperatorActionFailureCode | None = None,
+    recovery_command: str | None = None,
+    ticket_keys: Sequence[str] = (),
+) -> JSONResponse:
+    response = AcceptanceSessionErrorResponse(
+        detail=detail,
+        reasons=list(reasons),
+        validation_errors=list(validation_errors),
+        result_code=result_code,
+        conflict_code=conflict_code,
+        failure_code=failure_code,
+        recovery_command=recovery_command,
+        ticket_keys=list(ticket_keys),
+    )
+    return JSONResponse(
+        status_code=status_code,
+        content=response.model_dump(mode="json"),
+    )
+
+
+def _acceptance_reason_status(
+    reasons: Sequence[AcceptanceSessionBlockingReason],
+    *,
+    default: int,
+) -> int:
+    if AcceptanceSessionBlockingReason.SESSION_UNKNOWN in reasons:
+        return status.HTTP_404_NOT_FOUND
+    if AcceptanceSessionBlockingReason.PR_UNKNOWN in reasons:
+        return status.HTTP_404_NOT_FOUND
+    if AcceptanceSessionBlockingReason.EXTERNAL_READ_TIMEOUT in reasons:
+        return status.HTTP_504_GATEWAY_TIMEOUT
+    if any(
+        reason
+        in {
+            AcceptanceSessionBlockingReason.EXTERNAL_READ_FAILED,
+            AcceptanceSessionBlockingReason.EXTERNAL_RESPONSE_MALFORMED,
+            AcceptanceSessionBlockingReason.EXTERNAL_STATE_INDETERMINATE,
+        }
+        for reason in reasons
+    ):
+        return status.HTTP_502_BAD_GATEWAY
+    return default
+
+
+def present_acceptance_session_creation(
+    result: AcceptanceSessionCreationResult,
+) -> AcceptanceSessionCreationResponse | JSONResponse:
+    """Map one typed exact-head preflight/create result to the HTTP contract."""
+
+    if result.status in {
+        AcceptanceSessionCreationStatus.CREATED,
+        AcceptanceSessionCreationStatus.REPLAYED,
+    }:
+        if result.session is None:
+            return _acceptance_error(
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+                "acceptance session creation failed",
+            )
+        session = result.session
+        return AcceptanceSessionCreationResponse(
+            session=_present_acceptance_session(session),
+            receipt=AcceptanceCreationReceiptSchema.model_validate(
+                {
+                    "action": "acceptance_session.create",
+                    "target": {"type": "acceptance_session", "id": session.id},
+                    "actor": {
+                        "type": session.created_by_type,
+                        "id": session.created_by_id,
+                    },
+                    "idempotency_key_identity": (
+                        session.creation_idempotency_key_identity
+                    ),
+                    "outcome": result.status,
+                    "completed_at": session.created_at,
+                }
+            ),
+        )
+    return _acceptance_error(
+        _acceptance_reason_status(result.reasons, default=status.HTTP_409_CONFLICT),
+        (
+            "acceptance session preflight was refused"
+            if result.status is AcceptanceSessionCreationStatus.REFUSED
+            else "acceptance session creation conflicted"
+        ),
+        reasons=result.reasons,
+        recovery_command=result.recovery_command,
+        ticket_keys=result.ticket_keys,
+    )
+
+
+def present_live_acceptance_readiness(
+    result: LiveAcceptanceReadinessResult,
+) -> AcceptanceSessionReadResponse | JSONResponse:
+    """Present current read authority without turning external failure into true."""
+
+    if result.session is None:
+        return _acceptance_error(
+            _acceptance_reason_status(
+                result.reasons,
+                default=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            ),
+            "acceptance session was not found",
+            reasons=result.reasons,
+        )
+    return AcceptanceSessionReadResponse(
+        session=_present_acceptance_session(result.session),
+        merge_ready=result.merge_ready,
+        reasons=list(result.reasons),
+    )
+
+
+def _acceptance_receipt_error(
+    session: AcceptanceSession | None,
+    receipt: OperatorActionReceipt,
+    *,
+    reasons: Sequence[AcceptanceSessionBlockingReason] = (),
+) -> JSONResponse:
+    del session
+    status_code = _acceptance_reason_status(
+        reasons,
+        default=status.HTTP_409_CONFLICT,
+    )
+    if receipt.result_code is OperatorActionResultCode.EVIDENCE_RATE_LIMIT_FAILED:
+        status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    elif receipt.result_code is OperatorActionResultCode.EXTERNAL_TIMEOUT:
+        status_code = status.HTTP_504_GATEWAY_TIMEOUT
+    elif receipt.result_code in {
+        OperatorActionResultCode.EVIDENCE_TRANSPORT_FAILED,
+        OperatorActionResultCode.EVIDENCE_AUTHENTICATION_FAILED,
+        OperatorActionResultCode.EVIDENCE_MALFORMED_SOURCE,
+    }:
+        status_code = status.HTTP_502_BAD_GATEWAY
+    elif receipt.outcome is OperatorActionOutcome.FAILED:
+        status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+    return _acceptance_error(
+        status_code,
+        "acceptance session action did not advance",
+        reasons=reasons,
+        result_code=receipt.result_code,
+    )
+
+
+def present_acceptance_evidence(
+    result: AcceptanceEvidencePullResult,
+) -> AcceptanceSessionActionResponse | JSONResponse:
+    """Map the bounded evidence action and its Phase 13 gateway outcome."""
+
+    if result.session is None:
+        return _acceptance_error(
+            status.HTTP_404_NOT_FOUND,
+            "acceptance session was not found",
+            reasons=result.reasons,
+        )
+    if result.status in {
+        OperatorActionGatewayStatus.CONFLICT,
+        OperatorActionGatewayStatus.IN_PROGRESS,
+    }:
+        return _acceptance_error(
+            status.HTTP_409_CONFLICT,
+            "acceptance session action conflicted",
+            reasons=result.reasons,
+            conflict_code=(
+                result.conflict.code if result.conflict is not None else None
+            ),
+        )
+    if result.status is OperatorActionGatewayStatus.FAILED:
+        return _acceptance_error(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            "acceptance session action failed",
+            reasons=result.reasons,
+            failure_code=(result.failure.code if result.failure is not None else None),
+        )
+    if result.receipt is None:
+        return _acceptance_error(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            "acceptance session action failed",
+        )
+    if result.receipt.outcome is not OperatorActionOutcome.SUCCEEDED:
+        return _acceptance_receipt_error(
+            result.session,
+            result.receipt,
+            reasons=result.reasons,
+        )
+    return AcceptanceSessionActionResponse(
+        session=_present_acceptance_session(result.session),
+        receipt=_present_acceptance_receipt(result.receipt),
+        merge_ready=False,
+    )
+
+
+def present_acceptance_confirmation(
+    result: AcceptanceConfirmationResult,
+) -> AcceptanceSessionActionResponse | JSONResponse:
+    """Map strict validation separately from authenticated command outcomes."""
+
+    if result.status is AcceptanceConfirmationStatus.VALIDATION_FAILED:
+        unknown = (
+            AcceptanceConfirmationValidationCode.SESSION_UNKNOWN
+            in result.validation_errors
+        )
+        return _acceptance_error(
+            (
+                status.HTTP_404_NOT_FOUND
+                if unknown
+                else status.HTTP_422_UNPROCESSABLE_CONTENT
+            ),
+            (
+                "acceptance session was not found"
+                if unknown
+                else "acceptance confirmation request was invalid"
+            ),
+            validation_errors=result.validation_errors,
+        )
+    if result.session is None:
+        return _acceptance_error(
+            status.HTTP_404_NOT_FOUND,
+            "acceptance session was not found",
+            reasons=result.reasons,
+        )
+    if (
+        result.receipt is not None
+        and result.receipt.outcome is not OperatorActionOutcome.SUCCEEDED
+    ):
+        return _acceptance_receipt_error(
+            result.session,
+            result.receipt,
+            reasons=result.reasons,
+        )
+    if result.status in {
+        AcceptanceConfirmationStatus.CONFLICT,
+        AcceptanceConfirmationStatus.IN_PROGRESS,
+    }:
+        return _acceptance_error(
+            status.HTTP_409_CONFLICT,
+            "acceptance confirmation conflicted",
+            reasons=result.reasons,
+            conflict_code=(
+                result.conflict.code if result.conflict is not None else None
+            ),
+        )
+    if result.status is AcceptanceConfirmationStatus.FAILED:
+        return _acceptance_error(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            "acceptance confirmation failed",
+            reasons=result.reasons,
+            failure_code=(result.failure.code if result.failure is not None else None),
+        )
+    if result.receipt is None:
+        return _acceptance_error(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            "acceptance confirmation failed",
+            reasons=result.reasons,
+        )
+    if result.receipt.outcome is not OperatorActionOutcome.SUCCEEDED:
+        return _acceptance_receipt_error(
+            result.session,
+            result.receipt,
+            reasons=result.reasons,
+        )
+    return AcceptanceSessionActionResponse(
+        session=_present_acceptance_session(result.session),
+        receipt=_present_acceptance_receipt(result.receipt),
+        merge_ready=False,
+    )
+
+
+def present_acceptance_verification(
+    result: AcceptanceVerificationResult,
+) -> AcceptanceSessionActionResponse | JSONResponse:
+    """Present exact-head verification without deriving readiness in the API."""
+
+    if result.session is None:
+        return _acceptance_error(
+            _acceptance_reason_status(
+                result.reasons,
+                default=status.HTTP_404_NOT_FOUND,
+            ),
+            "acceptance session was not found",
+            reasons=result.reasons,
+        )
+    if (
+        result.receipt is not None
+        and result.receipt.outcome is not OperatorActionOutcome.SUCCEEDED
+    ):
+        return _acceptance_receipt_error(
+            result.session,
+            result.receipt,
+            reasons=result.reasons,
+        )
+    if result.status in {
+        AcceptanceVerificationStatus.CONFLICT,
+        AcceptanceVerificationStatus.IN_PROGRESS,
+    }:
+        return _acceptance_error(
+            status.HTTP_409_CONFLICT,
+            "acceptance verification conflicted",
+            reasons=result.reasons,
+            conflict_code=(
+                result.conflict.code if result.conflict is not None else None
+            ),
+        )
+    if result.status is AcceptanceVerificationStatus.FAILED and result.receipt is None:
+        return _acceptance_error(
+            _acceptance_reason_status(
+                result.reasons,
+                default=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            ),
+            "acceptance verification failed",
+            reasons=result.reasons,
+            failure_code=(result.failure.code if result.failure is not None else None),
+        )
+    if result.receipt is None:
+        return _acceptance_error(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            "acceptance verification failed",
+            reasons=result.reasons,
+        )
+    if (
+        result.receipt.outcome is not OperatorActionOutcome.SUCCEEDED
+        or not result.merge_ready
+    ):
+        return _acceptance_receipt_error(
+            result.session,
+            result.receipt,
+            reasons=result.reasons,
+        )
+    return AcceptanceSessionActionResponse(
+        session=_present_acceptance_session(result.session),
+        receipt=_present_acceptance_receipt(result.receipt),
+        merge_ready=result.merge_ready,
+    )
 
 
 def _lesson_disposition_error(

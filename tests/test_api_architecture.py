@@ -605,6 +605,28 @@ def test_api_no_logic_sensor_fires_on_seeded_disposition_extra_service_call() ->
     assert any("must make exactly one" in violation.reason for violation in violations)
 
 
+def test_api_no_logic_sensor_fires_on_seeded_acceptance_extra_service_call() -> None:
+    # Seeded red first with `assert 1 == 2` (B011); an acceptance dependency
+    # may never refresh, retry or call a second application operation itself.
+    violations = _dependency_violations_for(
+        """
+        from atlas.api.dependencies import AcceptanceSessionReadinessServiceDependency
+        from atlas.api.presenters import present_live_acceptance_readiness
+        from atlas.api.schemas import AcceptanceSessionReadResponse
+
+        def get_seeded_acceptance(
+            service: AcceptanceSessionReadinessServiceDependency,
+        ) -> AcceptanceSessionReadResponse:
+            result = service.evaluate(None)
+            service.evaluate(None)
+            assert 1 == 2  # type: ignore[comparison-overlap]
+            return present_live_acceptance_readiness(result)
+        """
+    )
+
+    assert any("must make exactly one" in violation.reason for violation in violations)
+
+
 def test_api_no_logic_sensor_fires_on_seeded_disposition_state_branch() -> None:
     # Seeded red first with `assert 1 == 2` (B011); typed outcome mapping belongs
     # in the presenter and never in the service-calling dependency.

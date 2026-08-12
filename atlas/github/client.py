@@ -32,6 +32,7 @@ inject the in-memory fake (``tests/github_fakes.py``) or stub ``urllib``
 from __future__ import annotations
 
 import json
+import math
 import os
 import time
 from collections.abc import Callable, Mapping
@@ -51,6 +52,7 @@ PER_PAGE = 100
 # Bounded retries on a secondary-rate-limit response before raising, so the
 # backoff can never become an unbounded loop (ADR-0008).
 MAX_RATE_LIMIT_RETRIES = 3
+DEFAULT_REQUEST_TIMEOUT_SECONDS = 15.0
 # Fallback backoff (seconds) when a rate-limited response carries no usable
 # Retry-After; bounded so a hostile/garbled header cannot stall a tick.
 _DEFAULT_BACKOFF_SECONDS = 1.0
@@ -180,6 +182,10 @@ class GitHubTransportError(GitHubAPIError):
     """GitHub could not be reached or returned a non-auth HTTP failure."""
 
 
+class GitHubTimeoutError(GitHubTransportError):
+    """A configured finite GitHub request deadline expired."""
+
+
 class GitHubMalformedResponseError(GitHubAPIError):
     """GitHub returned a response that violated the typed source contract."""
 
@@ -264,6 +270,7 @@ class GitHubRESTClient:
         *,
         token: str | None = None,
         sleep: Callable[[float], None] = time.sleep,
+        timeout_seconds: float = DEFAULT_REQUEST_TIMEOUT_SECONDS,
     ) -> None:
         resolved = token if token is not None else os.environ.get(TOKEN_ENV)
         if not resolved:
@@ -272,6 +279,9 @@ class GitHubRESTClient:
             )
         self._token = resolved
         self._sleep = sleep
+        if not math.isfinite(timeout_seconds) or timeout_seconds <= 0:
+            raise ValueError("GitHub request timeout must be finite and positive")
+        self._timeout_seconds = timeout_seconds
         # Per-URL ETag cache for conditional requests (ADR-0008 rate limits).
         self._etags: dict[str, str] = {}
         self._page_cache: dict[str, tuple[list[dict[str, Any]], str | None]] = {}
@@ -480,7 +490,10 @@ class GitHubRESTClient:
                 url, method="GET", headers=self._headers(url)
             )
             try:
-                with urllib_request.urlopen(request) as response:
+                with urllib_request.urlopen(
+                    request,
+                    timeout=self._timeout_seconds,
+                ) as response:
                     return parse(response)
             except urllib_error.HTTPError as error:
                 if error.code == 304:
@@ -500,7 +513,19 @@ class GitHubRESTClient:
                 raise GitHubTransportError(
                     f"GitHub API HTTP {error.code}: {error}"
                 ) from error
-            except (urllib_error.URLError, OSError) as error:
+            except TimeoutError as error:
+                raise GitHubTimeoutError(
+                    "GitHub API request exceeded its configured deadline"
+                ) from error
+            except urllib_error.URLError as error:
+                if isinstance(error.reason, TimeoutError):
+                    raise GitHubTimeoutError(
+                        "GitHub API request exceeded its configured deadline"
+                    ) from error
+                raise GitHubTransportError(
+                    f"GitHub API request failed: {error}"
+                ) from error
+            except OSError as error:
                 raise GitHubTransportError(
                     f"GitHub API request failed: {error}"
                 ) from error

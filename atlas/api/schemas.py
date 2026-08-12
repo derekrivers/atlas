@@ -4,10 +4,13 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StrictInt
 
 from atlas.core.enums import ActorType, EntityStatus, EvidenceStatus, RiskLevel
 from atlas.core.models import (
+    AcceptanceSessionBlockingReason,
+    AcceptanceSessionLifecycle,
+    AcceptanceSessionStep,
     DependencyType,
     EpicStatus,
     EvidenceType,
@@ -18,11 +21,22 @@ from atlas.core.models import (
     TicketType,
     VerificationCheckType,
 )
+from atlas.core.models.acceptance_session import (
+    AcceptanceAssessmentSnapshot,
+    AcceptanceCriterionSnapshot,
+    AcceptanceStepSummary,
+)
 from atlas.core.models.operator_action_receipt import (
     OperatorActionMetadataKey,
     OperatorActionMetadataValue,
 )
 from atlas.dependencies import NotReadyCode
+from atlas.orchestration import (
+    AcceptanceConfirmationValidationCode,
+    AcceptanceSessionCreationStatus,
+    OperatorActionConflictCode,
+    OperatorActionFailureCode,
+)
 
 
 class TicketCountResponse(BaseModel):
@@ -192,6 +206,197 @@ class RejectLessonRequest(BaseModel):
     """Exact empty command payload for rejecting one DRAFT lesson."""
 
     model_config = ConfigDict(extra="forbid")
+
+
+class CreateAcceptanceSessionRequest(BaseModel):
+    """Repository policy selector; PR identity remains path/server owned."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True, hide_input_in_errors=True)
+
+    repository: str = Field(min_length=3, max_length=257)
+
+
+class AcceptanceEvidenceRequest(BaseModel):
+    """Strict empty intent for an exact-session evidence pull."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True, hide_input_in_errors=True)
+
+
+class AcceptanceConfirmationRequestSchema(BaseModel):
+    """Minimal confirmation intent; criterion definitions stay server owned."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True, hide_input_in_errors=True)
+
+    criteria_fingerprint: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    criterion_indexes: tuple[StrictInt, ...] = Field(max_length=1_000_000)
+    manual_approval: bool = Field(strict=True)
+
+
+class AcceptanceVerificationRequest(BaseModel):
+    """Strict empty intent for exact-head verification."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True, hide_input_in_errors=True)
+
+
+class AcceptanceRepositoryIdentitySchema(BaseModel):
+    """Configured repository owner and name, never a caller-controlled URL."""
+
+    owner: str = Field(min_length=1, max_length=128)
+    name: str = Field(min_length=1, max_length=128)
+
+
+class AcceptanceGitIdentitySchema(BaseModel):
+    """One exact ref/SHA/repository identity pinned by the application service."""
+
+    ref: str = Field(min_length=1, max_length=256)
+    sha: str = Field(pattern=r"^[0-9a-f]{40}$")
+    repository: str = Field(min_length=3, max_length=257)
+
+
+class AcceptancePinnedIdentitySchema(BaseModel):
+    """Immutable repository, PR, head and base accepted at preflight."""
+
+    repository: AcceptanceRepositoryIdentitySchema
+    pr_number: int = Field(gt=0)
+    head: AcceptanceGitIdentitySchema
+    base: AcceptanceGitIdentitySchema
+
+
+class AcceptanceSessionActorSchema(BaseModel):
+    """Server-owned single-operator identity stored with a session."""
+
+    type: Literal[ActorType.HUMAN]
+    id: Literal["operator"]
+
+
+class AcceptanceHistoricalReadinessSchema(BaseModel):
+    """Stored verification-time history, explicitly not current authority."""
+
+    stored_merge_ready: bool
+    reasons: list[AcceptanceSessionBlockingReason] = Field(
+        max_length=len(AcceptanceSessionBlockingReason)
+    )
+    authority: Literal["historical_only"]
+    is_current_merge_authority: Literal[False]
+
+
+class AcceptanceSessionTimestampsSchema(BaseModel):
+    """Bounded session lifecycle timestamps."""
+
+    created_at: datetime
+    updated_at: datetime
+    staled_at: datetime | None
+
+
+class AcceptanceSessionSchema(BaseModel):
+    """Safe complete acceptance-session history plus immutable pinned identity."""
+
+    session_id: UUID
+    pinned_identity: AcceptancePinnedIdentitySchema
+    close_set: list[str]
+    criteria_snapshot: list[AcceptanceCriterionSnapshot]
+    criteria_fingerprint: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    initial_assessment: AcceptanceAssessmentSnapshot
+    actor: AcceptanceSessionActorSchema
+    lifecycle: AcceptanceSessionLifecycle
+    steps: dict[AcceptanceSessionStep, AcceptanceStepSummary]
+    receipts: list[UUID]
+    blocking_reasons: list[AcceptanceSessionBlockingReason] = Field(
+        max_length=len(AcceptanceSessionBlockingReason)
+    )
+    historical_readiness: AcceptanceHistoricalReadinessSchema
+    timestamps: AcceptanceSessionTimestampsSchema
+
+
+class AcceptanceActionTargetSchema(BaseModel):
+    """Server-owned acceptance-session target in a durable command receipt."""
+
+    type: Literal["acceptance_session"]
+    id: UUID
+
+
+class AcceptanceActionReceiptSchema(BaseModel):
+    """Safe Phase 13 receipt for evidence, confirmation or verification."""
+
+    receipt_id: UUID
+    correlation_id: UUID
+    action: Literal[
+        "acceptance_session.pull_evidence",
+        "acceptance_session.confirm",
+        "acceptance_session.verify",
+    ]
+    target: AcceptanceActionTargetSchema
+    actor: AcceptanceSessionActorSchema
+    idempotency_key_identity: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    request_fingerprint: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    outcome: OperatorActionOutcome
+    result_code: OperatorActionResultCode
+    result_metadata: dict[
+        OperatorActionMetadataKey,
+        OperatorActionMetadataValue,
+    ]
+    before_status: None
+    after_status: None
+    created_at: datetime
+    completed_at: datetime
+
+
+class AcceptanceCreationReceiptSchema(BaseModel):
+    """Durable creation-command identity stored on the new immutable session."""
+
+    action: Literal["acceptance_session.create"]
+    target: AcceptanceActionTargetSchema
+    actor: AcceptanceSessionActorSchema
+    idempotency_key_identity: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    outcome: Literal[
+        AcceptanceSessionCreationStatus.CREATED,
+        AcceptanceSessionCreationStatus.REPLAYED,
+    ]
+    completed_at: datetime
+
+
+class AcceptanceSessionCreationResponse(BaseModel):
+    """Created or replayed session and its durable creation receipt."""
+
+    session: AcceptanceSessionSchema
+    receipt: AcceptanceCreationReceiptSchema
+
+
+class AcceptanceSessionActionResponse(BaseModel):
+    """Updated session, durable receipt and current write-time readiness flag."""
+
+    session: AcceptanceSessionSchema
+    receipt: AcceptanceActionReceiptSchema
+    merge_ready: bool
+
+
+class AcceptanceSessionReadResponse(BaseModel):
+    """One fresh read-only readiness assessment with every blocking reason."""
+
+    session: AcceptanceSessionSchema
+    merge_ready: bool
+    reasons: list[AcceptanceSessionBlockingReason] = Field(
+        max_length=len(AcceptanceSessionBlockingReason)
+    )
+
+
+class AcceptanceSessionErrorResponse(BaseModel):
+    """Bounded typed error without tokens, raw payloads or foreign messages."""
+
+    detail: str = Field(max_length=256)
+    reasons: list[AcceptanceSessionBlockingReason] = Field(
+        default_factory=list,
+        max_length=len(AcceptanceSessionBlockingReason),
+    )
+    validation_errors: list[AcceptanceConfirmationValidationCode] = Field(
+        default_factory=list,
+        max_length=len(AcceptanceConfirmationValidationCode),
+    )
+    result_code: OperatorActionResultCode | None = None
+    conflict_code: OperatorActionConflictCode | None = None
+    failure_code: OperatorActionFailureCode | None = None
+    recovery_command: str | None = Field(default=None, max_length=512)
+    ticket_keys: list[str] = Field(default_factory=list, max_length=32)
 
 
 class OperatorActionTargetSchema(BaseModel):

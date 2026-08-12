@@ -2,6 +2,88 @@
 // Do not edit it by hand.
 
 export const atlasOpenApiEnums = {
+  "AcceptanceConfirmationValidationCode": [
+    "session_unknown",
+    "criteria_fingerprint_mismatch",
+    "manual_approval_required",
+    "missing_criterion_index",
+    "duplicate_criterion_index",
+    "unknown_criterion_index",
+    "extra_criterion_index"
+  ],
+  "AcceptanceSessionBlockingReason": [
+    "pr_unknown",
+    "pr_merged",
+    "pr_closed",
+    "pr_draft",
+    "pr_fork_head",
+    "pr_non_main",
+    "integration_behind",
+    "integration_diverged",
+    "integration_conflicted",
+    "integration_indeterminate",
+    "external_state_indeterminate",
+    "close_set_empty",
+    "unknown_ticket",
+    "ticket_not_review_required",
+    "active_session_exists",
+    "idempotency_key_reused",
+    "repository_mismatch",
+    "pr_number_mismatch",
+    "head_ref_mismatch",
+    "head_sha_mismatch",
+    "head_repository_mismatch",
+    "base_ref_mismatch",
+    "base_sha_mismatch",
+    "base_repository_mismatch",
+    "close_set_mismatch",
+    "eligibility_mismatch",
+    "integration_status_mismatch",
+    "criteria_mismatch",
+    "session_stale",
+    "evidence_not_ready",
+    "confirmations_not_ready",
+    "verification_not_passed",
+    "session_unknown",
+    "session_not_verifiable",
+    "verification_already_completed",
+    "verification_pending",
+    "verification_failed",
+    "verification_warning",
+    "verification_not_applicable",
+    "verification_malformed",
+    "verification_close_set_mismatch",
+    "verified_head_invalid",
+    "verified_head_mismatch",
+    "stored_history_invalid",
+    "readiness_persistence_failed",
+    "external_read_timeout",
+    "external_response_malformed",
+    "external_read_failed"
+  ],
+  "AcceptanceSessionLifecycle": [
+    "preflight_passed",
+    "evidence_ready",
+    "confirmations_ready",
+    "verification_passed",
+    "merge_ready",
+    "stale",
+    "blocked",
+    "failed"
+  ],
+  "AcceptanceSessionStep": [
+    "preflight",
+    "evidence",
+    "confirmations",
+    "verification",
+    "readiness"
+  ],
+  "AcceptanceSessionStepState": [
+    "pending",
+    "complete",
+    "blocked",
+    "failed"
+  ],
   "ActorType": [
     "human",
     "agent",
@@ -62,6 +144,16 @@ export const atlasOpenApiEnums = {
     "no_acceptance_criteria",
     "dangling_target"
   ],
+  "OperatorActionConflictCode": [
+    "idempotency_key_reused",
+    "in_progress",
+    "stale_state"
+  ],
+  "OperatorActionFailureCode": [
+    "command_failed",
+    "receipt_commit_failed",
+    "storage_failed"
+  ],
   "OperatorActionOutcome": [
     "succeeded",
     "refused",
@@ -73,6 +165,7 @@ export const atlasOpenApiEnums = {
     "action_refused",
     "stale_state",
     "action_failed",
+    "external_timeout",
     "evidence_transport_failed",
     "evidence_authentication_failed",
     "evidence_rate_limit_failed",

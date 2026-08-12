@@ -21,6 +21,7 @@ from atlas.github.client import (
     GitHubCompareStatus,
     GitHubMalformedResponseError,
     GitHubRESTClient,
+    GitHubTimeoutError,
     MissingGitHubTokenError,
 )
 
@@ -96,6 +97,27 @@ def test_token_is_never_in_repr() -> None:
     client = GitHubRESTClient(token="ghp-super-secret")
     assert "ghp-super-secret" not in repr(client)
     assert repr(client) == "GitHubRESTClient(token=***)"
+
+
+def test_requests_use_configured_finite_timeout_and_name_expiry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, float] = {}
+
+    def _urlopen(_request: Any, *, timeout: float) -> _Response:
+        captured["timeout"] = timeout
+        raise TimeoutError("deadline expired")
+
+    monkeypatch.setattr("atlas.github.client.urllib_request.urlopen", _urlopen)
+    client = GitHubRESTClient(token="t", timeout_seconds=0.25)
+
+    with pytest.raises(GitHubTimeoutError, match="configured deadline"):
+        client.fetch_pull_request("o", "r", 1)
+    assert captured == {"timeout": 0.25}
+
+    for invalid in (0.0, -1.0, float("inf"), float("nan")):
+        with pytest.raises(ValueError, match="finite and positive"):
+            GitHubRESTClient(token="t", timeout_seconds=invalid)
 
 
 # --- happy path + per_page ---------------------------------------------------

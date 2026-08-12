@@ -161,6 +161,7 @@ def test_result_code_and_status_vocabularies_are_bounded() -> None:
         "action_refused",
         "stale_state",
         "action_failed",
+        "external_timeout",
         "evidence_transport_failed",
         "evidence_authentication_failed",
         "evidence_rate_limit_failed",
@@ -182,6 +183,10 @@ VALID_OUTCOME_RESULT_PAIRS: tuple[
     (OperatorActionOutcome.REFUSED, OperatorActionResultCode.ACTION_REFUSED),
     (OperatorActionOutcome.REFUSED, OperatorActionResultCode.STALE_STATE),
     (OperatorActionOutcome.FAILED, OperatorActionResultCode.ACTION_FAILED),
+    (
+        OperatorActionOutcome.FAILED,
+        OperatorActionResultCode.EXTERNAL_TIMEOUT,
+    ),
     (
         OperatorActionOutcome.FAILED,
         OperatorActionResultCode.EVIDENCE_TRANSPORT_FAILED,

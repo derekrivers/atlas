@@ -53,6 +53,14 @@ class MutationContext:
 
 
 @dataclass(frozen=True)
+class AuthenticatedSessionContext:
+    """Live shared-session context for an authenticated observational read."""
+
+    actor: OperatorActor
+    expires_at: datetime
+
+
+@dataclass(frozen=True)
 class CreatedOperatorSession:
     """Opaque browser credentials emitted once at login."""
 
@@ -309,6 +317,22 @@ class OperatorSessionService:
             return SessionStateResponse(authenticated=False, expires_at=None)
         return SessionStateResponse(
             authenticated=True,
+            expires_at=session.expires_at,
+        )
+
+    def resolve_authenticated_context(
+        self, *, session_id: str | None
+    ) -> AuthenticatedSessionContext:
+        """Require one live cookie without applying mutation-only CSRF checks."""
+
+        session = self._store.resolve_session(session_id)
+        if session is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="operator session required",
+            )
+        return AuthenticatedSessionContext(
+            actor=OperatorActor(),
             expires_at=session.expires_at,
         )
 

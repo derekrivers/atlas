@@ -26,7 +26,7 @@ from atlas.core.models.acceptance_session import (
     AcceptanceCriterionSnapshot,
     AcceptanceStepSummary,
 )
-from atlas.github import GitHubAPIError, GitHubClient
+from atlas.github import GitHubAPIError, GitHubClient, GitHubTimeoutError
 from atlas.orchestration.operator_actions import idempotency_key_identity
 from atlas.orchestration.pr_integration import (
     PRAncestryStatus,
@@ -351,6 +351,11 @@ class AcceptanceSessionCreationService:
         try:
             assessment = self._assessment_service(
                 self._github_client, owner, name, pr_number
+            )
+        except (GitHubTimeoutError, TimeoutError):
+            return AcceptanceSessionCreationResult(
+                status=AcceptanceSessionCreationStatus.REFUSED,
+                reasons=(AcceptanceSessionBlockingReason.EXTERNAL_READ_TIMEOUT,),
             )
         except GitHubAPIError as error:
             reason = (
