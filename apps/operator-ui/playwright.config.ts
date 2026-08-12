@@ -7,6 +7,7 @@ const apiBaseURL = `http://127.0.0.1:${apiPort}`
 
 process.env.ATLAS_OPERATOR_E2E_API_URL = apiBaseURL
 process.env.VITE_ATLAS_API_BASE_URL = apiBaseURL
+process.env.VITE_ATLAS_ACCEPTANCE_REPOSITORY = 'acme/atlas'
 
 export default defineConfig({
   testDir: './tests/e2e',
@@ -28,6 +29,7 @@ export default defineConfig({
     command: `npm run build:bundle && ./node_modules/.bin/vite preview --host 127.0.0.1 --port ${appPort} --strictPort`,
     env: {
       VITE_ATLAS_API_BASE_URL: apiBaseURL,
+      VITE_ATLAS_ACCEPTANCE_REPOSITORY: 'acme/atlas',
     },
     reuseExistingServer: false,
     timeout: 120_000,

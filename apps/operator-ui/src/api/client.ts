@@ -87,6 +87,25 @@ export type AtlasRejectLessonRequest = JsonRequest<
 export type AtlasLessonDispositionResponse = JsonResponse<
   PostOperationFor<'/api/v1/lessons/{lesson_id}/promote'>
 >
+export type AtlasCreateAcceptanceSessionRequest = JsonRequest<
+  PostOperationFor<'/api/v1/reviews/{pr_number}/acceptance-sessions'>
+>
+export type AtlasAcceptanceConfirmationRequest = JsonRequest<
+  PostOperationFor<'/api/v1/acceptance-sessions/{session_id}/confirm'>
+>
+export type AtlasAcceptanceEvidenceRequest = JsonRequest<
+  PostOperationFor<'/api/v1/acceptance-sessions/{session_id}/evidence'>
+>
+export type AtlasAcceptanceVerificationRequest = JsonRequest<
+  PostOperationFor<'/api/v1/acceptance-sessions/{session_id}/verify'>
+>
+export type AtlasAcceptanceCreationResponse = JsonResponse<
+  PostOperationFor<'/api/v1/reviews/{pr_number}/acceptance-sessions'>
+>
+export type AtlasAcceptanceActionResponse = JsonResponse<
+  PostOperationFor<'/api/v1/acceptance-sessions/{session_id}/evidence'>
+>
+export type AtlasAcceptanceReadResponse = AtlasRouteResponse<'/api/v1/acceptance-sessions/{session_id}'>
 
 export type AtlasValidationError = components['schemas']['HTTPValidationError']
 
@@ -349,5 +368,71 @@ export async function atlasRejectLesson({
     includeCsrf: true,
     method: 'POST',
     requestPath: `/api/v1/lessons/${encodeURIComponent(lessonId)}/reject`,
+  })
+}
+
+export async function atlasCreateAcceptanceSession({
+  idempotencyKey,
+  prNumber,
+  request,
+}: {
+  idempotencyKey: string
+  prNumber: number
+  request: AtlasCreateAcceptanceSessionRequest
+}): Promise<AtlasAcceptanceCreationResponse> {
+  return atlasJsonRequest<AtlasAcceptanceCreationResponse>({
+    body: request,
+    idempotencyKey,
+    includeCsrf: true,
+    method: 'POST',
+    requestPath: `/api/v1/reviews/${encodeURIComponent(String(prNumber))}/acceptance-sessions`,
+  })
+}
+
+type AcceptanceStepArguments<Request> = {
+  idempotencyKey: string
+  request: Request
+  sessionId: string
+}
+
+export async function atlasPullAcceptanceEvidence({
+  idempotencyKey,
+  request,
+  sessionId,
+}: AcceptanceStepArguments<AtlasAcceptanceEvidenceRequest>): Promise<AtlasAcceptanceActionResponse> {
+  return atlasJsonRequest<AtlasAcceptanceActionResponse>({
+    body: request,
+    idempotencyKey,
+    includeCsrf: true,
+    method: 'POST',
+    requestPath: `/api/v1/acceptance-sessions/${encodeURIComponent(sessionId)}/evidence`,
+  })
+}
+
+export async function atlasConfirmAcceptanceSession({
+  idempotencyKey,
+  request,
+  sessionId,
+}: AcceptanceStepArguments<AtlasAcceptanceConfirmationRequest>): Promise<AtlasAcceptanceActionResponse> {
+  return atlasJsonRequest<AtlasAcceptanceActionResponse>({
+    body: request,
+    idempotencyKey,
+    includeCsrf: true,
+    method: 'POST',
+    requestPath: `/api/v1/acceptance-sessions/${encodeURIComponent(sessionId)}/confirm`,
+  })
+}
+
+export async function atlasVerifyAcceptanceSession({
+  idempotencyKey,
+  request,
+  sessionId,
+}: AcceptanceStepArguments<AtlasAcceptanceVerificationRequest>): Promise<AtlasAcceptanceActionResponse> {
+  return atlasJsonRequest<AtlasAcceptanceActionResponse>({
+    body: request,
+    idempotencyKey,
+    includeCsrf: true,
+    method: 'POST',
+    requestPath: `/api/v1/acceptance-sessions/${encodeURIComponent(sessionId)}/verify`,
   })
 }

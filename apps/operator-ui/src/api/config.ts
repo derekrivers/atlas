@@ -9,3 +9,6 @@ export const ATLAS_API_BASE_URL = withoutTrailingSlash(
 )
 
 export const ATLAS_API_PROXY_PREFIX = '/api'
+
+export const ATLAS_ACCEPTANCE_REPOSITORY =
+  import.meta.env.VITE_ATLAS_ACCEPTANCE_REPOSITORY ?? ''

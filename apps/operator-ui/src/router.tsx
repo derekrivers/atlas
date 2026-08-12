@@ -12,6 +12,7 @@ import { OverviewDashboardRoute } from '@/features/overview/overview-dashboard'
 import { TicketBoardRoute } from '@/features/tickets/ticket-board'
 import { TicketDetailView } from '@/features/tickets/ticket-detail-view'
 import { ReviewQueueView } from '@/features/reviews/review-queue-view'
+import { AcceptanceSessionView } from '@/features/reviews/acceptance-session-view'
 
 type CreateOperatorRouterOptions = {
   includeErrorProbe?: boolean
@@ -84,6 +85,12 @@ function createOperatorRouteTree({
     }),
     createRoute({
       getParentRoute: () => operatorRoute,
+      path: 'reviews/$key/acceptance',
+      component: AcceptanceSessionView,
+      errorComponent: RouteErrorBoundary,
+    }),
+    createRoute({
+      getParentRoute: () => operatorRoute,
       path: criticalPath.routePath,
       component: CriticalPathRoute,
       errorComponent: RouteErrorBoundary,
@@ -100,18 +107,17 @@ function createOperatorRouteTree({
       component: LessonsView,
       errorComponent: RouteErrorBoundary,
     }),
+    ...(includeErrorProbe
+      ? [
+          createRoute({
+            getParentRoute: () => operatorRoute,
+            path: '__atlas-error-probe',
+            component: ThrowingOperatorView,
+            errorComponent: RouteErrorBoundary,
+          }),
+        ]
+      : []),
   ]
-
-  if (includeErrorProbe) {
-    operatorChildren.push(
-      createRoute({
-        getParentRoute: () => operatorRoute,
-        path: '__atlas-error-probe',
-        component: ThrowingOperatorView,
-        errorComponent: RouteErrorBoundary,
-      })
-    )
-  }
 
   return rootRoute.addChildren([operatorRoute.addChildren(operatorChildren)])
 }

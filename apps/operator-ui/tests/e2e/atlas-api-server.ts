@@ -28,15 +28,21 @@ export type AtlasApiServer = {
   probeStore: () => AtlasStoreProbe
   restart: (options?: StartAtlasApiServerOptions) => Promise<void>
   runCli: (args: string[]) => { status: number | null; stderr: string; stdout: string }
+  setAcceptanceState: (state: AcceptanceGitHubState) => void
   setClock: (timestamp: string) => void
   stop: () => Promise<void>
 }
 
 export type StartAtlasApiServerOptions = {
+  acceptance?: boolean
   clock?: string | null
   receiptFailure?: boolean
   receiptFailureCanary?: string
   seedPath?: string
+}
+
+export type AcceptanceGitHubState = {
+  mode: 'current' | 'failure' | 'head-moved' | 'main-moved' | 'timeout'
 }
 
 export const E2E_OPERATOR_TOKEN =
@@ -114,6 +120,7 @@ async function stopProcess(apiProcess: ChildProcess): Promise<void> {
 }
 
 export async function startAtlasApiServer({
+  acceptance = false,
   clock,
   receiptFailure = false,
   receiptFailureCanary = 'seeded-receipt-failure',
@@ -125,7 +132,9 @@ export async function startAtlasApiServer({
   const tempRoot = mkdtempSync(join(tmpdir(), 'atlas-operator-ui-e2e-'))
   const dbUrl = `sqlite:///${join(tempRoot, 'atlas.db')}`
   const clockPath = join(tempRoot, 'clock.txt')
+  const acceptanceStatePath = join(tempRoot, 'acceptance-github-state.json')
   writeFileSync(clockPath, clock ?? '2026-08-11T12:00:00+00:00', 'utf8')
+  writeFileSync(acceptanceStatePath, JSON.stringify({ mode: 'current' }), 'utf8')
 
   const seedArgs = [
     'run',
@@ -145,6 +154,7 @@ export async function startAtlasApiServer({
   let apiProcess: ChildProcess
   let launchMode: 'production-cli' | 'test-factory' = 'production-cli'
   let currentOptions: StartAtlasApiServerOptions = {
+    acceptance,
     clock,
     receiptFailure,
     receiptFailureCanary,
@@ -153,7 +163,7 @@ export async function startAtlasApiServer({
 
   function spawnApi(): ChildProcess {
     launchMode =
-      currentOptions.clock || currentOptions.receiptFailure
+      currentOptions.acceptance || currentOptions.clock || currentOptions.receiptFailure
         ? 'test-factory'
         : 'production-cli'
     const args = launchMode === 'test-factory'
@@ -182,6 +192,8 @@ export async function startAtlasApiServer({
         ...process.env,
         ATLAS_DATABASE_URL: dbUrl,
         ATLAS_E2E_CLOCK_FILE: clockPath,
+        ATLAS_E2E_ACCEPTANCE: currentOptions.acceptance ? '1' : '0',
+        ATLAS_E2E_ACCEPTANCE_STATE_FILE: acceptanceStatePath,
         ATLAS_E2E_RECEIPT_FAILURE: currentOptions.receiptFailure ? '1' : '0',
         ATLAS_E2E_RECEIPT_FAILURE_CANARY:
           currentOptions.receiptFailureCanary ?? 'seeded-receipt-failure',
@@ -266,6 +278,8 @@ export async function startAtlasApiServer({
         stdout: result.stdout,
       }
     },
+    setAcceptanceState: (state) =>
+      writeFileSync(acceptanceStatePath, JSON.stringify(state), 'utf8'),
     setClock: (timestamp) => writeFileSync(clockPath, timestamp, 'utf8'),
     stop: async () => {
       await stopProcess(apiProcess)

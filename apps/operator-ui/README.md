@@ -25,6 +25,7 @@ export ATLAS_DATABASE_URL="sqlite:///$PWD/.atlas/operator-ui-dev.db"
 read -r -s -p 'Choose a 32+ character bootstrap token for the browser sign-in dialog: ' ATLAS_OPERATOR_TOKEN
 printf '\n'
 export ATLAS_OPERATOR_TOKEN
+export ATLAS_ACCEPTANCE_REPOSITORIES="owner/repository"
 uv run atlas api serve --enable-writes --host 127.0.0.1 --port 8000
 ```
 
@@ -32,6 +33,7 @@ In a second terminal, install the UI dependencies and start Vite:
 
 ```bash
 npm --prefix apps/operator-ui ci
+export VITE_ATLAS_ACCEPTANCE_REPOSITORY=owner/repository
 VITE_ATLAS_API_BASE_URL=http://127.0.0.1:8000 npm --prefix apps/operator-ui run dev -- --port 4173 --strictPort
 ```
 
@@ -41,6 +43,7 @@ Open these routes at `http://127.0.0.1:4173`:
 - `/tickets` - Ticket Board
 - `/tickets/ATLAS-1` - Ticket Detail
 - `/reviews` - Review Queue
+- `/reviews/ATLAS-243/acceptance` - Exact-head Acceptance Session
 - `/critical-path` - Critical Path
 - `/dependency-graph` - Dependency Graph
 - `/lessons` - Lessons
@@ -91,16 +94,19 @@ hand.
 
 ## Contributing to the Operator UI
 
-The bounded Phase 13 write surface permits only authenticated promote/reject
-rulings for DRAFT lessons. Contributions must not add lesson editing, merging,
-ACTIVE archival, bulk disposition, generic mutations, Linear writes, GitHub
-writes, approval controls, or disabled controls that imply those actions.
+The bounded write surface permits only authenticated promote/reject rulings for
+DRAFT lessons and the generated exact-head acceptance-session commands.
+Contributions must not add lesson editing, merging, ACTIVE archival, bulk
+disposition, generic mutations, Linear writes, GitHub writes (including merge
+or auto-merge), rebase, plan approval controls, Symphony resume, schema upgrade,
+PM-sync controls, or disabled controls that imply those actions.
 
 The delivered commands must continue to use the generated API contract, the
 memory-only local session, server-owned actor context, strict confirmation,
-stable command-lifecycle idempotency, server-returned lesson state and receipts,
-and the typed error recovery defined in `docs/atlas/operator-ui.md` and
-`docs/atlas/governed-operator-actions.md`.
+stable command-lifecycle idempotency, server-returned state and receipts, fresh
+acceptance-session GET authority, and the typed error recovery defined in
+`docs/atlas/operator-ui.md`, `docs/atlas/governed-operator-actions.md`, and
+`docs/atlas/review-acceptance-console.md`.
 
 `apps/operator-ui/THIRD_PARTY_NOTICES.md` records the upstream MIT attribution
 for the vendored `satnaing/shadcn-admin` source and the vendored
@@ -126,7 +132,12 @@ the current bounded operator surface:
   push contract in this phase.
 - **Refresh loses write authority.** The CSRF token is memory-only. A refreshed
   page may retain an HttpOnly server cookie but must complete the restore-session
-  flow before another lesson ruling.
+  flow before another governed action.
+- **Acceptance readiness is server-owned.** Only a current successful
+  acceptance-session GET with `merge_ready=true` displays the exact verified SHA
+  and manual-GitHub instruction. The UI never derives readiness from check rows
+  or historical verification and never provides merge, rebase, Linear,
+  Symphony, schema-upgrade, or PM-sync controls.
 
 The Vite development server proxies same-origin `/api` requests to the Atlas API
 URL configured by `VITE_ATLAS_API_BASE_URL`, defaulting to
