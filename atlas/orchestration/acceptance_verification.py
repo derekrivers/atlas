@@ -32,6 +32,7 @@ from atlas.github import (
     GitHubAPIError,
     GitHubClient,
     GitHubMalformedResponseError,
+    GitHubTimeoutError,
 )
 from atlas.orchestration.acceptance_sessions import (
     AssessmentService,
@@ -232,6 +233,18 @@ class AcceptanceSessionVerificationService:
 
         stored = self._repository.get(session_id)
         reasons = _result_reasons(stored, gateway_result.failure)
+        if (
+            gateway_result.receipt is not None
+            and gateway_result.receipt.result_code
+            is OperatorActionResultCode.EXTERNAL_TIMEOUT
+        ):
+            reasons = _dedupe(
+                (
+                    AcceptanceSessionBlockingReason.EXTERNAL_READ_TIMEOUT,
+                    AcceptanceSessionBlockingReason.EXTERNAL_STATE_INDETERMINATE,
+                    *reasons,
+                )
+            )
         status = _action_status(gateway_result.status, gateway_result.receipt, stored)
         merge_ready = (
             status
@@ -277,7 +290,11 @@ class AcceptanceSessionVerificationService:
         }:
             return _refused(conflict=True)
 
-        freshness_reasons, live_tickets, _ = self._freshness(session)
+        freshness_reasons, live_tickets, _, freshness_timed_out = self._freshness(
+            session
+        )
+        if freshness_timed_out:
+            return _external_timeout()
         all_prerequisites = _dedupe((*prerequisite_reasons, *freshness_reasons))
         if all_prerequisites:
             return self._blocked_before_verification(
@@ -294,6 +311,8 @@ class AcceptanceSessionVerificationService:
                 session.pr_number,
                 self._github_client,
             )
+        except (GitHubTimeoutError, TimeoutError):
+            return _external_timeout()
         except Exception as error:
             reasons = _external_failure_reasons(error)
             return self._blocked_before_verification(
@@ -305,7 +324,14 @@ class AcceptanceSessionVerificationService:
             )
 
         context_reasons = _pr_context_reasons(session, pr_context)
-        just_before_reasons, live_tickets, _ = self._freshness(session)
+        (
+            just_before_reasons,
+            live_tickets,
+            _,
+            just_before_timed_out,
+        ) = self._freshness(session)
+        if just_before_timed_out:
+            return _external_timeout()
         before_verifier_reasons = _dedupe((*context_reasons, *just_before_reasons))
         if before_verifier_reasons:
             return self._blocked_before_verification(
@@ -361,7 +387,14 @@ class AcceptanceSessionVerificationService:
                 failed=failed,
             )
 
-        final_reasons, _, final_assessment = self._freshness(session)
+        (
+            final_reasons,
+            _,
+            final_assessment,
+            final_timed_out,
+        ) = self._freshness(session)
+        if final_timed_out:
+            return _external_timeout()
         verification_summary = _verification_summary(verdict_id, verification)
         assert verification_summary is not None
         if final_reasons or final_assessment is None:
@@ -391,9 +424,11 @@ class AcceptanceSessionVerificationService:
         tuple[AcceptanceSessionBlockingReason, ...],
         tuple[Ticket, ...],
         PRIntegrationAssessment | None,
+        bool,
     ]:
         extra_reasons: list[AcceptanceSessionBlockingReason] = []
         assessment: PRIntegrationAssessment | None = None
+        timed_out = False
         try:
             candidate = self._assessment_service(
                 self._github_client,
@@ -404,6 +439,9 @@ class AcceptanceSessionVerificationService:
             if not isinstance(candidate, PRIntegrationAssessment):
                 raise TypeError("assessment service returned a malformed result")
             assessment = candidate
+        except (GitHubTimeoutError, TimeoutError) as error:
+            timed_out = True
+            extra_reasons.extend(_external_failure_reasons(error))
         except Exception as error:
             extra_reasons.extend(_external_failure_reasons(error))
 
@@ -412,6 +450,8 @@ class AcceptanceSessionVerificationService:
             session.close_set,
         )
         if ticket_error is not None:
+            if isinstance(ticket_error, (GitHubTimeoutError, TimeoutError)):
+                timed_out = True
             extra_reasons.extend(_external_failure_reasons(ticket_error))
             live_tickets: Sequence[Ticket] | None = None
         else:
@@ -421,7 +461,7 @@ class AcceptanceSessionVerificationService:
             assessment,
             live_tickets,
         )
-        return _dedupe((*extra_reasons, *reasons)), tickets, assessment
+        return _dedupe((*extra_reasons, *reasons)), tickets, assessment, timed_out
 
     def _blocked_before_verification(
         self,
@@ -680,7 +720,7 @@ def _read_live_tickets(
 def _external_failure_reasons(
     error: Exception,
 ) -> tuple[AcceptanceSessionBlockingReason, ...]:
-    if isinstance(error, TimeoutError):
+    if isinstance(error, (GitHubTimeoutError, TimeoutError)):
         specific = AcceptanceSessionBlockingReason.EXTERNAL_READ_TIMEOUT
     elif isinstance(
         error,
@@ -943,6 +983,16 @@ def _refused(*, conflict: bool = False) -> OperatorActionCommandResult:
             if conflict
             else OperatorActionResultCode.ACTION_REFUSED
         ),
+        result_metadata={"changed": False, "affected_count": 0},
+    )
+
+
+def _external_timeout() -> OperatorActionCommandResult:
+    """Return a named non-advancing result after a finite external deadline."""
+
+    return OperatorActionCommandResult(
+        outcome=OperatorActionOutcome.FAILED,
+        result_code=OperatorActionResultCode.EXTERNAL_TIMEOUT,
         result_metadata={"changed": False, "affected_count": 0},
     )
 

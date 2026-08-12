@@ -26,6 +26,7 @@ from atlas.github.client import (
     GitHubMalformedResponseError,
     GitHubRateLimitError,
     GitHubRESTClient,
+    GitHubTimeoutError,
     GitHubTransportError,
     MissingGitHubTokenError,
 )
@@ -60,6 +61,7 @@ __all__ = [
     "GitHubMalformedResponseError",
     "GitHubRESTClient",
     "GitHubRateLimitError",
+    "GitHubTimeoutError",
     "GitHubTransportError",
     "MissingGitHubTokenError",
     "NormalisedCheck",

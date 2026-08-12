@@ -836,7 +836,7 @@ def test_pm_sync_receipt_migration_preserves_ticket_definition_cursors(
 def test_alembic_upgrades_fresh_db_and_matches_metadata(tmp_path: Path) -> None:
     url = f"sqlite:///{tmp_path}/migrated.db"
     config = _alembic_config(url)
-    assert ScriptDirectory.from_config(config).get_heads() == ["0029"]
+    assert ScriptDirectory.from_config(config).get_heads() == ["0030"]
     command.upgrade(config, "head")
 
     engine = sa.create_engine(url)
@@ -1095,7 +1095,7 @@ def test_acceptance_evidence_receipt_outcomes_migrate_without_losing_guards(
 ) -> None:
     url = f"sqlite:///{tmp_path}/acceptance-evidence-outcomes.db"
     config = _alembic_config(url)
-    assert ScriptDirectory.from_config(config).get_heads() == ["0029"]
+    assert ScriptDirectory.from_config(config).get_heads() == ["0030"]
     command.upgrade(config, "head")
 
     engine = sa.create_engine(url)
@@ -1106,6 +1106,7 @@ def test_acceptance_evidence_receipt_outcomes_migrate_without_losing_guards(
         assert len(constraints) == 1
         sqltext = constraints[0]["sqltext"]
         assert sqltext is not None
+        assert "external_timeout" in sqltext
         assert "evidence_transport_failed" in sqltext
         assert "evidence_authentication_failed" in sqltext
         assert "evidence_rate_limit_failed" in sqltext

@@ -4,6 +4,74 @@
  */
 
 export interface paths {
+    "/api/v1/acceptance-sessions/{session_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Acceptance Session */
+        get: operations["read_acceptance_session_api_v1_acceptance_sessions__session_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/acceptance-sessions/{session_id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm Acceptance Session */
+        post: operations["confirm_acceptance_session_api_v1_acceptance_sessions__session_id__confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/acceptance-sessions/{session_id}/evidence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Pull Acceptance Evidence */
+        post: operations["pull_acceptance_evidence_api_v1_acceptance_sessions__session_id__evidence_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/acceptance-sessions/{session_id}/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Verify Acceptance Session */
+        post: operations["verify_acceptance_session_api_v1_acceptance_sessions__session_id__verify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/dependencies/critical-path": {
         parameters: {
             query?: never;
@@ -117,6 +185,23 @@ export interface paths {
         get: operations["list_reviews_api_v1_reviews_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reviews/{pr_number}/acceptance-sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Acceptance Session */
+        post: operations["create_acceptance_session_api_v1_reviews__pr_number__acceptance_sessions_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -249,11 +334,506 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         /**
+         * AcceptanceActionReceiptSchema
+         * @description Safe Phase 13 receipt for evidence, confirmation or verification.
+         */
+        AcceptanceActionReceiptSchema: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "acceptance_session.pull_evidence" | "acceptance_session.confirm" | "acceptance_session.verify";
+            actor: components["schemas"]["AcceptanceSessionActorSchema"];
+            /** After Status */
+            after_status: null;
+            /** Before Status */
+            before_status: null;
+            /**
+             * Completed At
+             * Format: date-time
+             */
+            completed_at: string;
+            /**
+             * Correlation Id
+             * Format: uuid
+             */
+            correlation_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Idempotency Key Identity */
+            idempotency_key_identity: string;
+            outcome: components["schemas"]["OperatorActionOutcome"];
+            /**
+             * Receipt Id
+             * Format: uuid
+             */
+            receipt_id: string;
+            /** Request Fingerprint */
+            request_fingerprint: string;
+            result_code: components["schemas"]["OperatorActionResultCode"];
+            /** Result Metadata */
+            result_metadata: {
+                [key: string]: boolean | number;
+            };
+            target: components["schemas"]["AcceptanceActionTargetSchema"];
+        };
+        /**
+         * AcceptanceActionTargetSchema
+         * @description Server-owned acceptance-session target in a durable command receipt.
+         */
+        AcceptanceActionTargetSchema: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Type
+             * @constant
+             */
+            type: "acceptance_session";
+        };
+        /**
+         * AcceptanceAssessmentSnapshot
+         * @description Structured derived fields from the initial exact-head assessment.
+         */
+        AcceptanceAssessmentSnapshot: {
+            /** Ahead By */
+            ahead_by?: number | null;
+            /**
+             * Ancestry
+             * @enum {string}
+             */
+            ancestry: "current" | "behind" | "diverged" | "indeterminate";
+            /**
+             * Base Sha Source
+             * @enum {string}
+             */
+            base_sha_source: "live_branch" | "historical_pr_snapshot";
+            /** Behind By */
+            behind_by?: number | null;
+            /** Compare Status */
+            compare_status?: ("ahead" | "behind" | "diverged" | "identical") | null;
+            /**
+             * Eligibility
+             * @enum {string}
+             */
+            eligibility: "eligible" | "merged" | "closed" | "draft" | "fork_head" | "non_main";
+            /**
+             * Integration Status
+             * @enum {string}
+             */
+            integration_status: "current" | "behind" | "diverged" | "conflicted" | "indeterminate" | "ineligible";
+            /** Merge Base Sha */
+            merge_base_sha?: string | null;
+            /**
+             * Mergeability
+             * @enum {string}
+             */
+            mergeability: "mergeable" | "conflicted" | "indeterminate";
+            /** Pr Draft */
+            pr_draft: boolean;
+            /** Pr Merged */
+            pr_merged: boolean;
+            /** Pr State */
+            pr_state: string;
+        };
+        /**
+         * AcceptanceConfirmationRequestSchema
+         * @description Minimal confirmation intent; criterion definitions stay server owned.
+         */
+        AcceptanceConfirmationRequestSchema: {
+            /** Criteria Fingerprint */
+            criteria_fingerprint: string;
+            /** Criterion Indexes */
+            criterion_indexes: number[];
+            /** Manual Approval */
+            manual_approval: boolean;
+        };
+        /**
+         * AcceptanceConfirmationValidationCode
+         * @description Closed validation vocabulary; validation performs no write.
+         * @enum {string}
+         */
+        AcceptanceConfirmationValidationCode: "session_unknown" | "criteria_fingerprint_mismatch" | "manual_approval_required" | "missing_criterion_index" | "duplicate_criterion_index" | "unknown_criterion_index" | "extra_criterion_index";
+        /**
+         * AcceptanceCreationReceiptSchema
+         * @description Durable creation-command identity stored on the new immutable session.
+         */
+        AcceptanceCreationReceiptSchema: {
+            /**
+             * Action
+             * @constant
+             */
+            action: "acceptance_session.create";
+            actor: components["schemas"]["AcceptanceSessionActorSchema"];
+            /**
+             * Completed At
+             * Format: date-time
+             */
+            completed_at: string;
+            /** Idempotency Key Identity */
+            idempotency_key_identity: string;
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "created" | "replayed";
+            target: components["schemas"]["AcceptanceActionTargetSchema"];
+        };
+        /**
+         * AcceptanceCriterionSnapshot
+         * @description One server-read criterion identified by ticket key and stored index.
+         */
+        AcceptanceCriterionSnapshot: {
+            /** Criterion Index */
+            criterion_index: number;
+            /** Text */
+            text: string;
+            /** Ticket Key */
+            ticket_key: string;
+        };
+        /**
+         * AcceptanceEvidenceRequest
+         * @description Strict empty intent for an exact-session evidence pull.
+         */
+        AcceptanceEvidenceRequest: Record<string, never>;
+        /**
+         * AcceptanceEvidenceSummary
+         * @description Bounded, payload-free projection of evidence at one exact head.
+         */
+        AcceptanceEvidenceSummary: {
+            /** Agent Count */
+            agent_count: number;
+            /** Checks Count */
+            checks_count: number;
+            /** Complete Pin Count */
+            complete_pin_count: number;
+            /** Docs Count */
+            docs_count: number;
+            /** Exact Head Pin Complete */
+            exact_head_pin_complete: boolean;
+            /** Exact Head Pin Count */
+            exact_head_pin_count: number;
+            /** Failed Count */
+            failed_count: number;
+            /** Human Count */
+            human_count: number;
+            /** Latest Source Event At */
+            latest_source_event_at?: string | null;
+            /** New Count */
+            new_count: number;
+            /** Not Applicable Count */
+            not_applicable_count: number;
+            /** Oldest Source Event At */
+            oldest_source_event_at?: string | null;
+            /** Passed Count */
+            passed_count: number;
+            /** Pending Count */
+            pending_count: number;
+            /** Pin Complete */
+            pin_complete: boolean;
+            /** Reviews Count */
+            reviews_count: number;
+            /** System Count */
+            system_count: number;
+            /** Total Count */
+            total_count: number;
+            /** Warning Count */
+            warning_count: number;
+        };
+        /**
+         * AcceptanceGitIdentitySchema
+         * @description One exact ref/SHA/repository identity pinned by the application service.
+         */
+        AcceptanceGitIdentitySchema: {
+            /** Ref */
+            ref: string;
+            /** Repository */
+            repository: string;
+            /** Sha */
+            sha: string;
+        };
+        /**
+         * AcceptanceHistoricalReadinessSchema
+         * @description Stored verification-time history, explicitly not current authority.
+         */
+        AcceptanceHistoricalReadinessSchema: {
+            /**
+             * Authority
+             * @constant
+             */
+            authority: "historical_only";
+            /**
+             * Is Current Merge Authority
+             * @constant
+             */
+            is_current_merge_authority: false;
+            /** Reasons */
+            reasons: components["schemas"]["AcceptanceSessionBlockingReason"][];
+            /** Stored Merge Ready */
+            stored_merge_ready: boolean;
+        };
+        /**
+         * AcceptancePinnedIdentitySchema
+         * @description Immutable repository, PR, head and base accepted at preflight.
+         */
+        AcceptancePinnedIdentitySchema: {
+            base: components["schemas"]["AcceptanceGitIdentitySchema"];
+            head: components["schemas"]["AcceptanceGitIdentitySchema"];
+            /** Pr Number */
+            pr_number: number;
+            repository: components["schemas"]["AcceptanceRepositoryIdentitySchema"];
+        };
+        /**
+         * AcceptanceReadinessAssessment
+         * @description The full final live identity that admitted manual-merge readiness.
+         */
+        AcceptanceReadinessAssessment: {
+            /** Base Ref */
+            base_ref: string;
+            /** Base Repository */
+            base_repository: string;
+            /** Base Sha */
+            base_sha: string;
+            /** Criteria Fingerprint */
+            criteria_fingerprint: string;
+            /**
+             * Eligibility
+             * @constant
+             */
+            eligibility: "eligible";
+            /** Head Ref */
+            head_ref: string;
+            /** Head Repository */
+            head_repository: string;
+            /** Head Sha */
+            head_sha: string;
+            /**
+             * Integration Status
+             * @constant
+             */
+            integration_status: "current";
+            /** Pr Number */
+            pr_number: number;
+            /** Repository Name */
+            repository_name: string;
+            /** Repository Owner */
+            repository_owner: string;
+            /**
+             * Verdict Id
+             * Format: uuid
+             */
+            verdict_id: string;
+        };
+        /**
+         * AcceptanceRepositoryIdentitySchema
+         * @description Configured repository owner and name, never a caller-controlled URL.
+         */
+        AcceptanceRepositoryIdentitySchema: {
+            /** Name */
+            name: string;
+            /** Owner */
+            owner: string;
+        };
+        /**
+         * AcceptanceSessionActionResponse
+         * @description Updated session, durable receipt and current write-time readiness flag.
+         */
+        AcceptanceSessionActionResponse: {
+            /** Merge Ready */
+            merge_ready: boolean;
+            receipt: components["schemas"]["AcceptanceActionReceiptSchema"];
+            session: components["schemas"]["AcceptanceSessionSchema"];
+        };
+        /**
+         * AcceptanceSessionActorSchema
+         * @description Server-owned single-operator identity stored with a session.
+         */
+        AcceptanceSessionActorSchema: {
+            /**
+             * Id
+             * @constant
+             */
+            id: "operator";
+            /**
+             * Type
+             * @constant
+             */
+            type: "human";
+        };
+        /**
+         * AcceptanceSessionBlockingReason
+         * @description Closed, secret-free reasons used by preflight, freshness and history.
+         * @enum {string}
+         */
+        AcceptanceSessionBlockingReason: "pr_unknown" | "pr_merged" | "pr_closed" | "pr_draft" | "pr_fork_head" | "pr_non_main" | "integration_behind" | "integration_diverged" | "integration_conflicted" | "integration_indeterminate" | "external_state_indeterminate" | "close_set_empty" | "unknown_ticket" | "ticket_not_review_required" | "active_session_exists" | "idempotency_key_reused" | "repository_mismatch" | "pr_number_mismatch" | "head_ref_mismatch" | "head_sha_mismatch" | "head_repository_mismatch" | "base_ref_mismatch" | "base_sha_mismatch" | "base_repository_mismatch" | "close_set_mismatch" | "eligibility_mismatch" | "integration_status_mismatch" | "criteria_mismatch" | "session_stale" | "evidence_not_ready" | "confirmations_not_ready" | "verification_not_passed" | "session_unknown" | "session_not_verifiable" | "verification_already_completed" | "verification_pending" | "verification_failed" | "verification_warning" | "verification_not_applicable" | "verification_malformed" | "verification_close_set_mismatch" | "verified_head_invalid" | "verified_head_mismatch" | "stored_history_invalid" | "readiness_persistence_failed" | "external_read_timeout" | "external_response_malformed" | "external_read_failed";
+        /**
+         * AcceptanceSessionCreationResponse
+         * @description Created or replayed session and its durable creation receipt.
+         */
+        AcceptanceSessionCreationResponse: {
+            receipt: components["schemas"]["AcceptanceCreationReceiptSchema"];
+            session: components["schemas"]["AcceptanceSessionSchema"];
+        };
+        /**
+         * AcceptanceSessionErrorResponse
+         * @description Bounded typed error without tokens, raw payloads or foreign messages.
+         */
+        AcceptanceSessionErrorResponse: {
+            conflict_code?: components["schemas"]["OperatorActionConflictCode"] | null;
+            /** Detail */
+            detail: string;
+            failure_code?: components["schemas"]["OperatorActionFailureCode"] | null;
+            /** Reasons */
+            reasons?: components["schemas"]["AcceptanceSessionBlockingReason"][];
+            /** Recovery Command */
+            recovery_command?: string | null;
+            /** Ticket Keys */
+            ticket_keys?: string[];
+            /** Validation Errors */
+            validation_errors?: components["schemas"]["AcceptanceConfirmationValidationCode"][];
+        };
+        /**
+         * AcceptanceSessionLifecycle
+         * @description Stored state-machine milestones and terminal outcomes.
+         * @enum {string}
+         */
+        AcceptanceSessionLifecycle: "preflight_passed" | "evidence_ready" | "confirmations_ready" | "verification_passed" | "merge_ready" | "stale" | "blocked" | "failed";
+        /**
+         * AcceptanceSessionReadResponse
+         * @description One fresh read-only readiness assessment with every blocking reason.
+         */
+        AcceptanceSessionReadResponse: {
+            /** Merge Ready */
+            merge_ready: boolean;
+            /** Reasons */
+            reasons: components["schemas"]["AcceptanceSessionBlockingReason"][];
+            session: components["schemas"]["AcceptanceSessionSchema"];
+        };
+        /**
+         * AcceptanceSessionSchema
+         * @description Safe complete acceptance-session history plus immutable pinned identity.
+         */
+        AcceptanceSessionSchema: {
+            actor: components["schemas"]["AcceptanceSessionActorSchema"];
+            /** Blocking Reasons */
+            blocking_reasons: components["schemas"]["AcceptanceSessionBlockingReason"][];
+            /** Close Set */
+            close_set: string[];
+            /** Criteria Fingerprint */
+            criteria_fingerprint: string;
+            /** Criteria Snapshot */
+            criteria_snapshot: components["schemas"]["AcceptanceCriterionSnapshot"][];
+            historical_readiness: components["schemas"]["AcceptanceHistoricalReadinessSchema"];
+            initial_assessment: components["schemas"]["AcceptanceAssessmentSnapshot"];
+            lifecycle: components["schemas"]["AcceptanceSessionLifecycle"];
+            pinned_identity: components["schemas"]["AcceptancePinnedIdentitySchema"];
+            /** Receipts */
+            receipts: string[];
+            /**
+             * Session Id
+             * Format: uuid
+             */
+            session_id: string;
+            /** Steps */
+            steps: {
+                [key: string]: components["schemas"]["AcceptanceStepSummary"];
+            };
+            timestamps: components["schemas"]["AcceptanceSessionTimestampsSchema"];
+        };
+        /**
+         * AcceptanceSessionStep
+         * @description The historical summaries retained on every acceptance session.
+         * @enum {string}
+         */
+        AcceptanceSessionStep: "preflight" | "evidence" | "confirmations" | "verification" | "readiness";
+        /**
+         * AcceptanceSessionStepState
+         * @description Stored state for one historical step summary.
+         * @enum {string}
+         */
+        AcceptanceSessionStepState: "pending" | "complete" | "blocked" | "failed";
+        /**
+         * AcceptanceSessionTimestampsSchema
+         * @description Bounded session lifecycle timestamps.
+         */
+        AcceptanceSessionTimestampsSchema: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Staled At */
+            staled_at: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * AcceptanceStepSummary
+         * @description Bounded historical status for one acceptance step.
+         */
+        AcceptanceStepSummary: {
+            evidence?: components["schemas"]["AcceptanceEvidenceSummary"] | null;
+            /** Occurred At */
+            occurred_at?: string | null;
+            readiness?: components["schemas"]["AcceptanceReadinessAssessment"] | null;
+            /**
+             * Reasons
+             * @default []
+             */
+            reasons: components["schemas"]["AcceptanceSessionBlockingReason"][];
+            /**
+             * Receipt Ids
+             * @default []
+             */
+            receipt_ids: string[];
+            state: components["schemas"]["AcceptanceSessionStepState"];
+            verification?: components["schemas"]["AcceptanceVerificationSummary"] | null;
+        };
+        /**
+         * AcceptanceVerificationRequest
+         * @description Strict empty intent for exact-head verification.
+         */
+        AcceptanceVerificationRequest: Record<string, never>;
+        /**
+         * AcceptanceVerificationSummary
+         * @description Bounded identity and verdict from one canonical in-process evaluation.
+         */
+        AcceptanceVerificationSummary: {
+            /** Blocking Check Count */
+            blocking_check_count: number;
+            /** Head Commit */
+            head_commit?: string | null;
+            status: components["schemas"]["EvidenceStatus"];
+            /** Ticket Count */
+            ticket_count: number;
+            /**
+             * Verdict Id
+             * Format: uuid
+             */
+            verdict_id: string;
+        };
+        /**
          * ActorType
          * @description Who or what created a record (data-model §2.2, attribution §1.5).
          * @enum {string}
          */
         ActorType: "human" | "agent" | "system";
+        /**
+         * CreateAcceptanceSessionRequest
+         * @description Repository policy selector; PR identity remains path/server owned.
+         */
+        CreateAcceptanceSessionRequest: {
+            /** Repository */
+            repository: string;
+        };
         /**
          * CriticalPathStepSchema
          * @description One ticket on the graph-wide critical path.
@@ -556,6 +1136,18 @@ export interface components {
             type: "human";
         };
         /**
+         * OperatorActionConflictCode
+         * @description Typed replay, ownership, and compare-and-set conflict reasons.
+         * @enum {string}
+         */
+        OperatorActionConflictCode: "idempotency_key_reused" | "in_progress" | "stale_state";
+        /**
+         * OperatorActionFailureCode
+         * @description Typed failures that do not report mutation success.
+         * @enum {string}
+         */
+        OperatorActionFailureCode: "command_failed" | "receipt_commit_failed" | "storage_failed";
+        /**
          * OperatorActionOutcome
          * @description Terminal outcome stored on an operator action receipt.
          * @enum {string}
@@ -611,7 +1203,7 @@ export interface components {
          * @description Server-controlled terminal result vocabulary for operator commands.
          * @enum {string}
          */
-        OperatorActionResultCode: "action_succeeded" | "action_refused" | "stale_state" | "action_failed" | "evidence_transport_failed" | "evidence_authentication_failed" | "evidence_rate_limit_failed" | "evidence_malformed_source" | "action_conflict";
+        OperatorActionResultCode: "action_succeeded" | "action_refused" | "stale_state" | "action_failed" | "external_timeout" | "evidence_transport_failed" | "evidence_authentication_failed" | "evidence_rate_limit_failed" | "evidence_malformed_source" | "action_conflict";
         /**
          * OperatorActionTargetSchema
          * @description Bounded lesson target recorded by an operator-action receipt.
@@ -915,6 +1507,418 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    read_acceptance_session_api_v1_acceptance_sessions__session_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcceptanceSessionReadResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcceptanceSessionErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcceptanceSessionErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcceptanceSessionErrorResponse"];
+                };
+            };
+        };
+    };
+    confirm_acceptance_session_api_v1_acceptance_sessions__session_id__confirm_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+            };
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AcceptanceConfirmationRequestSchema"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcceptanceSessionActionResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcceptanceSessionErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcceptanceSessionErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcceptanceSessionErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcceptanceSessionErrorResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcceptanceSessionErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcceptanceSessionErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcceptanceSessionErrorResponse"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcceptanceSessionErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcceptanceSessionErrorResponse"];
+                };
+            };
+            /** @description Gateway Timeout */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcceptanceSessionErrorResponse"];
+                };
+            };
+        };
+    };
+    pull_acceptance_evidence_api_v1_acceptance_sessions__session_id__evidence_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+            };
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AcceptanceEvidenceRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcceptanceSessionActionResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcceptanceSessionErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcceptanceSessionErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcceptanceSessionErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcceptanceSessionErrorResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcceptanceSessionErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcceptanceSessionErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcceptanceSessionErrorResponse"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcceptanceSessionErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcceptanceSessionErrorResponse"];
+                };
+            };
+            /** @description Gateway Timeout */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcceptanceSessionErrorResponse"];
+                };
+            };
+        };
+    };
+    verify_acceptance_session_api_v1_acceptance_sessions__session_id__verify_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+            };
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AcceptanceVerificationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcceptanceSessionActionResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcceptanceSessionErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcceptanceSessionErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcceptanceSessionErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcceptanceSessionErrorResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcceptanceSessionErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcceptanceSessionErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcceptanceSessionErrorResponse"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcceptanceSessionErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcceptanceSessionErrorResponse"];
+                };
+            };
+            /** @description Gateway Timeout */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcceptanceSessionErrorResponse"];
+                };
+            };
+        };
+    };
     dependency_critical_path_route_api_v1_dependencies_critical_path_get: {
         parameters: {
             query?: never;
@@ -1222,6 +2226,124 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ReviewQueueResponse"];
+                };
+            };
+        };
+    };
+    create_acceptance_session_api_v1_reviews__pr_number__acceptance_sessions_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+            };
+            path: {
+                pr_number: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateAcceptanceSessionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcceptanceSessionCreationResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcceptanceSessionErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcceptanceSessionErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcceptanceSessionErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcceptanceSessionErrorResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcceptanceSessionErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcceptanceSessionErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcceptanceSessionErrorResponse"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcceptanceSessionErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcceptanceSessionErrorResponse"];
+                };
+            };
+            /** @description Gateway Timeout */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcceptanceSessionErrorResponse"];
                 };
             };
         };

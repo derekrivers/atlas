@@ -33,6 +33,10 @@ from atlas.orchestration.acceptance_verification import (
     AcceptanceVerificationResult,
     AcceptanceVerificationStatus,
 )
+from atlas.orchestration.acceptance_workflow import (
+    AcceptanceSessionWorkflowServices,
+    build_acceptance_session_workflow,
+)
 from atlas.orchestration.admission import record_admission_run
 from atlas.orchestration.confirm import (
     ConfirmCaptureResult,
@@ -142,6 +146,7 @@ __all__ = [
     "AcceptanceSessionEvidencePullService",
     "AcceptanceSessionLiveReadinessService",
     "AcceptanceSessionVerificationService",
+    "AcceptanceSessionWorkflowServices",
     "AcceptanceVerificationContext",
     "AcceptanceVerificationResult",
     "AcceptanceVerificationStatus",
@@ -200,6 +205,7 @@ __all__ = [
     "acceptance_criteria_fingerprint",
     "acceptance_criteria_snapshot",
     "assess_pr_integration",
+    "build_acceptance_session_workflow",
     "build_confirmation_records",
     "build_tick_config",
     "canonical_request_fingerprint",

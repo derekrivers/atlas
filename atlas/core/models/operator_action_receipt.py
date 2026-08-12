@@ -50,6 +50,7 @@ class OperatorActionResultCode(StrEnum):
     ACTION_REFUSED = "action_refused"
     STALE_STATE = "stale_state"
     ACTION_FAILED = "action_failed"
+    EXTERNAL_TIMEOUT = "external_timeout"
     EVIDENCE_TRANSPORT_FAILED = "evidence_transport_failed"
     EVIDENCE_AUTHENTICATION_FAILED = "evidence_authentication_failed"
     EVIDENCE_RATE_LIMIT_FAILED = "evidence_rate_limit_failed"
@@ -66,6 +67,7 @@ _VALID_OPERATOR_ACTION_OUTCOME_RESULTS = frozenset(
         (OperatorActionOutcome.REFUSED, OperatorActionResultCode.ACTION_REFUSED),
         (OperatorActionOutcome.REFUSED, OperatorActionResultCode.STALE_STATE),
         (OperatorActionOutcome.FAILED, OperatorActionResultCode.ACTION_FAILED),
+        (OperatorActionOutcome.FAILED, OperatorActionResultCode.EXTERNAL_TIMEOUT),
         (
             OperatorActionOutcome.FAILED,
             OperatorActionResultCode.EVIDENCE_TRANSPORT_FAILED,

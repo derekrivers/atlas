@@ -39,6 +39,7 @@ from atlas.github import (
     GitHubClient,
     GitHubMalformedResponseError,
     GitHubRateLimitError,
+    GitHubTimeoutError,
     GitHubTransportError,
     MissingGitHubTokenError,
 )
@@ -254,7 +255,9 @@ class AcceptanceSessionEvidencePullService:
         if session.lifecycle is not AcceptanceSessionLifecycle.PREFLIGHT_PASSED:
             return _refused()
 
-        before_reasons, tickets = self._freshness(session)
+        before_reasons, tickets, before_timed_out = self._freshness(session)
+        if before_timed_out:
+            return _failed(OperatorActionResultCode.EXTERNAL_TIMEOUT)
         if before_reasons:
             return self._stale_result(row, session, before_reasons, context.receipt_id)
 
@@ -290,10 +293,14 @@ class AcceptanceSessionEvidencePullService:
             ValueError,
         ):
             return _failed(OperatorActionResultCode.EVIDENCE_MALFORMED_SOURCE)
-        except (GitHubTransportError, GitHubAPIError, TimeoutError, OSError):
+        except (GitHubTimeoutError, TimeoutError):
+            return _failed(OperatorActionResultCode.EXTERNAL_TIMEOUT)
+        except (GitHubTransportError, GitHubAPIError, OSError):
             return _failed(OperatorActionResultCode.EVIDENCE_TRANSPORT_FAILED)
 
-        after_reasons, _ = self._freshness(session)
+        after_reasons, _, after_timed_out = self._freshness(session)
+        if after_timed_out:
+            return _failed(OperatorActionResultCode.EXTERNAL_TIMEOUT)
         if after_reasons:
             return self._stale_result(row, session, after_reasons, context.receipt_id)
 
@@ -347,7 +354,12 @@ class AcceptanceSessionEvidencePullService:
 
     def _freshness(
         self, session: AcceptanceSession
-    ) -> tuple[tuple[AcceptanceSessionBlockingReason, ...], tuple[Ticket, ...]]:
+    ) -> tuple[
+        tuple[AcceptanceSessionBlockingReason, ...],
+        tuple[Ticket, ...],
+        bool,
+    ]:
+        timed_out = False
         try:
             assessment = self._assessment_service(
                 self._github_client,
@@ -355,6 +367,9 @@ class AcceptanceSessionEvidencePullService:
                 session.repository_name,
                 session.pr_number,
             )
+        except (GitHubTimeoutError, TimeoutError):
+            assessment = None
+            timed_out = True
         except GitHubAPIError:
             assessment = None
 
@@ -365,6 +380,9 @@ class AcceptanceSessionEvidencePullService:
                 ticket = self._ticket_lookup.get_by_key(key)
                 if ticket is not None:
                     tickets.append(ticket)
+        except (GitHubTimeoutError, TimeoutError):
+            ticket_reads_indeterminate = True
+            timed_out = True
         except Exception:
             ticket_reads_indeterminate = True
         live_tickets: Sequence[Ticket] | None = (
@@ -377,6 +395,7 @@ class AcceptanceSessionEvidencePullService:
                 live_tickets,
             ),
             tuple(tickets),
+            timed_out,
         )
 
     def _stale_result(

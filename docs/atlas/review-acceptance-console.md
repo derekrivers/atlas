@@ -316,7 +316,7 @@ that head manually in GitHub. It does not expose a merge button.
 
 ## HTTP contract
 
-The phase adds an authenticated acceptance-session resource:
+The delivered API adapter adds one authenticated acceptance-session resource:
 
 ```http
 POST /api/v1/reviews/{pr_number}/acceptance-sessions
@@ -335,10 +335,30 @@ one call to the bounded live-readiness service; the route itself contains no
 GitHub, criteria or readiness logic. The response distinguishes stored
 verification history from current `merge_ready` and all live blocking reasons.
 
+`ATLAS_ACCEPTANCE_REPOSITORIES` configures the comma-separated server-side
+repository allowlist. The request is parsed only as owner/name components;
+URLs, ports, queries, fragments, additional path components and unconfigured
+repositories are rejected before external I/O. The application factory accepts
+the equivalent tuple and an injected GitHub client for deterministic tests.
+
+All response state uses the canonical Phase 14 enums. Successful actions return
+the updated safe session and receipt. Creation returns the session plus the
+stored hashed creation-command identity; it never returns the raw idempotency
+key. Typed validation, unknown resource, stale/refused action, altered replay,
+in-progress command, storage failure, external failure and timeout map to
+bounded status-specific responses without foreign exception text.
+
 Operations are synchronous and bounded in the first version. The phase adds no
 job queue, websocket, background worker or progress protocol. Transport timeout
 is a named non-advancing outcome; the operator refreshes the session before
 retrying.
+
+The concrete GitHub transport now applies a finite positive per-request
+deadline (15 seconds by default; application-factory configurable). A create
+or step timeout does not advance the session. A GET timeout keeps HTTP 200 for
+an existing session but returns `merge_ready: false`,
+`external_read_timeout` and `external_state_indeterminate`, and does not alter
+stored history.
 
 ## UI workflow
 

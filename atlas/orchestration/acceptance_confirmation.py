@@ -25,7 +25,7 @@ from atlas.core.models import (
     Ticket,
 )
 from atlas.core.models.acceptance_session import AcceptanceStepSummary
-from atlas.github import GitHubAPIError, GitHubClient
+from atlas.github import GitHubAPIError, GitHubClient, GitHubTimeoutError
 from atlas.orchestration.acceptance_sessions import (
     TicketLookup,
     compare_acceptance_session_freshness,
@@ -255,6 +255,8 @@ class AcceptanceSessionConfirmationService:
                 current.repository_name,
                 current.pr_number,
             )
+        except (GitHubTimeoutError, TimeoutError):
+            return _failed_command(OperatorActionResultCode.EXTERNAL_TIMEOUT)
         except GitHubAPIError:
             live_assessment = None
 
@@ -438,3 +440,13 @@ def _refused_command(
         else OperatorActionOutcome.REFUSED
     )
     return OperatorActionCommandResult(outcome=outcome, result_code=result_code)
+
+
+def _failed_command(
+    result_code: OperatorActionResultCode,
+) -> OperatorActionCommandResult:
+    return OperatorActionCommandResult(
+        outcome=OperatorActionOutcome.FAILED,
+        result_code=result_code,
+        result_metadata={"affected_count": 0, "changed": False},
+    )

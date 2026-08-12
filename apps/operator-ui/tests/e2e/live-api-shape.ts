@@ -1,11 +1,15 @@
 import type { components, paths } from '../../src/api/atlas-openapi'
 
 type Schema = components['schemas']
-export type LiveApiGetRoute = {
+type GeneratedGetRoute = {
   [Path in keyof paths]: Exclude<paths[Path]['get'], undefined> extends never
     ? never
     : Path
 }[keyof paths]
+export type LiveApiGetRoute = Exclude<
+  GeneratedGetRoute,
+  '/api/v1/acceptance-sessions/{session_id}'
+>
 type GetOperation<Path extends LiveApiGetRoute> = Exclude<
   paths[Path]['get'],
   undefined

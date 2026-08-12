@@ -63,6 +63,7 @@ _OPERATOR_ACTION_OUTCOME_RESULT_CHECK = """
     (outcome = 'refused' AND result_code IN ('action_refused', 'stale_state')) OR
     (outcome = 'failed' AND result_code IN (
         'action_failed',
+        'external_timeout',
         'evidence_transport_failed',
         'evidence_authentication_failed',
         'evidence_rate_limit_failed',

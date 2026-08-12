@@ -175,7 +175,7 @@ def test_ac1_read_only_app_does_not_mount_resource_commands(
     )
 
 
-def test_ac1_executable_route_inventory_proves_no_other_write_exists(
+def test_ac1_executable_route_inventory_proves_only_governed_writes_exist(
     database: Database,
 ) -> None:
     document = _writable_app(database).openapi()
@@ -191,6 +191,10 @@ def test_ac1_executable_route_inventory_proves_no_other_write_exists(
         ("DELETE", "/api/v1/session"),
         ("POST", "/api/v1/lessons/{lesson_id}/promote"),
         ("POST", "/api/v1/lessons/{lesson_id}/reject"),
+        ("POST", "/api/v1/reviews/{pr_number}/acceptance-sessions"),
+        ("POST", "/api/v1/acceptance-sessions/{session_id}/evidence"),
+        ("POST", "/api/v1/acceptance-sessions/{session_id}/confirm"),
+        ("POST", "/api/v1/acceptance-sessions/{session_id}/verify"),
     }
 
 

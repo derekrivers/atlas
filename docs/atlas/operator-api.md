@@ -2,9 +2,9 @@
 
 Status: Delivered design document for Phase 10, amended by Phase 11 OP-2 for
 exactly two additive read routes and by the closed Phase 13 loopback operator
-session and governed lesson disposition commands. Describes the HTTP projection
-surface delivered by ATLAS-187..191, the Phase 11 additions that follow it, and
-the Phase 13 boundary for authenticated local writes.
+session and governed lesson disposition commands, then by the Phase 14
+authenticated acceptance-session resource. Describes the HTTP projection
+surface delivered by ATLAS-187..191 and the additive governed local resources.
 
 ## Purpose and scope
 
@@ -12,14 +12,21 @@ The operator API exposes Atlas operational state to a local operator through a
 small, versioned HTTP contract. Its current resources are the ticket board,
 ticket count, ticket detail, ticket evidence, epics, lessons, dependency
 readiness, critical path, review queue, system status, and local browser
-session state. It is a projection of existing state plus a server-owned browser
-session boundary, not a new source of truth and not a second place to implement
-domain behaviour.
+session state. Phase 14 adds exact-head acceptance-session creation, live
+readiness, evidence, confirmation and verification. It is a projection of
+existing state plus a server-owned browser session boundary, not a new source
+of truth and not a second place to implement domain behaviour.
 
 The original Phase 10 operator API was a read-only projection surface. Phase 13
 adds authenticated session lifecycle routes, the shared mutation-security
 dependency, and exactly two governed lesson commands over the shared lesson
 disposition service. No generic resource update route is introduced.
+
+Phase 14 reuses that exact authentication and mutation boundary. Its GET is an
+authenticated, no-store observational read; each POST uses the shared
+`MutationContextDependency` and `Idempotency-Key`. The API performs no
+acceptance state-machine logic: every route dependency calls one typed Phase 14
+application service and then one presenter.
 
 ## Position in the architecture
 
@@ -97,16 +104,20 @@ additions as phase authority, is:
 | GET    | `/api/v1/dependencies/critical-path` | none | `DependencyCriticalPathResponse` | Phase 10 |
 | GET    | `/api/v1/dependencies/graph` | none | `DependencyGraphResponse` | Phase 11 OP-2 |
 | GET    | `/api/v1/reviews`       | none             | `ReviewQueueResponse`     | Phase 10 |
+| POST   | `/api/v1/reviews/{pr_number}/acceptance-sessions` | strict repository-slug request plus `Idempotency-Key` | `AcceptanceSessionCreationResponse` | Phase 14 |
+| GET    | `/api/v1/acceptance-sessions/{session_id}` | live session cookie | `AcceptanceSessionReadResponse` | Phase 14 |
+| POST   | `/api/v1/acceptance-sessions/{session_id}/evidence` | strict empty request plus `Idempotency-Key` | `AcceptanceSessionActionResponse` | Phase 14 |
+| POST   | `/api/v1/acceptance-sessions/{session_id}/confirm` | strict minimal confirmation plus `Idempotency-Key` | `AcceptanceSessionActionResponse` | Phase 14 |
+| POST   | `/api/v1/acceptance-sessions/{session_id}/verify` | strict empty request plus `Idempotency-Key` | `AcceptanceSessionActionResponse` | Phase 14 |
 | GET    | `/api/v1/session`       | session cookie if present | `SessionStateResponse` | Phase 13 |
 | POST   | `/api/v1/session`       | strict JSON `SessionLoginRequest` | `SessionLoginResponse` | Phase 13 |
 | DELETE | `/api/v1/session`       | live cookie + `X-Atlas-CSRF` | `SessionStateResponse` | Phase 13 |
 | GET    | `/api/v1/status`        | none             | `SystemStatusResponse`    | Phase 10 |
 
-An executable FastAPI route-inventory test asserts that the non-read methods
-are exactly `POST /api/v1/session`, `DELETE /api/v1/session`, and the two
-lesson commands above. Session creation and revocation mutate session state;
-promote and reject are the only domain writes. No other mounted route accepts
-a write method.
+An executable FastAPI route-inventory test asserts the complete method/path
+set. Beyond session login/revocation and the two lesson commands, the only
+writes are the four named acceptance POST actions above. The inventory rejects
+acceptance merge, rebase, arbitrary action/command, `PATCH` and `PUT` routes.
 
 Phase 11, by authority of `docs/atlas/operator-ui.md` OP-2, permits exactly
 two additive read routes beyond the Phase 10 surface:
@@ -126,6 +137,35 @@ strings. A node status spans the ticket, epic, and ADR status enums, while
 `node_type` also carries the model's open `target_entity_type` string; inventing
 a parallel API enum would narrow the dependency model and create a second
 authority.
+
+The acceptance-session create request contains only `repository` in
+`owner/repository` form. `ATLAS_ACCEPTANCE_REPOSITORIES` is a comma-separated
+server-side allowlist; application construction can inject the equivalent
+tuple for tests. Atlas parses and compares owner/name components
+case-insensitively while preserving configured spelling. URLs, ports, query
+strings, fragments, extra path components and unconfigured slugs are rejected
+before a GitHub call, so the field never becomes an SSRF target.
+
+Evidence and verification accept strict empty JSON objects. Confirmation
+accepts only `criteria_fingerprint`, `criterion_indexes` and literal
+`manual_approval`; actor, token, repository, PR override, ticket key, SHA,
+criterion text and unknown fields are rejected. Success returns the updated
+safe session plus its receipt. Create returns the safe session plus its durable
+hashed creation-command identity.
+
+`GET /api/v1/acceptance-sessions/{session_id}` requires the same live session
+cookie without mutation-only CSRF or Origin requirements. It calls
+`AcceptanceSessionLiveReadinessService.evaluate` exactly once and is always
+`Cache-Control: no-store`. Stored history is returned separately from current
+`merge_ready`; movement, indeterminate state, timeout, malformed external data
+or another read failure closes the current gate with every canonical reason
+and performs no session, evidence, receipt, ticket or external-system write.
+
+Acceptance external reads use the server-owned GitHub client with a finite,
+positive request deadline (15 seconds by default). Timeout is the named
+`external_read_timeout` read reason or `external_timeout` non-advancing action
+result, never a job or hidden background continuation. The resource exposes no
+job ID, polling state, websocket, server-sent event or merge operation.
 
 `GET /api/v1/tickets` returns the lexicographic-key-ordered operator board. Its
 items expose the lean ticket fields needed for board scanning plus `epic_key`,
@@ -214,13 +254,14 @@ authenticated state and expiry metadata. `DELETE /api/v1/session` uses the
 same mutation-security dependency as future writes and revokes the exact live
 session. Session responses use `Cache-Control: no-store`.
 
-Every mutation route, including session revocation and lesson commands, must
+Every mutation route, including session revocation, lesson commands and
+acceptance commands, must
 resolve `MutationContextDependency`. That dependency requires a
 loopback Host, an exact `http://<Host>` Origin, strict
 `Content-Type: application/json`, a live `atlas_session` cookie and a matching
 `X-Atlas-CSRF` value. The resolved actor is always
 `created_by_type: human, created_by_id: "operator"` and cannot be supplied or
-overridden by request JSON or headers. The two lesson commands additionally
+overridden by request JSON or headers. Lesson and acceptance commands additionally
 require a non-blank `Idempotency-Key` before their application-service
 dependency can run.
 
@@ -234,7 +275,10 @@ default-src 'self'; base-uri 'none'; frame-ancestors 'none'; object-src 'none'
 Closed-value response fields use the canonical domain `StrEnum` types directly:
 `TicketStatus`, `TicketType`, `RiskLevel`, `EvidenceType`, `ActorType`,
 `EpicStatus`, `EntityStatus`, `LessonCategory`, `VerificationCheckType`,
-`EvidenceStatus`, `NotReadyCode`, and `DependencyType`. FastAPI's OpenAPI
+`EvidenceStatus`, `NotReadyCode`, `DependencyType`,
+`AcceptanceSessionBlockingReason`, `AcceptanceSessionLifecycle`,
+`AcceptanceSessionStep`, the confirmation validation vocabulary, and the
+operator-action outcome vocabularies. FastAPI's OpenAPI
 document publishes the members of those canonical enums as the allowed HTTP
 values; this contract was delivered by ATLAS-194 and extended by ATLAS-200,
 ATLAS-199, ATLAS-201, ATLAS-207, and ATLAS-208.

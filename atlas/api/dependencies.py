@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
@@ -9,12 +11,21 @@ from fastapi import Depends, Header, HTTPException, Request, Response, Security,
 from fastapi.responses import JSONResponse
 from fastapi.security import APIKeyCookie, APIKeyHeader
 
+from atlas.api.acceptance_policy import (
+    AcceptanceRepositoryPolicy,
+    ConfiguredAcceptanceRepository,
+)
 from atlas.api.presenters import (
+    present_acceptance_confirmation,
+    present_acceptance_evidence,
+    present_acceptance_session_creation,
+    present_acceptance_verification,
     present_dependency_critical_path,
     present_dependency_graph,
     present_epics,
     present_lesson_disposition,
     present_lessons,
+    present_live_acceptance_readiness,
     present_review_queue,
     present_system_status,
     present_ticket_board,
@@ -23,6 +34,13 @@ from atlas.api.presenters import (
     present_ticket_evidence,
 )
 from atlas.api.schemas import (
+    AcceptanceConfirmationRequestSchema,
+    AcceptanceEvidenceRequest,
+    AcceptanceSessionActionResponse,
+    AcceptanceSessionCreationResponse,
+    AcceptanceSessionReadResponse,
+    AcceptanceVerificationRequest,
+    CreateAcceptanceSessionRequest,
     DependencyCriticalPathResponse,
     DependencyGraphResponse,
     EpicsResponse,
@@ -43,15 +61,27 @@ from atlas.api.schemas import (
 from atlas.api.security import (
     CSRF_HEADER_NAME,
     SESSION_COOKIE_NAME,
+    AuthenticatedSessionContext,
     MutationContext,
     OperatorSessionService,
 )
 from atlas.core.enums import EntityStatus
 from atlas.core.models import TicketStatus
+from atlas.github import GitHubClient, GitHubRESTClient
 from atlas.learning import PromoteLesson, RejectLesson
 from atlas.orchestration import (
+    AcceptanceConfirmationRequest,
+    AcceptanceEvidencePullContext,
+    AcceptanceSessionConfirmationService,
+    AcceptanceSessionCreationService,
+    AcceptanceSessionEvidencePullService,
+    AcceptanceSessionLiveReadinessService,
+    AcceptanceSessionVerificationService,
+    AcceptanceSessionWorkflowServices,
+    AcceptanceVerificationContext,
     LessonDispositionCommandContext,
     LessonDispositionService,
+    build_acceptance_session_workflow,
     dependency_critical_path,
     dependency_graph,
     review_queue,
@@ -125,6 +155,21 @@ CurrentSessionStateDependency = Annotated[
 ]
 
 
+def resolve_authenticated_session(
+    sessions: OperatorSessionServiceDependency,
+    session_id: Annotated[str | None, Security(SessionCookieSecurity)],
+) -> AuthenticatedSessionContext:
+    """Require the shared live session for one protected observational read."""
+
+    return sessions.resolve_authenticated_context(session_id=session_id)
+
+
+AuthenticatedSessionDependency = Annotated[
+    AuthenticatedSessionContext,
+    Depends(resolve_authenticated_session),
+]
+
+
 def resolve_mutation_context(
     request: Request,
     sessions: OperatorSessionServiceDependency,
@@ -151,6 +196,288 @@ IdempotencyKeyHeader = Annotated[
         min_length=1,
         pattern=r".*\S.*",
     ),
+]
+
+
+def get_acceptance_repository_policy(request: Request) -> AcceptanceRepositoryPolicy:
+    """Return the immutable server-owned repository allowlist."""
+
+    policy: AcceptanceRepositoryPolicy = request.app.state.acceptance_repository_policy
+    return policy
+
+
+AcceptanceRepositoryPolicyDependency = Annotated[
+    AcceptanceRepositoryPolicy,
+    Depends(get_acceptance_repository_policy),
+]
+
+
+def resolve_configured_acceptance_repository(
+    body: CreateAcceptanceSessionRequest,
+    policy: AcceptanceRepositoryPolicyDependency,
+) -> ConfiguredAcceptanceRepository:
+    """Resolve a parsed owner/name pair before any external service call."""
+
+    return policy.require(body.repository)
+
+
+ConfiguredAcceptanceRepositoryDependency = Annotated[
+    ConfiguredAcceptanceRepository,
+    Depends(resolve_configured_acceptance_repository),
+]
+
+
+def get_acceptance_github_client(request: Request) -> GitHubClient:
+    """Return an injected client or one server-token client with finite I/O timeout."""
+
+    client: GitHubClient | None = request.app.state.acceptance_github_client
+    if client is None:
+        client = GitHubRESTClient(
+            timeout_seconds=request.app.state.acceptance_external_timeout_seconds
+        )
+        request.app.state.acceptance_github_client = client
+    return client
+
+
+AcceptanceGitHubClientDependency = Annotated[
+    GitHubClient,
+    Depends(get_acceptance_github_client),
+]
+
+
+def get_acceptance_clock(request: Request) -> Callable[[], datetime]:
+    """Return the application clock shared with authenticated session services."""
+
+    clock: Callable[[], datetime] = request.app.state.clock
+    return clock
+
+
+AcceptanceClockDependency = Annotated[
+    Callable[[], datetime],
+    Depends(get_acceptance_clock),
+]
+
+
+def get_acceptance_workflow_services(
+    database: DatabaseDependency,
+    github_client: AcceptanceGitHubClientDependency,
+    clock: AcceptanceClockDependency,
+) -> AcceptanceSessionWorkflowServices:
+    """Build the Phase 14 application-service bundle for one API request."""
+
+    return build_acceptance_session_workflow(database, github_client, clock)
+
+
+AcceptanceWorkflowServicesDependency = Annotated[
+    AcceptanceSessionWorkflowServices,
+    Depends(get_acceptance_workflow_services),
+]
+
+
+def get_acceptance_session_creation_service(
+    services: AcceptanceWorkflowServicesDependency,
+) -> AcceptanceSessionCreationService:
+    return services.creation
+
+
+AcceptanceSessionCreationServiceDependency = Annotated[
+    AcceptanceSessionCreationService,
+    Depends(get_acceptance_session_creation_service),
+]
+
+
+def get_acceptance_session_readiness_service(
+    services: AcceptanceWorkflowServicesDependency,
+) -> AcceptanceSessionLiveReadinessService:
+    return services.live_readiness
+
+
+AcceptanceSessionReadinessServiceDependency = Annotated[
+    AcceptanceSessionLiveReadinessService,
+    Depends(get_acceptance_session_readiness_service),
+]
+
+
+def get_acceptance_session_evidence_service(
+    services: AcceptanceWorkflowServicesDependency,
+) -> AcceptanceSessionEvidencePullService:
+    return services.evidence
+
+
+AcceptanceSessionEvidenceServiceDependency = Annotated[
+    AcceptanceSessionEvidencePullService,
+    Depends(get_acceptance_session_evidence_service),
+]
+
+
+def get_acceptance_session_confirmation_service(
+    services: AcceptanceWorkflowServicesDependency,
+) -> AcceptanceSessionConfirmationService:
+    return services.confirmation
+
+
+AcceptanceSessionConfirmationServiceDependency = Annotated[
+    AcceptanceSessionConfirmationService,
+    Depends(get_acceptance_session_confirmation_service),
+]
+
+
+def get_acceptance_session_verification_service(
+    services: AcceptanceWorkflowServicesDependency,
+) -> AcceptanceSessionVerificationService:
+    return services.verification
+
+
+AcceptanceSessionVerificationServiceDependency = Annotated[
+    AcceptanceSessionVerificationService,
+    Depends(get_acceptance_session_verification_service),
+]
+
+
+def _acceptance_evidence_context(
+    context: MutationContext,
+    idempotency_key: str,
+) -> AcceptanceEvidencePullContext:
+    return AcceptanceEvidencePullContext(
+        idempotency_key=idempotency_key,
+        created_by_type=context.actor.created_by_type,
+        created_by_id=context.actor.created_by_id,
+    )
+
+
+def _acceptance_confirmation_request(
+    session_id: UUID,
+    body: AcceptanceConfirmationRequestSchema,
+) -> AcceptanceConfirmationRequest:
+    return AcceptanceConfirmationRequest(
+        session_id=session_id,
+        criteria_fingerprint=body.criteria_fingerprint,
+        criterion_indexes=body.criterion_indexes,
+        manual_approval=body.manual_approval,
+    )
+
+
+def _acceptance_verification_context(
+    context: MutationContext,
+    idempotency_key: str,
+) -> AcceptanceVerificationContext:
+    return AcceptanceVerificationContext(
+        idempotency_key=idempotency_key,
+        created_by_type=context.actor.created_by_type,
+        created_by_id=context.actor.created_by_id,
+    )
+
+
+def create_acceptance_session_response(
+    pr_number: int,
+    repository: ConfiguredAcceptanceRepositoryDependency,
+    context: MutationContextDependency,
+    idempotency_key: IdempotencyKeyHeader,
+    service: AcceptanceSessionCreationServiceDependency,
+) -> AcceptanceSessionCreationResponse | JSONResponse:
+    """Create one configured-repository session and present its typed result."""
+
+    result = service.create(
+        repository_owner=repository.owner,
+        repository_name=repository.name,
+        pr_number=pr_number,
+        idempotency_key=idempotency_key,
+        created_by_type=context.actor.created_by_type,
+        created_by_id=context.actor.created_by_id,
+    )
+    return present_acceptance_session_creation(result)
+
+
+CreatedAcceptanceSessionDependency = Annotated[
+    AcceptanceSessionCreationResponse | JSONResponse,
+    Depends(create_acceptance_session_response),
+]
+
+
+def read_acceptance_session_response(
+    session_id: UUID,
+    authenticated: AuthenticatedSessionDependency,
+    service: AcceptanceSessionReadinessServiceDependency,
+) -> AcceptanceSessionReadResponse | JSONResponse:
+    """Evaluate current live readiness once and present without a refresh write."""
+
+    del authenticated
+    result = service.evaluate(session_id)
+    return present_live_acceptance_readiness(result)
+
+
+ReadAcceptanceSessionDependency = Annotated[
+    AcceptanceSessionReadResponse | JSONResponse,
+    Depends(read_acceptance_session_response),
+]
+
+
+def pull_acceptance_evidence_response(
+    session_id: UUID,
+    body: AcceptanceEvidenceRequest,
+    context: MutationContextDependency,
+    idempotency_key: IdempotencyKeyHeader,
+    service: AcceptanceSessionEvidenceServiceDependency,
+) -> AcceptanceSessionActionResponse | JSONResponse:
+    """Execute one synchronous evidence action and present its typed result."""
+
+    del body
+    result = service.execute(
+        session_id,
+        _acceptance_evidence_context(context, idempotency_key),
+    )
+    return present_acceptance_evidence(result)
+
+
+PulledAcceptanceEvidenceDependency = Annotated[
+    AcceptanceSessionActionResponse | JSONResponse,
+    Depends(pull_acceptance_evidence_response),
+]
+
+
+def confirm_acceptance_session_response(
+    session_id: UUID,
+    body: AcceptanceConfirmationRequestSchema,
+    context: MutationContextDependency,
+    idempotency_key: IdempotencyKeyHeader,
+    service: AcceptanceSessionConfirmationServiceDependency,
+) -> AcceptanceSessionActionResponse | JSONResponse:
+    """Execute one strict confirmation and present its typed result."""
+
+    del context
+    result = service.confirm(
+        _acceptance_confirmation_request(session_id, body),
+        idempotency_key=idempotency_key,
+    )
+    return present_acceptance_confirmation(result)
+
+
+ConfirmedAcceptanceSessionDependency = Annotated[
+    AcceptanceSessionActionResponse | JSONResponse,
+    Depends(confirm_acceptance_session_response),
+]
+
+
+def verify_acceptance_session_response(
+    session_id: UUID,
+    body: AcceptanceVerificationRequest,
+    context: MutationContextDependency,
+    idempotency_key: IdempotencyKeyHeader,
+    service: AcceptanceSessionVerificationServiceDependency,
+) -> AcceptanceSessionActionResponse | JSONResponse:
+    """Execute one synchronous exact-head verification and present its result."""
+
+    del body
+    result = service.execute(
+        session_id,
+        _acceptance_verification_context(context, idempotency_key),
+    )
+    return present_acceptance_verification(result)
+
+
+VerifiedAcceptanceSessionDependency = Annotated[
+    AcceptanceSessionActionResponse | JSONResponse,
+    Depends(verify_acceptance_session_response),
 ]
 
 

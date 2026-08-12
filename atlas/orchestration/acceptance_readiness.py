@@ -17,6 +17,7 @@ from atlas.github import (
     GitHubAPIError,
     GitHubClient,
     GitHubMalformedResponseError,
+    GitHubTimeoutError,
 )
 from atlas.orchestration.acceptance_sessions import (
     AssessmentService,
@@ -188,7 +189,7 @@ def _stored_history_reasons(
 def _external_failure_reasons(
     error: Exception,
 ) -> tuple[AcceptanceSessionBlockingReason, ...]:
-    if isinstance(error, TimeoutError):
+    if isinstance(error, (GitHubTimeoutError, TimeoutError)):
         specific = AcceptanceSessionBlockingReason.EXTERNAL_READ_TIMEOUT
     elif isinstance(error, (GitHubMalformedResponseError, TypeError, ValueError)):
         specific = AcceptanceSessionBlockingReason.EXTERNAL_RESPONSE_MALFORMED
