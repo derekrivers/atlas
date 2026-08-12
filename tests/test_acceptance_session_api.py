@@ -510,6 +510,36 @@ def _timeout_receipt(session_id: UUID, action: str) -> Any:
     )
 
 
+def _refused_receipt(
+    session_id: UUID,
+    *,
+    outcome: str,
+    result_code: str,
+) -> Any:
+    from atlas.core.models import (
+        OperatorActionOutcome,
+        OperatorActionReceipt,
+        OperatorActionResultCode,
+    )
+
+    return OperatorActionReceipt(
+        id=uuid4(),
+        correlation_id=uuid4(),
+        action="acceptance_session.confirm",
+        target_type="acceptance_session",
+        target_id=str(session_id),
+        created_by_type=ActorType.HUMAN,
+        created_by_id="operator",
+        idempotency_key_identity="sha256:" + "5" * 64,
+        request_fingerprint="sha256:" + "6" * 64,
+        outcome=OperatorActionOutcome(outcome),
+        result_code=OperatorActionResultCode(result_code),
+        result_metadata={"affected_count": 0, "changed": result_code == "stale_state"},
+        created_at=NOW,
+        completed_at=NOW,
+    )
+
+
 class _EvidenceSuccess:
     def __init__(self, session: Any) -> None:
         self._session = session
@@ -637,6 +667,73 @@ class _VerificationTimeout:
         )
 
 
+class _ConfirmationStale:
+    def __init__(self, session: Any) -> None:
+        self._session = session
+
+    def confirm(self, request: Any, *, idempotency_key: str) -> Any:
+        from atlas.orchestration import (
+            AcceptanceConfirmationResult,
+            AcceptanceConfirmationStatus,
+        )
+
+        assert idempotency_key == "confirm-stale"
+        return AcceptanceConfirmationResult(
+            status=AcceptanceConfirmationStatus.STALE,
+            session=self._session,
+            receipt=_refused_receipt(
+                request.session_id,
+                outcome="refused",
+                result_code="stale_state",
+            ),
+            reasons=(AcceptanceSessionBlockingReason.HEAD_SHA_MISMATCH,),
+        )
+
+
+class _ConfirmationCompletedConflict:
+    def __init__(self, session: Any) -> None:
+        self._session = session
+
+    def confirm(self, request: Any, *, idempotency_key: str) -> Any:
+        from atlas.orchestration import (
+            AcceptanceConfirmationResult,
+            AcceptanceConfirmationStatus,
+        )
+
+        assert idempotency_key == "confirm-completed"
+        return AcceptanceConfirmationResult(
+            status=AcceptanceConfirmationStatus.CONFLICT,
+            session=self._session,
+            receipt=_refused_receipt(
+                request.session_id,
+                outcome="conflict",
+                result_code="action_conflict",
+            ),
+        )
+
+
+class _ConfirmationAlteredReplay:
+    def __init__(self, session: Any) -> None:
+        self._session = session
+
+    def confirm(self, _request: Any, *, idempotency_key: str) -> Any:
+        from atlas.orchestration import (
+            AcceptanceConfirmationResult,
+            AcceptanceConfirmationStatus,
+            OperatorActionConflict,
+            OperatorActionConflictCode,
+        )
+
+        assert idempotency_key == "confirm-altered"
+        return AcceptanceConfirmationResult(
+            status=AcceptanceConfirmationStatus.CONFLICT,
+            session=self._session,
+            conflict=OperatorActionConflict(
+                code=OperatorActionConflictCode.IDEMPOTENCY_KEY_REUSED,
+            ),
+        )
+
+
 def test_ac1_ac5_all_five_routes_present_typed_success(
     database: Database,
 ) -> None:
@@ -743,13 +840,112 @@ def test_ac5_step_timeouts_are_named_non_advancing_504_outcomes(
         )
 
     assert evidence.status_code == 504
+    assert evidence.json()["result_code"] == "external_timeout"
     assert confirmation.status_code == 504
+    assert confirmation.json()["result_code"] == "external_timeout"
     assert verification.status_code == 504
+    assert verification.json()["result_code"] == "external_timeout"
     assert verification.json()["reasons"] == [
         "external_read_timeout",
         "external_state_indeterminate",
     ]
     assert AcceptanceSessionRepo(database).get(session_id) == session
+
+
+def test_ac5_confirmation_stale_refusal_preserves_result_code_and_reason(
+    database: Database,
+) -> None:
+    ticket = _seed_ticket(database)
+    app = _app(database, FakeGitHubClient())
+    with TestClient(app) as client:
+        session_cookie, csrf = _login(client)
+        session_id = _create_session(client, session_cookie, csrf)
+        session = AcceptanceSessionRepo(database).get(session_id)
+        assert session is not None
+        app.dependency_overrides.update(
+            {
+                get_acceptance_session_confirmation_service: lambda: _ConfirmationStale(
+                    session
+                )
+            }
+        )
+        response = client.post(
+            f"/api/v1/acceptance-sessions/{session_id}/confirm",
+            json={
+                "criteria_fingerprint": session.criteria_fingerprint,
+                "criterion_indexes": list(range(len(ticket.acceptance_criteria))),
+                "manual_approval": True,
+            },
+            headers=_headers(session_cookie, csrf, key="confirm-stale"),
+        )
+
+    assert response.status_code == 409
+    assert response.json()["result_code"] == "stale_state"
+    assert response.json()["reasons"] == ["head_sha_mismatch"]
+
+
+def test_ac5_completed_session_conflict_preserves_receipt_result_code(
+    database: Database,
+) -> None:
+    ticket = _seed_ticket(database)
+    app = _app(database, FakeGitHubClient())
+    with TestClient(app) as client:
+        session_cookie, csrf = _login(client)
+        session_id = _create_session(client, session_cookie, csrf)
+        session = AcceptanceSessionRepo(database).get(session_id)
+        assert session is not None
+        app.dependency_overrides.update(
+            {
+                get_acceptance_session_confirmation_service: lambda: (
+                    _ConfirmationCompletedConflict(session)
+                )
+            }
+        )
+        response = client.post(
+            f"/api/v1/acceptance-sessions/{session_id}/confirm",
+            json={
+                "criteria_fingerprint": session.criteria_fingerprint,
+                "criterion_indexes": list(range(len(ticket.acceptance_criteria))),
+                "manual_approval": True,
+            },
+            headers=_headers(session_cookie, csrf, key="confirm-completed"),
+        )
+
+    assert response.status_code == 409
+    assert response.json()["result_code"] == "action_conflict"
+    assert response.json()["conflict_code"] is None
+
+
+def test_ac5_altered_idempotency_key_conflict_preserves_gateway_code(
+    database: Database,
+) -> None:
+    ticket = _seed_ticket(database)
+    app = _app(database, FakeGitHubClient())
+    with TestClient(app) as client:
+        session_cookie, csrf = _login(client)
+        session_id = _create_session(client, session_cookie, csrf)
+        session = AcceptanceSessionRepo(database).get(session_id)
+        assert session is not None
+        app.dependency_overrides.update(
+            {
+                get_acceptance_session_confirmation_service: lambda: (
+                    _ConfirmationAlteredReplay(session)
+                )
+            }
+        )
+        response = client.post(
+            f"/api/v1/acceptance-sessions/{session_id}/confirm",
+            json={
+                "criteria_fingerprint": session.criteria_fingerprint,
+                "criterion_indexes": list(range(len(ticket.acceptance_criteria))),
+                "manual_approval": True,
+            },
+            headers=_headers(session_cookie, csrf, key="confirm-altered"),
+        )
+
+    assert response.status_code == 409
+    assert response.json()["result_code"] is None
+    assert response.json()["conflict_code"] == "idempotency_key_reused"
 
 
 def test_ac5_timeout_is_named_and_creation_does_not_advance(
@@ -827,6 +1023,12 @@ def test_ac6_openapi_is_finite_synchronous_and_publishes_security_and_enums(
     assert "AcceptanceSessionBlockingReason" in schemas
     assert "AcceptanceSessionLifecycle" in schemas
     assert "AcceptanceSessionStep" in schemas
+    result_code_schema = schemas["AcceptanceSessionErrorResponse"]["properties"][
+        "result_code"
+    ]
+    assert result_code_schema["anyOf"][0] == {
+        "$ref": "#/components/schemas/OperatorActionResultCode"
+    }
 
 
 def test_ac7_read_only_application_keeps_existing_route_inventory(

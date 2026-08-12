@@ -106,6 +106,7 @@ class AcceptanceConfirmationResult:
     status: AcceptanceConfirmationStatus
     session: AcceptanceSession | None = None
     receipt: OperatorActionReceipt | None = None
+    reasons: tuple[AcceptanceSessionBlockingReason, ...] = ()
     validation_errors: tuple[AcceptanceConfirmationValidationCode, ...] = ()
     conflict: OperatorActionConflict | None = None
     failure: OperatorActionFailure | None = None
@@ -194,6 +195,7 @@ class AcceptanceSessionConfirmationService:
                 status=AcceptanceConfirmationStatus.REPLAYED,
                 session=stored,
                 receipt=gateway_result.receipt,
+                reasons=_receipt_reasons(stored, gateway_result.receipt),
             )
         if gateway_result.status is OperatorActionGatewayStatus.CONFLICT:
             return AcceptanceConfirmationResult(
@@ -227,6 +229,7 @@ class AcceptanceSessionConfirmationService:
             status=status,
             session=stored,
             receipt=receipt,
+            reasons=_receipt_reasons(stored, receipt),
         )
 
     def _command(
@@ -327,6 +330,19 @@ def _validate_request(
     if len(submitted) > len(expected):
         errors.append(AcceptanceConfirmationValidationCode.EXTRA_CRITERION_INDEX)
     return tuple(errors)
+
+
+def _receipt_reasons(
+    session: AcceptanceSession | None,
+    receipt: OperatorActionReceipt | None,
+) -> tuple[AcceptanceSessionBlockingReason, ...]:
+    if (
+        session is None
+        or receipt is None
+        or receipt.result_code is not OperatorActionResultCode.STALE_STATE
+    ):
+        return ()
+    return session.blocking_reasons
 
 
 def _confirmation_records(

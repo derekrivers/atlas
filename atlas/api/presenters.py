@@ -235,6 +235,7 @@ def _acceptance_error(
     *,
     reasons: Sequence[AcceptanceSessionBlockingReason] = (),
     validation_errors: Sequence[AcceptanceConfirmationValidationCode] = (),
+    result_code: OperatorActionResultCode | None = None,
     conflict_code: OperatorActionConflictCode | None = None,
     failure_code: OperatorActionFailureCode | None = None,
     recovery_command: str | None = None,
@@ -244,6 +245,7 @@ def _acceptance_error(
         detail=detail,
         reasons=list(reasons),
         validation_errors=list(validation_errors),
+        result_code=result_code,
         conflict_code=conflict_code,
         failure_code=failure_code,
         recovery_command=recovery_command,
@@ -373,6 +375,7 @@ def _acceptance_receipt_error(
         status_code,
         "acceptance session action did not advance",
         reasons=reasons,
+        result_code=receipt.result_code,
     )
 
 
@@ -451,6 +454,16 @@ def present_acceptance_confirmation(
         return _acceptance_error(
             status.HTTP_404_NOT_FOUND,
             "acceptance session was not found",
+            reasons=result.reasons,
+        )
+    if (
+        result.receipt is not None
+        and result.receipt.outcome is not OperatorActionOutcome.SUCCEEDED
+    ):
+        return _acceptance_receipt_error(
+            result.session,
+            result.receipt,
+            reasons=result.reasons,
         )
     if result.status in {
         AcceptanceConfirmationStatus.CONFLICT,
@@ -459,6 +472,7 @@ def present_acceptance_confirmation(
         return _acceptance_error(
             status.HTTP_409_CONFLICT,
             "acceptance confirmation conflicted",
+            reasons=result.reasons,
             conflict_code=(
                 result.conflict.code if result.conflict is not None else None
             ),
@@ -467,15 +481,21 @@ def present_acceptance_confirmation(
         return _acceptance_error(
             status.HTTP_500_INTERNAL_SERVER_ERROR,
             "acceptance confirmation failed",
+            reasons=result.reasons,
             failure_code=(result.failure.code if result.failure is not None else None),
         )
     if result.receipt is None:
         return _acceptance_error(
             status.HTTP_500_INTERNAL_SERVER_ERROR,
             "acceptance confirmation failed",
+            reasons=result.reasons,
         )
     if result.receipt.outcome is not OperatorActionOutcome.SUCCEEDED:
-        return _acceptance_receipt_error(result.session, result.receipt)
+        return _acceptance_receipt_error(
+            result.session,
+            result.receipt,
+            reasons=result.reasons,
+        )
     return AcceptanceSessionActionResponse(
         session=_present_acceptance_session(result.session),
         receipt=_present_acceptance_receipt(result.receipt),
@@ -495,6 +515,15 @@ def present_acceptance_verification(
                 default=status.HTTP_404_NOT_FOUND,
             ),
             "acceptance session was not found",
+            reasons=result.reasons,
+        )
+    if (
+        result.receipt is not None
+        and result.receipt.outcome is not OperatorActionOutcome.SUCCEEDED
+    ):
+        return _acceptance_receipt_error(
+            result.session,
+            result.receipt,
             reasons=result.reasons,
         )
     if result.status in {

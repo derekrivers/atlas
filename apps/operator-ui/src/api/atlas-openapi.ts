@@ -692,6 +692,7 @@ export interface components {
             reasons?: components["schemas"]["AcceptanceSessionBlockingReason"][];
             /** Recovery Command */
             recovery_command?: string | null;
+            result_code?: components["schemas"]["OperatorActionResultCode"] | null;
             /** Ticket Keys */
             ticket_keys?: string[];
             /** Validation Errors */

@@ -151,7 +151,10 @@ accepts only `criteria_fingerprint`, `criterion_indexes` and literal
 `manual_approval`; actor, token, repository, PR override, ticket key, SHA,
 criterion text and unknown fields are rejected. Success returns the updated
 safe session plus its receipt. Create returns the safe session plus its durable
-hashed creation-command identity.
+hashed creation-command identity. Receipt-backed action errors expose their
+canonical `result_code`; stale refusals also return every movement or blocking
+`reason`. Gateway-level altered-key and in-progress conflicts remain distinct
+through `conflict_code`.
 
 `GET /api/v1/acceptance-sessions/{session_id}` requires the same live session
 cookie without mutation-only CSRF or Origin requirements. It calls

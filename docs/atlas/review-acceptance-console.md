@@ -347,6 +347,9 @@ stored hashed creation-command identity; it never returns the raw idempotency
 key. Typed validation, unknown resource, stale/refused action, altered replay,
 in-progress command, storage failure, external failure and timeout map to
 bounded status-specific responses without foreign exception text.
+Receipt-backed errors retain their canonical action `result_code`; stale
+refusals also retain every movement or blocking `reason`. Gateway-level
+altered-key and in-progress conflicts remain distinct through `conflict_code`.
 
 Operations are synchronous and bounded in the first version. The phase adds no
 job queue, websocket, background worker or progress protocol. Transport timeout

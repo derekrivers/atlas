@@ -365,9 +365,14 @@ def test_ac3_live_exact_head_drift_atomically_stales_without_confirmation(
 ) -> None:
     session, _tickets = seed_session(db)
 
+    key = f"drift-{expected_reason.value}"
     result = service(db, live_assessment=live).confirm(
         request(session),
-        idempotency_key=f"drift-{expected_reason.value}",
+        idempotency_key=key,
+    )
+    replay = service(db, live_assessment=live).confirm(
+        request(session),
+        idempotency_key=key,
     )
 
     assert result.status is AcceptanceConfirmationStatus.STALE
@@ -376,6 +381,9 @@ def test_ac3_live_exact_head_drift_atomically_stales_without_confirmation(
     assert result.session is not None
     assert result.session.lifecycle is AcceptanceSessionLifecycle.STALE
     assert expected_reason in result.session.blocking_reasons
+    assert result.reasons == result.session.blocking_reasons
+    assert replay.status is AcceptanceConfirmationStatus.REPLAYED
+    assert replay.reasons == result.reasons
     assert EvidenceRepo(db).list() == []
 
 
@@ -396,6 +404,7 @@ def test_ac3_live_criteria_drift_stales_in_same_receipt_transaction(
     assert result.session.blocking_reasons == (
         AcceptanceSessionBlockingReason.CRITERIA_MISMATCH,
     )
+    assert result.reasons == (AcceptanceSessionBlockingReason.CRITERIA_MISMATCH,)
     assert EvidenceRepo(db).list() == []
 
 

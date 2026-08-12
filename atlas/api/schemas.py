@@ -392,6 +392,7 @@ class AcceptanceSessionErrorResponse(BaseModel):
         default_factory=list,
         max_length=len(AcceptanceConfirmationValidationCode),
     )
+    result_code: OperatorActionResultCode | None = None
     conflict_code: OperatorActionConflictCode | None = None
     failure_code: OperatorActionFailureCode | None = None
     recovery_command: str | None = Field(default=None, max_length=512)
