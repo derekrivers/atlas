@@ -382,6 +382,9 @@ def _seed_evidence(
         )
         created_at_text = _optional(record, "created_at", str)
         created_at = _dt(created_at_text) if created_at_text is not None else timestamp
+        raw_payload = record.get("raw_payload", {"seed": "operator-ui-e2e"})
+        if not isinstance(raw_payload, dict):
+            raise ValueError("raw_payload must be an object")
         repo.add(
             Evidence(
                 id=_uuid(_required(record, "id", str)),
@@ -396,7 +399,7 @@ def _seed_evidence(
                 source_event_at=created_at,
                 payload_hash=_optional(record, "payload_hash", str),
                 source_uri=_optional(record, "source_uri", str),
-                raw_payload={"seed": "operator-ui-e2e"},
+                raw_payload=dict(raw_payload),
                 created_by_type=created_by_type,
                 created_by_id=created_by_id,
                 created_at=created_at,

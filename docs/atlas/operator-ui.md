@@ -400,13 +400,15 @@ vendored theme lives in `apps/operator-ui/THIRD_PARTY_NOTICES.md`.
   rewriting the database.
 - **Acceptance-console browser evidence** uses a dedicated committed seed and a
   read-only, state-controlled GitHub boundary behind the real FastAPI acceptance
-  services. It covers the successful create/evidence/confirm/verify sequence,
-  fresh-GET-only merge guidance, movement and external-read revocation,
-  stale/new-session recovery, unambiguous timeout key discipline, cross-tab
-  observation, session expiry, forbidden controls, and the exact generated
-  confirmation request shape. Component/query tests cover every lifecycle and
-  typed error state, one-action-in-flight, completed-step inspection, and the
-  prohibition on local readiness derivation.
+  services and canonical repositories. It covers the successful create/
+  evidence/confirm/verify sequence; head and live-main movement before, during
+  and after every seam; fresh-GET-only post-PASSED revocation; criteria drift;
+  old-head records; every non-PASSED verdict; missing gates; same/altered replay;
+  duplicate click; two-context concurrency; timeout/malformed responses; and
+  receipt/store failure. Process and external-client traps prove no merge,
+  branch, Linear, Symphony, schema or PM-sync action occurs. Component/query
+  tests cover every lifecycle and typed error state, one-action-in-flight,
+  completed-step inspection, and the prohibition on local readiness derivation.
 - **Accessibility and responsive tests** use `@axe-core/playwright` in the
   same seeded live-API harness. The enforced automated standard is axe-core's
   WCAG 2.2 AA rule set, expressed by the `wcag2a`, `wcag2aa`, `wcag21a`,
@@ -420,6 +422,11 @@ vendored theme lives in `apps/operator-ui/THIRD_PARTY_NOTICES.md`.
   atomic receipt failure and API-unreachable states. It asserts keyboard focus,
   live-region announcement, WCAG contrast and responsive layout across the
   named viewports and both colour modes.
+- **Acceptance-state accessibility** drives the live exact-head workflow by
+  keyboard, asserts focus and polite state announcements, checks the complete
+  verification matrix and long repository/branch identities, runs the WCAG 2.2
+  AA rules, and proves no horizontal overflow at laptop, tablet and `390px`
+  mobile widths.
 - **Contract drift** is caught by regenerating the TypeScript client and
   runtime enum metadata from the running application's OpenAPI document in CI
   and failing on any diff against the committed outputs. The single
@@ -473,6 +480,11 @@ output, response errors, receipts and built assets. The remaining loopback-HTTP
 risk is the same one stated by `governed-operator-actions.md`: transport
 security and a `Secure` cookie are not claimed, and remote serving is not
 supported.
+
+The acceptance action guard is synchronous and process-local; Phase 14 claims
+neither distributed exclusion nor asynchronous recovery. A current successful
+GET also cannot eliminate movement between that read and the operator's manual
+GitHub merge, so the runbook's one-PR freeze remains binding.
 
 ## Deferred
 

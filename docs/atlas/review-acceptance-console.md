@@ -1,7 +1,8 @@
 # Review Acceptance Console Design (Phase 14)
 
-Status: Planned Phase 14 design authority. Defines an authenticated,
-exact-head, stepwise browser workflow for PR acceptance. It consumes Phase 12's
+Status: Delivered and closed Phase 14 design authority. Defines the
+authenticated, exact-head, stepwise browser workflow for PR acceptance proven
+by `docs/closure/phase-14-closure-report.md`. It consumes Phase 12's
 mainline-freshness guarantees and Phase 13's session, actor and action-receipt
 framework.
 
@@ -210,7 +211,9 @@ one synchronous action at a time, so a concurrent tab cannot duplicate the
 pull or overwrite the first transition.
 
 Transport, authentication, exhausted rate-limit and malformed-source failures
-are separate receipt result codes. They leave the session at
+are separate receipt result codes and return the complete bounded external-read
+reason set; timeout, malformed and failed reads also identify external state as
+indeterminate. They leave the session at
 `preflight_passed`; exact same-key replay returns the stored failure without
 external work. After a new freshness assessment, the operator may retry with a
 new action key. No failure code is accepted as `evidence_ready`.
@@ -409,13 +412,26 @@ a cached `merge_ready: true` visible as authority.
 
 ## Milestone test
 
-With a seeded Review Required PR current at exact main, create a session,
-pull evidence, confirm every live criterion, produce a PASSED exact-head
-verification and reach `merge_ready: true`. Prove Atlas performs no merge.
-After PASSED, seed PR-head movement, main movement, criteria drift and GitHub
-read failure before the next GET; each response must report
-`merge_ready: false` with all typed reasons while preserving stored history.
-Also seed old-head evidence, missing human confirmation, non-PASSED
-verification, duplicate submission, cross-tab transition and audit failure.
-Every case must close the live gate and perform no unintended external or Atlas
-mutation.
+The closed milestone uses the built UI, live FastAPI application services and
+canonical SQLite repositories with deterministic injected GitHub, evidence and
+verification boundaries. A seeded Review Required PR current at exact main
+creates a session, pulls evidence, confirms every live criterion and the
+manual gate, records a PASSED exact-head verification and reaches current
+`merge_ready: true` for the displayed head.
+
+The same suite seeds PR-head and live-main movement before evidence, during the
+evidence seam, before confirmation, before verification and after PASSED. It
+also covers criteria drift, old-head evidence and confirmations, missing gates,
+every non-PASSED verdict, same/altered replay, duplicate submission, two-tab
+concurrency, timeout, malformed data and receipt/store failure. A post-PASSED
+movement or failed GitHub read makes the next GET return current false with all
+typed reasons while the stored session, receipts and verification history stay
+unchanged.
+
+Process, network and client spies plus repository assertions prove the workflow
+performs no PR merge, branch/rebase/push, Linear write or transition, Symphony
+action, schema upgrade or PM sync. The Phase 13 hostile-Origin, CSRF, session
+and redaction matrix applies to every Phase 14 POST. The delivered guard is
+synchronous and one-process only, and readiness remains advisory: the operator
+must preserve the one-PR freeze across the residual final-GET-to-manual-GitHub-
+merge race.

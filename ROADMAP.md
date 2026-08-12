@@ -2,21 +2,22 @@
 
 The canonical roadmap lives at
 `docs/atlas/implementation-roadmap.md`. Phase closure is recorded
-in `docs/closure/` — Phases 1 through 13 are closed (Phase 13 closed
-2026-08-11).
+in `docs/closure/` — Phases 1 through 14 are closed (Phase 14 closed
+2026-08-12).
 
 The original bootstrap milestone — a dependency-aware backlog
 generated through the plan/apply loop with stable ticket identity
 (AT-1..AT-7, `docs/atlas/planning-engine-specification.md`) — is
 proven and closed; see the closure reports.
 
-Current work: Phase 14 — Review Acceptance Console. Phase 13's authenticated,
-audited loopback write boundary is closed by
-`docs/closure/phase-13-closure-report.md`; Phase 14 consumes that boundary but
-does not expand it to merge, GitHub or Linear writes. The architectural
+Current work: Phase 15 — Multi-Agent Delivery Control. Phase 14's authenticated,
+exact-head review-acceptance console is closed by
+`docs/closure/phase-14-closure-report.md`; its live milestone proves the
+browser/API workflow stops at advice for a manual GitHub merge and performs no
+GitHub, Git, Linear, Symphony, schema or PM-sync mutation. The architectural
 direction through Phase 20 is recorded in
-`docs/atlas/phase-13-20-programme-horizon.md`; Phases 14–15 remain the active
-Wave A delivery graph, while Phases 16–20 remain gated programme horizons. The
+`docs/atlas/phase-13-20-programme-horizon.md`; Phase 15 remains the active Wave
+A delivery graph, while Phases 16–20 remain gated programme horizons. The
 hand-delivered Planning Batch Integrity Guard continues to validate exact
 paths, dependency identity/order/cycles and exact batch-manifest coverage in
 both plan and apply. Atlas retains no automatic conflict-resolution,

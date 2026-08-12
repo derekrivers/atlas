@@ -229,7 +229,7 @@ class AcceptanceSessionEvidencePullService:
             stored.blocking_reasons
             if stored is not None
             and stored.lifecycle is AcceptanceSessionLifecycle.STALE
-            else ()
+            else _external_failure_reasons(gateway_result.receipt)
         )
         return AcceptanceEvidencePullResult(
             status=gateway_result.status,
@@ -477,6 +477,29 @@ def _refused() -> OperatorActionCommandResult:
         outcome=OperatorActionOutcome.REFUSED,
         result_code=OperatorActionResultCode.ACTION_REFUSED,
         result_metadata={"changed": False, "affected_count": 0},
+    )
+
+
+def _external_failure_reasons(
+    receipt: OperatorActionReceipt | None,
+) -> tuple[AcceptanceSessionBlockingReason, ...]:
+    if receipt is None or receipt.outcome is not OperatorActionOutcome.FAILED:
+        return ()
+    if receipt.result_code is OperatorActionResultCode.EXTERNAL_TIMEOUT:
+        specific = AcceptanceSessionBlockingReason.EXTERNAL_READ_TIMEOUT
+    elif receipt.result_code is OperatorActionResultCode.EVIDENCE_MALFORMED_SOURCE:
+        specific = AcceptanceSessionBlockingReason.EXTERNAL_RESPONSE_MALFORMED
+    elif receipt.result_code in {
+        OperatorActionResultCode.EVIDENCE_TRANSPORT_FAILED,
+        OperatorActionResultCode.EVIDENCE_AUTHENTICATION_FAILED,
+        OperatorActionResultCode.EVIDENCE_RATE_LIMIT_FAILED,
+    }:
+        specific = AcceptanceSessionBlockingReason.EXTERNAL_READ_FAILED
+    else:
+        return ()
+    return (
+        specific,
+        AcceptanceSessionBlockingReason.EXTERNAL_STATE_INDETERMINATE,
     )
 
 

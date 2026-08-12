@@ -16,9 +16,13 @@ from atlas.orchestration.acceptance_evidence import (
 from atlas.orchestration.acceptance_readiness import (
     AcceptanceSessionLiveReadinessService,
 )
-from atlas.orchestration.acceptance_sessions import AcceptanceSessionCreationService
+from atlas.orchestration.acceptance_sessions import (
+    AcceptanceSessionCreationService,
+    TicketLookup,
+)
 from atlas.orchestration.acceptance_verification import (
     AcceptanceSessionVerificationService,
+    VerificationService,
 )
 from atlas.orchestration.operator_actions import OperatorActionGateway
 from atlas.storage import AcceptanceSessionRepo, Database, EvidenceRepo, TicketRepo
@@ -41,10 +45,13 @@ def build_acceptance_session_workflow(
     database: Database,
     github_client: GitHubClient,
     clock: Clock,
+    *,
+    ticket_lookup: TicketLookup | None = None,
+    verification_service: VerificationService | None = None,
 ) -> AcceptanceSessionWorkflowServices:
-    """Wire Phase 14 services once without leaking repositories into the API."""
+    """Wire Phase 14 services once around explicit external/test boundaries."""
 
-    tickets = TicketRepo(database)
+    tickets = ticket_lookup or TicketRepo(database)
     sessions = AcceptanceSessionRepo(database)
     gateway = OperatorActionGateway(database, clock=clock)
     return AcceptanceSessionWorkflowServices(
@@ -80,5 +87,6 @@ def build_acceptance_session_workflow(
             ticket_lookup=tickets,
             gateway=gateway,
             clock=clock,
+            verification_service=verification_service,
         ),
     )
