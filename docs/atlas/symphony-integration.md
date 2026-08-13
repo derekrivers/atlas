@@ -231,13 +231,21 @@ closure change lands exactly `max_concurrent_agents: 10`. Values 3, 5 and 7
 are confined to the pinned milestone branch. `max_turns: 10` is not part of the
 concurrency ramp and remains unchanged without a separate operator ruling.
 
-The ramp is exclusively an operator procedure. It provides no Atlas endpoint,
-CLI, agent or automation path to edit `WORKFLOW.md`, Symphony configuration,
-delivery policy, acceptance evidence or milestone receipts. The operator
-performs those governed actions in their owning systems and the runbook
-observes their immutable identities. Symphony remains the scheduler and
-session owner; lowering its branch ceiling or pausing Atlas admission does not
-terminate an active session.
+The ramp is exclusively an operator procedure. Policy reconciliation remains
+an explicit human/operator action through the existing governed Phase 15
+policy-revision boundary; the ramp adds no policy endpoint, CLI, agent action
+or automation. It also provides no Atlas endpoint, CLI, agent or automation
+path to edit `WORKFLOW.md`, Symphony configuration, acceptance evidence or
+milestone receipts. The operator performs those separate governed actions in
+their owning systems and the runbook observes their immutable identities.
+Symphony remains the scheduler and session owner; lowering its branch ceiling
+or pausing Atlas admission does not terminate an active session.
+
+Each gate pins the fetched `origin/main` commit and branch merge-base as well as
+the milestone head and workflow blob. Any mainline movement fails the active
+gate. Rebasing changes the tested tree, makes every earlier PASS historical and
+requires the operator to restore one and restart the cumulative sequence at
+Gate 1; old-head evidence never authorises a new head.
 
 ### Exact-head PR integration assessment
 

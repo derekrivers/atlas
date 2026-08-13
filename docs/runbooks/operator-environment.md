@@ -280,11 +280,15 @@ that revision and fingerprint and observes them alongside committed
 `WORKFLOW.md` at one. Failure to prove this current-policy reconciliation stops
 the milestone before any live ramp window.
 
-No Atlas endpoint, CLI, agent or automation may edit `WORKFLOW.md`, Symphony
-configuration, delivery policy, acceptance evidence or milestone receipts for
-this procedure. Those remain operator actions in their owning systems. The
-runbook uses only read observations and immutable identifiers from their
-receipts. It never starts a live worker from CI.
+Policy reconciliation and later mirror changes are explicit human/operator
+actions through the existing governed Phase 15 policy-revision boundary. The
+ramp adds no endpoint, CLI, agent action or automation that edits delivery
+policy; agents and ramp automation have no policy authority. No Atlas endpoint,
+CLI, agent or automation may edit `WORKFLOW.md`, Symphony configuration,
+acceptance evidence or milestone receipts for this procedure. Those are
+separate operator actions in their owning systems. The runbook uses only read
+observations and immutable identifiers from their receipts. It never starts a
+live worker from CI.
 
 For every PASS or FAIL, the operator posts one comment on the single milestone
 PR. Its first line is `atlas:symphony-ceiling-gate v1`, followed by these
@@ -292,6 +296,8 @@ fields with no omissions:
 
 ```yaml
 branch: phase-15-atlas-253-ceiling-ramp
+origin_main_sha: <40-hex fetched origin/main commit>
+merge_base_sha: <40-hex branch/origin-main merge base>
 head_sha: <40-hex commit loaded by Symphony>
 workflow_blob_sha: <40-hex WORKFLOW.md blob>
 level: <1|3|5|7|10>
@@ -346,11 +352,26 @@ agent:
 The only permitted sequence is `1 -> 3`, `3 -> 5`, `5 -> 7`, then `7 -> 10`.
 The prompt body below the front matter, `max_turns: 10` and every other workflow
 field remain byte-for-byte unchanged. Before loading a level, the operator
-verifies all of the following:
+validates the checkout with:
+
+```bash
+uv run python -m atlas.tools.doc_linter --repo . \
+  --symphony-milestone-level <1|3|5|7|10>
+ATLAS_SYMPHONY_MILESTONE_LEVEL=<1|3|5|7|10> \
+  uv run pytest tests/test_workflow_contract.py \
+  tests/test_symphony_ceiling_doc_linter.py
+```
+
+The explicit validation context derives the checked-out branch and accepts only
+the exact dedicated branch at the declared level. Ordinary CI omits this
+context and therefore continues to reject an open-Phase-15 checkout at 3, 5, 7
+or 10; milestone validation is preflight evidence, never merge authority.
+Before loading a level, the operator verifies all of the following:
 
 1. The checked-out branch name is exactly
    `phase-15-atlas-253-ceiling-ramp`; its head and `WORKFLOW.md` blob are
-   recorded, and the milestone PR is still unmerged.
+   recorded, the milestone PR is still unmerged, and a fresh fetch records the
+   exact `origin/main` and branch/origin-main merge-base SHAs.
 2. Current `origin/main` declares exactly one and keeps `max_turns: 10`. The
    branch declaration is the requested level, is at most ten and differs from
    the last proven declaration only by the one permitted scalar transition;
@@ -386,6 +407,8 @@ Symphony session observation and acceptance-session identity in the interval.
 For all levels, PASS requires:
 
 - the declared ceiling and policy mirror stay equal and unchanged;
+- the fetched `origin/main` SHA and branch/origin-main merge-base remain equal
+  to the receipt values for the entire window;
 - occupied Symphony slots never exceed the declaration, while working, review,
   reserve and every matching lane occupancy remain within their own budgets;
 - a full review budget admits no new ticket, Changes Requested work is not
@@ -398,8 +421,9 @@ For all levels, PASS requires:
 Stop immediately and record FAIL for a ceiling/budget breach, an admission
 while paused or draining, an unselected or second write, an unresolved
 stale/partial/indeterminate result, missing or contradictory evidence, branch
-or policy drift, or review occupancy equal to its budget in two consecutive
-successful receipts. Pause admission at the stop boundary.
+or policy drift, any movement of `origin/main`, or review occupancy equal to
+its budget in two consecutive successful receipts. Pause admission at the stop
+boundary.
 
 ### Gate 1 — serialized baseline admission, pause and rework
 
@@ -482,3 +506,12 @@ committed `main` remains at one and Phase 15 remains open. A receipt proving
 only 1, 3, 5 or 7 is an honest incomplete milestone, never authority for
 partial closure. A later retry starts a new fixed window from the
 retained/restored proven value and must satisfy every subsequent gate again.
+
+If `origin/main` advances at any point in the multi-hour exercise, the current
+gate is FAIL and every earlier receipt is historical evidence for its old tree,
+not authority for a rebased head. The operator pauses admission, records the
+movement and active sessions, restores the milestone declaration and policy
+mirror to one, then deliberately rebases the dedicated branch onto the new
+`origin/main`. Because that rebase changes the tested tree, the operator must
+restart at Gate 1 with new head, workflow-blob, origin-main and merge-base
+identities; no prior PASS carries across the rebase.

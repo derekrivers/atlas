@@ -15,6 +15,7 @@ renaming a state in either the doc or ``WORKFLOW.md`` breaks the tie.
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -25,7 +26,12 @@ import yaml
 # The preflight's own model parser (D6): AC6 pins it against the *live*
 # codex.command so parser and command cannot silently drift apart.
 from atlas.linear.preflight import _parse_model
-from atlas.tools.doc_linter import check_symphony_ceiling_contract
+from atlas.tools.doc_linter import (
+    SYMPHONY_MILESTONE_BRANCH,
+    SYMPHONY_MILESTONE_LEVELS,
+    SymphonyMilestoneValidation,
+    check_symphony_ceiling_contract,
+)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 WORKFLOW_PATH = REPO_ROOT / "WORKFLOW.md"
@@ -48,6 +54,35 @@ def _split() -> tuple[dict[str, Any], str]:
     front = yaml.safe_load(match.group("front"))
     assert isinstance(front, dict), "front matter must parse as a YAML mapping"
     return front, match.group("body")
+
+
+def _symphony_milestone_validation() -> SymphonyMilestoneValidation | None:
+    raw_level = os.environ.get("ATLAS_SYMPHONY_MILESTONE_LEVEL")
+    if raw_level is None:
+        return None
+    assert raw_level in {str(level) for level in SYMPHONY_MILESTONE_LEVELS}
+    branch = subprocess.run(
+        ["git", "symbolic-ref", "--quiet", "--short", "HEAD"],
+        cwd=REPO_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    return SymphonyMilestoneValidation(branch=branch, level=int(raw_level))
+
+
+def _phase_15_is_closed() -> bool:
+    closure = _read(PHASE_15_CLOSURE_DOC) if PHASE_15_CLOSURE_DOC.is_file() else ""
+    return bool(
+        re.search(r"^Status:\s*CLOSED\b", closure, re.IGNORECASE | re.MULTILINE)
+    )
+
+
+def _expected_symphony_ceiling() -> int:
+    if _phase_15_is_closed():
+        return 10
+    milestone = _symphony_milestone_validation()
+    return milestone.level if milestone is not None else 1
 
 
 # --- AC-1 fixtures: the expected states, derived from the doc, not a literal ---
@@ -131,15 +166,13 @@ def test_ac2_max_concurrent_agents_matches_ruling() -> None:
     raised it to 3 by operator ruling; ATLAS-054M restores serialized
     execution and lowers the per-run turn cap to 10. ATLAS-252 permits the
     concurrency pin to move only to exactly ten with its CLOSED Phase 15
-    report; intermediate branch values remain independently red.
+    report on ordinary main. Its explicit milestone context validates only the
+    exact dedicated branch and declared level; those values remain red in the
+    ordinary context.
     """
     front, _ = _split()
     ceiling = front["agent"]["max_concurrent_agents"]
-    closure = _read(PHASE_15_CLOSURE_DOC) if PHASE_15_CLOSURE_DOC.is_file() else ""
-    phase_15_closed = bool(
-        re.search(r"^Status:\s*CLOSED\b", closure, re.IGNORECASE | re.MULTILINE)
-    )
-    assert ceiling == (10 if phase_15_closed else 1)
+    assert ceiling == _expected_symphony_ceiling()
     assert ceiling <= 10
     assert front["agent"]["max_turns"] == 10
 
@@ -523,7 +556,7 @@ def test_atlas_252_ac1_one_operator_ceiling_is_distinct_from_budgets_and_slots()
     symphony = " ".join(_read(SYMPHONY_DOC).split())
     delivery = " ".join(_read(DELIVERY_CONTROL_DOC).split())
 
-    assert front["agent"]["max_concurrent_agents"] == 1
+    assert front["agent"]["max_concurrent_agents"] == _expected_symphony_ceiling()
     assert front["agent"]["max_turns"] == 10
     assert "single controlling Symphony worker" in workflow
     assert "The operator is the sole owner of this value" in workflow
@@ -546,6 +579,8 @@ def test_atlas_252_ac2_runbook_pins_branch_edit_window_receipt_and_gate_order() 
     assert "one fixed 60-minute window" in runbook
     assert "atlas:symphony-ceiling-gate v1" in runbook
     for field in (
+        "origin_main_sha:",
+        "merge_base_sha:",
         "head_sha:",
         "workflow_blob_sha:",
         "max_turns: 10",
@@ -597,14 +632,20 @@ def test_atlas_252_ac4_failure_rolls_back_without_terminating_or_closing() -> No
     assert "cancel workers or delete workspaces" in flowed
     assert "milestone PR stays unmerged" in flowed
     assert "Phase 15 remains open" in flowed
+    assert "If `origin/main` advances" in flowed
+    assert "restart at Gate 1" in flowed
+    assert "no prior PASS carries across the rebase" in flowed
 
 
 def test_atlas_252_ac5_open_phase_is_one_and_closure_can_only_be_exactly_ten() -> None:
     front, _ = _split()
-    assert front["agent"]["max_concurrent_agents"] == 1
+    milestone = _symphony_milestone_validation()
+    assert front["agent"]["max_concurrent_agents"] == _expected_symphony_ceiling()
     assert front["agent"]["max_turns"] == 10
-    assert not PHASE_15_CLOSURE_DOC.exists()
-    ceiling_findings = check_symphony_ceiling_contract(REPO_ROOT)
+    ceiling_findings = check_symphony_ceiling_contract(
+        REPO_ROOT,
+        milestone=milestone,
+    )
     assert ceiling_findings == []
 
 
@@ -612,9 +653,13 @@ def test_atlas_252_ac6_runbook_exposes_no_atlas_or_agent_mutation_path() -> None
     runbook = _ceiling_runbook()
     flowed = " ".join(runbook.split())
     assert (
+        "The ramp adds no endpoint, CLI, agent action or automation that edits "
+        "delivery policy" in flowed
+    )
+    assert "existing governed Phase 15 policy-revision boundary" in flowed
+    assert (
         "No Atlas endpoint, CLI, agent or automation may edit `WORKFLOW.md`, "
-        "Symphony configuration, delivery policy, acceptance evidence or "
-        "milestone receipts" in flowed
+        "Symphony configuration, acceptance evidence or milestone receipts" in flowed
     )
     assert not re.search(
         r"(?im)^\s*(?:GET|POST|PUT|PATCH|DELETE)\s+/|/api/|linear_graphql",
@@ -642,3 +687,15 @@ def test_atlas_252_ac8_intermediate_values_are_milestone_branch_only() -> None:
     assert "Values 3, 5 and 7 are valid only on that branch" in runbook
     assert "never independently mergeable to `main`" in runbook
     assert "ordinary committed `main` remains at one" in runbook
+
+
+def test_atlas_252_ac9_milestone_validation_is_explicit_and_branch_pinned() -> None:
+    runbook = " ".join(_ceiling_runbook().split())
+
+    assert SYMPHONY_MILESTONE_BRANCH in runbook
+    assert "--symphony-milestone-level <1|3|5|7|10>" in runbook
+    assert "ATLAS_SYMPHONY_MILESTONE_LEVEL=<1|3|5|7|10>" in runbook
+    assert "Ordinary CI omits this context" in runbook
+    assert (
+        "milestone validation is preflight evidence, never merge authority" in runbook
+    )

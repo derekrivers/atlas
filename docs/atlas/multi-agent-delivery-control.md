@@ -342,6 +342,17 @@ receipt for the preceding gate; no intermediate value is merged or
 cherry-picked independently. The exact preflight, fixed observation window,
 evidence receipt, stop conditions and rollback are defined in the Symphony
 ceiling controlled-ramp runbook in `docs/runbooks/operator-environment.md`.
+The ramp introduces no delivery-policy mutation path: only the human/operator
+may reconcile the policy mirror through the existing governed Phase 15
+policy-revision boundary, and neither agents nor ramp automation receive that
+authority.
+
+The milestone-only doc-linter and workflow-contract validation context accepts
+levels 1, 3, 5, 7 and 10 only on the exact dedicated branch. Ordinary CI omits
+that context, so an open-phase checkout above one remains non-mergeable. Every
+gate receipt pins the fetched `origin/main` and branch merge-base commits. If
+main moves, the gate fails; after the operator restores one and rebases, every
+old receipt is historical and the cumulative sequence restarts at Gate 1.
 
 The entry gates are cumulative:
 

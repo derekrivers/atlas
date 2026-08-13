@@ -70,10 +70,12 @@ v2 (ATLAS-16) adds, per knowledge-core.md "JSON Schema generation":
 - CEILING: when the repo-owned ``WORKFLOW.md`` is present, its Symphony ceiling
   is a strict integer no greater than ten; an open Phase 15 pins ordinary
   ``main`` to one, while a CLOSED Phase 15 closure report must prove and
-  accompany exactly ten. ``max_turns`` remains ten outside the ramp. Canonical
-  authority, current-policy reconciliation, five-level gate ordering, rollback
-  and no-agent-mutation wording remain mechanically present in the
-  controlled-ramp docs.
+  accompany exactly ten. The explicit milestone validation context accepts only
+  the pinned branch at one of the five declared levels; the ordinary context
+  continues to reject every open-phase value other than one. ``max_turns``
+  remains ten outside the ramp. Canonical authority, current-policy
+  reconciliation, five-level gate ordering, rollback and mutation-authority
+  wording remain mechanically present in the controlled-ramp docs.
 
 Exit status: 0 when the doc set is clean, 1 when there are findings.
 This linter only reports; repairing drift is ATLAS-5.
@@ -137,6 +139,8 @@ SYMPHONY_INTEGRATION_PATH = "docs/atlas/symphony-integration.md"
 DELIVERY_CONTROL_PATH = "docs/atlas/multi-agent-delivery-control.md"
 OPERATOR_ENVIRONMENT_PATH = "docs/runbooks/operator-environment.md"
 PHASE_15_CLOSURE_PATH = "docs/closure/phase-15-closure-report.md"
+SYMPHONY_MILESTONE_BRANCH = "phase-15-atlas-253-ceiling-ramp"
+SYMPHONY_MILESTONE_LEVELS = (1, 3, 5, 7, 10)
 
 # Directories whose Markdown files at any depth must all be listed in the
 # MANIFEST.
@@ -665,6 +669,15 @@ _WORKFLOW_FRONT_MATTER_RE = re.compile(
 )
 _PHASE_15_CLOSED_RE = re.compile(r"^Status:\s*CLOSED\b", re.IGNORECASE | re.MULTILINE)
 
+
+@dataclass(frozen=True)
+class SymphonyMilestoneValidation:
+    """Explicit validation context for the dedicated Phase 15 branch."""
+
+    branch: str
+    level: int
+
+
 _CEILING_AUTHORITY_MARKERS = {
     WORKFLOW_PATH: (
         "single controlling Symphony worker",
@@ -694,9 +707,12 @@ _CEILING_GATE_MARKERS = (
 )
 
 _CEILING_RUNBOOK_MARKERS = (
-    "phase-15-atlas-253-ceiling-ramp",
+    SYMPHONY_MILESTONE_BRANCH,
     "atlas:symphony-ceiling-gate v1",
+    "origin_main_sha:",
+    "merge_base_sha:",
     "The only permitted sequence is `1 -> 3`, `3 -> 5`, `5 -> 7`, then `7 -> 10`",
+    "--symphony-milestone-level <1|3|5|7|10>",
     "Every level has one fixed 60-minute window",
     "Gate 3 cannot begin without the Gate 1 PASS receipt",
     "Gate 5 cannot begin without the Gate 3 PASS receipt",
@@ -708,6 +724,8 @@ _CEILING_RUNBOOK_MARKERS = (
     "Only the operator may change the milestone-branch declaration",
     "Values 3, 5 and 7 are valid only on that branch",
     "never independently mergeable to `main`",
+    "existing governed Phase 15 policy-revision boundary",
+    "restart at Gate 1",
     "### Stop, rollback and non-closure",
 )
 
@@ -718,16 +736,21 @@ def _finding_line(text: str, marker: str) -> int:
     return text.count("\n", 0, offset) + 1 if offset >= 0 else 1
 
 
-def check_symphony_ceiling_contract(root: Path) -> list[Finding]:
+def check_symphony_ceiling_contract(
+    root: Path,
+    *,
+    milestone: SymphonyMilestoneValidation | None = None,
+) -> list[Finding]:
     """Validate the governed 1→3→5→7→10 Symphony ceiling documentation.
 
     The check is conditional on ``WORKFLOW.md`` so the doc-linter's deliberately
     small unit-test repositories do not have to model Symphony. A real Atlas
     checkout always has the workflow and therefore always exercises the gate.
-    Intermediate milestone-branch values intentionally fail SCG003 until the
-    successful Gate 10 closure report accompanies exactly ten; this prevents an
-    intermediate or unaccompanied ceiling commit from being independently
-    mergeable to ``main``.
+    Intermediate milestone-branch values pass only when the caller explicitly
+    supplies the exact pinned branch and expected level. The ordinary context
+    intentionally fails SCG003 until the successful Gate 10 closure report
+    accompanies exactly ten; this keeps intermediate or unaccompanied ceiling
+    commits independently unmergeable to ``main``.
     """
     workflow_path = root / WORKFLOW_PATH
     if not workflow_path.is_file():
@@ -789,8 +812,44 @@ def check_symphony_ceiling_contract(root: Path) -> list[Finding]:
     closure_path = root / PHASE_15_CLOSURE_PATH
     closure = closure_path.read_text(encoding="utf-8") if closure_path.is_file() else ""
     closure_is_closed = bool(_PHASE_15_CLOSED_RE.search(closure))
+    milestone_is_valid = milestone is not None
+    if milestone is not None:
+        context_errors: list[str] = []
+        if milestone.branch != SYMPHONY_MILESTONE_BRANCH:
+            context_errors.append(f"branch must be exactly {SYMPHONY_MILESTONE_BRANCH}")
+        if isinstance(milestone.level, bool) or (
+            milestone.level not in SYMPHONY_MILESTONE_LEVELS
+        ):
+            context_errors.append("level must be exactly one of 1, 3, 5, 7 or 10")
+        if context_errors:
+            milestone_is_valid = False
+            findings.append(
+                Finding(
+                    WORKFLOW_PATH,
+                    _finding_line(workflow, "max_concurrent_agents"),
+                    "SCG008",
+                    "invalid Symphony milestone validation context: "
+                    + "; ".join(context_errors),
+                )
+            )
+        elif isinstance(ceiling, int) and not isinstance(ceiling, bool):
+            if ceiling != milestone.level:
+                milestone_is_valid = False
+                findings.append(
+                    Finding(
+                        WORKFLOW_PATH,
+                        _finding_line(workflow, "max_concurrent_agents"),
+                        "SCG008",
+                        "milestone validation level does not match "
+                        f"WORKFLOW.md: expected {milestone.level}, found {ceiling}",
+                    )
+                )
     if isinstance(ceiling, int) and not isinstance(ceiling, bool):
-        if not closure_is_closed and ceiling != 1:
+        if (
+            not closure_is_closed
+            and ceiling != 1
+            and (milestone is None or not milestone_is_valid)
+        ):
             findings.append(
                 Finding(
                     WORKFLOW_PATH,
@@ -881,18 +940,25 @@ def check_symphony_ceiling_contract(root: Path) -> list[Finding]:
         ramp,
     )
     authority_boundary = (
-        "No Atlas endpoint, CLI, agent or automation may edit `WORKFLOW.md`, "
-        "Symphony configuration, delivery policy, acceptance evidence or "
-        "milestone receipts"
+        "The ramp adds no endpoint, CLI, agent action or automation that edits "
+        "delivery policy"
     )
-    if authority_boundary not in flowed_ramp or forbidden_mutation_path is not None:
+    repository_authority_boundary = (
+        "No Atlas endpoint, CLI, agent or automation may edit `WORKFLOW.md`, "
+        "Symphony configuration, acceptance evidence or milestone receipts"
+    )
+    if (
+        authority_boundary not in flowed_ramp
+        or repository_authority_boundary not in flowed_ramp
+        or forbidden_mutation_path is not None
+    ):
         findings.append(
             Finding(
                 OPERATOR_ENVIRONMENT_PATH,
                 _finding_line(runbook, runbook_heading),
                 "SCG006",
-                "controlled-ramp procedure must expose no Atlas endpoint or "
-                "agent mutation path",
+                "controlled-ramp procedure must preserve the operator-only "
+                "policy and repository mutation boundaries",
             )
         )
 
@@ -1656,7 +1722,12 @@ def check_generated_schemas(root: Path) -> list[Finding]:
     return findings
 
 
-def lint_repo(root: Path, database: Database | None = None) -> list[Finding]:
+def lint_repo(
+    root: Path,
+    database: Database | None = None,
+    *,
+    symphony_milestone: SymphonyMilestoneValidation | None = None,
+) -> list[Finding]:
     findings = [
         *check_adrs(root),
         *check_manifest(root),
@@ -1664,7 +1735,7 @@ def lint_repo(root: Path, database: Database | None = None) -> list[Finding]:
         *check_intra_doc_links(root),
         *check_backticked_paths(root),
         *check_planning_renders(root),
-        *check_symphony_ceiling_contract(root),
+        *check_symphony_ceiling_contract(root, milestone=symphony_milestone),
         *check_phase_status(root),
         *check_render_source_anchors(root),
         *check_json_examples(root),
@@ -1673,6 +1744,16 @@ def lint_repo(root: Path, database: Database | None = None) -> list[Finding]:
     if database is not None:
         findings.extend(check_store_source_anchors(root, database))
     return sorted(findings, key=lambda f: (f.path, f.line, f.code))
+
+
+def _current_git_branch(root: Path) -> str:
+    result = subprocess.run(
+        ["git", "symbolic-ref", "--quiet", "--short", "HEAD"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+    )
+    return result.stdout.strip() if result.returncode == 0 else ""
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -1688,6 +1769,16 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="optional database URL for checking store source_anchor rows",
     )
+    parser.add_argument(
+        "--symphony-milestone-level",
+        type=int,
+        choices=SYMPHONY_MILESTONE_LEVELS,
+        default=None,
+        help=(
+            "validate the declared level only when the checkout is the exact "
+            "dedicated Phase 15 milestone branch"
+        ),
+    )
     args = parser.parse_args(argv)
     root = Path(args.repo).resolve()
     database = None
@@ -1695,7 +1786,17 @@ def main(argv: list[str] | None = None) -> int:
         from atlas.storage import Database
 
         database = Database(args.db)
-    findings = lint_repo(root, database=database)
+    symphony_milestone = None
+    if args.symphony_milestone_level is not None:
+        symphony_milestone = SymphonyMilestoneValidation(
+            branch=_current_git_branch(root),
+            level=args.symphony_milestone_level,
+        )
+    findings = lint_repo(
+        root,
+        database=database,
+        symphony_milestone=symphony_milestone,
+    )
     for finding in findings:
         print(finding.render())
     print(

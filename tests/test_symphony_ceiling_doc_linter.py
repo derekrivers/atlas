@@ -9,7 +9,13 @@ from pathlib import Path
 import pytest
 from test_doc_linter import write
 
-from atlas.tools.doc_linter import Finding, check_symphony_ceiling_contract
+import atlas.tools.doc_linter as doc_linter
+from atlas.tools.doc_linter import (
+    SYMPHONY_MILESTONE_BRANCH,
+    Finding,
+    SymphonyMilestoneValidation,
+    check_symphony_ceiling_contract,
+)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 CONTRACT_PATHS = (
@@ -84,6 +90,93 @@ def test_atlas_252_doc_linter_rejects_unaccompanied_open_phase_edit(
 
     assert "SCG003" in _codes(findings)
     assert any("unaccompanied" in finding.message for finding in findings)
+
+
+@pytest.mark.parametrize("ceiling", ["1", "3", "5", "7", "10"])
+def test_atlas_252_doc_linter_accepts_exact_dedicated_milestone_context(
+    tmp_path: Path,
+    ceiling: str,
+) -> None:
+    _build_contract_fixture(tmp_path)
+    _set_ceiling(tmp_path, ceiling)
+
+    findings = check_symphony_ceiling_contract(
+        tmp_path,
+        milestone=SymphonyMilestoneValidation(
+            branch=SYMPHONY_MILESTONE_BRANCH,
+            level=int(ceiling),
+        ),
+    )
+
+    assert findings == []
+
+
+@pytest.mark.parametrize(
+    ("branch", "expected_level", "declared_level"),
+    [
+        ("ordinary-feature-branch", 3, "3"),
+        (SYMPHONY_MILESTONE_BRANCH, 5, "3"),
+        (SYMPHONY_MILESTONE_BRANCH, 2, "2"),
+    ],
+)
+def test_atlas_252_doc_linter_rejects_invalid_milestone_context(
+    tmp_path: Path,
+    branch: str,
+    expected_level: int,
+    declared_level: str,
+) -> None:
+    _build_contract_fixture(tmp_path)
+    _set_ceiling(tmp_path, declared_level)
+
+    findings = check_symphony_ceiling_contract(
+        tmp_path,
+        milestone=SymphonyMilestoneValidation(
+            branch=branch,
+            level=expected_level,
+        ),
+    )
+
+    assert "SCG008" in _codes(findings)
+
+
+def test_atlas_252_doc_linter_cli_pins_context_to_checked_out_branch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: list[SymphonyMilestoneValidation | None] = []
+
+    def fake_lint_repo(
+        root: Path,
+        database: object | None = None,
+        *,
+        symphony_milestone: SymphonyMilestoneValidation | None = None,
+    ) -> list[Finding]:
+        assert root == tmp_path
+        assert database is None
+        captured.append(symphony_milestone)
+        return []
+
+    monkeypatch.setattr(doc_linter, "lint_repo", fake_lint_repo)
+    monkeypatch.setattr(
+        doc_linter,
+        "_current_git_branch",
+        lambda root: SYMPHONY_MILESTONE_BRANCH,
+    )
+
+    assert (
+        doc_linter.main(
+            [
+                "--repo",
+                str(tmp_path),
+                "--symphony-milestone-level",
+                "7",
+            ]
+        )
+        == 0
+    )
+    assert captured == [
+        SymphonyMilestoneValidation(branch=SYMPHONY_MILESTONE_BRANCH, level=7)
+    ]
 
 
 def test_atlas_252_doc_linter_preserves_max_turns_outside_ramp(
@@ -191,6 +284,27 @@ def test_atlas_252_doc_linter_rejects_atlas_mutation_path_in_runbook(
         tmp_path,
         "docs/runbooks/operator-environment.md",
         text + "\nPOST /api/v1/forbidden-ceiling-edit\n",
+    )
+
+    assert "SCG006" in _codes(check_symphony_ceiling_contract(tmp_path))
+
+
+def test_atlas_252_doc_linter_requires_operator_only_policy_boundary(
+    tmp_path: Path,
+) -> None:
+    _build_contract_fixture(tmp_path)
+    path = tmp_path / "docs/runbooks/operator-environment.md"
+    text = path.read_text(encoding="utf-8")
+    write(
+        tmp_path,
+        "docs/runbooks/operator-environment.md",
+        text.replace(
+            "ramp adds no endpoint, CLI, agent action or automation that edits "
+            "delivery\n"
+            "policy",
+            "Ramp automation updates delivery policy",
+            1,
+        ),
     )
 
     assert "SCG006" in _codes(check_symphony_ceiling_contract(tmp_path))
