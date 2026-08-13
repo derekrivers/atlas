@@ -1,7 +1,7 @@
 %% Render written only by `atlas apply` (ADR-0006/0007); do not hand-edit.
-%% plan_run_id: c89c7c82-d451-4ddb-a314-5b0e8d6d8348
+%% plan_run_id: 330d3f84-2920-4731-b885-4512418eae05
 %% prompt_version: stubs-only
-%% ticket_key_high_water: 253
+%% ticket_key_high_water: 263
 %% epic_key_high_water: 13
 graph TD
   subgraph ATLAS-E1["Bootstrap Repository"]
@@ -105,6 +105,8 @@ graph TD
     ATLAS-247["ATLAS-247 Coherent delivery occupancy and review-pressure snapshot"]
     ATLAS-248["ATLAS-248 Deterministic capacity-aware admission decision engine"]
     ATLAS-249["ATLAS-249 Fail-closed single-write admission integration in the PM sync tick"]
+    ATLAS-255["ATLAS-255 CI-pending delivery state and bounded integration capacity"]
+    ATLAS-258["ATLAS-258 Protected integration-lane classification and admission holds"]
   end
   subgraph ATLAS-E7["Execution Context"]
     ATLAS-60["ATLAS-60 Ticket tags and component fields: storage layer"]
@@ -133,6 +135,7 @@ graph TD
     ATLAS-80["ATLAS-80 Evidence CLI (pull, list, show)"]
     ATLAS-108["ATLAS-108 Evidence CLI cold-database precondition handling (ATLAS-130)"]
     ATLAS-239["ATLAS-239 Exact-head acceptance-session evidence pull action"]
+    ATLAS-256["ATLAS-256 System-tier CI handoff reconciler"]
   end
   subgraph ATLAS-E9["Completion Validation"]
     ATLAS-81["ATLAS-81 Verification rules and required-check matrix"]
@@ -149,6 +152,8 @@ graph TD
     ATLAS-237["ATLAS-237 Acceptance and confirmation zero-action diagnostics"]
     ATLAS-240["ATLAS-240 Acceptance-session criteria confirmation and manual approval action"]
     ATLAS-241["ATLAS-241 Exact-head verification and manual-merge readiness evaluator"]
+    ATLAS-254["ATLAS-254 Tiered local-validation contract and deterministic validation-plan CLI"]
+    ATLAS-260["ATLAS-260 No-rewrite exact-base acceptance assessment"]
   end
   subgraph ATLAS-E10["Autonomous Delivery"]
     ATLAS-92["ATLAS-92 WORKFLOW.md and tracker configuration for Symphony dispatch"]
@@ -174,6 +179,9 @@ graph TD
     ATLAS-238["ATLAS-238 Durable exact-head acceptance session and status projection"]
     ATLAS-252["ATLAS-252 Symphony ceiling contract and controlled-ramp runbook"]
     ATLAS-253["ATLAS-253 Three-to-five-to-seven-to-ten delivery-control milestone"]
+    ATLAS-257["ATLAS-257 Symphony scoped-validation and slot-release workflow"]
+    ATLAS-259["ATLAS-259 Exact-base synthetic-merge evidence feasibility spike"]
+    ATLAS-263["ATLAS-263 Parallel-delivery efficiency and integration milestone"]
   end
   subgraph ATLAS-E11["Organisational Learning"]
     ATLAS-99["ATLAS-99 Lesson extraction on ticket completion and failure events"]
@@ -212,6 +220,7 @@ graph TD
     ATLAS-234["ATLAS-234 Authenticated lesson promote and reject API commands"]
     ATLAS-242["ATLAS-242 Authenticated acceptance-session workflow API"]
     ATLAS-250["ATLAS-250 Authenticated delivery-control policy and status API"]
+    ATLAS-261["ATLAS-261 Delivery-control CI and integration-pressure API"]
   end
   subgraph ATLAS-E13["Operator UI (Read Surface)"]
     ATLAS-209["ATLAS-209 Accessibility and responsive pass"]
@@ -238,6 +247,7 @@ graph TD
     ATLAS-243["ATLAS-243 Review queue acceptance console UI"]
     ATLAS-244["ATLAS-244 Acceptance console security, concurrency and live-API milestone"]
     ATLAS-251["ATLAS-251 Operator delivery-control and admission-explanation UI"]
+    ATLAS-262["ATLAS-262 Operator CI and integration-pressure console"]
   end
   ATLAS-2 --> ATLAS-1
   ATLAS-3 --> ATLAS-2
@@ -541,9 +551,38 @@ graph TD
   ATLAS-253 --> ATLAS-244
   ATLAS-253 --> ATLAS-251
   ATLAS-253 --> ATLAS-252
+  ATLAS-254 --> ATLAS-252
+  ATLAS-255 --> ATLAS-249
+  ATLAS-256 --> ATLAS-255
+  ATLAS-257 --> ATLAS-252
+  ATLAS-257 --> ATLAS-254
+  ATLAS-257 --> ATLAS-256
+  ATLAS-258 --> ATLAS-248
+  ATLAS-258 --> ATLAS-249
+  ATLAS-258 --> ATLAS-255
+  ATLAS-259 --> ATLAS-230
+  ATLAS-259 --> ATLAS-244
+  ATLAS-260 --> ATLAS-244
+  ATLAS-260 --> ATLAS-259
+  ATLAS-261 --> ATLAS-250
+  ATLAS-261 --> ATLAS-255
+  ATLAS-261 --> ATLAS-256
+  ATLAS-261 --> ATLAS-258
+  ATLAS-261 --> ATLAS-260
+  ATLAS-262 --> ATLAS-251
+  ATLAS-262 --> ATLAS-261
+  ATLAS-263 --> ATLAS-252
+  ATLAS-263 --> ATLAS-257
+  ATLAS-263 --> ATLAS-258
+  ATLAS-263 --> ATLAS-260
+  ATLAS-263 --> ATLAS-262
+  classDef changes_requested stroke-width:1px;
   classDef done stroke-width:1px;
+  classDef needs_human_decision stroke-width:1px;
   classDef planned stroke-width:1px;
   classDef rejected stroke-width:1px;
-  class ATLAS-1,ATLAS-2,ATLAS-3,ATLAS-4,ATLAS-5,ATLAS-6,ATLAS-7,ATLAS-8,ATLAS-9,ATLAS-10,ATLAS-11,ATLAS-12,ATLAS-13,ATLAS-14,ATLAS-15,ATLAS-16,ATLAS-17,ATLAS-18,ATLAS-19,ATLAS-20,ATLAS-21,ATLAS-22,ATLAS-23,ATLAS-33,ATLAS-35,ATLAS-36,ATLAS-42,ATLAS-43,ATLAS-45,ATLAS-46,ATLAS-50,ATLAS-51,ATLAS-52,ATLAS-53,ATLAS-54,ATLAS-55,ATLAS-56,ATLAS-57,ATLAS-59,ATLAS-60,ATLAS-65,ATLAS-71,ATLAS-72,ATLAS-73,ATLAS-74,ATLAS-76,ATLAS-81,ATLAS-82,ATLAS-83,ATLAS-84,ATLAS-85,ATLAS-86,ATLAS-87,ATLAS-94,ATLAS-96,ATLAS-99,ATLAS-100,ATLAS-101,ATLAS-102,ATLAS-103,ATLAS-104,ATLAS-105,ATLAS-106,ATLAS-110,ATLAS-147,ATLAS-148,ATLAS-151,ATLAS-153,ATLAS-159,ATLAS-160,ATLAS-161,ATLAS-162,ATLAS-163,ATLAS-164,ATLAS-165,ATLAS-166,ATLAS-167,ATLAS-168,ATLAS-169,ATLAS-170,ATLAS-171,ATLAS-172,ATLAS-173,ATLAS-174,ATLAS-175,ATLAS-176,ATLAS-177,ATLAS-178,ATLAS-187,ATLAS-188,ATLAS-189,ATLAS-190,ATLAS-191,ATLAS-192,ATLAS-193,ATLAS-194,ATLAS-195,ATLAS-196,ATLAS-197,ATLAS-198,ATLAS-199,ATLAS-200,ATLAS-201,ATLAS-202,ATLAS-203,ATLAS-204,ATLAS-205,ATLAS-206,ATLAS-207,ATLAS-208,ATLAS-209,ATLAS-210,ATLAS-211,ATLAS-212,ATLAS-213,ATLAS-214,ATLAS-215,ATLAS-216,ATLAS-217,ATLAS-218,ATLAS-219,ATLAS-220,ATLAS-221,ATLAS-222,ATLAS-223,ATLAS-224,ATLAS-225,ATLAS-226,ATLAS-227,ATLAS-228,ATLAS-229,ATLAS-230 done;
-  class ATLAS-231,ATLAS-232,ATLAS-233,ATLAS-234,ATLAS-235,ATLAS-236,ATLAS-237,ATLAS-238,ATLAS-239,ATLAS-240,ATLAS-241,ATLAS-242,ATLAS-243,ATLAS-244,ATLAS-245,ATLAS-246,ATLAS-247,ATLAS-248,ATLAS-249,ATLAS-250,ATLAS-251,ATLAS-252,ATLAS-253 planned;
+  class ATLAS-250 changes_requested;
+  class ATLAS-1,ATLAS-2,ATLAS-3,ATLAS-4,ATLAS-5,ATLAS-6,ATLAS-7,ATLAS-8,ATLAS-9,ATLAS-10,ATLAS-11,ATLAS-12,ATLAS-13,ATLAS-14,ATLAS-15,ATLAS-16,ATLAS-17,ATLAS-18,ATLAS-19,ATLAS-20,ATLAS-21,ATLAS-22,ATLAS-23,ATLAS-33,ATLAS-35,ATLAS-36,ATLAS-42,ATLAS-43,ATLAS-45,ATLAS-46,ATLAS-50,ATLAS-51,ATLAS-52,ATLAS-53,ATLAS-54,ATLAS-55,ATLAS-56,ATLAS-57,ATLAS-59,ATLAS-60,ATLAS-65,ATLAS-71,ATLAS-72,ATLAS-73,ATLAS-74,ATLAS-76,ATLAS-81,ATLAS-82,ATLAS-83,ATLAS-84,ATLAS-85,ATLAS-86,ATLAS-87,ATLAS-94,ATLAS-96,ATLAS-99,ATLAS-100,ATLAS-101,ATLAS-102,ATLAS-103,ATLAS-104,ATLAS-105,ATLAS-106,ATLAS-110,ATLAS-147,ATLAS-148,ATLAS-151,ATLAS-153,ATLAS-159,ATLAS-160,ATLAS-161,ATLAS-162,ATLAS-163,ATLAS-164,ATLAS-165,ATLAS-166,ATLAS-167,ATLAS-168,ATLAS-169,ATLAS-170,ATLAS-171,ATLAS-172,ATLAS-173,ATLAS-174,ATLAS-175,ATLAS-176,ATLAS-177,ATLAS-178,ATLAS-187,ATLAS-188,ATLAS-189,ATLAS-190,ATLAS-191,ATLAS-192,ATLAS-193,ATLAS-194,ATLAS-195,ATLAS-196,ATLAS-197,ATLAS-198,ATLAS-199,ATLAS-200,ATLAS-201,ATLAS-202,ATLAS-203,ATLAS-204,ATLAS-205,ATLAS-206,ATLAS-207,ATLAS-208,ATLAS-209,ATLAS-210,ATLAS-211,ATLAS-212,ATLAS-213,ATLAS-214,ATLAS-215,ATLAS-216,ATLAS-217,ATLAS-218,ATLAS-219,ATLAS-220,ATLAS-221,ATLAS-222,ATLAS-223,ATLAS-224,ATLAS-225,ATLAS-226,ATLAS-227,ATLAS-228,ATLAS-229,ATLAS-230,ATLAS-231,ATLAS-232,ATLAS-233,ATLAS-234,ATLAS-235,ATLAS-236,ATLAS-237,ATLAS-238,ATLAS-239,ATLAS-240,ATLAS-241,ATLAS-242,ATLAS-243,ATLAS-244,ATLAS-245,ATLAS-246,ATLAS-247,ATLAS-248,ATLAS-249,ATLAS-252 done;
+  class ATLAS-253 needs_human_decision;
+  class ATLAS-251,ATLAS-254,ATLAS-255,ATLAS-256,ATLAS-257,ATLAS-258,ATLAS-259,ATLAS-260,ATLAS-261,ATLAS-262,ATLAS-263 planned;
   class ATLAS-24,ATLAS-25,ATLAS-26,ATLAS-27,ATLAS-28,ATLAS-29,ATLAS-30,ATLAS-31,ATLAS-32,ATLAS-34,ATLAS-37,ATLAS-38,ATLAS-39,ATLAS-40,ATLAS-41,ATLAS-44,ATLAS-47,ATLAS-48,ATLAS-49,ATLAS-58,ATLAS-61,ATLAS-62,ATLAS-63,ATLAS-64,ATLAS-66,ATLAS-67,ATLAS-68,ATLAS-69,ATLAS-70,ATLAS-75,ATLAS-77,ATLAS-78,ATLAS-79,ATLAS-80,ATLAS-88,ATLAS-89,ATLAS-90,ATLAS-91,ATLAS-92,ATLAS-93,ATLAS-95,ATLAS-97,ATLAS-98,ATLAS-107,ATLAS-108,ATLAS-109,ATLAS-149,ATLAS-150,ATLAS-152,ATLAS-154,ATLAS-155,ATLAS-156,ATLAS-157,ATLAS-158 rejected;
