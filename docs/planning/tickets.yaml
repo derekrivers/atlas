@@ -1,7 +1,7 @@
 # Render written only by `atlas apply` (ADR-0006/0007); do not hand-edit.
-# plan_run_id: c89c7c82-d451-4ddb-a314-5b0e8d6d8348
+# plan_run_id: 330d3f84-2920-4731-b885-4512418eae05
 # prompt_version: stubs-only
-# ticket_key_high_water: 253
+# ticket_key_high_water: 263
 # epic_key_high_water: 13
 tickets:
 - id: 06701bee-33ed-44e6-b735-52dfd7c5edc8
@@ -10216,7 +10216,7 @@ tickets:
   title: Loopback operator session security and server-owned actor context
   objective: Establish Atlas's first authenticated browser session so every writable API command is bound to the single operator by the server and protected against hostile-webpage, CSRF, token-disclosure and accidental-remote-binding risks.
   context: 'Phase 10 and Phase 11 deliberately delivered read-only surfaces and made authentication, actor context and a threat model one indivisible entry gate for writes. Phase 13 now opens that gate for lesson disposition only. Pre-ruled decisions: D-1 the supported topology remains loopback and `atlas api serve` refuses to enable writable routes without a configured `ATLAS_OPERATOR_TOKEN`; remote serving remains unsupported. D-2 login accepts the token only in strict JSON, compares it in constant time, and creates a short-lived server-side session with an opaque host-only HttpOnly SameSite=Strict cookie; the credential never enters a URL, log, store, generated bundle or browser storage. D-3 the login response returns a per-session CSRF token once; the UI keeps it in memory and every mutation requires it in `X-Atlas-CSRF`, an allowed Host/Origin, strict `application/json` and a live session. D-4 authenticated actor context is always `human/operator`, resolved server-side; request models contain no actor field and reject unexpected actor-shaped input. D-5 CORS is deny-by-default, session/mutation responses are no-store, framing is denied and a restrictive CSP applies. D-6 this ticket lands the complete security boundary and session lifecycle but no resource mutation.'
-  status: planned
+  status: done
   ticket_type: infrastructure
   risk_level: high
   priority: 50
@@ -10248,7 +10248,7 @@ tickets:
   definition_of_done:
   - All seven acceptance criteria have named tests; the full Python, OpenAPI drift, TypeScript and doc-linter gates are green; canonical security docs land in the same change; the PR title carries the minted ticket key.
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: 8694e24a-712e-4167-bcec-b73d3e98be69
   external_github_issue_id: null
   tags:
   - authentication
@@ -10257,17 +10257,17 @@ tickets:
   - csrf
   - api
   component: atlas.api
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-08-02T12:32:32.638319Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-08-02T16:48:23.390801Z'
   review_cycle_count: 0
-  lesson_extraction_attempted_at: null
+  lesson_extraction_attempted_at: '2026-08-02T16:48:23.390801Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-01-operator-session-security.md#loopback-operator-session-security-and-server-owned-actor-context
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-08-02T12:32:32.638319Z'
   updated_at: '2026-08-02T12:32:32.638319Z'
-  completed_at: null
+  completed_at: '2026-08-02T16:48:23.390801Z'
 - id: e87fd13a-6c0a-4c92-ac07-02bc47f99d98
   product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
   epic_id: 86fe8167-7b99-45fd-ac96-3d0f4d3a0f53
@@ -10275,7 +10275,7 @@ tickets:
   title: Append-only operator action ledger and idempotent command gateway
   objective: Give every current and future Operator API write one transactional, server-attributed idempotency and audit boundary so retries cannot duplicate mutations and an unaudited mutation cannot be reported as success.
   context: 'Phase 13''s lesson disposition and Phase 14''s acceptance workflow need the same command envelope. Implementing replay and audit independently in each route would create a drift-prone security boundary. Pre-ruled decisions: D-1 one application-layer gateway accepts server-resolved actor context, action name, target identity, idempotency key and a canonical request fingerprint; routes do not implement replay policy. D-2 idempotency keys are unique within the operator action namespace. Same key/same fingerprint returns the first stored terminal outcome without rerunning the command; same key/different fingerprint returns conflict. D-3 an append-only `OperatorActionReceipt` stores bounded non-secret metadata, actor, target, before/after state where applicable, outcome and timestamps; it never copies credentials, raw request bodies, evidence payloads or lesson content. D-4 a successful domain mutation and receipt commit atomically; receipt failure rolls back the mutation. D-5 authenticated refusals/conflicts may record a bounded outcome but can never masquerade as mutation success. D-6 this is a generic internal foundation with deterministic fakes; it exposes no HTTP resource action by itself.'
-  status: planned
+  status: done
   ticket_type: infrastructure
   risk_level: high
   priority: 50
@@ -10306,7 +10306,7 @@ tickets:
   definition_of_done:
   - All seven acceptance criteria are evidenced by named tests; migration upgrade and downgrade tests, full Python gates and doc linter are green; canonical schema docs land in the same change; the PR title carries the minted ticket key.
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: b878c33c-b4c4-447d-a301-894305154de5
   external_github_issue_id: null
   tags:
   - idempotency
@@ -10315,17 +10315,17 @@ tickets:
   - orchestration
   - storage
   component: orchestration
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-08-02T12:32:32.638319Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-08-02T20:01:55.902231Z'
   review_cycle_count: 0
-  lesson_extraction_attempted_at: null
+  lesson_extraction_attempted_at: '2026-08-02T20:01:55.902231Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-02-operator-action-ledger.md#append-only-operator-action-ledger-and-idempotent-command-gateway
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-08-02T12:32:32.638319Z'
   updated_at: '2026-08-02T12:32:32.638319Z'
-  completed_at: null
+  completed_at: '2026-08-02T20:01:55.902231Z'
 - id: 6c4595ff-5d69-443f-8d38-374b84534001
   product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
   epic_id: 5a486514-1761-45a8-8094-9a0e8282c3d4
@@ -10333,7 +10333,7 @@ tickets:
   title: Governed lesson disposition service with atomic stale-state protection
   objective: Reuse one lesson-domain command service for CLI and HTTP promotion/rejection so a DRAFT lesson is ruled once, with operator confidence and compare-and-set protection against stale or concurrent decisions.
   context: 'ATLAS-100 delivered the lesson promotion CLI and DRAFT/ACTIVE/ARCHIVED lifecycle; ATLAS-173 made the full lesson readable before the operator rules on it. Phase 13 must expose that behaviour without duplicating it in the API. Pre-ruled decisions: D-1 explicit promote and reject commands are the only v1 dispositions. Promote requires finite confidence in `0.0..1.0`; reject carries no editable lesson fields. D-2 only DRAFT is a valid starting state: promote yields ACTIVE and reject yields ARCHIVED. D-3 the repository update is compare-and-set on the observed DRAFT state, so a CLI/browser race has one winner and a typed stale-state loser. D-4 actor comes from command context and the service delegates idempotency/receipt atomicity to the Phase 13 gateway. D-5 the existing CLI calls this service and preserves its public command/output contract. D-6 editing, merging, archiving ACTIVE lessons and stale re-confirmation remain deferred.'
-  status: planned
+  status: done
   ticket_type: feature
   risk_level: high
   priority: 50
@@ -10363,7 +10363,7 @@ tickets:
   definition_of_done:
   - All seven acceptance criteria have named tests; full Python and doc-linter gates are green; CLI compatibility and ACTIVE-only retrieval are evidenced; canonical docs land in the same change; the PR title carries the minted ticket key.
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: 91e7f958-7888-4f94-ad44-80da99b3b898
   external_github_issue_id: null
   tags:
   - lessons
@@ -10372,17 +10372,17 @@ tickets:
   - idempotency
   - learning
   component: atlas.learning
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-08-02T12:32:32.638319Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-08-03T06:38:52.921554Z'
   review_cycle_count: 0
-  lesson_extraction_attempted_at: null
+  lesson_extraction_attempted_at: '2026-08-03T06:38:52.921554Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-03-governed-lesson-disposition.md#governed-lesson-disposition-service-with-atomic-stale-state-protection
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-08-02T12:32:32.638319Z'
   updated_at: '2026-08-02T12:32:32.638319Z'
-  completed_at: null
+  completed_at: '2026-08-03T06:38:52.921554Z'
 - id: 31d9d42a-2e30-462c-8a2d-5c11d9eebcc6
   product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
   epic_id: 86fe8167-7b99-45fd-ac96-3d0f4d3a0f53
@@ -10390,7 +10390,7 @@ tickets:
   title: Authenticated lesson promote and reject API commands
   objective: Expose the governed lesson disposition service through two explicit v1 commands with session, CSRF, idempotency and typed conflict semantics, while preserving Atlas's no-domain-logic API boundary.
   context: 'ATLAS-201 delivered the read-only lessons projection. Phase 13 now adds the first resource writes. Pre-ruled decisions: D-1 the only routes are `POST /api/v1/lessons/{lesson_id}/promote` and `/reject`; there is no generic lesson PATCH/PUT. D-2 both routes require the shared authenticated mutation dependency and `Idempotency-Key`; actor identity is absent from request schemas. D-3 promote''s body is exactly finite confidence, reject''s body is an empty strict object. D-4 the route resolves context, calls one disposition application operation and presents; it does not load a lesson, branch on status, create receipts or implement replay. D-5 success returns the safe updated lesson plus action receipt. Unknown is 404, validation 422, unauthenticated 401, security refusal 403, stale/altered replay 409. D-6 read routes retain existing compatibility and no read becomes auth-dependent.'
-  status: planned
+  status: done
   ticket_type: feature
   risk_level: high
   priority: 50
@@ -10420,7 +10420,7 @@ tickets:
   definition_of_done:
   - All seven acceptance criteria are evidenced by named tests; Python, OpenAPI/TypeScript drift, UI compile compatibility and doc-linter gates are green; canonical API docs land in the same change; the PR title carries the minted ticket key.
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: 0b327c05-8033-4d26-b9ed-23300807ec12
   external_github_issue_id: null
   tags:
   - api
@@ -10429,17 +10429,17 @@ tickets:
   - idempotency
   - openapi
   component: atlas.api
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-08-02T12:32:32.638319Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-08-03T13:52:40.819800Z'
   review_cycle_count: 0
-  lesson_extraction_attempted_at: null
+  lesson_extraction_attempted_at: '2026-08-03T13:52:40.819800Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-04-lesson-mutation-api.md#authenticated-lesson-promote-and-reject-api-commands
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-08-02T12:32:32.638319Z'
   updated_at: '2026-08-02T12:32:32.638319Z'
-  completed_at: null
+  completed_at: '2026-08-03T13:52:40.819800Z'
 - id: 155963ee-136e-4207-8a27-82fa14e289ff
   product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
   epic_id: 80047dd6-542c-4ad8-8213-a2372ab4e560
@@ -10447,7 +10447,7 @@ tickets:
   title: Lessons UI promote and reject workflow
   objective: Let the authenticated operator rule on DRAFT lessons from the existing Lessons drawer with explicit confidence, confirmation and honest handling of replay, expiry and stale-state conflicts.
   context: 'ATLAS-217 delivered the read-only Lessons draft triage view and ATLAS-221 delivered the query/proxy/error primitives. This ticket completes the visible human gate without moving domain rules into React. Pre-ruled decisions: D-1 the shell gains a login/session-expiry flow backed by the Phase 13 session routes; the bootstrap token is submitted once and is never stored in localStorage/sessionStorage, a URL, query cache or generated configuration. D-2 Promote is available only for DRAFT and requires finite confidence plus confirmation that ACTIVE lessons may enter future context packs. Reject is available only for DRAFT and confirms archival. D-3 one stable idempotency key is retained for the in-flight command and safe retry; the UI never invents a new key after an ambiguous response without first refreshing. D-4 success consumes the server lesson/receipt, updates query state and removes the row when the filter requires. D-5 409 refreshes and displays the safe current state; the UI never overwrites or silently retries. D-6 no edit/merge/archive/rebase/merge-PR affordance appears.'
-  status: planned
+  status: done
   ticket_type: feature
   risk_level: medium
   priority: 50
@@ -10476,7 +10476,7 @@ tickets:
   definition_of_done:
   - All seven acceptance criteria have named component and browser evidence; UI lint/type/test/build, generated-client drift, Python gates, accessibility and doc linter are green; canonical UI docs land in the same change; the PR title carries the minted ticket key.
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: 775d2207-fe44-4fa4-8f5b-452d96e41845
   external_github_issue_id: null
   tags:
   - operator-ui
@@ -10485,17 +10485,17 @@ tickets:
   - accessibility
   - governance
   component: operator-ui
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-08-02T12:32:32.638319Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-08-10T20:29:46.695575Z'
   review_cycle_count: 0
-  lesson_extraction_attempted_at: null
+  lesson_extraction_attempted_at: '2026-08-10T20:29:46.695575Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-05-lessons-ui-actions.md#lessons-ui-promote-and-reject-workflow
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-08-02T12:32:32.638319Z'
   updated_at: '2026-08-02T12:32:32.638319Z'
-  completed_at: null
+  completed_at: '2026-08-10T20:29:46.695575Z'
 - id: c8f6b393-7ab4-4b33-80cd-3d2bb4078c10
   product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
   epic_id: 80047dd6-542c-4ad8-8213-a2372ab4e560
@@ -10503,7 +10503,7 @@ tickets:
   title: Writable-surface security, accessibility and live-API acceptance
   objective: Prove the complete Phase 13 browser-to-store write boundary under hostile, concurrent and failure conditions before Atlas treats governed UI actions as operationally ready.
   context: 'Authentication, receipts, domain transitions, routes and UI each have focused tests, but Phase 13''s risk exists at their seams. This ticket owns the release-level adversarial and milestone proof rather than adding another feature. Pre-ruled decisions: D-1 run the built UI against a seeded live FastAPI/store process, never request mocks for the milestone. D-2 prove promote and reject outcomes, actor attribution, atomic receipts and ACTIVE-only retrieval. D-3 actively seed hostile Origin/Host, CSRF failure, strict-content-type bypass, token/actor injection, duplicate and altered replay, expired/revoked session, two-tab/CLI race and receipt failure. D-4 every rejected path asserts zero unintended domain or external mutation and secret-free output. D-5 accessibility, responsive and generated-client drift remain binding. D-6 close the phase docs with residual risks; do not implement Phase 14.'
-  status: planned
+  status: done
   ticket_type: infrastructure
   risk_level: high
   priority: 50
@@ -10538,7 +10538,7 @@ tickets:
   definition_of_done:
   - All seven criteria pass in CI and the operator-run seeded milestone; no secret artifact is retained; Phase 13 closure evidence and canonical docs land together; full gates are green; the PR title carries the minted ticket key.
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: 20b02c61-de8d-4862-85b7-c7d14627e607
   external_github_issue_id: null
   tags:
   - security
@@ -10547,17 +10547,17 @@ tickets:
   - accessibility
   - operator-ui
   component: operator-ui
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-08-02T12:32:32.638319Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-08-12T05:24:54.808931Z'
   review_cycle_count: 0
-  lesson_extraction_attempted_at: null
+  lesson_extraction_attempted_at: '2026-08-12T05:24:54.808931Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-06-writable-surface-acceptance.md#writable-surface-security-accessibility-and-live-api-acceptance
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-08-02T12:32:32.638319Z'
   updated_at: '2026-08-02T12:32:32.638319Z'
-  completed_at: null
+  completed_at: '2026-08-12T05:24:54.808931Z'
 - id: aeb60ef6-d301-4ee1-9857-b41e4b646527
   product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
   epic_id: f64bcf20-dbdf-4d8e-98b3-d615de1bc6a4
@@ -10565,7 +10565,7 @@ tickets:
   title: Acceptance and confirmation zero-action diagnostics
   objective: Make the exact blocking acceptance check immediately visible and make a successful zero-confirmation pass unambiguous, so the operator never retries or closes work from a misleading summary.
   context: 'Phase 12 remained fail-closed but exposed two operator-facing defects: the close driver hid the detailed pending check behind a generic verdict, and `atlas confirm` printed `Recorded 0` when no decisions remained. A stale OP-A explanatory note could also contradict live confirmation evidence. This carry-forward must land before the browser acceptance workflow reuses those services. The fix changes diagnostics only and must preserve exact-head, evidence and confirmation authority.'
-  status: planned
+  status: done
   ticket_type: bug
   risk_level: medium
   priority: 50
@@ -10593,7 +10593,7 @@ tickets:
   definition_of_done:
   - Every acceptance criterion has named deterministic coverage; CLI contracts, exact-head regressions, full Python gates and doc linter are green; the PR title carries the minted ticket key.
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: 333c06f4-6837-4c45-957c-14c85d77df9b
   external_github_issue_id: null
   tags:
   - acceptance
@@ -10601,17 +10601,17 @@ tickets:
   - verification
   - cli
   component: atlas.verification
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-08-02T12:32:32.638319Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-08-02T17:24:29.335841Z'
   review_cycle_count: 0
-  lesson_extraction_attempted_at: null
+  lesson_extraction_attempted_at: '2026-08-02T17:24:29.335841Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-07-acceptance-zero-action-diagnostics.md#acceptance-and-confirmation-zero-action-diagnostics
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-08-02T12:32:32.638319Z'
   updated_at: '2026-08-02T12:32:32.638319Z'
-  completed_at: null
+  completed_at: '2026-08-02T17:24:29.335841Z'
 - id: 956be8cf-3c9f-4a50-a361-8126c9ad5e1a
   product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
   epic_id: 4d034c8b-0752-4089-8ff9-2fd43f51c6f4
@@ -10619,7 +10619,7 @@ tickets:
   title: Durable exact-head acceptance session and status projection
   objective: Represent one PR acceptance attempt as an immutable-head, durable state machine so evidence, confirmations and verification can never be mixed across PR heads, main revisions or changing acceptance criteria.
   context: 'Phase 12''s ATLAS-228 supplies one exact-head integration assessment and Phase 13 supplies the action/idempotency ledger. Phase 14 needs a coordinating resource before it exposes any acceptance write. Pre-ruled decisions: D-1 a session pins repository, PR, close-set, head/base SHA and refs, exact-head assessment, live criteria fingerprint and `human/operator` actor. D-2 session creation performs read-only exact-head preflight before evidence, confirmation or approval writes and succeeds only for an open, non-draft, same-repository PR targeting main, current with exact main, whose close-set is entirely `review_required`. D-3 the state machine is append-oriented; head/base/repository/eligibility/criteria movement observed by a mutation marks the session stale; a later read reports movement without rewriting history. A new head requires a new session, and an old session is never retargeted. D-4 one non-terminal session may exist per repository/PR/head; idempotent creation replays it. D-5 the stored status projection reports historical step states and reasons without external reads or writes; it is an input to, not a substitute for, the later bounded live-readiness projection. D-6 this ticket adds no evidence, confirmation, verification or HTTP route.'
-  status: planned
+  status: done
   ticket_type: infrastructure
   risk_level: high
   priority: 50
@@ -10651,7 +10651,7 @@ tickets:
   definition_of_done:
   - All seven acceptance criteria have named tests; migration, full Python and doc-linter gates are green; canonical schema/design docs land together; the PR title carries the minted ticket key.
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: d6113d74-b2bc-4e0f-aca9-2a0ae0e5bea9
   external_github_issue_id: null
   tags:
   - acceptance
@@ -10660,17 +10660,17 @@ tickets:
   - state-machine
   - audit
   component: orchestration
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-08-02T12:32:32.638319Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-08-03T06:10:47.236163Z'
   review_cycle_count: 0
-  lesson_extraction_attempted_at: null
+  lesson_extraction_attempted_at: '2026-08-03T06:10:47.236163Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-08-acceptance-session-model.md#durable-exact-head-acceptance-session-and-status-projection
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-08-02T12:32:32.638319Z'
   updated_at: '2026-08-02T12:32:32.638319Z'
-  completed_at: null
+  completed_at: '2026-08-03T06:10:47.236163Z'
 - id: 63d5e97e-f35b-4817-9a50-0ea48044a548
   product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
   epic_id: 01499978-f6b2-4cd9-9924-4056720e5a2d
@@ -10678,7 +10678,7 @@ tickets:
   title: Exact-head acceptance-session evidence pull action
   objective: Pull and summarise canonical GitHub/CI evidence for an acceptance session's pinned PR head without allowing external movement, retries or partial failure to advance the session incorrectly.
   context: 'Atlas already has an evidence-pull path and append-only, exact-commit evidence. Phase 14 must call that domain service rather than spawn the CLI or reimplement GitHub mapping. Pre-ruled decisions: D-1 the action accepts only a session ID and authenticated command context; repository, PR and head come from the session. D-2 it proves session freshness immediately before and after the bounded external pull. D-3 evidence stays in the canonical evidence store; the session records a bounded summary and receipt only. D-4 source idempotency plus the Phase 13 gateway prevents duplicate evidence or step advancement. D-5 a moved/indeterminate PR stales the session; transport or source failure does not advance it and may be retried with a new action key after refresh. D-6 raw payloads and GitHub credentials never enter the session or presentation.'
-  status: planned
+  status: done
   ticket_type: feature
   risk_level: high
   priority: 50
@@ -10708,7 +10708,7 @@ tickets:
   definition_of_done:
   - All seven acceptance criteria have named tests; evidence and exact-commit regressions, full Python gates and doc linter are green; canonical docs land in the same change; the PR title carries the minted ticket key.
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: 4c3f8b3c-15c3-4c38-93e7-e7486d55dd94
   external_github_issue_id: null
   tags:
   - evidence
@@ -10717,17 +10717,17 @@ tickets:
   - github
   - idempotency
   component: atlas.evidence
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-08-02T12:32:32.638319Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-08-10T17:50:49.099847Z'
   review_cycle_count: 0
-  lesson_extraction_attempted_at: null
+  lesson_extraction_attempted_at: '2026-08-10T17:50:49.099847Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-09-acceptance-evidence-action.md#exact-head-acceptance-session-evidence-pull-action
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-08-02T12:32:32.638319Z'
   updated_at: '2026-08-02T12:32:32.638319Z'
-  completed_at: null
+  completed_at: '2026-08-10T17:50:49.099847Z'
 - id: 9e9a21ec-7f7b-45b8-9915-060c7eb024e1
   product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
   epic_id: f64bcf20-dbdf-4d8e-98b3-d615de1bc6a4
@@ -10735,7 +10735,7 @@ tickets:
   title: Acceptance-session criteria confirmation and manual approval action
   objective: Let the authenticated operator confirm every live acceptance criterion and the manual approval gate for one pinned session head without accepting caller-authored criteria or stale definitions.
   context: '`atlas confirm` and the verification evaluators already define the human-tier gate. Phase 14 must reuse those semantics while moving the interaction into a governed session. Pre-ruled decisions: D-1 the UI/server request identifies criteria only by session-bound stable index plus the pinned criteria fingerprint; it cannot submit replacement criterion text, head SHA or actor. D-2 every criterion and the manual approval must be explicitly true; partial confirmation is a validation result, not step success. D-3 the server re-reads live ticket definitions and exact-head freshness before writing. Drift stales the session and writes no confirmation. D-4 confirmations use the existing human-tier append-only records pinned to the session head and server-owned `human/operator` actor. D-5 idempotency and receipt atomicity come from the Phase 13 gateway. D-6 the action does not run verification.'
-  status: planned
+  status: done
   ticket_type: feature
   risk_level: high
   priority: 50
@@ -10767,7 +10767,7 @@ tickets:
   definition_of_done:
   - All seven acceptance criteria have named tests; confirmation/evaluator regressions, full Python gates and doc linter are green; canonical docs land in the same change; the PR title carries the minted ticket key.
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: 0ab38c63-0d64-4dd5-a1c6-037277738964
   external_github_issue_id: null
   tags:
   - confirmation
@@ -10776,17 +10776,17 @@ tickets:
   - exact-head
   - verification
   component: atlas.verification
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-08-02T12:32:32.638319Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-08-03T14:14:10.591538Z'
   review_cycle_count: 0
-  lesson_extraction_attempted_at: null
+  lesson_extraction_attempted_at: '2026-08-03T14:14:10.591538Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-10-acceptance-confirmation-action.md#acceptance-session-criteria-confirmation-and-manual-approval-action
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-08-02T12:32:32.638319Z'
   updated_at: '2026-08-02T12:32:32.638319Z'
-  completed_at: null
+  completed_at: '2026-08-03T14:14:10.591538Z'
 - id: 85658732-3eac-4a49-b97a-1a0d67d8f170
   product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
   epic_id: f64bcf20-dbdf-4d8e-98b3-d615de1bc6a4
@@ -10794,7 +10794,7 @@ tickets:
   title: Exact-head verification and manual-merge readiness evaluator
   objective: Run canonical verification for one acceptance session and emit `merge_ready` only when the PASSED verdict, live PR and current main still match every identity pinned by the session.
   context: 'ATLAS-230 makes exact current-main freshness and acceptance restart binding in the CLI spine. Phase 14 must consume the same services and cannot weaken their ordering. Pre-ruled decisions: D-1 verification is available only after evidence and confirmations are ready. D-2 it invokes the canonical verification engine in process and requires explicit top-level PASSED with a valid `head_commit` equal to the session head. D-3 immediately afterward a fresh ATLAS-228 assessment and live criteria fingerprint must match the session''s repository, PR, branch, head, base and criteria. D-4 `merge_ready=true` is a typed session result only when every gate passes; all blocking reasons are preserved. D-5 one bounded, read-only live-readiness service re-evaluates readiness for every later GET and revokes it on movement, indeterminate assessment or external-read failure. D-6 verification may persist its historical exact-head result and receipt; the later live-readiness service is strictly non-mutating. Neither service writes to GitHub or Linear, and Atlas only displays authority for a manual GitHub action.'
-  status: planned
+  status: done
   ticket_type: feature
   risk_level: high
   priority: 50
@@ -10827,7 +10827,7 @@ tickets:
   definition_of_done:
   - All seven acceptance criteria have named tests; verification/acceptance regressions, full Python gates and doc linter are green; canonical docs agree in the same change; the PR title carries the minted ticket key.
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: 07f1dca7-1b89-409f-96ca-44b84d315c7b
   external_github_issue_id: null
   tags:
   - verification
@@ -10836,17 +10836,17 @@ tickets:
   - merge-readiness
   - orchestration
   component: atlas.verification
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-08-02T12:32:32.638319Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-08-11T15:29:25.157651Z'
   review_cycle_count: 0
-  lesson_extraction_attempted_at: null
+  lesson_extraction_attempted_at: '2026-08-11T15:29:25.157651Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-11-acceptance-verification-readiness.md#exact-head-verification-and-manual-merge-readiness-evaluator
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-08-02T12:32:32.638319Z'
   updated_at: '2026-08-02T12:32:32.638319Z'
-  completed_at: null
+  completed_at: '2026-08-11T15:29:25.157651Z'
 - id: e13affa7-002f-4693-812a-5dea87c18b0c
   product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
   epic_id: 86fe8167-7b99-45fd-ac96-3d0f4d3a0f53
@@ -10854,7 +10854,7 @@ tickets:
   title: Authenticated acceptance-session workflow API
   objective: Expose the acceptance session, evidence, confirmation and verification operations as one authenticated v1 resource whose routes preserve exact-head ordering, idempotency and Atlas's thin-API architecture.
   context: 'The Phase 14 application operations are now typed and API-independent. Pre-ruled decisions: D-1 the route set is exactly session create/read plus evidence, confirm and verify POST actions under `/api/v1`; there is no merge, rebase, generic PATCH or arbitrary command endpoint. D-2 every POST uses the Phase 13 authenticated mutation context and idempotency gateway; the GET is authenticated, read-only and calls one bounded live-readiness application service without a refresh write. D-3 create accepts a repository slug validated against configured policy; step routes accept a session ID and their minimal strict body. GitHub token, actor, ticket keys and SHAs are never browser inputs. D-4 each route dependency makes exactly one application-service call and presents typed results. D-5 operations are synchronous and bounded; timeout is a named non-advancing outcome, not a hidden job. D-6 OpenAPI/generated-client drift is binding.'
-  status: planned
+  status: done
   ticket_type: feature
   risk_level: high
   priority: 50
@@ -10884,7 +10884,7 @@ tickets:
   definition_of_done:
   - All seven acceptance criteria are evidenced by named tests; Python, OpenAPI/TypeScript drift, UI compile compatibility and doc-linter gates are green; canonical API docs land in the same change; the PR title carries the minted ticket key.
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: 23803029-35ed-4638-a407-4fb27cbd86f7
   external_github_issue_id: null
   tags:
   - api
@@ -10893,17 +10893,17 @@ tickets:
   - exact-head
   - openapi
   component: atlas.api
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-08-02T12:32:32.638319Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-08-12T16:06:33.150455Z'
   review_cycle_count: 0
-  lesson_extraction_attempted_at: null
+  lesson_extraction_attempted_at: '2026-08-12T16:06:33.150455Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-12-acceptance-workflow-api.md#authenticated-acceptance-session-workflow-api
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-08-02T12:32:32.638319Z'
   updated_at: '2026-08-02T12:32:32.638319Z'
-  completed_at: null
+  completed_at: '2026-08-12T16:06:33.150455Z'
 - id: 6a31f4e7-1f94-45b7-9132-4cc8dfd61c5e
   product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
   epic_id: 80047dd6-542c-4ad8-8213-a2372ab4e560
@@ -10911,7 +10911,7 @@ tickets:
   title: Review queue acceptance console UI
   objective: Turn a Review Required item into a guided, exact-head acceptance panel that exposes each governed step and every blocking reason while leaving merge as a manual GitHub action.
   context: 'ATLAS-222 delivered the read-only review queue. Phase 14 adds a focused panel over the generated acceptance-session client. Pre-ruled decisions: D-1 the queue links to one session panel showing pinned PR/head/base, close-set, criteria, evidence, confirmations, verification matrix, receipts and live readiness. D-2 only the next valid action is primary; completed steps remain inspectable and blocked/stale steps show all server reasons and recovery. D-3 the criteria confirmation form explicitly checks every server snapshot item and manual approval; it cannot edit/send criterion text. D-4 the UI never computes freshness, verdict or merge readiness and never silently retries a mutation. D-5 initial load and every refresh use the GET''s bounded live-readiness result; only its current `merge_ready` displays the exact verified head plus instruction to merge manually in GitHub, with no merge button. D-6 no rebase/Linear/Symphony/post-merge action appears.'
-  status: planned
+  status: done
   ticket_type: feature
   risk_level: high
   priority: 50
@@ -10940,7 +10940,7 @@ tickets:
   definition_of_done:
   - All seven acceptance criteria have named component/browser evidence; UI lint/type/test/build, generated-client drift, Python gates, accessibility and doc linter are green; canonical UI docs land in the same change; the PR title carries the minted ticket key.
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: 98404ffa-76b6-4546-90de-3e35c56c7b2b
   external_github_issue_id: null
   tags:
   - operator-ui
@@ -10949,17 +10949,17 @@ tickets:
   - exact-head
   - accessibility
   component: operator-ui
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-08-02T12:32:32.638319Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-08-12T19:20:09.116887Z'
   review_cycle_count: 0
-  lesson_extraction_attempted_at: null
+  lesson_extraction_attempted_at: '2026-08-12T19:20:09.116887Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-13-review-acceptance-console-ui.md#review-queue-acceptance-console-ui
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-08-02T12:32:32.638319Z'
   updated_at: '2026-08-02T12:32:32.638319Z'
-  completed_at: null
+  completed_at: '2026-08-12T19:20:09.116887Z'
 - id: 46525e07-ffc1-41ab-93a0-7814d74d3829
   product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
   epic_id: 80047dd6-542c-4ad8-8213-a2372ab4e560
@@ -10967,7 +10967,7 @@ tickets:
   title: Acceptance console security, concurrency and live-API milestone
   objective: Prove Phase 14 end to end against a seeded exact-head PR, including movement, replay, cross-tab, external-failure and accessibility cases, while mechanically demonstrating that Atlas never performs the merge.
   context: 'Phase 14 spans GitHub reads, canonical evidence and verification stores, operator confirmations, exact-head freshness, authenticated commands and a browser state machine. Focused ticket tests cannot alone prove the ordering at those seams. Pre-ruled decisions: D-1 the success milestone uses the built UI and live FastAPI/store with deterministic injected GitHub/CI fixtures. D-2 it reaches `merge_ready=true` only after preflight, evidence, confirmations and PASSED verification at one pinned head, then proves no merge/external mutation. D-3 seed head/main movement at each seam, criteria drift, old-head records, missing human gates, non-PASSED verification, timeout, duplicate/altered replay, cross-tab transition and receipt failure. After PASSED, movement or GitHub read failure before the next GET must revoke current readiness without rewriting stored history. D-4 every block returns all reasons and zero unintended mutation. D-5 the Phase 13 adversarial/session suite remains binding. D-6 closure reconciles roadmap/design/runbooks and records residual manual-merge race; no Phase 15 feature enters.'
-  status: planned
+  status: done
   ticket_type: infrastructure
   risk_level: high
   priority: 50
@@ -11004,7 +11004,7 @@ tickets:
   definition_of_done:
   - All seven criteria pass in CI and the operator-run milestone; no secret artifact or unintended external write exists; Phase 14 closure evidence and canonical docs land together; full gates are green; the PR title carries the minted ticket key.
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: ed5bc680-6ceb-4c17-aa00-552a3bf47990
   external_github_issue_id: null
   tags:
   - acceptance
@@ -11013,17 +11013,17 @@ tickets:
   - playwright
   - exact-head
   component: operator-ui
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-08-02T12:32:32.638319Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-08-13T06:06:50.420887Z'
   review_cycle_count: 0
-  lesson_extraction_attempted_at: null
+  lesson_extraction_attempted_at: '2026-08-13T06:06:50.420887Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-14-acceptance-console-milestone.md#acceptance-console-security-concurrency-and-live-api-milestone
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-08-02T12:32:32.638319Z'
   updated_at: '2026-08-02T12:32:32.638319Z'
-  completed_at: null
+  completed_at: '2026-08-13T06:06:50.420887Z'
 - id: fd56ed56-6f52-4f9a-ba23-f5074024abb4
   product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
   epic_id: e0d47d14-bbd1-4d5d-96bc-f9e7adfeb3cf
@@ -11031,7 +11031,7 @@ tickets:
   title: Successful PM-sync receipt and truthful status timestamp
   objective: Persist the identity and completion time of each PM sync tick so the Operator API reports the last genuinely successful Linear observation, including successful no-op and status-only ticks.
   context: Phase 11 carried forward that `last_linear_sync_at` is currently derived from ticket definition cursors. Phase 15 admission cannot make a stale/fresh decision from that value. Introduce the minimal durable sync receipt required for coherent admission and future Phase 16 measurement. A partial or failed tick must remain visible but cannot advance the successful timestamp.
-  status: planned
+  status: done
   ticket_type: infrastructure
   risk_level: high
   priority: 50
@@ -11063,7 +11063,7 @@ tickets:
   definition_of_done:
   - Named tests prove all six criteria; migrations, Python/API/UI drift gates and doc linter pass; canonical docs change with the code; the PR title carries the minted ticket key.
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: 2c27cc15-47cf-438b-8cfd-f5b386f0fa2b
   external_github_issue_id: null
   tags:
   - linear-sync
@@ -11071,17 +11071,17 @@ tickets:
   - system-status
   - phase-15
   component: atlas.pm
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-08-02T12:32:32.638319Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-08-02T18:03:20.767637Z'
   review_cycle_count: 0
-  lesson_extraction_attempted_at: null
+  lesson_extraction_attempted_at: '2026-08-02T18:03:20.767637Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-15-successful-sync-receipt.md#successful-pm-sync-receipt-and-truthful-status-timestamp
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-08-02T12:32:32.638319Z'
   updated_at: '2026-08-02T12:32:32.638319Z'
-  completed_at: null
+  completed_at: '2026-08-02T18:03:20.767637Z'
 - id: f08de9e4-217e-4be0-845e-0d1398417b81
   product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
   epic_id: e0d47d14-bbd1-4d5d-96bc-f9e7adfeb3cf
@@ -11089,7 +11089,7 @@ tickets:
   title: Versioned operator-owned delivery admission policy
   objective: Define one immutable-revision policy for working, review, rework, risk and component capacity so no agent or heuristic can silently widen delivery authority.
   context: Phase 15 separates eligibility from admission. Policy changes belong to the operator and must use Phase 13's actor, idempotency, compare-and-set and receipt boundary. The initial revision preserves the current ceiling of three; over-capacity changes hold new work and never demote active tickets.
-  status: planned
+  status: done
   ticket_type: infrastructure
   risk_level: high
   priority: 50
@@ -11118,7 +11118,7 @@ tickets:
   definition_of_done:
   - All six criteria have named deterministic tests; migrations, full Python gates and doc linter pass; canonical docs land together; the PR title carries the minted ticket key.
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: f3b8f782-4d04-4ef2-b8b9-c5868cc7870d
   external_github_issue_id: null
   tags:
   - admission
@@ -11126,17 +11126,17 @@ tickets:
   - policy
   - governance
   component: atlas.pm
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-08-02T12:32:32.638319Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-08-03T06:51:23.457549Z'
   review_cycle_count: 0
-  lesson_extraction_attempted_at: null
+  lesson_extraction_attempted_at: '2026-08-03T06:51:23.457549Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-16-delivery-admission-policy.md#versioned-operator-owned-delivery-admission-policy
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-08-02T12:32:32.638319Z'
   updated_at: '2026-08-02T12:32:32.638319Z'
-  completed_at: null
+  completed_at: '2026-08-03T06:51:23.457549Z'
 - id: 5743680a-448a-408a-b18e-df2d9c99678c
   product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
   epic_id: e0d47d14-bbd1-4d5d-96bc-f9e7adfeb3cf
@@ -11144,7 +11144,7 @@ tickets:
   title: Coherent delivery occupancy and review-pressure snapshot
   objective: Derive one immutable, fingerprinted view of working, review and lane occupancy from a complete Linear pull and current Atlas state before any ticket can be considered for admission.
   context: Separate budgets are meaningful only if they are calculated from one coherent observation. Working occupancy includes dispatchable/active/rework states; review occupancy includes Review Required and Needs Human. Unknown, incomplete or contradictory external state must make the snapshot unusable for writes rather than silently reduce the count.
-  status: planned
+  status: done
   ticket_type: feature
   risk_level: high
   priority: 50
@@ -11172,7 +11172,7 @@ tickets:
   definition_of_done:
   - All six criteria have named deterministic coverage; Python, typing, import and doc-linter gates pass; docs land with code; the PR title carries the minted ticket key.
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: c29a6382-4cd8-40bc-917c-2554e87e79b3
   external_github_issue_id: null
   tags:
   - admission
@@ -11180,17 +11180,17 @@ tickets:
   - review-pressure
   - linear-sync
   component: atlas.pm
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-08-02T12:32:32.638319Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-08-03T12:28:31.497809Z'
   review_cycle_count: 0
-  lesson_extraction_attempted_at: null
+  lesson_extraction_attempted_at: '2026-08-03T12:28:31.497809Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-17-delivery-occupancy-snapshot.md#coherent-delivery-occupancy-and-review-pressure-snapshot
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-08-02T12:32:32.638319Z'
   updated_at: '2026-08-02T12:32:32.638319Z'
-  completed_at: null
+  completed_at: '2026-08-03T12:28:31.497809Z'
 - id: 07094c14-7d88-44b4-820a-11399c4c7faf
   product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
   epic_id: e0d47d14-bbd1-4d5d-96bc-f9e7adfeb3cf
@@ -11198,7 +11198,7 @@ tickets:
   title: Deterministic capacity-aware admission decision engine
   objective: Convert dependency-ready candidates, policy and one coherent snapshot into reproducible admit/hold decisions with complete typed reasons and at most one selected external promotion.
   context: Phase 3 readiness remains the eligibility authority. Phase 15 adds a pure policy decision after it, protecting working/review budgets, Changes Requested reserve and risk/component lanes. Linear has no batch transaction, so one evaluation may select at most one write while still explaining every candidate.
-  status: planned
+  status: done
   ticket_type: feature
   risk_level: high
   priority: 50
@@ -11227,7 +11227,7 @@ tickets:
   definition_of_done:
   - All six criteria have named deterministic/property coverage; full Python, typing, import and doc-linter gates pass; docs land together; the PR title carries the minted ticket key.
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: 18abd758-5c3e-43e8-a423-a15f0f0ccf9a
   external_github_issue_id: null
   tags:
   - admission
@@ -11235,17 +11235,17 @@ tickets:
   - capacity
   - explainability
   component: atlas.pm
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-08-02T12:32:32.638319Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-08-03T15:22:04.688948Z'
   review_cycle_count: 0
-  lesson_extraction_attempted_at: null
+  lesson_extraction_attempted_at: '2026-08-03T15:22:04.688948Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-18-deterministic-admission-engine.md#deterministic-capacity-aware-admission-decision-engine
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-08-02T12:32:32.638319Z'
   updated_at: '2026-08-02T12:32:32.638319Z'
-  completed_at: null
+  completed_at: '2026-08-03T15:22:04.688948Z'
 - id: fe844acc-692d-4676-8978-ebc6e4c67376
   product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
   epic_id: e0d47d14-bbd1-4d5d-96bc-f9e7adfeb3cf
@@ -11253,7 +11253,7 @@ tickets:
   title: Fail-closed single-write admission integration in the PM sync tick
   objective: Replace promote-everything sync behaviour with one lease-guarded, revalidated admission write so stale, concurrent, partial or ambiguous external state cannot oversubscribe delivery.
   context: The current sync promotes every dependency-ready ticket. Phase 15 must route that sole `Ready for Agent` writer through the deterministic admission engine while preserving Linear-to-Atlas status ownership and request accounting. A promotion tick re-reads the complete board immediately before its one external write; ambiguity blocks further admission until reconciliation.
-  status: planned
+  status: done
   ticket_type: feature
   risk_level: critical
   priority: 50
@@ -11283,7 +11283,7 @@ tickets:
   definition_of_done:
   - All seven criteria have named race/failure coverage; full Python, typing, import and doc-linter gates pass; docs land together; the PR title carries the minted ticket key.
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: 785a0ac5-2773-4ca1-bc2f-c89ab1f71dbb
   external_github_issue_id: null
   tags:
   - admission
@@ -11291,17 +11291,17 @@ tickets:
   - concurrency
   - fail-closed
   component: atlas.pm
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-08-02T12:32:32.638319Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-08-10T19:32:09.724648Z'
   review_cycle_count: 0
-  lesson_extraction_attempted_at: null
+  lesson_extraction_attempted_at: '2026-08-10T19:32:09.724648Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-19-fail-closed-admission-sync.md#fail-closed-single-write-admission-integration-in-the-pm-sync-tick
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-08-02T12:32:32.638319Z'
   updated_at: '2026-08-02T12:32:32.638319Z'
-  completed_at: null
+  completed_at: '2026-08-10T19:32:09.724648Z'
 - id: b627cd9c-660f-4f01-9bd6-60b3fc3f87da
   product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
   epic_id: 86fe8167-7b99-45fd-ac96-3d0f4d3a0f53
@@ -11309,7 +11309,7 @@ tickets:
   title: Authenticated delivery-control policy and status API
   objective: Expose current policy, occupancy and admission reasons and allow one authenticated compare-and-set policy replacement without creating a generic ticket or Symphony control surface.
   context: The operator needs to understand why eligible work is held and deliberately change budgets or mode. Phase 13 owns mutation security and receipts; Phase 15 services own validation and admission. The API remains thin and exposes no ticket-state, agent-session or automatic-ceiling action.
-  status: planned
+  status: changes_requested
   ticket_type: feature
   risk_level: high
   priority: 50
@@ -11338,7 +11338,7 @@ tickets:
   definition_of_done:
   - All seven criteria have named API/architecture coverage; Python, OpenAPI, TypeScript and doc-linter gates pass; docs land with code; the PR title carries the minted ticket key.
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: 52576e67-0181-473f-983d-3d7d41341c82
   external_github_issue_id: null
   tags:
   - api
@@ -11346,9 +11346,9 @@ tickets:
   - policy
   - authentication
   component: atlas.api
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-08-02T12:32:32.638319Z'
+  last_observed_linear_state_id: a3bba9c2-716e-47a6-b1ce-dcff4183c425
+  status_entered_at: '2026-08-13T21:18:28.436729Z'
   review_cycle_count: 0
   lesson_extraction_attempted_at: null
   source_anchor: docs/planning/inbox/processed/inbox-stub-20-delivery-control-api.md#authenticated-delivery-control-policy-and-status-api
@@ -11393,7 +11393,7 @@ tickets:
   definition_of_done:
   - All seven criteria have named component/browser evidence; UI lint/type/ test/build, Playwright, accessibility, client drift and doc linter pass; the PR title carries the minted ticket key.
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: 76bee4d4-adc6-441c-8832-2279307c5d60
   external_github_issue_id: null
   tags:
   - operator-ui
@@ -11401,8 +11401,8 @@ tickets:
   - capacity
   - explainability
   component: operator-ui
-  linear_synced_at: null
-  last_observed_linear_state_id: null
+  linear_synced_at: '2026-08-02T12:32:32.638319Z'
+  last_observed_linear_state_id: f95de64e-f351-4226-b4ec-a5bddbc6fd2d
   status_entered_at: null
   review_cycle_count: 0
   lesson_extraction_attempted_at: null
@@ -11419,7 +11419,7 @@ tickets:
   title: Symphony ceiling contract and controlled-ramp runbook
   objective: Make the 3-to-5-to-7-to-10 ceiling change a governed, reversible operator procedure with exact evidence gates, while keeping committed `main` at three until the dedicated milestone branch proves ten.
   context: More available workers are safe only when Atlas admission and human review capacity agree. This ticket defines the config ownership, preflight, observation window, stop/rollback rules and evidence receipt for each level. It must define that the operator changes `WORKFLOW.md` only on a dedicated milestone branch through 5, 7 and 10 after each preceding gate passes. It must not perform the live Phase 15 milestone or treat ten as a target.
-  status: planned
+  status: done
   ticket_type: infrastructure
   risk_level: high
   priority: 50
@@ -11450,7 +11450,7 @@ tickets:
   definition_of_done:
   - All six criteria have named contract/doc tests; the initial ceiling remains three; full Python and doc-linter gates pass; the PR title carries the minted ticket key.
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: 54c55367-392e-4832-a568-ca2650063573
   external_github_issue_id: null
   tags:
   - symphony
@@ -11458,17 +11458,17 @@ tickets:
   - runbook
   - governance
   component: orchestration
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-08-02T12:32:32.638319Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-08-13T21:18:28.436729Z'
   review_cycle_count: 0
-  lesson_extraction_attempted_at: null
+  lesson_extraction_attempted_at: '2026-08-13T21:18:28.436729Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-22-symphony-capacity-ramp-contract.md#symphony-ceiling-contract-and-controlled-ramp-runbook
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-08-02T12:32:32.638319Z'
   updated_at: '2026-08-02T12:32:32.638319Z'
-  completed_at: null
+  completed_at: '2026-08-13T21:18:28.436729Z'
 - id: 317bdce2-b7b3-4993-b423-ee025aac2822
   product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
   epic_id: 4d034c8b-0752-4089-8ff9-2fd43f51c6f4
@@ -11476,7 +11476,7 @@ tickets:
   title: Three-to-five-to-seven-to-ten delivery-control milestone
   objective: Prove the complete Phase 15 admission and review-pressure system under a controlled live workload before authorising the ten-agent ceiling.
   context: 'Focused tests cannot prove the operational relationship between Atlas admission, Linear state, Symphony occupancy and Phase 14 acceptance throughput. The milestone uses more than ten independent tickets and moves one governed level at a time. Any breach stops at the last proven ceiling; Atlas never merges, cancels workers or rewrites policy on its own. Phase 15 remains open below ten. Committed `main` stays at three while the operator advances `WORKFLOW.md` on a dedicated milestone branch through 5, 7 and 10. Only after the ten-agent gate succeeds does this milestone/closure change commit and merge `max_concurrent_agents: 10` to `main`.'
-  status: planned
+  status: needs_human_decision
   ticket_type: infrastructure
   risk_level: critical
   priority: 50
@@ -11514,7 +11514,7 @@ tickets:
   definition_of_done:
   - 'All seven criteria pass in CI and the controlled operator exercise; exact evidence proves ten; `WORKFLOW.md` lands at `max_concurrent_agents: 10` with Phase 15 closure and canonical docs; the PR title carries the minted ticket key. Any lower result leaves the phase open.'
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: 9ab50e60-7eae-48b5-8717-f4b0eb827e9d
   external_github_issue_id: null
   tags:
   - phase-15
@@ -11523,9 +11523,9 @@ tickets:
   - admission
   - acceptance
   component: orchestration
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-08-02T12:32:32.638319Z'
+  last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
+  status_entered_at: '2026-08-10T20:29:46.695575Z'
   review_cycle_count: 0
   lesson_extraction_attempted_at: null
   source_anchor: docs/planning/inbox/processed/inbox-stub-23-delivery-control-milestone.md#three-to-five-to-seven-to-ten-delivery-control-milestone
@@ -11533,4 +11533,601 @@ tickets:
   created_by_id: planner
   created_at: '2026-08-02T12:32:32.638319Z'
   updated_at: '2026-08-02T12:32:32.638319Z'
+  completed_at: null
+- id: e0a8244b-12fb-4f36-baa9-76f977974efd
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: f64bcf20-dbdf-4d8e-98b3-d615de1bc6a4
+  key: ATLAS-254
+  title: Tiered local-validation contract and deterministic validation-plan CLI
+  objective: Replace mandatory per-agent repository-wide sweeps with a deterministic, reviewable validation plan that selects the smallest safe local checks for the changed surfaces while keeping complete CI authoritative.
+  context: 'Atlas currently instructs every agent to reproduce the complete Python and Operator UI CI matrix before handoff. Under concurrent delivery this repeats expensive work, occupies Symphony turns and obscures whether implementation or validation is the bottleneck. The new contract follows local confidence, CI authority: agents run ticket-required and affected checks locally; CI still runs every required repository gate. Unknown, cross-cutting or protected changes fall back conservatively to a complete local sweep.'
+  status: planned
+  ticket_type: infrastructure
+  risk_level: high
+  priority: 50
+  relevant_docs:
+  - AGENTS.md
+  - WORKFLOW.md
+  - docs/atlas/evidence-pipeline.md
+  - docs/atlas/parallel-delivery-efficiency-and-integration-control.md
+  - docs/runbooks/agent-ticket-prompt.md
+  - docs/runbooks/local-development.md
+  acceptance_criteria:
+  - A versioned deterministic registry maps repository paths and ticket-declared requirements to Python, static, documentation, schema, generated-client, UI, browser and full-sweep validation profiles with explicit reasons.
+  - A CLI accepts an exact base and head/diff, emits the ordered local commands, protected-surface reasons and full-sweep fallback as bounded JSON and human-readable output, and performs no repository or external mutation.
+  - Changed test files, tests added for changed behaviour and every explicit ticket test requirement are always included; a caller cannot suppress a mandatory profile through an untrusted path or free-form exclusion.
+  - Unknown paths, validation-registry drift, ambiguous base identity and protected cross-cutting surfaces fail conservatively to the documented complete local sweep rather than returning an incomplete plan.
+  - Identical repository identities and changed paths produce byte-stable plans independent of input ordering, local clock, UUIDs or model interpretation.
+  - Canonical docs state that scoped local evidence is agent-tier confidence, while the complete CI matrix at the accepted identity remains the system-tier completion authority.
+  non_goals:
+  - No learned test-impact prediction, CI job removal, test skipping inside CI, automatic completion, model judgement or claim that scoped checks prove the repository-wide result.
+  implementation_notes:
+  - Prefer a small declarative registry and pure classifier. Full local validation remains available as an explicit or conservative profile; the optimisation changes the default development loop, never CI authority.
+  test_requirements:
+  - Table-driven tests cover each profile, combined surfaces, test-file inclusion, explicit ticket requirements, unknown/protected fallback and order-independent output.
+  - Mutation and architecture tests prove plan calculation performs no Git, GitHub, Linear, Symphony, database or filesystem write.
+  documentation_requirements:
+  - AGENTS.md
+  - docs/atlas/parallel-delivery-efficiency-and-integration-control.md
+  - docs/runbooks/agent-ticket-prompt.md
+  - docs/runbooks/local-development.md
+  definition_of_done:
+  - All six criteria have named deterministic tests, the CLI produces stable plans, documentation clearly separates local confidence from CI authority, focused gates pass and the PR title carries the minted ticket key.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - phase-15-5
+  - validation
+  - ci
+  - developer-workflow
+  component: verification
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/inbox-stub-01-tiered-local-validation.md#tiered-local-validation-contract-and-deterministic-validation-plan-cli
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-13T21:44:51.546427Z'
+  updated_at: '2026-08-13T21:44:51.546427Z'
+  completed_at: null
+- id: f96ef51b-d6e9-44a3-81a3-358d59ae9b37
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: e0d47d14-bbd1-4d5d-96bc-f9e7adfeb3cf
+  key: ATLAS-255
+  title: CI-pending delivery state and bounded integration capacity
+  objective: Represent work that has left an agent but has not yet earned system-tier CI handoff as a distinct non-Symphony-active state with an operator-owned integration budget.
+  context: '`PR Open` is currently a Symphony-active working state, so an agent can remain claimed for repeated turns while CI runs. Treating that time as active coding wastes worker capacity, while treating it as free capacity can flood CI and review. Introduce an explicit CI-pending lifecycle and budget: it does not consume a Symphony working slot, but it does consume integration capacity until required CI evidence reaches a terminal classification.'
+  status: planned
+  ticket_type: infrastructure
+  risk_level: critical
+  priority: 50
+  relevant_docs:
+  - WORKFLOW.md
+  - docs/architecture/data-model-and-schemas.md
+  - docs/atlas/multi-agent-delivery-control.md
+  - docs/atlas/parallel-delivery-efficiency-and-integration-control.md
+  - docs/atlas/pm-engine-and-linear-sync.md
+  - docs/atlas/symphony-integration.md
+  acceptance_criteria:
+  - 'The canonical ticket/status contract adds one CI-pending state with exact Linear mapping and transition ownership: the agent may enter it only after publishing a PR, Atlas owns every exit, and no browser or Symphony path can impersonate those exits.'
+  - CI-pending is excluded from Symphony active states and working occupancy, counted separately as integration occupancy, and bounded by a validated operator-owned integration budget.
+  - Policy validation rejects negative, zero-invalid, above-ceiling or internally incoherent integration budgets, and immutable revisions retain compare-and-set, idempotency and atomic receipt behaviour.
+  - Existing active work is never cancelled or demoted when the budget is lowered; over-capacity is reported and new admission fails closed until occupancy is coherent.
+  - Snapshot fingerprints include CI-pending identities and integration-budget inputs, and incomplete, duplicated or unmapped CI-pending board state makes admission unavailable.
+  - Migrations upgrade from the current head on SQLite and PostgreSQL without rewriting historical delivery-policy revisions or migration `0025`.
+  non_goals:
+  - No CI result interpretation, workflow prompt change, automatic review, Symphony cancellation, GitHub merge/rebase or historical policy rewrite.
+  implementation_notes:
+  - Keep working, CI/integration and review pressure as separate quantities. The new budget is a maximum queue bound, never a target and never inferred from available Symphony workers.
+  test_requirements:
+  - Model, migration, policy and snapshot tests cover every transition owner, budget bound, over-capacity case, fingerprint, stale revision and database backend.
+  - Workflow/state-inventory tests prove CI-pending is non-active for Symphony and cannot be confused with Review Required, Changes Requested or Done.
+  documentation_requirements:
+  - WORKFLOW.md
+  - docs/architecture/data-model-and-schemas.md
+  - docs/atlas/multi-agent-delivery-control.md
+  - docs/atlas/parallel-delivery-efficiency-and-integration-control.md
+  - docs/atlas/pm-engine-and-linear-sync.md
+  - docs/atlas/symphony-integration.md
+  definition_of_done:
+  - All six criteria have named model/migration/contract evidence, historical policy remains immutable, full focused Python and documentation gates pass, and the PR title carries the minted ticket key.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - phase-15-5
+  - ci-pending
+  - capacity
+  - state-ownership
+  component: delivery-control
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/inbox-stub-02-ci-pending-capacity.md#ci-pending-delivery-state-and-bounded-integration-capacity
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-13T21:44:51.546427Z'
+  updated_at: '2026-08-13T21:44:51.546427Z'
+  completed_at: null
+- id: da881b16-d010-49cb-b1a8-09dac29a3313
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 01499978-f6b2-4cd9-9924-4056720e5a2d
+  key: ATLAS-256
+  title: System-tier CI handoff reconciler
+  objective: Reconcile one CI-pending PR into Review Required or Changes Requested from complete commit-pinned system-tier evidence without keeping an agent alive to poll CI or granting CI any merge authority.
+  context: Once an agent publishes and enters CI-pending, Atlas must own the next state edge. A complete required-check set at the exact PR head may advance to human review; a definite implementation failure may return to rework. Pending, missing, stale, infrastructure, malformed or contradictory evidence must not manufacture either success or actionable code failure.
+  status: planned
+  ticket_type: feature
+  risk_level: critical
+  priority: 50
+  relevant_docs:
+  - docs/atlas/evidence-pipeline.md
+  - docs/atlas/parallel-delivery-efficiency-and-integration-control.md
+  - docs/atlas/pm-engine-and-linear-sync.md
+  - docs/atlas/verification-engine.md
+  - docs/runbooks/pr-acceptance.md
+  acceptance_criteria:
+  - The reconciler evaluates the canonical required-check matrix for one exact repository, PR and head and distinguishes PASSED, definite implementation failure, pending/missing, infrastructure, stale and indeterminate outcomes.
+  - Complete current-head PASSED system-tier evidence causes at most one exact Linear transition from CI-pending to Review Required and records a bounded append-only reconciliation outcome.
+  - A definite current-head implementation failure causes at most one exact transition to Changes Requested; infrastructure, pending, missing, malformed, stale or ambiguous results remain CI-pending with typed reasons.
+  - Before the write Atlas re-reads the PR head, board state and policy/snapshot identity; any movement, lease loss or mismatch produces zero transition.
+  - Duplicate ticks, concurrent owners and transport-ambiguous writes are idempotent or fenced so a second transition cannot occur before a fresh observation reconciles the external state.
+  - The operation performs no GitHub merge/update, Git rebase, Symphony action, policy mutation, acceptance confirmation, verification waiver or Done transition.
+  non_goals:
+  - No CI execution, retry button, flaky-test diagnosis, automatic merge, automatic rebase, browser write or model classification of failures.
+  implementation_notes:
+  - Reuse canonical evidence and required-check composition. Do not infer CI success from GitHub rollups, command exit codes or an agent completion message when required named evidence is incomplete.
+  test_requirements:
+  - Deterministic tests cover every evidence class, head/state/policy race, duplicate owner, lease loss, ambiguous write and zero/one mutation bound.
+  - External-call spies and architecture tests prove the reconciler has only the named Linear state edge and cannot invoke GitHub/Git/Symphony authority.
+  documentation_requirements:
+  - docs/atlas/evidence-pipeline.md
+  - docs/atlas/parallel-delivery-efficiency-and-integration-control.md
+  - docs/atlas/pm-engine-and-linear-sync.md
+  - docs/atlas/verification-engine.md
+  - docs/runbooks/pr-acceptance.md
+  definition_of_done:
+  - All six criteria have named race/failure tests, the writer is exactly bounded, complete CI remains system-tier authority, focused gates pass and the PR title carries the minted ticket key.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - phase-15-5
+  - ci
+  - evidence
+  - reconciliation
+  component: delivery-control
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/inbox-stub-03-system-tier-ci-handoff.md#system-tier-ci-handoff-reconciler
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-13T21:44:51.546427Z'
+  updated_at: '2026-08-13T21:44:51.546427Z'
+  completed_at: null
+- id: dea96799-fcfb-44d5-b5e7-3d68b69f220e
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 4d034c8b-0752-4089-8ff9-2fd43f51c6f4
+  key: ATLAS-257
+  title: Symphony scoped-validation and slot-release workflow
+  objective: Make the repository-owned agent contract execute scoped local validation, publish once, enter CI-pending and release the Symphony slot without polling or reproducing CI inside the agent session.
+  context: Symphony may run up to `max_turns` back-to-back while an issue remains in an active state. The workflow must therefore end agent ownership through an explicit tracker transition, not an instruction to wait quietly. This ticket adopts the validation planner and CI reconciler while preserving exact-head evidence, current-branch safety and the prohibition on agent merge authority.
+  status: planned
+  ticket_type: infrastructure
+  risk_level: high
+  priority: 50
+  relevant_docs:
+  - AGENTS.md
+  - WORKFLOW.md
+  - docs/atlas/parallel-delivery-efficiency-and-integration-control.md
+  - docs/atlas/symphony-integration.md
+  - docs/runbooks/agent-ticket-prompt.md
+  - docs/runbooks/local-development.md
+  - docs/runbooks/pr-acceptance.md
+  acceptance_criteria:
+  - The binding workflow requires the deterministic validation plan, every selected local check and the ticket's explicit tests before publication, while a complete local sweep is required only for a named conservative profile or explicit operator instruction.
+  - After one successful current-main rebase, scoped validation and PR publish, the agent records exact commands/results, moves the ticket to CI-pending and stops without polling CI, waiting for review or consuming another turn.
+  - CI-pending is absent from `tracker.active_states`; a workflow-contract test proves Symphony will not continue or redispatch the issue while CI owns the next state edge.
+  - Failed selected local checks prevent publication; failures after CI handoff are routed only by the system-tier reconciler and resume the preserved workspace through Changes Requested.
+  - The contract retains current-main branch creation, exact repository/branch checks, scoped conflict handling, no agent merge/Done authority and historical-only evidence after any head change.
+  - Documentation clearly distinguishes local agent confidence, CI handoff, Review Required acceptance and final completion evidence, with no claim that a shorter local run weakens CI.
+  non_goals:
+  - No automatic merge, automatic rebase, CI cancellation, worker termination, hidden test skipping, model-selected validation or change to `max_turns`.
+  implementation_notes:
+  - Keep the workflow body product-invariant. The agent supplies bounded handoff evidence, but only CI evidence may advance the ticket from CI-pending.
+  test_requirements:
+  - Workflow-contract fixtures cover scoped success, conservative full sweep, local failure, CI-pending stop, Changes Requested resume and prohibited transitions.
+  - Documentation-linter and prompt-contract tests reject language that makes local scoped checks repository-wide authority or instructs CI polling.
+  documentation_requirements:
+  - AGENTS.md
+  - WORKFLOW.md
+  - docs/atlas/parallel-delivery-efficiency-and-integration-control.md
+  - docs/atlas/symphony-integration.md
+  - docs/runbooks/agent-ticket-prompt.md
+  - docs/runbooks/local-development.md
+  - docs/runbooks/pr-acceptance.md
+  definition_of_done:
+  - All six criteria have executable workflow/prompt evidence, a seeded agent stops at CI-pending without an extra turn, CI remains authoritative, focused gates pass and the PR title carries the minted ticket key.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - phase-15-5
+  - symphony
+  - workflow
+  - validation
+  component: orchestration
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/inbox-stub-04-symphony-slot-release-workflow.md#symphony-scoped-validation-and-slot-release-workflow
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-13T21:44:51.546427Z'
+  updated_at: '2026-08-13T21:44:51.546427Z'
+  completed_at: null
+- id: 3559bee8-1865-44c6-aa96-8b8605a24ecd
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: e0d47d14-bbd1-4d5d-96bc-f9e7adfeb3cf
+  key: ATLAS-258
+  title: Protected integration-lane classification and admission holds
+  objective: Prevent available worker slots from dispatching tickets that compete for the same high-contention repository surfaces by applying deterministic protected integration lanes before admission.
+  context: Phase 15 component and risk lanes bound broad delivery classes, but repeated conflicts cluster around migrations, generated contracts, workflow files, planning sources, shared manifests and other single-writer surfaces. Phase 15.5 adds an explicit repository-owned lane registry and ticket classification. Lane saturation produces a typed hold even when working and Symphony capacity remain available.
+  status: planned
+  ticket_type: feature
+  risk_level: critical
+  priority: 50
+  relevant_docs:
+  - docs/atlas/dependency-engine.md
+  - docs/atlas/multi-agent-delivery-control.md
+  - docs/atlas/parallel-delivery-efficiency-and-integration-control.md
+  - docs/atlas/pm-engine-and-linear-sync.md
+  - docs/runbooks/pr-acceptance.md
+  acceptance_criteria:
+  - A versioned deterministic registry defines bounded protected lanes for at least migrations, generated API/client contracts, workflow configuration, planning sources/manifests and explicitly operator-declared hotspots.
+  - Candidate classification uses trusted ticket component/tags and canonical declared paths only, records every matched lane and fails closed on ambiguous or contradictory declarations without inspecting model prose.
+  - Working and CI-pending tickets consume all matching protected lanes; a saturated lane yields a complete typed hold reason before a candidate can be selected for the single external admission write.
+  - Stable ranking remains unchanged among feasible candidates, and a lower candidate cannot bypass the selected higher-ranked candidate merely because it occupies a different lane in the same evaluation.
+  - Lane-registry or active-surface movement between selection and external write invalidates revalidation and admits nobody.
+  - The registry and holds perform no GitHub diff mutation, Git rebase, ticket demotion, worker cancellation, policy optimisation or automatic widening of lane capacity.
+  non_goals:
+  - No semantic merge-conflict prediction, LLM path inference, dynamic code ownership, automatic rebasing, merge queue or proof that different lanes are semantically independent.
+  implementation_notes:
+  - Prefer explicit ticket metadata over file-path guesses before dispatch. Protected lanes are conservative coordination controls; they complement dependencies and never claim semantic independence.
+  test_requirements:
+  - Table/property tests cover every protected lane, multi-lane tickets, saturation, ambiguity, order-independent fingerprints, ranking interaction and stale pre-write revalidation.
+  - Seeded admission tests prove zero unintended promotion and no change to the existing one-write lease/fence boundary.
+  documentation_requirements:
+  - docs/atlas/dependency-engine.md
+  - docs/atlas/multi-agent-delivery-control.md
+  - docs/atlas/parallel-delivery-efficiency-and-integration-control.md
+  - docs/atlas/pm-engine-and-linear-sync.md
+  definition_of_done:
+  - All six criteria have named deterministic/property evidence, protected surfaces are operator-visible and fail closed, focused gates pass and the PR title carries the minted ticket key.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - phase-15-5
+  - admission
+  - integration
+  - conflict-control
+  component: delivery-control
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/inbox-stub-05-protected-integration-lanes.md#protected-integration-lane-classification-and-admission-holds
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-13T21:44:51.546427Z'
+  updated_at: '2026-08-13T21:44:51.546427Z'
+  completed_at: null
+- id: 35bebc52-6a4d-4e90-be32-738f6ca9a01a
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 4d034c8b-0752-4089-8ff9-2fd43f51c6f4
+  key: ATLAS-259
+  title: Exact-base synthetic-merge evidence feasibility spike
+  objective: Determine whether Atlas can bind GitHub's clean integration candidate and CI evidence to one exact PR head and current base strongly enough to avoid an unnecessary contributor-branch rebase without weakening exact-head safety.
+  context: The current acceptance contract requires the PR branch itself to contain current `main`, so every sibling merge makes trailing branches stale even when they merge cleanly. GitHub may expose a synthetic merge candidate and CI identity for an exact head/base pair, but its availability, stability, evidence mapping and squash-merge relationship must be proven before Atlas changes authority. This is a read-only feasibility spike with a governed PASS/FAIL report.
+  status: planned
+  ticket_type: spike
+  risk_level: high
+  priority: 50
+  relevant_docs:
+  - docs/atlas/evidence-pipeline.md
+  - docs/atlas/parallel-delivery-efficiency-and-integration-control.md
+  - docs/atlas/review-acceptance-console.md
+  - docs/atlas/symphony-integration.md
+  - docs/runbooks/pr-acceptance.md
+  acceptance_criteria:
+  - A disposable repository harness records the exact PR head, current base, provider integration/merge candidate identity, tree or commit identity, required CI checks and live mergeability without mutating a production PR.
+  - Repeated reads of an unchanged clean head/base pair are stable enough to reconstruct one candidate, while head movement, base movement, conflict, missing candidate and provider ambiguity each invalidate it explicitly.
+  - The spike proves whether every required CI result can be attributed to the exact integration candidate rather than merely the contributor head or an unpinned branch ref.
+  - Seeded sibling-main movement proves old candidate evidence cannot remain authoritative for the new base, even when the contributor head does not change.
+  - The report compares clean merge, merge commit, squash merge and conflicted cases and states the exact fallback to the existing operator rebase lane.
+  - The spike performs no branch publication, force push, rebase, merge, Linear transition, acceptance confirmation or production authority change.
+  non_goals:
+  - No implementation of acceptance changes, no automatic merge/rebase, no provider-general abstraction and no conclusion based solely on documented GitHub behaviour without executable evidence.
+  implementation_notes:
+  - Record a binary PASS/FAIL decision and the exact identity algebra required by the next ticket. A FAIL leaves the existing rebase lane authoritative and blocks no-rewrite activation until the phase design is amended.
+  test_requirements:
+  - Deterministic provider fixtures and the disposable harness cover stable, moved, missing, conflicted, malformed and indeterminate candidate cases.
+  - Mutation spies prove the spike is read-only and retained evidence excludes credentials, raw provider payloads and unbounded responses.
+  documentation_requirements:
+  - docs/atlas/parallel-delivery-efficiency-and-integration-control.md
+  - docs/atlas/review-acceptance-console.md
+  - docs/atlas/symphony-integration.md
+  - docs/runbooks/pr-acceptance.md
+  definition_of_done:
+  - All six criteria have executable evidence, the report reaches an explicit PASS or FAIL without production mutation, retained artifacts are bounded, focused gates pass and the PR title carries the minted ticket key.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - phase-15-5
+  - github
+  - exact-head
+  - rebase
+  component: integration
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/inbox-stub-06-synthetic-merge-feasibility.md#exact-base-synthetic-merge-evidence-feasibility-spike
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-13T21:44:51.546427Z'
+  updated_at: '2026-08-13T21:44:51.546427Z'
+  completed_at: null
+- id: cc1200e6-cb03-4a2f-a0a9-e27ba531cefd
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: f64bcf20-dbdf-4d8e-98b3-d615de1bc6a4
+  key: ATLAS-260
+  title: No-rewrite exact-base acceptance assessment
+  objective: Accept a clean PR against current `main` from exact integration-candidate evidence without rewriting its branch, while retaining the operator rebase lane for conflicts, missing evidence and every indeterminate case.
+  context: 'A successful feasibility result allows Atlas to distinguish branch freshness from integration freshness. The accepted identity becomes the tuple of repository, PR, contributor head, live base and provider integration candidate. Evidence, confirmations and readiness bind to that complete tuple. Atlas remains advisory: it does not update, rebase or merge the branch.'
+  status: planned
+  ticket_type: infrastructure
+  risk_level: critical
+  priority: 50
+  relevant_docs:
+  - docs/atlas/evidence-pipeline.md
+  - docs/atlas/parallel-delivery-efficiency-and-integration-control.md
+  - docs/atlas/review-acceptance-console.md
+  - docs/atlas/symphony-integration.md
+  - docs/atlas/verification-engine.md
+  - docs/runbooks/pr-acceptance.md
+  acceptance_criteria:
+  - The canonical assessment returns typed `exact_branch`, `exact_integration_candidate`, `rebase_required` or `indeterminate` using the feasibility-approved identity algebra and no weaker provider signal.
+  - An exact integration candidate is ready only when every required CI check is PASSED for that candidate and the live repository, PR, contributor head, base and candidate identities remain unchanged before and after verdict.
+  - Contributor-head movement, base movement, candidate replacement, conflict, missing required check, provider timeout or malformed response invalidates authority and never falls back optimistically to head-only evidence.
+  - Acceptance sessions, machine evidence, human confirmations and the stored verdict record the complete integration identity; older head/base candidate history remains visible but cannot authorise the current merge.
+  - '`rebase_required` routes only to the existing operator-owned lease-guarded lane, while exact clean candidates may enter the one-PR freeze without a branch rewrite; neither route performs a mutation from assessment.'
+  - Executable route and external-call inventories prove Atlas gains no GitHub merge/update, Git rebase/push, Linear review transition, Symphony control or automatic acceptance authority.
+  non_goals:
+  - No merge queue, automatic merge, automatic rebase, force push, conflict resolution, weakening of the one-PR freeze or reuse of evidence after base movement.
+  implementation_notes:
+  - Implement only if the predecessor spike records PASS for the chosen provider contract. Preserve the existing exact-branch path and rebase lane as safe fallbacks rather than replacing them.
+  test_requirements:
+  - Exact-identity tests cover clean branch, clean synthetic candidate, every movement seam, conflicts, missing/failed checks, timeout/malformed reads and post-PASSED revocation.
+  - Seeded live-API/browser tests prove current readiness for a clean candidate without branch mutation and prove the rebase fallback remains fail closed.
+  documentation_requirements:
+  - docs/atlas/evidence-pipeline.md
+  - docs/atlas/parallel-delivery-efficiency-and-integration-control.md
+  - docs/atlas/review-acceptance-console.md
+  - docs/atlas/symphony-integration.md
+  - docs/atlas/verification-engine.md
+  - docs/runbooks/pr-acceptance.md
+  definition_of_done:
+  - All six criteria have exact-identity and adversarial evidence, the clean no-rewrite path is advisory and current-base-safe, prohibited mutations are mechanically absent, full applicable gates pass and the PR title carries the minted ticket key.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - phase-15-5
+  - exact-base
+  - acceptance
+  - rebase
+  component: integration
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/inbox-stub-07-no-rewrite-exact-base-acceptance.md#no-rewrite-exact-base-acceptance-assessment
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-13T21:44:51.546427Z'
+  updated_at: '2026-08-13T21:44:51.546427Z'
+  completed_at: null
+- id: f21a5cea-5b68-4b70-b13c-a401e8a79967
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 86fe8167-7b99-45fd-ac96-3d0f4d3a0f53
+  key: ATLAS-261
+  title: Delivery-control CI and integration-pressure API
+  objective: Expose CI-pending capacity, validation-plan provenance, protected-lane holds and exact-base integration state through the authenticated delivery-control API without creating a CI, GitHub or Symphony command surface.
+  context: Phase 15's API explains policy and admission. Phase 15.5 adds new pressure dimensions and an exact-base assessment that the operator must understand before raising concurrency. The API remains a thin projection over canonical services. Reads are observational; the existing policy replacement remains the only delivery-control mutation.
+  status: planned
+  ticket_type: feature
+  risk_level: high
+  priority: 50
+  relevant_docs:
+  - docs/atlas/operator-api.md
+  - docs/atlas/multi-agent-delivery-control.md
+  - docs/atlas/parallel-delivery-efficiency-and-integration-control.md
+  - docs/atlas/governed-operator-actions.md
+  acceptance_criteria:
+  - The delivery-control projection includes integration budget/occupancy, CI-pending tickets and typed outcomes, protected lane occupancy/holds, validation-plan identity and exact-base assessment with bounded reasons.
+  - Every value is returned from one coherent server-owned snapshot with exact policy, board, evidence and integration identities; stale or indeterminate inputs remain visible and are never rendered as available capacity.
+  - 'GET remains authenticated, no-store and observational: it performs no Linear/GitHub refresh, validation execution, admission lease, policy write, receipt write, transition, rebase, merge or Symphony action.'
+  - Existing complete-policy replacement validates the integration budget and protected-lane rules through the same actor, CSRF, idempotency, compare-and-set and atomic receipt boundary.
+  - Responses are bounded and secret-free and exclude raw CI/provider payloads, command output, credentials, workspace paths and unbounded exceptions.
+  - OpenAPI and generated TypeScript contracts regenerate deterministically, while route-inventory tests reject CI retry/cancel, branch update/rebase, merge, worker control and individual-ticket transition endpoints.
+  non_goals:
+  - No CI execution, ticket-state command, automatic policy change, GitHub mutation, Symphony control, merge queue, raw log endpoint or remote admin.
+  implementation_notes:
+  - Extend the Phase 15 resource rather than creating a second control plane. API presenters must not recompute validation, admission or integration classifications.
+  test_requirements:
+  - API/service tests cover coherent, stale, over-capacity, held, failed and indeterminate projections plus policy validation and all security/conflict outcomes.
+  - Architecture, route-inventory, OpenAPI/client-drift and secret-canary tests prove the thin read boundary and prohibited controls.
+  documentation_requirements:
+  - docs/atlas/operator-api.md
+  - docs/atlas/multi-agent-delivery-control.md
+  - docs/atlas/parallel-delivery-efficiency-and-integration-control.md
+  definition_of_done:
+  - All six criteria have named API/architecture evidence, generated contracts are drift-free, the API exposes no new external command authority, full applicable gates pass and the PR title carries the minted ticket key.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - phase-15-5
+  - api
+  - ci
+  - integration
+  component: atlas.api
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/inbox-stub-08-delivery-pressure-api.md#delivery-control-ci-and-integration-pressure-api
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-13T21:44:51.546427Z'
+  updated_at: '2026-08-13T21:44:51.546427Z'
+  completed_at: null
+- id: 2a8d0edf-20bf-45ae-883f-3ec9812e31c1
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 80047dd6-542c-4ad8-8213-a2372ab4e560
+  key: ATLAS-262
+  title: Operator CI and integration-pressure console
+  objective: Make CI waiting, protected-lane contention, validation scope and exact-base integration readiness legible to the operator without client-side inference or merge, rebase, retry and worker controls.
+  context: 'Worker utilisation alone is a misleading concurrency signal. The existing delivery-control UI must show where work is accumulating and why: coding, CI, integration lanes, review or rework. It consumes generated API types and presents server classifications as limits and evidence, never as automatic recommendations to fill capacity.'
+  status: planned
+  ticket_type: feature
+  risk_level: high
+  priority: 50
+  relevant_docs:
+  - docs/atlas/operator-ui.md
+  - docs/atlas/multi-agent-delivery-control.md
+  - docs/atlas/parallel-delivery-efficiency-and-integration-control.md
+  - docs/atlas/governed-operator-actions.md
+  acceptance_criteria:
+  - The control view shows working, CI/integration, review and Changes Requested occupancy as separate server-owned quantities, including used/available budgets and visibly stale or indeterminate snapshots.
+  - CI-pending tickets display exact head, validation profile, required-check state and every typed wait/failure reason without rendering raw logs or recomputing the server classification.
+  - Protected integration lanes show current occupants, held candidates and complete hold reasons, and never imply that a free Symphony slot overrides a saturated lane.
+  - Exact-branch, exact-integration-candidate, rebase-required and indeterminate assessments are visibly distinct and never presented as merge approval.
+  - Policy confirmation includes integration budget and protected-lane changes with expected revision and fresh idempotency identity; conflicts preserve the proposal safely and require explicit reconfirmation.
+  - Executable control inventory proves there is no CI retry/cancel, ticket transition, GitHub update/merge, Git rebase/push, Symphony worker control or automatic concurrency/ramp control.
+  - Keyboard, focus, announcements, dense reason lists, long identities, responsive viewports and WCAG checks pass against the seeded live API.
+  non_goals:
+  - No CI log viewer, merge queue, branch updater, rebase button, worker manager, automatic optimiser, client-side admission calculation or Phase 16 charts.
+  implementation_notes:
+  - Reuse generated clients, authenticated mutation primitives and established design tokens. Treat server state as authoritative and keep proposal state separate until confirmed.
+  test_requirements:
+  - Component/query tests cover every occupancy and assessment class, policy success/conflict, stale snapshots, long values and prohibited controls.
+  - Playwright and accessibility tests exercise the built UI against a seeded live API and prove zero external writes beyond an explicit policy command.
+  documentation_requirements:
+  - docs/atlas/operator-ui.md
+  - docs/atlas/multi-agent-delivery-control.md
+  - docs/atlas/parallel-delivery-efficiency-and-integration-control.md
+  definition_of_done:
+  - All seven criteria have named component/browser/accessibility evidence, no forbidden control exists, generated-client and production-build gates pass, and the PR title carries the minted ticket key.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - phase-15-5
+  - operator-ui
+  - ci
+  - integration
+  component: operator-ui
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/inbox-stub-09-integration-pressure-console.md#operator-ci-and-integration-pressure-console
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-13T21:44:51.546427Z'
+  updated_at: '2026-08-13T21:44:51.546427Z'
+  completed_at: null
+- id: eee8bd89-36dd-4e3d-ac18-321bb68f4728
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 4d034c8b-0752-4089-8ff9-2fd43f51c6f4
+  key: ATLAS-263
+  title: Parallel-delivery efficiency and integration milestone
+  objective: Prove that the Phase 15.5 operating model increases accepted delivery flow without duplicated full-suite work, stranded Symphony turns, unbounded CI or review queues, unsafe integration shortcuts or avoidable rebases.
+  context: Focused tests cannot prove that the new workflow works under concurrent delivery. The milestone runs a controlled independent workload before ATLAS-253's live ceiling ramp. It compares the current operating model with the Phase 15.5 model using predeclared windows and thresholds. Passing this milestone is the explicit operator gate for releasing ATLAS-253 from Needs Human; it does not itself execute or close the Phase 15 concurrency ramp.
+  status: planned
+  ticket_type: infrastructure
+  risk_level: critical
+  priority: 50
+  relevant_docs:
+  - WORKFLOW.md
+  - ROADMAP.md
+  - docs/atlas/implementation-roadmap.md
+  - docs/atlas/multi-agent-delivery-control.md
+  - docs/atlas/parallel-delivery-efficiency-and-integration-control.md
+  - docs/runbooks/local-development.md
+  - docs/runbooks/pr-acceptance.md
+  acceptance_criteria:
+  - Before execution the operator records fixed observation windows, workload independence evidence and numerical PASS/FAIL thresholds for agent active time, local validation, CI queue/run time, duplicated complete sweeps, integration occupancy, review dwell, conflicts, rebases and accepted flow.
+  - A controlled workload proves agents execute their deterministic scoped plans, publish once, enter CI-pending and release Symphony slots; no agent polls CI or repeats a complete suite for an unchanged SHA without a recorded conservative-profile reason.
+  - System-tier CI alone advances CI-pending work, every failure/indeterminate class routes as designed, and no queue exceeds its active operator policy.
+  - Protected lanes prevent concurrent ownership of seeded hotspots while independent work remains admissible, with reproducible holds and no unintended Linear promotion.
+  - Clean exact-base candidates complete acceptance without branch rewrite; seeded conflict, base/head movement and provider ambiguity route safely to rebase-required or indeterminate with no stale authority.
+  - Repository and external-call spies prove no automatic merge/rebase/push, worker cancellation, CI mutation, plan approval, permission expansion, deployment or secret-bearing retained evidence.
+  - Phase 15.5 closes only when every threshold and authority invariant passes; a lower or ambiguous result records FAIL, leaves ATLAS-253 in Needs Human and does not change the committed Symphony ceiling.
+  non_goals:
+  - No ATLAS-253 live ramp, no change to `max_concurrent_agents`, no Phase 16 comparative model scoring, no automatic merge queue, autoscaling or claim that arbitrary interacting PRs are safe.
+  implementation_notes:
+  - Compare accepted completed flow rather than PR count or worker utilisation. Predeclare thresholds before the run and do not tune them after observing results. The operator releases ATLAS-253 only after the closure report is reviewed and merged.
+  test_requirements:
+  - Run the complete deterministic Python/API/UI/workflow/documentation matrix in CI plus a seeded live delivery exercise with CI, Linear, Symphony and GitHub fault injection.
+  - Retain bounded receipts for every metric/threshold and adversarial case; credential canaries, raw provider responses and workspace secrets must be absent.
+  documentation_requirements:
+  - WORKFLOW.md
+  - ROADMAP.md
+  - docs/atlas/implementation-roadmap.md
+  - docs/atlas/multi-agent-delivery-control.md
+  - docs/atlas/parallel-delivery-efficiency-and-integration-control.md
+  - docs/runbooks/local-development.md
+  - docs/runbooks/pr-acceptance.md
+  - docs/closure/phase-15.5-closure-report.md
+  definition_of_done:
+  - All seven criteria pass with complete bounded receipts, Phase 15.5 closure and canonical docs land together, ATLAS-253 remains operator-gated until that merge, no Symphony ceiling change occurs and the PR title carries the minted ticket key.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - phase-15-5
+  - milestone
+  - throughput
+  - integration
+  component: orchestration
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/inbox-stub-10-parallel-delivery-efficiency-milestone.md#parallel-delivery-efficiency-and-integration-milestone
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-13T21:44:51.546427Z'
+  updated_at: '2026-08-13T21:44:51.546427Z'
   completed_at: null
