@@ -1,0 +1,45 @@
+schema_version: 1
+repository: "derekrivers/atlas"
+base_commit: "462572f083ef353274ef3a46e33712eaf90f3e44"
+repository_files:
+  - "ROADMAP.md"
+  - "docs/MANIFEST.md"
+  - "docs/atlas/implementation-roadmap.md"
+  - "docs/atlas/multi-agent-delivery-control.md"
+  - "docs/atlas/parallel-delivery-efficiency-and-integration-control.md"
+  - "docs/atlas/phase-13-20-programme-horizon.md"
+  - "docs/planning/inbox/inbox-stub-01-tiered-local-validation.md"
+  - "docs/planning/inbox/inbox-stub-02-ci-pending-capacity.md"
+  - "docs/planning/inbox/inbox-stub-03-system-tier-ci-handoff.md"
+  - "docs/planning/inbox/inbox-stub-04-symphony-slot-release-workflow.md"
+  - "docs/planning/inbox/inbox-stub-05-protected-integration-lanes.md"
+  - "docs/planning/inbox/inbox-stub-06-synthetic-merge-feasibility.md"
+  - "docs/planning/inbox/inbox-stub-07-no-rewrite-exact-base-acceptance.md"
+  - "docs/planning/inbox/inbox-stub-08-delivery-pressure-api.md"
+  - "docs/planning/inbox/inbox-stub-09-integration-pressure-console.md"
+  - "docs/planning/inbox/inbox-stub-10-parallel-delivery-efficiency-milestone.md"
+  - "docs/planning/inbox/planning-batch-phase-15-5.yaml"
+  - "docs/runbooks/planning-phases-and-ticket-stubs.md"
+future_document_paths:
+  - "docs/closure/phase-15.5-closure-report.md"
+stubs:
+  - path: "docs/planning/inbox/inbox-stub-01-tiered-local-validation.md"
+    phase: 15.5
+  - path: "docs/planning/inbox/inbox-stub-02-ci-pending-capacity.md"
+    phase: 15.5
+  - path: "docs/planning/inbox/inbox-stub-03-system-tier-ci-handoff.md"
+    phase: 15.5
+  - path: "docs/planning/inbox/inbox-stub-04-symphony-slot-release-workflow.md"
+    phase: 15.5
+  - path: "docs/planning/inbox/inbox-stub-05-protected-integration-lanes.md"
+    phase: 15.5
+  - path: "docs/planning/inbox/inbox-stub-06-synthetic-merge-feasibility.md"
+    phase: 15.5
+  - path: "docs/planning/inbox/inbox-stub-07-no-rewrite-exact-base-acceptance.md"
+    phase: 15.5
+  - path: "docs/planning/inbox/inbox-stub-08-delivery-pressure-api.md"
+    phase: 15.5
+  - path: "docs/planning/inbox/inbox-stub-09-integration-pressure-console.md"
+    phase: 15.5
+  - path: "docs/planning/inbox/inbox-stub-10-parallel-delivery-efficiency-milestone.md"
+    phase: 15.5

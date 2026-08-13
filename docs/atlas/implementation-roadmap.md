@@ -859,11 +859,57 @@ passes, the Phase 15 milestone/closure change must commit and merge
 
 ---
 
+# Phase 15.5 — Parallel Delivery Efficiency and Integration Control
+
+Programme direction: `docs/atlas/phase-13-20-programme-horizon.md`.
+Design authority:
+`docs/atlas/parallel-delivery-efficiency-and-integration-control.md`.
+Planning state: PLANNING INPUTS PREPARED; ticket identities are assigned only
+through the governed `atlas plan --stubs-only` and `atlas apply` boundary.
+Phase 15.5 may begin after its planning inputs are merged. The existing
+API ticket ATLAS-250 and UI ticket ATLAS-251 remain prerequisites for their
+extensions.
+This phase changes no Symphony ceiling and must close before the operator
+releases ATLAS-253 from `Needs Human` for the live Phase 15 ramp.
+
+Phase 15.5 makes parallel delivery cheaper and safer before increasing
+capacity. Agents run deterministic ticket-required and affected checks for
+local confidence; complete CI remains the system-tier authority. Published
+work enters a distinct CI-pending state that does not consume Symphony working
+capacity. Protected repository surfaces are serialized through explicit
+integration lanes. A bounded feasibility spike must prove GitHub's exact-base
+synthetic-merge evidence before clean candidates may avoid branch rewrite;
+otherwise the existing operator-owned rebase lane remains authoritative.
+
+Planned delivery contracts (keys assigned only by `atlas apply`):
+
+1. Tiered local-validation contract and deterministic validation-plan CLI.
+2. CI-pending delivery state and separate integration capacity.
+3. System-tier CI reconciliation and ticket-state handoff.
+4. Symphony publish-once, release-slot workflow.
+5. Protected integration lanes for conflict-prone repository surfaces.
+6. Exact-base synthetic-merge feasibility spike.
+7. No-rewrite exact-base acceptance with fail-closed rebase fallback.
+8. Delivery-pressure API extensions.
+9. Integration-pressure operator console.
+10. Parallel-delivery efficiency and integration milestone.
+
+Milestone test: run a predeclared controlled workload and prove more accepted
+flow without repeated complete local sweeps, agent-side CI polling, stranded
+Symphony turns, unbounded CI/review/integration queues or unsafe freshness
+shortcuts. Seed protected-surface collisions, implementation and infrastructure
+CI failures, head/base movement, provider ambiguity and true merge conflicts.
+Every case must route deterministically without automatic merge, rebase,
+conflict resolution or ceiling change. A failed or ambiguous result leaves
+Phase 15.5 open and ATLAS-253 in `Needs Human`.
+
+---
+
 # Phase 16 — Delivery Intelligence and Agent Evaluation
 
 Programme direction: `docs/atlas/phase-13-20-programme-horizon.md`.
-Planning state: HORIZON; detailed design and ticketing gated on Phase 15
-closure.
+Planning state: HORIZON; detailed design and ticketing gated on Phase 15 and
+Phase 15.5 closure.
 
 Phase 16 establishes reproducible ticket, PR, CI, review, rebase, acceptance,
 completion, queue and cost observations. It evaluates agent/model performance
@@ -882,8 +928,8 @@ and never silently interpreted as success.
 # Phase 17 — Technical Debt and Reliability Steward
 
 Programme direction: `docs/atlas/phase-13-20-programme-horizon.md`.
-Planning state: HORIZON; detailed design and ticketing gated on Phase 15
-closure.
+Planning state: HORIZON; detailed design and ticketing gated on Phase 15 and
+Phase 15.5 closure.
 
 Phase 17 adds evidence-backed code-quality debt and reliability stewardship.
 The code-quality register remains distinct from delivery-anomaly `DebtItem`
@@ -902,8 +948,8 @@ close debt or create work.
 # Phase 18 — Governed Adaptive Planning
 
 Programme direction: `docs/atlas/phase-13-20-programme-horizon.md`.
-Planning state: HORIZON; detailed design and ticketing gated on Phase 15
-closure.
+Planning state: HORIZON; detailed design and ticketing gated on Phase 15 and
+Phase 15.5 closure.
 
 Phase 18 converts delivery intelligence, accepted lessons and recorded debt
 into durable, evidence-anchored planning recommendations. Atlas may assemble a

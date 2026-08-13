@@ -60,6 +60,9 @@ Phase design documents (one per engine; phase-readiness rule below):
 - `docs/atlas/multi-agent-delivery-control.md` — Phase 15: operator-owned
   capacity policy, coherent occupancy, deterministic admission, fail-closed
   Linear promotion and the controlled agent-ceiling ramp
+- `docs/atlas/parallel-delivery-efficiency-and-integration-control.md` — Phase
+  15.5: scoped local confidence with CI authority, CI-pending slot release,
+  protected integration lanes and no-rewrite exact-base acceptance
 
 Playbooks (generated canonical docs):
 

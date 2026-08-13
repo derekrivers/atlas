@@ -337,6 +337,12 @@ Ordinary committed `main` remains at `max_concurrent_agents: 1` and
 `max_turns: 10` while Phase 15 is open. The controlled exercise is pinned to
 the dedicated `phase-15-atlas-253-ceiling-ramp` branch. Only the operator may
 change that branch's declaration, in order, from 1 to 3 to 5 to 7 to 10.
+Before creating or resuming that milestone branch, the operator must verify
+that Phase 15.5's efficiency and integration milestone has passed, its closure
+report is merged and ATLAS-253 is deliberately released from `Needs Human`.
+Phase 15.5 changes no ceiling; it proves that focused local validation,
+system-tier CI handoff, protected integration lanes and exact-base acceptance
+do not turn additional slots into avoidable queue and rebase pressure.
 `max_turns` is outside this ramp and remains ten. Each edit requires a PASS
 receipt for the preceding gate; no intermediate value is merged or
 cherry-picked independently. The exact preflight, fixed observation window,
@@ -358,7 +364,7 @@ The entry gates are cumulative:
 
 | Level to begin | Evidence that must already exist |
 | ---: | --- |
-| 1 | The active policy is reconciled to the live one-agent declaration; Phase 15 controlled fixtures and admission observability are ready |
+| 1 | Phase 15.5 closure is merged; ATLAS-253 is operator-released; the active policy is reconciled to the live one-agent declaration; Phase 15 controlled fixtures and admission observability are ready |
 | 3 | Gate 1 PASS proves the serialized baseline, paused/draining no-admit behaviour and Changes Requested rework reserve |
 | 5 | Gate 3 PASS proves the first controlled increase and bounded review pressure |
 | 7 | Gate 5 PASS proves stable review pressure and stale/partial-write fail-closed behaviour |
