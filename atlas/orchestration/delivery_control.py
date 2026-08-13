@@ -8,11 +8,13 @@ from enum import StrEnum
 from typing import Literal
 from uuid import UUID
 
+from atlas.core.enums import RiskLevel
 from atlas.core.models import DeliveryAdmissionPolicyRevision
 from atlas.core.models.admission_run import (
     AdmissionDecisionType,
     AdmissionHoldCode,
     AdmissionHoldReason,
+    AdmissionRankInputs,
 )
 from atlas.pm import (
     AdmissionSyncReason,
@@ -56,11 +58,26 @@ class DeliveryControlHoldReason:
 
 
 @dataclass(frozen=True)
+class DeliveryControlRankInputs:
+    """Fixed safe projection of every persisted deterministic rank input."""
+
+    unlock_count: int
+    critical_path_member: bool
+    critical_path_position: int | None
+    priority: int
+    risk_level: RiskLevel
+    risk_severity: int
+    continuously_eligible_since: datetime
+    continuously_eligible_age_microseconds: int
+
+
+@dataclass(frozen=True)
 class DeliveryControlDecision:
     """One bounded candidate decision from the latest immutable run."""
 
     ticket_key: str
     rank: int
+    rank_inputs: DeliveryControlRankInputs
     decision: AdmissionDecisionType
     reasons: tuple[DeliveryControlHoldReason, ...]
 
@@ -153,6 +170,23 @@ def _hold_reasons(
     return tuple(bounded[key] for key in sorted(bounded))
 
 
+def _rank_inputs(inputs: AdmissionRankInputs) -> DeliveryControlRankInputs:
+    """Project only immutable ordering inputs, never stored ticket identities."""
+
+    return DeliveryControlRankInputs(
+        unlock_count=inputs.unlock_count,
+        critical_path_member=inputs.critical_path_member,
+        critical_path_position=inputs.critical_path_position,
+        priority=inputs.priority,
+        risk_level=inputs.risk_level,
+        risk_severity=inputs.risk_severity,
+        continuously_eligible_since=inputs.continuously_eligible_since,
+        continuously_eligible_age_microseconds=(
+            inputs.continuously_eligible_age_microseconds
+        ),
+    )
+
+
 def _latest_admission(
     database: Database, product_id: UUID
 ) -> DeliveryControlAdmissionState | None:
@@ -174,6 +208,7 @@ def _latest_admission(
             DeliveryControlDecision(
                 ticket_key=_bounded_text(decision.ticket_key) or "",
                 rank=min(decision.rank, MAX_DELIVERY_CONTROL_COUNT),
+                rank_inputs=_rank_inputs(decision.rank_inputs),
                 decision=decision.decision,
                 reasons=_hold_reasons(decision.reasons),
             )

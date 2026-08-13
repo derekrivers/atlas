@@ -281,21 +281,26 @@ operator-reconciliation state and does not claim three running workers.
 
 The latest admission response retains at most the first 100 ranked candidate
 decisions and reports both the complete stored decision count and whether the
-projection was truncated. Each included decision retains every distinct typed
-hold reason while duplicate per-issue instances collapse to their closed
-snapshot reason code. Raw Linear issue/state identities and pagination cursors
-are not projected. An unresolved `pending` or `indeterminate` durable write
-fence is returned as the typed `write_indeterminate` reason with only its run,
-ticket key, policy revision, state and observation time. GET never acquires an
-admission lease, reads Linear, evaluates or records a new admission run, writes
-an action receipt, or changes policy.
+projection was truncated. Each included decision projects the complete fixed
+deterministic rank inputs: unlock count, critical-path membership and position,
+priority, risk level and severity, and continuously-eligible timestamp and age.
+The browser can explain the persisted server ordering without recomputing it.
+Each included decision also retains every distinct typed hold reason while
+duplicate per-issue instances collapse to their closed snapshot reason code.
+Raw Linear issue/state identities and pagination cursors are not projected. An
+unresolved `pending` or `indeterminate` durable write fence is returned as the
+typed `write_indeterminate` reason with only its run, ticket key, policy
+revision, state and observation time. GET never acquires an admission lease,
+reads Linear, evaluates or records a new admission run, writes an action
+receipt, or changes policy.
 
 `POST /api/v1/delivery-control/policy` accepts one strict complete policy:
 `expected_revision`, `mode`, approved ceiling, working and review budgets,
 Changes Requested reserve, and both complete lane-limit arrays. Every field is
-required; extra fields, booleans as integers, duplicate canonical selectors,
-client-supplied actor/action/product/current-state fields and partial policy
-patches are rejected. The route resolves the Phase 13 mutation context and
+required; extra fields at the policy level or inside either lane-entry type,
+booleans as integers, duplicate canonical selectors, client-supplied
+actor/action/product/current-state fields and partial policy patches are
+rejected. The route resolves the Phase 13 mutation context and
 `Idempotency-Key`, then calls the delivery admission policy service exactly
 once. Product, action identity, actor and current revision remain server-owned.
 Applied and exact-replay commands return the immutable policy revision and its

@@ -910,6 +910,16 @@ export interface components {
             key: string;
         };
         /**
+         * DeliveryAdmissionComponentLaneLimitRequest
+         * @description Strict component-lane entry accepted only inside a complete policy request.
+         */
+        DeliveryAdmissionComponentLaneLimitRequest: {
+            /** Component */
+            component: string;
+            /** Limit */
+            limit: number;
+        };
+        /**
          * DeliveryAdmissionMode
          * @description Operator-selected admission posture.
          * @enum {string}
@@ -945,14 +955,14 @@ export interface components {
             /** Changes Requested Reserve */
             changes_requested_reserve: number;
             /** Component Lane Limits */
-            component_lane_limits: components["schemas"]["ComponentLaneLimit"][];
+            component_lane_limits: components["schemas"]["DeliveryAdmissionComponentLaneLimitRequest"][];
             /** Expected Revision */
             expected_revision: number;
             mode: components["schemas"]["DeliveryAdmissionMode"];
             /** Review Budget */
             review_budget: number;
             /** Risk Lane Limits */
-            risk_lane_limits: components["schemas"]["RiskLaneLimit"][];
+            risk_lane_limits: components["schemas"]["DeliveryAdmissionRiskLaneLimitRequest"][];
             /** Working Budget */
             working_budget: number;
         };
@@ -997,6 +1007,15 @@ export interface components {
             risk_lane_limits: components["schemas"]["RiskLaneLimit"][];
             /** Working Budget */
             working_budget: number;
+        };
+        /**
+         * DeliveryAdmissionRiskLaneLimitRequest
+         * @description Strict risk-lane entry accepted only inside a complete policy request.
+         */
+        DeliveryAdmissionRiskLaneLimitRequest: {
+            /** Limit */
+            limit: number;
+            risk_level: components["schemas"]["RiskLevel"];
         };
         /**
          * DeliveryControlAdmissionSchema
@@ -1053,6 +1072,7 @@ export interface components {
             decision: components["schemas"]["AdmissionDecisionType"];
             /** Rank */
             rank: number;
+            rank_inputs: components["schemas"]["DeliveryControlRankInputsSchema"];
             /** Reasons */
             reasons: components["schemas"]["DeliveryControlHoldReasonSchema"][];
             /** Ticket Key */
@@ -1149,6 +1169,30 @@ export interface components {
             limit: number;
             /** Selector */
             selector?: string | null;
+        };
+        /**
+         * DeliveryControlRankInputsSchema
+         * @description Fixed secret-free inputs that produced one deterministic candidate rank.
+         */
+        DeliveryControlRankInputsSchema: {
+            /** Continuously Eligible Age Microseconds */
+            continuously_eligible_age_microseconds: number;
+            /**
+             * Continuously Eligible Since
+             * Format: date-time
+             */
+            continuously_eligible_since: string;
+            /** Critical Path Member */
+            critical_path_member: boolean;
+            /** Critical Path Position */
+            critical_path_position: number | null;
+            /** Priority */
+            priority: number;
+            risk_level: components["schemas"]["RiskLevel"];
+            /** Risk Severity */
+            risk_severity: number;
+            /** Unlock Count */
+            unlock_count: number;
         };
         /**
          * DeliveryControlResponse

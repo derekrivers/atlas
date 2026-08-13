@@ -28,6 +28,7 @@ from atlas.api.schemas import (
     DeliveryControlIndeterminateReasonSchema,
     DeliveryControlOccupancySchema,
     DeliveryControlOverCapacityReasonSchema,
+    DeliveryControlRankInputsSchema,
     DeliveryControlResponse,
     DeliveryControlRiskLaneOccupancySchema,
     DeliveryControlStatusOccupancySchema,
@@ -895,6 +896,24 @@ def present_delivery_control(
                     DeliveryControlDecisionSchema(
                         ticket_key=decision.ticket_key,
                         rank=decision.rank,
+                        rank_inputs=DeliveryControlRankInputsSchema(
+                            unlock_count=decision.rank_inputs.unlock_count,
+                            critical_path_member=(
+                                decision.rank_inputs.critical_path_member
+                            ),
+                            critical_path_position=(
+                                decision.rank_inputs.critical_path_position
+                            ),
+                            priority=decision.rank_inputs.priority,
+                            risk_level=decision.rank_inputs.risk_level,
+                            risk_severity=decision.rank_inputs.risk_severity,
+                            continuously_eligible_since=(
+                                decision.rank_inputs.continuously_eligible_since
+                            ),
+                            continuously_eligible_age_microseconds=(
+                                decision.rank_inputs.continuously_eligible_age_microseconds
+                            ),
+                        ),
                         decision=decision.decision,
                         reasons=[
                             DeliveryControlHoldReasonSchema(

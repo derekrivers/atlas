@@ -592,6 +592,18 @@ class SystemStatusResponse(BaseModel):
     last_evidence_pull_at: datetime | None
 
 
+class DeliveryAdmissionRiskLaneLimitRequest(RiskLaneLimit):
+    """Strict risk-lane entry accepted only inside a complete policy request."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True, hide_input_in_errors=True)
+
+
+class DeliveryAdmissionComponentLaneLimitRequest(ComponentLaneLimit):
+    """Strict component-lane entry accepted only inside a complete policy request."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True, hide_input_in_errors=True)
+
+
 class DeliveryAdmissionPolicyRequest(DeliveryAdmissionPolicySpec):
     """Complete strict policy replacement plus compare-and-set revision."""
 
@@ -607,9 +619,11 @@ class DeliveryAdmissionPolicyRequest(DeliveryAdmissionPolicySpec):
             "Symphony or WORKFLOW.md configuration value."
         ),
     )
-    risk_lane_limits: tuple[RiskLaneLimit, ...] = Field(max_length=len(RiskLevel))
-    component_lane_limits: tuple[ComponentLaneLimit, ...] = Field(
-        max_length=MAX_COMPONENT_LANES
+    risk_lane_limits: tuple[DeliveryAdmissionRiskLaneLimitRequest, ...] = Field(
+        max_length=len(RiskLevel)
+    )
+    component_lane_limits: tuple[DeliveryAdmissionComponentLaneLimitRequest, ...] = (
+        Field(max_length=MAX_COMPONENT_LANES)
     )
 
     def policy_spec(self) -> DeliveryAdmissionPolicySpec:
@@ -706,11 +720,27 @@ class DeliveryControlHoldReasonSchema(BaseModel):
     reserved_capacity: int | None = Field(default=None, ge=0, le=1_000_000)
 
 
+class DeliveryControlRankInputsSchema(BaseModel):
+    """Fixed secret-free inputs that produced one deterministic candidate rank."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    unlock_count: int = Field(ge=0)
+    critical_path_member: bool
+    critical_path_position: int | None = Field(ge=0)
+    priority: int = Field(ge=-2147483648, le=2147483647)
+    risk_level: RiskLevel
+    risk_severity: int = Field(ge=0, le=3)
+    continuously_eligible_since: datetime
+    continuously_eligible_age_microseconds: int = Field(ge=0)
+
+
 class DeliveryControlDecisionSchema(BaseModel):
     """One candidate decision from the latest immutable admission run."""
 
     ticket_key: str = Field(min_length=1, max_length=128)
     rank: int = Field(ge=1, le=1_000_000)
+    rank_inputs: DeliveryControlRankInputsSchema
     decision: AdmissionDecisionType
     reasons: list[DeliveryControlHoldReasonSchema]
 

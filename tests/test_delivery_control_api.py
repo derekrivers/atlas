@@ -265,14 +265,14 @@ def _seed_latest_run_and_fence(
                 external_linear_id=ticket.external_linear_id,
                 rank=1,
                 rank_inputs=AdmissionRankInputs(
-                    unlock_count=0,
-                    critical_path_member=False,
-                    critical_path_position=None,
+                    unlock_count=4,
+                    critical_path_member=True,
+                    critical_path_position=2,
                     priority=ticket.priority,
                     risk_level=ticket.risk_level,
                     risk_severity=3,
-                    continuously_eligible_since=NOW,
-                    continuously_eligible_age_microseconds=0,
+                    continuously_eligible_since=NOW - timedelta(minutes=5),
+                    continuously_eligible_age_microseconds=300_000_000,
                 ),
                 decision=AdmissionDecisionType.HOLD,
                 reasons=duplicate_snapshot_reasons,
@@ -380,6 +380,18 @@ def test_ac1_ac5_get_returns_policy_sync_occupancy_and_secret_free_typed_reasons
     latest = payload["latest_admission"]
     assert latest["decision_count"] == 1
     assert latest["decisions_truncated"] is False
+    assert latest["decisions"][0]["rank_inputs"] == {
+        "unlock_count": 4,
+        "critical_path_member": True,
+        "critical_path_position": 2,
+        "priority": working.priority,
+        "risk_level": "critical",
+        "risk_severity": 3,
+        "continuously_eligible_since": (NOW - timedelta(minutes=5))
+        .isoformat()
+        .replace("+00:00", "Z"),
+        "continuously_eligible_age_microseconds": 300_000_000,
+    }
     reasons = latest["decisions"][0]["reasons"]
     assert [reason["code"] for reason in reasons] == [
         "risk_lane",
@@ -617,6 +629,48 @@ def test_ac2_complete_strict_policy_rejects_client_owned_or_invalid_fields(
     assert response.status_code == 422
     assert service.calls == []
     assert secret not in response.text
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        _policy_body(
+            risk_lane_limits=[
+                {
+                    "risk_level": "high",
+                    "limit": 1,
+                    "actor": "nested-client-owned-secret",
+                }
+            ]
+        ),
+        _policy_body(
+            component_lane_limits=[
+                {
+                    "component": "atlas.api",
+                    "limit": 1,
+                    "current_state": "nested-client-owned-secret",
+                }
+            ]
+        ),
+    ],
+)
+def test_ac2_complete_policy_rejects_unknown_nested_lane_fields_before_service(
+    database: Database,
+    body: dict[str, object],
+) -> None:
+    seeded = _seed_policy(database)
+    service = RecordingPolicyService(seeded)
+    with TestClient(_writable_app(database, service)) as client:
+        csrf_token = _login(client)
+        response = client.post(
+            "/api/v1/delivery-control/policy",
+            json=body,
+            headers=_mutation_headers(csrf_token),
+        )
+
+    assert response.status_code == 422
+    assert service.calls == []
+    assert "nested-client-owned-secret" not in response.text
 
 
 def test_ac2_ac3_post_calls_policy_service_once_with_only_validated_policy(
@@ -859,6 +913,20 @@ def test_ac7_openapi_pins_authentication_strict_policy_and_bounded_enums(
     assert idempotency[0]["required"] is True
     request = schemas["DeliveryAdmissionPolicyRequest"]
     assert request["additionalProperties"] is False
+    assert request["properties"]["risk_lane_limits"]["items"] == {
+        "$ref": "#/components/schemas/DeliveryAdmissionRiskLaneLimitRequest"
+    }
+    assert request["properties"]["component_lane_limits"]["items"] == {
+        "$ref": "#/components/schemas/DeliveryAdmissionComponentLaneLimitRequest"
+    }
+    assert (
+        schemas["DeliveryAdmissionRiskLaneLimitRequest"]["additionalProperties"]
+        is False
+    )
+    assert (
+        schemas["DeliveryAdmissionComponentLaneLimitRequest"]["additionalProperties"]
+        is False
+    )
     assert set(request["required"]) == {
         "expected_revision",
         "mode",
@@ -888,6 +956,18 @@ def test_ac7_openapi_pins_authentication_strict_policy_and_bounded_enums(
     assert set(schemas["AdmissionSyncReason"]["enum"]) >= {
         "write_indeterminate",
         "indeterminate_still_unresolved",
+    }
+    rank_inputs = schemas["DeliveryControlRankInputsSchema"]
+    assert rank_inputs["additionalProperties"] is False
+    assert set(rank_inputs["required"]) == {
+        "unlock_count",
+        "critical_path_member",
+        "critical_path_position",
+        "priority",
+        "risk_level",
+        "risk_severity",
+        "continuously_eligible_since",
+        "continuously_eligible_age_microseconds",
     }
     assert GOOD_TOKEN not in str(document)
 

@@ -339,14 +339,23 @@ freshness rather than claiming a new Linear observation.
 
 The read response is bounded. It returns at most the first 100 rank-ordered
 decisions from the latest run, plus the stored total and a truncation flag.
-Within those decisions, duplicate per-issue snapshot defects collapse to each
-distinct closed source code; all typed hold codes and capacity selectors remain
-visible. Current over-capacity dimensions are recomputed from the same Phase 15
-working, review, reserve and lane definitions. A durable unresolved write fence
-is exposed as `write_indeterminate`, whether its stored fence state is
-`pending` or `indeterminate`. Raw Linear issue/state identities, board payloads,
-pagination cursors, exception summaries, credentials and browser secrets are
-excluded.
+Every included decision carries the complete fixed persisted rank-input
+projection: unlock count, critical-path membership and position, priority, risk
+level and severity, and continuously-eligible timestamp and age. The operator
+UI therefore explains the server ordering without reconstructing it or reading
+raw Linear identity. Within those decisions, duplicate per-issue snapshot
+defects collapse to each distinct closed source code; all typed hold codes and
+capacity selectors remain visible. Current over-capacity dimensions are
+recomputed from the same Phase 15 working, review, reserve and lane definitions.
+A durable unresolved write fence is exposed as `write_indeterminate`, whether
+its stored fence state is `pending` or `indeterminate`. Raw Linear issue/state
+identities, board payloads, pagination cursors, exception summaries,
+credentials and browser secrets are excluded.
+
+The complete-policy POST rejects unknown fields recursively: the policy object,
+each risk-lane entry and each component-lane entry are all closed request
+shapes. Nested client-owned actor, action or current-state material cannot cross
+the validation boundary or invoke the policy service.
 
 Policy replacement requires every policy field and both complete lane arrays
 in one strict JSON body. The API accepts no product, actor, action or current

@@ -173,6 +173,18 @@ const deliveryControlTypeParity: [
   Assert<Equal<PolicyResponse, Schema['DeliveryAdmissionPolicyResponse']>>,
   Assert<
     Equal<
+      PolicyRequest['risk_lane_limits'][number],
+      Schema['DeliveryAdmissionRiskLaneLimitRequest']
+    >
+  >,
+  Assert<
+    Equal<
+      PolicyRequest['component_lane_limits'][number],
+      Schema['DeliveryAdmissionComponentLaneLimitRequest']
+    >
+  >,
+  Assert<
+    Equal<
       DeliveryControl['policy']['mode'],
       Schema['DeliveryAdmissionMode']
     >
@@ -193,11 +205,19 @@ const deliveryControlTypeParity: [
   >,
   Assert<
     Equal<
+      NonNullable<
+        DeliveryControl['latest_admission']
+      >['decisions'][number]['rank_inputs'],
+      Schema['DeliveryControlRankInputsSchema']
+    >
+  >,
+  Assert<
+    Equal<
       DeliveryControl['indeterminate_reasons'][number]['reason'],
       Schema['AdmissionSyncReason']
     >
   >,
-] = [true, true, true, true, true, true, true]
+] = [true, true, true, true, true, true, true, true, true, true]
 const closedValueFieldParity: [
   Assert<Equal<TicketBoardItem['status'], Schema['TicketStatus']>>,
   Assert<Equal<TicketBoardItem['ticket_type'], Schema['TicketType']>>,
