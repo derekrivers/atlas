@@ -195,9 +195,9 @@ enter `Ready for Agent` now.
   running agent, delete a workspace or terminate Symphony work.
 - Phase 13's action ledger governs policy changes. The PM Engine remains the
   sole writer of the `Ready for Agent` transition.
-- The current ceiling of three remains unchanged until the controlled ramp is
-  authorised. Five, seven and ten are operator-selected ceilings, not targets
-  Atlas tries to fill.
+- The current serialized ceiling of one remains unchanged on ordinary `main`
+  until the controlled ramp closes at ten. Three, five, seven and ten are
+  operator-selected milestone-branch ceilings, not targets Atlas tries to fill.
 
 ### Falsifiable milestone
 
@@ -206,7 +206,7 @@ prove Atlas never exceeds either budget, review pressure halts admission,
 Changes Requested work is not starved, lane limits prevent conflicting work,
 and pause/drain preserve active agents. Stale sync, partial Linear failure,
 concurrent admission and duplicate commands must admit nobody unexpectedly.
-After the 3, 5 and 7 gates pass, the operator sets `WORKFLOW.md` on the
+After the 1, 3, 5 and 7 gates pass, the operator sets `WORKFLOW.md` on the
 dedicated milestone branch to `max_concurrent_agents: 10` and runs the
 ten-agent exercise. Only after that gate passes may the Phase 15
 milestone/closure change merge `max_concurrent_agents: 10` to `main`. A failed
@@ -422,14 +422,16 @@ implicitly global product.
 
 ## Capacity ramp policy
 
-Until Phase 15 says otherwise, the repo-owned Symphony ceiling remains three.
-The operator may raise the ceiling only after the preceding level has produced
-enough independent work and review evidence:
+Until Phase 15 closes successfully at ten, the repo-owned Symphony ceiling on
+ordinary `main` remains one. Only the operator may raise the dedicated
+milestone-branch declaration after the preceding level has produced enough
+independent work and review evidence:
 
 | Ceiling | Purpose |
 | ---: | --- |
-| 3 | Baseline for Phase 13 foundations and early Phase 14 |
-| 5 | First controlled test of admission and review-pressure behaviour |
+| 1 | Serialized Gate 1 baseline and current ATLAS-054M runtime |
+| 3 | First controlled increase after Gate 1 PASS |
+| 5 | Controlled test of stable review and stale-write behaviour |
 | 7 | Stress dependency lanes, review dwell and Changes Requested recovery |
 | 10 | Phase 15 milestone ceiling after all fail-closed controls pass |
 

@@ -820,10 +820,10 @@ Programme direction: `docs/atlas/phase-13-20-programme-horizon.md`.
 Design authority: `docs/atlas/multi-agent-delivery-control.md`.
 Planning state: WAVE A INPUTS PREPARED; the Phase 14 closure prerequisite is
 satisfied, but the live ten-agent milestone remains gated by Phase 15's own
-ordered delivery contracts. Committed `main` keeps `WORKFLOW.md` at three
-during delivery. The controlled milestone branch advances that file through
-5, 7 and 10 only after each preceding gate passes. Phase 15 cannot close until
-the ten-agent gate passes and the milestone/closure change lands
+ordered delivery contracts. Committed `main` keeps `WORKFLOW.md` at one during
+delivery. The controlled milestone branch proves one and advances that file
+through 3, 5, 7 and 10 only after each preceding gate passes. Phase 15 cannot
+close until the ten-agent gate passes and the milestone/closure change lands
 `max_concurrent_agents: 10` on `main`.
 
 Phase 15 replaces promote-everything readiness with deterministic,
@@ -844,10 +844,10 @@ Planned delivery contracts (keys assigned only by `atlas apply`):
 6. Authenticated delivery-control policy and status API.
 7. Operator delivery-control and admission-explanation UI.
 8. Symphony ceiling contract and controlled-ramp runbook.
-9. Three-to-five-to-seven-to-ten delivery-control milestone.
+9. One-to-three-to-five-to-seven-to-ten delivery-control milestone.
 
 Milestone test: with more than ten independent seeded tickets and a controlled
-three-to-five-to-seven-to-ten live ramp, prove Atlas never exceeds working,
+one-to-three-to-five-to-seven-to-ten live ramp, prove Atlas never exceeds working,
 review or lane limits; review pressure stops new admission; Changes Requested
 work is not starved; and pause/drain preserve active agents. Stale sync,
 partial Linear failure, concurrent ticks and duplicate commands must produce

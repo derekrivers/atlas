@@ -12,11 +12,11 @@ promote it only when one coherent delivery snapshot and the current operator
 policy show room in every applicable budget.
 
 The phase closes only when a live controlled wave with more than ten
-independent tickets proves the ceiling can move from 3 to 5, 7 and 10 without
-exceeding working, review or lane budgets, starving Changes Requested work or
-granting Atlas scheduling, review or merge authority, and the milestone/closure
-change then lands `WORKFLOW.md` with `max_concurrent_agents: 10`. Closure below
-ten is prohibited.
+independent tickets first proves the serialized one-agent baseline and then
+proves the ceiling can move to 3, 5, 7 and 10 without exceeding working, review
+or lane budgets, starving Changes Requested work or granting Atlas scheduling,
+review or merge authority. The milestone/closure change then lands
+`WORKFLOW.md` with `max_concurrent_agents: 10`. Closure below ten is prohibited.
 
 ## Authority and ownership
 
@@ -69,7 +69,7 @@ The policy contains:
 - `changes_requested_reserve`, bounded from 0 to `working_budget`;
 - zero or more exact risk-lane and canonical component-lane limits, each
   bounded from 0 to `working_budget`; and
-- the operator-approved Symphony ceiling, initially 3.
+- the operator-approved Symphony ceiling recorded for that policy revision.
 
 Risk selectors use the four closed `RiskLevel` values and may occur once each.
 Component selectors are NFKC-normalised, trimmed and case-folded exact strings;
@@ -87,6 +87,16 @@ creates explicit revision one for every existing product with mode `running`,
 ceiling `3`, working budget `3`, review budget `3`, reserve `0` and empty lane
 sets. The migration changes neither `WORKFLOW.md` nor live Symphony
 configuration, so it cannot raise the existing ceiling as a side effect.
+
+Revision one is immutable historical bootstrap data, not the current live
+Symphony ceiling. ATLAS-054M later set the live declaration to one. Before any
+Phase 15 milestone activity, the operator must append a new policy revision
+with `approved_symphony_ceiling=1`, `working_budget=1` and valid reserve/lane
+limits, then move the active pointer to that revision through the owning
+operator control. The recorded revision and fingerprint must be observed to
+match the live one-agent declaration before Gate 1 begins. The milestone is
+blocked if that reconciliation cannot be proved; migration `0025` and revision
+one are never updated, deleted or relabelled as the current policy.
 
 Every post-bootstrap creation or replacement goes through the Phase 13
 operator-action gateway as `delivery_admission_policy.revise`. The service
@@ -316,26 +326,52 @@ an explicit confirmation and never silently retry an altered revision.
 
 ## Symphony ceiling ramp
 
-Committed `main` remains at `max_concurrent_agents: 3` while Phase 15 is built.
-For the live exercise, the operator uses a dedicated milestone branch and
-changes its `WORKFLOW.md` ceiling from 3 to 5, 7 and 10 only after the preceding
-evidence gate passes:
+There is one operator-owned Symphony ceiling:
+`WORKFLOW.md`'s `agent.max_concurrent_agents`. The policy field
+`approved_symphony_ceiling` is its recorded admission-side mirror, not another
+control. Working and review budgets, Changes Requested reserve and lane limits
+bound Atlas admission independently; actual occupied slots are observed
+Symphony sessions. None is a utilisation target.
 
-| Ceiling | Required evidence before proceeding |
+Ordinary committed `main` remains at `max_concurrent_agents: 1` and
+`max_turns: 10` while Phase 15 is open. The controlled exercise is pinned to
+the dedicated `phase-15-atlas-253-ceiling-ramp` branch. Only the operator may
+change that branch's declaration, in order, from 1 to 3 to 5 to 7 to 10.
+`max_turns` is outside this ramp and remains ten. Each edit requires a PASS
+receipt for the preceding gate; no intermediate value is merged or
+cherry-picked independently. The exact preflight, fixed observation window,
+evidence receipt, stop conditions and rollback are defined in the Symphony
+ceiling controlled-ramp runbook in `docs/runbooks/operator-environment.md`.
+The ramp introduces no delivery-policy mutation path: only the human/operator
+may reconcile the policy mirror through the existing governed Phase 15
+policy-revision boundary, and neither agents nor ramp automation receive that
+authority.
+
+The milestone-only doc-linter and workflow-contract validation context accepts
+levels 1, 3, 5, 7 and 10 only on the exact dedicated branch. Ordinary CI omits
+that context, so an open-phase checkout above one remains non-mergeable. Every
+gate receipt pins the fetched `origin/main` and branch merge-base commits. If
+main moves, the gate fails; after the operator restores one and rebases, every
+old receipt is historical and the cumulative sequence restarts at Gate 1.
+
+The entry gates are cumulative:
+
+| Level to begin | Evidence that must already exist |
 | ---: | --- |
-| 3 | Baseline admission, pause/drain and rework-reserve proof |
-| 5 | Stable review occupancy and no stale/partial-write breach |
-| 7 | Component/risk lane and Changes Requested recovery proof |
-| 10 | Phase 14 closed; exact-head acceptance throughput remains within policy |
+| 1 | The active policy is reconciled to the live one-agent declaration; Phase 15 controlled fixtures and admission observability are ready |
+| 3 | Gate 1 PASS proves the serialized baseline, paused/draining no-admit behaviour and Changes Requested rework reserve |
+| 5 | Gate 3 PASS proves the first controlled increase and bounded review pressure |
+| 7 | Gate 5 PASS proves stable review pressure and stale/partial-write fail-closed behaviour |
+| 10 | Gate 7 PASS, Phase 14 closure and adequate exact-head acceptance throughput at seven |
 
-Each level is a maximum, never a desired occupancy. Failure or sustained
-review pressure stops the exercise. On any failed gate, the operator restores
-or retains the last proven `WORKFLOW.md` value on the milestone branch, records
-the failure, leaves Phase 15 open and merges none of the branch's ceiling
-changes to `main`; the milestone may not declare closure below ten. Only after
-the ten-agent gate succeeds does the Phase 15 milestone/closure change commit
-and merge `max_concurrent_agents: 10` to `main`. A rollback of the configured
-branch ceiling is an operator change and never terminates active workers.
+A failed or incomplete level restores or retains the last proven branch value,
+records a FAIL receipt, leaves Phase 15 open and merges no ceiling change to
+`main`. Pausing admission or lowering the branch declaration constrains future
+admission/scheduling only; neither action claims to terminate active Symphony
+sessions. Closure below ten is prohibited. Only a successful Gate 10 permits
+the one milestone/closure PR to merge, and its resulting `main` tree must
+declare exactly `max_concurrent_agents: 10`. A checkout at 3, 5 or 7 is valid
+only as the pinned milestone branch state and remains unmergeable to `main`.
 
 ## Explicit non-goals
 
@@ -350,7 +386,8 @@ branch ceiling is an operator change and never terminates active workers.
 
 Seed more than ten independent tickets across risk and component lanes plus
 Review Required, Needs Human and Changes Requested work. Against the live PM
-sync and Symphony boundary, move deliberately through ceilings 3, 5, 7 and 10.
+sync and Symphony boundary, prove the serialized level and then move
+deliberately through ceilings 1, 3, 5, 7 and 10.
 Prove every occupancy and lane invariant, review-pressure stop, rework reserve,
 pause/drain behaviour, deterministic selection and truthful sync timestamp.
 Inject stale board/policy snapshots, concurrent ticks, partial/malformed reads,

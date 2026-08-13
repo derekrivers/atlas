@@ -62,14 +62,20 @@ hooks:
     rm -f "${probe_output}"
   before_remove: |
     true
-# Concurrency is bounded by REVIEW throughput, not agent capacity:
-# every PR needs a reviewer pass plus the operator's acceptance
-# chain, and concurrent branches in Review Required stale each
-# other as siblings merge. Dependency chains already serialise
-# most work, so a small number is honest headroom for genuinely
-# independent tickets. Raise deliberately, not aspirationally.
+# `agent.max_concurrent_agents` is the single controlling Symphony worker
+# ceiling. The operator is the sole owner of this value. Atlas working,
+# review and lane budgets are admission limits, and observed occupied slots
+# are runtime facts; neither changes this declaration. Ordinary committed
+# `main` stays at 1 while Phase 15 is open; only exact Gate 10 closure may land
+# 10. Intermediate values 3, 5 and 7 belong only to the milestone branch.
+# Concurrency is bounded by REVIEW throughput, not agent capacity: every PR
+# needs a reviewer pass plus the operator's acceptance chain, and concurrent
+# branches in Review Required stale each other as siblings merge. Dependency
+# chains already serialise most work, so headroom is raised deliberately,
+# never as a utilisation target.
 agent:
   max_concurrent_agents: 1
+  # max_turns is not part of the Symphony concurrency ramp.
   max_turns: 10
 # ─────────────────────────────────────────────────────────────────────────
 # Codex model requirement — read before editing `codex.command` below.
