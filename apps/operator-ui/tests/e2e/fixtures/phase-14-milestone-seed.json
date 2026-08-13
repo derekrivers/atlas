@@ -1,0 +1,111 @@
+{
+  "metadata": {
+    "description": "Deterministic Phase 14 live-API/browser milestone seed for ATL-412.",
+    "expected_ticket": "ATLAS-244",
+    "expected_pr": 412,
+    "expected_head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "raw_evidence_canary": "PHASE14_RAW_EVIDENCE_SECRET_CANARY_7f9c"
+  },
+  "timestamp": "2030-08-12T12:00:00+00:00",
+  "product": {
+    "id": "00000000-0000-4000-8000-000000000244",
+    "key": "ATLAS",
+    "name": "Atlas",
+    "description": "Seeded Atlas Phase 14 acceptance milestone product.",
+    "vision": "Prove the complete exact-head acceptance spine without external mutation."
+  },
+  "epics": [
+    {
+      "id": "00000000-0000-4000-8000-000000000e14",
+      "key": "ATLAS-E1",
+      "title": "Phase 14 acceptance milestone seed",
+      "status": "planned",
+      "priority": 1,
+      "risk_level": "high"
+    }
+  ],
+  "adrs": [],
+  "tickets": [
+    {
+      "id": "00000000-0000-4000-8000-000000000244",
+      "key": "ATLAS-244",
+      "status": "review_required",
+      "priority": 1,
+      "risk_level": "high",
+      "estimated_effort": 5,
+      "relevant_docs": ["docs/atlas/review-acceptance-console.md"],
+      "acceptance_criteria": [
+        "The built UI and live API reach merge readiness only at one exact head.",
+        "Every blocked action returns typed reasons without unintended mutation.",
+        "A deliberately long acceptance identity remains readable without horizontal overflow while keyboard focus, status announcements, canonical verification rows, and the manual-merge boundary stay available to the operator across responsive layouts."
+      ],
+      "documentation_requirements": [
+        "docs/atlas/review-acceptance-console.md"
+      ],
+      "external_github_issue_id": "412",
+      "source_anchor": "docs/atlas/review-acceptance-console.md#phase-14-live-milestone"
+    }
+  ],
+  "dependencies": [],
+  "evidence": [
+    {
+      "id": "00000000-0000-4000-8000-00000000e241",
+      "ticket_key": "ATLAS-244",
+      "evidence_type": "test_result",
+      "status": "passed",
+      "summary": "Historical system tests from an obsolete PR head.",
+      "commit_sha": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "external_run_id": "phase-14-old-head-tests",
+      "job_name": "test-phase-14-old-head",
+      "payload_hash": "1111111111111111111111111111111111111111111111111111111111111111",
+      "source_uri": "https://example.invalid/atlas/old-head/tests",
+      "raw_payload": {
+        "secret_canary": "PHASE14_RAW_EVIDENCE_SECRET_CANARY_7f9c"
+      }
+    },
+    {
+      "id": "00000000-0000-4000-8000-00000000e242",
+      "ticket_key": "ATLAS-244",
+      "evidence_type": "lint_result",
+      "status": "passed",
+      "summary": "Historical lint from an obsolete PR head.",
+      "commit_sha": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "external_run_id": "phase-14-old-head-lint",
+      "job_name": "lint-phase-14-old-head",
+      "payload_hash": "2222222222222222222222222222222222222222222222222222222222222222",
+      "source_uri": "https://example.invalid/atlas/old-head/lint",
+      "raw_payload": {
+        "secret_canary": "PHASE14_RAW_EVIDENCE_SECRET_CANARY_7f9c"
+      }
+    },
+    {
+      "id": "00000000-0000-4000-8000-00000000e243",
+      "ticket_key": "ATLAS-244",
+      "evidence_type": "manual_approval",
+      "status": "passed",
+      "summary": "Historical blanket approval from an obsolete PR head.",
+      "commit_sha": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "created_by_type": "human",
+      "created_by_id": "operator",
+      "raw_payload": {
+        "secret_canary": "PHASE14_RAW_EVIDENCE_SECRET_CANARY_7f9c"
+      }
+    },
+    {
+      "id": "00000000-0000-4000-8000-00000000e244",
+      "ticket_key": "ATLAS-244",
+      "evidence_type": "manual_approval",
+      "status": "passed",
+      "summary": "Historical criterion confirmation from an obsolete PR head.",
+      "commit_sha": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "created_by_type": "human",
+      "created_by_id": "operator",
+      "raw_payload": {
+        "acceptance_criterion_hash": "0d601ba684e4786e763608b8f9e5ba1b44df62248fdd8a3565796d315f4a1171",
+        "secret_canary": "PHASE14_RAW_EVIDENCE_SECRET_CANARY_7f9c"
+      }
+    }
+  ],
+  "verification_checks": [],
+  "lessons": []
+}

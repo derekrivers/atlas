@@ -331,6 +331,14 @@ action nor the read service runs Git, mutates GitHub or Linear, transitions a
 ticket, upgrades schema or invokes PM sync; Atlas continues to advise a manual
 GitHub merge only.
 
+The Phase 14 closure milestone mechanically traps Symphony entry points along
+with GitHub/Git, Linear, schema and PM-sync mutations while driving the built UI
+against the live API and store. Successful readiness and every failure/race
+case leave the traps empty. This is not a new Symphony command surface: the
+one-action owner is synchronous and process-local, and the residual interval
+from the last fresh GET to the operator's manual merge remains governed by the
+one-PR freeze.
+
 ### Operator-owned PR rebase lane
 
 `atlas pr rebase` is the operator-owned lane for a mechanically stale PR after

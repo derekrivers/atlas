@@ -1,5 +1,11 @@
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  mkdtempSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -9,8 +15,36 @@ const repoRoot = join(appRoot, '..', '..')
 const atlasServeArgs = ['run', 'atlas', 'api', 'serve']
 
 export type AtlasStoreProbe = {
+  acceptance_sessions: Array<{
+    id: string
+    lifecycle: string
+    stored_merge_ready: boolean
+    step_summaries: Record<
+      string,
+      {
+        reasons: string[]
+        receipt_ids: string[]
+        state: string
+        verification?: {
+          head_commit: string | null
+          status: string
+          verdict_id: string
+        } | null
+      }
+    >
+    updated_at: string
+  }>
   context_lesson_ids: string[]
+  evidence: Array<{
+    commit_sha: string | null
+    created_by_type: string
+    id: string
+    status: string
+    ticket_id: string
+    type: string
+  }>
   lessons: Record<string, { confidence: number | null; status: string; updated_at: string }>
+  pm_sync_receipts: Array<{ id: string; result: string }>
   receipts: Array<{
     action: string
     actor: { id: string; type: string }
@@ -19,10 +53,31 @@ export type AtlasStoreProbe = {
     result_code: string
     target: { id: string; type: string }
   }>
+  schema: { revision: string | null; tables: string[] }
+  ticket_statuses: Record<string, string>
+  ticket_transitions: Array<{
+    from: string
+    id: string
+    ticket_id: string
+    to: string
+  }>
+  verification_checks: Array<{
+    id: string
+    required: boolean
+    status: string
+    ticket_id: string
+    type: string
+  }>
+}
+
+export type ExternalMutationEvent = {
+  category: string
+  operation: string
 }
 
 export type AtlasApiServer = {
   apiBaseURL: string
+  externalMutations: () => ExternalMutationEvent[]
   launchMode: () => 'production-cli' | 'test-factory'
   output: () => string
   probeStore: () => AtlasStoreProbe
@@ -42,7 +97,34 @@ export type StartAtlasApiServerOptions = {
 }
 
 export type AcceptanceGitHubState = {
-  mode: 'current' | 'failure' | 'head-moved' | 'main-moved' | 'timeout'
+  delay_ms?: number
+  error_canary?: string
+  github?:
+    | 'current'
+    | 'evidence-malformed'
+    | 'failure'
+    | 'head-moved'
+    | 'head-moved-after-evidence'
+    | 'main-moved'
+    | 'main-moved-after-evidence'
+    | 'malformed'
+    | 'timeout'
+  mode?: 'current' | 'failure' | 'head-moved' | 'main-moved' | 'timeout'
+  receipt_failure_action?:
+    | 'acceptance_session.confirm'
+    | 'acceptance_session.pull_evidence'
+    | 'acceptance_session.verify'
+  store_failure?: boolean
+  ticket?: 'criteria-drift' | 'current' | 'missing'
+  verification?:
+    | 'canonical'
+    | 'close-set-mismatch'
+    | 'failed'
+    | 'malformed'
+    | 'not_applicable'
+    | 'old-head'
+    | 'pending'
+    | 'warning'
 }
 
 export const E2E_OPERATOR_TOKEN =
@@ -133,8 +215,15 @@ export async function startAtlasApiServer({
   const dbUrl = `sqlite:///${join(tempRoot, 'atlas.db')}`
   const clockPath = join(tempRoot, 'clock.txt')
   const acceptanceStatePath = join(tempRoot, 'acceptance-github-state.json')
+  const externalEventsPath = join(tempRoot, 'external-mutation-events.jsonl')
+  let stateRevision = 0
   writeFileSync(clockPath, clock ?? '2026-08-11T12:00:00+00:00', 'utf8')
-  writeFileSync(acceptanceStatePath, JSON.stringify({ mode: 'current' }), 'utf8')
+  writeFileSync(
+    acceptanceStatePath,
+    JSON.stringify({ github: 'current', revision: stateRevision }),
+    'utf8'
+  )
+  writeFileSync(externalEventsPath, '', 'utf8')
 
   const seedArgs = [
     'run',
@@ -194,6 +283,7 @@ export async function startAtlasApiServer({
         ATLAS_E2E_CLOCK_FILE: clockPath,
         ATLAS_E2E_ACCEPTANCE: currentOptions.acceptance ? '1' : '0',
         ATLAS_E2E_ACCEPTANCE_STATE_FILE: acceptanceStatePath,
+        ATLAS_E2E_EXTERNAL_EVENTS_FILE: externalEventsPath,
         ATLAS_E2E_RECEIPT_FAILURE: currentOptions.receiptFailure ? '1' : '0',
         ATLAS_E2E_RECEIPT_FAILURE_CANARY:
           currentOptions.receiptFailureCanary ?? 'seeded-receipt-failure',
@@ -224,6 +314,11 @@ export async function startAtlasApiServer({
 
   return {
     apiBaseURL,
+    externalMutations: () =>
+      readFileSync(externalEventsPath, 'utf8')
+        .split('\n')
+        .filter(Boolean)
+        .map((line) => JSON.parse(line) as ExternalMutationEvent),
     launchMode: () => launchMode,
     output: () => apiOutput,
     probeStore: () => {
@@ -278,8 +373,16 @@ export async function startAtlasApiServer({
         stdout: result.stdout,
       }
     },
-    setAcceptanceState: (state) =>
-      writeFileSync(acceptanceStatePath, JSON.stringify(state), 'utf8'),
+    setAcceptanceState: (state) => {
+      stateRevision += 1
+      const nextStatePath = `${acceptanceStatePath}.next`
+      writeFileSync(
+        nextStatePath,
+        JSON.stringify({ ...state, revision: stateRevision }),
+        'utf8'
+      )
+      renameSync(nextStatePath, acceptanceStatePath)
+    },
     setClock: (timestamp) => writeFileSync(clockPath, timestamp, 'utf8'),
     stop: async () => {
       await stopProcess(apiProcess)

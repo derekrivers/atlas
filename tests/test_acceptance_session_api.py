@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
@@ -162,12 +163,17 @@ def _seed_ticket(database: Database) -> Ticket:
     )
 
 
-def _app(database: Database, github: FakeGitHubClient) -> FastAPI:
+def _app(
+    database: Database,
+    github: FakeGitHubClient,
+    *,
+    clock: Callable[[], datetime] | None = None,
+) -> FastAPI:
     return create_app(
         database=database,
         enable_writes=True,
         operator_token=GOOD_TOKEN,
-        clock=lambda: NOW,
+        clock=clock or (lambda: NOW),
         acceptance_repositories=(f"{OWNER}/{REPO}",),
         acceptance_github_client=github,
         acceptance_external_timeout_seconds=0.25,
@@ -269,6 +275,119 @@ def test_ac2_security_idempotency_and_authenticated_no_store_get(
     assert read.headers["cache-control"] == "no-store"
     assert read.json()["merge_ready"] is False
     assert read.json()["reasons"]
+
+
+@pytest.mark.parametrize(
+    ("path", "payload"),
+    [
+        (
+            f"/api/v1/reviews/{PR}/acceptance-sessions",
+            {"repository": f"{OWNER}/{REPO}"},
+        ),
+        (f"/api/v1/acceptance-sessions/{uuid4()}/evidence", {}),
+        (
+            f"/api/v1/acceptance-sessions/{uuid4()}/confirm",
+            {
+                "criteria_fingerprint": "sha256:" + "a" * 64,
+                "criterion_indexes": [0],
+                "manual_approval": True,
+            },
+        ),
+        (f"/api/v1/acceptance-sessions/{uuid4()}/verify", {}),
+    ],
+    ids=("create", "evidence", "confirm", "verify"),
+)
+def test_ac2_every_phase_14_post_retains_phase_13_security_and_redaction(
+    database: Database,
+    path: str,
+    payload: dict[str, object],
+) -> None:
+    clock = _MutableClock(NOW)
+    app = _app(database, FakeGitHubClient(), clock=clock)
+    services = (
+        _CreationSpy(),
+        _EvidenceSpy(),
+        _ConfirmationSpy(),
+        _VerificationSpy(),
+    )
+    app.dependency_overrides[get_acceptance_session_creation_service] = lambda: (
+        services[0]
+    )
+    app.dependency_overrides[get_acceptance_session_evidence_service] = lambda: (
+        services[1]
+    )
+    app.dependency_overrides[get_acceptance_session_confirmation_service] = lambda: (
+        services[2]
+    )
+    app.dependency_overrides[get_acceptance_session_verification_service] = lambda: (
+        services[3]
+    )
+    response_texts: list[str] = []
+
+    with TestClient(app) as client:
+        unauthenticated = client.post(
+            path,
+            json=payload,
+            headers=_headers("unknown-session", "unknown-csrf"),
+        )
+        response_texts.append(unauthenticated.text)
+        assert unauthenticated.status_code == 401
+
+        session_id, csrf = _login(client)
+        base_headers = _headers(session_id, csrf)
+        hostile_cases: tuple[tuple[dict[str, str], tuple[str, ...], int], ...] = (
+            ({}, ("origin",), 403),
+            ({"origin": "http://hostile.example"}, (), 403),
+            ({}, (CSRF_HEADER_NAME,), 403),
+            ({CSRF_HEADER_NAME: "raw-csrf-canary"}, (), 403),
+            ({"content-type": "application/x-www-form-urlencoded"}, (), 415),
+        )
+        for replacements, removals, expected_status in hostile_cases:
+            headers = {**base_headers, **replacements}
+            for name in removals:
+                headers.pop(name)
+            response = client.post(path, json=payload, headers=headers)
+            response_texts.append(response.text)
+            assert response.status_code == expected_status
+
+        revoked = client.request(
+            "DELETE",
+            "/api/v1/session",
+            headers=base_headers,
+        )
+        assert revoked.status_code == 200
+        after_revoke = client.post(path, json=payload, headers=base_headers)
+        response_texts.append(after_revoke.text)
+        assert after_revoke.status_code == 401
+
+        expired_session, expired_csrf = _login(client)
+        clock.advance(timedelta(minutes=31))
+        after_expiry = client.post(
+            path,
+            json=payload,
+            headers=_headers(expired_session, expired_csrf),
+        )
+        response_texts.append(after_expiry.text)
+        assert after_expiry.status_code == 401
+
+    assert all(service.calls == 0 for service in services)
+    retained = "\n".join(response_texts)
+    assert GOOD_TOKEN not in retained
+    assert csrf not in retained
+    assert "raw-csrf-canary" not in retained
+    assert "PHASE14_RAW_EVIDENCE_SECRET_CANARY" not in retained
+    assert len(retained) < 4096
+
+
+@dataclass
+class _MutableClock:
+    current: datetime
+
+    def __call__(self) -> datetime:
+        return self.current
+
+    def advance(self, duration: timedelta) -> None:
+        self.current += duration
 
 
 @pytest.mark.parametrize(

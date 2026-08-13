@@ -3,8 +3,9 @@
 Status: Delivered design document for Phase 10, amended by Phase 11 OP-2 for
 exactly two additive read routes and by the closed Phase 13 loopback operator
 session and governed lesson disposition commands, then by the Phase 14
-authenticated acceptance-session resource. Describes the HTTP projection
-surface delivered by ATLAS-187..191 and the additive governed local resources.
+authenticated acceptance-session resource closed by
+`docs/closure/phase-14-closure-report.md`. Describes the HTTP projection surface
+delivered by ATLAS-187..191 and the additive governed local resources.
 
 ## Purpose and scope
 
@@ -153,8 +154,10 @@ criterion text and unknown fields are rejected. Success returns the updated
 safe session plus its receipt. Create returns the safe session plus its durable
 hashed creation-command identity. Receipt-backed action errors expose their
 canonical `result_code`; stale refusals also return every movement or blocking
-`reason`. Gateway-level altered-key and in-progress conflicts remain distinct
-through `conflict_code`.
+`reason`. Evidence timeout, malformed-source, transport, authentication and
+rate-limit failures additionally return the complete bounded external-read
+reason set without foreign exception text. Gateway-level altered-key and
+in-progress conflicts remain distinct through `conflict_code`.
 
 `GET /api/v1/acceptance-sessions/{session_id}` requires the same live session
 cookie without mutation-only CSRF or Origin requirements. It calls
@@ -166,9 +169,10 @@ and performs no session, evidence, receipt, ticket or external-system write.
 
 Acceptance external reads use the server-owned GitHub client with a finite,
 positive request deadline (15 seconds by default). Timeout is the named
-`external_read_timeout` read reason or `external_timeout` non-advancing action
-result, never a job or hidden background continuation. The resource exposes no
-job ID, polling state, websocket, server-sent event or merge operation.
+`external_read_timeout` reason plus `external_state_indeterminate`, and an
+`external_timeout` non-advancing action result, never a job or hidden
+background continuation. The resource exposes no job ID, polling state,
+websocket, server-sent event or merge operation.
 
 `GET /api/v1/tickets` returns the lexicographic-key-ordered operator board. Its
 items expose the lean ticket fields needed for board scanning plus `epic_key`,

@@ -775,7 +775,8 @@ the Phase 13 closure report.
 
 Programme direction: `docs/atlas/phase-13-20-programme-horizon.md`.
 Design authority: `docs/atlas/review-acceptance-console.md`.
-Planning state: IN DELIVERY; the Phase 13 prerequisite is closed.
+Planning state: CLOSED 2026-08-12; closure evidence is recorded in
+`docs/closure/phase-14-closure-report.md`.
 
 Phase 14 turns the delivered review queue into an authenticated exact-head
 acceptance workflow. One immutable session pins the repository, PR, close-set,
@@ -785,22 +786,31 @@ ready-for-manual-merge result. Phase 12 remains the freshness authority and
 Phase 13 supplies the authentication and action-receipt boundary. Atlas does
 not merge, rebase or change Linear from the console.
 
-Planned delivery contracts (keys assigned only by `atlas apply`):
+Delivered contracts:
 
-1. Acceptance and confirmation zero-action diagnostics.
-2. Durable exact-head acceptance session and status projection.
-3. Exact-head acceptance-session evidence pull action.
-4. Acceptance-session criteria confirmation and manual approval action.
-5. Exact-head verification and manual-merge readiness evaluator.
-6. Authenticated acceptance-session workflow API.
-7. Review queue acceptance console UI.
-8. Acceptance console security, concurrency and live-API milestone.
+1. ATLAS-237 Acceptance and confirmation zero-action diagnostics — #299.
+2. ATLAS-238 Durable exact-head acceptance session and status projection —
+   #304.
+3. ATLAS-239 Exact-head acceptance-session evidence pull action — #308.
+4. ATLAS-240 Acceptance-session criteria confirmation and manual approval
+   action — #307.
+5. ATLAS-241 Exact-head verification and manual-merge readiness evaluator —
+   #314.
+6. ATLAS-242 Authenticated acceptance-session workflow API — #319.
+7. ATLAS-243 Review queue acceptance console UI — #320.
+8. ATLAS-244 Acceptance console security, concurrency and live-API milestone
+   — closure change.
 
-Milestone test: take a seeded exact-main Review Required PR through preflight,
-evidence, confirmation and passed verification until the exact head is ready
-for manual merge, while proving Atlas performs no merge. Head/main movement,
-criteria drift, old-head evidence, missing human gates, replay and concurrent
-session races must fail closed with typed reasons.
+Milestone result: a seeded exact-main Review Required PR passes through the
+built UI and live FastAPI/store from preflight through exact-head evidence,
+every human confirmation and explicit PASSED verification to current
+`merge_ready: true`. Head and live-main movement at every seam, criteria drift,
+old-head records, missing gates, every non-PASSED verdict, replay, cross-tab
+concurrency, timeout/malformed reads and receipt/store failures fail closed.
+Repository and external-call spies prove the workflow performs no merge,
+branch operation, Linear/Symphony action, schema upgrade or PM sync. The
+result remains synchronous, single-process and advisory; the one-PR freeze is
+still required across the residual final-GET-to-manual-merge race.
 
 ---
 
@@ -808,9 +818,9 @@ session races must fail closed with typed reasons.
 
 Programme direction: `docs/atlas/phase-13-20-programme-horizon.md`.
 Design authority: `docs/atlas/multi-agent-delivery-control.md`.
-Planning state: WAVE A INPUTS PREPARED; deterministic foundations may overlap
-after their Phase 13 prerequisites, but the live ten-agent milestone remains
-blocked on Phase 14 closure. Committed `main` keeps `WORKFLOW.md` at three
+Planning state: WAVE A INPUTS PREPARED; the Phase 14 closure prerequisite is
+satisfied, but the live ten-agent milestone remains gated by Phase 15's own
+ordered delivery contracts. Committed `main` keeps `WORKFLOW.md` at three
 during delivery. The controlled milestone branch advances that file through
 5, 7 and 10 only after each preceding gate passes. Phase 15 cannot close until
 the ten-agent gate passes and the milestone/closure change lands

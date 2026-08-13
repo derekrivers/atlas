@@ -179,6 +179,11 @@ moved `main`, repository or eligibility change, criteria drift, timeout,
 malformed GitHub response or other failed live read closes the displayed gate
 without rewriting session history. Treat `merge_ready: true` only as advice to
 perform the exact-head GitHub merge manually during the existing one-PR freeze.
+The console action owner is synchronous and process-local: do not treat it as a
+distributed lock or an asynchronous job. Phase 14's closure milestone proves
+cross-tab ownership within the supported single process and proves that the
+acceptance workflow itself performs no GitHub/Git, Linear, Symphony, schema or
+PM-sync mutation.
 
 ## 6. Merge — at the verdict commit
 

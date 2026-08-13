@@ -42,6 +42,7 @@ from atlas.github import (
     GitHubAuthenticationError,
     GitHubRateLimitError,
     GitHubRESTClient,
+    GitHubTimeoutError,
     GitHubTransportError,
 )
 from atlas.orchestration import (
@@ -496,23 +497,32 @@ def test_ac6_replay_concurrency_and_altered_replay_never_repeat_external_work(
 
 
 @pytest.mark.parametrize(
-    ("failure", "code"),
+    ("failure", "code", "reason"),
     [
+        (
+            GitHubTimeoutError("timeout canary that must not persist"),
+            OperatorActionResultCode.EXTERNAL_TIMEOUT,
+            Reason.EXTERNAL_READ_TIMEOUT,
+        ),
         (
             GitHubTransportError("transport canary that must not persist"),
             OperatorActionResultCode.EVIDENCE_TRANSPORT_FAILED,
+            Reason.EXTERNAL_READ_FAILED,
         ),
         (
             GitHubAuthenticationError("authentication canary that must not persist"),
             OperatorActionResultCode.EVIDENCE_AUTHENTICATION_FAILED,
+            Reason.EXTERNAL_READ_FAILED,
         ),
         (
             GitHubRateLimitError("rate-limit canary that must not persist"),
             OperatorActionResultCode.EVIDENCE_RATE_LIMIT_FAILED,
+            Reason.EXTERNAL_READ_FAILED,
         ),
         (
             EvidencePullMalformedSourceError("malformed canary that must not persist"),
             OperatorActionResultCode.EVIDENCE_MALFORMED_SOURCE,
+            Reason.EXTERNAL_RESPONSE_MALFORMED,
         ),
     ],
 )
@@ -520,6 +530,7 @@ def test_ac7_external_failures_are_distinct_nonadvancing_and_retryable(
     db: Database,
     failure: Exception,
     code: OperatorActionResultCode,
+    reason: Reason,
 ) -> None:
     session, tickets, _ = acceptance_fixture(db)
     pulled = PullFake(failure, PullResult([], [], []))
@@ -534,6 +545,7 @@ def test_ac7_external_failures_are_distinct_nonadvancing_and_retryable(
 
     assert failed.receipt is not None
     assert failed.receipt.result_code is code
+    assert failed.reasons == (reason, Reason.EXTERNAL_STATE_INDETERMINATE)
     assert failed.session is not None
     assert failed.session.lifecycle is AcceptanceSessionLifecycle.PREFLIGHT_PASSED
     assert len(pulled.calls) == 1

@@ -199,6 +199,9 @@ Phase closure reports (`docs/closure/`):
 - `docs/closure/phase-13-closure-report.md` — Phase 13 (Governed Operator
   Actions) closure: live writable-surface evidence, threat and race matrix,
   route inventory, residual risks and criteria self-assessment
+- `docs/closure/phase-14-closure-report.md` — Phase 14 (Review Acceptance
+  Console) closure: exact-head live-API/browser evidence, movement and failure
+  matrix, no-external-mutation proof, residual risks and criteria self-assessment
 
 Stubs awaiting content: `docs/product/`. `docs/tech-debt/` holds the
 debt register (`docs/tech-debt/debt-register.md`), a hand-maintained,
