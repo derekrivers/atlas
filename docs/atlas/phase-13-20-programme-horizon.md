@@ -1,8 +1,9 @@
 # Phase 13–20 Programme Horizon
 
-Status: Architectural direction active after Phase 13 closure. The governed
-Wave A plan/apply introduced Phases 13–15; Phase 13 is closed and Phases 14–15
-remain the active delivery graph. Phases 16–20 are provisional programme
+Status: Architectural direction active after Phase 14 closure. The governed
+Wave A plan/apply introduced Phases 13–15; Phases 13 and 14 are closed, Phase
+15 is in delivery and interstitial Phase 15.5 is prepared as its efficiency
+and integration prerequisite. Phases 16–20 are provisional programme
 commitments that require later design gates before ticket creation.
 
 ## Authority of this document
@@ -35,11 +36,12 @@ The progression is:
 1. secure the first operator write;
 2. compress exact-head human acceptance;
 3. govern multi-agent delivery capacity;
-4. measure delivery outcomes and agent performance;
-5. record technical debt and reliability risk;
-6. turn evidence into governed planning proposals;
-7. isolate and coordinate multiple products; and
-8. prove the complete loop on Atlas itself.
+4. remove duplicated validation and avoidable integration churn;
+5. measure delivery outcomes and agent performance;
+6. record technical debt and reliability risk;
+7. turn evidence into governed planning proposals;
+8. isolate and coordinate multiple products; and
+9. prove the complete loop on Atlas itself.
 
 ## Non-negotiable architecture boundaries
 
@@ -74,11 +76,12 @@ The following invariants apply through Phase 20:
 | Phase | Capability | New bounded authority | Human gate retained | Planning state |
 | --- | --- | --- | --- | --- |
 | 13 — Governed Operator Actions | Secure writable operator foundation | Promote or reject DRAFT lessons through authenticated, audited commands | Operator chooses every disposition | Closed 2026-08-11 |
-| 14 — Review Acceptance Console | Exact-head browser acceptance | Pull evidence, record confirmations and run verification for one pinned PR head | Operator reviews and merges manually | In delivery |
+| 14 — Review Acceptance Console | Exact-head browser acceptance | Pull evidence, record confirmations and run verification for one pinned PR head | Operator reviews and merges manually | Closed 2026-08-12 |
 | 15 — Multi-Agent Delivery Control | Capacity-aware ticket admission | Admit or hold dependency-ready work within operator-owned policy | Operator changes policy and agent ceiling | In delivery |
-| 16 — Delivery Intelligence and Agent Evaluation | Reproducible delivery measurement | Persist and compare observations; no delivery mutation | Operator interprets recommendations | Horizon; redesign gate after Phase 15 |
-| 17 — Technical Debt and Reliability Steward | Evidence-backed quality stewardship | Record code-quality debt and draft remediation proposals | Operator decides whether work enters planning | Horizon; redesign gate after Phase 15 |
-| 18 — Governed Adaptive Planning | Outcome-informed planning proposals | Assemble bounded, anchored plan amendments | `atlas apply` remains operator-controlled | Horizon; redesign gate after Phase 15 |
+| 15.5 — Parallel Delivery Efficiency and Integration Control | Scoped local confidence and bounded integration flow | Reconcile CI-pending work and classify exact-base candidates within explicit budgets | Operator retains rebase, conflict, review, merge and ramp release | Planning inputs prepared |
+| 16 — Delivery Intelligence and Agent Evaluation | Reproducible delivery measurement | Persist and compare observations; no delivery mutation | Operator interprets recommendations | Horizon; redesign gate after Phases 15 and 15.5 |
+| 17 — Technical Debt and Reliability Steward | Evidence-backed quality stewardship | Record code-quality debt and draft remediation proposals | Operator decides whether work enters planning | Horizon; redesign gate after Phases 15 and 15.5 |
+| 18 — Governed Adaptive Planning | Outcome-informed planning proposals | Assemble bounded, anchored plan amendments | `atlas apply` remains operator-controlled | Horizon; redesign gate after Phases 15 and 15.5 |
 | 19 — Multi-Product Control Plane | Isolated coordination across products | Apply product-scoped policy and capacity | Operator onboards products and allocates capacity | Horizon; redesign gate after Phase 18 |
 | 20 — Atlas Managing Atlas | Self-improvement capstone | Compose existing capabilities into one governed loop | All strategy, plan, review, merge and permission gates remain human | Horizon; redesign gate after Phase 18 |
 
@@ -90,7 +93,8 @@ flowchart TD
     P13 --> P14["14: Acceptance console"]
     P13 --> P15["15: Delivery control"]
     P14 --> P15
-    P15 --> G15["Gate A: scale evidence"]
+    P15 --> P155["15.5: Delivery efficiency"]
+    P155 --> G15["Gate A: scale evidence"]
     G15 --> P16["16: Delivery intelligence"]
     P16 --> P17["17: Debt steward"]
     P17 --> P18["18: Adaptive planning"]
@@ -99,6 +103,7 @@ flowchart TD
     P19 --> P20["20: Atlas manages Atlas"]
     P14 --> P20
     P15 --> P20
+    P155 --> P20
 ```
 
 Phase 14 design may overlap Phase 13 foundations, and Phase 15's deterministic
@@ -106,10 +111,17 @@ capacity engine may begin once its required Phase 13 primitives exist.
 However, Phase 15 cannot close or raise the live ceiling to ten until Phase 14
 has proved that review throughput can absorb the admitted work.
 
-Phase 16 begins only after Phase 15 produces trustworthy admission and queue
-events. Phase 17 consumes Phase 16's evidence rather than inventing a second
-telemetry path. Phase 18 consumes measured delivery outcomes, accepted lessons
-and recorded debt through the existing deterministic planning boundary.
+Phase 15.5 begins while Phase 15 is in flight to separate scoped local
+confidence from complete CI authority, bound CI/integration pressure and prove
+whether clean exact-base candidates can avoid branch rewrite. It changes no
+Symphony ceiling. Its closure releases ATLAS-253 to run Phase 15's controlled
+ceiling milestone.
+
+Phase 16 begins only after Phases 15 and 15.5 produce trustworthy admission,
+queue and integration events. Phase 17 consumes Phase 16's evidence rather
+than inventing a second telemetry path. Phase 18 consumes measured delivery
+outcomes, accepted lessons and recorded debt through the existing
+deterministic planning boundary.
 
 Phase 19 follows the adaptive-planning proof because product isolation must
 scope every planning, evidence and capacity operation. Phase 20 is a capstone
@@ -213,6 +225,46 @@ milestone/closure change merge `max_concurrent_agents: 10` to `main`. A failed
 gate restores or retains the last proven branch value, records the failure,
 leaves Phase 15 open and merges no ceiling change to `main`; closure below ten
 is not permitted.
+
+## Phase 15.5 — Parallel Delivery Efficiency and Integration Control
+
+### Outcome
+
+Atlas preserves parallel implementation capacity by assigning agents focused
+local confidence checks, making complete CI authoritative, releasing Symphony
+slots while checks run and bounding integration pressure separately from
+working and review capacity.
+
+### Direction fixed here
+
+- A deterministic repository-owned validation registry selects ticket-required
+  and affected local checks. Unknown or protected changes conservatively select
+  the complete sweep; CI still runs every required repository gate.
+- Published work enters a non-active `CI Pending` lifecycle. Agents publish
+  once and stop; system-tier CI reconciliation advances determinate outcomes.
+- Working, CI-pending, integration and review occupancy are separate policy
+  budgets. A free worker is not evidence that downstream capacity is free.
+- Protected migration, generated-contract, workflow, planning and hotspot
+  surfaces use deterministic exclusive integration lanes while independent
+  work remains parallel.
+- A bounded GitHub evidence spike must prove exact base, head and synthetic
+  merge identity before any clean candidate may avoid branch rewrite.
+  Conflict, movement or ambiguity falls back to Phase 12's operator rebase
+  lane; Atlas never rebases or resolves conflicts.
+- ATLAS-250 and ATLAS-251 remain prerequisites for API and UI extensions.
+  ATLAS-253 remains `Needs Human` until Phase 15.5 closure is merged.
+- The phase changes no `WORKFLOW.md` ceiling and does not execute the Phase 15
+  ramp.
+
+### Falsifiable milestone
+
+Against a fixed independent workload and predeclared thresholds, prove more
+accepted flow with fewer duplicate complete local sweeps, no agent CI polling,
+bounded CI/integration/review queues and fewer avoidable rebases. Seed protected
+surface contention, code and infrastructure failures, identity movement,
+provider ambiguity and a true conflict. Every case must route without
+automatic merge, rebase, push, worker cancellation or ceiling change. Any
+failed or ambiguous threshold leaves Phase 15.5 open and ATLAS-253 held.
 
 ## Phase 16 — Delivery Intelligence and Agent Evaluation
 
@@ -382,19 +434,23 @@ The repair was delivered without using the defective planning path to mint a
 ticket for itself, closing the circular-authority concern. Wave A may proceed
 through the repaired canonical plan/apply path.
 
-### Wave A — Phases 13–15
+### Wave A — Phases 13–15.5
 
 Gate 0 was satisfied and the prepared Phase 13–15 designs and ordered stubs
 entered one accepted Wave A dependency graph through the exact
 `atlas plan --stubs-only` and `atlas apply` boundary. Phase 13 is closed. Phase
-14 and Phase 15 delivery may overlap where their actual prerequisites permit,
-but the Phase 15 ten-agent milestone remains gated on Phase 14 closure.
+Phases 13 and 14 are closed. Phase 15 is in flight; Phase 15.5 is an
+interstitial prerequisite correction applied through its own governed batch.
+ATLAS-250 and ATLAS-251 may continue where their prerequisites permit, but
+ATLAS-253 remains operator-held until the Phase 15.5 closure gate passes.
 
-### Gate A — after Phase 15
+### Gate A — after Phases 15 and 15.5
 
 Before ticketising Phases 16–18, review:
 
 - observed review and integration throughput at each tested ceiling;
+- scoped-local versus complete-CI cost and duplicated-validation evidence;
+- CI-pending and protected-integration queue pressure;
 - whether ten agents is useful capacity or merely theoretical headroom;
 - completeness and trustworthiness of delivery-event sources;
 - unresolved Phase 13–15 security, audit and stale-state findings;
@@ -423,7 +479,8 @@ implicitly global product.
 ## Capacity ramp policy
 
 Until Phase 15 closes successfully at ten, the repo-owned Symphony ceiling on
-ordinary `main` remains one. Only the operator may raise the dedicated
+ordinary `main` remains one. Phase 15.5 changes no ceiling and must close
+before ATLAS-253 is released. Only the operator may then raise the dedicated
 milestone-branch declaration after the preceding level has produced enough
 independent work and review evidence:
 

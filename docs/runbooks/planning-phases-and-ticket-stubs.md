@@ -82,6 +82,22 @@ A moved base, additional commit, omitted overlay file or unlisted stub fails
 closed. Regenerate or rebase the planning batch; do not edit the manifest to
 hide unrelated movement.
 
+### Interstitial phases and in-flight prerequisites
+
+An interstitial identifier such as `15.5` is a semantic phase label, not a
+ticket-key namespace. It may appear in the roadmap, design, batch manifest and
+stub `phase` field when the work is a bounded prerequisite correction to an
+in-flight phase. It does not renumber the surrounding programme or authorise a
+second implementation path.
+
+Dependencies on already minted in-flight tickets use their existing
+`ATLAS-N` keys. New stubs may depend on those tickets, but planning inputs may
+not rewrite an existing ticket to depend on a future stub. When an existing
+milestone must wait for the interstitial phase, canonical designs record an
+explicit operator release gate and the ticket remains in a human-held state
+until the interstitial closure is merged. The operator verifies that state
+before applying the planning batch and again before releasing the milestone.
+
 ## Stub schema
 
 Use contiguous ordered filenames:
