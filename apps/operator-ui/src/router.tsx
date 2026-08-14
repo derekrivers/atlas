@@ -13,6 +13,7 @@ import { TicketBoardRoute } from '@/features/tickets/ticket-board'
 import { TicketDetailView } from '@/features/tickets/ticket-detail-view'
 import { ReviewQueueView } from '@/features/reviews/review-queue-view'
 import { AcceptanceSessionView } from '@/features/reviews/acceptance-session-view'
+import { DeliveryControlView } from '@/features/delivery-control/delivery-control-view'
 
 type CreateOperatorRouterOptions = {
   includeErrorProbe?: boolean
@@ -56,9 +57,16 @@ function createOperatorRouteTree({
   const reviews = getSurface('reviews')
   const criticalPath = getSurface('critical-path')
   const dependencyGraph = getSurface('dependency-graph')
+  const deliveryControl = getSurface('delivery-control')
   const lessons = getSurface('lessons')
 
   const operatorChildren = [
+    createRoute({
+      getParentRoute: () => operatorRoute,
+      path: deliveryControl.routePath,
+      component: DeliveryControlView,
+      errorComponent: RouteErrorBoundary,
+    }),
     createRoute({
       getParentRoute: () => operatorRoute,
       path: overview.routePath,

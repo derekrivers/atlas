@@ -11,6 +11,7 @@ import {
   atlasPullAcceptanceEvidence,
   atlasPromoteLesson,
   atlasRejectLesson,
+  atlasReplaceDeliveryAdmissionPolicy,
   atlasVerifyAcceptanceSession,
   type AtlasAcceptanceActionResponse,
   type AtlasAcceptanceConfirmationRequest,
@@ -19,6 +20,8 @@ import {
   type AtlasAcceptanceReadResponse,
   type AtlasAcceptanceVerificationRequest,
   type AtlasCreateAcceptanceSessionRequest,
+  type AtlasDeliveryAdmissionPolicyRequest,
+  type AtlasDeliveryAdmissionPolicyResponse,
   type AtlasApiRoute,
   type AtlasLessonDispositionResponse,
   type AtlasPromoteLessonRequest,
@@ -42,6 +45,10 @@ type RejectLessonVariables = {
   idempotencyKey: string
   lessonId: string
   request: AtlasRejectLessonRequest
+}
+type ReplaceDeliveryAdmissionPolicyVariables = {
+  idempotencyKey: string
+  request: AtlasDeliveryAdmissionPolicyRequest
 }
 type CreateAcceptanceSessionVariables = {
   idempotencyKey: string
@@ -92,11 +99,22 @@ export const atlasQueryKeys = {
     ['atlas', 'tickets', status ?? null] as const,
 }
 
-export function useDeliveryControlQuery(): AtlasQueryResult<'/api/v1/delivery-control'> {
+export function useDeliveryControlQuery(
+  enabled = true
+): AtlasQueryResult<'/api/v1/delivery-control'> {
   return useQuery({
+    enabled,
     queryKey: atlasQueryKeys.deliveryControl(),
     queryFn: () => atlasGet('/api/v1/delivery-control'),
   })
+}
+
+export function useReplaceDeliveryAdmissionPolicyMutation(): UseMutationResult<
+  AtlasDeliveryAdmissionPolicyResponse,
+  AtlasQueryError,
+  ReplaceDeliveryAdmissionPolicyVariables
+> {
+  return useMutation({ mutationFn: atlasReplaceDeliveryAdmissionPolicy })
 }
 
 export function useTicketsQuery(

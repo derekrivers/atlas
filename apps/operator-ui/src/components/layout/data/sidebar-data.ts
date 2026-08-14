@@ -4,6 +4,7 @@ import {
   LayoutDashboard,
   Network,
   ListChecks,
+  SlidersHorizontal,
   Ticket,
   TicketCheck,
 } from 'lucide-react'
@@ -17,6 +18,7 @@ const surfaceIcons = {
   reviews: ListChecks,
   'critical-path': GitBranch,
   'dependency-graph': Network,
+  'delivery-control': SlidersHorizontal,
   lessons: BookOpen,
 } satisfies Record<OperatorSurfaceId, React.ElementType>
 

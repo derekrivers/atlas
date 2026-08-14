@@ -1,7 +1,8 @@
 # Operator UI Design (Phase 11)
 
 Status: Delivered Phase 11 read surface extended by the closed, governed Phase
-13 lesson disposition workflow and the Phase 14 review-acceptance console.
+13 lesson disposition workflow, the Phase 14 review-acceptance console and the
+Phase 15 delivery-control instrument.
 Defines the browser surface over the Operator API, the framework adoption
 boundary, the bounded authentication/write entries, and the testing contract.
 Phase 11 operator rulings recorded in the reviewer session of 2026-07-26 remain
@@ -10,11 +11,12 @@ binding where a later governed workflow does not explicitly supersede them.
 ## Purpose and scope
 
 The operator UI is a browser instrument for reading Atlas operational state and
-for two bounded governed workflows: an authenticated operator may promote or
-reject a DRAFT lesson, and may drive an exact-head acceptance session through
-evidence, confirmation, and verification. It is not a second source of truth
-and holds no domain lifecycle, verdict, freshness, or readiness logic; the
-generated HTTP contract and the server services remain authoritative.
+for three bounded governed workflows: an authenticated operator may promote or
+reject a DRAFT lesson, may drive an exact-head acceptance session through
+evidence, confirmation, and verification, and may explicitly replace the
+complete Atlas delivery policy. It is not a second source of truth and holds no
+domain lifecycle, verdict, freshness, admission, occupancy, or readiness logic;
+the generated HTTP contract and the server services remain authoritative.
 
 Every other operator action — approving a plan gate, editing or merging a
 lesson, archiving an ACTIVE lesson, merging a PR, or moving a Linear status —
@@ -90,9 +92,15 @@ canonical in `review-acceptance-console.md`. The browser imports those generated
 types and enum values; it does not maintain parallel response models or compute
 a transition from them.
 
+Phase 15 consumes `GET /api/v1/delivery-control` and the complete-policy command
+`POST /api/v1/delivery-control/policy`. The read projection and mutation models
+are generated contracts. The browser neither derives admission decisions nor
+maintains a parallel policy model, and the command remains inside the Phase 13
+session, actor-context, CSRF, idempotency and receipt boundary.
+
 ## Views
 
-Eight routes, ratified. Each names what it cannot show, because the
+Nine routes, ratified. Each names what it cannot show, because the
 absences are contract facts, not backlog items.
 
 ### Overview — `/`
@@ -293,6 +301,52 @@ rules out for this projection. The UUIDs are therefore displayed
 literally. Fabricating a link would hide a contract gap; showing the
 UUID keeps it visible.
 
+### Delivery control — `/delivery-control`
+
+Consumes the authenticated delivery-control projection and the complete-policy
+replacement command. The authoritative snapshot shows policy revision and
+mode, truthful last-successful-sync time, server-reported working capacity,
+review pressure, protected Changes Requested reserve, risk and component lane
+occupancy, and every returned admission decision, rank input, reason and
+indeterminate or over-capacity state. Working and review capacity remain
+visually distinct. Lane limits and budgets are maximums, never utilisation
+targets or browser scoring inputs.
+
+The primary `approved_symphony_ceiling` label is **Approved policy ceiling**.
+Supporting text states that it is operator-owned Atlas admission policy, not an
+independent observation of configured or occupied Symphony workers.
+`WORKFLOW.md.agent.max_concurrent_agents` remains the separately governed
+configured Symphony ceiling; the browser does not read or infer it. Thus a
+server projection containing an approved policy ceiling of three remains policy
+state and does not imply that Symphony is configured for, or occupies, three
+workers.
+
+The policy form is a complete replacement: mode, approved policy ceiling,
+working and review budgets, protected Changes Requested reserve, all risk lane
+limits, all component lane limits, and `expected_revision` are visible in an
+explicit confirmation before submission. A fresh cryptographic idempotency key
+belongs to each new explicit command. Stale revision or altered replay requires
+the operator to load and inspect the current server policy before explicitly
+confirming another command; an ambiguous response permits only an explicit
+same-key retry of the unchanged command. Session expiry, security refusal and
+API unavailability preserve the proposal where safe.
+
+Success displays the server-returned policy revision and action receipt, then
+refetches the delivery-control projection. Submitted values never become
+authoritative optimistically. Loading or refetch failure retains the last
+truthful snapshot and visibly marks it stale; the browser displays the server
+timestamp and never substitutes a client clock or client-computed occupancy. A
+failed refetch after confirmed mutation success blocks another command until an
+authoritative refresh and never exposes the confirmed mutation as retryable.
+Paused and draining explanations say that no new admission occurs while active
+work is preserved, and never imply that a mode or lower policy limit terminates
+Symphony sessions.
+
+This route exposes no ticket promote/demote, dispatch, worker cancel/terminate,
+Symphony configuration, `WORKFLOW.md` edit, merge, rebase, policy optimiser or
+automatic **1 → 3 → 5 → 7 → 10** ramp control. The milestone sequence remains
+operator governed outside this UI.
+
 ### App shell
 
 Sidebar navigation, header, theme toggle, command palette, route-level error
@@ -305,7 +359,8 @@ URL state, query state, logs, or generated configuration. The returned CSRF
 token lives only in module memory. A refresh therefore loses browser write
 authority even if the HttpOnly server cookie remains valid and presents a
 restore-session flow before another ruling. Expiry does the same and requires
-the governed lesson or acceptance session to be re-reviewed after sign-in. A
+the governed lesson, acceptance session or delivery-policy proposal to be
+re-reviewed after sign-in. A
 refused login returns focus to the token field, and governed detail viewports
 are keyboard-scrollable.
 
@@ -321,7 +376,8 @@ Agent-run history, PlanRun history, ticket status timelines, debt items, tick
 failures, context packs, lesson-to-ticket navigation, plan approval, lesson
 editing/merging/ACTIVE archival, bulk disposition, generic resource updates,
 GitHub writes, Linear writes, rebase controls, post-merge completion, Symphony
-resume, schema upgrade, and PM-sync controls remain absent.
+configuration or session controls, automatic delivery-policy reconciliation,
+automatic ramping, schema upgrade, and PM-sync controls remain absent.
 
 ## Framework adoption boundary
 
@@ -365,11 +421,12 @@ the place an outside contributor should check before treating missing pagination
 missing ticket-detail epic data, literal lesson ticket UUIDs, or polling instead
 of push as bugs.
 
-That README also records the bounded contribution boundary: lesson disposition
-and the acceptance-session step commands are the only browser writes. They
-depend on the session, actor-context, idempotency, receipt, exact-head, and
-threat-model contracts. No generic or remote operator surface follows from
-those exceptions.
+That README also records the bounded contribution boundary: lesson disposition,
+acceptance-session step commands and complete delivery-policy replacement are
+the only browser domain writes. They depend on the session, actor-context,
+idempotency, receipt and threat-model contracts; acceptance additionally
+depends on exact-head authority. No generic or remote operator surface follows
+from those exceptions.
 
 The upstream MIT attribution for retained `satnaing/shadcn-admin` source and the
 vendored theme lives in `apps/operator-ui/THIRD_PARTY_NOTICES.md`.
@@ -409,6 +466,19 @@ vendored theme lives in `apps/operator-ui/THIRD_PARTY_NOTICES.md`.
   branch, Linear, Symphony, schema or PM-sync action occurs. Component/query
   tests cover every lifecycle and typed error state, one-action-in-flight,
   completed-step inspection, and the prohibition on local readiness derivation.
+- **Delivery-control browser evidence** uses the seeded live API and canonical
+  policy, admission-run, occupancy and fence repositories. It covers running,
+  paused and draining modes; an approved policy ceiling of three rendered only
+  as Atlas policy state; admitted, held, stale, over-capacity and indeterminate
+  reasons; complete confirmation; success receipts; fresh command keys;
+  altered replay; cross-tab stale revision and explicit conflict recovery;
+  session expiry; security refusal; ambiguous same-key retry; API unavailability;
+  stale-snapshot retention; long lane names; keyboard focus; announcements; and
+  responsive layouts. Store probes prove only the intended local policy
+  revisions and receipts were appended, ticket states did not change, and no
+  external write boundary was called. Component inventory tests prove every
+  forbidden control remains absent and that server decisions and reason sets
+  are rendered without replacement or reranking.
 - **Accessibility and responsive tests** use `@axe-core/playwright` in the
   same seeded live-API harness. The enforced automated standard is axe-core's
   WCAG 2.2 AA rule set, expressed by the `wcag2a`, `wcag2aa`, `wcag21a`,
@@ -488,11 +558,11 @@ GitHub merge, so the runbook's one-PR freeze remains binding.
 
 ## Deferred
 
-- **Other writes** — DRAFT lesson disposition and exact-head acceptance-session
-  steps are the only admitted browser mutations. Lesson editing, merging,
-  ACTIVE archival, generic updates, GitHub merge/rebase, Linear status,
-  Symphony resume, schema upgrade, and PM-sync writes require their own governed
-  designs.
+- **Other writes** — DRAFT lesson disposition, exact-head acceptance-session
+  steps and complete delivery-policy replacement are the only admitted browser
+  domain mutations. Lesson editing, merging, ACTIVE archival, generic updates,
+  GitHub merge/rebase, Linear status, Symphony configuration/session management,
+  schema upgrade, and PM-sync writes require their own governed designs.
 - **Remote authentication and multi-operator use** — the delivered session is
   single-operator and loopback-only under ADR-0009.
 - **Pagination-aware views** — enter when the API gains pagination. Every

@@ -3,8 +3,9 @@
 Status: Delivered Phase 13 design authority. Defines the first writable
 Operator API and UI slice, the single-operator authentication boundary,
 server-owned actor context, idempotent action receipts, and lesson
-promotion/rejection. Closure evidence is recorded in
-`docs/closure/phase-13-closure-report.md`.
+promotion/rejection. Phase 14 acceptance commands and the Phase 15 complete
+delivery-policy replacement reuse this authority boundary. Closure evidence is
+recorded in `docs/closure/phase-13-closure-report.md`.
 
 ## Purpose and milestone
 
@@ -52,6 +53,7 @@ identity and externally hosted operation remain unsupported.
 The protected assets are:
 
 - authority to admit a lesson into future context packs;
+- authority to revise Atlas delivery-admission policy;
 - operator identity and action history;
 - the bootstrap operator credential and live session;
 - the integrity of idempotency and action receipts;
@@ -312,11 +314,63 @@ region, returns focus to the bootstrap-token field after refused login, and
 checks every confirmation, busy, success and typed failure state in light and
 dark modes at `1366x768` and `1024x768`.
 
+## Phase 15 delivery-policy replacement
+
+Phase 15 adds one purpose-specific command inside this same authenticated and
+idempotent boundary:
+
+```http
+POST /api/v1/delivery-control/policy
+```
+
+The strict request contains the complete proposed policy and
+`expected_revision`; it contains no actor, product, action, current-state or
+runtime-discovery fields. The policy comprises mode, approved policy ceiling,
+working budget, review budget, protected Changes Requested reserve, and the
+complete risk and component lane-limit arrays. Unknown top-level and nested
+fields are rejected. There is no partial policy patch, automatic optimiser,
+automatic reconciliation or automatic **1 → 3 → 5 → 7 → 10** ramp command.
+
+The server resolves the local product and operator actor, performs one atomic
+policy revision through the Phase 15 application service, and returns the
+authoritative policy plus its action receipt. The command changes Atlas
+admission authority only: it neither reads nor edits `WORKFLOW.md`, discovers
+the configured or occupied Symphony state, changes ticket status, nor starts or
+terminates Symphony sessions. `approved_symphony_ceiling` is policy state;
+`WORKFLOW.md.agent.max_concurrent_agents` remains the separately governed
+configured Symphony ceiling.
+
+The browser confirms the full proposal and expected revision before minting a
+fresh idempotency key for a new command. It keeps proposal state separate from
+the server snapshot, displays the returned revision and receipt on success, and
+refetches before treating policy as current. Stale revision and altered replay
+return `409` without mutation: the proposal remains available for inspection,
+but the operator must load the current policy and explicitly confirm a new
+command with a new key. An ambiguous network or server failure preserves the
+unchanged command and key for an explicit same-command retry; it never silently
+retries an altered payload. Once a successful revision and receipt have been
+returned, a failed refetch blocks another command until authoritative refresh
+and never reclassifies the confirmed success as retryable. Session expiry and
+security refusal clear write authority while preserving the proposal where safe.
+
+The companion `GET /api/v1/delivery-control` is observational and `no-store`.
+Its server-returned policy, truthful sync timestamp, occupancy, decisions, rank
+inputs, reasons and indeterminate state remain authoritative. Refetch retains
+the last truthful snapshot as visibly stale until replacement. The UI does not
+use a client clock, compute admission or occupancy, or infer review availability
+from working or presumed Symphony capacity.
+
+Executable component inventory and live-API browser tests keep the boundary
+closed: the delivery view has no ticket promote/demote, dispatch, worker
+terminate/cancel, Symphony configuration, `WORKFLOW.md` edit, merge, rebase,
+optimiser or automatic-ramp control. Store and external-boundary probes prove
+that policy revision is the only intended write.
+
 ## Explicit non-goals
 
 - Editing or merging lessons.
 - Archiving an ACTIVE lesson or re-promoting a stale lesson.
-- Generic resource PATCH/PUT endpoints.
+- Generic resource PATCH/PUT endpoints or partial policy patches.
 - GitHub writes, Linear writes, plan approval, PR rebase or PR merge.
 - Remote deployment, TLS termination, teams, roles, multiple operators,
   password recovery or external identity providers.
@@ -335,11 +389,13 @@ submission, same/altered replay, ambiguous response retry, browser/CLI and
 two-browser races, and receipt failure across restart.
 
 Every refused or failed path proves zero unintended lesson or receipt success.
-The route-inventory test fixes the complete writable HTTP surface at session
-creation, session revocation, lesson promotion and lesson rejection; the final
-two are the only domain writes. CI retains no Playwright screenshot, trace or
-video, and the canary scan covers browser storage, URLs, generated assets,
-process output, response errors and receipts. The full Python,
+The Phase 13 route-inventory test fixes that milestone's writable HTTP surface
+at session creation, session revocation, lesson promotion and lesson rejection.
+Later purpose-specific acceptance-session and complete delivery-policy commands
+extend the inventory under this same boundary; they do not create a generic
+write route. CI retains no Playwright screenshot, trace or video, and the
+canary scan covers browser storage, URLs, generated assets, process output,
+response errors and receipts. The full Python,
 OpenAPI/client-drift, UI, accessibility and browser gates remain binding.
 
 ## Residual risks

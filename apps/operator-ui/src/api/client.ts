@@ -106,6 +106,12 @@ export type AtlasAcceptanceActionResponse = JsonResponse<
   PostOperationFor<'/api/v1/acceptance-sessions/{session_id}/evidence'>
 >
 export type AtlasAcceptanceReadResponse = AtlasRouteResponse<'/api/v1/acceptance-sessions/{session_id}'>
+export type AtlasDeliveryAdmissionPolicyRequest = JsonRequest<
+  PostOperationFor<'/api/v1/delivery-control/policy'>
+>
+export type AtlasDeliveryAdmissionPolicyResponse = JsonResponse<
+  PostOperationFor<'/api/v1/delivery-control/policy'>
+>
 
 export type AtlasValidationError = components['schemas']['HTTPValidationError']
 
@@ -368,6 +374,22 @@ export async function atlasRejectLesson({
     includeCsrf: true,
     method: 'POST',
     requestPath: `/api/v1/lessons/${encodeURIComponent(lessonId)}/reject`,
+  })
+}
+
+export async function atlasReplaceDeliveryAdmissionPolicy({
+  idempotencyKey,
+  request,
+}: {
+  idempotencyKey: string
+  request: AtlasDeliveryAdmissionPolicyRequest
+}): Promise<AtlasDeliveryAdmissionPolicyResponse> {
+  return atlasJsonRequest<AtlasDeliveryAdmissionPolicyResponse>({
+    body: request,
+    idempotencyKey,
+    includeCsrf: true,
+    method: 'POST',
+    requestPath: '/api/v1/delivery-control/policy',
   })
 }
 
