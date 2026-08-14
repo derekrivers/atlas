@@ -18,7 +18,8 @@ docs/atlas/implementation-roadmap.md ({Phase N — Phase name}).
 
 ## Required reading before writing any code
 
-1. AGENTS.md (rules) and docs/MANIFEST.md (canonical document index)
+1. AGENTS.md (rules), docs/MANIFEST.md (canonical document index), and
+   docs/runbooks/local-development.md (tiered validation contract)
 2. The {TICKET-KEY} entry and its surrounding epic in
    docs/atlas/implementation-roadmap.md, including the phase's
    milestone test
@@ -64,17 +65,22 @@ agents most often break)
 ## Definition of done
 
 - Acceptance criteria: {1–7 concrete, falsifiable criteria}
-- All tests pass locally: {command, e.g. `uv run pytest`}
-- Lint and type-check pass: {e.g. `uv run ruff check . &&
-  uv run ruff format --check . && uv run mypy atlas tests`}
+- Calculate `atlas validation-plan` with the exact base/head identities, every
+  changed path, every explicit ticket validation requirement, and every
+  ticket-declared test file; the CLI must report a verified read-only Git diff
+  and prove each explicit test at the head, or require `full-sweep`; include its
+  plan in the completion report
+- Run every command in that plan in order; if it selects `full-sweep`, do not
+  replace it with a narrower manual command
 - New behaviour is covered by new tests, including at least one negative
   case
 - Docs updated if behaviour changed; no unrelated diffs
 - A short completion report: what changed, how each acceptance criterion
-  is evidenced (test names / CI output), and any proposed follow-ups
+  is evidenced (test names / local plan output), and any proposed follow-ups
 
-Do not claim completion without the evidence above — an agent saying
-"done" is not done (ADR-0008).
+The scoped local result is agent-tier confidence, not repository completion.
+Do not claim completion without complete system-tier CI evidence at the
+accepted identity — an agent saying "done" is not done (ADR-0008).
 ```
 
 ---

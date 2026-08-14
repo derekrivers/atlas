@@ -1,10 +1,10 @@
 # Local Development
 
-Runbook for working on Atlas locally: installing the toolchain, running the
-test suite, and reproducing every CI gate before you push. The guiding
-principle is that **the local gates and CI run the same commands**. The Python,
-Node, browser, and PR-title gates are all reproducible locally, so a complete
-local sweep predicts a clean CI run.
+Runbook for working on Atlas locally: installing the toolchain, calculating the
+smallest safe local validation plan, and understanding the complete CI matrix.
+Agents validate ticket requirements and affected surfaces for local confidence;
+CI validates the complete repository at the accepted identity. Scoped local
+results are agent-tier evidence and never prove repository completion.
 
 ## Toolchain
 
@@ -20,10 +20,53 @@ uv sync --locked
 Every command below runs through `uv run`, which executes inside that
 environment; there is no virtualenv to activate by hand.
 
+## Deterministic local validation plan
+
+Supply `atlas validation-plan` with exact full Git object ids and every path in
+the corresponding base-to-head diff. The CLI derives that diff with read-only
+Git, includes both old and new rename paths, and compares it with the supplied
+set; it never writes the repository. A mismatch or discovery failure requires
+the complete local sweep. Add each registry-owned ticket requirement and
+explicit ticket test from the ticket contract:
+
+```bash
+uv run atlas validation-plan \
+  --base aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+  --head bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb \
+  --changed-path atlas/verification/validation_plan.py \
+  --changed-path tests/test_validation_plan.py \
+  --ticket-requirement documentation \
+  --ticket-test tests/test_validation_plan.py
+```
+
+Use `--json` for canonical compact output and
+`--expect-registry-version validation-registry/v1` when the caller must prove
+which policy it reviewed. Registered requirement ids are `python`, `static`,
+`documentation`, `schema`, `generated-client`, `ui`, `browser`,
+`workflow-contract` and `full-sweep`. Requirements and ticket tests are
+additive; the CLI has no exclusion option.
+
+Explicit ticket tests must be files at the supplied head and match the runner
+that the selected profile invokes: `tests/**/test_*.py` for Pytest,
+`apps/operator-ui/tests/acceptance/**/*.test.ts` for acceptance Vitest,
+`apps/operator-ui/tests/component/**/*.test.tsx` for browser Vitest, or
+Playwright's `.test`/`.spec` TypeScript forms under
+`apps/operator-ui/tests/e2e/`. A test-looking path outside those contracts
+cannot count as mandatory evidence and selects `full-sweep`.
+
+Run the emitted commands in order. Changed test files and proven explicit
+ticket test files appear in `test_targets` even when a broader profile command
+contains them. Unknown or invalid paths, an omitted or mismatched diff, Git discovery
+failure, an unprovable ticket test, ambiguous identities,
+registry-version/digest drift, input over the documented bounds and protected
+cross-cutting surfaces select `full-sweep` with explicit fallback reasons. A
+caller must not replace that fallback with a narrower manual plan.
+
 ## The gates
 
 CI runs fourteen independent jobs on pull requests (the title job is omitted on
-a push to `main`). Reproduce the Python gates from the repository root:
+a push to `main`). These jobs remain unfiltered and authoritative regardless of
+the local plan. The complete Python gates are:
 
 ```bash
 uv run pytest                              # tests
@@ -61,8 +104,10 @@ The PR-only title gate runs `scripts/check_pr_title.py` against the proposed
 title and merged title history; `.github/workflows/ci.yml` is the executable
 invocation.
 
-A green sweep of these is the bar for a pushable branch. Two of them encode
-Atlas governance rather than ordinary correctness:
+The deterministic planner selects from these same content-checking commands;
+its `full-sweep` profile runs the unfiltered Python gates plus both Operator UI
+wrappers. The PR-title gate remains event-scoped and CI authoritative. Two of
+the content gates encode Atlas governance rather than ordinary correctness:
 
 - **`doc_linter`** enforces the documentation contract — every canonical doc is
   registered in `docs/MANIFEST.md`, every referenced path and relative `.md`
@@ -180,15 +225,20 @@ Two cautions:
 
 ## Before you push
 
-A branch is pushable when, from a clean `uv sync --locked`:
+A branch is ready for publication when, from a clean `uv sync --locked`:
 
-1. `uv run pytest` is green;
-2. `uv run pre-commit run --all-files` passes (ruff, mypy, doc-linter,
-   import-linter);
-3. the Operator UI core and end-to-end commands pass when the UI or API contract
-   changed; and
+1. its validation plan names the exact base and head and includes every changed
+   path, ticket requirement and explicit ticket test;
+2. every ordered command in the emitted plan passes, including the complete
+   local sweep whenever fallback is mandatory;
+3. the plan and results are reported as agent-tier confidence, without claiming
+   that scoped checks prove the complete repository result; and
 4. for any change that reads or writes real Linear, the relevant live test has
    been run by hand and its result recorded on the PR ([ADR-0008]).
+
+After publication, complete CI at that exact candidate identity remains the
+system-tier completion authority. It runs every required repository job; no
+local profile removes or skips a CI gate.
 
 [Hypothesis]: https://hypothesis.readthedocs.io/
 [ADR-0008]: ../decisions/0008-ci-sourced-evidence-with-trust-tiers.md

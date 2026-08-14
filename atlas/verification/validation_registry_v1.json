@@ -1,0 +1,341 @@
+{
+  "schema_version": 1,
+  "registry_version": "validation-registry/v1",
+  "profile_order": [
+    "python",
+    "static",
+    "documentation",
+    "schema",
+    "generated-client",
+    "ui",
+    "browser",
+    "workflow-contract",
+    "full-sweep"
+  ],
+  "profiles": {
+    "python": {
+      "commands": [
+        "uv run pytest"
+      ]
+    },
+    "static": {
+      "commands": [
+        "uv run ruff check .",
+        "uv run ruff format --check .",
+        "uv run mypy atlas tests",
+        "uv run lint-imports"
+      ]
+    },
+    "documentation": {
+      "commands": [
+        "uv run python -m atlas.tools.doc_linter"
+      ]
+    },
+    "schema": {
+      "commands": [
+        "uv run pytest tests/test_storage_schema.py tests/test_schemas_export.py"
+      ]
+    },
+    "generated-client": {
+      "commands": [
+        "npm --prefix apps/operator-ui ci",
+        "npm --prefix apps/operator-ui run api:check"
+      ]
+    },
+    "ui": {
+      "commands": [
+        "npm --prefix apps/operator-ui ci",
+        "npm --prefix apps/operator-ui run lint",
+        "npm --prefix apps/operator-ui run typecheck",
+        "npm --prefix apps/operator-ui run test:acceptance",
+        "npm --prefix apps/operator-ui run build:bundle"
+      ]
+    },
+    "browser": {
+      "commands": [
+        "npm --prefix apps/operator-ui ci",
+        "apps/operator-ui/node_modules/.bin/playwright install chromium",
+        "npm --prefix apps/operator-ui run test:browser",
+        "npm --prefix apps/operator-ui run test:e2e",
+        "npm --prefix apps/operator-ui run test:a11y"
+      ]
+    },
+    "workflow-contract": {
+      "commands": [
+        "uv run pytest tests/test_workflow_contract.py"
+      ]
+    },
+    "full-sweep": {
+      "commands": [
+        "uv run pytest",
+        "uv run ruff check .",
+        "uv run ruff format --check .",
+        "uv run mypy atlas tests",
+        "uv run python -m atlas.tools.doc_linter",
+        "uv run lint-imports",
+        "./apps/operator-ui/scripts/ci.sh",
+        "./apps/operator-ui/scripts/ci-e2e.sh"
+      ]
+    }
+  },
+  "path_rules": [
+    {
+      "id": "python-source",
+      "prefix": "atlas/",
+      "suffixes": [".py"],
+      "profiles": ["python", "static"],
+      "reason": "Python implementation changed."
+    },
+    {
+      "id": "python-tests",
+      "prefix": "tests/",
+      "profiles": ["python", "static"],
+      "reason": "Python test or fixture changed."
+    },
+    {
+      "id": "python-scripts",
+      "prefix": "scripts/",
+      "suffixes": [".py"],
+      "profiles": ["python", "static"],
+      "reason": "Python repository script changed."
+    },
+    {
+      "id": "documentation-tree",
+      "prefix": "docs/",
+      "suffixes": [".md"],
+      "profiles": ["documentation"],
+      "reason": "Canonical or supporting documentation changed."
+    },
+    {
+      "id": "root-documentation",
+      "exact": [
+        "AGENTS.md",
+        "ARCHITECTURE.md",
+        "CLAUDE.md",
+        "PRODUCT.md",
+        "README.md",
+        "ROADMAP.md"
+      ],
+      "profiles": ["documentation"],
+      "reason": "Root documentation changed."
+    },
+    {
+      "id": "database-migrations",
+      "prefix": "atlas/storage/migrations/",
+      "profiles": ["schema"],
+      "reason": "Database migration surface changed."
+    },
+    {
+      "id": "database-schema-code",
+      "exact": [
+        "alembic.ini",
+        "atlas/storage/tables.py"
+      ],
+      "profiles": ["schema"],
+      "reason": "Database schema definition changed."
+    },
+    {
+      "id": "core-model-schema",
+      "prefix": "atlas/core/models/",
+      "suffixes": [".py"],
+      "profiles": ["schema"],
+      "reason": "Exported core model schema may have changed."
+    },
+    {
+      "id": "generated-json-schema",
+      "prefix": "docs/generated/schemas/",
+      "suffixes": [".json"],
+      "profiles": ["schema", "documentation"],
+      "reason": "Generated JSON schema changed."
+    },
+    {
+      "id": "api-contract-source",
+      "prefix": "atlas/api/",
+      "suffixes": [".py"],
+      "profiles": ["generated-client"],
+      "reason": "API code may change the generated Operator UI client."
+    },
+    {
+      "id": "openapi-generator",
+      "exact": [
+        "atlas/tools/operator_ui_openapi.py"
+      ],
+      "profiles": ["generated-client"],
+      "reason": "Generated-client tooling changed."
+    },
+    {
+      "id": "generated-openapi-client",
+      "exact": [
+        "apps/operator-ui/src/api/atlas-openapi-runtime.ts",
+        "apps/operator-ui/src/api/atlas-openapi.ts"
+      ],
+      "profiles": ["generated-client", "ui"],
+      "reason": "Generated Operator UI API client changed."
+    },
+    {
+      "id": "operator-ui-source",
+      "prefix": "apps/operator-ui/src/",
+      "profiles": ["ui", "browser"],
+      "reason": "Operator UI runtime surface changed."
+    },
+    {
+      "id": "operator-ui-acceptance-tests",
+      "prefix": "apps/operator-ui/tests/acceptance/",
+      "profiles": ["ui"],
+      "reason": "Operator UI acceptance test changed."
+    },
+    {
+      "id": "operator-ui-component-tests",
+      "prefix": "apps/operator-ui/tests/component/",
+      "profiles": ["browser"],
+      "reason": "Operator UI browser component test changed."
+    },
+    {
+      "id": "operator-ui-e2e-tests",
+      "prefix": "apps/operator-ui/tests/e2e/",
+      "profiles": ["browser"],
+      "reason": "Operator UI end-to-end test or harness changed."
+    },
+    {
+      "id": "operator-ui-browser-setup",
+      "prefix": "apps/operator-ui/tests/setup/",
+      "profiles": ["browser"],
+      "reason": "Operator UI browser test setup changed."
+    },
+    {
+      "id": "operator-ui-config",
+      "exact": [
+        "apps/operator-ui/components.json",
+        "apps/operator-ui/eslint.config.js",
+        "apps/operator-ui/index.html",
+        "apps/operator-ui/playwright.config.ts",
+        "apps/operator-ui/tsconfig.app.json",
+        "apps/operator-ui/tsconfig.json",
+        "apps/operator-ui/tsconfig.node.json",
+        "apps/operator-ui/vite.config.ts",
+        "apps/operator-ui/vitest.browser.config.ts",
+        "apps/operator-ui/vitest.config.ts"
+      ],
+      "profiles": ["ui", "browser"],
+      "reason": "Operator UI build or test configuration changed."
+    },
+    {
+      "id": "workflow-contract",
+      "exact": [
+        "WORKFLOW.md",
+        "tests/test_workflow_contract.py"
+      ],
+      "profiles": ["workflow-contract", "documentation"],
+      "reason": "Symphony workflow contract changed."
+    },
+    {
+      "id": "validation-registry",
+      "exact": [
+        "atlas/verification/validation_registry_v1.json"
+      ],
+      "profiles": ["full-sweep"],
+      "reason": "Validation policy registry changed."
+    },
+    {
+      "id": "shared-policy",
+      "exact": [
+        ".github/workflows/ci.yml",
+        ".pre-commit-config.yaml",
+        "apps/operator-ui/package-lock.json",
+        "apps/operator-ui/package.json",
+        "pyproject.toml",
+        "uv.lock"
+      ],
+      "profiles": ["full-sweep"],
+      "reason": "Shared validation or dependency policy changed."
+    }
+  ],
+  "ticket_requirements": {
+    "browser": ["browser"],
+    "documentation": ["documentation"],
+    "full-sweep": ["full-sweep"],
+    "generated-client": ["generated-client"],
+    "python": ["python"],
+    "schema": ["schema"],
+    "static": ["static"],
+    "ui": ["ui"],
+    "workflow-contract": ["workflow-contract"]
+  },
+  "protected_rules": [
+    {
+      "id": "database-migrations",
+      "lane": "database-schema",
+      "prefix": "atlas/storage/migrations/",
+      "reason": "Database migrations are a protected cross-cutting surface."
+    },
+    {
+      "id": "generated-contracts",
+      "lane": "generated-contracts",
+      "prefix": "docs/generated/schemas/",
+      "reason": "Generated contracts are a protected cross-cutting surface."
+    },
+    {
+      "id": "generated-client",
+      "lane": "generated-contracts",
+      "exact": [
+        "apps/operator-ui/src/api/atlas-openapi-runtime.ts",
+        "apps/operator-ui/src/api/atlas-openapi.ts",
+        "atlas/tools/operator_ui_openapi.py"
+      ],
+      "reason": "Generated-client surfaces require complete local validation."
+    },
+    {
+      "id": "workflow-policy",
+      "lane": "workflow-policy",
+      "exact": [
+        ".github/workflows/ci.yml",
+        ".pre-commit-config.yaml",
+        "WORKFLOW.md",
+        "tests/test_workflow_contract.py"
+      ],
+      "reason": "Workflow policy is a protected cross-cutting surface."
+    },
+    {
+      "id": "planning-renders",
+      "lane": "planning-state",
+      "prefix": "docs/planning/",
+      "reason": "Planning renders and store identity are protected surfaces."
+    },
+    {
+      "id": "key-authority",
+      "lane": "planning-state",
+      "exact": [
+        "atlas/planning/key_authority.py",
+        "atlas/storage/repositories.py"
+      ],
+      "reason": "Planning key authority is a protected cross-cutting surface."
+    },
+    {
+      "id": "api-contract",
+      "lane": "api-contract",
+      "prefix": "atlas/api/",
+      "reason": "API contracts are a protected generated-client boundary."
+    },
+    {
+      "id": "dependency-policy",
+      "lane": "dependency-policy",
+      "exact": [
+        "apps/operator-ui/package-lock.json",
+        "apps/operator-ui/package.json",
+        "pyproject.toml",
+        "uv.lock"
+      ],
+      "reason": "Shared dependency manifests are protected policy surfaces."
+    },
+    {
+      "id": "validation-policy",
+      "lane": "validation-policy",
+      "exact": [
+        "atlas/orchestration/validation_plan_cli.py",
+        "atlas/verification/validation_plan.py",
+        "atlas/verification/validation_registry_v1.json"
+      ],
+      "reason": "Validation planning policy is protected against incomplete self-validation."
+    }
+  ]
+}
