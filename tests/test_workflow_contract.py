@@ -15,9 +15,11 @@ renaming a state in either the doc or ``WORKFLOW.md`` breaks the tie.
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import subprocess
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -26,6 +28,7 @@ import yaml
 
 # The preflight's own model parser (D6): AC6 pins it against the *live*
 # codex.command so parser and command cannot silently drift apart.
+from atlas.cli import main
 from atlas.linear.preflight import _parse_model
 from atlas.tools.doc_linter import (
     SYMPHONY_MILESTONE_BRANCH,
@@ -748,6 +751,81 @@ def test_atlas_257_scoped_success_fixture_requires_exact_plan_and_one_publish() 
         assert marker in section
     assert "publish the candidate once" in in_progress
     assert "move the ticket to `PR Open`" in in_progress
+
+
+def test_atlas_257_rename_fixture_matches_the_planners_trusted_diff(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    section = _integration_section()
+    protected_old_path = "pyproject.toml"
+    unprotected_new_path = "atlas/github/normaliser.py"
+    rename_diff = f"R100\0{protected_old_path}\0{unprotected_new_path}\0"
+
+    assert (
+        "`git diff --name-status -z --find-renames --find-copies --no-ext-diff "
+        "--no-textconv <base> <head> --`" in " ".join(section.split())
+    )
+    assert "entry contributes its following path" in section
+    assert "entry contributes both following paths (old identity, then" in section
+
+    class RenameGitRunner:
+        def __call__(
+            self,
+            cwd: Path,
+            argv: Sequence[str],
+            *,
+            env: Mapping[str, str] | None = None,
+        ) -> subprocess.CompletedProcess[str]:
+            assert tuple(argv) == (
+                "diff",
+                "--name-status",
+                "-z",
+                "--find-renames",
+                "--find-copies",
+                "--no-ext-diff",
+                "--no-textconv",
+                "a" * 40,
+                "b" * 40,
+                "--",
+            )
+            assert env == {
+                "GIT_OPTIONAL_LOCKS": "0",
+                "GIT_TERMINAL_PROMPT": "0",
+            }
+            assert cwd == REPO_ROOT
+            return subprocess.CompletedProcess(
+                ["git", *argv], 0, stdout=rename_diff, stderr=""
+            )
+
+    assert (
+        main(
+            [
+                "validation-plan",
+                "--base",
+                "a" * 40,
+                "--head",
+                "b" * 40,
+                "--changed-path",
+                protected_old_path,
+                "--changed-path",
+                unprotected_new_path,
+                "--json",
+            ],
+            git_runner=RenameGitRunner(),
+        )
+        == 0
+    )
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["changed_paths"] == [unprotected_new_path, protected_old_path]
+    assert payload["diff_verification"] == "verified"
+    assert "changed_path_mismatch" not in {
+        reason["code"] for reason in payload["fallback_reasons"]
+    }
+    assert any(
+        reason["path"] == protected_old_path
+        for reason in payload["protected_surface_reasons"]
+    )
 
 
 def test_atlas_257_conservative_full_sweep_fixture_is_explicit_only() -> None:

@@ -179,10 +179,15 @@ conflict touches a file outside that scope, stop: comment on Linear with the
 blocker details, move the ticket to `Needs Human`, and do not improvise.
 
 After the rebase, commit the final implementation and freeze the candidate
-head. Calculate `atlas validation-plan` from the exact base and head, supply
-every changed path reported by the read-only `git diff --name-only
---find-renames <base> <head>`, every explicit ticket validation requirement,
-and every ticket-declared test file. Require its diff and test proofs to pass.
+head. Calculate `atlas validation-plan` from the exact base and head. Enumerate
+changed paths with the read-only, NUL-delimited `git diff --name-status -z
+--find-renames --find-copies --no-ext-diff --no-textconv <base> <head> --`:
+an ordinary `A`/`D`/`M`/`T`/`U`/`X`/`B` entry contributes its following path,
+while an `R` or `C` entry contributes both following paths (old identity, then
+new identity). Supply every changed path identity exactly once as
+`--changed-path`, every explicit ticket validation requirement, and every
+ticket-declared test file. The CLI's own read-only diff verification is final
+authority; require its diff and test proofs to pass.
 Run every ordered command in the plan and every ticket-declared test file named
 by its test targets, in order. Run the `full-sweep` profile only when the plan
 selects it as the conservative fallback or the operator explicitly instructs
