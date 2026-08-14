@@ -872,7 +872,7 @@ export interface components {
          * @description Closed reasons why a dependency-ready candidate cannot enter now.
          * @enum {string}
          */
-        AdmissionHoldCode: "policy_paused" | "policy_draining" | "snapshot_policy_mismatch" | "snapshot_incomplete" | "working_budget" | "review_budget" | "changes_requested_reserve" | "risk_lane" | "component_lane" | "missing_external_linear_id" | "single_write_limit";
+        AdmissionHoldCode: "policy_paused" | "policy_draining" | "snapshot_policy_mismatch" | "snapshot_incomplete" | "working_budget" | "integration_budget" | "review_budget" | "changes_requested_reserve" | "risk_lane" | "component_lane" | "missing_external_linear_id" | "single_write_limit";
         /**
          * AdmissionSyncReason
          * @description Safe reason codes; none contains an external response or issue body.
@@ -958,6 +958,8 @@ export interface components {
             component_lane_limits: components["schemas"]["DeliveryAdmissionComponentLaneLimitRequest"][];
             /** Expected Revision */
             expected_revision: number;
+            /** Integration Budget */
+            integration_budget: number;
             mode: components["schemas"]["DeliveryAdmissionMode"];
             /** Review Budget */
             review_budget: number;
@@ -998,6 +1000,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Integration Budget */
+            integration_budget: number;
             mode: components["schemas"]["DeliveryAdmissionMode"];
             /** Review Budget */
             review_budget: number;
@@ -1568,7 +1572,7 @@ export interface components {
          * @description Configured capacity dimensions that existing work can breach.
          * @enum {string}
          */
-        OccupancyDimension: "working" | "review" | "risk_lane" | "component_lane";
+        OccupancyDimension: "working" | "integration" | "review" | "risk_lane" | "component_lane";
         /**
          * OperatorActionActorSchema
          * @description Server-owned actor recorded by an operator-action receipt.
@@ -1933,7 +1937,7 @@ export interface components {
          * @description Lifecycle of a ticket (data-model §3.4).
          * @enum {string}
          */
-        TicketStatus: "backlog" | "planned" | "blocked" | "ready_for_agent" | "in_progress" | "pr_open" | "review_required" | "changes_requested" | "done" | "rejected" | "needs_human_decision";
+        TicketStatus: "backlog" | "planned" | "blocked" | "ready_for_agent" | "in_progress" | "pr_open" | "ci_pending" | "review_required" | "changes_requested" | "done" | "rejected" | "needs_human_decision";
         /**
          * TicketType
          * @description Kind of work a ticket represents (data-model §3.4).

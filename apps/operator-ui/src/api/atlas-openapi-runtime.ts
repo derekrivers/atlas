@@ -99,6 +99,7 @@ export const atlasOpenApiEnums = {
     "snapshot_policy_mismatch",
     "snapshot_incomplete",
     "working_budget",
+    "integration_budget",
     "review_budget",
     "changes_requested_reserve",
     "risk_lane",
@@ -193,6 +194,7 @@ export const atlasOpenApiEnums = {
   ],
   "OccupancyDimension": [
     "working",
+    "integration",
     "review",
     "risk_lane",
     "component_lane"
@@ -252,6 +254,7 @@ export const atlasOpenApiEnums = {
     "ready_for_agent",
     "in_progress",
     "pr_open",
+    "ci_pending",
     "review_required",
     "changes_requested",
     "done",

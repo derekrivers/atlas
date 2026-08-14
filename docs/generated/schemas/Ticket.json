@@ -30,6 +30,7 @@
         "ready_for_agent",
         "in_progress",
         "pr_open",
+        "ci_pending",
         "review_required",
         "changes_requested",
         "done",

@@ -116,6 +116,12 @@
       "title": "Id",
       "type": "string"
     },
+    "integration_budget": {
+      "maximum": 10,
+      "minimum": 1,
+      "title": "Integration Budget",
+      "type": "integer"
+    },
     "mode": {
       "$ref": "#/$defs/DeliveryAdmissionMode"
     },
@@ -154,6 +160,7 @@
     "mode",
     "approved_symphony_ceiling",
     "working_budget",
+    "integration_budget",
     "review_budget",
     "changes_requested_reserve",
     "id",

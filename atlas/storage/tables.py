@@ -467,6 +467,10 @@ class DeliveryAdmissionPolicyRevisionRow(Base):
             name="delivery_admission_policy_working_bounds",
         ),
         sa.CheckConstraint(
+            "integration_budget >= 1 AND integration_budget <= 10",
+            name="delivery_admission_policy_integration_bounds",
+        ),
+        sa.CheckConstraint(
             "review_budget >= 1 AND review_budget <= 10",
             name="delivery_admission_policy_review_bounds",
         ),
@@ -487,6 +491,9 @@ class DeliveryAdmissionPolicyRevisionRow(Base):
     mode: Mapped[str] = mapped_column(sa.Text)
     approved_symphony_ceiling: Mapped[int] = mapped_column(sa.Integer)
     working_budget: Mapped[int] = mapped_column(sa.Integer)
+    integration_budget: Mapped[int] = mapped_column(
+        sa.Integer, server_default=sa.text("1")
+    )
     review_budget: Mapped[int] = mapped_column(sa.Integer)
     changes_requested_reserve: Mapped[int] = mapped_column(sa.Integer)
     risk_lane_limits: Mapped[list[dict[str, Any]]] = mapped_column(

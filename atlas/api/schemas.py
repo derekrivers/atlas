@@ -633,6 +633,7 @@ class DeliveryAdmissionPolicyRequest(DeliveryAdmissionPolicySpec):
             mode=self.mode,
             approved_symphony_ceiling=self.approved_symphony_ceiling,
             working_budget=self.working_budget,
+            integration_budget=self.integration_budget,
             review_budget=self.review_budget,
             changes_requested_reserve=self.changes_requested_reserve,
             risk_lane_limits=self.risk_lane_limits,
@@ -655,6 +656,7 @@ class DeliveryAdmissionPolicySchema(BaseModel):
         ),
     )
     working_budget: int = Field(ge=1, le=10)
+    integration_budget: int = Field(ge=1, le=10)
     review_budget: int = Field(ge=1, le=10)
     changes_requested_reserve: int = Field(ge=0, le=10)
     risk_lane_limits: list[RiskLaneLimit]

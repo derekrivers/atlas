@@ -28,6 +28,7 @@ def policy_spec(**overrides: Any) -> DeliveryAdmissionPolicySpec:
         "mode": "running",
         "approved_symphony_ceiling": 3,
         "working_budget": 3,
+        "integration_budget": 2,
         "review_budget": 2,
         "changes_requested_reserve": 1,
         "risk_lane_limits": [{"risk_level": "critical", "limit": 1}],
@@ -54,6 +55,7 @@ def test_ac1_revision_stores_complete_product_capacity_policy() -> None:
     assert revision.mode is DeliveryAdmissionMode.RUNNING
     assert revision.approved_symphony_ceiling == 3
     assert revision.working_budget == 3
+    assert revision.integration_budget == 2
     assert revision.review_budget == 2
     assert revision.changes_requested_reserve == 1
     assert revision.risk_lane_limits == (
@@ -72,6 +74,11 @@ def test_ac1_revision_stores_complete_product_capacity_policy() -> None:
         {"approved_symphony_ceiling": True},
         {"working_budget": 0},
         {"approved_symphony_ceiling": 3, "working_budget": 4},
+        {"integration_budget": -1},
+        {"integration_budget": 0},
+        {"integration_budget": 11},
+        {"integration_budget": True},
+        {"integration_budget": "2"},
         {"review_budget": 0},
         {"review_budget": 11},
         {"changes_requested_reserve": -1},
@@ -83,6 +90,11 @@ def test_ac1_revision_stores_complete_product_capacity_policy() -> None:
         "boolean-ceiling",
         "zero-working",
         "working-above-ceiling",
+        "negative-integration",
+        "zero-integration",
+        "integration-above-ceiling",
+        "boolean-integration",
+        "string-integration",
         "zero-review",
         "review-above-ten",
         "negative-reserve",
@@ -138,6 +150,18 @@ def test_component_selectors_are_canonical_and_policy_is_frozen() -> None:
     assert policy.component_lane_limits[0].component == "atlas.pm"
     with pytest.raises(ValidationError):
         policy.working_budget = 2
+
+
+def test_integration_budget_is_independent_from_available_symphony_workers() -> None:
+    policy = policy_spec(
+        approved_symphony_ceiling=1,
+        working_budget=1,
+        integration_budget=3,
+        changes_requested_reserve=0,
+        component_lane_limits=[],
+    )
+
+    assert policy.integration_budget == 3
 
 
 @pytest.mark.parametrize(

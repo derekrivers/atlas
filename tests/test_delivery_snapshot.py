@@ -41,6 +41,7 @@ STATE_TYPES: dict[TicketStatus, str] = {
     TicketStatus.READY_FOR_AGENT: "unstarted",
     TicketStatus.IN_PROGRESS: "started",
     TicketStatus.PR_OPEN: "started",
+    TicketStatus.CI_PENDING: "started",
     TicketStatus.REVIEW_REQUIRED: "started",
     TicketStatus.CHANGES_REQUESTED: "started",
     TicketStatus.DONE: "completed",
@@ -68,6 +69,7 @@ def policy(**overrides: Any) -> DeliveryAdmissionPolicyRevision:
         "mode": "running",
         "approved_symphony_ceiling": 10,
         "working_budget": 10,
+        "integration_budget": 10,
         "review_budget": 10,
         "changes_requested_reserve": 1,
         "risk_lane_limits": [],
@@ -159,25 +161,27 @@ def snapshot(
 
 
 @pytest.mark.parametrize(
-    ("status", "working", "review", "changes_requested"),
+    ("status", "working", "integration", "review", "changes_requested"),
     [
-        (TicketStatus.BACKLOG, 0, 0, 0),
-        (TicketStatus.PLANNED, 0, 0, 0),
-        (TicketStatus.BLOCKED, 0, 0, 0),
-        (TicketStatus.READY_FOR_AGENT, 1, 0, 0),
-        (TicketStatus.IN_PROGRESS, 1, 0, 0),
-        (TicketStatus.PR_OPEN, 1, 0, 0),
-        (TicketStatus.REVIEW_REQUIRED, 0, 1, 0),
-        (TicketStatus.CHANGES_REQUESTED, 1, 0, 1),
-        (TicketStatus.DONE, 0, 0, 0),
-        (TicketStatus.REJECTED, 0, 0, 0),
-        (TicketStatus.NEEDS_HUMAN_DECISION, 0, 1, 0),
+        (TicketStatus.BACKLOG, 0, 0, 0, 0),
+        (TicketStatus.PLANNED, 0, 0, 0, 0),
+        (TicketStatus.BLOCKED, 0, 0, 0, 0),
+        (TicketStatus.READY_FOR_AGENT, 1, 0, 0, 0),
+        (TicketStatus.IN_PROGRESS, 1, 0, 0, 0),
+        (TicketStatus.PR_OPEN, 1, 0, 0, 0),
+        (TicketStatus.CI_PENDING, 0, 1, 0, 0),
+        (TicketStatus.REVIEW_REQUIRED, 0, 0, 1, 0),
+        (TicketStatus.CHANGES_REQUESTED, 1, 0, 0, 1),
+        (TicketStatus.DONE, 0, 0, 0, 0),
+        (TicketStatus.REJECTED, 0, 0, 0, 0),
+        (TicketStatus.NEEDS_HUMAN_DECISION, 0, 0, 1, 0),
     ],
     ids=lambda status: status.value if isinstance(status, TicketStatus) else None,
 )
 def test_ac1_every_configured_state_id_has_named_working_and_review_occupancy(
     status: TicketStatus,
     working: int,
+    integration: int,
     review: int,
     changes_requested: int,
 ) -> None:
@@ -189,6 +193,7 @@ def test_ac1_every_configured_state_id_has_named_working_and_review_occupancy(
     assert len(counts) == len(TicketStatus)
     assert counts[status] == 1
     assert result.working_occupancy == working
+    assert result.integration_occupancy == integration
     assert result.review_occupancy == review
     assert result.changes_requested_occupancy == changes_requested
     assert result.admission_allowed is True
@@ -396,6 +401,7 @@ def test_ac4_incomplete_or_contradictory_inputs_fail_closed_with_typed_reasons(
         TicketStatus.READY_FOR_AGENT,
         TicketStatus.IN_PROGRESS,
         TicketStatus.PR_OPEN,
+        TicketStatus.CI_PENDING,
         TicketStatus.CHANGES_REQUESTED,
         TicketStatus.REVIEW_REQUIRED,
         TicketStatus.NEEDS_HUMAN_DECISION,
@@ -456,10 +462,14 @@ def test_ac5_over_capacity_reports_every_breached_dimension_without_action() -> 
         )
         for number in range(4, 6)
     ]
-    items = working + reviewing
+    integrating = [
+        ticket(f"ATLAS-{number}", TicketStatus.CI_PENDING) for number in range(6, 9)
+    ]
+    items = working + reviewing + integrating
     selected_policy = policy(
         approved_symphony_ceiling=3,
         working_budget=2,
+        integration_budget=2,
         review_budget=1,
         risk_lane_limits=[{"risk_level": "critical", "limit": 1}],
         component_lane_limits=[{"component": "atlas.pm", "limit": 1}],
@@ -477,12 +487,55 @@ def test_ac5_over_capacity_reports_every_breached_dimension_without_action() -> 
         for breach in result.over_capacity
     } == {
         (OccupancyDimension.WORKING, None, 3, 2),
+        (OccupancyDimension.INTEGRATION, None, 3, 2),
         (OccupancyDimension.REVIEW, None, 2, 1),
         (OccupancyDimension.RISK_LANE, "critical", 3, 1),
         (OccupancyDimension.COMPONENT_LANE, "atlas.pm", 3, 1),
     }
     assert result.admission_allowed is False
     assert tuple(items) == before
+
+
+def test_atlas_255_ci_pending_identity_and_budget_change_snapshot_fingerprint() -> None:
+    first = ticket("ATLAS-1", TicketStatus.CI_PENDING)
+    second = ticket("ATLAS-2", TicketStatus.CI_PENDING)
+    baseline = snapshot(
+        [first], [issue(first)], selected_policy=policy(integration_budget=2)
+    )
+    identity_changed = snapshot(
+        [second], [issue(second)], selected_policy=policy(integration_budget=2)
+    )
+    budget_changed = snapshot(
+        [first], [issue(first)], selected_policy=policy(integration_budget=3)
+    )
+
+    assert baseline.integration_ticket_keys == (first.key,)
+    assert identity_changed.integration_ticket_keys == (second.key,)
+    assert identity_changed.fingerprint != baseline.fingerprint
+    assert budget_changed.policy_fingerprint != baseline.policy_fingerprint
+    assert budget_changed.fingerprint != baseline.fingerprint
+
+
+@pytest.mark.parametrize("case", ["incomplete", "duplicate", "unmapped"])
+def test_atlas_255_unsafe_ci_pending_board_state_makes_admission_unavailable(
+    case: str,
+) -> None:
+    item = ticket("ATLAS-1", TicketStatus.CI_PENDING)
+    observed = issue(item)
+    pull = LinearBoardPull.complete_project_pull([observed])
+    if case == "incomplete":
+        pull = LinearBoardPull((observed,), complete=False)
+    elif case == "duplicate":
+        pull = LinearBoardPull.complete_project_pull([observed, observed])
+    else:
+        pull = LinearBoardPull.complete_project_pull(
+            [issue(item, state_id="unmapped-ci-pending")]
+        )
+
+    result = snapshot([item], list(pull.issues), board_pull=pull)
+
+    assert result.incompleteness_reasons
+    assert result.admission_allowed is False
 
 
 def test_ac5_paused_and_draining_snapshots_never_allow_admission() -> None:

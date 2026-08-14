@@ -29,6 +29,7 @@ class AdmissionHoldCode(StrEnum):
     SNAPSHOT_POLICY_MISMATCH = "snapshot_policy_mismatch"
     SNAPSHOT_INCOMPLETE = "snapshot_incomplete"
     WORKING_BUDGET = "working_budget"
+    INTEGRATION_BUDGET = "integration_budget"
     REVIEW_BUDGET = "review_budget"
     CHANGES_REQUESTED_RESERVE = "changes_requested_reserve"
     RISK_LANE = "risk_lane"

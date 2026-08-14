@@ -326,6 +326,7 @@ describe('generated OpenAPI TypeScript client contract', () => {
   it('keeps delivery-control read and complete policy types generated', () => {
     expect(deliveryControlTypeParity.every((value) => value)).toBe(true)
     expect(atlasOpenApiEnums.AdmissionHoldCode).toContain('review_budget')
+    expect(atlasOpenApiEnums.AdmissionHoldCode).toContain('integration_budget')
     expect(atlasOpenApiEnums.AdmissionSyncReason).toContain('write_indeterminate')
   })
 

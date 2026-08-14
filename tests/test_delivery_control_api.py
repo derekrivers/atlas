@@ -120,6 +120,7 @@ def _policy_body(**overrides: Any) -> dict[str, Any]:
         "mode": "paused",
         "approved_symphony_ceiling": 3,
         "working_budget": 2,
+        "integration_budget": 2,
         "review_budget": 2,
         "changes_requested_reserve": 0,
         "risk_lane_limits": [],
@@ -360,6 +361,7 @@ def test_ac1_ac5_get_returns_policy_sync_occupancy_and_secret_free_typed_reasons
     payload = response.json()
     assert payload["policy"]["revision"] == 1
     assert payload["policy"]["approved_symphony_ceiling"] == 3
+    assert payload["policy"]["integration_budget"] == 2
     assert payload["last_linear_sync_at"] == successful_at.isoformat().replace(
         "+00:00", "Z"
     )
@@ -932,6 +934,7 @@ def test_ac7_openapi_pins_authentication_strict_policy_and_bounded_enums(
         "mode",
         "approved_symphony_ceiling",
         "working_budget",
+        "integration_budget",
         "review_budget",
         "changes_requested_reserve",
         "risk_lane_limits",
@@ -950,6 +953,7 @@ def test_ac7_openapi_pins_authentication_strict_policy_and_bounded_enums(
     assert set(schemas["AdmissionHoldCode"]["enum"]) >= {
         "policy_paused",
         "working_budget",
+        "integration_budget",
         "review_budget",
         "single_write_limit",
     }

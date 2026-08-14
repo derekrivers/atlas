@@ -86,6 +86,7 @@ def build_probe(database: Database, *, context_ticket: str) -> dict[str, Any]:
         "policy_revisions": [
             {
                 "approved_symphony_ceiling": policy.approved_symphony_ceiling,
+                "integration_budget": policy.integration_budget,
                 "mode": policy.mode.value,
                 "revision": policy.revision,
                 "working_budget": policy.working_budget,

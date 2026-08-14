@@ -372,7 +372,7 @@ deterministic order; an exact score tie competing for the same item is a
 `CONFLICT` — never a silent arbitrary choice.
 
 Matched items diff field-by-field into `MODIFY` entries (or no-ops).
-Immutability rule: tickets with status `in_progress`, `pr_open`,
+Immutability rule: tickets with status `in_progress`, `pr_open`, `ci_pending`,
 `review_required`, `changes_requested`, `done`, or `rejected` are frozen to
 planning. Any `MODIFY` or `PROPOSE_ARCHIVE` touching them invalidates that
 diff entry and is reported as a planner conflict for the operator.

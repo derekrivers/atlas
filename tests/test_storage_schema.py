@@ -10,6 +10,7 @@ CI; compile-compatibility is the stated limit of the claim).
 
 import json
 from datetime import UTC, datetime
+from io import StringIO
 from pathlib import Path
 from uuid import UUID
 
@@ -396,6 +397,7 @@ DOCUMENTED_COLUMNS: dict[str, dict[str, tuple[bool, str | None]]] = {
         "mode": (NN, None),
         "approved_symphony_ceiling": (NN, None),
         "working_budget": (NN, None),
+        "integration_budget": (NN, "1"),
         "review_budget": (NN, None),
         "changes_requested_reserve": (NN, None),
         "risk_lane_limits": (NN, "'[]'"),
@@ -836,7 +838,7 @@ def test_pm_sync_receipt_migration_preserves_ticket_definition_cursors(
 def test_alembic_upgrades_fresh_db_and_matches_metadata(tmp_path: Path) -> None:
     url = f"sqlite:///{tmp_path}/migrated.db"
     config = _alembic_config(url)
-    assert ScriptDirectory.from_config(config).get_heads() == ["0030"]
+    assert ScriptDirectory.from_config(config).get_heads() == ["0031"]
     command.upgrade(config, "head")
 
     engine = sa.create_engine(url)
@@ -1055,7 +1057,8 @@ def test_delivery_policy_migration_bootstraps_three_without_workflow_change(
         row = connection.execute(
             sa.text(
                 "SELECT revision, mode, approved_symphony_ceiling, "
-                "working_budget, review_budget, changes_requested_reserve, "
+                "working_budget, integration_budget, review_budget, "
+                "changes_requested_reserve, "
                 "risk_lane_limits, component_lane_limits "
                 "FROM delivery_admission_policy_revisions "
                 "WHERE product_id = :product_id"
@@ -1079,7 +1082,7 @@ def test_delivery_policy_migration_bootstraps_three_without_workflow_change(
             )
         }
 
-    assert row[:6] == (1, "running", 3, 3, 3, 0)
+    assert row[:7] == (1, "running", 3, 3, 1, 3, 0)
     assert json.loads(row.risk_lane_limits) == []
     assert json.loads(row.component_lane_limits) == []
     assert active_revision == 1
@@ -1090,12 +1093,135 @@ def test_delivery_policy_migration_bootstraps_three_without_workflow_change(
     assert (REPO_ROOT / "WORKFLOW.md").read_bytes() == workflow_before
 
 
+def test_ci_pending_capacity_upgrades_0030_without_rewriting_policy_history(
+    tmp_path: Path,
+) -> None:
+    url = f"sqlite:///{tmp_path}/ci-pending-policy-upgrade.db"
+    config = _alembic_config(url)
+    command.upgrade(config, "0030")
+    engine = sa.create_engine(url)
+    product_id = UUID("11111111-1111-4111-8111-111111111111")
+    policy_id = UUID("22222222-2222-4222-8222-222222222222")
+    created_at = datetime(2026, 8, 13, 21, tzinfo=UTC)
+    products = sa.Table("products", sa.MetaData(), autoload_with=engine)
+    policies = sa.Table(
+        "delivery_admission_policy_revisions", sa.MetaData(), autoload_with=engine
+    )
+    active = sa.Table(
+        "delivery_admission_policy_active", sa.MetaData(), autoload_with=engine
+    )
+    with engine.begin() as connection:
+        connection.execute(
+            products.insert().values(
+                id=product_id.hex,
+                key="ATLAS",
+                name="Atlas",
+                description="Atlas product",
+                vision="Repeatable delivery",
+                status="active",
+                goals=[],
+                non_goals=[],
+                constraints=[],
+                created_by_type="human",
+                created_by_id="operator",
+                created_at=created_at,
+                updated_at=created_at,
+            )
+        )
+        connection.execute(
+            policies.insert().values(
+                id=policy_id.hex,
+                product_id=product_id.hex,
+                revision=7,
+                mode="running",
+                approved_symphony_ceiling=3,
+                working_budget=2,
+                review_budget=3,
+                changes_requested_reserve=1,
+                risk_lane_limits=[],
+                component_lane_limits=[],
+                created_by_type="human",
+                created_by_id="operator",
+                created_at=created_at,
+            )
+        )
+        connection.execute(
+            active.insert().values(product_id=product_id.hex, revision=7)
+        )
+    with engine.connect() as connection:
+        before = connection.execute(sa.select(policies)).mappings().one()
+
+    command.upgrade(config, "head")
+
+    upgraded = sa.Table(
+        "delivery_admission_policy_revisions", sa.MetaData(), autoload_with=engine
+    )
+    with engine.connect() as connection:
+        after = connection.execute(sa.select(upgraded)).mappings().one()
+        trigger_names = {
+            row[0]
+            for row in connection.execute(
+                sa.text(
+                    "SELECT name FROM sqlite_master WHERE type = 'trigger' "
+                    "AND name LIKE 'delivery_admission_policy_revisions_%'"
+                )
+            )
+        }
+
+    assert {key: after[key] for key in before} == dict(before)
+    assert after["integration_budget"] == 1
+    assert trigger_names == {
+        "delivery_admission_policy_revisions_no_update",
+        "delivery_admission_policy_revisions_no_delete",
+    }
+    with (
+        pytest.raises(sa.exc.IntegrityError, match="append-only"),
+        engine.begin() as connection,
+    ):
+        connection.execute(
+            upgraded.update()
+            .where(upgraded.c.id == policy_id.hex)
+            .values(integration_budget=2)
+        )
+
+
+def test_ci_pending_capacity_migration_is_portable_additive_ddl() -> None:
+    migration = (
+        REPO_ROOT
+        / "atlas/storage/migrations/versions/0031_ci_pending_integration_capacity.py"
+    ).read_text(encoding="utf-8")
+
+    assert "op.add_column" in migration
+    assert "op.batch_alter_table" not in migration
+    assert "UPDATE delivery_admission_policy_revisions" not in migration
+    assert "0025_delivery_admission_policy" not in migration
+
+
+def test_ci_pending_capacity_migration_compiles_from_0030_for_postgresql() -> None:
+    output = StringIO()
+    config = Config(str(REPO_ROOT / "alembic.ini"), output_buffer=output)
+    config.set_main_option(
+        "script_location", str(REPO_ROOT / "atlas" / "storage" / "migrations")
+    )
+    config.set_main_option("sqlalchemy.url", "postgresql://atlas:atlas@localhost/atlas")
+
+    command.upgrade(config, "0030:0031", sql=True)
+
+    migration_sql = output.getvalue()
+    assert "-- Running upgrade 0030 -> 0031" in migration_sql
+    assert (
+        "ALTER TABLE delivery_admission_policy_revisions ADD COLUMN "
+        "integration_budget INTEGER DEFAULT 1 NOT NULL"
+    ) in migration_sql
+    assert "delivery_admission_policy_integration_bounds" in migration_sql
+
+
 def test_acceptance_evidence_receipt_outcomes_migrate_without_losing_guards(
     tmp_path: Path,
 ) -> None:
     url = f"sqlite:///{tmp_path}/acceptance-evidence-outcomes.db"
     config = _alembic_config(url)
-    assert ScriptDirectory.from_config(config).get_heads() == ["0030"]
+    assert ScriptDirectory.from_config(config).get_heads() == ["0031"]
     command.upgrade(config, "head")
 
     engine = sa.create_engine(url)

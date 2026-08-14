@@ -81,6 +81,7 @@
         "snapshot_policy_mismatch",
         "snapshot_incomplete",
         "working_budget",
+        "integration_budget",
         "review_budget",
         "changes_requested_reserve",
         "risk_lane",

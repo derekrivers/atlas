@@ -18,11 +18,39 @@ class TicketStatus(StrEnum):
     READY_FOR_AGENT = "ready_for_agent"
     IN_PROGRESS = "in_progress"
     PR_OPEN = "pr_open"
+    CI_PENDING = "ci_pending"
     REVIEW_REQUIRED = "review_required"
     CHANGES_REQUESTED = "changes_requested"
     DONE = "done"
     REJECTED = "rejected"
     NEEDS_HUMAN_DECISION = "needs_human_decision"
+
+
+class TicketTransitionOwner(StrEnum):
+    """Authority permitted to write one CI-pending lifecycle edge."""
+
+    AGENT = "agent"
+    ATLAS = "atlas"
+
+
+def ci_pending_transition_owner(
+    from_status: TicketStatus, to_status: TicketStatus
+) -> TicketTransitionOwner | None:
+    """Return the sole owner of a valid CI-pending edge, if one exists.
+
+    ``pr_open`` is the durable proof that the agent published a PR before it
+    releases its Symphony slot.  Every exit is reserved to Atlas's later
+    system-tier CI reconciler; browser and Symphony actors have no owner value.
+    """
+
+    if (from_status, to_status) == (TicketStatus.PR_OPEN, TicketStatus.CI_PENDING):
+        return TicketTransitionOwner.AGENT
+    if from_status is TicketStatus.CI_PENDING and to_status in {
+        TicketStatus.REVIEW_REQUIRED,
+        TicketStatus.CHANGES_REQUESTED,
+    }:
+        return TicketTransitionOwner.ATLAS
+    return None
 
 
 class TicketType(StrEnum):

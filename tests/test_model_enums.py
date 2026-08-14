@@ -42,6 +42,7 @@ DOCUMENTED_MEMBERS: dict[type[Enum], dict[str, str]] = {
         "READY_FOR_AGENT": "ready_for_agent",
         "IN_PROGRESS": "in_progress",
         "PR_OPEN": "pr_open",
+        "CI_PENDING": "ci_pending",
         "REVIEW_REQUIRED": "review_required",
         "CHANGES_REQUESTED": "changes_requested",
         "DONE": "done",

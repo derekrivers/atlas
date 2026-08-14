@@ -15,6 +15,7 @@ const policy: Policy = {
   component_lane_limits: [{ component: 'operator-ui', limit: 2 }],
   created_at: '2026-08-13T10:00:00Z',
   id: '00000000-0000-4000-8000-000000000251',
+  integration_budget: 2,
   mode: 'running',
   review_budget: 2,
   revision: 7,
@@ -32,6 +33,7 @@ describe('complete delivery policy proposal', () => {
       changes_requested_reserve: 1,
       component_lane_limits: [{ component: 'operator-ui', limit: 2 }],
       expected_revision: 7,
+      integration_budget: 2,
       mode: 'running',
       review_budget: 2,
       risk_lane_limits: [{ risk_level: 'high', limit: 2 }],
@@ -42,6 +44,7 @@ describe('complete delivery policy proposal', () => {
   it('rejects incoherent bounds and duplicate lane selectors without adjusting them', () => {
     const draft = policyDraftFromPolicy(policy)
     draft.approvedPolicyCeiling = '1'
+    draft.integrationBudget = '0'
     draft.workingBudget = '2'
     draft.changesRequestedReserve = '3'
     draft.riskLanes.push(newRiskLane('high'))
@@ -56,6 +59,7 @@ describe('complete delivery policy proposal', () => {
     expect(Object.values(result.errors)).toEqual(
       expect.arrayContaining([
         'Working budget cannot exceed the approved policy ceiling.',
+        'Enter a whole number from 1 through 10.',
         'Changes Requested reserve cannot exceed the working budget.',
         'Each risk level may appear only once.',
         'Component selectors must be unique after canonicalisation.',

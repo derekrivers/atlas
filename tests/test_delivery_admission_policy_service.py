@@ -111,7 +111,7 @@ def test_ac3_exact_replay_is_stable_and_altered_replay_conflicts(
         product_id=product.id,
         expected_revision=1,
         idempotency_key="one-key",
-        policy=policy_spec(review_budget=3),
+        policy=policy_spec(integration_budget=3),
     )
 
     assert first.status is DeliveryAdmissionPolicyChangeStatus.APPLIED
@@ -139,7 +139,7 @@ def test_ac3_stale_compare_and_set_returns_conflict_without_revision(
         product_id=product.id,
         expected_revision=0,
         idempotency_key="stale-update",
-        policy=policy_spec(working_budget=2),
+        policy=policy_spec(integration_budget=3),
     )
 
     assert stale.status is DeliveryAdmissionPolicyChangeStatus.CONFLICT
@@ -219,7 +219,7 @@ def test_ac4_store_or_receipt_failure_preserves_prior_authority(
         product_id=product.id,
         expected_revision=1,
         idempotency_key=f"failed-{failure_site}",
-        policy=policy_spec(review_budget=3),
+        policy=policy_spec(integration_budget=3),
     )
 
     assert result.status is DeliveryAdmissionPolicyChangeStatus.FAILED

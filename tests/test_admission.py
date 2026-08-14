@@ -278,6 +278,24 @@ def test_ac3_combined_budget_and_lane_reasons_are_retained() -> None:
     assert run.selected_ticket_id is None
 
 
+@pytest.mark.parametrize("pending_count", [1, 2], ids=["full", "over-capacity"])
+def test_atlas_255_full_or_breached_integration_budget_holds_new_admission(
+    pending_count: int,
+) -> None:
+    candidate = ticket("ATLAS-1", TicketStatus.PLANNED)
+    integrating = [
+        ticket(f"ATLAS-{number}", TicketStatus.CI_PENDING)
+        for number in range(2, pending_count + 2)
+    ]
+    selected_policy = policy(integration_budget=1)
+
+    run = evaluate([candidate, *integrating], selected_policy=selected_policy)
+
+    decision = decisions_by_key(run)[candidate.key]
+    assert AdmissionHoldCode.INTEGRATION_BUDGET in reason_codes(decision)
+    assert run.selected_ticket_id is None
+
+
 def test_ac4_zero_or_one_selection_continues_past_a_held_higher_rank() -> None:
     lane_blocked = ticket(
         "ATLAS-1",

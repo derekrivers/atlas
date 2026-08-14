@@ -40,11 +40,12 @@ WORKING_STATUSES: frozenset[TicketStatus] = frozenset(
         TicketStatus.CHANGES_REQUESTED,
     }
 )
+INTEGRATION_STATUSES: frozenset[TicketStatus] = frozenset({TicketStatus.CI_PENDING})
 REVIEW_STATUSES: frozenset[TicketStatus] = frozenset(
     {TicketStatus.REVIEW_REQUIRED, TicketStatus.NEEDS_HUMAN_DECISION}
 )
 DELIVERY_OCCUPANCY_STATUSES: frozenset[TicketStatus] = (
-    WORKING_STATUSES | REVIEW_STATUSES
+    WORKING_STATUSES | INTEGRATION_STATUSES | REVIEW_STATUSES
 )
 TERMINAL_STATUSES: frozenset[TicketStatus] = frozenset(
     {TicketStatus.DONE, TicketStatus.REJECTED}
@@ -72,6 +73,7 @@ class OccupancyDimension(StrEnum):
     """Configured capacity dimensions that existing work can breach."""
 
     WORKING = "working"
+    INTEGRATION = "integration"
     REVIEW = "review"
     RISK_LANE = "risk_lane"
     COMPONENT_LANE = "component_lane"
@@ -171,6 +173,9 @@ class DeliverySnapshot(BaseModel):
     observed_at: datetime
     status_occupancy: tuple[StatusOccupancy, ...]
     working_occupancy: int = Field(ge=0)
+    integration_occupancy: int = Field(ge=0)
+    integration_ticket_keys: tuple[str, ...]
+    new_admission_integration_capacity: int = Field(ge=0)
     review_occupancy: int = Field(ge=0)
     changes_requested_occupancy: int = Field(ge=0)
     changes_requested_reserve_remaining: int = Field(ge=0)
@@ -208,6 +213,9 @@ class StoredDeliveryOccupancy(BaseModel):
 
     status_occupancy: tuple[StatusOccupancy, ...]
     working_occupancy: int = Field(ge=0)
+    integration_occupancy: int = Field(ge=0)
+    integration_ticket_keys: tuple[str, ...]
+    new_admission_integration_capacity: int = Field(ge=0)
     review_occupancy: int = Field(ge=0)
     changes_requested_occupancy: int = Field(ge=0)
     changes_requested_reserve_remaining: int = Field(ge=0)
@@ -259,6 +267,7 @@ def _policy_payload(policy: DeliveryAdmissionPolicyRevision) -> dict[str, object
         "mode": policy.mode.value,
         "approved_symphony_ceiling": policy.approved_symphony_ceiling,
         "working_budget": policy.working_budget,
+        "integration_budget": policy.integration_budget,
         "review_budget": policy.review_budget,
         "changes_requested_reserve": policy.changes_requested_reserve,
         "risk_lane_limits": sorted(
@@ -374,6 +383,9 @@ def build_stored_delivery_occupancy(
     working_tickets = tuple(
         ticket for ticket in product_tickets if ticket.status in WORKING_STATUSES
     )
+    integration_tickets = tuple(
+        ticket for ticket in product_tickets if ticket.status in INTEGRATION_STATUSES
+    )
 
     configured_risks = {lane.risk_level for lane in policy.risk_lane_limits}
     configured_components = {lane.component for lane in policy.component_lane_limits}
@@ -396,6 +408,11 @@ def build_stored_delivery_occupancy(
         for status in TicketStatus
     )
     working = len(working_tickets)
+    integration = len(integration_tickets)
+    integration_ticket_keys = tuple(
+        sorted(ticket.key for ticket in integration_tickets)
+    )
+    new_integration_capacity = max(0, policy.integration_budget - integration)
     review = sum(status_counts[status] for status in REVIEW_STATUSES)
     changes_requested = status_counts[TicketStatus.CHANGES_REQUESTED]
     reserve_remaining = max(0, policy.changes_requested_reserve - changes_requested)
@@ -430,6 +447,14 @@ def build_stored_delivery_occupancy(
                 limit=policy.working_budget,
             )
         )
+    if integration > policy.integration_budget:
+        breaches.append(
+            OccupancyBreach(
+                dimension=OccupancyDimension.INTEGRATION,
+                count=integration,
+                limit=policy.integration_budget,
+            )
+        )
     if review > policy.review_budget:
         breaches.append(
             OccupancyBreach(
@@ -462,6 +487,9 @@ def build_stored_delivery_occupancy(
     return StoredDeliveryOccupancy(
         status_occupancy=status_occupancy,
         working_occupancy=working,
+        integration_occupancy=integration,
+        integration_ticket_keys=integration_ticket_keys,
+        new_admission_integration_capacity=new_integration_capacity,
         review_occupancy=review,
         changes_requested_occupancy=changes_requested,
         changes_requested_reserve_remaining=reserve_remaining,
@@ -613,6 +641,7 @@ def build_delivery_snapshot(
             )
 
     status_counts: Counter[TicketStatus] = Counter()
+    integration_ticket_keys: set[str] = set()
     risk_counts: Counter[RiskLevel] = Counter()
     component_counts: Counter[str] = Counter()
     configured_risks = {lane.risk_level for lane in policy.risk_lane_limits}
@@ -662,6 +691,8 @@ def build_delivery_snapshot(
                         state_id=issue.state_id,
                     )
                 )
+            if mapped in INTEGRATION_STATUSES:
+                integration_ticket_keys.add(ticket.key)
             if mapped not in WORKING_STATUSES:
                 continue
             if ticket.risk_level in configured_risks:
@@ -679,6 +710,9 @@ def build_delivery_snapshot(
         for status in TicketStatus
     )
     working = sum(status_counts[status] for status in WORKING_STATUSES)
+    integration = sum(status_counts[status] for status in INTEGRATION_STATUSES)
+    ordered_integration_ticket_keys = tuple(sorted(integration_ticket_keys))
+    new_integration_capacity = max(0, policy.integration_budget - integration)
     review = sum(status_counts[status] for status in REVIEW_STATUSES)
     changes_requested = status_counts[TicketStatus.CHANGES_REQUESTED]
     reserve_remaining = max(0, policy.changes_requested_reserve - changes_requested)
@@ -712,6 +746,14 @@ def build_delivery_snapshot(
                 dimension=OccupancyDimension.WORKING,
                 count=working,
                 limit=policy.working_budget,
+            )
+        )
+    if integration > policy.integration_budget:
+        breaches.append(
+            OccupancyBreach(
+                dimension=OccupancyDimension.INTEGRATION,
+                count=integration,
+                limit=policy.integration_budget,
             )
         )
     if review > policy.review_budget:
@@ -760,6 +802,9 @@ def build_delivery_snapshot(
         observed_at=_normalise_time(clock()),
         status_occupancy=status_occupancy,
         working_occupancy=working,
+        integration_occupancy=integration,
+        integration_ticket_keys=ordered_integration_ticket_keys,
+        new_admission_integration_capacity=new_integration_capacity,
         review_occupancy=review,
         changes_requested_occupancy=changes_requested,
         changes_requested_reserve_remaining=reserve_remaining,
@@ -770,6 +815,7 @@ def build_delivery_snapshot(
         over_capacity=ordered_breaches,
         admission_allowed=(
             policy.mode is DeliveryAdmissionMode.RUNNING
+            and integration < policy.integration_budget
             and not ordered_reasons
             and not ordered_breaches
         ),

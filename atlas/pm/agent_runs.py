@@ -53,7 +53,11 @@ _PR_NUMBER_KEYS = frozenset(
     {"number", "pr_number", "pull_number", "pull_request_number"}
 )
 _HANDOFF_STATUSES = frozenset(
-    {TicketStatus.REVIEW_REQUIRED.value, TicketStatus.NEEDS_HUMAN_DECISION.value}
+    {
+        TicketStatus.CI_PENDING.value,
+        TicketStatus.REVIEW_REQUIRED.value,
+        TicketStatus.NEEDS_HUMAN_DECISION.value,
+    }
 )
 
 

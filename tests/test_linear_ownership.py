@@ -428,12 +428,13 @@ def test_validate_is_permissive_many_statuses_one_started_type() -> None:
         {
             "s1": TicketStatus.IN_PROGRESS,
             "s2": TicketStatus.PR_OPEN,
-            "s3": TicketStatus.REVIEW_REQUIRED,
-            "s4": TicketStatus.CHANGES_REQUESTED,
+            "s3": TicketStatus.CI_PENDING,
+            "s4": TicketStatus.REVIEW_REQUIRED,
+            "s5": TicketStatus.CHANGES_REQUESTED,
         }
     )
     states = [
-        WorkflowState(id=f"s{i}", name=f"S{i}", type="started") for i in range(1, 5)
+        WorkflowState(id=f"s{i}", name=f"S{i}", type="started") for i in range(1, 6)
     ]
     smap.validate_against_states(states)  # does not raise
 
@@ -446,6 +447,7 @@ def test_accepted_types_pin_live_rejected_state_types_only() -> None:
         TicketStatus.READY_FOR_AGENT: frozenset({"unstarted", "backlog"}),
         TicketStatus.IN_PROGRESS: frozenset({"started"}),
         TicketStatus.PR_OPEN: frozenset({"started"}),
+        TicketStatus.CI_PENDING: frozenset({"started"}),
         TicketStatus.REVIEW_REQUIRED: frozenset({"started"}),
         TicketStatus.CHANGES_REQUESTED: frozenset({"started"}),
         TicketStatus.DONE: frozenset({"completed"}),

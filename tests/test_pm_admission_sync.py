@@ -18,6 +18,7 @@ import sqlalchemy as sa
 from test_models_validation import NOW
 from test_pm_sync import (
     CHANGES_REQUESTED_STATE,
+    CI_PENDING_STATE,
     PACK_DOC,
     PR_OPEN_STATE,
     PROJECT_ID,
@@ -180,7 +181,9 @@ def _config(db: Database, client: RecordingClient) -> TickConfig:
     )
 
 
-def _replace_policy(db: Database, *, working_budget: int = 3) -> None:
+def _replace_policy(
+    db: Database, *, working_budget: int = 3, integration_budget: int = 3
+) -> None:
     active = DeliveryAdmissionPolicyActiveRow
     with db.session() as session, session.begin():
         session.add(
@@ -191,6 +194,7 @@ def _replace_policy(db: Database, *, working_budget: int = 3) -> None:
                 mode="running",
                 approved_symphony_ceiling=3,
                 working_budget=working_budget,
+                integration_budget=integration_budget,
                 review_budget=3,
                 changes_requested_reserve=0,
                 risk_lane_limits=[],
@@ -444,6 +448,30 @@ def test_ac6_changes_requested_consumes_capacity_and_is_never_demoted(
     assert client.state_writes == []
     issue = client.fetch_issue(rework.external_linear_id or "")
     assert issue is not None and issue.state_id == CHANGES_REQUESTED_STATE.id
+
+
+def test_atlas_255_full_integration_budget_reports_over_capacity_without_demotion(
+    db: Database,
+) -> None:
+    client = CountingPullClient()
+    integrating = seed_ticket(
+        db,
+        client,
+        key="ATLAS-255",
+        product_id=PRODUCT_ID,
+        status=TicketStatus.CI_PENDING,
+        issue_state=CI_PENDING_STATE,
+        linear_synced_at=NOW,
+    )
+    seed_candidate(db, client)
+    _replace_policy(db, integration_budget=1)
+
+    result = run(db, client)
+
+    assert result.over_capacity == 1
+    assert client.state_writes == []
+    issue = client.fetch_issue(integrating.external_linear_id or "")
+    assert issue is not None and issue.state_id == CI_PENDING_STATE.id
 
 
 def test_ac7_output_names_every_outcome_and_policy_revision_without_raw_data() -> None:

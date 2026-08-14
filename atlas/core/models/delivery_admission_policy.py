@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from atlas.core.enums import ActorType, RiskLevel
 
 MAX_APPROVED_SYMPHONY_CEILING = 10
+MAX_INTEGRATION_BUDGET = 10
 MAX_COMPONENT_LANES = 64
 MAX_COMPONENT_SELECTOR_LENGTH = 128
 
@@ -85,6 +86,7 @@ class DeliveryAdmissionPolicySpec(BaseModel):
     mode: DeliveryAdmissionMode
     approved_symphony_ceiling: int = Field(ge=1, le=MAX_APPROVED_SYMPHONY_CEILING)
     working_budget: int = Field(ge=1, le=MAX_APPROVED_SYMPHONY_CEILING)
+    integration_budget: int = Field(ge=1, le=MAX_INTEGRATION_BUDGET)
     review_budget: int = Field(ge=1, le=MAX_APPROVED_SYMPHONY_CEILING)
     changes_requested_reserve: int = Field(ge=0, le=MAX_APPROVED_SYMPHONY_CEILING)
     risk_lane_limits: tuple[RiskLaneLimit, ...] = Field(
@@ -99,6 +101,7 @@ class DeliveryAdmissionPolicySpec(BaseModel):
     @field_validator(
         "approved_symphony_ceiling",
         "working_budget",
+        "integration_budget",
         "review_budget",
         "changes_requested_reserve",
         mode="before",

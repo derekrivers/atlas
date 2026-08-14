@@ -716,6 +716,7 @@ export function assertDeliveryControlResponse(
       'id',
       'mode',
       'review_budget',
+      'integration_budget',
       'revision',
       'risk_lane_limits',
       'working_budget',
@@ -732,6 +733,10 @@ export function assertDeliveryControlResponse(
   assertInteger(
     value.policy.working_budget,
     'DeliveryControlResponse.policy.working_budget'
+  )
+  assertInteger(
+    value.policy.integration_budget,
+    'DeliveryControlResponse.policy.integration_budget'
   )
   assertInteger(
     value.policy.review_budget,

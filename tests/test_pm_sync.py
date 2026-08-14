@@ -113,6 +113,9 @@ READY = WorkflowState(id="state-ready", name="Ready for Agent", type="unstarted"
 # A state mapped to pr_open — used to drive a real in_progress -> pr_open
 # transition (re-stamping status_entered_at) for the dwell episode-advance proof.
 PR_OPEN_STATE = WorkflowState(id="state-pr-open", name="PR Open", type="started")
+CI_PENDING_STATE = WorkflowState(
+    id="state-ci-pending", name="CI Pending", type="started"
+)
 # A mapped review state keeps delivery snapshots complete in tests that exercise
 # post-admission read-only phases such as comment scanning.
 REVIEW_REQUIRED_STATE = WorkflowState(
@@ -178,6 +181,7 @@ def seed_default_admission_policy(
                 mode="running",
                 approved_symphony_ceiling=3,
                 working_budget=3,
+                integration_budget=3,
                 review_budget=3,
                 changes_requested_reserve=0,
                 risk_lane_limits=[],
@@ -202,6 +206,7 @@ class RecordingClient(InMemoryLinearClient):
                 UNMAPPED,
                 READY,
                 PR_OPEN_STATE,
+                CI_PENDING_STATE,
                 REVIEW_REQUIRED_STATE,
                 CHANGES_REQUESTED_STATE,
                 NEEDS_HUMAN,
@@ -296,6 +301,7 @@ def status_map() -> LinearStatusMap:
             STARTED.id: TicketStatus.IN_PROGRESS,
             READY.id: TicketStatus.READY_FOR_AGENT,
             PR_OPEN_STATE.id: TicketStatus.PR_OPEN,
+            CI_PENDING_STATE.id: TicketStatus.CI_PENDING,
             REVIEW_REQUIRED_STATE.id: TicketStatus.REVIEW_REQUIRED,
             CHANGES_REQUESTED_STATE.id: TicketStatus.CHANGES_REQUESTED,
             # The unique Needs-Human state the review-cycling route resolves via

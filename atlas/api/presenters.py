@@ -802,6 +802,7 @@ def _present_delivery_policy(
         mode=policy.mode,
         approved_symphony_ceiling=policy.approved_symphony_ceiling,
         working_budget=policy.working_budget,
+        integration_budget=policy.integration_budget,
         review_budget=policy.review_budget,
         changes_requested_reserve=policy.changes_requested_reserve,
         risk_lane_limits=list(policy.risk_lane_limits),
