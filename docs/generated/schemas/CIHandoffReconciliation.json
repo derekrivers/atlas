@@ -94,6 +94,7 @@
         "board_state_moved",
         "policy_changed",
         "snapshot_changed",
+        "evidence_changed",
         "concurrent_write_fence",
         "fence_still_unresolved",
         "fence_reconciled_target",

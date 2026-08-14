@@ -118,19 +118,24 @@ block entry to review, and CI cannot satisfy or waive them. A matrix row with no
 system-tier member is indeterminate rather than a vacuous pass.
 
 For one repository, PR and exact head, the projection classifies every selected
-check from append-only evidence as passed, definite implementation failure,
-pending, missing, infrastructure, stale, malformed or indeterminate. The set
-passes only when every member passes. It is an actionable implementation
-failure only when every member is determinate and every deciding failed record
-has GitHub conclusion `failure`; one failure alongside a missing, pending or
-uncertain member remains held. Provider timeout/cancellation, old-head records,
-missing source ordering, tied contradictory observations and unknown conclusions
-never become a code-failure verdict.
+check from append-only evidence belonging to the ticket's product as passed,
+definite implementation failure, pending, missing, infrastructure, stale,
+malformed or indeterminate. A record with a non-null `ticket_id` is eligible
+only for that exact ticket; product-wide PR evidence remains eligible with a
+null ticket id. The set passes only when every member passes. It is an
+actionable implementation failure only when every member is determinate and
+every deciding failed record has GitHub conclusion `failure`; one failure
+alongside a missing, pending or uncertain member remains held. Provider
+timeout/cancellation, old-head records, missing source ordering, tied
+contradictory observations and unknown conclusions never become a code-failure
+verdict.
 
 This projection returns a bounded assessment and performs no write. The PM
 handoff operation owns the separately fenced `ci_pending → review_required` or
 `ci_pending → changes_requested` edge. It revalidates external identity before
-using the assessment; the completion evaluator and its
+using the assessment and repeats the assessment from freshly loaded
+product-scoped evidence immediately before the write fence. A change to the
+classification, bounded results or evidence ids holds until a fresh tick; the completion evaluator and its
 `review_required → done` authority are unchanged.
 
 ## Verdict and completion

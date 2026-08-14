@@ -282,8 +282,11 @@ repository, PR, expected full head SHA and the tick's complete project pull.
 The operation takes the shared product admission lease, reconciles any earlier
 ambiguous fence first, loads the active delivery policy, builds the coherent
 snapshot and reads the PR identity without consuming GitHub check rollups.
-Stored append-only evidence is classified through the canonical required-check
-resolver and system-tier evaluators.
+Stored append-only evidence is loaded only for the ticket's product and
+classified through the canonical required-check resolver and system-tier
+evaluators. The pure classifier independently rejects records from another
+product and accepts an explicitly ticket-scoped record only for that exact
+ticket.
 
 Only a complete current-head `passed` set selects `review_required`; only a
 complete determinate set containing an explicit implementation `failure`
@@ -295,9 +298,12 @@ or GitHub response, exception text, token or log.
 
 Before a selected decision can write, the operation fetches the PR and complete
 board again, reloads the ticket and policy, rebuilds the snapshot and verifies
-the lease. It repeats those checks across the final deterministic race seam.
-Any movement performs zero state mutations. A `ci_handoff_write_fences` row is
-then committed before the strict writer can call only
+the lease. It repeats those checks across the final deterministic race seam,
+then reloads product-scoped evidence and requires the classification, bounded
+check results and deciding evidence ids to equal the selected assessment. Any
+movement records a typed hold and performs zero state mutations; newer
+same-head evidence is classified by a later fresh tick. A
+`ci_handoff_write_fences` row is then committed before the strict writer can call only
 `LinearClient.set_state(issue_id, review_required|changes_requested)`. A
 confirming response updates the local observed status and clears the fence. An
 exception or non-confirming response marks the fence `indeterminate`; a later

@@ -163,9 +163,11 @@ Linear status pull may mirror the agent-owned `PR Open → CI Pending` entry, bu
 it rejects arbitrary entries and every CI-pending exit as a deduplicated
 ownership anomaly. ATLAS-256's trusted CI reconciler is the only seam that can
 exercise the Atlas-owned exits. It re-reads the PR head, complete board, active
-policy and coherent snapshot immediately before the write under the shared
-product lease. Each determinate decision is appended with the exact identity
-and bounded check results, and a durable fence is committed before the single
+policy, coherent snapshot and product/ticket-scoped evidence assessment
+immediately before the write under the shared product lease. Any change to the
+assessment or its deciding evidence ids records a typed hold and requires a
+fresh tick. Each determinate decision is appended with the exact identity and
+bounded check results, and a durable fence is committed before the single
 Linear mutation. A transport-ambiguous mutation remains fenced until a fresh
 complete board observation proves source, target or external movement; that
 reconciliation tick never retries the write. Duplicate observations are

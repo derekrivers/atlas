@@ -79,7 +79,11 @@ rollup, a local command exit or an agent message as a substitute. If a Linear
 write response is ambiguous, the durable fence requires a later complete board
 observation to prove whether the source or target state won; that observation
 does not retry the write. A changed head invalidates the recorded authority and
-starts the evidence chain again for the new commit.
+starts the evidence chain again for the new commit. The handoff considers only
+evidence belonging to the ticket's product (and, when explicitly ticket-scoped,
+that ticket). If newer same-head evidence changes the selected check results in
+the final pre-write window, Atlas records `evidence_changed`, leaves the card in
+`CI Pending` and lets the next tick classify the new set.
 
 ## 1. Review (reviewer-tier, not the gate)
 

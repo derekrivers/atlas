@@ -63,6 +63,7 @@ class CIHandoffReason(StrEnum):
     BOARD_STATE_MOVED = "board_state_moved"
     POLICY_CHANGED = "policy_changed"
     SNAPSHOT_CHANGED = "snapshot_changed"
+    EVIDENCE_CHANGED = "evidence_changed"
     CONCURRENT_WRITE_FENCE = "concurrent_write_fence"
     FENCE_STILL_UNRESOLVED = "fence_still_unresolved"
     FENCE_RECONCILED_TARGET = "fence_reconciled_target"

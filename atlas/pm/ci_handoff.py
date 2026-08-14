@@ -479,7 +479,7 @@ def reconcile_ci_handoff(
             assessment = evaluate_ci_handoff(
                 current_ticket,
                 head_commit=expected_head,
-                evidence=EvidenceRepo(db).list(),
+                evidence=EvidenceRepo(db).list_for_product(current_ticket.product_id),
             )
             classification = assessment.classification
             reason = assessment.reason
@@ -628,6 +628,34 @@ def reconcile_ci_handoff(
                 classification=CIHandoffClassification.STALE,
                 reason=CIHandoffReason.LEASE_LOST,
                 assessment=assessment,
+                snapshot=initial_snapshot,
+                policy=policy,
+                now=now,
+                uuid_factory=uuid_factory,
+            )
+            return _result(
+                ticket,
+                classification=recorded.classification,
+                reason=recorded.reason,
+                reconciliation_id=recorded.id,
+            )
+
+        refreshed_assessment = evaluate_ci_handoff(
+            current_ticket,
+            head_commit=expected_head,
+            evidence=EvidenceRepo(db).list_for_product(current_ticket.product_id),
+        )
+        if refreshed_assessment != assessment:
+            recorded = _record(
+                db=db,
+                ticket=ticket,
+                owner=repository_owner,
+                repo=repository_name,
+                pr_number=pr_number,
+                expected_head=expected_head,
+                classification=CIHandoffClassification.STALE,
+                reason=CIHandoffReason.EVIDENCE_CHANGED,
+                assessment=refreshed_assessment,
                 snapshot=initial_snapshot,
                 policy=policy,
                 now=now,

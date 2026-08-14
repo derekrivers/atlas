@@ -285,6 +285,73 @@ def test_ac1_tied_current_observations_are_contradictory_not_actionable(
     assert assessment.reason.value == "contradictory_evidence"
 
 
+def test_ac1_classifier_excludes_foreign_product_and_ticket_evidence(
+    db: Database,
+) -> None:
+    client = RecordingClient()
+    ticket = seed_ci_pending(db, client)
+    foreign_product = uuid4()
+    foreign_ticket = uuid4()
+    foreign_evidence = [
+        ci_evidence(ticket, EvidenceType.TEST_RESULT, suffix="1").model_copy(
+            update={"product_id": foreign_product}
+        ),
+        ci_evidence(ticket, EvidenceType.LINT_RESULT, suffix="2").model_copy(
+            update={"product_id": foreign_product}
+        ),
+        ci_evidence(ticket, EvidenceType.TEST_RESULT, suffix="3").model_copy(
+            update={"ticket_id": foreign_ticket}
+        ),
+        ci_evidence(ticket, EvidenceType.LINT_RESULT, suffix="4").model_copy(
+            update={"ticket_id": foreign_ticket}
+        ),
+    ]
+
+    excluded = evaluate_ci_handoff(ticket, head_commit=HEAD, evidence=foreign_evidence)
+    matching = evaluate_ci_handoff(
+        ticket,
+        head_commit=HEAD,
+        evidence=[
+            ci_evidence(ticket, EvidenceType.TEST_RESULT, suffix="5").model_copy(
+                update={"ticket_id": ticket.id}
+            ),
+            ci_evidence(ticket, EvidenceType.LINT_RESULT, suffix="6").model_copy(
+                update={"ticket_id": ticket.id}
+            ),
+        ],
+    )
+
+    assert excluded.classification is CIHandoffClassification.MISSING
+    assert matching.classification is CIHandoffClassification.PASSED
+
+
+def test_ac1_reconciler_holds_when_only_another_product_passed_same_head(
+    db: Database,
+) -> None:
+    client = RecordingClient()
+    ticket = seed_ci_pending(db, client)
+    other_ticket = seed_ticket(
+        db,
+        client,
+        key="ATLAS-OTHER",
+        product_id=uuid4(),
+        status=TicketStatus.CI_PENDING,
+        with_issue=False,
+    )
+    add_passed_ci(db, other_ticket)
+
+    result = run(db, client, FakeGitHubClient(pull_request=pr_payload()))
+
+    assert result.classification is CIHandoffClassification.MISSING
+    assert result.reason.value == "required_checks_missing"
+    assert result.decision is CIHandoffDecision.HOLD
+    assert result.linear_mutations == 0
+    assert client.state_writes == []
+    [recorded] = CIHandoffReconciliationRepo(db).list_for_ticket(ticket.id)
+    assert recorded.check_results
+    assert all(not check.evidence_ids for check in recorded.check_results)
+
+
 @pytest.mark.parametrize(
     ("failed", "expected_state", "expected_decision"),
     [
@@ -445,6 +512,74 @@ def test_ac4_lease_loss_after_revalidation_writes_nothing(db: Database) -> None:
     assert result.reason.value == "lease_lost"
     assert result.linear_mutations == 0
     assert client.state_writes == []
+
+
+@pytest.mark.parametrize(
+    ("status", "conclusion", "next_classification", "next_state"),
+    [
+        (
+            EvidenceStatus.FAILED,
+            "failure",
+            CIHandoffClassification.IMPLEMENTATION_FAILURE,
+            CHANGES_REQUESTED_STATE.id,
+        ),
+        (
+            EvidenceStatus.PENDING,
+            None,
+            CIHandoffClassification.PENDING,
+            None,
+        ),
+    ],
+    ids=["newer-failed", "newer-pending"],
+)
+def test_ac4_newer_same_head_evidence_requires_a_fresh_tick(
+    db: Database,
+    status: EvidenceStatus,
+    conclusion: str | None,
+    next_classification: CIHandoffClassification,
+    next_state: str | None,
+) -> None:
+    client = RecordingClient()
+    ticket = seed_ci_pending(db, client)
+    add_passed_ci(db, ticket)
+    github = FakeGitHubClient(pull_request=pr_payload())
+
+    def append_newer_observation() -> None:
+        EvidenceRepo(db).add(
+            ci_evidence(
+                ticket,
+                EvidenceType.TEST_RESULT,
+                status=status,
+                conclusion=conclusion,
+                source_event_at=NOW + timedelta(seconds=1),
+                suffix="3",
+            )
+        )
+
+    first = run(
+        db,
+        client,
+        github,
+        hooks=CIHandoffHooks(after_classification=append_newer_observation),
+    )
+
+    assert first.classification is CIHandoffClassification.STALE
+    assert first.reason.value == "evidence_changed"
+    assert first.decision is CIHandoffDecision.HOLD
+    assert first.linear_mutations == 0
+    assert client.state_writes == []
+
+    second = run(db, client, github)
+
+    assert second.classification is next_classification
+    if next_state is None:
+        assert second.decision is CIHandoffDecision.HOLD
+        assert second.linear_mutations == 0
+        assert client.state_writes == []
+    else:
+        assert second.decision is CIHandoffDecision.CHANGES_REQUESTED
+        assert second.linear_mutations == 1
+        assert client.state_writes == [(ticket.external_linear_id, next_state)]
 
 
 def test_ac5_duplicate_owner_is_fenced_before_evaluation(db: Database) -> None:

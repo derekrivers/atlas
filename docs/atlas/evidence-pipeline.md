@@ -85,7 +85,12 @@ command exit code or an agent completion message. For one repository, PR and
 full lowercase head SHA, it resolves the repository-owned required-check
 matrix and evaluates only its system-tier checks: tests, lint and, when the
 matrix requires it, documentation. Every required member must be represented
-by current-head system evidence before the set can pass.
+by current-head system evidence before the set can pass. The storage projection
+is restricted to the ticket's product, and the pure classifier repeats that
+guard: a ticket-scoped record participates only for its exact `ticket_id`, while
+product-wide PR evidence has no ticket id. Evidence from another product or an
+explicitly different ticket cannot satisfy or fail the handoff even when it
+shares the same commit SHA.
 
 The projection distinguishes `passed`, `implementation_failure`, `pending`,
 `missing`, `infrastructure`, `stale`, `malformed` and `indeterminate`. Only a
@@ -95,7 +100,11 @@ current-head `failure` conclusion; a partial failure plus any missing or
 uncertain member remains held. Cancelled/timed-out provider work, old-head
 records, unordered source metadata, tied contradictory observations and
 unknown conclusions never become an implementation verdict. Evidence remains
-commit-pinned history after a new push.
+commit-pinned history after a new push. Immediately before the write fence, the
+reconciler reloads the product projection and repeats the assessment. A changed
+classification, check result or deciding evidence-id set records
+`evidence_changed`, performs no Linear mutation and leaves a later fresh tick to
+classify the new authoritative set.
 
 ## Exact-head acceptance-session composition
 

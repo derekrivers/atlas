@@ -193,7 +193,12 @@ def evaluate_ci_handoff(
     indeterminate rather than a vacuous pass.
     """
 
-    materialised = tuple(evidence)
+    materialised = tuple(
+        record
+        for record in evidence
+        if record.product_id == ticket.product_id
+        and (record.ticket_id is None or record.ticket_id == ticket.id)
+    )
     check_types = tuple(
         required.check_type
         for required in required_checks(ticket)
