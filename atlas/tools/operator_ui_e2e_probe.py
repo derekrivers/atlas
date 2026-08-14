@@ -13,6 +13,7 @@ from atlas.orchestration import present_operator_action_receipt
 from atlas.storage import (
     AcceptanceSessionRepo,
     Database,
+    DeliveryAdmissionPolicyRepo,
     EvidenceRepo,
     LessonRepo,
     OperatorActionReceiptRepo,
@@ -48,6 +49,12 @@ def build_probe(database: Database, *, context_ticket: str) -> dict[str, Any]:
     verification_checks = VerificationCheckRepo(database).list()
     transitions = TicketStatusTransitionRepo(database).list_all()
     sync_receipts = PmSyncReceiptRepo(database).list()
+    products = {ticket.product_id for ticket in tickets}
+    policy_revisions = [
+        revision
+        for product_id in sorted(products, key=str)
+        for revision in DeliveryAdmissionPolicyRepo(database).list_revisions(product_id)
+    ]
     return {
         "acceptance_sessions": [
             session.model_dump(mode="json") for session in acceptance_sessions
@@ -75,6 +82,15 @@ def build_probe(database: Database, *, context_ticket: str) -> dict[str, Any]:
         "pm_sync_receipts": [
             {"id": str(receipt.id), "result": receipt.result.value}
             for receipt in sync_receipts
+        ],
+        "policy_revisions": [
+            {
+                "approved_symphony_ceiling": policy.approved_symphony_ceiling,
+                "mode": policy.mode.value,
+                "revision": policy.revision,
+                "working_budget": policy.working_budget,
+            }
+            for policy in policy_revisions
         ],
         "receipts": [present_operator_action_receipt(receipt) for receipt in receipts],
         "schema": {

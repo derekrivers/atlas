@@ -45,6 +45,12 @@ export type AtlasStoreProbe = {
   }>
   lessons: Record<string, { confidence: number | null; status: string; updated_at: string }>
   pm_sync_receipts: Array<{ id: string; result: string }>
+  policy_revisions: Array<{
+    approved_symphony_ceiling: number
+    mode: string
+    revision: number
+    working_budget: number
+  }>
   receipts: Array<{
     action: string
     actor: { id: string; type: string }

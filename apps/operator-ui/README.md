@@ -47,6 +47,7 @@ Open these routes at `http://127.0.0.1:4173`:
 - `/critical-path` - Critical Path
 - `/dependency-graph` - Dependency Graph
 - `/lessons` - Lessons
+- `/delivery-control` - Delivery Control
 
 Browser requests stay same-origin under `/api`; Vite forwards them to the API
 configured by `VITE_ATLAS_API_BASE_URL`.
@@ -95,11 +96,14 @@ hand.
 ## Contributing to the Operator UI
 
 The bounded write surface permits only authenticated promote/reject rulings for
-DRAFT lessons and the generated exact-head acceptance-session commands.
-Contributions must not add lesson editing, merging, ACTIVE archival, bulk
-disposition, generic mutations, Linear writes, GitHub writes (including merge
-or auto-merge), rebase, plan approval controls, Symphony resume, schema upgrade,
-PM-sync controls, or disabled controls that imply those actions.
+DRAFT lessons, the generated exact-head acceptance-session commands and
+complete delivery-policy replacement. Contributions must not add lesson
+editing, merging, ACTIVE archival, bulk disposition, generic mutations or
+partial policy mutations, Linear writes, GitHub writes (including merge or
+auto-merge), rebase, plan approval controls, Symphony configuration/session
+controls, schema upgrade, PM-sync controls, automatic policy
+reconciliation/optimisation, an automatic concurrency ramp, or disabled
+controls that imply those actions.
 
 The delivered commands must continue to use the generated API contract, the
 memory-only local session, server-owned actor context, strict confirmation,
@@ -138,6 +142,15 @@ the current bounded operator surface:
   and manual-GitHub instruction. The UI never derives readiness from check rows
   or historical verification and never provides merge, rebase, Linear,
   Symphony, schema-upgrade, or PM-sync controls.
+- **Delivery authority is server-owned.** The Delivery Control view renders
+  generated policy, occupancy, decision and reason contracts without computing
+  admission. **Approved policy ceiling** is Atlas policy state that bounds
+  admission; it is not an observation of configured or occupied Symphony
+  workers. `WORKFLOW.md.agent.max_concurrent_agents` is governed separately.
+  Policy edits are complete replacements with full confirmation,
+  `expected_revision`, a fresh key for each new command, and server-returned
+  revision/receipt authority. The UI does not operate the milestone sequence
+  **1 → 3 → 5 → 7 → 10**.
 
 The Vite development server proxies same-origin `/api` requests to the Atlas API
 URL configured by `VITE_ATLAS_API_BASE_URL`, defaulting to

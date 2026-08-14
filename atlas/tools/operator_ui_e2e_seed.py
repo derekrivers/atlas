@@ -16,6 +16,7 @@ from uuid import UUID
 
 from atlas.core.enums import ActorType, EntityStatus, EvidenceStatus, RiskLevel
 from atlas.core.models import (
+    AdmissionRun,
     ADRStatus,
     ArchitectureDecisionRecord,
     DependencyType,
@@ -35,7 +36,22 @@ from atlas.core.models import (
     VerificationCheck,
     VerificationCheckType,
 )
+from atlas.core.models.admission_run import (
+    AdmissionCandidateDecision,
+    AdmissionDecisionType,
+    AdmissionHoldCode,
+    AdmissionHoldReason,
+    AdmissionRankInputs,
+)
+from atlas.core.models.delivery_admission_policy import DeliveryAdmissionPolicySpec
+from atlas.orchestration import (
+    DeliveryAdmissionPolicyChangeStatus,
+    DeliveryAdmissionPolicyService,
+)
+from atlas.pm import SnapshotIncompletenessCode, delivery_policy_fingerprint
 from atlas.storage import (
+    AdmissionCoordinationRepo,
+    AdmissionRunRepo,
     ADRRepo,
     Database,
     EpicRepo,
@@ -512,6 +528,123 @@ def _seed_pm_sync_receipt(db: Database, product: Product, timestamp: datetime) -
     )
 
 
+def _seed_delivery_control(
+    db: Database,
+    record: Mapping[str, Any],
+    product: Product,
+    tickets: Mapping[str, Ticket],
+    timestamp: datetime,
+) -> None:
+    """Seed one governed policy plus immutable admission and fence projections."""
+
+    policy_record = _record(record.get("policy"), "delivery_control.policy")
+    policy = DeliveryAdmissionPolicySpec.model_validate(policy_record)
+    result = DeliveryAdmissionPolicyService(db, clock=lambda: timestamp).revise(
+        product_id=product.id,
+        expected_revision=0,
+        idempotency_key="operator-ui-e2e-seed-policy",
+        policy=policy,
+    )
+    if (
+        result.status is not DeliveryAdmissionPolicyChangeStatus.APPLIED
+        or result.policy is None
+    ):
+        raise RuntimeError("delivery-control policy seed was not applied")
+    revision = result.policy
+    admitted = tickets[_required(record, "admitted_ticket_key", str)]
+    held = tickets[_required(record, "held_ticket_key", str)]
+    run = AdmissionRun(
+        id=UUID("00000000-0000-4000-8000-000000000751"),
+        product_id=product.id,
+        policy_id=revision.id,
+        policy_revision=revision.revision,
+        policy_fingerprint=delivery_policy_fingerprint(revision),
+        snapshot_fingerprint="d" * 64,
+        snapshot_observed_at=timestamp + timedelta(minutes=1),
+        evaluated_at=timestamp + timedelta(minutes=2),
+        selected_ticket_id=admitted.id,
+        selected_ticket_key=admitted.key,
+        decisions=(
+            AdmissionCandidateDecision(
+                ticket_id=admitted.id,
+                ticket_key=admitted.key,
+                external_linear_id=admitted.external_linear_id,
+                rank=1,
+                rank_inputs=AdmissionRankInputs(
+                    unlock_count=4,
+                    critical_path_member=True,
+                    critical_path_position=0,
+                    priority=admitted.priority,
+                    risk_level=admitted.risk_level,
+                    risk_severity=0,
+                    continuously_eligible_since=timestamp - timedelta(minutes=5),
+                    continuously_eligible_age_microseconds=300_000_000,
+                ),
+                decision=AdmissionDecisionType.ADMIT,
+            ),
+            AdmissionCandidateDecision(
+                ticket_id=held.id,
+                ticket_key=held.key,
+                external_linear_id=held.external_linear_id,
+                rank=2,
+                rank_inputs=AdmissionRankInputs(
+                    unlock_count=1,
+                    critical_path_member=False,
+                    critical_path_position=None,
+                    priority=held.priority,
+                    risk_level=held.risk_level,
+                    risk_severity=2,
+                    continuously_eligible_since=timestamp - timedelta(minutes=2),
+                    continuously_eligible_age_microseconds=120_000_000,
+                ),
+                decision=AdmissionDecisionType.HOLD,
+                reasons=(
+                    AdmissionHoldReason(
+                        code=AdmissionHoldCode.SNAPSHOT_INCOMPLETE,
+                        source_code=SnapshotIncompletenessCode.PAGINATION_GAP.value,
+                    ),
+                    AdmissionHoldReason(
+                        code=AdmissionHoldCode.COMPONENT_LANE,
+                        selector=held.component,
+                        observed=1,
+                        limit=1,
+                    ),
+                ),
+            ),
+        ),
+        created_by_type=ActorType.SYSTEM,
+        created_by_id="operator-ui-e2e-seed",
+    )
+    AdmissionRunRepo(db).record(run)
+
+    coordination = AdmissionCoordinationRepo(db)
+    owner_id = UUID("00000000-0000-4000-8000-000000000753")
+    if not coordination.try_acquire(
+        product_id=product.id,
+        owner_id=owner_id,
+        acquired_at=timestamp,
+        ttl=timedelta(minutes=10),
+    ):
+        raise RuntimeError("delivery-control seed lease was not acquired")
+    coordination.begin_write(
+        product_id=product.id,
+        owner_id=owner_id,
+        admission_run_id=run.id,
+        ticket_id=held.id,
+        ticket_key=held.key,
+        issue_id="seeded-linear-issue",
+        source_state_id="seeded-planned-state",
+        target_state_id="seeded-ready-state",
+        policy_revision=run.policy_revision,
+        created_at=timestamp + timedelta(minutes=2),
+    )
+    coordination.mark_indeterminate(
+        product_id=product.id,
+        admission_run_id=run.id,
+        observed_at=timestamp + timedelta(minutes=3),
+    )
+
+
 def seed_store(db_url: str, seed_path: Path = DEFAULT_SEED_PATH) -> Database:
     """Create a fresh SQLite store and load the committed e2e fixture."""
     seed = _load_seed(seed_path)
@@ -558,6 +691,15 @@ def seed_store(db_url: str, seed_path: Path = DEFAULT_SEED_PATH) -> Database:
         timestamp,
     )
     _seed_pm_sync_receipt(db, product, timestamp)
+    delivery_control = seed.get("delivery_control")
+    if delivery_control is not None:
+        _seed_delivery_control(
+            db,
+            _record(delivery_control, "delivery_control"),
+            product,
+            tickets,
+            timestamp,
+        )
     return db
 
 

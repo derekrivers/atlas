@@ -370,10 +370,32 @@ agent-session or automatic-ceiling operation.
 Policy replacement changes only Atlas policy; it neither reads nor mutates
 `WORKFLOW.md` or Symphony.
 
-The Operator UI presents budgets as ceilings rather than targets, shows used
-versus available capacity, keeps working and review pressure separate, and
-explains why each eligible ticket was admitted or held. Policy changes require
-an explicit confirmation and never silently retry an altered revision.
+The Operator UI presents `approved_symphony_ceiling` as **Approved policy
+ceiling** and describes it as operator-owned Atlas policy state that bounds
+admission. It does not present that field as independently observed Symphony
+configuration or occupied workers, read `WORKFLOW.md`, discover Symphony state,
+or hide a temporary policy/configuration mismatch. Any future server-provided
+configured-ceiling or occupied-session observation must be a distinct field;
+the present UI consumes only the delivery-control projection.
+
+Budgets are shown as maximums rather than targets. Server-provided used and
+available working capacity, review pressure, protected Changes Requested
+reserve, risk lanes, component lanes and indeterminate/over-capacity state stay
+visually distinct. Every persisted admission decision, rank input and complete
+typed reason inventory is displayed without browser reranking, availability
+inference or a manufactured safe result. Loading and refetch preserve the last
+truthful server snapshot as visibly stale, with its server timestamp.
+
+Policy editing is a complete replacement, never a partial patch or hidden
+adjustment. The confirmation names mode, approved policy ceiling, working and
+review budgets, Changes Requested reserve, all risk and component lane limits,
+and `expected_revision`. Each new explicit command receives a fresh idempotency
+key. Stale revision and altered replay preserve the proposal but require an
+explicit load/review/reconfirm cycle; only an unchanged ambiguously completed
+command may be explicitly retried with the same key. Success displays the
+server revision and receipt and refetches before claiming current state. If
+that refetch fails, the confirmed success remains non-retryable and another
+command stays blocked until an authoritative refresh succeeds.
 
 ## Symphony ceiling ramp
 
@@ -387,7 +409,7 @@ Symphony sessions. None is a utilisation target.
 Ordinary committed `main` remains at `max_concurrent_agents: 1` and
 `max_turns: 10` while Phase 15 is open. The controlled exercise is pinned to
 the dedicated `phase-15-atlas-253-ceiling-ramp` branch. Only the operator may
-change that branch's declaration, in order, from 1 to 3 to 5 to 7 to 10.
+change that branch's declaration in the exact sequence **1 → 3 → 5 → 7 → 10**.
 Before creating or resuming that milestone branch, the operator must verify
 that Phase 15.5's efficiency and integration milestone has passed, its closure
 report is merged and ATLAS-253 is deliberately released from `Needs Human`.
@@ -403,6 +425,13 @@ The ramp introduces no delivery-policy mutation path: only the human/operator
 may reconcile the policy mirror through the existing governed Phase 15
 policy-revision boundary, and neither agents nor ramp automation receive that
 authority.
+
+The delivery-control UI may submit a complete policy selected by the operator
+at any governed gate, but it does not advance a gate, validate a PASS receipt,
+edit the milestone branch or `WORKFLOW.md`, start or stop agents, decide that an
+increase is safe, or declare Phase 15 closed. Paused and draining policies stop
+new admission while preserving active work; a lower Atlas policy ceiling does
+not terminate an active Symphony session.
 
 The milestone-only doc-linter and workflow-contract validation context accepts
 levels 1, 3, 5, 7 and 10 only on the exact dedicated branch. Ordinary CI omits

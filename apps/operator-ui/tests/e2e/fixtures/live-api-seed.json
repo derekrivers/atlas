@@ -17,6 +17,26 @@
     "description": "Seeded Atlas operator UI end-to-end product.",
     "vision": "Exercise the live read API with deterministic operational shapes."
   },
+  "delivery_control": {
+    "admitted_ticket_key": "ATLAS-1",
+    "held_ticket_key": "ATLAS-2",
+    "policy": {
+      "mode": "running",
+      "approved_symphony_ceiling": 3,
+      "working_budget": 3,
+      "review_budget": 2,
+      "changes_requested_reserve": 1,
+      "risk_lane_limits": [
+        { "risk_level": "high", "limit": 2 }
+      ],
+      "component_lane_limits": [
+        {
+          "component": "operator-ui/admission-explanation-with-an-intentionally-long-responsive-component-name",
+          "limit": 1
+        }
+      ]
+    }
+  },
   "epics": [
     {
       "id": "00000000-0000-4000-8000-000000000e01",
@@ -83,7 +103,7 @@
       "external_github_issue_id": "GH-seeded-atlas-1",
       "source_anchor": "docs/atlas/operator-ui.md#ticket-detail-ticketskey"
     },
-    { "id": "00000000-0000-4000-8000-000000000002", "key": "ATLAS-2", "status": "in_progress", "priority": 2, "risk_level": "high", "estimated_effort": 3, "acceptance_criteria": [], "tags": ["operator-ui"] },
+    { "id": "00000000-0000-4000-8000-000000000002", "key": "ATLAS-2", "status": "in_progress", "priority": 2, "risk_level": "high", "estimated_effort": 3, "acceptance_criteria": [], "tags": ["operator-ui"], "component": "operator-ui/admission-explanation-with-an-intentionally-long-responsive-component-name" },
     { "id": "00000000-0000-4000-8000-000000000003", "key": "ATLAS-3", "status": "done", "priority": 3, "risk_level": "low", "estimated_effort": 1 },
     { "id": "00000000-0000-4000-8000-000000000004", "key": "ATLAS-4", "status": "rejected", "priority": 4, "risk_level": "medium", "estimated_effort": 1, "epic_key": "ATLAS-E2" },
     { "id": "00000000-0000-4000-8000-000000000005", "key": "ATLAS-5", "status": "done", "priority": 5, "risk_level": "low", "estimated_effort": 2 },

@@ -5,6 +5,7 @@ export type OperatorSurfaceId =
   | 'reviews'
   | 'critical-path'
   | 'dependency-graph'
+  | 'delivery-control'
   | 'lessons'
 
 export type OperatorSurface = {
@@ -86,6 +87,17 @@ export const operatorSurfaces = [
       eyebrow: 'Dependencies',
       title: 'Dependency Graph',
       body: 'The whole-graph route is reserved; graph layout and filtering remain with the graph view ticket.',
+    },
+  },
+  {
+    id: 'delivery-control',
+    title: 'Delivery Control',
+    href: '/delivery-control',
+    routePath: 'delivery-control',
+    placeholder: {
+      eyebrow: 'Delivery Control',
+      title: 'Delivery control',
+      body: 'Server-owned delivery policy, occupancy, and admission explanations.',
     },
   },
   {
