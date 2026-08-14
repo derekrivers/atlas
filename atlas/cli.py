@@ -1,9 +1,7 @@
 """The `atlas` CLI.
 
-This module owns argparse wiring, dependency construction, presentation, and
-exit-code policy. Domain logic stays in lower layers (`atlas.planning`,
-`atlas.pm`, `atlas.orchestration`, `atlas.verification`, and friends), with
-dependencies injectable so tests run against fakes and in-memory stores.
+This module owns argparse wiring, presentation and exit policy; domain logic
+stays in lower layers, with injectable boundaries for isolated tests.
 
 Exit codes are shared across commands:
 
@@ -120,6 +118,7 @@ from atlas.orchestration import (
     resolve_github_client,
     resolve_pr_context,
     run_verify,
+    validation_plan_cli,
 )
 from atlas.orchestration.operator_security import (
     WRITABLE_BIND_HOST_ENV,
@@ -433,6 +432,7 @@ def build_parser() -> argparse.ArgumentParser:
     _add_preflight_parser(subcommands)
     _add_lessons_parser(subcommands)
     _add_api_parser(subcommands)
+    validation_plan_cli.add_parser(subcommands)
     return parser
 
 
@@ -2600,10 +2600,8 @@ def main(
     model_probe: ModelProbe | None = None,
     git_runner: GitRunner | None = None,
 ) -> int:
-    """Entry point. ``database``/``client``/``identity``/``staged_generator``/
-    ``github_client``/``linear_client``/``model_probe``/``git_runner`` are
-    injectable for tests; production builds them from the environment (and the
-    C6 model probe shells out to Codex)."""
+    """Entry point with injectable boundaries; production builds them from the
+    environment (and the C6 model probe shells out to Codex)."""
     args = build_parser().parse_args(argv)
     _configure_logging(bool(getattr(args, "verbose", False)))
     if args.command == "plan":
@@ -2643,6 +2641,8 @@ def main(
         return _lessons_command(args, database=database, client=client)
     if args.command == "api":
         return _api_command(args)
+    if args.command == "validation-plan":
+        return validation_plan_cli.run_command(args)
     return EXIT_PRECONDITION  # unreachable: subparser is required
 
 

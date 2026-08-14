@@ -54,26 +54,47 @@ its inputs fails closed to the existing safer path.
 
 ### Validation registry
 
-A versioned declarative registry maps exact repository paths and explicit
-ticket test requirements to ordered validation profiles. Initial profiles
-cover Python unit/integration tests, type/static checks, documentation,
-database migrations, generated OpenAPI client drift, Operator UI unit/build
-checks, browser tests, workflow contracts and the complete repository sweep.
+A digest-pinned declarative registry at
+`atlas/verification/validation_registry_v1.json` maps narrow repository paths
+and registered ticket requirements to ordered profiles. The versioned v1
+profiles are Python tests, static checks, documentation, database/schema,
+generated OpenAPI client drift, Operator UI unit/build, browser/end-to-end,
+workflow contracts and the complete local sweep. The registry declares both
+commands and selection reasons. Its content hash is checked before use; a
+schema, version or digest mismatch is registry drift and selects the safe
+complete-sweep baseline embedded in code.
 
-The plan calculation accepts an exact base, head and changed-path set. It
-returns stable machine-readable and human-readable output containing:
+`atlas validation-plan` accepts a full lowercase 40- or 64-character base
+object id, a full head object id, and every repository-relative path in that
+exact diff. Repeatable `--ticket-requirement` values name registry ids and
+repeatable `--ticket-test` values add explicit test files. The optional
+`--expect-registry-version` pins a caller to the policy version it reviewed.
+The CLI reads the packaged registry but does not discover the diff, invoke Git,
+execute a command or write repository/external state. It emits human-readable
+output by default or canonical compact JSON with `--json`, containing:
 
 - the repository identities used;
 - every selected profile and command;
 - the path or ticket requirement that selected it;
+- every mandatory changed or ticket-declared test file;
 - any protected-surface reason; and
 - whether the complete-sweep fallback is mandatory.
 
-Changed tests, tests added for changed behaviour and ticket-declared test
-requirements cannot be excluded by free-form agent input. Unknown paths,
-ambiguous bases, registry drift and cross-cutting protected surfaces select the
-complete local sweep. The classifier performs no repository or external
-mutation.
+Inputs and rendered fields have fixed count and length bounds. Input order,
+duplicates, clocks, UUIDs and model interpretation do not affect the plan;
+identical identities and changed-path sets serialize to identical bytes.
+Changed tests, tests added for changed behaviour and ticket-declared tests are
+additive mandatory inputs. There is no exclusion option, and an invalid or
+unregistered free-form value cannot remove a profile. Unknown paths, omitted
+diffs, ambiguous or inconsistent identities, registry drift, oversized input
+and protected cross-cutting surfaces select the documented complete local
+sweep rather than an incomplete result.
+
+The complete local sweep runs the unfiltered Python test/static/documentation/
+architecture gates and both Operator UI cold-checkout wrappers. It remains an
+explicit profile and the conservative fallback. CI independently runs every
+required job, including event-scoped gates such as PR-title provenance; local
+profile selection never changes the CI workflow.
 
 ### Evidence boundary
 
