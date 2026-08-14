@@ -1,6 +1,12 @@
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import type { QueryClient } from '@tanstack/react-query'
+import {
+  createRootRoute,
+  createRoute,
+  createRouter,
+  RouterProvider,
+} from '@tanstack/react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { components } from '@/api/atlas-openapi'
 import { atlasForgetSession } from '@/api/client'
@@ -193,6 +199,23 @@ function requestHeader(init: RequestInit | undefined, name: string): string | nu
   return new Headers(init?.headers).get(name)
 }
 
+function createDeliveryControlTestRouter() {
+  const rootRoute = createRootRoute()
+  const deliveryControlRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: 'delivery-control',
+    component: DeliveryControlView,
+  })
+  const ticketDetailRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: 'tickets/$key',
+    component: () => <p>Ticket detail destination</p>,
+  })
+  return createRouter({
+    routeTree: rootRoute.addChildren([deliveryControlRoute, ticketDetailRoute]),
+  })
+}
+
 async function waitForAssertion(assertion: () => void): Promise<void> {
   let lastError: unknown
   for (let attempt = 0; attempt < 150; attempt += 1) {
@@ -231,13 +254,14 @@ function setInput(input: HTMLInputElement, value: string): void {
 }
 
 async function renderControl(queryClient: QueryClient = createAtlasQueryClient()) {
+  window.history.pushState({}, '', '/delivery-control')
   container = document.createElement('div')
   document.body.append(container)
   mountedRoot = createRoot(container)
   await act(async () => {
     mountedRoot?.render(
       <AppProviders queryClient={queryClient}>
-        <DeliveryControlView />
+        <RouterProvider router={createDeliveryControlTestRouter()} />
       </AppProviders>
     )
   })
@@ -288,6 +312,42 @@ afterEach(() => {
 })
 
 describe('delivery control browser component', () => {
+  it('routes decision ticket links inside the SPA without losing the operator session', async () => {
+    let sessionCreates = 0
+    window.fetch = vi.fn(async (input, init) => {
+      const path = requestPath(input)
+      if (path === '/api/v1/session' && init?.method === 'POST') {
+        sessionCreates += 1
+        return jsonResponse({
+          authenticated: true,
+          csrf_token: 'delivery-control-navigation-csrf',
+          expires_at: '2099-08-13T11:00:00Z',
+        })
+      }
+      if (path === '/api/v1/session') {
+        return jsonResponse({ authenticated: false, expires_at: null })
+      }
+      if (path === '/api/v1/delivery-control') {
+        return jsonResponse(deliveryControl())
+      }
+      return new Response('Not found', { status: 404 })
+    })
+
+    await renderControl()
+    await signIn()
+
+    const ticketLink = Array.from(document.querySelectorAll<HTMLAnchorElement>('a')).find(
+      (item) => item.textContent?.trim() === 'ATLAS-751'
+    )
+    expect(ticketLink?.getAttribute('href')).toBe('/tickets/ATLAS-751')
+
+    await act(async () => ticketLink?.click())
+    await waitForAssertion(() =>
+      expect(window.location.pathname).toBe('/tickets/ATLAS-751')
+    )
+    expect(sessionCreates).toBe(1)
+  })
+
   it('renders policy ceiling 3 strictly as Atlas policy state and preserves every server decision and exceptional reason', async () => {
     window.fetch = vi.fn(async (input, init) => {
       const path = requestPath(input)

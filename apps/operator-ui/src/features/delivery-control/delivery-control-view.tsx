@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { AlertTriangle, CircleGauge, RefreshCw, ShieldCheck } from 'lucide-react'
+import { Link } from '@tanstack/react-router'
 import type { components } from '@/api/atlas-openapi'
 import { AtlasRequestError } from '@/api/client'
 import { useDeliveryControlQuery } from '@/api/query-hooks'
@@ -235,9 +236,9 @@ function DecisionCard({ decision }: { decision: Decision }) {
     <article className='min-w-0 rounded-lg border p-4' data-decision={decision.decision}>
       <div className='flex flex-wrap items-center justify-between gap-2'>
         <h3 className='font-semibold'>
-          <a href={ticketDetailHref(decision.ticket_key)} className='hover:underline'>
+          <Link to={ticketDetailHref(decision.ticket_key)} className='hover:underline'>
             {decision.ticket_key}
-          </a>
+          </Link>
         </h3>
         <div className='flex items-center gap-2'>
           <Badge variant='outline'>Rank {decision.rank}</Badge>
