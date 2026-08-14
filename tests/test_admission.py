@@ -24,6 +24,7 @@ from atlas.pm import (
     AdmissionInputMismatchCode,
     AdmissionInputMismatchError,
     LinearBoardPull,
+    delivery_policy_fingerprint,
     evaluate_admission,
 )
 from atlas.pm import admission as admission_module
@@ -293,6 +294,30 @@ def test_atlas_255_full_or_breached_integration_budget_holds_new_admission(
 
     decision = decisions_by_key(run)[candidate.key]
     assert AdmissionHoldCode.INTEGRATION_BUDGET in reason_codes(decision)
+    assert run.selected_ticket_id is None
+
+
+def test_atlas_255_changed_snapshot_integration_budget_fails_closed() -> None:
+    candidate = ticket("ATLAS-1", TicketStatus.PLANNED)
+    snapshot_policy = policy(integration_budget=2)
+    observed = snapshot(
+        [candidate],
+        [issue(candidate)],
+        selected_policy=snapshot_policy,
+    )
+    evaluated_policy = policy(integration_budget=3)
+
+    run = evaluate(
+        [candidate],
+        selected_policy=evaluated_policy,
+        selected_snapshot=observed,
+    )
+
+    assert observed.policy_fingerprint == delivery_policy_fingerprint(evaluated_policy)
+    assert observed.integration_budget == 2
+    assert reason_codes(run.decisions[0]) == {
+        AdmissionHoldCode.SNAPSHOT_POLICY_MISMATCH
+    }
     assert run.selected_ticket_id is None
 
 

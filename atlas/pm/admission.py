@@ -152,6 +152,7 @@ def _global_reasons(
         or snapshot.policy_revision != policy.revision
         or snapshot.policy_mode is not policy.mode
         or snapshot.policy_fingerprint != delivery_policy_fingerprint(policy)
+        or snapshot.integration_budget != policy.integration_budget
     ):
         reasons.append(
             AdmissionHoldReason(code=AdmissionHoldCode.SNAPSHOT_POLICY_MISMATCH)
