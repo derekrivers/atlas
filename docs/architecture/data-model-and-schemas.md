@@ -1688,6 +1688,74 @@ candidate.
 
 ---
 
+## 5.16 CI Handoff Reconciliation
+
+`CIHandoffReconciliation` is the immutable, bounded outcome of one exact
+repository/PR/head system-tier observation. Its classification is one of
+`passed`, `implementation_failure`, `pending`, `missing`, `infrastructure`,
+`stale`, `malformed` or `indeterminate`; its decision is exactly
+`review_required` for passed, `changes_requested` for implementation failure,
+and `hold` otherwise. A non-hold decision requires a non-empty bounded check
+projection. Policy id/revision/fingerprint and coherent snapshot fingerprint
+are either all present or all absent, and only a system actor can author the
+record.
+
+The record stores evidence UUIDs and typed outcomes, not raw evidence payloads,
+GitHub/Linear responses, logs or exception text. Repository and database
+boundaries are append-only; SQLite and PostgreSQL triggers reject update and
+delete.
+
+## 5.17 PostgreSQL Tables
+
+`ci_handoff_write_fences` is mutable coordination state, not evidence. One row
+per product is committed before the sole external transition. Confirmed success
+or a complete fresh-board reconciliation deletes it; an ambiguous response may
+change only its state from `pending` to `indeterminate`. The unique
+reconciliation foreign key prevents one decision from owning two writes.
+
+```sql
+CREATE TABLE ci_handoff_reconciliations (
+    id UUID PRIMARY KEY,
+    schema_version TEXT NOT NULL,
+    product_id UUID NOT NULL REFERENCES products(id),
+    ticket_id UUID NOT NULL REFERENCES tickets(id),
+    ticket_key TEXT NOT NULL,
+    linear_issue_id TEXT,
+    repository_owner TEXT NOT NULL,
+    repository_name TEXT NOT NULL,
+    pr_number INTEGER NOT NULL,
+    head_commit TEXT NOT NULL,
+    policy_id UUID REFERENCES delivery_admission_policy_revisions(id),
+    policy_revision INTEGER,
+    policy_fingerprint TEXT,
+    snapshot_fingerprint TEXT,
+    classification TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    decision TEXT NOT NULL,
+    check_results JSONB NOT NULL DEFAULT '[]',
+    observed_at TIMESTAMPTZ NOT NULL,
+    created_by_type TEXT NOT NULL,
+    created_by_id TEXT NOT NULL
+);
+
+CREATE TABLE ci_handoff_write_fences (
+    product_id UUID PRIMARY KEY REFERENCES products(id),
+    reconciliation_id UUID NOT NULL UNIQUE
+        REFERENCES ci_handoff_reconciliations(id),
+    ticket_id UUID NOT NULL REFERENCES tickets(id),
+    ticket_key TEXT NOT NULL,
+    issue_id TEXT NOT NULL,
+    source_state_id TEXT NOT NULL,
+    target_state_id TEXT NOT NULL,
+    target_status TEXT NOT NULL,
+    state TEXT NOT NULL CHECK (state IN ('pending', 'indeterminate')),
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL
+);
+```
+
+---
+
 ## 5.13 Lesson Disposition Result Snapshot
 
 Each successful lesson promotion or rejection stores the complete safe lesson

@@ -36,6 +36,11 @@ from atlas.pm.agent_runs import (
     agent_run_observation,
     reconstruct_agent_runs,
 )
+from atlas.pm.ci_handoff import (
+    CIHandoffHooks,
+    CIHandoffResult,
+    reconcile_ci_handoff,
+)
 from atlas.pm.completion import complete_verified
 from atlas.pm.delivery_snapshot import (
     INTEGRATION_STATUSES,
@@ -100,6 +105,8 @@ __all__ = [
     "AgentRunMetric",
     "AgentRunReconstructionResult",
     "AnomalyCount",
+    "CIHandoffHooks",
+    "CIHandoffResult",
     "ComponentLaneOccupancy",
     "CycleTimeStat",
     "DeliveryReport",
@@ -131,6 +138,7 @@ __all__ = [
     "delivery_store_revision",
     "evaluate_admission",
     "promote_ready",
+    "reconcile_ci_handoff",
     "reconstruct_agent_runs",
     "render_markdown",
     "report_json",

@@ -7,6 +7,7 @@ Atlas -> Linear, status Linear -> Atlas, nothing else). A layer above
 loop that drives this boundary on a cadence is ATLAS-42.
 """
 
+from atlas.linear.ci_handoff import CI_HANDOFF_TARGETS, LinearCIHandoffWriter
 from atlas.linear.client import (
     API_KEY_ENV,
     API_URL,
@@ -40,6 +41,7 @@ from atlas.linear.ownership import (
 __all__ = [
     "API_KEY_ENV",
     "API_URL",
+    "CI_HANDOFF_TARGETS",
     "LINEAR_ERROR_BODY_MAX_LEN",
     "LINEAR_HTTP_TIMEOUT_SECONDS",
     "OWNED_DEFINITION_FIELDS",
@@ -48,6 +50,7 @@ __all__ = [
     "STATE_MAP_ENV",
     "TEAM_ID_ENV",
     "LinearAPIError",
+    "LinearCIHandoffWriter",
     "LinearClient",
     "LinearClientError",
     "LinearComment",
