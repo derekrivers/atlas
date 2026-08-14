@@ -165,6 +165,7 @@ class DeliverySnapshot(BaseModel):
     policy_revision: int = Field(ge=1)
     policy_mode: DeliveryAdmissionMode
     policy_fingerprint: str
+    integration_budget: int = Field(ge=1)
     status_map_fingerprint: str
     fetched_board_fingerprint: str
     fetched_board_issue_count: int = Field(ge=0)
@@ -267,7 +268,6 @@ def _policy_payload(policy: DeliveryAdmissionPolicyRevision) -> dict[str, object
         "mode": policy.mode.value,
         "approved_symphony_ceiling": policy.approved_symphony_ceiling,
         "working_budget": policy.working_budget,
-        "integration_budget": policy.integration_budget,
         "review_budget": policy.review_budget,
         "changes_requested_reserve": policy.changes_requested_reserve,
         "risk_lane_limits": sorted(
@@ -288,7 +288,14 @@ def _policy_payload(policy: DeliveryAdmissionPolicyRevision) -> dict[str, object
 
 
 def delivery_policy_fingerprint(policy: DeliveryAdmissionPolicyRevision) -> str:
-    """Canonical fingerprint shared by snapshot and admission evaluation."""
+    """Canonical legacy fingerprint shared by snapshot and admission.
+
+    The payload intentionally remains byte-compatible with policy revisions
+    created before migration 0031.  New integration capacity is pinned as an
+    explicit :class:`DeliverySnapshot` canonical input instead, so historical
+    ``AdmissionRun.policy_fingerprint`` values remain reconstructable without
+    weakening snapshot freshness.
+    """
 
     return _canonical_hash(_policy_payload(policy))
 
@@ -794,6 +801,7 @@ def build_delivery_snapshot(
         policy_revision=policy.revision,
         policy_mode=policy.mode,
         policy_fingerprint=delivery_policy_fingerprint(policy),
+        integration_budget=policy.integration_budget,
         status_map_fingerprint=_canonical_hash(status_map.snapshot()),
         fetched_board_fingerprint=_canonical_hash(_board_payload(issues)),
         fetched_board_issue_count=len(issues),

@@ -71,7 +71,9 @@ Decisions encoded here:
 - **`CI Pending` is integration pressure, not working occupancy.** It is
   excluded from Symphony's active states, counted only against the
   operator-owned integration budget and held without cancelling or demoting
-  existing work when that budget is lowered.
+  existing work when that budget is lowered. Symphony can enter it only from
+  `PR Open`; it cannot leave it, and the generic PM status pull refuses to treat
+  a mapped exit as Atlas-owned CI evidence.
 - **Admission is a single Linear state edge, not scheduling.** The periodic and
   one-shot PM sync paths share a database lease and may move at most one
   revalidated dependency-ready issue into `Ready for Agent`. A stale or

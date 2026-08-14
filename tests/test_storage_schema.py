@@ -8,6 +8,7 @@ under the PostgreSQL dialect (the honesty mechanism for a SQLite-only
 CI; compile-compatibility is the stated limit of the claim).
 """
 
+import hashlib
 import json
 from datetime import UTC, datetime
 from io import StringIO
@@ -23,6 +24,8 @@ from alembic.migration import MigrationContext
 from alembic.script import ScriptDirectory
 from sqlalchemy.dialects import postgresql
 
+from atlas.pm import delivery_policy_fingerprint
+from atlas.storage import AdmissionRunRepo, DeliveryAdmissionPolicyRepo
 from atlas.storage.db import Database
 from atlas.storage.tables import Base
 
@@ -1093,7 +1096,7 @@ def test_delivery_policy_migration_bootstraps_three_without_workflow_change(
     assert (REPO_ROOT / "WORKFLOW.md").read_bytes() == workflow_before
 
 
-def test_ci_pending_capacity_upgrades_0030_without_rewriting_policy_history(
+def test_ci_pending_capacity_upgrade_preserves_historical_policy_fingerprint(
     tmp_path: Path,
 ) -> None:
     url = f"sqlite:///{tmp_path}/ci-pending-policy-upgrade.db"
@@ -1102,6 +1105,7 @@ def test_ci_pending_capacity_upgrades_0030_without_rewriting_policy_history(
     engine = sa.create_engine(url)
     product_id = UUID("11111111-1111-4111-8111-111111111111")
     policy_id = UUID("22222222-2222-4222-8222-222222222222")
+    admission_run_id = UUID("33333333-3333-4333-8333-333333333333")
     created_at = datetime(2026, 8, 13, 21, tzinfo=UTC)
     products = sa.Table("products", sa.MetaData(), autoload_with=engine)
     policies = sa.Table(
@@ -1110,6 +1114,24 @@ def test_ci_pending_capacity_upgrades_0030_without_rewriting_policy_history(
     active = sa.Table(
         "delivery_admission_policy_active", sa.MetaData(), autoload_with=engine
     )
+    admission_runs = sa.Table("admission_runs", sa.MetaData(), autoload_with=engine)
+    legacy_policy_payload = {
+        "id": str(policy_id),
+        "product_id": str(product_id),
+        "revision": 7,
+        "mode": "running",
+        "approved_symphony_ceiling": 3,
+        "working_budget": 2,
+        "review_budget": 3,
+        "changes_requested_reserve": 1,
+        "risk_lane_limits": [],
+        "component_lane_limits": [],
+    }
+    legacy_policy_fingerprint = hashlib.sha256(
+        json.dumps(legacy_policy_payload, sort_keys=True, separators=(",", ":")).encode(
+            "utf-8"
+        )
+    ).hexdigest()
     with engine.begin() as connection:
         connection.execute(
             products.insert().values(
@@ -1148,16 +1170,37 @@ def test_ci_pending_capacity_upgrades_0030_without_rewriting_policy_history(
         connection.execute(
             active.insert().values(product_id=product_id.hex, revision=7)
         )
+        connection.execute(
+            admission_runs.insert().values(
+                id=admission_run_id.hex,
+                schema_version="admission-run-v1",
+                product_id=product_id.hex,
+                policy_id=policy_id.hex,
+                policy_revision=7,
+                policy_fingerprint=legacy_policy_fingerprint,
+                snapshot_fingerprint="a" * 64,
+                snapshot_observed_at=created_at,
+                evaluated_at=created_at,
+                selected_ticket_id=None,
+                selected_ticket_key=None,
+                decisions=[],
+                created_by_type="system",
+                created_by_id="atlas.pm.admission",
+            )
+        )
     with engine.connect() as connection:
         before = connection.execute(sa.select(policies)).mappings().one()
+        run_before = connection.execute(sa.select(admission_runs)).mappings().one()
 
     command.upgrade(config, "head")
 
     upgraded = sa.Table(
         "delivery_admission_policy_revisions", sa.MetaData(), autoload_with=engine
     )
+    upgraded_runs = sa.Table("admission_runs", sa.MetaData(), autoload_with=engine)
     with engine.connect() as connection:
         after = connection.execute(sa.select(upgraded)).mappings().one()
+        run_after = connection.execute(sa.select(upgraded_runs)).mappings().one()
         trigger_names = {
             row[0]
             for row in connection.execute(
@@ -1169,6 +1212,7 @@ def test_ci_pending_capacity_upgrades_0030_without_rewriting_policy_history(
         }
 
     assert {key: after[key] for key in before} == dict(before)
+    assert dict(run_after) == dict(run_before)
     assert after["integration_budget"] == 1
     assert trigger_names == {
         "delivery_admission_policy_revisions_no_update",
@@ -1183,6 +1227,16 @@ def test_ci_pending_capacity_upgrades_0030_without_rewriting_policy_history(
             .where(upgraded.c.id == policy_id.hex)
             .values(integration_budget=2)
         )
+
+    migrated_db = Database(url)
+    historical_policy = DeliveryAdmissionPolicyRepo(migrated_db).get_revision(
+        product_id, 7
+    )
+    historical_run = AdmissionRunRepo(migrated_db).get(admission_run_id)
+    assert historical_policy is not None
+    assert historical_run is not None
+    assert historical_run.policy_fingerprint == legacy_policy_fingerprint
+    assert delivery_policy_fingerprint(historical_policy) == legacy_policy_fingerprint
 
 
 def test_ci_pending_capacity_migration_is_portable_additive_ddl() -> None:

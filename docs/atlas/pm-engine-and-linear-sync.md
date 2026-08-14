@@ -77,6 +77,12 @@ Linear state **id** is the lookup key — never the customizable name
 status_map)` reads only the state id and returns the mapped status or `None`;
 an unmapped id is dropped, not guessed (ATLAS-42 counts and logs it; ATLAS-118
 surfaces it as an anomaly).
+Mapped CI-pending edges have an additional ownership gate in the actual pull.
+The generic observation may mirror only the agent-owned `pr_open → ci_pending`
+entry. Every other entry and every exit remains unchanged and appends one
+deduplicated `out_of_ownership_transition` anomaly per observed state change;
+even a mapped Review Required or Changes Requested observation is not proof of
+the trusted Atlas CI classification that ATLAS-256 will own.
 The Linear state `type` is used only as load-time validation
 (`validate_against_states`): it confirms each configured id still exists on
 the team's board (team-scoped since ATLAS-148; stale-map guard — rotated
@@ -208,10 +214,13 @@ legitimately precede issue creation; a missing id in those states is not a join
 gap. After an id exists, every non-terminal ticket still requires that exact id
 in the complete project pull.
 
-The immutable snapshot pins product/project, policy id and revision, a policy
-fingerprint that includes the integration budget, the status-map fingerprint,
-fetched-board fingerprint/count, sorted CI-pending ticket identities, Atlas
-store and graph revision fingerprints and an injected observation time. It
+The immutable snapshot pins product/project, policy id and revision, the
+byte-stable legacy policy fingerprint, an explicit canonical integration-budget
+input, the status-map fingerprint, fetched-board fingerprint/count, sorted
+CI-pending ticket identities, Atlas store and graph revision fingerprints and an
+injected observation time. Historical pre-0031 admission policy hashes remain
+reconstructable, while any integration-budget change still changes the complete
+snapshot fingerprint. It
 reports every working, integration, review, risk and component over-capacity
 dimension. Incomplete pulls,
 pagination gaps, missing/duplicate issue identities, duplicate joins, unmapped

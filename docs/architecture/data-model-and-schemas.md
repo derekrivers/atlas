@@ -1584,6 +1584,13 @@ migration `0025`, and preserves the append-only guards on SQLite and
 PostgreSQL. New revisions supply the validated value explicitly through the
 existing compare-and-set, idempotency and atomic receipt transaction.
 
+The canonical delivery-policy fingerprint predates `0031` and deliberately
+retains its previous field set, excluding `integration_budget`. This preserves
+byte-for-byte reconstruction of immutable historical
+`AdmissionRun.policy_fingerprint` values after upgrade. Delivery snapshots pin
+`integration_budget` as a separate explicit canonical field, so the new policy
+input remains freshness-sensitive without rewriting history.
+
 ## 5.13 Admission Run
 
 `AdmissionRun` is one immutable result of the deterministic capacity-aware

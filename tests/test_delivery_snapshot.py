@@ -510,9 +510,11 @@ def test_atlas_255_ci_pending_identity_and_budget_change_snapshot_fingerprint() 
     )
 
     assert baseline.integration_ticket_keys == (first.key,)
+    assert baseline.integration_budget == 2
     assert identity_changed.integration_ticket_keys == (second.key,)
     assert identity_changed.fingerprint != baseline.fingerprint
-    assert budget_changed.policy_fingerprint != baseline.policy_fingerprint
+    assert budget_changed.integration_budget == 3
+    assert budget_changed.policy_fingerprint == baseline.policy_fingerprint
     assert budget_changed.fingerprint != baseline.fingerprint
 
 

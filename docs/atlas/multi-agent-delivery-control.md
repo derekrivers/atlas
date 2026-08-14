@@ -174,10 +174,13 @@ ticket has an id, however, absence of that exact issue from the complete project
 pull remains a typed `missing_joined_issue` failure.
 
 The snapshot pins product id, Linear project id, immutable policy id/revision
-and mode, a canonical policy fingerprint including `integration_budget`, the
-configured state-id map fingerprint, the fetched-board fingerprint and count,
-sorted CI-pending Atlas ticket identities, Atlas store and graph revision
-fingerprints, and an injected UTC observation time. The store
+and mode, the byte-stable legacy policy fingerprint, an explicit canonical
+`integration_budget` input, the configured state-id map fingerprint, the
+fetched-board fingerprint and count, sorted CI-pending Atlas ticket identities,
+Atlas store and graph revision fingerprints, and an injected UTC observation
+time. Keeping the pre-0031 policy hash contract stable makes historical
+`AdmissionRun.policy_fingerprint` values reconstructable; the explicit snapshot
+field still makes every integration-budget change alter the snapshot hash. The store
 revision covers complete product-ticket membership, ticket and Linear
 identities, status, acceptance criteria, priority, risk, component and effort.
 The graph revision covers every projected node identity and readiness/rank
