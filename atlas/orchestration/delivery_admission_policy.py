@@ -28,7 +28,7 @@ from atlas.orchestration.operator_actions import (
     OperatorActionMutation,
     canonical_request_fingerprint,
 )
-from atlas.storage import Database, DeliveryAdmissionPolicyRepo
+from atlas.storage import Database, DeliveryAdmissionPolicyRepo, ProductRepo
 from atlas.storage.tables import (
     DeliveryAdmissionPolicyActiveRow,
     DeliveryAdmissionPolicyRevisionRow,
@@ -88,6 +88,7 @@ class DeliveryAdmissionPolicyService:
         correlation_id_factory: Callable[[], UUID] = uuid4,
     ) -> None:
         self._repo = DeliveryAdmissionPolicyRepo(db)
+        self._products = ProductRepo(db)
         self._gateway = OperatorActionGateway(
             db,
             clock=clock,
@@ -95,6 +96,27 @@ class DeliveryAdmissionPolicyService:
             correlation_id_factory=correlation_id_factory,
         )
         self._policy_id_factory = policy_id_factory
+
+    def revise_current(
+        self,
+        *,
+        expected_revision: int,
+        idempotency_key: str,
+        policy: DeliveryAdmissionPolicySpec,
+    ) -> DeliveryAdmissionPolicyChangeResult:
+        """Revise the single local product without accepting client identity."""
+
+        products = self._products.list()
+        if len(products) != 1:
+            return DeliveryAdmissionPolicyChangeResult(
+                status=DeliveryAdmissionPolicyChangeStatus.REFUSED
+            )
+        return self.revise(
+            product_id=products[0].id,
+            expected_revision=expected_revision,
+            idempotency_key=idempotency_key,
+            policy=policy,
+        )
 
     def revise(
         self,

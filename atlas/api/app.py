@@ -21,6 +21,7 @@ from atlas.api.acceptance_policy import (
 )
 from atlas.api.routers import (
     acceptance_sessions,
+    delivery_control,
     dependencies,
     epics,
     lessons,
@@ -157,6 +158,7 @@ def create_app(
         response.headers["Content-Security-Policy"] = CONTENT_SECURITY_POLICY
         if (
             request.url.path.startswith(f"{API_V1_PREFIX}/acceptance-sessions")
+            or request.url.path.startswith(f"{API_V1_PREFIX}/delivery-control")
             or request.url.path.startswith(f"{API_V1_PREFIX}/session")
             or (request.method not in {"GET", "HEAD", "OPTIONS"})
         ):
@@ -202,7 +204,13 @@ def create_app(
                 and request.url.path.endswith("/acceptance-sessions")
             )
         )
-        if not (is_lesson_command or is_acceptance_command):
+        is_delivery_policy_command = (
+            request.method == "POST"
+            and request.url.path == f"{API_V1_PREFIX}/delivery-control/policy"
+        )
+        if not (
+            is_lesson_command or is_acceptance_command or is_delivery_policy_command
+        ):
             return await request_validation_exception_handler(request, error)
         if is_acceptance_command:
             bounded = AcceptanceSessionErrorResponse(
@@ -239,6 +247,7 @@ def create_app(
             prefix=API_V1_PREFIX,
         )
         application.include_router(acceptance_sessions.router, prefix=API_V1_PREFIX)
+        application.include_router(delivery_control.router, prefix=API_V1_PREFIX)
         _install_openapi_contract(application)
     return application
 

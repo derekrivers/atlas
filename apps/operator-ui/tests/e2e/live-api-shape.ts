@@ -96,13 +96,16 @@ function assertUuidString(value: unknown, path: string): asserts value is string
   }
 }
 
-function assertIsoDateTimeOrNull(value: unknown, path: string): void {
-  if (value === null) {
-    return
-  }
+function assertIsoDateTime(value: unknown, path: string): asserts value is string {
   assertString(value, path)
   if (Number.isNaN(Date.parse(value))) {
     throw new Error(`${path} must be an ISO datetime`)
+  }
+}
+
+function assertIsoDateTimeOrNull(value: unknown, path: string): void {
+  if (value !== null) {
+    assertIsoDateTime(value, path)
   }
 }
 
@@ -590,7 +593,233 @@ function assertSessionStateResponse(
   assertIsoDateTimeOrNull(value.expires_at, 'SessionStateResponse.expires_at')
 }
 
+function assertDeliveryControlRankInputs(
+  value: unknown,
+  path: string
+): asserts value is Schema['DeliveryControlRankInputsSchema'] {
+  assertObject(value, path)
+  assertExactKeys(
+    value,
+    [
+      'continuously_eligible_age_microseconds',
+      'continuously_eligible_since',
+      'critical_path_member',
+      'critical_path_position',
+      'priority',
+      'risk_level',
+      'risk_severity',
+      'unlock_count',
+    ],
+    path
+  )
+  assertInteger(value.unlock_count, `${path}.unlock_count`)
+  assertBoolean(value.critical_path_member, `${path}.critical_path_member`)
+  if (value.critical_path_position !== null) {
+    assertInteger(value.critical_path_position, `${path}.critical_path_position`)
+  }
+  assertInteger(value.priority, `${path}.priority`)
+  assertString(value.risk_level, `${path}.risk_level`)
+  assertInteger(value.risk_severity, `${path}.risk_severity`)
+  assertIsoDateTime(
+    value.continuously_eligible_since,
+    `${path}.continuously_eligible_since`
+  )
+  assertInteger(
+    value.continuously_eligible_age_microseconds,
+    `${path}.continuously_eligible_age_microseconds`
+  )
+}
+
+function assertDeliveryControlDecision(
+  value: unknown,
+  path: string
+): asserts value is NonNullable<
+  RouteResponse<'/api/v1/delivery-control'>['latest_admission']
+>['decisions'][number] {
+  assertObject(value, path)
+  assertExactKeys(
+    value,
+    ['decision', 'rank', 'rank_inputs', 'reasons', 'ticket_key'],
+    path
+  )
+  assertString(value.ticket_key, `${path}.ticket_key`)
+  assertInteger(value.rank, `${path}.rank`)
+  assertDeliveryControlRankInputs(value.rank_inputs, `${path}.rank_inputs`)
+  assertString(value.decision, `${path}.decision`)
+  assertArray(
+    value.reasons,
+    `${path}.reasons`,
+    (item: unknown, itemPath: string): asserts item is JsonObject => {
+      assertObject(item, itemPath)
+    }
+  )
+}
+
+function assertDeliveryControlAdmission(
+  value: unknown,
+  path: string
+): asserts value is NonNullable<
+  RouteResponse<'/api/v1/delivery-control'>['latest_admission']
+> {
+  assertObject(value, path)
+  assertExactKeys(
+    value,
+    [
+      'decision_count',
+      'decisions',
+      'decisions_truncated',
+      'evaluated_at',
+      'policy_fingerprint',
+      'policy_revision',
+      'run_id',
+      'selected_ticket_key',
+      'snapshot_fingerprint',
+      'snapshot_observed_at',
+    ],
+    path
+  )
+  assertUuidString(value.run_id, `${path}.run_id`)
+  assertInteger(value.policy_revision, `${path}.policy_revision`)
+  assertString(value.policy_fingerprint, `${path}.policy_fingerprint`)
+  assertString(value.snapshot_fingerprint, `${path}.snapshot_fingerprint`)
+  assertIsoDateTime(value.snapshot_observed_at, `${path}.snapshot_observed_at`)
+  assertIsoDateTime(value.evaluated_at, `${path}.evaluated_at`)
+  assertNullableString(value.selected_ticket_key, `${path}.selected_ticket_key`)
+  assertInteger(value.decision_count, `${path}.decision_count`)
+  assertBoolean(value.decisions_truncated, `${path}.decisions_truncated`)
+  assertArray(value.decisions, `${path}.decisions`, assertDeliveryControlDecision)
+}
+
+export function assertDeliveryControlResponse(
+  value: unknown
+): asserts value is RouteResponse<'/api/v1/delivery-control'> {
+  assertObject(value, 'DeliveryControlResponse')
+  assertExactKeys(
+    value,
+    [
+      'indeterminate_reasons',
+      'last_linear_sync_at',
+      'latest_admission',
+      'occupancy',
+      'policy',
+    ],
+    'DeliveryControlResponse'
+  )
+  assertObject(value.policy, 'DeliveryControlResponse.policy')
+  assertExactKeys(
+    value.policy,
+    [
+      'approved_symphony_ceiling',
+      'changes_requested_reserve',
+      'component_lane_limits',
+      'created_at',
+      'id',
+      'mode',
+      'review_budget',
+      'revision',
+      'risk_lane_limits',
+      'working_budget',
+    ],
+    'DeliveryControlResponse.policy'
+  )
+  assertUuidString(value.policy.id, 'DeliveryControlResponse.policy.id')
+  assertInteger(value.policy.revision, 'DeliveryControlResponse.policy.revision')
+  assertString(value.policy.mode, 'DeliveryControlResponse.policy.mode')
+  assertInteger(
+    value.policy.approved_symphony_ceiling,
+    'DeliveryControlResponse.policy.approved_symphony_ceiling'
+  )
+  assertInteger(
+    value.policy.working_budget,
+    'DeliveryControlResponse.policy.working_budget'
+  )
+  assertInteger(
+    value.policy.review_budget,
+    'DeliveryControlResponse.policy.review_budget'
+  )
+  assertInteger(
+    value.policy.changes_requested_reserve,
+    'DeliveryControlResponse.policy.changes_requested_reserve'
+  )
+  assertArray(
+    value.policy.risk_lane_limits,
+    'DeliveryControlResponse.policy.risk_lane_limits',
+    (item: unknown, path: string): asserts item is JsonObject => {
+      assertObject(item, path)
+    }
+  )
+  assertArray(
+    value.policy.component_lane_limits,
+    'DeliveryControlResponse.policy.component_lane_limits',
+    (item: unknown, path: string): asserts item is JsonObject => {
+      assertObject(item, path)
+    }
+  )
+  assertIsoDateTimeOrNull(
+    value.policy.created_at,
+    'DeliveryControlResponse.policy.created_at'
+  )
+  assertIsoDateTimeOrNull(
+    value.last_linear_sync_at,
+    'DeliveryControlResponse.last_linear_sync_at'
+  )
+  if (value.latest_admission !== null) {
+    assertDeliveryControlAdmission(
+      value.latest_admission,
+      'DeliveryControlResponse.latest_admission'
+    )
+  }
+  assertObject(value.occupancy, 'DeliveryControlResponse.occupancy')
+  assertExactKeys(
+    value.occupancy,
+    [
+      'changes_requested_occupancy',
+      'changes_requested_reserve_remaining',
+      'component_lane_occupancy',
+      'new_admission_working_capacity',
+      'over_capacity_reasons',
+      'review_occupancy',
+      'risk_lane_occupancy',
+      'source',
+      'status_occupancy',
+      'working_occupancy',
+    ],
+    'DeliveryControlResponse.occupancy'
+  )
+  assertString(value.occupancy.source, 'DeliveryControlResponse.occupancy.source')
+  assertInteger(
+    value.occupancy.working_occupancy,
+    'DeliveryControlResponse.occupancy.working_occupancy'
+  )
+  assertInteger(
+    value.occupancy.review_occupancy,
+    'DeliveryControlResponse.occupancy.review_occupancy'
+  )
+  assertArray(
+    value.occupancy.status_occupancy,
+    'DeliveryControlResponse.occupancy.status_occupancy',
+    (item: unknown, path: string): asserts item is JsonObject => {
+      assertObject(item, path)
+    }
+  )
+  assertArray(
+    value.occupancy.over_capacity_reasons,
+    'DeliveryControlResponse.occupancy.over_capacity_reasons',
+    (item: unknown, path: string): asserts item is JsonObject => {
+      assertObject(item, path)
+    }
+  )
+  assertArray(
+    value.indeterminate_reasons,
+    'DeliveryControlResponse.indeterminate_reasons',
+    (item: unknown, path: string): asserts item is JsonObject => {
+      assertObject(item, path)
+    }
+  )
+}
+
 export const liveApiShapeAssertions = {
+  '/api/v1/delivery-control': assertDeliveryControlResponse,
   '/api/v1/tickets': assertTicketBoardResponse,
   '/api/v1/tickets/count': assertTicketCountResponse,
   '/api/v1/tickets/{key}': assertTicketDetailResponse,

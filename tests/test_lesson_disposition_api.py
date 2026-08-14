@@ -195,6 +195,7 @@ def test_ac1_executable_route_inventory_proves_only_governed_writes_exist(
         ("POST", "/api/v1/acceptance-sessions/{session_id}/evidence"),
         ("POST", "/api/v1/acceptance-sessions/{session_id}/confirm"),
         ("POST", "/api/v1/acceptance-sessions/{session_id}/verify"),
+        ("POST", "/api/v1/delivery-control/policy"),
     }
 
 

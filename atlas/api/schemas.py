@@ -26,6 +26,14 @@ from atlas.core.models.acceptance_session import (
     AcceptanceCriterionSnapshot,
     AcceptanceStepSummary,
 )
+from atlas.core.models.admission_run import AdmissionDecisionType, AdmissionHoldCode
+from atlas.core.models.delivery_admission_policy import (
+    MAX_COMPONENT_LANES,
+    ComponentLaneLimit,
+    DeliveryAdmissionMode,
+    DeliveryAdmissionPolicySpec,
+    RiskLaneLimit,
+)
 from atlas.core.models.operator_action_receipt import (
     OperatorActionMetadataKey,
     OperatorActionMetadataValue,
@@ -36,6 +44,14 @@ from atlas.orchestration import (
     AcceptanceSessionCreationStatus,
     OperatorActionConflictCode,
     OperatorActionFailureCode,
+)
+from atlas.orchestration.delivery_admission_policy import (
+    DeliveryAdmissionPolicyConflictCode,
+)
+from atlas.pm.admission_sync import AdmissionSyncReason
+from atlas.pm.delivery_snapshot import (
+    OccupancyDimension,
+    SnapshotIncompletenessCode,
 )
 
 
@@ -574,3 +590,242 @@ class SystemStatusResponse(BaseModel):
     evidence_count: int
     last_linear_sync_at: datetime | None
     last_evidence_pull_at: datetime | None
+
+
+class DeliveryAdmissionRiskLaneLimitRequest(RiskLaneLimit):
+    """Strict risk-lane entry accepted only inside a complete policy request."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True, hide_input_in_errors=True)
+
+
+class DeliveryAdmissionComponentLaneLimitRequest(ComponentLaneLimit):
+    """Strict component-lane entry accepted only inside a complete policy request."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True, hide_input_in_errors=True)
+
+
+class DeliveryAdmissionPolicyRequest(DeliveryAdmissionPolicySpec):
+    """Complete strict policy replacement plus compare-and-set revision."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True, hide_input_in_errors=True)
+
+    expected_revision: int = Field(strict=True, ge=0)
+    approved_symphony_ceiling: int = Field(
+        strict=True,
+        ge=1,
+        le=10,
+        description=(
+            "Active Atlas delivery-policy value; not an independently observed "
+            "Symphony or WORKFLOW.md configuration value."
+        ),
+    )
+    risk_lane_limits: tuple[DeliveryAdmissionRiskLaneLimitRequest, ...] = Field(
+        max_length=len(RiskLevel)
+    )
+    component_lane_limits: tuple[DeliveryAdmissionComponentLaneLimitRequest, ...] = (
+        Field(max_length=MAX_COMPONENT_LANES)
+    )
+
+    def policy_spec(self) -> DeliveryAdmissionPolicySpec:
+        """Return only canonical policy fields; command identity stays server-owned."""
+
+        return DeliveryAdmissionPolicySpec(
+            mode=self.mode,
+            approved_symphony_ceiling=self.approved_symphony_ceiling,
+            working_budget=self.working_budget,
+            review_budget=self.review_budget,
+            changes_requested_reserve=self.changes_requested_reserve,
+            risk_lane_limits=self.risk_lane_limits,
+            component_lane_limits=self.component_lane_limits,
+        )
+
+
+class DeliveryAdmissionPolicySchema(BaseModel):
+    """Safe active policy revision exposed to the local operator."""
+
+    id: UUID
+    revision: int = Field(ge=1)
+    mode: DeliveryAdmissionMode
+    approved_symphony_ceiling: int = Field(
+        ge=1,
+        le=10,
+        description=(
+            "Active Atlas delivery-policy value; not an independently observed "
+            "Symphony or WORKFLOW.md configuration value."
+        ),
+    )
+    working_budget: int = Field(ge=1, le=10)
+    review_budget: int = Field(ge=1, le=10)
+    changes_requested_reserve: int = Field(ge=0, le=10)
+    risk_lane_limits: list[RiskLaneLimit]
+    component_lane_limits: list[ComponentLaneLimit]
+    created_at: datetime
+
+
+class DeliveryControlStatusOccupancySchema(BaseModel):
+    """Current materialised ticket count for one canonical status."""
+
+    status: TicketStatus
+    count: int = Field(ge=0)
+
+
+class DeliveryControlRiskLaneOccupancySchema(BaseModel):
+    """Current stored occupancy for one configured risk lane."""
+
+    risk_level: RiskLevel
+    count: int = Field(ge=0)
+    limit: int = Field(ge=0, le=10)
+
+
+class DeliveryControlComponentLaneOccupancySchema(BaseModel):
+    """Current stored occupancy for one configured component lane."""
+
+    component: str = Field(min_length=1, max_length=128)
+    count: int = Field(ge=0)
+    limit: int = Field(ge=0, le=10)
+
+
+class DeliveryControlOverCapacityReasonSchema(BaseModel):
+    """One currently breached capacity dimension."""
+
+    dimension: OccupancyDimension
+    selector: str | None = Field(default=None, max_length=128)
+    count: int = Field(ge=0)
+    limit: int = Field(ge=0, le=10)
+
+
+class DeliveryControlOccupancySchema(BaseModel):
+    """Current persisted occupancy with separate working and review pressure."""
+
+    source: Literal["materialized_atlas_statuses"]
+    status_occupancy: list[DeliveryControlStatusOccupancySchema]
+    working_occupancy: int = Field(ge=0)
+    review_occupancy: int = Field(ge=0)
+    changes_requested_occupancy: int = Field(ge=0)
+    changes_requested_reserve_remaining: int = Field(ge=0, le=10)
+    new_admission_working_capacity: int = Field(ge=0, le=10)
+    risk_lane_occupancy: list[DeliveryControlRiskLaneOccupancySchema]
+    component_lane_occupancy: list[DeliveryControlComponentLaneOccupancySchema]
+    over_capacity_reasons: list[DeliveryControlOverCapacityReasonSchema]
+
+
+class DeliveryControlHoldReasonSchema(BaseModel):
+    """One distinct typed hold reason without raw external identities."""
+
+    code: AdmissionHoldCode
+    source_code: SnapshotIncompletenessCode | None
+    selector: str | None = Field(default=None, max_length=128)
+    observed: int | None = Field(default=None, ge=0, le=1_000_000)
+    limit: int | None = Field(default=None, ge=0, le=1_000_000)
+    reserved_capacity: int | None = Field(default=None, ge=0, le=1_000_000)
+
+
+class DeliveryControlRankInputsSchema(BaseModel):
+    """Fixed secret-free inputs that produced one deterministic candidate rank."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    unlock_count: int = Field(ge=0)
+    critical_path_member: bool
+    critical_path_position: int | None = Field(ge=0)
+    priority: int = Field(ge=-2147483648, le=2147483647)
+    risk_level: RiskLevel
+    risk_severity: int = Field(ge=0, le=3)
+    continuously_eligible_since: datetime
+    continuously_eligible_age_microseconds: int = Field(ge=0)
+
+
+class DeliveryControlDecisionSchema(BaseModel):
+    """One candidate decision from the latest immutable admission run."""
+
+    ticket_key: str = Field(min_length=1, max_length=128)
+    rank: int = Field(ge=1, le=1_000_000)
+    rank_inputs: DeliveryControlRankInputsSchema
+    decision: AdmissionDecisionType
+    reasons: list[DeliveryControlHoldReasonSchema]
+
+
+class DeliveryControlAdmissionSchema(BaseModel):
+    """Bounded latest admission-run state."""
+
+    run_id: UUID
+    policy_revision: int = Field(ge=1)
+    policy_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
+    snapshot_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
+    snapshot_observed_at: datetime
+    evaluated_at: datetime
+    selected_ticket_key: str | None = Field(default=None, max_length=128)
+    decision_count: int = Field(ge=0)
+    decisions_truncated: bool
+    decisions: list[DeliveryControlDecisionSchema]
+
+
+class DeliveryControlIndeterminateReasonSchema(BaseModel):
+    """One unresolved durable external-write fence."""
+
+    reason: AdmissionSyncReason
+    state: Literal["pending", "indeterminate"]
+    admission_run_id: UUID
+    ticket_key: str = Field(min_length=1, max_length=128)
+    policy_revision: int = Field(ge=1)
+    observed_at: datetime
+
+
+class DeliveryControlResponse(BaseModel):
+    """Authenticated, observational delivery policy and admission status."""
+
+    policy: DeliveryAdmissionPolicySchema
+    last_linear_sync_at: datetime | None
+    occupancy: DeliveryControlOccupancySchema
+    latest_admission: DeliveryControlAdmissionSchema | None
+    indeterminate_reasons: list[DeliveryControlIndeterminateReasonSchema]
+
+
+class DeliveryPolicyActionTargetSchema(BaseModel):
+    """Server-selected product target for a policy command receipt."""
+
+    type: Literal["product"]
+    id: UUID
+
+
+class DeliveryPolicyActionReceiptSchema(BaseModel):
+    """Bounded append-only receipt for one policy replacement."""
+
+    receipt_id: UUID
+    correlation_id: UUID
+    action: Literal["delivery_admission_policy.revise"]
+    target: DeliveryPolicyActionTargetSchema
+    actor: OperatorActionActorSchema
+    idempotency_key_identity: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    request_fingerprint: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    outcome: OperatorActionOutcome
+    result_code: OperatorActionResultCode
+    result_metadata: dict[
+        OperatorActionMetadataKey,
+        OperatorActionMetadataValue,
+    ]
+    before_status: None
+    after_status: None
+    created_at: datetime
+    completed_at: datetime
+
+
+class DeliveryAdmissionPolicyResponse(BaseModel):
+    """Applied or replayed policy revision and its original receipt."""
+
+    policy: DeliveryAdmissionPolicySchema
+    receipt: DeliveryPolicyActionReceiptSchema
+
+
+class DeliveryControlErrorResponse(BaseModel):
+    """Bounded delivery-control error without internal failure material."""
+
+    detail: str
+
+
+class DeliveryAdmissionPolicyConflictResponse(DeliveryControlErrorResponse):
+    """Policy conflict with safe server-owned current state."""
+
+    conflict_code: DeliveryAdmissionPolicyConflictCode | None
+    current_policy: DeliveryAdmissionPolicySchema | None
+    receipt: DeliveryPolicyActionReceiptSchema | None
