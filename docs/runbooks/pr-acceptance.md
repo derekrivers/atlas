@@ -28,8 +28,11 @@ moves the head after evidence is pulled restarts the spine from evidence.
   leading `ATLAS-NN`, or the `ATLAS-0NNM` meta form for doc-only
   landings); `lint-pr-title` enforces this. The key is the **ATLAS-NN in
   the issue title and context pack, never the ATL-N Linear board number**.
-- CI green at the head commit. `unrecognised CI job … -> BUILD_RESULT`
-  warnings for the workflow rollup and CodeQL are benign.
+- The Linear card is `Review Required` because Atlas recorded complete
+  current-head system-tier CI evidence and performed the fenced handoff from
+  `CI Pending`. A green GitHub rollup by itself is not this authority.
+  `unrecognised CI job … -> BUILD_RESULT` warnings for the workflow rollup and
+  CodeQL are benign.
 - Parallel development and review are allowed before step 2. From head freeze
   through merge, only one PR occupies the acceptance spine. A sibling merge
   makes every trailing PR use the Phase 12 rebase lane and restart at step 3.
@@ -60,6 +63,23 @@ moves the head after evidence is pulled restarts the spine from evidence.
   mechanical staleness after `Review Required`; `Changes Requested` is used
   only when implementation or other semantic remediation must return to
   Symphony.
+
+## 0.5. CI-pending handoff
+
+After publication, the agent moves `PR Open → CI Pending`, releases its working
+slot and stops. Atlas, not the agent or browser, consumes the required
+system-tier evidence at the exact PR head. A complete passed set moves the card
+once to `Review Required`; a complete determinate implementation failure moves
+it once to `Changes Requested`. Pending, missing, infrastructure, stale,
+malformed or contradictory evidence leaves the card in `CI Pending` with a
+typed reconciliation reason.
+
+Do not drag a CI-pending card into review or rework and do not use GitHub's
+rollup, a local command exit or an agent message as a substitute. If a Linear
+write response is ambiguous, the durable fence requires a later complete board
+observation to prove whether the source or target state won; that observation
+does not retry the write. A changed head invalidates the recorded authority and
+starts the evidence chain again for the new commit.
 
 ## 1. Review (reviewer-tier, not the gate)
 

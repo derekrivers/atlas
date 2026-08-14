@@ -274,6 +274,41 @@ decision JSON only, never a raw Linear payload. Connecting this result to the
 sync tick and its single external state write remains the later fail-closed
 integration step.
 
+## System-tier CI handoff reconciliation
+
+`reconcile_ci_handoff` is the one-candidate PM operation for Atlas-owned exits
+from `ci_pending`. A bounded scheduler or API adapter supplies one exact
+repository, PR, expected full head SHA and the tick's complete project pull.
+The operation takes the shared product admission lease, reconciles any earlier
+ambiguous fence first, loads the active delivery policy, builds the coherent
+snapshot and reads the PR identity without consuming GitHub check rollups.
+Stored append-only evidence is classified through the canonical required-check
+resolver and system-tier evaluators.
+
+Only a complete current-head `passed` set selects `review_required`; only a
+complete determinate set containing an explicit implementation `failure`
+selects `changes_requested`. Pending, missing, infrastructure, stale, malformed
+and indeterminate sets select no target. The result is an immutable
+`CIHandoffReconciliation` containing bounded reason/check projections and the
+repository, PR, head, policy and snapshot identity. It contains no raw Linear
+or GitHub response, exception text, token or log.
+
+Before a selected decision can write, the operation fetches the PR and complete
+board again, reloads the ticket and policy, rebuilds the snapshot and verifies
+the lease. It repeats those checks across the final deterministic race seam.
+Any movement performs zero state mutations. A `ci_handoff_write_fences` row is
+then committed before the strict writer can call only
+`LinearClient.set_state(issue_id, review_required|changes_requested)`. A
+confirming response updates the local observed status and clears the fence. An
+exception or non-confirming response marks the fence `indeterminate`; a later
+fresh complete board pull clears it only after proving the exact issue is at the
+source, target or another state, and that fence-reconciliation tick never
+attempts a second write.
+
+This seam has no GitHub mutation, Git, Symphony, policy, acceptance,
+verification-waiver, merge or Done authority. The generic Linear pull continues
+to reject both `ci_pending` exits; it does not become a second writer.
+
 ## Sync loop
 
 Pull-based, consistent with ADR-0008 (no webhooks before hosting):

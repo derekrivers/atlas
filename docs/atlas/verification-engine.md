@@ -107,6 +107,32 @@ For each required check on ticket T with PR head commit C:
   unapproved PR is unproven, not failing). A non-human MANUAL_APPROVAL carrying
   neither discriminator does not approve a PR.
 
+## CI-pending handoff projection
+
+Human review begins before the completion verdict, so the CI-pending handoff
+uses a deliberately smaller projection of the same canonical required-check
+matrix. It selects each required check whose evaluator is system-tier and
+commit-pinned: tests, lint and conditional documentation. Acceptance criteria,
+scope and human approval remain review/acceptance gates; their absence cannot
+block entry to review, and CI cannot satisfy or waive them. A matrix row with no
+system-tier member is indeterminate rather than a vacuous pass.
+
+For one repository, PR and exact head, the projection classifies every selected
+check from append-only evidence as passed, definite implementation failure,
+pending, missing, infrastructure, stale, malformed or indeterminate. The set
+passes only when every member passes. It is an actionable implementation
+failure only when every member is determinate and every deciding failed record
+has GitHub conclusion `failure`; one failure alongside a missing, pending or
+uncertain member remains held. Provider timeout/cancellation, old-head records,
+missing source ordering, tied contradictory observations and unknown conclusions
+never become a code-failure verdict.
+
+This projection returns a bounded assessment and performs no write. The PM
+handoff operation owns the separately fenced `ci_pending → review_required` or
+`ci_pending → changes_requested` edge. It revalidates external identity before
+using the assessment; the completion evaluator and its
+`review_required → done` authority are unchanged.
+
 ## Verdict and completion
 
 `verify(T)` composes the per-check evaluations into one ticket verdict over the

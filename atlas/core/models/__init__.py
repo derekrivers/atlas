@@ -16,6 +16,12 @@ from atlas.core.models.acceptance_session import (
 from atlas.core.models.admission_run import AdmissionRun
 from atlas.core.models.adr import ADRStatus, ArchitectureDecisionRecord
 from atlas.core.models.agent_run import AgentProvider, AgentRun, AgentRunStatus
+from atlas.core.models.ci_handoff_reconciliation import (
+    CIHandoffClassification,
+    CIHandoffDecision,
+    CIHandoffReason,
+    CIHandoffReconciliation,
+)
 from atlas.core.models.context_pack import ContextPack
 from atlas.core.models.debt_item import AnomalyType, DebtItem
 from atlas.core.models.delivery_admission_policy import (
@@ -66,6 +72,10 @@ __all__ = [
     "AgentRunStatus",
     "AnomalyType",
     "ArchitectureDecisionRecord",
+    "CIHandoffClassification",
+    "CIHandoffDecision",
+    "CIHandoffReason",
+    "CIHandoffReconciliation",
     "ContextPack",
     "DebtItem",
     "DeliveryAdmissionMode",

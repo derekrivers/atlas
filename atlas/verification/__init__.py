@@ -88,6 +88,7 @@ from atlas.verification.capture import (
     build_scope_decision,
     pending_capture,
 )
+from atlas.verification.ci_handoff import CIHandoffAssessment, evaluate_ci_handoff
 from atlas.verification.completion import (
     CheckOutcome,
     TicketVerification,
@@ -126,6 +127,7 @@ __all__ = [
     "MACHINE_CHECK_TYPES",
     "SCOPE_DECISION_PATH_KEY",
     "AcceptanceEvaluation",
+    "CIHandoffAssessment",
     "CheckOutcome",
     "CriterionPrompt",
     "DocumentationEvaluation",
@@ -142,6 +144,7 @@ __all__ = [
     "build_blanket_approval",
     "build_scope_decision",
     "evaluate_acceptance_criteria",
+    "evaluate_ci_handoff",
     "evaluate_documentation_check",
     "evaluate_human_approval",
     "evaluate_machine_check",

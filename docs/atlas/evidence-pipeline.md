@@ -8,7 +8,7 @@ Evidence schema lives in `data-model-and-schemas.md` §3.7.
 Pull-based GitHub client (transport-agnostic normaliser so a webhook
 receiver can replace it without schema change — ADR-0008):
 
-- Every tick (default 120s): for each ticket in `pr_open`,
+- Every tick (default 120s): for each ticket in `pr_open`, `ci_pending`,
   `review_required`, or `changes_requested` with a linked PR, fetch
   workflow runs and check runs for the PR head SHA, and PR reviews.
 - Conditional requests (ETags) to stay inside rate limits; backoff on
@@ -76,6 +76,26 @@ blanket on the system tier: `EvidenceRepo.add` rejects *any* system-tier
 record missing any of the three regardless of `evidence_type` — there is no
 CI-evidence-type allowlist. Agent-submitted records remain capped at PENDING
 by the knowledge-core repository rule.
+
+## CI-pending handoff consumption
+
+The system-tier CI handoff reconciler consumes these append-only observations;
+it never calls a CI execution or derives authority from a GitHub rollup, a
+command exit code or an agent completion message. For one repository, PR and
+full lowercase head SHA, it resolves the repository-owned required-check
+matrix and evaluates only its system-tier checks: tests, lint and, when the
+matrix requires it, documentation. Every required member must be represented
+by current-head system evidence before the set can pass.
+
+The projection distinguishes `passed`, `implementation_failure`, `pending`,
+`missing`, `infrastructure`, `stale`, `malformed` and `indeterminate`. Only a
+complete set of passed checks can route to human review. An implementation
+failure is actionable only when the complete determinate set contains a
+current-head `failure` conclusion; a partial failure plus any missing or
+uncertain member remains held. Cancelled/timed-out provider work, old-head
+records, unordered source metadata, tied contradictory observations and
+unknown conclusions never become an implementation verdict. Evidence remains
+commit-pinned history after a new push.
 
 ## Exact-head acceptance-session composition
 

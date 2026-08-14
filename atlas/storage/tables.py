@@ -627,6 +627,86 @@ class AdmissionWriteFenceRow(Base):
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime())
 
 
+class CIHandoffReconciliationRow(Base):
+    """Immutable bounded outcome of one exact-head CI handoff observation."""
+
+    __tablename__ = "ci_handoff_reconciliations"
+    __table_args__ = (
+        sa.CheckConstraint(
+            "schema_version = 'ci-handoff-reconciliation-v1'",
+            name="ci_handoff_reconciliations_schema_version",
+        ),
+        sa.CheckConstraint(
+            "classification IN ('passed', 'implementation_failure', 'pending', "
+            "'missing', 'infrastructure', 'stale', 'malformed', 'indeterminate')",
+            name="ci_handoff_reconciliations_classification",
+        ),
+        sa.CheckConstraint(
+            "decision IN ('hold', 'review_required', 'changes_requested')",
+            name="ci_handoff_reconciliations_decision",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(sa.Uuid, primary_key=True)
+    schema_version: Mapped[str] = mapped_column(sa.Text)
+    product_id: Mapped[UUID] = mapped_column(sa.Uuid, sa.ForeignKey("products.id"))
+    ticket_id: Mapped[UUID] = mapped_column(sa.Uuid, sa.ForeignKey("tickets.id"))
+    ticket_key: Mapped[str] = mapped_column(sa.Text)
+    linear_issue_id: Mapped[str | None] = mapped_column(sa.Text)
+    repository_owner: Mapped[str] = mapped_column(sa.Text)
+    repository_name: Mapped[str] = mapped_column(sa.Text)
+    pr_number: Mapped[int] = mapped_column(sa.Integer)
+    head_commit: Mapped[str] = mapped_column(sa.Text)
+    policy_id: Mapped[UUID | None] = mapped_column(
+        sa.Uuid, sa.ForeignKey("delivery_admission_policy_revisions.id")
+    )
+    policy_revision: Mapped[int | None] = mapped_column(sa.Integer)
+    policy_fingerprint: Mapped[str | None] = mapped_column(sa.Text)
+    snapshot_fingerprint: Mapped[str | None] = mapped_column(sa.Text)
+    classification: Mapped[str] = mapped_column(sa.Text)
+    reason: Mapped[str] = mapped_column(sa.Text)
+    decision: Mapped[str] = mapped_column(sa.Text)
+    check_results: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB, server_default=_EMPTY_LIST
+    )
+    observed_at: Mapped[datetime] = mapped_column(UTCDateTime())
+    created_by_type: Mapped[str] = mapped_column(sa.Text)
+    created_by_id: Mapped[str] = mapped_column(sa.Text)
+
+
+class CIHandoffWriteFenceRow(Base):
+    """Crash-safe fence around the sole CI-pending Linear state mutation."""
+
+    __tablename__ = "ci_handoff_write_fences"
+    __table_args__ = (
+        sa.UniqueConstraint("reconciliation_id"),
+        sa.CheckConstraint(
+            "target_status IN ('review_required', 'changes_requested')",
+            name="ci_handoff_write_fences_target_status",
+        ),
+        sa.CheckConstraint(
+            "state IN ('pending', 'indeterminate')",
+            name="ci_handoff_write_fences_state",
+        ),
+    )
+
+    product_id: Mapped[UUID] = mapped_column(
+        sa.Uuid, sa.ForeignKey("products.id"), primary_key=True
+    )
+    reconciliation_id: Mapped[UUID] = mapped_column(
+        sa.Uuid, sa.ForeignKey("ci_handoff_reconciliations.id")
+    )
+    ticket_id: Mapped[UUID] = mapped_column(sa.Uuid, sa.ForeignKey("tickets.id"))
+    ticket_key: Mapped[str] = mapped_column(sa.Text)
+    issue_id: Mapped[str] = mapped_column(sa.Text)
+    source_state_id: Mapped[str] = mapped_column(sa.Text)
+    target_state_id: Mapped[str] = mapped_column(sa.Text)
+    target_status: Mapped[str] = mapped_column(sa.Text)
+    state: Mapped[str] = mapped_column(sa.Text)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime())
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime())
+
+
 class OperatorActionKeyRow(Base):
     """One idempotency-key reservation for governed operator writes.
 
@@ -851,6 +931,7 @@ def _drop_sqlite_trigger(table_name: str, operation: str) -> sa.DDL:
 
 _APPEND_ONLY_TABLES = (
     cast(sa.Table, AdmissionRunRow.__table__),
+    cast(sa.Table, CIHandoffReconciliationRow.__table__),
     cast(sa.Table, DeliveryAdmissionPolicyRevisionRow.__table__),
     cast(sa.Table, LessonDispositionResultSnapshotRow.__table__),
     cast(sa.Table, OperatorActionKeyRow.__table__),

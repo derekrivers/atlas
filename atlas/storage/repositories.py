@@ -37,6 +37,7 @@ from atlas.core.models import (
     AgentRun,
     AnomalyType,
     ArchitectureDecisionRecord,
+    CIHandoffReconciliation,
     ContextPack,
     DebtItem,
     DeliveryAdmissionPolicyRevision,
@@ -69,6 +70,7 @@ from atlas.storage.tables import (
     AgentRunRow,
     ArchitectureDecisionRecordRow,
     Base,
+    CIHandoffReconciliationRow,
     ContextPackRow,
     DebtItemRow,
     DeliveryAdmissionPolicyActiveRow,
@@ -543,9 +545,12 @@ class TicketRepo(_KeyedRepo[Ticket]):
     def apply_linear_status(
         self, key: str, status: TicketStatus, *, now: datetime, created_by_id: str
     ) -> Ticket:
-        """Set ``status`` from a Linear pull (Linear -> Atlas; ATLAS-42).
+        """Apply a trusted Linear status observation (Linear -> Atlas).
 
-        The status direction's sole Atlas writer. ``updated_at`` is
+        This is the status direction's sole local-store writer. The ordinary
+        caller is the Linear pull (ATLAS-42); an owner-specific fenced writer
+        may also call it only after Linear confirms the exact transition (the
+        CI handoff seam). ``updated_at`` is
         DELIBERATELY left untouched: status is Linear-owned, and the sync
         cursor compares ``updated_at > linear_synced_at`` — bumping
         ``updated_at`` on an inbound status change would spuriously re-push the
@@ -1471,6 +1476,32 @@ class AdmissionRunRepo(_Repo[AdmissionRun]):
                 .limit(1)
             ).one_or_none()
             return None if row is None else self._to_model(row)
+
+
+class CIHandoffReconciliationRepo(_Repo[CIHandoffReconciliation]):
+    """Append-only, bounded CI handoff decision history."""
+
+    def __init__(self, db: Database) -> None:
+        super().__init__(db, CIHandoffReconciliation, CIHandoffReconciliationRow)
+
+    def record(self, model: CIHandoffReconciliation) -> CIHandoffReconciliation:
+        """Append one already-classified observation without changing it."""
+
+        return self.add(model)
+
+    def list_for_ticket(self, ticket_id: UUID) -> list[CIHandoffReconciliation]:
+        """Return one ticket's reconciliation outcomes in observation order."""
+
+        with self._db.session() as session:
+            rows = session.scalars(
+                sa.select(CIHandoffReconciliationRow)
+                .where(CIHandoffReconciliationRow.ticket_id == ticket_id)
+                .order_by(
+                    CIHandoffReconciliationRow.observed_at,
+                    CIHandoffReconciliationRow.id,
+                )
+            )
+            return [self._to_model(row) for row in rows]
 
 
 class TicketStatusTransitionRepo(_Repo[TicketStatusTransition]):

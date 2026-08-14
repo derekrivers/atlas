@@ -1,0 +1,305 @@
+{
+  "$defs": {
+    "ActorType": {
+      "description": "Who or what created a record (data-model §2.2, attribution §1.5).",
+      "enum": [
+        "human",
+        "agent",
+        "system"
+      ],
+      "title": "ActorType",
+      "type": "string"
+    },
+    "CIHandoffCheckResult": {
+      "description": "One required system-tier check's bounded classification and proof ids.",
+      "properties": {
+        "check_type": {
+          "$ref": "#/$defs/VerificationCheckType"
+        },
+        "classification": {
+          "$ref": "#/$defs/CIHandoffClassification"
+        },
+        "evidence_ids": {
+          "default": [],
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "maxItems": 128,
+          "title": "Evidence Ids",
+          "type": "array"
+        },
+        "status": {
+          "$ref": "#/$defs/EvidenceStatus"
+        }
+      },
+      "required": [
+        "check_type",
+        "status",
+        "classification"
+      ],
+      "title": "CIHandoffCheckResult",
+      "type": "object"
+    },
+    "CIHandoffClassification": {
+      "description": "Closed evidence classes that can drive or hold the CI-pending edge.",
+      "enum": [
+        "passed",
+        "implementation_failure",
+        "pending",
+        "missing",
+        "infrastructure",
+        "stale",
+        "malformed",
+        "indeterminate"
+      ],
+      "title": "CIHandoffClassification",
+      "type": "string"
+    },
+    "CIHandoffDecision": {
+      "description": "The only external-state decision represented by a reconciliation.",
+      "enum": [
+        "hold",
+        "review_required",
+        "changes_requested"
+      ],
+      "title": "CIHandoffDecision",
+      "type": "string"
+    },
+    "CIHandoffReason": {
+      "description": "Bounded, secret-free reason for the final decision of one operation.",
+      "enum": [
+        "complete_required_checks_passed",
+        "complete_implementation_failure",
+        "required_checks_pending",
+        "required_checks_missing",
+        "infrastructure_evidence",
+        "stale_evidence",
+        "malformed_evidence",
+        "contradictory_evidence",
+        "indeterminate_evidence",
+        "no_ci_required_checks",
+        "lease_unavailable",
+        "lease_lost",
+        "policy_unavailable",
+        "snapshot_incomplete",
+        "ticket_not_ci_pending",
+        "ticket_identity_mismatch",
+        "linear_issue_missing",
+        "linear_state_mismatch",
+        "pr_identity_malformed",
+        "pr_head_moved",
+        "github_infrastructure",
+        "board_revalidation_failed",
+        "board_state_moved",
+        "policy_changed",
+        "snapshot_changed",
+        "concurrent_write_fence",
+        "fence_still_unresolved",
+        "fence_reconciled_target",
+        "fence_reconciled_source",
+        "fence_reconciled_moved",
+        "write_confirmed",
+        "write_indeterminate"
+      ],
+      "title": "CIHandoffReason",
+      "type": "string"
+    },
+    "EvidenceStatus": {
+      "description": "Outcome of an evidence record or verification check (data-model §2.5).",
+      "enum": [
+        "pending",
+        "passed",
+        "failed",
+        "warning",
+        "not_applicable"
+      ],
+      "title": "EvidenceStatus",
+      "type": "string"
+    },
+    "VerificationCheckType": {
+      "description": "Which Verification Engine check a row records (data-model §5.1).\n\nA model-specific enum, defined with its model like EvidenceType — not a\n§2 shared type — and used by VerificationCheck, VerificationCheckRepo,\nand the rule-resolver. Members and values are verbatim from §5.1.",
+      "enum": [
+        "acceptance_criteria",
+        "tests",
+        "lint",
+        "documentation",
+        "scope",
+        "security",
+        "human_approval"
+      ],
+      "title": "VerificationCheckType",
+      "type": "string"
+    }
+  },
+  "description": "One immutable CI-pending observation and its zero/one transition decision.",
+  "properties": {
+    "check_results": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/CIHandoffCheckResult"
+      },
+      "maxItems": 16,
+      "title": "Check Results",
+      "type": "array"
+    },
+    "classification": {
+      "$ref": "#/$defs/CIHandoffClassification"
+    },
+    "created_by_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Created By Id",
+      "type": "string"
+    },
+    "created_by_type": {
+      "$ref": "#/$defs/ActorType"
+    },
+    "decision": {
+      "$ref": "#/$defs/CIHandoffDecision"
+    },
+    "head_commit": {
+      "pattern": "^[0-9a-f]{40}$",
+      "title": "Head Commit",
+      "type": "string"
+    },
+    "id": {
+      "format": "uuid",
+      "title": "Id",
+      "type": "string"
+    },
+    "linear_issue_id": {
+      "anyOf": [
+        {
+          "maxLength": 256,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Linear Issue Id"
+    },
+    "observed_at": {
+      "format": "date-time",
+      "title": "Observed At",
+      "type": "string"
+    },
+    "policy_fingerprint": {
+      "anyOf": [
+        {
+          "maxLength": 64,
+          "minLength": 64,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Policy Fingerprint"
+    },
+    "policy_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Policy Id"
+    },
+    "policy_revision": {
+      "anyOf": [
+        {
+          "minimum": 1,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Policy Revision"
+    },
+    "pr_number": {
+      "exclusiveMinimum": 0,
+      "title": "Pr Number",
+      "type": "integer"
+    },
+    "product_id": {
+      "format": "uuid",
+      "title": "Product Id",
+      "type": "string"
+    },
+    "reason": {
+      "$ref": "#/$defs/CIHandoffReason"
+    },
+    "repository_name": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Repository Name",
+      "type": "string"
+    },
+    "repository_owner": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Repository Owner",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "ci-handoff-reconciliation-v1",
+      "default": "ci-handoff-reconciliation-v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "snapshot_fingerprint": {
+      "anyOf": [
+        {
+          "maxLength": 64,
+          "minLength": 64,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Snapshot Fingerprint"
+    },
+    "ticket_id": {
+      "format": "uuid",
+      "title": "Ticket Id",
+      "type": "string"
+    },
+    "ticket_key": {
+      "maxLength": 64,
+      "minLength": 1,
+      "title": "Ticket Key",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "product_id",
+    "ticket_id",
+    "ticket_key",
+    "repository_owner",
+    "repository_name",
+    "pr_number",
+    "head_commit",
+    "classification",
+    "reason",
+    "decision",
+    "observed_at",
+    "created_by_type",
+    "created_by_id"
+  ],
+  "title": "CIHandoffReconciliation",
+  "type": "object"
+}

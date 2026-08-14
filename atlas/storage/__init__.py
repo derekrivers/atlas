@@ -11,6 +11,11 @@ from atlas.storage.admission_coordination import (
     AdmissionWriteFenceError,
 )
 from atlas.storage.apply import apply_backlog
+from atlas.storage.ci_handoff_coordination import (
+    CIHandoffCoordinationRepo,
+    CIHandoffWriteFence,
+    CIHandoffWriteFenceError,
+)
 from atlas.storage.db import Database
 from atlas.storage.maintenance import clear_all_data
 from atlas.storage.repositories import (
@@ -21,6 +26,7 @@ from atlas.storage.repositories import (
     AdmissionRunRepo,
     ADRRepo,
     AgentRunRepo,
+    CIHandoffReconciliationRepo,
     ContextPackRepo,
     DebtItemRepo,
     DeliveryAdmissionPolicyRepo,
@@ -62,6 +68,10 @@ __all__ = [
     "AdmissionWriteFence",
     "AdmissionWriteFenceError",
     "AgentRunRepo",
+    "CIHandoffCoordinationRepo",
+    "CIHandoffReconciliationRepo",
+    "CIHandoffWriteFence",
+    "CIHandoffWriteFenceError",
     "ContextPackRepo",
     "Database",
     "DebtItemRepo",

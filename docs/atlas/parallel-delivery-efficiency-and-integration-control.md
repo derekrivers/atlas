@@ -152,13 +152,26 @@ The CI reconciler consumes trusted check evidence pinned to the current head:
 - provider outage, rate limit, missing check, malformed payload, unknown
   conclusion or identity mismatch: remain held with a typed reason.
 
+The actionable failure rule is deliberately narrower than generic FAILED
+normalisation: every required system-tier check must be present and determinate,
+and each deciding failed observation must carry the provider's explicit
+`failure` conclusion. Partial sets, timeouts, cancellation, stale heads and
+contradictory current observations cannot send implementation back to Symphony.
+
 Only an owner-specific PM boundary performs Linear transitions. The generic
 Linear status pull may mirror the agent-owned `PR Open → CI Pending` entry, but
 it rejects arbitrary entries and every CI-pending exit as a deduplicated
-ownership anomaly. ATLAS-256's trusted CI reconciler will be the only seam that
-can exercise the Atlas-owned exits. Duplicate observations are idempotent.
-Conflicting or partial observations produce no advance. A new head restarts the
-lifecycle with new evidence; previous records remain history.
+ownership anomaly. ATLAS-256's trusted CI reconciler is the only seam that can
+exercise the Atlas-owned exits. It re-reads the PR head, complete board, active
+policy and coherent snapshot immediately before the write under the shared
+product lease. Each determinate decision is appended with the exact identity
+and bounded check results, and a durable fence is committed before the single
+Linear mutation. A transport-ambiguous mutation remains fenced until a fresh
+complete board observation proves source, target or external movement; that
+reconciliation tick never retries the write. Duplicate observations are
+therefore idempotent, and concurrent owners, lease loss or identity movement
+produce zero mutations. A new head restarts the lifecycle with new evidence;
+previous records remain history.
 
 ## Three separate capacity budgets
 

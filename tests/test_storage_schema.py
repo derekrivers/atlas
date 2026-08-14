@@ -456,6 +456,44 @@ DOCUMENTED_COLUMNS: dict[str, dict[str, tuple[bool, str | None]]] = {
         "created_at": (NN, None),
         "updated_at": (NN, None),
     },
+    # §6.10 immutable exact-head CI handoff outcome plus its crash-safe
+    # single-write coordination fence.
+    "ci_handoff_reconciliations": {
+        "id": (NN, None),
+        "schema_version": (NN, None),
+        "product_id": (NN, None),
+        "ticket_id": (NN, None),
+        "ticket_key": (NN, None),
+        "linear_issue_id": (True, None),
+        "repository_owner": (NN, None),
+        "repository_name": (NN, None),
+        "pr_number": (NN, None),
+        "head_commit": (NN, None),
+        "policy_id": (True, None),
+        "policy_revision": (True, None),
+        "policy_fingerprint": (True, None),
+        "snapshot_fingerprint": (True, None),
+        "classification": (NN, None),
+        "reason": (NN, None),
+        "decision": (NN, None),
+        "check_results": (NN, "'[]'"),
+        "observed_at": (NN, None),
+        "created_by_type": (NN, None),
+        "created_by_id": (NN, None),
+    },
+    "ci_handoff_write_fences": {
+        "product_id": (NN, None),
+        "reconciliation_id": (NN, None),
+        "ticket_id": (NN, None),
+        "ticket_key": (NN, None),
+        "issue_id": (NN, None),
+        "source_state_id": (NN, None),
+        "target_state_id": (NN, None),
+        "target_status": (NN, None),
+        "state": (NN, None),
+        "created_at": (NN, None),
+        "updated_at": (NN, None),
+    },
 }
 
 # Transcribed FK targets: table -> {column: referred table}. Absence is
@@ -505,6 +543,16 @@ DOCUMENTED_FOREIGN_KEYS: dict[str, dict[str, str]] = {
         "admission_run_id": "admission_runs",
         "ticket_id": "tickets",
     },
+    "ci_handoff_reconciliations": {
+        "product_id": "products",
+        "ticket_id": "tickets",
+        "policy_id": "delivery_admission_policy_revisions",
+    },
+    "ci_handoff_write_fences": {
+        "product_id": "products",
+        "reconciliation_id": "ci_handoff_reconciliations",
+        "ticket_id": "tickets",
+    },
 }
 
 DOCUMENTED_UNIQUES: dict[str, list[list[str]]] = {
@@ -522,6 +570,8 @@ DOCUMENTED_UNIQUES: dict[str, list[list[str]]] = {
     "admission_leases": [],
     "admission_eligibility": [],
     "admission_write_fences": [["admission_run_id"]],
+    "ci_handoff_reconciliations": [],
+    "ci_handoff_write_fences": [["reconciliation_id"]],
 }
 
 
@@ -841,7 +891,7 @@ def test_pm_sync_receipt_migration_preserves_ticket_definition_cursors(
 def test_alembic_upgrades_fresh_db_and_matches_metadata(tmp_path: Path) -> None:
     url = f"sqlite:///{tmp_path}/migrated.db"
     config = _alembic_config(url)
-    assert ScriptDirectory.from_config(config).get_heads() == ["0031"]
+    assert ScriptDirectory.from_config(config).get_heads() == ["0032"]
     command.upgrade(config, "head")
 
     engine = sa.create_engine(url)
@@ -850,6 +900,8 @@ def test_alembic_upgrades_fresh_db_and_matches_metadata(tmp_path: Path) -> None:
             "admission_leases",
             "admission_eligibility",
             "admission_write_fences",
+            "ci_handoff_reconciliations",
+            "ci_handoff_write_fences",
         } <= set(sa.inspect(connection).get_table_names())
         context = MigrationContext.configure(connection)
         diff = compare_metadata(context, Base.metadata)
@@ -1270,12 +1322,69 @@ def test_ci_pending_capacity_migration_compiles_from_0030_for_postgresql() -> No
     assert "delivery_admission_policy_integration_bounds" in migration_sql
 
 
+def test_ci_handoff_migration_installs_and_removes_append_only_guards(
+    tmp_path: Path,
+) -> None:
+    url = f"sqlite:///{tmp_path}/ci-handoff.db"
+    config = _alembic_config(url)
+    command.upgrade(config, "0031")
+    engine = sa.create_engine(url)
+    with engine.connect() as connection:
+        assert (
+            "ci_handoff_reconciliations" not in sa.inspect(connection).get_table_names()
+        )
+
+    command.upgrade(config, "0032")
+    with engine.connect() as connection:
+        inspector = sa.inspect(connection)
+        assert {
+            "ci_handoff_reconciliations",
+            "ci_handoff_write_fences",
+        } <= set(inspector.get_table_names())
+        trigger_names = {
+            row[0]
+            for row in connection.execute(
+                sa.text(
+                    "SELECT name FROM sqlite_master WHERE type = 'trigger' "
+                    "AND name LIKE 'ci_handoff_reconciliations_no_%'"
+                )
+            )
+        }
+    assert trigger_names == {
+        "ci_handoff_reconciliations_no_update",
+        "ci_handoff_reconciliations_no_delete",
+    }
+
+    command.downgrade(config, "0031")
+    with engine.connect() as connection:
+        assert {
+            "ci_handoff_reconciliations",
+            "ci_handoff_write_fences",
+        }.isdisjoint(sa.inspect(connection).get_table_names())
+
+
+def test_ci_handoff_migration_compiles_for_postgresql() -> None:
+    output = StringIO()
+    config = Config(str(REPO_ROOT / "alembic.ini"), output_buffer=output)
+    config.set_main_option(
+        "script_location", str(REPO_ROOT / "atlas" / "storage" / "migrations")
+    )
+    config.set_main_option("sqlalchemy.url", "postgresql://atlas:atlas@localhost/atlas")
+
+    command.upgrade(config, "0031:0032", sql=True)
+
+    migration_sql = output.getvalue()
+    assert "-- Running upgrade 0031 -> 0032" in migration_sql
+    assert "CREATE TABLE ci_handoff_reconciliations" in migration_sql
+    assert "CREATE TRIGGER ci_handoff_reconciliations_append_only" in migration_sql
+
+
 def test_acceptance_evidence_receipt_outcomes_migrate_without_losing_guards(
     tmp_path: Path,
 ) -> None:
     url = f"sqlite:///{tmp_path}/acceptance-evidence-outcomes.db"
     config = _alembic_config(url)
-    assert ScriptDirectory.from_config(config).get_heads() == ["0031"]
+    assert ScriptDirectory.from_config(config).get_heads() == ["0032"]
     command.upgrade(config, "head")
 
     engine = sa.create_engine(url)
