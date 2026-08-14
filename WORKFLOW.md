@@ -154,55 +154,106 @@ Store keys are issued only by the key authority (KeyCounterRepo high-water marks
 
 ## Integration discipline
 
-Immediately before opening the PR, before every push (including the initial
-branch publish and every later update), and before moving to `Review Required`,
-run:
+At first entry and again immediately before publication, perform exact
+repository and branch checks with `git rev-parse --show-toplevel`,
+`git remote get-url origin`, and `git symbolic-ref --quiet --short HEAD`.
+The repository root must be the assigned workspace, `origin` must be the
+repository cloned for this ticket, and the current branch must be the
+ticket-specific branch created from `origin/main`, never `main` or detached.
+The PR must use that exact same-repository head branch and target `main`. Treat
+any mismatch as a blocker; do not switch repositories, reuse a sibling branch,
+or publish from an unverified identity.
+
+Immediately before opening the PR and before every push (the initial branch
+publish and any later `Changes Requested` update), run:
 
 ```bash
 git fetch origin main && git rebase origin/main
 ```
 
-Resolve conflicts that touch only files inside the context pack's scope (or,
-when no pack is present, the ticket description's definition fields), and note
-those resolved conflicts in the PR description. If any conflict touches a file
-outside that scope, stop: comment on Linear with the blocker details, move the
-ticket to `Needs Human`, and do not improvise.
+This is the one successful current-main rebase required for that candidate
+publication. Resolve conflicts that touch only files inside the context pack's
+scope (or, when no pack is present, the ticket description's definition
+fields), and note those resolved conflicts in the PR description. If any
+conflict touches a file outside that scope, stop: comment on Linear with the
+blocker details, move the ticket to `Needs Human`, and do not improvise.
 
-Under ADR-0008, this ordering is binding: rebase precedes push precedes CI, so
-system-tier evidence pins to a head that is current against `origin/main` at
-handoff. Agents keep ATLAS-168's pre-handoff discipline: rebase before PR,
-before every push, and before moving to `Review Required`. After entering
-`Review Required`, never rebase on your own. If a sibling PR merges first and
-your branch falls behind `origin/main`, the operator uses the Phase 12
-operator-owned rebase lane for mechanical staleness, and that lane leaves the
+After the rebase, commit the final implementation and freeze the candidate
+head. Calculate `atlas validation-plan` from the exact base and head, supply
+every changed path reported by the read-only `git diff --name-only
+--find-renames <base> <head>`, every explicit ticket validation requirement,
+and every ticket-declared test file. Require its diff and test proofs to pass.
+Run every ordered command in the plan and every ticket-declared test file named
+by its test targets, in order. Run the `full-sweep` profile only when the plan
+selects it as the conservative fallback or the operator explicitly instructs
+it. Do not substitute a narrower command for a selected check, and do not add
+an unselected complete sweep as a handoff ritual.
+
+A failed selected command or explicit test prevents publication: remain
+`In Progress`, fix only in-scope failures, and calculate a new plan for the new
+head. Any head change makes the previous plan, exact commands and results, CI
+evidence, review evidence and confirmations historical only. Old-head local
+results are historical only and never authorise the new candidate.
+The acceptance chain restarts at the new exact head.
+
+Only after the exact plan passes, repeat the exact repository and branch checks
+and allow one successful publication per candidate head: push that head once,
+open or update its single PR, and verify the PR's repository, head branch, base
+branch and head SHA. Record the exact base/head, changed paths, selected
+profiles, exact commands and results, and explicit test results in the PR
+description or one handoff comment. Before moving to `CI Pending`, confirm the
+published head is still the validated head; do not rebase or reproduce CI in
+the agent session.
+
+Under ADR-0008, this ordering is binding: rebase precedes validation, push and
+CI, so system-tier evidence pins to a head current against `origin/main` at
+handoff. After entering `CI Pending`, never rebase on your own. If the
+system-tier reconciler later moves the ticket to `Review Required` and the
+branch falls behind `origin/main` after a sibling merge, the operator uses the
+Phase 12 operator-owned rebase lane for mechanical staleness, which leaves the
 ticket in `Review Required`. `Changes Requested` is reserved for implementation
-or other semantic remediation that must return to Symphony. Any route that
-changes the head commit makes old-head evidence and confirmations historical
-only; the acceptance chain restarts at the new exact head. The final freshness
-check still leaves the existing one-PR freeze-to-manual-merge window: the
-operator performs the GitHub merge manually before any sibling PR merges.
+or other semantic remediation that must return to Symphony. The final freshness
+check still leaves the existing one-PR
+freeze-to-manual-merge window: the operator performs the GitHub merge manually
+before any sibling PR merges.
 
 ## How to move the ticket (you perform every transition)
 
 Route by the current state:
 
 - `Ready for Agent` — your entry point. Move the ticket to `In Progress`,
-  branch from `origin/main`, and begin the work the pack defines.
-- `In Progress` — implement against the pack. When you have changes, open a PR
-  whose title carries the Atlas ticket key embedded at the start of this issue's
-  title — the `ATLAS-<n>` prefix before the first `:` — then move the ticket to
-  `PR Open`.
-- `PR Open` — keep the PR healthy. Once CI is green on the head commit, move the
-  ticket to `Review Required` and stop. That is your handoff.
-- `Changes Requested` — review feedback has arrived. Resume in the same
-  workspace, read the PR review comments, address them, push, and return the
-  ticket to `Review Required`.
+  fetch current `origin/main`, create the ticket-specific branch from that exact
+  ref, perform the identity checks above, and begin the work the pack defines.
+- `In Progress` — implement against the pack. If the candidate passes the
+  preparation and validation contract above, publish the candidate once in a
+  PR whose title carries the Atlas ticket key embedded at the start of this
+  issue's title — the `ATLAS-<n>` prefix before the first `:` — then move the
+  ticket to `PR Open`. A local failure stays `In Progress` and is not published.
+- `PR Open` — verify the published PR still has the exact validated repository,
+  branch and head, move the ticket to `CI Pending` and stop in the same turn.
+  Do not poll CI, wait for review, or consume another turn. CI owns the next
+  state edge.
+- `Changes Requested` — a system-tier CI classification or operator review has
+  requested semantic remediation. Resume the preserved workspace, read the
+  bounded failure or review details, move the ticket to `In Progress`, address
+  only that in-scope feedback, and repeat the candidate preparation, validation
+  and one-publish handoff through `PR Open` → `CI Pending`.
+
+`CI Pending` is deliberately not an agent route: it is absent from
+`tracker.active_states`, so Symphony must neither continue the current session
+nor redispatch the issue while CI owns it.
 
 ## Hard limits
 
-- Never mark your own work `Done`, and never merge the PR. `Done` is owned by
-  Atlas verification (system-tier CI evidence) plus any required human approval;
-  a human merges out of band. Your terminal state is `Review Required`.
+- Never mark your own work `Done`, and never merge the PR. Your publication
+  handoff ends at `CI Pending`. Only the system-tier CI reconciler may move
+  `CI Pending` to `Review Required` or `Changes Requested`; Review Required
+  records acceptance readiness, not completion. `Done` requires Atlas
+  verification at the accepted identity, any required human approval and a
+  human merge out of band.
+- Never poll or reproduce CI, cancel CI or a worker, skip a selected check,
+  choose validation with model judgement, automatically rebase, or claim that
+  scoped local confidence is repository-wide authority.
 - On a blocker, or a genuine ambiguity the pack does not resolve, post a comment
   explaining it and move the ticket to `Needs Human`. Do not improvise outside
   the pack's scope.

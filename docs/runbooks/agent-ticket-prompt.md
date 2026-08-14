@@ -70,8 +70,10 @@ agents most often break)
   ticket-declared test file; the CLI must report a verified read-only Git diff
   and prove each explicit test at the head, or require `full-sweep`; include its
   plan in the completion report
-- Run every command in that plan in order; if it selects `full-sweep`, do not
-  replace it with a narrower manual command
+- Run every command and explicit test target in that plan in order; if it
+  selects the named conservative `full-sweep` profile, do not replace it with a
+  narrower manual command. Do not add a complete sweep unless that profile is
+  selected or the operator explicitly instructs it
 - New behaviour is covered by new tests, including at least one negative
   case
 - Docs updated if behaviour changed; no unrelated diffs
@@ -81,6 +83,22 @@ agents most often break)
 The scoped local result is agent-tier confidence, not repository completion.
 Do not claim completion without complete system-tier CI evidence at the
 accepted identity — an agent saying "done" is not done (ADR-0008).
+
+## Publication and CI handoff
+
+- A failed selected command or explicit test prevents publication. Fix it
+  within scope and recalculate the plan after any head change; all old-head
+  results are historical only.
+- Immediately before the one candidate publication, verify the exact workspace
+  root, `origin`, symbolic ticket branch and intended same-repository PR head;
+  run `git fetch origin main && git rebase origin/main`, then validate the
+  frozen candidate head.
+- Publish that validated head once. Record the exact base/head, selected
+  profiles, commands and results, and explicit test results in the PR.
+- In the Symphony workflow, move through `PR Open` to `CI Pending` and stop in
+  the same turn. Do not poll CI or wait for review. Only the system-tier
+  reconciler may move CI Pending to Review Required or Changes Requested; the
+  latter resumes the preserved workspace for semantic remediation.
 ```
 
 ---
@@ -306,13 +324,16 @@ Rules of the variant:
   consistent — never silently absorb the edit, and never silently
   exclude it and leave the pin to fail. (Origin: ATLAS-112's roadmap
   line and the 92→93 enumeration pin.)
-- Branch from a fresh `origin/main`, never local `HEAD`: `git fetch`
-  first, and before every push `git log origin/main..HEAD` must show only
-  this ticket's commits (and `git diff --stat origin/main..HEAD` only its
-  files). A stray local commit riding the branch silently expands the diff
-  past the approved scope and can land unrelated hazards. (Origin: PR #155,
-  where an unpushed local commit re-added an active-inbox stub — a
-  duplicate-mint hazard — and reopened the PR.)
+- Branch from a fresh `origin/main`, never local `HEAD`: `git fetch` first.
+  Before the one candidate publication and every later Changes Requested push,
+  verify `git rev-parse --show-toplevel`, `git remote get-url origin` and
+  `git symbolic-ref --quiet --short HEAD`, then run
+  `git fetch origin main && git rebase origin/main`.
+  `git log origin/main..HEAD` must show only this ticket's commits and
+  `git diff --stat origin/main..HEAD` only its files. A stray local commit riding
+  the branch silently expands the diff past the approved scope and can land
+  unrelated hazards. (Origin: PR #155, where an unpushed local commit re-added
+  an active-inbox stub — a duplicate-mint hazard — and reopened the PR.)
 - A mid-execution scope addition is a NEW GATE, even when the operator
   directs it. Flagging the tension and then complying folds an
   unratified amendment into an approved diff — flag-and-comply is the
