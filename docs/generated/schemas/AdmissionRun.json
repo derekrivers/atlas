@@ -28,6 +28,40 @@
           "default": null,
           "title": "External Linear Id"
         },
+        "protected_lane_registry_fingerprint": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "minLength": 64,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Protected Lane Registry Fingerprint"
+        },
+        "protected_lane_registry_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Protected Lane Registry Version"
+        },
+        "protected_lanes": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Protected Lanes",
+          "type": "array"
+        },
         "rank": {
           "minimum": 1,
           "title": "Rank",
@@ -86,6 +120,8 @@
         "changes_requested_reserve",
         "risk_lane",
         "component_lane",
+        "protected_lane",
+        "protected_lane_declaration",
         "missing_external_linear_id",
         "single_write_limit"
       ],
@@ -147,6 +183,14 @@
           ],
           "default": null,
           "title": "Observed"
+        },
+        "owner_ticket_keys": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Owner Ticket Keys",
+          "type": "array"
         },
         "pagination_cursor": {
           "anyOf": [

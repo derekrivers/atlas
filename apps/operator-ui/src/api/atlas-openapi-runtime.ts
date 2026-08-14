@@ -104,6 +104,8 @@ export const atlasOpenApiEnums = {
     "changes_requested_reserve",
     "risk_lane",
     "component_lane",
+    "protected_lane",
+    "protected_lane_declaration",
     "missing_external_linear_id",
     "single_write_limit"
   ],
@@ -118,6 +120,9 @@ export const atlasOpenApiEnums = {
     "revalidation_failed",
     "revalidation_mismatch",
     "policy_changed",
+    "protected_lane_registry_unavailable",
+    "protected_lane_registry_changed",
+    "protected_lane_state_changed",
     "candidate_moved",
     "lease_lost",
     "write_confirmed",
@@ -197,7 +202,8 @@ export const atlasOpenApiEnums = {
     "integration",
     "review",
     "risk_lane",
-    "component_lane"
+    "component_lane",
+    "protected_lane"
   ],
   "OperatorActionConflictCode": [
     "idempotency_key_reused",
@@ -232,20 +238,6 @@ export const atlasOpenApiEnums = {
     "medium",
     "high",
     "critical"
-  ],
-  "SnapshotIncompletenessCode": [
-    "incomplete_pull",
-    "pagination_gap",
-    "missing_issue_identity",
-    "duplicate_issue_id",
-    "duplicate_issue_identifier",
-    "duplicate_atlas_join",
-    "unmapped_state",
-    "contradictory_state",
-    "missing_external_linear_id",
-    "missing_joined_issue",
-    "missing_atlas_ticket",
-    "atlas_linear_state_mismatch"
   ],
   "TicketStatus": [
     "backlog",

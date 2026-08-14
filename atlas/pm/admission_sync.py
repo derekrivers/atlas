@@ -24,6 +24,10 @@ from atlas.pm.delivery_snapshot import (
     delivery_policy_fingerprint,
     delivery_store_revision,
 )
+from atlas.pm.protected_lanes import (
+    ProtectedLaneRegistryLoadResult,
+    load_packaged_protected_lane_registry,
+)
 from atlas.storage import (
     AdmissionCoordinationRepo,
     AdmissionLeaseLostError,
@@ -61,6 +65,9 @@ class AdmissionSyncReason(StrEnum):
     REVALIDATION_FAILED = "revalidation_failed"
     REVALIDATION_MISMATCH = "revalidation_mismatch"
     POLICY_CHANGED = "policy_changed"
+    PROTECTED_LANE_REGISTRY_UNAVAILABLE = "protected_lane_registry_unavailable"
+    PROTECTED_LANE_REGISTRY_CHANGED = "protected_lane_registry_changed"
+    PROTECTED_LANE_STATE_CHANGED = "protected_lane_state_changed"
     CANDIDATE_MOVED = "candidate_moved"
     LEASE_LOST = "lease_lost"
     WRITE_CONFIRMED = "write_confirmed"
@@ -221,6 +228,7 @@ _CAPACITY_HOLD_CODES = frozenset(
         AdmissionHoldCode.CHANGES_REQUESTED_RESERVE,
         AdmissionHoldCode.RISK_LANE,
         AdmissionHoldCode.COMPONENT_LANE,
+        AdmissionHoldCode.PROTECTED_LANE,
     }
 )
 
@@ -262,6 +270,9 @@ def admit_one_ready(
     initial_issues: list[LinearIssue],
     now: datetime,
     hooks: AdmissionSyncHooks | None = None,
+    protected_lane_registry_provider: Callable[
+        [], ProtectedLaneRegistryLoadResult
+    ] = load_packaged_protected_lane_registry,
 ) -> AdmissionSyncResult:
     """Evaluate and perform zero or one revalidated Ready-for-Agent write."""
 
@@ -311,6 +322,16 @@ def admit_one_ready(
                 reason=AdmissionSyncReason.POLICY_UNAVAILABLE,
             )
 
+        registry_result = protected_lane_registry_provider()
+        protected_lane_registry = registry_result.registry
+        if protected_lane_registry is None:
+            return AdmissionSyncResult(
+                outcome=AdmissionSyncOutcome.STALE,
+                reason=AdmissionSyncReason.PROTECTED_LANE_REGISTRY_UNAVAILABLE,
+                policy_revision=policy.revision,
+                policy_fingerprint=delivery_policy_fingerprint(policy),
+            )
+
         dependencies = tuple(TicketDependencyRepo(db).list())
         graph = build_dependency_graph(db)
         snapshot = build_delivery_snapshot(
@@ -323,6 +344,7 @@ def admit_one_ready(
             dependencies=dependencies,
             graph=graph,
             clock=lambda: now,
+            protected_lane_registry=protected_lane_registry,
         )
         if snapshot.incompleteness_reasons:
             return AdmissionSyncResult(
@@ -351,6 +373,7 @@ def admit_one_ready(
             snapshot=snapshot,
             continuously_eligible_since=eligibility,
             clock=lambda: now,
+            protected_lane_registry=protected_lane_registry,
         )
         _record_run_once(db, run)
         hooks.after_decision()
@@ -395,6 +418,30 @@ def admit_one_ready(
                 ticket_key=selected.ticket_key,
             )
         revalidated_pull = _board_pull(revalidated_issues)
+        current_registry_result = protected_lane_registry_provider()
+        current_protected_lane_registry = current_registry_result.registry
+        if current_protected_lane_registry is None:
+            return AdmissionSyncResult(
+                outcome=AdmissionSyncOutcome.STALE,
+                reason=AdmissionSyncReason.PROTECTED_LANE_REGISTRY_UNAVAILABLE,
+                policy_revision=policy.revision,
+                policy_fingerprint=delivery_policy_fingerprint(policy),
+                admission_run_id=run.id,
+                ticket_key=selected.ticket_key,
+            )
+        if (
+            current_protected_lane_registry.version != protected_lane_registry.version
+            or current_protected_lane_registry.fingerprint
+            != protected_lane_registry.fingerprint
+        ):
+            return AdmissionSyncResult(
+                outcome=AdmissionSyncOutcome.STALE,
+                reason=AdmissionSyncReason.PROTECTED_LANE_REGISTRY_CHANGED,
+                policy_revision=policy.revision,
+                policy_fingerprint=delivery_policy_fingerprint(policy),
+                admission_run_id=run.id,
+                ticket_key=selected.ticket_key,
+            )
         current_policy = policy_repo.get_active(product_id)
         if current_policy is None or (
             current_policy.id != policy.id
@@ -431,6 +478,7 @@ def admit_one_ready(
             dependencies=current_dependencies,
             graph=current_graph,
             clock=lambda: now,
+            protected_lane_registry=current_protected_lane_registry,
         )
         revalidated_issue = _issue_by_id(
             revalidated_pull.issues, selected.external_linear_id
@@ -441,6 +489,18 @@ def admit_one_ready(
             return AdmissionSyncResult(
                 outcome=AdmissionSyncOutcome.STALE,
                 reason=AdmissionSyncReason.CANDIDATE_MOVED,
+                policy_revision=current_policy.revision,
+                policy_fingerprint=delivery_policy_fingerprint(current_policy),
+                admission_run_id=run.id,
+                ticket_key=selected.ticket_key,
+            )
+        if (
+            revalidated_snapshot.protected_lane_state_fingerprint
+            != snapshot.protected_lane_state_fingerprint
+        ):
+            return AdmissionSyncResult(
+                outcome=AdmissionSyncOutcome.STALE,
+                reason=AdmissionSyncReason.PROTECTED_LANE_STATE_CHANGED,
                 policy_revision=current_policy.revision,
                 policy_fingerprint=delivery_policy_fingerprint(current_policy),
                 admission_run_id=run.id,
@@ -457,6 +517,30 @@ def admit_one_ready(
             )
 
         hooks.after_revalidation()
+        final_registry_result = protected_lane_registry_provider()
+        final_protected_lane_registry = final_registry_result.registry
+        if final_protected_lane_registry is None:
+            return AdmissionSyncResult(
+                outcome=AdmissionSyncOutcome.STALE,
+                reason=AdmissionSyncReason.PROTECTED_LANE_REGISTRY_UNAVAILABLE,
+                policy_revision=current_policy.revision,
+                policy_fingerprint=delivery_policy_fingerprint(current_policy),
+                admission_run_id=run.id,
+                ticket_key=selected.ticket_key,
+            )
+        if (
+            final_protected_lane_registry.version != protected_lane_registry.version
+            or final_protected_lane_registry.fingerprint
+            != protected_lane_registry.fingerprint
+        ):
+            return AdmissionSyncResult(
+                outcome=AdmissionSyncOutcome.STALE,
+                reason=AdmissionSyncReason.PROTECTED_LANE_REGISTRY_CHANGED,
+                policy_revision=current_policy.revision,
+                policy_fingerprint=delivery_policy_fingerprint(current_policy),
+                admission_run_id=run.id,
+                ticket_key=selected.ticket_key,
+            )
         final_policy = policy_repo.get_active(product_id)
         if final_policy is None or (
             final_policy.id != policy.id
@@ -479,7 +563,32 @@ def admit_one_ready(
                 ticket_key=selected.ticket_key,
             )
         final_tickets = tuple(tickets.list())
+        final_dependencies = tuple(TicketDependencyRepo(db).list())
         final_graph = build_dependency_graph(db)
+        final_snapshot = build_delivery_snapshot(
+            product_id=product_id,
+            linear_project_id=project_id,
+            policy=final_policy,
+            status_map=status_map,
+            board_pull=revalidated_pull,
+            tickets=final_tickets,
+            dependencies=final_dependencies,
+            graph=final_graph,
+            clock=lambda: now,
+            protected_lane_registry=final_protected_lane_registry,
+        )
+        if (
+            final_snapshot.protected_lane_state_fingerprint
+            != snapshot.protected_lane_state_fingerprint
+        ):
+            return AdmissionSyncResult(
+                outcome=AdmissionSyncOutcome.STALE,
+                reason=AdmissionSyncReason.PROTECTED_LANE_STATE_CHANGED,
+                policy_revision=final_policy.revision,
+                policy_fingerprint=delivery_policy_fingerprint(final_policy),
+                admission_run_id=run.id,
+                ticket_key=selected.ticket_key,
+            )
         if (
             delivery_store_revision(product_id, final_tickets)
             != snapshot.atlas_store_revision

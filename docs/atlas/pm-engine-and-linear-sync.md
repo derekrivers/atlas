@@ -199,8 +199,12 @@ count so the configured reserve remaining and new-admission working capacity
 are explicit.
 
 Every working issue joined to an Atlas ticket by `external_linear_id` consumes
-all matching configured risk and canonical component lanes. No title or Linear
-identifier join is permitted. A complete status count includes every
+all matching configured risk and canonical component lanes. Working and
+CI-pending issues additionally consume every protected integration lane
+selected from the joined ticket's component, tags and canonical declared paths
+by `atlas/pm/protected_lane_registry_v1.json`. Invalid, ambiguous or
+contradictory active declarations are typed snapshot incompleteness reasons.
+No title or Linear identifier join is permitted. A complete status count includes every
 `TicketStatus`, including zeroes, so no source order or omitted empty bucket can
 alter the canonical result.
 
@@ -217,12 +221,15 @@ in the complete project pull.
 The immutable snapshot pins product/project, policy id and revision, the
 byte-stable legacy policy fingerprint, an explicit canonical integration-budget
 input, the status-map fingerprint, fetched-board fingerprint/count, sorted
-CI-pending ticket identities, Atlas store and graph revision fingerprints and an
-injected observation time. Historical pre-0031 admission policy hashes remain
+CI-pending ticket identities, protected-lane registry and active-surface
+fingerprints, Atlas store and graph revision fingerprints and an injected
+observation time. The store revision includes tags, `relevant_docs` and
+`documentation_requirements`, so protected classification input cannot move
+under an otherwise matching key. Historical pre-0031 admission policy hashes remain
 reconstructable, while any integration-budget change still changes the complete
 snapshot fingerprint. It
-reports every working, integration, review, risk and component over-capacity
-dimension. Incomplete pulls,
+reports every working, integration, review, risk, component and protected-lane
+over-capacity dimension. Incomplete pulls,
 pagination gaps, missing/duplicate issue identities, duplicate joins, unmapped
 or contradictory states, working/CI-pending/review tickets without an external
 Linear id,
@@ -259,10 +266,16 @@ eligibility start oldest first and the shared natural ticket-key order. The
 evaluator retains those values in each decision. It then simulates working plus
 one, checks full or breached integration pressure, remaining Changes Requested
 reserve, review pressure and every exact
-matching risk/component lane. Paused/draining mode, policy/snapshot mismatch,
+matching risk/component lane. It then classifies each candidate from trusted
+component/tags and canonical `relevant_docs` / `documentation_requirements`
+paths only. Every matched protected lane and the semantic registry fingerprint
+are stored in the decision; ambiguous, contradictory or invalid declarations
+are typed holds. A full lane retains its sorted current ticket owners in the
+hold. Paused/draining mode, policy/snapshot mismatch,
 each incompleteness reason, each full/breached budget or lane and missing Linear
-identity are bounded typed holds. The first reason-free candidate is the sole
-`admit`; later feasible candidates are held by the single-write limit.
+identity are bounded typed holds. The existing rank tuple is unchanged. The
+first reason-free candidate is the sole `admit`; later feasible candidates are
+held by the single-write limit even if they occupy a different protected lane.
 
 The returned immutable `AdmissionRun` pins policy and snapshot fingerprints,
 records every ready candidate in rank order and names zero or one selection. A
@@ -385,14 +398,18 @@ Pull-based, consistent with ADR-0008 (no webhooks before hosting):
    `AdmissionRun`. An incomplete/discontinuous pull or snapshot records stale
    and writes nothing.
 
-   If the run selects a ticket, re-fetch the complete project board and active
-   policy immediately before mutation. The second snapshot must exactly match
+   If the run selects a ticket, re-fetch the complete project board, reload the
+   protected-lane registry and active policy immediately before mutation. The
+   second snapshot must exactly match
    the first fingerprint, including candidate state, every occupancy value,
-   policy/status-map fingerprint, and Atlas store/graph revisions. Re-read the
-   policy and verify the lease owner once more after the deterministic race
-   boundary. Policy movement, candidate movement, lease loss, a malformed or
-   partial page chain, or any pre-write transport failure records `stale`, ends
-   the admission step and writes no state.
+   policy/status-map/registry fingerprints, protected-lane owners and Atlas
+   store/graph revisions. Re-read the registry, ticket surfaces and policy and
+   verify the lease owner once more after the deterministic race boundary.
+   Registry movement records `protected_lane_registry_changed`; active-surface
+   movement records `protected_lane_state_changed`. Either returns before the
+   durable fence. Policy movement, candidate movement, lease loss, a malformed
+   or partial page chain, or any pre-write transport failure likewise records
+   `stale`, ends the admission step and writes no state.
 
    Before mutation, persist an `admission_write_fences` row naming the exact
    run, candidate issue, observed source state and target. Then call only

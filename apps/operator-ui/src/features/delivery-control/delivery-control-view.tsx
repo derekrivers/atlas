@@ -227,6 +227,9 @@ function ReasonDetails({ reason }: { reason: HoldReason }) {
     reason.reserved_capacity !== null && reason.reserved_capacity !== undefined
       ? `protected reserve ${reason.reserved_capacity}`
       : null,
+    reason.owner_ticket_keys && reason.owner_ticket_keys.length > 0
+      ? `current owners ${reason.owner_ticket_keys.join(', ')}`
+      : null,
   ].filter((item): item is string => item !== null)
   return (
     <li className='break-words rounded-md border p-2'>
@@ -260,6 +263,23 @@ function DecisionCard({ decision }: { decision: Decision }) {
         <div><dt className='text-muted-foreground'>Risk</dt><dd>{inputs.risk_level} · severity {inputs.risk_severity}</dd></div>
         <div className='sm:col-span-2'><dt className='text-muted-foreground'>Continuously eligible since</dt><dd className='break-words'>{inputs.continuously_eligible_since}</dd></div>
         <div className='sm:col-span-2'><dt className='text-muted-foreground'>Eligible age (server microseconds)</dt><dd>{inputs.continuously_eligible_age_microseconds}</dd></div>
+        <div className='sm:col-span-2'>
+          <dt className='text-muted-foreground'>Protected integration lanes</dt>
+          <dd className='break-words font-mono text-xs'>
+            {decision.protected_lanes.length > 0
+              ? decision.protected_lanes.join(', ')
+              : 'None'}
+          </dd>
+        </div>
+        <div className='sm:col-span-2'>
+          <dt className='text-muted-foreground'>Protected-lane registry</dt>
+          <dd className='break-all font-mono text-xs'>
+            {decision.protected_lane_registry_version ?? 'Not recorded'}
+            {decision.protected_lane_registry_fingerprint
+              ? ` · ${decision.protected_lane_registry_fingerprint}`
+              : ''}
+          </dd>
+        </div>
       </dl>
       <section aria-label={`Server reasons for ${decision.ticket_key}`} className='mt-4'>
         <h4 className='text-sm font-medium'>Complete server reason set</h4>

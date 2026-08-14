@@ -1,0 +1,137 @@
+{
+  "schema_version": 1,
+  "registry_version": "protected-integration-lanes/v1",
+  "lanes": [
+    {
+      "key": "database-migrations",
+      "capacity": 1,
+      "operator_declared": false
+    },
+    {
+      "key": "generated-contracts",
+      "capacity": 1,
+      "operator_declared": false
+    },
+    {
+      "key": "workflow-configuration",
+      "capacity": 1,
+      "operator_declared": false
+    },
+    {
+      "key": "planning-state",
+      "capacity": 1,
+      "operator_declared": false
+    },
+    {
+      "key": "shared-manifests",
+      "capacity": 1,
+      "operator_declared": false
+    },
+    {
+      "key": "operator-admission-hotspot",
+      "capacity": 1,
+      "operator_declared": true
+    }
+  ],
+  "rules": [
+    {
+      "id": "database-migration-surface",
+      "lane": "database-migrations",
+      "components": [],
+      "tags": [
+        "database-migration",
+        "migration"
+      ],
+      "exact_paths": [
+        "alembic.ini"
+      ],
+      "path_prefixes": [
+        "atlas/storage/migrations/"
+      ]
+    },
+    {
+      "id": "generated-api-client-contracts",
+      "lane": "generated-contracts",
+      "components": [],
+      "tags": [
+        "generated-client",
+        "generated-contract",
+        "openapi"
+      ],
+      "exact_paths": [
+        "apps/operator-ui/src/api/atlas-openapi-runtime.ts",
+        "apps/operator-ui/src/api/atlas-openapi.ts",
+        "atlas/tools/operator_ui_openapi.py"
+      ],
+      "path_prefixes": [
+        "atlas/api/",
+        "docs/generated/schemas/"
+      ]
+    },
+    {
+      "id": "workflow-configuration-surface",
+      "lane": "workflow-configuration",
+      "components": [],
+      "tags": [
+        "ci-configuration",
+        "workflow"
+      ],
+      "exact_paths": [
+        ".pre-commit-config.yaml",
+        "WORKFLOW.md",
+        "tests/test_workflow_contract.py"
+      ],
+      "path_prefixes": [
+        ".github/workflows/"
+      ]
+    },
+    {
+      "id": "planning-source-and-render-surface",
+      "lane": "planning-state",
+      "components": [
+        "planning"
+      ],
+      "tags": [
+        "key-authority",
+        "planning"
+      ],
+      "exact_paths": [],
+      "path_prefixes": [
+        "atlas/planning/",
+        "docs/planning/"
+      ]
+    },
+    {
+      "id": "shared-dependency-manifests",
+      "lane": "shared-manifests",
+      "components": [],
+      "tags": [
+        "dependency-policy",
+        "manifest"
+      ],
+      "exact_paths": [
+        "apps/operator-ui/package-lock.json",
+        "apps/operator-ui/package.json",
+        "pyproject.toml",
+        "uv.lock"
+      ],
+      "path_prefixes": []
+    },
+    {
+      "id": "operator-declared-admission-hotspot",
+      "lane": "operator-admission-hotspot",
+      "components": [
+        "delivery-control"
+      ],
+      "tags": [
+        "admission"
+      ],
+      "exact_paths": [
+        "atlas/pm/admission.py",
+        "atlas/pm/admission_sync.py",
+        "atlas/pm/delivery_snapshot.py"
+      ],
+      "path_prefixes": []
+    }
+  ]
+}

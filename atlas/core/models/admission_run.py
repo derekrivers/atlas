@@ -34,6 +34,8 @@ class AdmissionHoldCode(StrEnum):
     CHANGES_REQUESTED_RESERVE = "changes_requested_reserve"
     RISK_LANE = "risk_lane"
     COMPONENT_LANE = "component_lane"
+    PROTECTED_LANE = "protected_lane"
+    PROTECTED_LANE_DECLARATION = "protected_lane_declaration"
     MISSING_EXTERNAL_LINEAR_ID = "missing_external_linear_id"
     SINGLE_WRITE_LIMIT = "single_write_limit"
 
@@ -59,6 +61,7 @@ class AdmissionHoldReason(BaseModel):
     ticket_key: str | None = None
     state_id: str | None = None
     pagination_cursor: str | None = None
+    owner_ticket_keys: tuple[str, ...] = ()
 
 
 class AdmissionRankInputs(BaseModel):
@@ -96,6 +99,11 @@ class AdmissionCandidateDecision(BaseModel):
     rank_inputs: AdmissionRankInputs
     decision: AdmissionDecisionType
     reasons: tuple[AdmissionHoldReason, ...] = ()
+    protected_lanes: tuple[str, ...] = ()
+    protected_lane_registry_version: str | None = None
+    protected_lane_registry_fingerprint: str | None = Field(
+        default=None, min_length=64, max_length=64
+    )
 
     @model_validator(mode="after")
     def _decision_matches_reasons(self) -> Self:

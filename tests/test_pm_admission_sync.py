@@ -8,6 +8,8 @@ zero/one boundary and never uses a live Linear credential.
 from __future__ import annotations
 
 import tempfile
+from collections.abc import Callable
+from dataclasses import replace
 from datetime import timedelta
 from pathlib import Path
 from typing import Any
@@ -46,6 +48,11 @@ from atlas.pm import (
     SyncResult,
     sync_tick,
 )
+from atlas.pm.protected_lanes import (
+    DEFAULT_PROTECTED_LANE_REGISTRY,
+    ProtectedLaneRegistryLoadResult,
+    load_packaged_protected_lane_registry,
+)
 from atlas.pm.scheduler import TickConfig, run_scheduler, run_tick
 from atlas.storage import (
     AdmissionCoordinationRepo,
@@ -59,6 +66,7 @@ from atlas.storage.tables import (
     AdmissionLeaseRow,
     DeliveryAdmissionPolicyActiveRow,
     DeliveryAdmissionPolicyRevisionRow,
+    TicketRow,
 )
 
 PRODUCT_ID = UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
@@ -152,6 +160,9 @@ def run(
     client: RecordingClient,
     *,
     hooks: AdmissionSyncHooks | None = None,
+    registry_provider: Callable[
+        [], ProtectedLaneRegistryLoadResult
+    ] = load_packaged_protected_lane_registry,
 ) -> SyncResult:
     return sync_tick(
         tickets=TicketRepo(db),
@@ -165,6 +176,7 @@ def run(
         now=NOW,
         completion_clock=lambda: NOW + timedelta(seconds=1),
         admission_hooks=hooks,
+        admission_registry_provider=registry_provider,
     )
 
 
@@ -472,6 +484,105 @@ def test_atlas_255_full_integration_budget_reports_over_capacity_without_demotio
     assert client.state_writes == []
     issue = client.fetch_issue(integrating.external_linear_id or "")
     assert issue is not None and issue.state_id == CI_PENDING_STATE.id
+
+
+def test_atlas_258_ac5_registry_movement_after_selection_admits_nobody(
+    db: Database,
+) -> None:
+    client = CountingPullClient()
+    seed_candidate(db, client)
+    changed_lane = replace(DEFAULT_PROTECTED_LANE_REGISTRY.lanes[0], capacity=2)
+    changed_registry = replace(
+        DEFAULT_PROTECTED_LANE_REGISTRY,
+        lanes=(changed_lane, *DEFAULT_PROTECTED_LANE_REGISTRY.lanes[1:]),
+    )
+    calls = 0
+
+    def moving_registry() -> ProtectedLaneRegistryLoadResult:
+        nonlocal calls
+        calls += 1
+        registry = DEFAULT_PROTECTED_LANE_REGISTRY if calls == 1 else changed_registry
+        return ProtectedLaneRegistryLoadResult(registry, None)
+
+    result = run(db, client, registry_provider=moving_registry)
+
+    assert result.stale == 1
+    assert result.admission_decisions[0].reason is (
+        AdmissionSyncReason.PROTECTED_LANE_REGISTRY_CHANGED
+    )
+    assert calls == 2
+    assert client.state_writes == []
+    assert AdmissionCoordinationRepo(db).get_fence(PRODUCT_ID) is None
+
+
+def test_atlas_258_ac5_active_surface_movement_after_selection_admits_nobody(
+    db: Database,
+) -> None:
+    client = CountingPullClient()
+    seed_candidate(db, client, priority=20)
+    active = seed_ticket(
+        db,
+        client,
+        key="ATLAS-250",
+        product_id=PRODUCT_ID,
+        status=TicketStatus.IN_PROGRESS,
+        issue_state=STARTED,
+        linear_synced_at=NOW,
+        priority=10,
+    )
+
+    def move_active_surface() -> None:
+        with db.session() as session, session.begin():
+            session.execute(
+                sa.update(TicketRow)
+                .where(TicketRow.id == active.id)
+                .values(tags=["migration"])
+            )
+
+    result = run(
+        db,
+        client,
+        hooks=AdmissionSyncHooks(after_decision=move_active_surface),
+    )
+
+    assert result.stale == 1
+    assert result.admission_decisions[0].reason is (
+        AdmissionSyncReason.PROTECTED_LANE_STATE_CHANGED
+    )
+    assert client.state_writes == []
+    assert AdmissionCoordinationRepo(db).get_fence(PRODUCT_ID) is None
+
+
+def test_atlas_258_seeded_admission_retains_one_write_fence_boundary(
+    db: Database,
+) -> None:
+    client = CountingPullClient()
+    higher = seed_candidate(db, client, key="ATLAS-258", priority=20)
+    lower = seed_candidate(db, client, key="ATLAS-259", priority=10)
+    with db.session() as session, session.begin():
+        session.execute(
+            sa.update(TicketRow)
+            .where(TicketRow.id == higher.id)
+            .values(tags=["migration"])
+        )
+        session.execute(
+            sa.update(TicketRow)
+            .where(TicketRow.id == lower.id)
+            .values(tags=["workflow"])
+        )
+
+    result = run(db, client)
+
+    assert result.admitted == 1
+    assert client.state_writes == [(higher.external_linear_id, READY.id)]
+    [admission_run] = AdmissionRunRepo(db).list_for_product(PRODUCT_ID)
+    decisions = {decision.ticket_key: decision for decision in admission_run.decisions}
+    assert decisions[higher.key].protected_lanes == ("database-migrations",)
+    assert decisions[lower.key].protected_lanes == ("workflow-configuration",)
+    assert {reason.code.value for reason in decisions[lower.key].reasons} == {
+        "single_write_limit"
+    }
+    assert AdmissionCoordinationRepo(db).get_fence(PRODUCT_ID) is None
 
 
 def test_ac7_output_names_every_outcome_and_policy_revision_without_raw_data() -> None:

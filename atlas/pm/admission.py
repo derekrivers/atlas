@@ -38,6 +38,11 @@ from atlas.pm.delivery_snapshot import (
     delivery_policy_fingerprint,
     delivery_store_revision,
 )
+from atlas.pm.protected_lanes import (
+    DEFAULT_PROTECTED_LANE_REGISTRY,
+    ProtectedLaneRegistry,
+    classify_ticket_protected_lanes,
+)
 
 _RISK_SEVERITY: dict[RiskLevel, int] = {
     RiskLevel.LOW: 0,
@@ -52,6 +57,7 @@ class AdmissionInputMismatchCode(StrEnum):
 
     ATLAS_STORE_REVISION = "atlas_store_revision"
     ATLAS_GRAPH_REVISION = "atlas_graph_revision"
+    PROTECTED_LANE_REGISTRY = "protected_lane_registry"
 
 
 class AdmissionInputMismatchError(ValueError):
@@ -92,6 +98,7 @@ def _reason_sort_key(reason: AdmissionHoldReason) -> tuple[object, ...]:
         reason.ticket_key or "",
         reason.state_id or "",
         reason.pagination_cursor or "",
+        reason.owner_ticket_keys,
     )
 
 
@@ -111,6 +118,11 @@ def _snapshot_reason(reason: SnapshotIncompletenessReason) -> AdmissionHoldReaso
         ticket_key=reason.ticket_key,
         state_id=reason.state_id,
         pagination_cursor=reason.pagination_cursor,
+        selector=(
+            None
+            if reason.declaration_kind is None
+            else f"{reason.declaration_kind}:{reason.declaration or ''}"
+        ),
     )
 
 
@@ -120,6 +132,7 @@ def _capacity_reason(
     selector: str | None,
     observed: int,
     limit: int,
+    owner_ticket_keys: tuple[str, ...] = (),
 ) -> AdmissionHoldReason:
     codes = {
         OccupancyDimension.WORKING: AdmissionHoldCode.WORKING_BUDGET,
@@ -127,12 +140,14 @@ def _capacity_reason(
         OccupancyDimension.REVIEW: AdmissionHoldCode.REVIEW_BUDGET,
         OccupancyDimension.RISK_LANE: AdmissionHoldCode.RISK_LANE,
         OccupancyDimension.COMPONENT_LANE: AdmissionHoldCode.COMPONENT_LANE,
+        OccupancyDimension.PROTECTED_LANE: AdmissionHoldCode.PROTECTED_LANE,
     }
     return AdmissionHoldReason(
         code=codes[dimension],
         selector=selector,
         observed=observed,
         limit=limit,
+        owner_ticket_keys=owner_ticket_keys,
     )
 
 
@@ -161,12 +176,21 @@ def _global_reasons(
     reasons.extend(
         _snapshot_reason(reason) for reason in snapshot.incompleteness_reasons
     )
+    protected_owners = {
+        lane.lane: lane.ticket_keys for lane in snapshot.protected_lane_occupancy
+    }
     reasons.extend(
         _capacity_reason(
             breach.dimension,
             selector=breach.selector,
             observed=breach.count,
             limit=breach.limit,
+            owner_ticket_keys=(
+                protected_owners.get(breach.selector, ())
+                if breach.dimension is OccupancyDimension.PROTECTED_LANE
+                and breach.selector is not None
+                else ()
+            ),
         )
         for breach in snapshot.over_capacity
     )
@@ -195,7 +219,8 @@ def _candidate_capacity_reasons(
     ticket: Ticket,
     policy: DeliveryAdmissionPolicyRevision,
     snapshot: DeliverySnapshot,
-) -> list[AdmissionHoldReason]:
+    protected_lane_registry: ProtectedLaneRegistry,
+) -> tuple[list[AdmissionHoldReason], tuple[str, ...]]:
     reasons: list[AdmissionHoldReason] = []
     simulated_working = snapshot.working_occupancy + 1
     if simulated_working > policy.working_budget:
@@ -254,6 +279,40 @@ def _candidate_capacity_reasons(
                 )
             )
 
+    classification = classify_ticket_protected_lanes(ticket, protected_lane_registry)
+    reasons.extend(
+        AdmissionHoldReason(
+            code=AdmissionHoldCode.PROTECTED_LANE_DECLARATION,
+            source_code=issue.code.value,
+            selector=f"{issue.source_kind}:{issue.declaration}",
+            ticket_key=ticket.key,
+        )
+        for issue in classification.issues
+    )
+    occupancy_by_lane = {lane.lane: lane for lane in snapshot.protected_lane_occupancy}
+    for lane_key in classification.lanes:
+        lane = occupancy_by_lane.get(lane_key)
+        if lane is None:
+            reasons.append(
+                AdmissionHoldReason(
+                    code=AdmissionHoldCode.PROTECTED_LANE_DECLARATION,
+                    source_code="registry_lane_missing_from_snapshot",
+                    selector=lane_key,
+                    ticket_key=ticket.key,
+                )
+            )
+            continue
+        if lane.count + 1 > lane.limit:
+            reasons.append(
+                AdmissionHoldReason(
+                    code=AdmissionHoldCode.PROTECTED_LANE,
+                    selector=lane.lane,
+                    observed=lane.count + 1,
+                    limit=lane.limit,
+                    owner_ticket_keys=lane.ticket_keys,
+                )
+            )
+
     if ticket.external_linear_id is None:
         reasons.append(
             AdmissionHoldReason(
@@ -261,7 +320,7 @@ def _candidate_capacity_reasons(
                 ticket_key=ticket.key,
             )
         )
-    return reasons
+    return reasons, classification.lanes
 
 
 def _run_id_payload(
@@ -293,6 +352,7 @@ def evaluate_admission(
     snapshot: DeliverySnapshot,
     continuously_eligible_since: Mapping[str, datetime],
     clock: Callable[[], datetime],
+    protected_lane_registry: ProtectedLaneRegistry = (DEFAULT_PROTECTED_LANE_REGISTRY),
 ) -> AdmissionRun:
     """Return one side-effect-free, deterministic zero/one admission run.
 
@@ -311,6 +371,12 @@ def evaluate_admission(
         mismatches.append(AdmissionInputMismatchCode.ATLAS_STORE_REVISION)
     if delivery_graph_revision(graph) != snapshot.atlas_graph_revision:
         mismatches.append(AdmissionInputMismatchCode.ATLAS_GRAPH_REVISION)
+    if (
+        protected_lane_registry.version != snapshot.protected_lane_registry_version
+        or protected_lane_registry.fingerprint
+        != snapshot.protected_lane_registry_fingerprint
+    ):
+        mismatches.append(AdmissionInputMismatchCode.PROTECTED_LANE_REGISTRY)
     if mismatches:
         raise AdmissionInputMismatchError(mismatches)
 
@@ -376,7 +442,10 @@ def evaluate_admission(
     selected: Ticket | None = None
     decisions: list[AdmissionCandidateDecision] = []
     for rank, (_sort_key, ticket, rank_inputs) in enumerate(ranked, start=1):
-        reasons = global_reasons + _candidate_capacity_reasons(ticket, policy, snapshot)
+        capacity_reasons, protected_lanes = _candidate_capacity_reasons(
+            ticket, policy, snapshot, protected_lane_registry
+        )
+        reasons = global_reasons + capacity_reasons
         if not reasons and selected is not None:
             reasons.append(
                 AdmissionHoldReason(code=AdmissionHoldCode.SINGLE_WRITE_LIMIT)
@@ -398,6 +467,11 @@ def evaluate_admission(
                 rank_inputs=rank_inputs,
                 decision=decision,
                 reasons=ordered_reasons,
+                protected_lanes=protected_lanes,
+                protected_lane_registry_version=protected_lane_registry.version,
+                protected_lane_registry_fingerprint=(
+                    protected_lane_registry.fingerprint
+                ),
             )
         )
 

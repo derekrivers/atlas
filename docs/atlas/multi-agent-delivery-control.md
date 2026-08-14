@@ -157,6 +157,14 @@ breached integration budget stops new admission, but never cancels, demotes or
 rewrites an existing ticket. Lowering the budget can therefore report an
 over-capacity queue while all current work continues unchanged.
 
+Protected repository lanes are a separate Phase 15.5 capacity dimension.
+Working and `ci_pending` tickets consume every lane selected from their trusted
+component, tags and canonical `relevant_docs` / `documentation_requirements`
+paths. CI-pending therefore releases its Symphony working slot and its
+risk/component occupancy while retaining every protected integration lane it
+may still contend on. Each protected lane is bounded by the versioned
+repository registry, not by inferred utilisation or a model decision.
+
 Every active ticket also consumes every matching risk and component lane.
 Lane matching uses the ticket joined by `external_linear_id`, never its title or
 Linear identifier. Component values use the policy's NFKC/trim/case-fold
@@ -177,12 +185,14 @@ The snapshot pins product id, Linear project id, immutable policy id/revision
 and mode, the byte-stable legacy policy fingerprint, an explicit canonical
 `integration_budget` input, the configured state-id map fingerprint, the
 fetched-board fingerprint and count, sorted CI-pending Atlas ticket identities,
-Atlas store and graph revision fingerprints, and an injected UTC observation
-time. Keeping the pre-0031 policy hash contract stable makes historical
+the protected-lane registry version/fingerprint and active-surface
+fingerprint, Atlas store and graph revision fingerprints, and an injected UTC
+observation time. Keeping the pre-0031 policy hash contract stable makes historical
 `AdmissionRun.policy_fingerprint` values reconstructable; the explicit snapshot
 field still makes every integration-budget change alter the snapshot hash. The store
 revision covers complete product-ticket membership, ticket and Linear
-identities, status, acceptance criteria, priority, risk, component and effort.
+identities, status, acceptance criteria, priority, risk, component, tags,
+declared paths and effort.
 The graph revision covers every projected node identity and readiness/rank
 attribute plus dependency topology, type, identity and reason, including
 ticket and ADR target state. Its complete canonical JSON representation is
@@ -199,9 +209,10 @@ unjoined non-terminal board issues, and disagreement between the joined Atlas
 and Linear status are typed incompleteness reasons. Any such reason sets
 `admission_allowed=false`; display names are provenance only and are never
 status lookup keys. Existing occupancy above the working, integration, review,
-risk-lane or component-lane limit reports every breached dimension and also
-prohibits admission. Paused or draining policy likewise makes the snapshot ineligible for
-admission without misclassifying the coherent observation as incomplete.
+risk-lane, component-lane or protected-lane limit reports every breached
+dimension and also prohibits admission. Paused or draining policy likewise
+makes the snapshot ineligible for admission without misclassifying the coherent
+observation as incomplete.
 
 ## Deterministic admission decision
 
@@ -245,26 +256,38 @@ priority, risk ordinal, eligibility start and exact injected-clock age, so the
 order is reconstructable without consulting Linear list order or a model.
 
 The engine never uses an agent score, model opinion, title similarity or
-Linear display order. Each decision is `admit` or `hold`. Typed reasons retain
+Linear display order. Each decision is `admit` or `hold`. Protected-lane
+classification inspects only stored component/tags and the canonical paths in
+`relevant_docs` and `documentation_requirements`; objective, context,
+acceptance prose and implementation notes are not classifier inputs. A single
+declaration that selects different lanes is ambiguous, non-canonical values
+are invalid and canonical duplicates with contradictory spellings are
+contradictory. All fail closed. Distinct declarations may validly select
+multiple lanes, which are stored in deterministic lane order with the registry
+version and semantic fingerprint. Typed reasons retain
 paused/draining mode, policy/snapshot mismatch, every snapshot-incompleteness
 reason, full or breached working/integration/review budgets, remaining Changes Requested
-reserve, every matching risk/component lane, missing external identity and the
-single-write limit. A candidate is simulated at working occupancy plus one,
-including remaining reserve and every matching lane, before `admit` is
-returned. Review occupancy is a pressure gate even though promotion does not
-increase it. Existing over-capacity dimensions remain reasons for every
-candidate; no evaluator response demotes existing work.
+reserve, every matching risk/component/protected lane, missing external identity
+and the single-write limit. Each saturated protected-lane reason names the
+lane, simulated count, bound and all current owning ticket keys. A candidate is
+simulated at working occupancy plus one and against every matched protected
+lane before `admit` is returned; a multi-lane candidate acquires feasibility
+for all lanes or none. Review occupancy is a pressure gate even though
+promotion does not increase it. Existing over-capacity dimensions remain
+reasons for every candidate; no evaluator response demotes existing work.
 
 An admission pass selects at most one external promotion. This deliberately
 trades a few five-second polling intervals for a safe external-write boundary:
 Linear offers no multi-issue transaction, so Atlas never constructs a batch
 that could partially succeed.
 
-The highest ranked candidate with no reason is selected. Evaluation continues
-after held candidates; after selection, every otherwise-feasible lower-ranked
+The highest ranked candidate with no reason is selected. Lane classification
+does not alter the stable rank tuple. Evaluation continues after held
+candidates; after selection, every otherwise-feasible lower-ranked
 candidate receives `single_write_limit`. The immutable `AdmissionRun` records
-all considered candidates in rank order, the zero/one selected ticket, exact
-policy/snapshot fingerprints and the one injected evaluation timestamp. Its id
+all considered candidates in rank order, every matched protected lane and
+registry identity, the zero/one selected ticket, exact policy/snapshot
+fingerprints and the one injected evaluation timestamp. Its id
 is UUIDv5 over the canonical decision payload, so random UUID generation and
 timestamps outside the injected clock cannot affect ordering or decisions.
 `admission_runs` rejects update/delete on SQLite and PostgreSQL. The evaluator
