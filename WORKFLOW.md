@@ -25,6 +25,8 @@ tracker:
     - In Progress
     - PR Open
     - Changes Requested
+  # CI Pending is intentionally absent: it is a non-active Atlas handoff state
+  # that releases Symphony working occupancy while consuming integration budget.
   terminal_states:
     - Done
     - Canceled

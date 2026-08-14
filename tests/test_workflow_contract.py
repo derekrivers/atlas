@@ -141,6 +141,17 @@ def test_ac1_active_states_match_the_doc_table() -> None:
     assert front["tracker"]["active_states"] == _doc_list("active_states")
 
 
+def test_atlas_255_ci_pending_is_a_distinct_non_active_handoff() -> None:
+    front, _ = _split()
+    table_active, table_terminal = _doc_table_states()
+
+    assert "CI Pending" not in table_active
+    assert "CI Pending" not in table_terminal
+    assert "CI Pending" not in front["tracker"]["active_states"]
+    assert "CI Pending" not in front["tracker"]["terminal_states"]
+    assert "CI Pending is intentionally absent" in _read(WORKFLOW_PATH)
+
+
 def test_ac1_terminal_states_match_the_doc() -> None:
     front, _ = _split()
     _, table_terminal = _doc_table_states()

@@ -13,8 +13,8 @@ policy show room in every applicable budget.
 
 The phase closes only when a live controlled wave with more than ten
 independent tickets first proves the serialized one-agent baseline and then
-proves the ceiling can move to 3, 5, 7 and 10 without exceeding working, review
-or lane budgets, starving Changes Requested work or granting Atlas scheduling,
+proves the ceiling can move to 3, 5, 7 and 10 without exceeding working,
+integration, review or lane budgets, starving Changes Requested work or granting Atlas scheduling,
 review or merge authority. The milestone/closure change then lands
 `WORKFLOW.md` with `max_concurrent_agents: 10`. Closure below ten is prohibited.
 
@@ -65,6 +65,7 @@ The policy contains:
 
 - `revision`, `mode` (`running`, `paused`, `draining`) and `created_at`;
 - `working_budget`, bounded from 1 to the approved Symphony ceiling;
+- `integration_budget`, independently bounded from 1 to 10;
 - `review_budget`, bounded from 1 to 10;
 - `changes_requested_reserve`, bounded from 0 to `working_budget`;
 - zero or more exact risk-lane and canonical component-lane limits, each
@@ -85,8 +86,11 @@ Database triggers reject update or deletion of history on both SQLite and
 PostgreSQL, and the public repository exposes reads only. Migration `0025`
 creates explicit revision one for every existing product with mode `running`,
 ceiling `3`, working budget `3`, review budget `3`, reserve `0` and empty lane
-sets. The migration changes neither `WORKFLOW.md` nor live Symphony
-configuration, so it cannot raise the existing ceiling as a side effect.
+sets. Migration `0031` adds the integration budget from head `0030` with a
+conservative compatibility default of one and no historical-row update,
+delete, table recreation or edit to `0025`. Both migrations change neither
+`WORKFLOW.md` nor live Symphony configuration, so they cannot raise the
+existing ceiling as a side effect.
 
 Revision one is immutable historical bootstrap data, not the current live
 Symphony ceiling. ATLAS-054M later set the live declaration to one. Before any
@@ -146,6 +150,13 @@ Symphony slot is free. Changes Requested tickets consume working capacity
 before new candidates, and the configured reserve cannot be consumed by new
 admissions.
 
+Integration occupancy separately counts only `ci_pending`: published PRs whose
+required CI evidence has not reached a terminal Atlas classification. It does
+not consume working, review, risk-lane or component-lane occupancy. A full or
+breached integration budget stops new admission, but never cancels, demotes or
+rewrites an existing ticket. Lowering the budget can therefore report an
+over-capacity queue while all current work continues unchanged.
+
 Every active ticket also consumes every matching risk and component lane.
 Lane matching uses the ticket joined by `external_linear_id`, never its title or
 Linear identifier. Component values use the policy's NFKC/trim/case-fold
@@ -153,7 +164,7 @@ canonical form. Changes Requested occupancy is retained separately, and the
 snapshot derives both the remaining Changes Requested reserve and working
 capacity available to a new admission after that reserve.
 
-Every Atlas ticket in a working or review status must have an
+Every Atlas ticket in a working, CI-pending or review status must have an
 `external_linear_id`. If it does not, the snapshot reports a typed
 `missing_external_linear_id` reason and fails closed without guessing occupancy
 from the Atlas status alone. Backlog, planned and blocked tickets are outside
@@ -163,9 +174,13 @@ ticket has an id, however, absence of that exact issue from the complete project
 pull remains a typed `missing_joined_issue` failure.
 
 The snapshot pins product id, Linear project id, immutable policy id/revision
-and mode, a canonical policy fingerprint, the configured state-id map
-fingerprint, the fetched-board fingerprint and count, Atlas store and graph
-revision fingerprints, and an injected UTC observation time. The store
+and mode, the byte-stable legacy policy fingerprint, an explicit canonical
+`integration_budget` input, the configured state-id map fingerprint, the
+fetched-board fingerprint and count, sorted CI-pending Atlas ticket identities,
+Atlas store and graph revision fingerprints, and an injected UTC observation
+time. Keeping the pre-0031 policy hash contract stable makes historical
+`AdmissionRun.policy_fingerprint` values reconstructable; the explicit snapshot
+field still makes every integration-budget change alter the snapshot hash. The store
 revision covers complete product-ticket membership, ticket and Linear
 identities, status, acceptance criteria, priority, risk, component and effort.
 The graph revision covers every projected node identity and readiness/rank
@@ -178,13 +193,14 @@ source iteration order.
 
 Unknown or unmapped state ids, state-id/type contradictions, incomplete pulls,
 pagination gaps, missing or duplicate issue identities, duplicate Atlas joins,
-working or review tickets without an external Linear id, missing joined issues,
+working, CI-pending or review tickets without an external Linear id, missing
+joined issues,
 unjoined non-terminal board issues, and disagreement between the joined Atlas
 and Linear status are typed incompleteness reasons. Any such reason sets
 `admission_allowed=false`; display names are provenance only and are never
-status lookup keys. Existing occupancy above the working, review, risk-lane or
-component-lane limit reports every breached dimension and also prohibits
-admission. Paused or draining policy likewise makes the snapshot ineligible for
+status lookup keys. Existing occupancy above the working, integration, review,
+risk-lane or component-lane limit reports every breached dimension and also
+prohibits admission. Paused or draining policy likewise makes the snapshot ineligible for
 admission without misclassifying the coherent observation as incomplete.
 
 ## Deterministic admission decision
@@ -231,7 +247,7 @@ order is reconstructable without consulting Linear list order or a model.
 The engine never uses an agent score, model opinion, title similarity or
 Linear display order. Each decision is `admit` or `hold`. Typed reasons retain
 paused/draining mode, policy/snapshot mismatch, every snapshot-incompleteness
-reason, full or breached working/review budgets, remaining Changes Requested
+reason, full or breached working/integration/review budgets, remaining Changes Requested
 reserve, every matching risk/component lane, missing external identity and the
 single-write limit. A candidate is simulated at working occupancy plus one,
 including remaining reserve and every matching lane, before `admit` is
@@ -346,7 +362,7 @@ UI therefore explains the server ordering without reconstructing it or reading
 raw Linear identity. Within those decisions, duplicate per-issue snapshot
 defects collapse to each distinct closed source code; all typed hold codes and
 capacity selectors remain visible. Current over-capacity dimensions are
-recomputed from the same Phase 15 working, review, reserve and lane definitions.
+recomputed from the same working, integration, review, reserve and lane definitions.
 A durable unresolved write fence is exposed as `write_indeterminate`, whether
 its stored fence state is `pending` or `indeterminate`. Raw Linear issue/state
 identities, board payloads, pagination cursors, exception summaries,

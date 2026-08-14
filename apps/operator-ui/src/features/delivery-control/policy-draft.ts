@@ -24,6 +24,7 @@ export type PolicyDraft = {
   changesRequestedReserve: string
   componentLanes: ComponentLaneDraft[]
   expectedRevision: number
+  integrationBudget: string
   mode: Mode
   reviewBudget: string
   riskLanes: RiskLaneDraft[]
@@ -51,6 +52,7 @@ export function policyDraftFromPolicy(policy: Policy): PolicyDraft {
       limit: String(lane.limit),
     })),
     expectedRevision: policy.revision,
+    integrationBudget: String(policy.integration_budget),
     mode: policy.mode,
     reviewBudget: String(policy.review_budget),
     riskLanes: policy.risk_lane_limits.map((lane) => ({
@@ -112,6 +114,13 @@ export function validatePolicyDraft(draft: PolicyDraft): PolicyDraftValidation {
   const review = strictInteger(
     draft.reviewBudget,
     'reviewBudget',
+    1,
+    10,
+    errors
+  )
+  const integration = strictInteger(
+    draft.integrationBudget,
+    'integrationBudget',
     1,
     10,
     errors
@@ -195,6 +204,7 @@ export function validatePolicyDraft(draft: PolicyDraft): PolicyDraftValidation {
     Object.keys(errors).length > 0 ||
     ceiling === null ||
     working === null ||
+    integration === null ||
     review === null ||
     reserve === null
   ) {
@@ -208,6 +218,7 @@ export function validatePolicyDraft(draft: PolicyDraft): PolicyDraftValidation {
       changes_requested_reserve: reserve,
       component_lane_limits: componentLaneLimits,
       expected_revision: draft.expectedRevision,
+      integration_budget: integration,
       mode: draft.mode,
       review_budget: review,
       risk_lane_limits: riskLaneLimits,

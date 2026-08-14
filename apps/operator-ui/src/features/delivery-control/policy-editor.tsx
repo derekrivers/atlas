@@ -148,6 +148,10 @@ export function PolicyProposalSummary({
           <dd className='font-medium'>Maximum {proposal.working_budget}</dd>
         </div>
         <div>
+          <dt className='text-foreground'>Integration budget</dt>
+          <dd className='font-medium'>Maximum {proposal.integration_budget}</dd>
+        </div>
+        <div>
           <dt className='text-foreground'>Review budget</dt>
           <dd className='font-medium'>Maximum {proposal.review_budget}</dd>
         </div>
@@ -570,12 +574,14 @@ export function PolicyEditor({
             {[
               ['approvedPolicyCeiling', 'Approved policy ceiling', draft.approvedPolicyCeiling, 1],
               ['workingBudget', 'Working budget', draft.workingBudget, 1],
+              ['integrationBudget', 'Integration budget', draft.integrationBudget, 1],
               ['reviewBudget', 'Review budget', draft.reviewBudget, 1],
               ['changesRequestedReserve', 'Changes Requested reserve', draft.changesRequestedReserve, 0],
             ].map(([field, label, value, minimum]) => {
               const key = String(field) as
                 | 'approvedPolicyCeiling'
                 | 'workingBudget'
+                | 'integrationBudget'
                 | 'reviewBudget'
                 | 'changesRequestedReserve'
               const errorId = `${key}-error`

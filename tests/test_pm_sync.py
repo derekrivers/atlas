@@ -113,6 +113,9 @@ READY = WorkflowState(id="state-ready", name="Ready for Agent", type="unstarted"
 # A state mapped to pr_open — used to drive a real in_progress -> pr_open
 # transition (re-stamping status_entered_at) for the dwell episode-advance proof.
 PR_OPEN_STATE = WorkflowState(id="state-pr-open", name="PR Open", type="started")
+CI_PENDING_STATE = WorkflowState(
+    id="state-ci-pending", name="CI Pending", type="started"
+)
 # A mapped review state keeps delivery snapshots complete in tests that exercise
 # post-admission read-only phases such as comment scanning.
 REVIEW_REQUIRED_STATE = WorkflowState(
@@ -178,6 +181,7 @@ def seed_default_admission_policy(
                 mode="running",
                 approved_symphony_ceiling=3,
                 working_budget=3,
+                integration_budget=3,
                 review_budget=3,
                 changes_requested_reserve=0,
                 risk_lane_limits=[],
@@ -202,6 +206,7 @@ class RecordingClient(InMemoryLinearClient):
                 UNMAPPED,
                 READY,
                 PR_OPEN_STATE,
+                CI_PENDING_STATE,
                 REVIEW_REQUIRED_STATE,
                 CHANGES_REQUESTED_STATE,
                 NEEDS_HUMAN,
@@ -296,6 +301,7 @@ def status_map() -> LinearStatusMap:
             STARTED.id: TicketStatus.IN_PROGRESS,
             READY.id: TicketStatus.READY_FOR_AGENT,
             PR_OPEN_STATE.id: TicketStatus.PR_OPEN,
+            CI_PENDING_STATE.id: TicketStatus.CI_PENDING,
             REVIEW_REQUIRED_STATE.id: TicketStatus.REVIEW_REQUIRED,
             CHANGES_REQUESTED_STATE.id: TicketStatus.CHANGES_REQUESTED,
             # The unique Needs-Human state the review-cycling route resolves via
@@ -984,6 +990,91 @@ def test_unmapped_state_logs_one_debt_item_without_changing_status(
     assert pulled.last_observed_linear_state_id == UNMAPPED.id
     # No ticket-state write on the anomaly path: status stayed, and nothing
     # crossed Atlas -> Linear (no push of a planned set-to-... and no set_state).
+    assert client.state_writes == []
+
+
+def test_ci_pending_agent_entry_is_mirrored_only_from_pr_open(db: Database) -> None:
+    client = RecordingClient()
+    ticket = seed_ticket(
+        db,
+        client,
+        key="ATLAS-25501",
+        status=TicketStatus.PR_OPEN,
+        issue_state=CI_PENDING_STATE,
+    )
+
+    result = run(db, client)
+
+    pulled = TicketRepo(db).get_by_key(ticket.key)
+    assert pulled is not None
+    assert pulled.status is TicketStatus.CI_PENDING
+    assert result.status_pulled == 1
+    assert result.anomalies_logged == 0
+    assert debt_rows(db, AnomalyType.OUT_OF_OWNERSHIP_TRANSITION, ticket.id) == []
+
+
+def test_ci_pending_arbitrary_entry_fails_closed_and_deduplicates_anomaly(
+    db: Database,
+) -> None:
+    client = RecordingClient()
+    ticket = seed_ticket(
+        db,
+        client,
+        key="ATLAS-25502",
+        status=TicketStatus.IN_PROGRESS,
+        issue_state=CI_PENDING_STATE,
+    )
+
+    first = run(db, client)
+    second = run(db, client)
+
+    pulled = TicketRepo(db).get_by_key(ticket.key)
+    assert pulled is not None
+    assert pulled.status is TicketStatus.IN_PROGRESS
+    assert first.status_pulled == second.status_pulled == 0
+    assert first.anomalies_logged == 1
+    assert second.anomalies_logged == 0
+    rows = debt_rows(db, AnomalyType.OUT_OF_OWNERSHIP_TRANSITION, ticket.id)
+    assert len(rows) == 1
+    assert "in_progress" in rows[0].summary
+    assert "ci_pending" in rows[0].summary
+    assert client.state_writes == []
+
+
+@pytest.mark.parametrize(
+    ("observed_state", "observed_status"),
+    [
+        (REVIEW_REQUIRED_STATE, TicketStatus.REVIEW_REQUIRED),
+        (CHANGES_REQUESTED_STATE, TicketStatus.CHANGES_REQUESTED),
+        (DONE_STATE, TicketStatus.DONE),
+        (PR_OPEN_STATE, TicketStatus.PR_OPEN),
+    ],
+)
+def test_generic_pull_cannot_impersonate_any_ci_pending_exit(
+    db: Database,
+    observed_state: WorkflowState,
+    observed_status: TicketStatus,
+) -> None:
+    client = RecordingClient()
+    ticket = seed_ticket(
+        db,
+        client,
+        key="ATLAS-25503",
+        status=TicketStatus.CI_PENDING,
+        issue_state=observed_state,
+    )
+
+    result = run(db, client)
+
+    pulled = TicketRepo(db).get_by_key(ticket.key)
+    assert pulled is not None
+    assert pulled.status is TicketStatus.CI_PENDING
+    assert result.status_pulled == 0
+    assert result.anomalies_logged == 1
+    rows = debt_rows(db, AnomalyType.OUT_OF_OWNERSHIP_TRANSITION, ticket.id)
+    assert len(rows) == 1
+    assert observed_status.value in rows[0].summary
+    assert "generic pull left status unchanged" in rows[0].summary
     assert client.state_writes == []
 
 

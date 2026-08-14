@@ -123,6 +123,7 @@ def _capacity_reason(
 ) -> AdmissionHoldReason:
     codes = {
         OccupancyDimension.WORKING: AdmissionHoldCode.WORKING_BUDGET,
+        OccupancyDimension.INTEGRATION: AdmissionHoldCode.INTEGRATION_BUDGET,
         OccupancyDimension.REVIEW: AdmissionHoldCode.REVIEW_BUDGET,
         OccupancyDimension.RISK_LANE: AdmissionHoldCode.RISK_LANE,
         OccupancyDimension.COMPONENT_LANE: AdmissionHoldCode.COMPONENT_LANE,
@@ -151,6 +152,7 @@ def _global_reasons(
         or snapshot.policy_revision != policy.revision
         or snapshot.policy_mode is not policy.mode
         or snapshot.policy_fingerprint != delivery_policy_fingerprint(policy)
+        or snapshot.integration_budget != policy.integration_budget
     ):
         reasons.append(
             AdmissionHoldReason(code=AdmissionHoldCode.SNAPSHOT_POLICY_MISMATCH)
@@ -168,6 +170,15 @@ def _global_reasons(
         )
         for breach in snapshot.over_capacity
     )
+
+    if snapshot.integration_occupancy >= policy.integration_budget:
+        reasons.append(
+            AdmissionHoldReason(
+                code=AdmissionHoldCode.INTEGRATION_BUDGET,
+                observed=snapshot.integration_occupancy,
+                limit=policy.integration_budget,
+            )
+        )
 
     if snapshot.review_occupancy >= policy.review_budget:
         reasons.append(

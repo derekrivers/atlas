@@ -55,6 +55,7 @@ FROZEN_STATUSES: frozenset[TicketStatus] = frozenset(
     {
         TicketStatus.IN_PROGRESS,
         TicketStatus.PR_OPEN,
+        TicketStatus.CI_PENDING,
         TicketStatus.REVIEW_REQUIRED,
         TicketStatus.CHANGES_REQUESTED,
         TicketStatus.DONE,

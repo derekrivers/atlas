@@ -165,6 +165,7 @@ function deliveryControl(mode: Mode = 'running', revision = 7): DeliveryControl 
       component_lane_limits: [{ component: longComponent, limit: 1 }],
       created_at: '2026-08-13T09:00:00Z',
       id: `00000000-0000-4000-8000-${String(revision).padStart(12, '0')}`,
+      integration_budget: 2,
       mode,
       review_budget: 2,
       revision,
@@ -471,6 +472,7 @@ describe('delivery control browser component', () => {
           approved_symphony_ceiling: body.approved_symphony_ceiling,
           changes_requested_reserve: body.changes_requested_reserve,
           component_lane_limits: body.component_lane_limits,
+          integration_budget: body.integration_budget,
           review_budget: body.review_budget,
           risk_lane_limits: body.risk_lane_limits,
           working_budget: body.working_budget,
@@ -488,6 +490,7 @@ describe('delivery control browser component', () => {
     expect(summary?.textContent).toContain('Running')
     expect(summary?.textContent).toContain('Approved policy ceiling')
     expect(summary?.textContent).toContain('Working budget')
+    expect(summary?.textContent).toContain('Integration budget')
     expect(summary?.textContent).toContain('Review budget')
     expect(summary?.textContent).toContain('Changes Requested reserve')
     expect(summary?.textContent).toContain('Risk lane limits')
@@ -506,6 +509,7 @@ describe('delivery control browser component', () => {
       changes_requested_reserve: 1,
       component_lane_limits: [{ component: longComponent, limit: 1 }],
       expected_revision: 7,
+      integration_budget: 2,
       mode: 'running',
       review_budget: 2,
       risk_lane_limits: [

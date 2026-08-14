@@ -47,6 +47,7 @@ export type AtlasStoreProbe = {
   pm_sync_receipts: Array<{ id: string; result: string }>
   policy_revisions: Array<{
     approved_symphony_ceiling: number
+    integration_budget: number
     mode: string
     revision: number
     working_budget: number

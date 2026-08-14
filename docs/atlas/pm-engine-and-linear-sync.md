@@ -72,11 +72,17 @@ description (definition + embedded pack), and nothing else.
 `LINEAR_STATE_MAP` (e.g. `{"<state-uuid>": "in_progress"}`). The stable
 Linear state **id** is the lookup key — never the customizable name
 (rename-fragile), never the coarse type (`in_progress`, `pr_open`,
-`review_required`, `changes_requested` all share Linear type `started`, and
-the anomaly engine needs them distinguished). `status_from_issue(issue,
+`ci_pending`, `review_required`, `changes_requested` all share Linear type
+`started`, and the anomaly engine needs them distinguished). `status_from_issue(issue,
 status_map)` reads only the state id and returns the mapped status or `None`;
 an unmapped id is dropped, not guessed (ATLAS-42 counts and logs it; ATLAS-118
 surfaces it as an anomaly).
+Mapped CI-pending edges have an additional ownership gate in the actual pull.
+The generic observation may mirror only the agent-owned `pr_open → ci_pending`
+entry. Every other entry and every exit remains unchanged and appends one
+deduplicated `out_of_ownership_transition` anomaly per observed state change;
+even a mapped Review Required or Changes Requested observation is not proof of
+the trusted Atlas CI classification that ATLAS-256 will own.
 The Linear state `type` is used only as load-time validation
 (`validate_against_states`): it confirms each configured id still exists on
 the team's board (team-scoped since ATLAS-148; stale-map guard — rotated
@@ -100,13 +106,14 @@ carries two same-named `Duplicate` states (one per team), so only a
 team-scoped read disambiguates them; the workspace-wide listing that
 preceded it could not.
 
-Atlas team states (nine; Linear `type` in parentheses):
+Atlas team states (ten; Linear `type` in parentheses):
 
 | Linear state | State id (UUID) | Maps to | Rationale |
 | ------------ | --------------- | ------- | --------- |
 | Ready for Agent (unstarted) | `df1ebd92-7c41-4585-a15b-29b9e73f840f` | `ready_for_agent` | the step-3 promotion target; the PM Engine's one sanctioned outbound state write resolves to exactly this state |
 | In Progress (started) | `381b59b4-7ffe-4247-9cd8-6a11585203ea` | `in_progress` | an agent is actively working the ticket; dwell-horizoned |
 | PR Open (started) | `1ea72cdb-5f02-473f-8439-028e40d904f0` | `pr_open` | a PR is up; review-cycling counts arrivals into this state |
+| CI Pending (started) | `85cdfa65-b990-41cc-a4ea-0071868ba27f` | `ci_pending` | a published PR awaits Atlas-owned system-tier CI classification; non-active for Symphony |
 | Review Required (started) | `cf16f7da-6193-4dbf-b8fd-fa75dc9a16d7` | `review_required` | awaiting verification; step 3b's verified completion consumes it |
 | Changes Requested (started) | `a3bba9c2-716e-47a6-b1ce-dcff4183c425` | `changes_requested` | rework requested; the other half of the review cycle |
 | Needs Human (backlog) | `311a3a97-c409-4cce-96ab-0a3bfc2a5541` | `needs_human_decision` | parked for the operator; the review-cycling route target |
@@ -114,9 +121,11 @@ Atlas team states (nine; Linear `type` in parentheses):
 | Canceled (canceled) | `84207146-0b47-4821-a7e9-331abe38e77a` | `rejected` | closed undelivered; terminal |
 | Duplicate (duplicate) | `cd8e7c95-8a25-48ad-b0ef-19e00f000e70` | `rejected` (operator adds post-merge) | a duplicate is work that closed undelivered under this key; the duplicate-of reason lives in Linear natively, not in a new Atlas status |
 
-The operator adds the `Duplicate` entry to `LINEAR_STATE_MAP` from the
-UUID documented above after this change merges — the change itself edits
-no environment configuration. The `rejected` mappings are intentionally
+ATLAS-255 created the single `CI Pending` team state and pinned its returned
+UUID above; the operator adds that exact `ci_pending` entry to
+`LINEAR_STATE_MAP` after merge. The operator also adds the `Duplicate` entry
+from the UUID documented above. The repository change edits no environment
+configuration. The `rejected` mappings are intentionally
 admitted by the accepted-types table: Linear reports type `canceled` (US
 spelling) for the Canceled state and type `duplicate` for the Duplicate
 state, and Atlas accepts exactly those two live spellings for
@@ -146,8 +155,8 @@ Engine remains the only Atlas component permitted to promote an externally
 eligible ticket to Linear `Ready for Agent`, but readiness alone no longer
 grants delivery authority once the admission evaluator is connected. The
 operator-owned `DeliveryAdmissionPolicyRevision` is the bounded input to that
-later decision: approved Symphony ceiling, working/review budgets, Changes
-Requested reserve, exact risk/component lanes and mode for one product.
+later decision: approved Symphony ceiling, working/integration/review budgets,
+Changes Requested reserve, exact risk/component lanes and mode for one product.
 
 ATLAS-246 delivers only that versioned policy boundary. It adds no candidate
 ranking and makes no Linear write. Policy creation and complete replacement run
@@ -158,7 +167,9 @@ successful append-only action receipt commit together. Stale revision, altered
 replay or transaction failure produces no new authoritative policy.
 
 The bootstrap revision is explicit `running` policy at ceiling/working/review
-three; it does not change the `WORKFLOW.md` agent ceiling. `paused` and
+three; migration `0031` adds a conservative integration default of one without
+rewriting that historical row or migration `0025`. It does not change the
+`WORKFLOW.md` agent ceiling. `paused` and
 `draining` are fail-closed inputs to admission and never trigger a status
 transition, agent cancellation or workspace lifecycle action. The existing PM
 sync promotion path is replaced by the coherent snapshot/admission protocol in
@@ -180,9 +191,12 @@ names are fingerprinted as observed provenance but never consulted to infer a
 status. The issue's coarse state type corroborates the configured mapping using
 the same contradiction table as status-map preflight. Working occupancy is the
 sum of `ready_for_agent`, `in_progress`, `pr_open` and
-`changes_requested`; review occupancy independently sums `review_required` and
-`needs_human_decision`. Changes Requested has its own count so the configured
-reserve remaining and new-admission working capacity are explicit.
+`changes_requested`; integration occupancy independently counts only
+`ci_pending`; review occupancy independently sums `review_required` and
+`needs_human_decision`. CI-pending identities and headroom against the
+operator-owned integration budget are explicit. Changes Requested has its own
+count so the configured reserve remaining and new-admission working capacity
+are explicit.
 
 Every working issue joined to an Atlas ticket by `external_linear_id` consumes
 all matching configured risk and canonical component lanes. No title or Linear
@@ -190,21 +204,28 @@ identifier join is permitted. A complete status count includes every
 `TicketStatus`, including zeroes, so no source order or omitted empty bucket can
 alter the canonical result.
 
-An Atlas ticket in any working or review state without an `external_linear_id`
-is a typed `missing_external_linear_id` incompleteness reason. The builder does
+An Atlas ticket in any working, CI-pending or review state without an
+`external_linear_id` is a typed `missing_external_linear_id` incompleteness
+reason. The builder does
 not infer Linear state or occupancy from Atlas state alone, so the observed
 count remains zero and admission fails closed. Backlog, planned and blocked are
-pre-delivery states that do not consume either occupancy budget and may
+pre-delivery states that do not consume any occupancy budget and may
 legitimately precede issue creation; a missing id in those states is not a join
 gap. After an id exists, every non-terminal ticket still requires that exact id
 in the complete project pull.
 
-The immutable snapshot pins product/project, policy id and revision, policy and
-status-map fingerprints, fetched-board fingerprint/count, Atlas store and graph
-revision fingerprints and an injected observation time. It reports every
-working, review, risk and component over-capacity dimension. Incomplete pulls,
+The immutable snapshot pins product/project, policy id and revision, the
+byte-stable legacy policy fingerprint, an explicit canonical integration-budget
+input, the status-map fingerprint, fetched-board fingerprint/count, sorted
+CI-pending ticket identities, Atlas store and graph revision fingerprints and an
+injected observation time. Historical pre-0031 admission policy hashes remain
+reconstructable, while any integration-budget change still changes the complete
+snapshot fingerprint. It
+reports every working, integration, review, risk and component over-capacity
+dimension. Incomplete pulls,
 pagination gaps, missing/duplicate issue identities, duplicate joins, unmapped
-or contradictory states, working/review tickets without an external Linear id,
+or contradictory states, working/CI-pending/review tickets without an external
+Linear id,
 absent joined issues, board issues without a local non-terminal join, and
 Atlas/Linear status disagreement are typed incompleteness reasons. Any reason,
 over-capacity result, paused mode or draining mode sets
@@ -236,7 +257,8 @@ Ranking is unlock count descending, critical-path membership then zero-based
 execution position, priority descending, risk severity low-to-critical,
 eligibility start oldest first and the shared natural ticket-key order. The
 evaluator retains those values in each decision. It then simulates working plus
-one, remaining Changes Requested reserve, review pressure and every exact
+one, checks full or breached integration pressure, remaining Changes Requested
+reserve, review pressure and every exact
 matching risk/component lane. Paused/draining mode, policy/snapshot mismatch,
 each incompleteness reason, each full/breached budget or lane and missing Linear
 identity are bounded typed holds. The first reason-free candidate is the sole

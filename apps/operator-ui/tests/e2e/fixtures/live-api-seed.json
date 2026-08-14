@@ -24,6 +24,7 @@
       "mode": "running",
       "approved_symphony_ceiling": 3,
       "working_budget": 3,
+      "integration_budget": 2,
       "review_budget": 2,
       "changes_requested_reserve": 1,
       "risk_lane_limits": [

@@ -44,6 +44,7 @@ Symphony sees only Linear states via its `active_states` /
 | ready_for_agent     | Ready for Agent   | active (dispatchable)      |
 | in_progress         | In Progress       | active (running)           |
 | pr_open             | PR Open           | active (running)           |
+| ci_pending          | CI Pending        | handoff — neither active nor terminal |
 | review_required     | Review Required   | handoff — neither active nor terminal |
 | changes_requested   | Changes Requested | active (re-dispatchable)   |
 | needs_human_decision| Needs Human       | handoff — neither active nor terminal |
@@ -58,7 +59,7 @@ Decisions encoded here:
 - **Handoff states stop work without cleanup.** Per the Symphony spec's
   reconciliation rules, a state that is neither active nor terminal causes
   the worker to terminate while the workspace is preserved — exactly right
-  for `Review Required` and `Needs Human`, where a human verdict may send
+  for `CI Pending`, `Review Required` and `Needs Human`, where a later Atlas or human verdict may send
   the ticket back to `Changes Requested` and the agent resumes in the same
   workspace.
 - **`Changes Requested` is active**, so review feedback re-dispatches
@@ -67,6 +68,12 @@ Decisions encoded here:
   configured Changes Requested reserve. Admission never demotes it, delays its
   re-dispatch with an Atlas status write, cancels its worker or consumes its
   workspace-lifecycle authority.
+- **`CI Pending` is integration pressure, not working occupancy.** It is
+  excluded from Symphony's active states, counted only against the
+  operator-owned integration budget and held without cancelling or demoting
+  existing work when that budget is lowered. Symphony can enter it only from
+  `PR Open`; it cannot leave it, and the generic PM status pull refuses to treat
+  a mapped exit as Atlas-owned CI evidence.
 - **Admission is a single Linear state edge, not scheduling.** The periodic and
   one-shot PM sync paths share a database lease and may move at most one
   revalidated dependency-ready issue into `Ready for Agent`. A stale or
@@ -168,6 +175,11 @@ prompt template. The prompt instructs the agent to:
 5. File follow-up observations as issue comments tagged `atlas:proposed-
    follow-up`; the PM Engine converts them into plan proposals (ADR-0007)
    — agents never create tickets directly.
+
+ATLAS-255 adds the `CI Pending` state and its non-active classification without
+changing this prompt. The later workflow-prompt owner will cut over the agent
+route after CI reconciliation exists; until then the current `PR Open → Review
+Required` instructions remain verbatim.
 
 ### Mainline freshness discipline
 
@@ -494,21 +506,26 @@ handoff.
 To prevent races between the PM Engine and agents:
 
 - **Atlas PM Engine writes:** `backlog/planned/blocked → ready_for_agent`
-  (readiness), `review_required → done` (post-verification),
+  (readiness), `ci_pending → review_required` or `ci_pending →
+  changes_requested` (system-tier CI classification), `review_required → done` (post-verification),
   `review_required → changes_requested` (operator verdict relay), and any
   administrative archive/reject.
-- **The agent writes:** `ready_for_agent → in_progress → pr_open →
-  review_required`, `changes_requested → in_progress`, and any active state →
+- **The agent writes:** `ready_for_agent → in_progress → pr_open`, then only
+  `pr_open → ci_pending` after the PR is published; it also owns
+  `changes_requested → in_progress`, and any active state →
   `needs_human_decision` when the workflow requires a human gate.
+- **No browser or Symphony exit writer exists.** Neither surface may write a
+  `ci_pending` exit or relay one as though Atlas classified CI.
 - The PM Engine treats any observed transition outside this ownership as a
   reconciliation anomaly: it logs it, records a `DebtItem` if recurring,
   and never silently reverts a running agent's state.
 
 ## Retry and failure seam
 
-**Symphony owns intra-ticket execution reliability:** session crashes,
-stalls, turn continuation, exponential backoff, CI-shepherding within the
-agent's own loop. Atlas never restarts agent sessions.
+**Symphony owns intra-ticket execution reliability while a ticket is active:**
+session crashes, stalls, turn continuation and exponential backoff. CI-pending
+classification is Atlas-owned and non-active; Atlas never restarts agent
+sessions.
 
 **Atlas owns ticket-level outcomes.** The PM Engine watches for: tickets
 cycling `changes_requested ↔ pr_open` more than N times (default 3);

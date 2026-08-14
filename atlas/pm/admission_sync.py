@@ -216,6 +216,7 @@ def _reconcile_fence(
 _CAPACITY_HOLD_CODES = frozenset(
     {
         AdmissionHoldCode.WORKING_BUDGET,
+        AdmissionHoldCode.INTEGRATION_BUDGET,
         AdmissionHoldCode.REVIEW_BUDGET,
         AdmissionHoldCode.CHANGES_REQUESTED_RESERVE,
         AdmissionHoldCode.RISK_LANE,

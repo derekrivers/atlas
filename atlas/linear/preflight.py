@@ -67,6 +67,7 @@ _WRITTEN_STATUSES: tuple[TicketStatus, ...] = (
     TicketStatus.READY_FOR_AGENT,
     TicketStatus.IN_PROGRESS,
     TicketStatus.PR_OPEN,
+    TicketStatus.CI_PENDING,
     TicketStatus.REVIEW_REQUIRED,
     TicketStatus.CHANGES_REQUESTED,
     TicketStatus.NEEDS_HUMAN_DECISION,
@@ -76,7 +77,11 @@ _WRITTEN_STATUSES: tuple[TicketStatus, ...] = (
 # Contract handoff names the prompt body transitions *into* but that appear in
 # neither `active_states` nor `terminal_states`; C1 must still require each as
 # an exact-cased Linear state, or the agent stalls silently at handoff.
-_HANDOFF_STATE_NAMES: tuple[str, ...] = ("Review Required", "Needs Human")
+_HANDOFF_STATE_NAMES: tuple[str, ...] = (
+    "CI Pending",
+    "Review Required",
+    "Needs Human",
+)
 
 # C6 (model reachability). The probe answer must be *computed*, never a token
 # the prompt already contains: a codex banner / prompt-echo / verbose replay in

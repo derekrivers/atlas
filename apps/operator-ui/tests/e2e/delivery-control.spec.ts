@@ -222,10 +222,10 @@ test('live delivery-control policy revisions are explicit, stale-safe, server-au
 
   const probe = server().probeStore()
   expect(probe.policy_revisions).toEqual([
-    { approved_symphony_ceiling: 3, mode: 'running', revision: 1, working_budget: 3 },
-    { approved_symphony_ceiling: 3, mode: 'paused', revision: 2, working_budget: 3 },
-    { approved_symphony_ceiling: 3, mode: 'draining', revision: 3, working_budget: 3 },
-    { approved_symphony_ceiling: 3, mode: 'running', revision: 4, working_budget: 3 },
+    { approved_symphony_ceiling: 3, integration_budget: 2, mode: 'running', revision: 1, working_budget: 3 },
+    { approved_symphony_ceiling: 3, integration_budget: 2, mode: 'paused', revision: 2, working_budget: 3 },
+    { approved_symphony_ceiling: 3, integration_budget: 2, mode: 'draining', revision: 3, working_budget: 3 },
+    { approved_symphony_ceiling: 3, integration_budget: 2, mode: 'running', revision: 4, working_budget: 3 },
   ])
   expect(probe.ticket_statuses).toEqual(originalStatuses)
   expect(server().externalMutations()).toEqual([])

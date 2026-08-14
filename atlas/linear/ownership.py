@@ -269,6 +269,7 @@ _ACCEPTED_TYPES: dict[TicketStatus, frozenset[str]] = {
     TicketStatus.READY_FOR_AGENT: frozenset({"unstarted", "backlog"}),
     TicketStatus.IN_PROGRESS: frozenset({"started"}),
     TicketStatus.PR_OPEN: frozenset({"started"}),
+    TicketStatus.CI_PENDING: frozenset({"started"}),
     TicketStatus.REVIEW_REQUIRED: frozenset({"started"}),
     TicketStatus.CHANGES_REQUESTED: frozenset({"started"}),
     TicketStatus.DONE: frozenset({"completed"}),

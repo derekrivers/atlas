@@ -106,7 +106,12 @@ from atlas.core.models.adr import ADRStatus, ArchitectureDecisionRecord
 from atlas.core.models.debt_item import AnomalyType, DebtItem
 from atlas.core.models.lesson import Lesson
 from atlas.core.models.pm_sync_receipt import PmSyncReceipt, PmSyncReceiptResult
-from atlas.core.models.ticket import Ticket, TicketStatus
+from atlas.core.models.ticket import (
+    Ticket,
+    TicketStatus,
+    TicketTransitionOwner,
+    ci_pending_transition_owner,
+)
 from atlas.dependencies.blockers import blocked
 from atlas.dependencies.graph import build_dependency_graph
 from atlas.dependencies.validation import TERMINAL_STATUSES
@@ -364,9 +369,12 @@ class SyncDecision:
 class SyncResult:
     """Per-tick counters — the structured observability D2 asks for. Pure
     totals; no I/O. ``unmapped`` counts every observed unmapped state this
-    tick; ``anomalies_logged`` counts only the subset that were *transitions*
-    into an unmapped state and therefore appended a DebtItem (a persisting
-    unmapped state increments ``unmapped`` but not ``anomalies_logged``).
+    tick; ``anomalies_logged`` counts state observations that were new
+    out-of-ownership transitions and therefore appended a DebtItem. Those are
+    transitions into an unmapped state plus mapped CI-pending lifecycle edges
+    the generic pull is not authorised to mirror. A persisting observation is
+    deduplicated by ``last_observed_linear_state_id`` and does not increment
+    ``anomalies_logged`` again.
     ``dwell_breaches`` (ATLAS-119) counts the ``DWELL_BREACH`` rows appended
     this tick — one per dwell *episode*, so a ticket dwelling past its horizon
     across N ticks increments it once, not once per tick. ``routed_to_human``
@@ -751,6 +759,43 @@ def _out_of_ownership_item(
         summary=(
             f"Linear state {issue.state_id!r} for {ticket.key} does not follow "
             "the ownership table (unmapped); status left unchanged"
+        ),
+        observed_at=now,
+        created_by_type=ActorType.SYSTEM,
+        created_by_id=CREATED_BY,
+        created_at=now,
+    )
+
+
+def _ci_pending_ownership_item(
+    ticket: Ticket,
+    issue: LinearIssue,
+    mapped: TicketStatus,
+    owner: TicketTransitionOwner | None,
+    now: datetime,
+) -> DebtItem:
+    """Build the anomaly for a mapped but unauthorised CI-pending edge.
+
+    A generic Linear observation proves neither an Atlas-owned CI result nor a
+    valid arbitrary entry.  The sole edge it may mirror is the agent-owned
+    ``pr_open -> ci_pending`` handoff; every other edge touching CI-pending is
+    held unchanged until a trusted owner-specific seam performs it.
+    """
+
+    ownership = (
+        "reserved to Atlas's trusted CI reconciler"
+        if owner is TicketTransitionOwner.ATLAS
+        else "not present in the CI-pending ownership table"
+    )
+    return DebtItem(
+        id=uuid4(),
+        product_id=ticket.product_id,
+        ticket_id=ticket.id,
+        anomaly_type=AnomalyType.OUT_OF_OWNERSHIP_TRANSITION,
+        summary=(
+            f"Linear state {issue.state_id!r} maps to {mapped.value!r}, but "
+            f"{ticket.status.value!r} -> {mapped.value!r} is {ownership}; "
+            "generic pull left status unchanged"
         ),
         observed_at=now,
         created_by_type=ActorType.SYSTEM,
@@ -1155,11 +1200,11 @@ def _pull(
     now: datetime,
     lesson_client: LessonModelClient | None,
 ) -> Ticket:
-    """Step 1 (Linear -> Atlas): mirror a mapped status onto a non-terminal
-    ticket, and (ATLAS-118) log an out-of-ownership anomaly when the observed
-    Linear state is unmapped. Returns the possibly-updated ticket so the push
-    step sees the post-pull status (a status pulled into a frozen state freezes
-    the push).
+    """Step 1 (Linear -> Atlas): mirror an owned mapped status onto a
+    non-terminal ticket, and log an out-of-ownership anomaly for unmapped
+    states or CI-pending lifecycle edges this generic observation cannot own.
+    Returns the possibly-updated ticket so the push step sees the post-pull
+    status (a status pulled into a frozen state freezes the push).
 
     ``issues_by_id`` is the tick's ONE batched, project-scoped pull
     (:meth:`LinearClient.fetch_project_issues`, ATLAS-148), keyed by issue id —
@@ -1219,6 +1264,34 @@ def _pull(
         return ticket
     if mapped == ticket.status:
         result.status_unchanged += 1  # set-to-same is a no-op
+        return ticket
+    owner = ci_pending_transition_owner(ticket.status, mapped)
+    if TicketStatus.CI_PENDING in {ticket.status, mapped} and (
+        owner is not TicketTransitionOwner.AGENT
+    ):
+        # The generic Linear pull may mirror the agent-owned handoff only.
+        # Atlas-owned exits require the trusted CI reconciliation seam delivered
+        # by ATLAS-256; an observed mapped board state cannot impersonate it.
+        # Invalid entries/exits likewise fail closed.  Observation-transition
+        # dedup matches the existing unmapped-state anomaly contract.
+        if transitioned:
+            debt.record(_ci_pending_ownership_item(ticket, issue, mapped, owner, now))
+            result.anomalies_logged += 1
+            logger.info(
+                "linear-sync: out-of-ownership CI-pending transition %s -> %s "
+                "for %s; DebtItem logged, status unchanged",
+                ticket.status.value,
+                mapped.value,
+                ticket.key,
+            )
+        else:
+            logger.info(
+                "linear-sync: out-of-ownership CI-pending transition %s -> %s "
+                "for %s persists; status unchanged, no new DebtItem",
+                ticket.status.value,
+                mapped.value,
+                ticket.key,
+            )
         return ticket
     updated = tickets.apply_linear_status(
         ticket.key, mapped, now=now, created_by_id=CREATED_BY

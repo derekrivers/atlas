@@ -259,6 +259,41 @@ def test_atlas_161_lifecycle_reconstructs_one_complete_agent_run(
     assert details["head_commit"] == HEAD
 
 
+def test_atlas_255_ci_pending_completes_the_agent_run_at_handoff(
+    db: Database,
+) -> None:
+    ticket = make_ticket("ATLAS-255", status=TicketStatus.CI_PENDING)
+    TicketRepo(db).add(ticket)
+    seed_transitions(
+        db,
+        [
+            transition(ticket, TicketStatus.PLANNED, TicketStatus.READY_FOR_AGENT, T0),
+            transition(
+                ticket, TicketStatus.READY_FOR_AGENT, TicketStatus.IN_PROGRESS, T1
+            ),
+            transition(ticket, TicketStatus.IN_PROGRESS, TicketStatus.PR_OPEN, T2),
+            transition(
+                ticket,
+                TicketStatus.PR_OPEN,
+                TicketStatus.CI_PENDING,
+                T3,
+            ),
+        ],
+    )
+
+    result = reconstruct_agent_runs(
+        tickets=TicketRepo(db),
+        db=db,
+        issue_descriptions_by_id={ticket.external_linear_id or "": None},
+        now=T3,
+    )
+
+    run = only_run(db)
+    assert result.created == 1
+    assert run.completed_at == T3
+    assert agent_run_observation(run)["handoff_state"] == "ci_pending"
+
+
 def test_idempotence_and_genuine_redispatch_creates_second_run(
     db: Database,
     atlas_161_lifecycle: tuple[Ticket, UUID, str, TicketStatusTransition],

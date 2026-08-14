@@ -24,6 +24,7 @@ from atlas.pm import (
     AdmissionInputMismatchCode,
     AdmissionInputMismatchError,
     LinearBoardPull,
+    delivery_policy_fingerprint,
     evaluate_admission,
 )
 from atlas.pm import admission as admission_module
@@ -274,6 +275,48 @@ def test_ac3_combined_budget_and_lane_reasons_are_retained() -> None:
         AdmissionHoldCode.CHANGES_REQUESTED_RESERVE,
         AdmissionHoldCode.RISK_LANE,
         AdmissionHoldCode.COMPONENT_LANE,
+    }
+    assert run.selected_ticket_id is None
+
+
+@pytest.mark.parametrize("pending_count", [1, 2], ids=["full", "over-capacity"])
+def test_atlas_255_full_or_breached_integration_budget_holds_new_admission(
+    pending_count: int,
+) -> None:
+    candidate = ticket("ATLAS-1", TicketStatus.PLANNED)
+    integrating = [
+        ticket(f"ATLAS-{number}", TicketStatus.CI_PENDING)
+        for number in range(2, pending_count + 2)
+    ]
+    selected_policy = policy(integration_budget=1)
+
+    run = evaluate([candidate, *integrating], selected_policy=selected_policy)
+
+    decision = decisions_by_key(run)[candidate.key]
+    assert AdmissionHoldCode.INTEGRATION_BUDGET in reason_codes(decision)
+    assert run.selected_ticket_id is None
+
+
+def test_atlas_255_changed_snapshot_integration_budget_fails_closed() -> None:
+    candidate = ticket("ATLAS-1", TicketStatus.PLANNED)
+    snapshot_policy = policy(integration_budget=2)
+    observed = snapshot(
+        [candidate],
+        [issue(candidate)],
+        selected_policy=snapshot_policy,
+    )
+    evaluated_policy = policy(integration_budget=3)
+
+    run = evaluate(
+        [candidate],
+        selected_policy=evaluated_policy,
+        selected_snapshot=observed,
+    )
+
+    assert observed.policy_fingerprint == delivery_policy_fingerprint(evaluated_policy)
+    assert observed.integration_budget == 2
+    assert reason_codes(run.decisions[0]) == {
+        AdmissionHoldCode.SNAPSHOT_POLICY_MISMATCH
     }
     assert run.selected_ticket_id is None
 

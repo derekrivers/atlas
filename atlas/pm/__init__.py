@@ -38,6 +38,7 @@ from atlas.pm.agent_runs import (
 )
 from atlas.pm.completion import complete_verified
 from atlas.pm.delivery_snapshot import (
+    INTEGRATION_STATUSES,
     ComponentLaneOccupancy,
     DeliverySnapshot,
     LinearBoardPull,
@@ -88,6 +89,7 @@ __all__ = [
     "ADMISSION_LEASE_TTL",
     "CRASH_DEDUP_WINDOW",
     "DEFAULT_INTERVAL_SECONDS",
+    "INTEGRATION_STATUSES",
     "PUSHABLE_STATUSES",
     "AdmissionInputMismatchCode",
     "AdmissionInputMismatchError",

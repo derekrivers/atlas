@@ -98,6 +98,12 @@ function PolicyOverview({ policy }: { policy: Policy }) {
             </dd>
           </div>
           <div>
+            <dt className='text-muted-foreground text-sm'>Integration budget</dt>
+            <dd className='mt-1 text-xl font-semibold tabular-nums'>
+              Maximum {policy.integration_budget}
+            </dd>
+          </div>
+          <div>
             <dt className='text-muted-foreground text-sm'>Revision created</dt>
             <dd className='mt-1 break-words text-sm'>{policy.created_at}</dd>
           </div>

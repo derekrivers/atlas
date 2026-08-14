@@ -366,6 +366,7 @@ class TicketStatus(str, Enum):
     READY_FOR_AGENT = "ready_for_agent"
     IN_PROGRESS = "in_progress"
     PR_OPEN = "pr_open"
+    CI_PENDING = "ci_pending"
     REVIEW_REQUIRED = "review_required"
     CHANGES_REQUESTED = "changes_requested"
     DONE = "done"
@@ -451,6 +452,13 @@ class Ticket(BaseModel):
     updated_at: datetime
     completed_at: Optional[datetime] = None
 ```
+
+The CI-pending edge has one writer per transition. An agent may write
+`pr_open → ci_pending`; the `pr_open` source is the durable prerequisite that a
+PR has been published. Atlas alone may write `ci_pending → review_required` or
+`ci_pending → changes_requested` from system-tier CI classification. No browser
+or Symphony owner exists for either exit, and `ci_pending` is distinct from
+review, remediation and terminal states.
 
 ## PostgreSQL Table
 
@@ -1469,11 +1477,13 @@ policy. The operator submits a complete replacement, never a patch. Revision
 numbers begin at one and increase monotonically per product; the companion
 active pointer selects the authoritative row without changing history.
 
-The approved Symphony ceiling, working budget and review budget are strict
-integers. The ceiling is `1..10`, working is `1..ceiling`, review is `1..10`,
-and the Changes Requested reserve is `0..working`. A risk or component lane
-limit is `0..working`. Risk selectors are exact `RiskLevel` values; component
-selectors are NFKC-normalised, trimmed and case-folded exact strings. Duplicate
+The approved Symphony ceiling, working, integration and review budgets are
+strict integers. The ceiling is `1..10`, working is `1..ceiling`, integration
+and review are independently `1..10`, and the Changes Requested reserve is
+`0..working`. The integration budget is an operator-owned maximum CI-pending
+queue bound, never a target and never inferred from Symphony workers. A risk or
+component lane limit is `0..working`. Risk selectors are exact `RiskLevel`
+values; component selectors are NFKC-normalised, trimmed and case-folded exact strings. Duplicate
 risk selectors and component selectors that canonicalise to the same value are
 rejected. There may be at most four risk lanes and 64 component lanes.
 
@@ -1502,6 +1512,7 @@ class DeliveryAdmissionPolicyRevision(BaseModel):
     mode: DeliveryAdmissionMode
     approved_symphony_ceiling: int = Field(ge=1, le=10)
     working_budget: int = Field(ge=1, le=10)
+    integration_budget: int = Field(ge=1, le=10)
     review_budget: int = Field(ge=1, le=10)
     changes_requested_reserve: int = Field(ge=0, le=10)
     risk_lane_limits: tuple[RiskLaneLimit, ...] = ()
@@ -1523,6 +1534,8 @@ CREATE TABLE delivery_admission_policy_revisions (
         CHECK (approved_symphony_ceiling BETWEEN 1 AND 10),
     working_budget INTEGER NOT NULL
         CHECK (working_budget BETWEEN 1 AND approved_symphony_ceiling),
+    integration_budget INTEGER NOT NULL DEFAULT 1
+        CHECK (integration_budget BETWEEN 1 AND 10),
     review_budget INTEGER NOT NULL CHECK (review_budget BETWEEN 1 AND 10),
     changes_requested_reserve INTEGER NOT NULL
         CHECK (changes_requested_reserve BETWEEN 0 AND working_budget),
@@ -1563,6 +1576,20 @@ system bootstrap state: `running`, ceiling `3`, working `3`, review `3`, reserve
 `0`, and empty lane sets. It changes no Symphony configuration and does not
 edit `WORKFLOW.md`. Subsequent creation or replacement is human/operator
 attributed and must pass the governed action gateway.
+
+Migration `0031`, based on head `0030`, adds `integration_budget` with a
+conservative compatibility default of one through portable additive DDL. It
+does not update, delete or recreate a historical revision, does not alter
+migration `0025`, and preserves the append-only guards on SQLite and
+PostgreSQL. New revisions supply the validated value explicitly through the
+existing compare-and-set, idempotency and atomic receipt transaction.
+
+The canonical delivery-policy fingerprint predates `0031` and deliberately
+retains its previous field set, excluding `integration_budget`. This preserves
+byte-for-byte reconstruction of immutable historical
+`AdmissionRun.policy_fingerprint` values after upgrade. Delivery snapshots pin
+`integration_budget` as a separate explicit canonical field, so the new policy
+input remains freshness-sensitive without rewriting history.
 
 ## 5.13 Admission Run
 

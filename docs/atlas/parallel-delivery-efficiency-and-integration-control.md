@@ -31,7 +31,7 @@ is the explicit operator release gate for ATLAS-253, which still owns Phase
 | CI authority | Complete CI remains mandatory and is the only system-tier authority. Scoped local checks are confidence evidence, never completion evidence. |
 | Agent lifetime | After focused checks and one successful publication, the ticket enters `CI Pending`; the Symphony slot is released and the agent does not poll CI. |
 | CI reconciliation | Atlas observes pinned GitHub check evidence and performs one deterministic state transition. Infrastructure, pending and ambiguous outcomes remain held without retry churn. |
-| Capacity accounting | Working, CI-pending, integration and review occupancy are separate budgets. Freeing a worker never makes downstream queues unbounded. |
+| Capacity accounting | Working, CI/integration and review occupancy are separate budgets. Freeing a worker never makes the CI-pending queue unbounded. |
 | Conflict avoidance | Declared protected surfaces are exclusive integration lanes. Independent surfaces remain parallel. |
 | Freshness | A clean candidate may avoid branch rewrite only after a feasibility spike proves exact repository, PR, base, head and synthetic-merge identities from authoritative GitHub evidence. |
 | Rebase fallback | A conflict, stale identity, provider ambiguity or failed spike routes to the delivered operator-owned rebase lane. Atlas never resolves or publishes a rebase automatically. |
@@ -120,24 +120,28 @@ is not a default handoff ritual.
 
 ### State mapping
 
-`CI Pending` is a tracker state observed by Atlas and configured in Symphony's
-workflow mapping. It means implementation has published one candidate and is
-waiting for authoritative checks. It is neither an active Symphony state nor a
-review verdict.
+`CI Pending` is the Atlas team's Linear `started` state
+`85cdfa65-b990-41cc-a4ea-0071868ba27f`, mapped exactly to `ci_pending`. It is
+observed by Atlas and deliberately absent from Symphony's active and terminal
+state lists. It means implementation has published one candidate and is waiting
+for authoritative checks; it is neither working occupancy nor a review verdict.
 
 ```mermaid
 stateDiagram-v2
     [*] --> InProgress
-    InProgress --> CIPending: focused checks and publish
+    InProgress --> PROpen: focused checks and publish
+    PROpen --> CIPending: agent releases slot
     CIPending --> ReviewRequired: system CI passes
     CIPending --> ChangesRequested: definite implementation failure
     CIPending --> CIPending: running, infrastructure or ambiguous
     ReviewRequired --> ChangesRequested: human remediation request
 ```
 
-On successful publication the agent records the exact repository, PR and head
-identity, transitions once to `CI Pending` and stops. It does not wait, poll,
-interpret remote failures or consume a Symphony working slot. A changed head
+After successful publication the agent first enters `PR Open`, making the
+published-PR prerequisite durable, then owns only `PR Open → CI Pending` and
+stops. It does not wait, poll, interpret remote failures or consume a Symphony
+working slot. Atlas alone owns `CI Pending → Review Required` and `CI Pending →
+Changes Requested`; browser and Symphony paths own neither exit. A changed head
 invalidates earlier CI authority.
 
 The CI reconciler consumes trusted check evidence pinned to the current head:
@@ -148,21 +152,23 @@ The CI reconciler consumes trusted check evidence pinned to the current head:
 - provider outage, rate limit, missing check, malformed payload, unknown
   conclusion or identity mismatch: remain held with a typed reason.
 
-Only the existing PM ownership boundary performs Linear transitions. Duplicate
-observations are idempotent. Conflicting or partial observations produce no
-advance. A new head restarts the lifecycle with new evidence; previous records
-remain history.
+Only an owner-specific PM boundary performs Linear transitions. The generic
+Linear status pull may mirror the agent-owned `PR Open → CI Pending` entry, but
+it rejects arbitrary entries and every CI-pending exit as a deduplicated
+ownership anomaly. ATLAS-256's trusted CI reconciler will be the only seam that
+can exercise the Atlas-owned exits. Duplicate observations are idempotent.
+Conflicting or partial observations produce no advance. A new head restarts the
+lifecycle with new evidence; previous records remain history.
 
-## Four separate capacity budgets
+## Three separate capacity budgets
 
-Phase 15's working and review budgets remain binding. Phase 15.5 adds explicit
-CI-pending and integration budgets:
+Phase 15's working and review budgets remain binding. ATLAS-255 adds one
+operator-owned integration budget for the CI-pending queue:
 
 | Budget | Counts | Releases when |
 | --- | --- | --- |
 | Working | Ready/active Symphony work under the Phase 15 policy | Work publishes or otherwise leaves the active delivery states |
-| CI pending | Published heads awaiting a determinate CI outcome | Required checks become determinate for the same identity |
-| Integration | Candidates admitted to freshness/acceptance processing | Candidate is reviewed, held for rebase/conflict or leaves the lane |
+| Integration | `CI Pending` published heads awaiting a determinate CI outcome | Required checks become determinate for the same identity |
 | Review | Existing Phase 15 acceptance pressure | Existing review policy releases it |
 
 A ticket moves between budgets; releasing one budget does not erase downstream
@@ -246,20 +252,20 @@ remains the only rebase/publish mechanism.
 ## API and Operator UI
 
 After ATLAS-250 delivers the Phase 15 API, the Phase 15.5 API extension exposes
-bounded projections for CI-pending and integration occupancy, protected-lane
+bounded projections for CI-pending integration occupancy, protected-lane
 holds, current candidate identities, validation-plan summaries and typed
 freshness outcomes. It adds no generic mutation route and returns no raw
 provider payload, credential, command output or workspace path.
 
 After ATLAS-251 delivers the Phase 15 UI, the console shows working,
-CI-pending, integration and review pressure separately. It distinguishes
+CI-pending integration and review pressure separately. It distinguishes
 waiting from failure, explains protected-lane holds, marks identity movement
 stale and never presents a no-rewrite classification as a merge action. Policy
 changes retain the existing authenticated confirmation and receipt boundary.
 
 ## Symphony workflow contract
 
-`WORKFLOW.md` instructs an implementation agent to:
+The eventual workflow-prompt cutover will instruct an implementation agent to:
 
 1. inspect the exact ticket requirements and changed surfaces;
 2. run the deterministic scoped validation plan;
@@ -267,6 +273,11 @@ changes retain the existing authenticated confirmation and receipt boundary.
 4. publish the candidate once;
 5. enter `CI Pending`; and
 6. stop the session.
+
+ATLAS-255 establishes the state, ownership and non-active inventory but does not
+make that prompt change or interpret CI results. Until the owning follow-up
+lands, `WORKFLOW.md` retains its current routing text while mechanically proving
+that `CI Pending` is absent from `active_states`.
 
 The workflow forbids agent-side CI polling, repeated full sweeps for an
 unchanged head without a fallback reason, automatic rebase/conflict resolution
@@ -313,7 +324,7 @@ an independent workload and numerical PASS/FAIL thresholds for:
 - agent active time and local-validation time;
 - duplicate complete sweeps per unchanged identity;
 - CI queue/run time and indeterminate outcomes;
-- working, CI-pending, integration and review queue bounds;
+- working, CI-pending integration and review queue bounds;
 - review dwell, conflicts and rebases; and
 - accepted completed flow, not merely PR creation or worker utilisation.
 
