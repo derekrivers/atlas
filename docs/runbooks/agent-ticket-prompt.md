@@ -67,7 +67,9 @@ agents most often break)
 - Acceptance criteria: {1–7 concrete, falsifiable criteria}
 - Calculate `atlas validation-plan` with the exact base/head identities, every
   changed path, every explicit ticket validation requirement, and every
-  ticket-declared test file; include its plan in the completion report
+  ticket-declared test file; the CLI must report a verified read-only Git diff
+  and prove each explicit test at the head, or require `full-sweep`; include its
+  plan in the completion report
 - Run every command in that plan in order; if it selects `full-sweep`, do not
   replace it with a narrower manual command
 - New behaviour is covered by new tests, including at least one negative

@@ -23,9 +23,11 @@ environment; there is no virtualenv to activate by hand.
 ## Deterministic local validation plan
 
 Supply `atlas validation-plan` with exact full Git object ids and every path in
-the corresponding base-to-head diff. The planner does not run Git or discover
-paths itself. Add each registry-owned ticket requirement and explicit ticket
-test from the ticket contract:
+the corresponding base-to-head diff. The CLI derives that diff with read-only
+Git, includes both old and new rename paths, and compares it with the supplied
+set; it never writes the repository. A mismatch or discovery failure requires
+the complete local sweep. Add each registry-owned ticket requirement and
+explicit ticket test from the ticket contract:
 
 ```bash
 uv run atlas validation-plan \
@@ -44,9 +46,18 @@ which policy it reviewed. Registered requirement ids are `python`, `static`,
 `workflow-contract` and `full-sweep`. Requirements and ticket tests are
 additive; the CLI has no exclusion option.
 
-Run the emitted commands in order. Changed test files and explicit ticket test
-files appear in `test_targets` even when a broader profile command contains
-them. Unknown or invalid paths, an omitted diff, ambiguous identities,
+Explicit ticket tests must be files at the supplied head and match the runner
+that the selected profile invokes: `tests/**/test_*.py` for Pytest,
+`apps/operator-ui/tests/acceptance/**/*.test.ts` for acceptance Vitest,
+`apps/operator-ui/tests/component/**/*.test.tsx` for browser Vitest, or
+Playwright's `.test`/`.spec` TypeScript forms under
+`apps/operator-ui/tests/e2e/`. A test-looking path outside those contracts
+cannot count as mandatory evidence and selects `full-sweep`.
+
+Run the emitted commands in order. Changed test files and proven explicit
+ticket test files appear in `test_targets` even when a broader profile command
+contains them. Unknown or invalid paths, an omitted or mismatched diff, Git discovery
+failure, an unprovable ticket test, ambiguous identities,
 registry-version/digest drift, input over the documented bounds and protected
 cross-cutting surfaces select `full-sweep` with explicit fallback reasons. A
 caller must not replace that fallback with a narrower manual plan.

@@ -46,7 +46,9 @@ needs:
 - Keep tickets small and dependency-aware. Update documentation when
   behaviour changes. Before handoff, calculate `atlas validation-plan` from
   exact base/head identities, every changed path and the ticket's explicit
-  test requirements, then run its ordered commands. Scoped local results are
+  test requirements. The CLI must prove that path set against the read-only
+  Git diff and prove explicit test files at the head; any mismatch falls back
+  to the complete sweep. Run its ordered commands. Scoped local results are
   agent-tier confidence only; complete CI at the accepted identity is the
   system-tier completion authority.
 - Gate conduct: a plan gate is a single presentation, not a conversation.

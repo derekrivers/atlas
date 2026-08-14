@@ -331,9 +331,11 @@
       "id": "validation-policy",
       "lane": "validation-policy",
       "exact": [
+        "atlas/orchestration/validation_plan_cli.py",
+        "atlas/verification/validation_plan.py",
         "atlas/verification/validation_registry_v1.json"
       ],
-      "reason": "The validation registry is protected against incomplete self-validation."
+      "reason": "Validation planning policy is protected against incomplete self-validation."
     }
   ]
 }

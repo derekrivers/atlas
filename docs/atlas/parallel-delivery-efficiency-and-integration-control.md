@@ -69,11 +69,15 @@ object id, a full head object id, and every repository-relative path in that
 exact diff. Repeatable `--ticket-requirement` values name registry ids and
 repeatable `--ticket-test` values add explicit test files. The optional
 `--expect-registry-version` pins a caller to the policy version it reviewed.
-The CLI reads the packaged registry but does not discover the diff, invoke Git,
-execute a command or write repository/external state. It emits human-readable
-output by default or canonical compact JSON with `--json`, containing:
+The CLI uses only read-only Git operations to derive the exact base-to-head
+name-status diff, including both sides of renames, and compares that trusted
+set with the supplied paths. It also proves every explicit ticket test is a
+blob at the supplied head. It does not execute validation commands or write
+repository/external state. It emits human-readable output by default or
+canonical compact JSON with `--json`, containing:
 
 - the repository identities used;
+- the changed-path proof status;
 - every selected profile and command;
 - the path or ticket requirement that selected it;
 - every mandatory changed or ticket-declared test file;
@@ -84,11 +88,15 @@ Inputs and rendered fields have fixed count and length bounds. Input order,
 duplicates, clocks, UUIDs and model interpretation do not affect the plan;
 identical identities and changed-path sets serialize to identical bytes.
 Changed tests, tests added for changed behaviour and ticket-declared tests are
-additive mandatory inputs. There is no exclusion option, and an invalid or
-unregistered free-form value cannot remove a profile. Unknown paths, omitted
-diffs, ambiguous or inconsistent identities, registry drift, oversized input
-and protected cross-cutting surfaces select the documented complete local
-sweep rather than an incomplete result.
+additive mandatory inputs. Ticket-test paths must match a configured Python,
+Vitest or Playwright runner and exist at the supplied head. There is no
+exclusion option, and an invalid or unregistered free-form value cannot remove
+a profile. Unknown paths, omitted or mismatched diffs, Git discovery failure,
+unprovable ticket tests, ambiguous or inconsistent identities, registry drift,
+oversized input and protected cross-cutting surfaces select the documented
+complete local sweep rather than an incomplete result. The registry, pure
+classifier and read-only CLI adapter are themselves protected validation-policy
+surfaces.
 
 The complete local sweep runs the unfiltered Python test/static/documentation/
 architecture gates and both Operator UI cold-checkout wrappers. It remains an

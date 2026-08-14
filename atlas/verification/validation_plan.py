@@ -15,7 +15,7 @@ from typing import Any, Final, cast
 
 REGISTRY_VERSION: Final = "validation-registry/v1"
 REGISTRY_SHA256: Final = (
-    "a27e3f3106ad4c288e3b3bcccbb95ec8a3093fe142f69ca75f536be927341698"
+    "20a87c19d2c3fe44e7bb47c2bb9778b784f1f4596a56145f59b6bf76541123be"
 )
 MAX_CHANGED_PATHS: Final = 256
 MAX_TICKET_REQUIREMENTS: Final = 32
@@ -143,6 +143,7 @@ class ValidationPlan:
     registry_version: str
     base: str | None
     head: str | None
+    diff_verification: str
     changed_paths: tuple[str, ...]
     changed_path_count: int
     ticket_requirements: tuple[str, ...]
@@ -161,6 +162,7 @@ class ValidationPlan:
             "changed_path_count": self.changed_path_count,
             "changed_paths": list(self.changed_paths),
             "commands": list(self.commands),
+            "diff_verification": self.diff_verification,
             "fallback_reasons": [
                 {"code": reason.code, "detail": reason.detail}
                 for reason in self.fallback_reasons
@@ -209,6 +211,7 @@ class ValidationPlan:
             f"Validation plan ({self.registry_version})",
             f"Base: {self.base or 'ambiguous'}",
             f"Head: {self.head or 'ambiguous'}",
+            f"Changed-path proof: {self.diff_verification}",
             f"Complete local sweep: {'required' if self.full_sweep else 'no'}",
         ]
         if self.fallback_reasons:
@@ -402,21 +405,29 @@ def _normalise_path(value: object) -> str | None:
     return value
 
 
-def _is_test_file(path: str) -> bool:
+def runner_profiles_for_test_path(path: str) -> tuple[str, ...] | None:
+    """Return the profiles whose configured runners execute ``path``."""
+
+    if _normalise_path(path) is None:
+        return None
     if path.startswith("tests/"):
         filename = path.rsplit("/", 1)[-1]
-        return filename.startswith("test_") and filename.endswith(".py")
-    if not path.startswith("apps/operator-ui/tests/"):
-        return False
-    return path.endswith((".test.ts", ".test.tsx", ".spec.ts", ".spec.tsx"))
-
-
-def _profiles_for_test(path: str) -> tuple[str, ...]:
-    if path.startswith("tests/"):
-        return ("python",)
-    if "/acceptance/" in path:
+        if filename.startswith("test_") and filename.endswith(".py"):
+            return ("python",)
+        return None
+    if path.startswith("apps/operator-ui/tests/acceptance/") and path.endswith(
+        ".test.ts"
+    ):
         return ("ui",)
-    return ("browser",)
+    if path.startswith("apps/operator-ui/tests/component/") and path.endswith(
+        ".test.tsx"
+    ):
+        return ("browser",)
+    if path.startswith("apps/operator-ui/tests/e2e/") and path.endswith(
+        (".test.ts", ".test.tsx", ".spec.ts", ".spec.tsx")
+    ):
+        return ("browser",)
+    return None
 
 
 def _profile_order_key(registry: ValidationRegistry, profile: str) -> int:
@@ -428,6 +439,7 @@ def _safe_fallback_plan(
     registry_version: str,
     base: str | None,
     head: str | None,
+    diff_verification: str,
     changed_path_count: int,
     fallbacks: set[FallbackReason],
 ) -> ValidationPlan:
@@ -435,6 +447,7 @@ def _safe_fallback_plan(
         registry_version=registry_version,
         base=base,
         head=head,
+        diff_verification=diff_verification,
         changed_paths=(),
         changed_path_count=changed_path_count,
         ticket_requirements=(),
@@ -459,6 +472,8 @@ def calculate_validation_plan(
     registry: ValidationRegistry | None,
     registry_error: str | None = None,
     expected_registry_version: str | None = None,
+    diff_verification: str = "unverified",
+    unverified_ticket_tests: tuple[str, ...] = (),
 ) -> ValidationPlan:
     """Select the smallest safe profiles, conservatively falling back.
 
@@ -469,6 +484,28 @@ def calculate_validation_plan(
     base_identity = base if _EXACT_IDENTITY.fullmatch(base) else None
     head_identity = head if _EXACT_IDENTITY.fullmatch(head) else None
     fallbacks: set[FallbackReason] = set()
+    if diff_verification == "mismatch":
+        fallbacks.add(
+            FallbackReason(
+                "changed_path_mismatch",
+                "Supplied changed paths do not match the exact base-to-head Git diff.",
+            )
+        )
+    elif diff_verification == "unavailable":
+        fallbacks.add(
+            FallbackReason(
+                "git_diff_unavailable",
+                "The exact base-to-head Git diff could not be proven read-only.",
+            )
+        )
+    elif diff_verification != "verified":
+        diff_verification = "unverified"
+        fallbacks.add(
+            FallbackReason(
+                "unverified_changed_paths",
+                "Changed paths require proof from the exact base-to-head Git diff.",
+            )
+        )
     if base_identity is None:
         fallbacks.add(
             FallbackReason(
@@ -483,14 +520,23 @@ def calculate_validation_plan(
                 "Head must be a full lowercase Git object id.",
             )
         )
-    if base_identity is not None and base_identity == head_identity and changed_paths:
+    unique_changed_inputs = tuple(dict.fromkeys(changed_paths))
+    unique_requirement_inputs = tuple(dict.fromkeys(ticket_requirements))
+    unique_ticket_test_inputs = tuple(dict.fromkeys(ticket_tests))
+    unique_unverified_tests = tuple(dict.fromkeys(unverified_ticket_tests))
+
+    if (
+        base_identity is not None
+        and base_identity == head_identity
+        and unique_changed_inputs
+    ):
         fallbacks.add(
             FallbackReason(
                 "inconsistent_identity",
                 "A non-empty diff cannot use identical base and head identities.",
             )
         )
-    if not changed_paths:
+    if not unique_changed_inputs:
         fallbacks.add(
             FallbackReason(
                 "empty_changed_path_set",
@@ -498,21 +544,21 @@ def calculate_validation_plan(
             )
         )
 
-    if len(changed_paths) > MAX_CHANGED_PATHS:
+    if len(unique_changed_inputs) > MAX_CHANGED_PATHS:
         fallbacks.add(
             FallbackReason(
                 "changed_path_bound_exceeded",
                 f"Changed paths exceed the {MAX_CHANGED_PATHS}-path planning bound.",
             )
         )
-    if len(ticket_requirements) > MAX_TICKET_REQUIREMENTS:
+    if len(unique_requirement_inputs) > MAX_TICKET_REQUIREMENTS:
         fallbacks.add(
             FallbackReason(
                 "ticket_requirement_bound_exceeded",
                 f"Ticket requirements exceed the {MAX_TICKET_REQUIREMENTS}-item bound.",
             )
         )
-    if len(ticket_tests) > MAX_TICKET_TESTS:
+    if len(unique_ticket_test_inputs) > MAX_TICKET_TESTS:
         fallbacks.add(
             FallbackReason(
                 "ticket_test_bound_exceeded",
@@ -533,7 +579,8 @@ def calculate_validation_plan(
             registry_version=registry_version,
             base=base_identity,
             head=head_identity,
-            changed_path_count=len(changed_paths),
+            diff_verification=diff_verification,
+            changed_path_count=len(unique_changed_inputs),
             fallbacks=fallbacks,
         )
     if expected_registry_version not in {None, registry.version}:
@@ -546,15 +593,16 @@ def calculate_validation_plan(
         )
 
     if (
-        len(changed_paths) > MAX_CHANGED_PATHS
-        or len(ticket_requirements) > MAX_TICKET_REQUIREMENTS
-        or len(ticket_tests) > MAX_TICKET_TESTS
+        len(unique_changed_inputs) > MAX_CHANGED_PATHS
+        or len(unique_requirement_inputs) > MAX_TICKET_REQUIREMENTS
+        or len(unique_ticket_test_inputs) > MAX_TICKET_TESTS
     ):
         return _safe_fallback_plan(
             registry_version=registry_version,
             base=base_identity,
             head=head_identity,
-            changed_path_count=len(changed_paths),
+            diff_verification=diff_verification,
+            changed_path_count=len(unique_changed_inputs),
             fallbacks=fallbacks,
         )
 
@@ -562,13 +610,13 @@ def calculate_validation_plan(
         sorted(
             {
                 path
-                for value in changed_paths
+                for value in unique_changed_inputs
                 if (path := _normalise_path(value)) is not None
             }
         )
     )
-    invalid_changed_count = len(changed_paths) - sum(
-        _normalise_path(value) is not None for value in changed_paths
+    invalid_changed_count = len(unique_changed_inputs) - sum(
+        _normalise_path(value) is not None for value in unique_changed_inputs
     )
     if invalid_changed_count:
         fallbacks.add(
@@ -582,13 +630,13 @@ def calculate_validation_plan(
         sorted(
             {
                 path
-                for value in ticket_tests
+                for value in unique_ticket_test_inputs
                 if (path := _normalise_path(value)) is not None
             }
         )
     )
-    if len(normalised_tests) != len(set(ticket_tests)) or any(
-        not _is_test_file(path) for path in normalised_tests
+    if len(normalised_tests) != len(unique_ticket_test_inputs) or any(
+        runner_profiles_for_test_path(path) is None for path in normalised_tests
     ):
         fallbacks.add(
             FallbackReason(
@@ -600,8 +648,27 @@ def calculate_validation_plan(
     selected: set[str] = set()
     reasons: set[SelectionReason] = set()
     protected: set[ProtectedSurfaceReason] = set()
-    test_targets = {path for path in normalised_paths if _is_test_file(path)}
-    test_targets.update(normalised_tests)
+    unverified_test_set = set(unique_unverified_tests)
+    for path in normalised_tests:
+        if path in unverified_test_set:
+            fallbacks.add(
+                FallbackReason(
+                    "unverified_ticket_test",
+                    f"Ticket test {path} is not a file at the supplied head identity.",
+                )
+            )
+
+    test_targets = {
+        path
+        for path in normalised_paths
+        if runner_profiles_for_test_path(path) is not None
+    }
+    test_targets.update(
+        path
+        for path in normalised_tests
+        if runner_profiles_for_test_path(path) is not None
+        and path not in unverified_test_set
+    )
 
     for path in normalised_paths:
         matching_rules = tuple(
@@ -621,8 +688,9 @@ def calculate_validation_plan(
                         profile, "changed_path", path, rule.rule_id, rule.reason
                     )
                 )
-        if _is_test_file(path):
-            for profile in _profiles_for_test(path):
+        test_profiles = runner_profiles_for_test_path(path)
+        if test_profiles is not None:
+            for profile in test_profiles:
                 selected.add(profile)
                 reasons.add(
                     SelectionReason(
@@ -648,12 +716,12 @@ def calculate_validation_plan(
         sorted(
             {
                 requirement
-                for requirement in ticket_requirements
+                for requirement in unique_requirement_inputs
                 if _REQUIREMENT_NAME.fullmatch(requirement)
             }
         )
     )
-    if len(requirements) != len(set(ticket_requirements)):
+    if len(requirements) != len(unique_requirement_inputs):
         fallbacks.add(
             FallbackReason(
                 "invalid_ticket_requirement",
@@ -683,7 +751,10 @@ def calculate_validation_plan(
             )
 
     for path in normalised_tests:
-        for profile in _profiles_for_test(path):
+        test_profiles = runner_profiles_for_test_path(path)
+        if test_profiles is None:
+            continue
+        for profile in test_profiles:
             selected.add(profile)
             reasons.add(
                 SelectionReason(
@@ -736,8 +807,9 @@ def calculate_validation_plan(
         registry_version=registry.version,
         base=base_identity,
         head=head_identity,
+        diff_verification=diff_verification,
         changed_paths=normalised_paths,
-        changed_path_count=len(changed_paths),
+        changed_path_count=len(unique_changed_inputs),
         ticket_requirements=requirements,
         ticket_tests=normalised_tests,
         test_targets=tuple(sorted(test_targets)),
@@ -762,4 +834,5 @@ __all__ = [
     "ValidationRegistry",
     "calculate_validation_plan",
     "load_registry_bytes",
+    "runner_profiles_for_test_path",
 ]

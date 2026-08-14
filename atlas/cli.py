@@ -2642,7 +2642,7 @@ def main(
     if args.command == "api":
         return _api_command(args)
     if args.command == "validation-plan":
-        return validation_plan_cli.run_command(args)
+        return validation_plan_cli.run_command(args, git_runner=git_runner)
     return EXIT_PRECONDITION  # unreachable: subparser is required
 
 
