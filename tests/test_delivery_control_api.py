@@ -249,6 +249,13 @@ def _seed_latest_run_and_fence(
             observed=1,
             limit=0,
         ),
+        AdmissionHoldReason(
+            code=AdmissionHoldCode.PROTECTED_LANE,
+            selector="database-migrations",
+            observed=2,
+            limit=1,
+            owner_ticket_keys=("ATLAS-OWNER-2", "ATLAS-OWNER-1"),
+        ),
     )
     run = AdmissionRun(
         id=uuid4(),
@@ -277,6 +284,9 @@ def _seed_latest_run_and_fence(
                 ),
                 decision=AdmissionDecisionType.HOLD,
                 reasons=duplicate_snapshot_reasons,
+                protected_lanes=("database-migrations",),
+                protected_lane_registry_version=("protected-integration-lanes/v1"),
+                protected_lane_registry_fingerprint="f" * 64,
             ),
         ),
         created_by_type=ActorType.SYSTEM,
@@ -396,10 +406,20 @@ def test_ac1_ac5_get_returns_policy_sync_occupancy_and_secret_free_typed_reasons
     }
     reasons = latest["decisions"][0]["reasons"]
     assert [reason["code"] for reason in reasons] == [
+        "protected_lane",
         "risk_lane",
         "snapshot_incomplete",
     ]
-    assert reasons[1]["source_code"] == "missing_joined_issue"
+    assert reasons[0]["owner_ticket_keys"] == [
+        "ATLAS-OWNER-1",
+        "ATLAS-OWNER-2",
+    ]
+    assert reasons[2]["source_code"] == "missing_joined_issue"
+    assert latest["decisions"][0]["protected_lanes"] == ["database-migrations"]
+    assert latest["decisions"][0]["protected_lane_registry_version"] == (
+        "protected-integration-lanes/v1"
+    )
+    assert latest["decisions"][0]["protected_lane_registry_fingerprint"] == ("f" * 64)
     assert payload["indeterminate_reasons"] == [
         {
             "reason": "write_indeterminate",

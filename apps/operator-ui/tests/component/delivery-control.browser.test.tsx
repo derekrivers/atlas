@@ -57,6 +57,7 @@ function deliveryControl(mode: Mode = 'running', revision = 7): DeliveryControl 
       decisions: [
         {
           decision: 'admit',
+          protected_lanes: [],
           rank: 1,
           rank_inputs: {
             continuously_eligible_age_microseconds: 300_000_000,
@@ -73,6 +74,9 @@ function deliveryControl(mode: Mode = 'running', revision = 7): DeliveryControl 
         },
         {
           decision: 'hold',
+          protected_lane_registry_fingerprint: 'f'.repeat(64),
+          protected_lane_registry_version: 'protected-integration-lanes/v1',
+          protected_lanes: ['database-migrations'],
           rank: 2,
           rank_inputs: {
             continuously_eligible_age_microseconds: 120_000_000,
@@ -115,6 +119,15 @@ function deliveryControl(mode: Mode = 'running', revision = 7): DeliveryControl 
               observed: 2,
               reserved_capacity: null,
               selector: longComponent,
+              source_code: null,
+            },
+            {
+              code: 'protected_lane',
+              limit: 1,
+              observed: 2,
+              owner_ticket_keys: ['ATLAS-250'],
+              reserved_capacity: null,
+              selector: 'database-migrations',
               source_code: null,
             },
           ],
@@ -384,6 +397,10 @@ describe('delivery control browser component', () => {
     expect(text).toContain('review_budget')
     expect(text).toContain('changes_requested_reserve')
     expect(text).toContain('component_lane')
+    expect(text).toContain('Protected integration lanes')
+    expect(text).toContain('database-migrations')
+    expect(text).toContain('protected-integration-lanes/v1')
+    expect(text).toContain('current owners ATLAS-250')
     expect(text).toContain('Server reports over-capacity state')
     expect(text).toContain('Server reports indeterminate delivery state')
     expect(text).toContain('write_indeterminate')

@@ -924,9 +924,17 @@ def present_delivery_control(
                                 observed=reason.observed,
                                 limit=reason.limit,
                                 reserved_capacity=reason.reserved_capacity,
+                                owner_ticket_keys=list(reason.owner_ticket_keys),
                             )
                             for reason in decision.reasons
                         ],
+                        protected_lanes=list(decision.protected_lanes),
+                        protected_lane_registry_version=(
+                            decision.protected_lane_registry_version
+                        ),
+                        protected_lane_registry_fingerprint=(
+                            decision.protected_lane_registry_fingerprint
+                        ),
                     )
                     for decision in latest.decisions
                 ],

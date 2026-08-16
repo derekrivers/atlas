@@ -98,13 +98,24 @@ keys; it does not accept a caller-authored candidate collection and does not
 reimplement status, acceptance-criteria, ticket dependency, ADR or dangling
 target rules. Non-ready tickets are absent from an `AdmissionRun`, rather than
 being relabelled as policy holds. Policy may hold a ready candidate for
-capacity, snapshot coherence or the single-write boundary, but can never make
-a non-ready ticket eligible.
+capacity, protected integration-lane classification, snapshot coherence or the
+single-write boundary, but can never make a non-ready ticket eligible.
+
+Protected integration lanes do not add graph edges and do not change this
+predicate. After readiness and stable ranking, admission classifies a ready
+ticket from its stored component, tags, `relevant_docs` and
+`documentation_requirements` paths against the digest-pinned repository lane
+registry. A malformed, contradictory or ambiguous declaration becomes a typed
+admission hold; it never becomes a dependency and never makes another ticket
+ready. Multiple independent declarations may match multiple lanes, all of
+which are retained on the admission decision.
 
 Admission first fingerprints that exact graph, including readiness node state
 and dependency topology, identity and target state, and requires it to match
 the graph revision pinned by the delivery snapshot. It also requires the
-matching complete product-ticket revision. A mismatch raises typed
+matching complete product-ticket revision, which includes the component, tags
+and declared path fields used by protected-lane classification, plus the
+protected-lane registry identity pinned by the snapshot. A mismatch raises typed
 `AdmissionInputMismatchError` before `ready_tickets`, ranking or run creation,
 so a snapshot from one graph/store state can neither authorise nor audit a
 decision over another.

@@ -141,6 +141,10 @@ from atlas.pm.admission_sync import (
 )
 from atlas.pm.agent_runs import reconstruct_agent_runs
 from atlas.pm.completion import complete_verified
+from atlas.pm.protected_lanes import (
+    ProtectedLaneRegistryLoadResult,
+    load_packaged_protected_lane_registry,
+)
 from atlas.storage.db import Database
 from atlas.storage.repositories import (
     ADRRepo,
@@ -1750,6 +1754,9 @@ def _sync_tick_impl(
     repair_packs: bool = False,
     lesson_client: LessonModelClient | None = None,
     admission_hooks: AdmissionSyncHooks | None = None,
+    admission_registry_provider: Callable[
+        [], ProtectedLaneRegistryLoadResult
+    ] = load_packaged_protected_lane_registry,
     receipt_context: _ReceiptContext | None = None,
 ) -> SyncResult:
     """Run one idempotent sync pass over every ticket (steps 1-5).
@@ -1938,6 +1945,7 @@ def _sync_tick_impl(
             initial_issues=fetched_issues,
             now=now,
             hooks=admission_hooks,
+            protected_lane_registry_provider=admission_registry_provider,
         )
         _apply_admission_result(result, admission)
         # A selected, stale or ambiguous admission ends this tick at the
@@ -2015,6 +2023,9 @@ def sync_tick(
     repair_packs: bool = False,
     lesson_client: LessonModelClient | None = None,
     admission_hooks: AdmissionSyncHooks | None = None,
+    admission_registry_provider: Callable[
+        [], ProtectedLaneRegistryLoadResult
+    ] = load_packaged_protected_lane_registry,
     completion_clock: Callable[[], datetime] = _utcnow,
 ) -> SyncResult:
     """Run one sync tick and append its durable PM sync receipt.
@@ -2043,6 +2054,7 @@ def sync_tick(
             repair_packs=repair_packs,
             lesson_client=lesson_client,
             admission_hooks=admission_hooks,
+            admission_registry_provider=admission_registry_provider,
             receipt_context=context,
         )
     except MalformedLinearPullError as error:

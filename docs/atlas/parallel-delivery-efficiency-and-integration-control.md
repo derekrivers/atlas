@@ -213,30 +213,52 @@ No budget is a utilisation target and none authorises Symphony cancellation.
 
 ### Classification
 
-The repository owns a deterministic protected-surface registry. Initial
-classes include database migrations, generated contracts and clients,
-`WORKFLOW.md` and workflow validators, planning-store/renders, release and
-policy files, and operator-declared temporary hotspots. Each class maps exact
-paths or narrowly defined prefixes to a stable lane key and capacity, normally
-one.
+The digest-pinned repository registry at
+`atlas/pm/protected_lane_registry_v1.json` declares stable lane keys, strict
+integer capacities and additive matcher rules. Version 1 bounds six lanes at
+capacity one: database migrations, generated API/client contracts, workflow
+configuration, planning sources/renders, shared dependency manifests and the
+explicitly operator-declared admission-control hotspot. The parser rejects an
+unknown version, digest drift, duplicate/ambiguous lane or rule identity,
+unbounded capacity, non-canonical selector/path or a lane without a rule.
 
-A ticket declares expected surfaces before admission. Atlas verifies the
-actual changed paths at publication. An undeclared protected path is a hold,
-not an implicit lane expansion. A candidate spanning multiple protected lanes
-acquires all applicable capacity atomically or none. Lane acquisition order is
-stable, so competing candidates cannot deadlock or depend on clock order.
+Before admission, a ticket is classified only from its stored `component`,
+`tags`, `relevant_docs` and `documentation_requirements`. Components and tags
+are NFKC-normalised, trimmed and case-folded; declared paths must already be
+canonical repository-relative paths. Objective, context, acceptance criteria,
+implementation notes, title and other model prose are never inspected. Every
+matched lane and its declaration/rule evidence are retained. Distinct
+declarations can select multiple lanes, while one declaration selecting
+different lanes, a non-canonical path or contradictory canonical tag
+declarations is a typed fail-closed classification. A multi-lane candidate is
+feasible only when all matching lanes have capacity.
 
 ### Behaviour
 
-Protected lanes serialize only conflict-prone integration surfaces. Tickets
-that share no protected lane remain independently admissible. Every hold names
-the occupied lane, owning identity and policy revision without exposing
-secrets. Stale observations, concurrent admission ticks or partial repository
-classification promote nobody unexpectedly.
+Protected lanes serialize only conflict-prone integration surfaces. Every
+working and CI-pending ticket consumes all of its valid matches; review-only and
+pre-delivery tickets do not occupy a lane. Each saturation hold names the lane,
+simulated count, capacity and sorted current owning ticket keys without exposing
+secrets. Occupancy and classification are part of the coherent snapshot, whose
+active-surface fingerprint is independent of source order.
+
+Candidate ranking is unchanged. The first reason-free candidate in the
+existing stable order is selected, a higher held candidate may be skipped for
+the highest feasible one, and every lower feasible candidate receives the
+existing `single_write_limit` even when it names another lane. Immediately
+before the one external admission write, Atlas reloads the digest-pinned
+registry and rebuilds protected-lane state across both deterministic race
+seams. Registry identity or active-surface movement yields a typed stale result,
+persists no write fence and admits nobody.
 
 The registry is operator-owned configuration reviewed like other delivery
-policy. Atlas does not infer a permanent lane from model judgement or learn
-one automatically from a conflict.
+policy. Its loader and classifier have no GitHub client, Git command, Linear
+writer, Symphony adapter or policy-revision service. A hold never mutates a
+diff, rebases Git, demotes a ticket, cancels a worker, optimises policy or widens
+capacity. Atlas does not infer a permanent lane from model judgement or learn
+one automatically from a conflict. Publication-time verification of declared
+paths remains a separate downstream control; admission does not inspect a
+GitHub diff.
 
 ## Exact-base acceptance without unnecessary rewrite
 

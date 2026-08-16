@@ -51,7 +51,6 @@ from atlas.orchestration.delivery_admission_policy import (
 from atlas.pm.admission_sync import AdmissionSyncReason
 from atlas.pm.delivery_snapshot import (
     OccupancyDimension,
-    SnapshotIncompletenessCode,
 )
 
 
@@ -715,11 +714,12 @@ class DeliveryControlHoldReasonSchema(BaseModel):
     """One distinct typed hold reason without raw external identities."""
 
     code: AdmissionHoldCode
-    source_code: SnapshotIncompletenessCode | None
+    source_code: str | None = Field(default=None, max_length=128)
     selector: str | None = Field(default=None, max_length=128)
     observed: int | None = Field(default=None, ge=0, le=1_000_000)
     limit: int | None = Field(default=None, ge=0, le=1_000_000)
     reserved_capacity: int | None = Field(default=None, ge=0, le=1_000_000)
+    owner_ticket_keys: list[str] = Field(default_factory=list, max_length=100)
 
 
 class DeliveryControlRankInputsSchema(BaseModel):
@@ -745,6 +745,11 @@ class DeliveryControlDecisionSchema(BaseModel):
     rank_inputs: DeliveryControlRankInputsSchema
     decision: AdmissionDecisionType
     reasons: list[DeliveryControlHoldReasonSchema]
+    protected_lanes: list[str]
+    protected_lane_registry_version: str | None = Field(default=None, max_length=128)
+    protected_lane_registry_fingerprint: str | None = Field(
+        default=None, pattern=r"^[0-9a-f]{64}$"
+    )
 
 
 class DeliveryControlAdmissionSchema(BaseModel):

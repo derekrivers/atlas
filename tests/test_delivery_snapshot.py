@@ -261,6 +261,56 @@ def test_ac2_working_tickets_consume_every_matching_lane_and_reserve() -> None:
     assert result.component_lane_occupancy[0].count == 2
 
 
+def test_atlas_258_ac3_working_and_ci_pending_consume_every_protected_lane() -> None:
+    working = ticket(
+        "ATLAS-1",
+        TicketStatus.IN_PROGRESS,
+        tags=["migration", "workflow"],
+    )
+    integrating = ticket(
+        "ATLAS-2",
+        TicketStatus.CI_PENDING,
+        tags=["migration"],
+    )
+
+    result = snapshot([working, integrating], [issue(working), issue(integrating)])
+
+    occupancy = {lane.lane: lane for lane in result.protected_lane_occupancy}
+    assert occupancy["database-migrations"].ticket_keys == (
+        "ATLAS-1",
+        "ATLAS-2",
+    )
+    assert occupancy["workflow-configuration"].ticket_keys == ("ATLAS-1",)
+    assert {
+        (breach.dimension, breach.selector, breach.count, breach.limit)
+        for breach in result.over_capacity
+    } >= {
+        (
+            OccupancyDimension.PROTECTED_LANE,
+            "database-migrations",
+            2,
+            1,
+        )
+    }
+    assert result.admission_allowed is False
+
+
+def test_atlas_258_ac2_invalid_active_surface_declaration_is_incomplete() -> None:
+    active = ticket(
+        "ATLAS-1",
+        TicketStatus.IN_PROGRESS,
+        relevant_docs=["../outside-repository"],
+    )
+
+    result = snapshot([active], [issue(active)])
+
+    assert [reason.code for reason in result.incompleteness_reasons] == [
+        SnapshotIncompletenessCode.PROTECTED_LANE_DECLARATION_INVALID
+    ]
+    assert result.incompleteness_reasons[0].ticket_key == active.key
+    assert result.admission_allowed is False
+
+
 def test_ac3_snapshot_pins_every_revision_input_and_injected_observation_time() -> None:
     source = ticket("ATLAS-1", TicketStatus.IN_PROGRESS, risk_level="low")
     target = ticket("ATLAS-2", TicketStatus.PLANNED)

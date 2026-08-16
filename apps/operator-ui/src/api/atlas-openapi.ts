@@ -872,13 +872,13 @@ export interface components {
          * @description Closed reasons why a dependency-ready candidate cannot enter now.
          * @enum {string}
          */
-        AdmissionHoldCode: "policy_paused" | "policy_draining" | "snapshot_policy_mismatch" | "snapshot_incomplete" | "working_budget" | "integration_budget" | "review_budget" | "changes_requested_reserve" | "risk_lane" | "component_lane" | "missing_external_linear_id" | "single_write_limit";
+        AdmissionHoldCode: "policy_paused" | "policy_draining" | "snapshot_policy_mismatch" | "snapshot_incomplete" | "working_budget" | "integration_budget" | "review_budget" | "changes_requested_reserve" | "risk_lane" | "component_lane" | "protected_lane" | "protected_lane_declaration" | "missing_external_linear_id" | "single_write_limit";
         /**
          * AdmissionSyncReason
          * @description Safe reason codes; none contains an external response or issue body.
          * @enum {string}
          */
-        AdmissionSyncReason: "lease_unavailable" | "product_ambiguous" | "policy_unavailable" | "snapshot_incomplete" | "no_candidate" | "policy_or_capacity_hold" | "over_capacity" | "revalidation_failed" | "revalidation_mismatch" | "policy_changed" | "candidate_moved" | "lease_lost" | "write_confirmed" | "write_indeterminate" | "indeterminate_still_unresolved" | "indeterminate_reconciled_admitted" | "indeterminate_reconciled_no_write" | "indeterminate_reconciled_moved";
+        AdmissionSyncReason: "lease_unavailable" | "product_ambiguous" | "policy_unavailable" | "snapshot_incomplete" | "no_candidate" | "policy_or_capacity_hold" | "over_capacity" | "revalidation_failed" | "revalidation_mismatch" | "policy_changed" | "protected_lane_registry_unavailable" | "protected_lane_registry_changed" | "protected_lane_state_changed" | "candidate_moved" | "lease_lost" | "write_confirmed" | "write_indeterminate" | "indeterminate_still_unresolved" | "indeterminate_reconciled_admitted" | "indeterminate_reconciled_no_write" | "indeterminate_reconciled_moved";
         /**
          * ComponentLaneLimit
          * @description Maximum working occupancy for one canonical component selector.
@@ -1074,6 +1074,12 @@ export interface components {
          */
         DeliveryControlDecisionSchema: {
             decision: components["schemas"]["AdmissionDecisionType"];
+            /** Protected Lane Registry Fingerprint */
+            protected_lane_registry_fingerprint?: string | null;
+            /** Protected Lane Registry Version */
+            protected_lane_registry_version?: string | null;
+            /** Protected Lanes */
+            protected_lanes: string[];
             /** Rank */
             rank: number;
             rank_inputs: components["schemas"]["DeliveryControlRankInputsSchema"];
@@ -1100,11 +1106,14 @@ export interface components {
             limit?: number | null;
             /** Observed */
             observed?: number | null;
+            /** Owner Ticket Keys */
+            owner_ticket_keys?: string[];
             /** Reserved Capacity */
             reserved_capacity?: number | null;
             /** Selector */
             selector?: string | null;
-            source_code: components["schemas"]["SnapshotIncompletenessCode"] | null;
+            /** Source Code */
+            source_code?: string | null;
         };
         /**
          * DeliveryControlIndeterminateReasonSchema
@@ -1572,7 +1581,7 @@ export interface components {
          * @description Configured capacity dimensions that existing work can breach.
          * @enum {string}
          */
-        OccupancyDimension: "working" | "integration" | "review" | "risk_lane" | "component_lane";
+        OccupancyDimension: "working" | "integration" | "review" | "risk_lane" | "component_lane" | "protected_lane";
         /**
          * OperatorActionActorSchema
          * @description Server-owned actor recorded by an operator-action receipt.
@@ -1776,12 +1785,6 @@ export interface components {
             /** Expires At */
             expires_at: string | null;
         };
-        /**
-         * SnapshotIncompletenessCode
-         * @description Closed reasons why an occupancy observation is unsafe for admission.
-         * @enum {string}
-         */
-        SnapshotIncompletenessCode: "incomplete_pull" | "pagination_gap" | "missing_issue_identity" | "duplicate_issue_id" | "duplicate_issue_identifier" | "duplicate_atlas_join" | "unmapped_state" | "contradictory_state" | "missing_external_linear_id" | "missing_joined_issue" | "missing_atlas_ticket" | "atlas_linear_state_mismatch";
         /**
          * SystemStatusResponse
          * @description Singleton operator-facing Atlas instance status.

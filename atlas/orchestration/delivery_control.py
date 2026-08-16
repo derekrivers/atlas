@@ -18,7 +18,6 @@ from atlas.core.models.admission_run import (
 )
 from atlas.pm import (
     AdmissionSyncReason,
-    SnapshotIncompletenessCode,
     StoredDeliveryOccupancy,
     build_stored_delivery_occupancy,
 )
@@ -50,11 +49,12 @@ class DeliveryControlHoldReason:
     """Bounded reason projection without raw Linear identity fields."""
 
     code: AdmissionHoldCode
-    source_code: SnapshotIncompletenessCode | None = None
+    source_code: str | None = None
     selector: str | None = None
     observed: int | None = None
     limit: int | None = None
     reserved_capacity: int | None = None
+    owner_ticket_keys: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -80,6 +80,9 @@ class DeliveryControlDecision:
     rank_inputs: DeliveryControlRankInputs
     decision: AdmissionDecisionType
     reasons: tuple[DeliveryControlHoldReason, ...]
+    protected_lanes: tuple[str, ...]
+    protected_lane_registry_version: str | None
+    protected_lane_registry_fingerprint: str | None
 
 
 @dataclass(frozen=True)
@@ -134,13 +137,8 @@ def _bounded_count(value: int | None) -> int | None:
     return min(value, MAX_DELIVERY_CONTROL_COUNT)
 
 
-def _source_code(value: str | None) -> SnapshotIncompletenessCode | None:
-    if value is None:
-        return None
-    try:
-        return SnapshotIncompletenessCode(value)
-    except ValueError:
-        return None
+def _source_code(value: str | None) -> str | None:
+    return _bounded_text(value)
 
 
 def _hold_reasons(
@@ -157,14 +155,24 @@ def _hold_reasons(
             observed=_bounded_count(raw.observed),
             limit=_bounded_count(raw.limit),
             reserved_capacity=_bounded_count(raw.reserved_capacity),
+            owner_ticket_keys=tuple(
+                sorted(
+                    {
+                        _bounded_text(key) or ""
+                        for key in raw.owner_ticket_keys
+                        if _bounded_text(key)
+                    }
+                )
+            )[:100],
         )
         key = (
             reason.code.value,
-            "" if reason.source_code is None else reason.source_code.value,
+            reason.source_code or "",
             reason.selector or "",
             -1 if reason.observed is None else reason.observed,
             -1 if reason.limit is None else reason.limit,
             -1 if reason.reserved_capacity is None else reason.reserved_capacity,
+            reason.owner_ticket_keys,
         )
         bounded[key] = reason
     return tuple(bounded[key] for key in sorted(bounded))
@@ -211,6 +219,21 @@ def _latest_admission(
                 rank_inputs=_rank_inputs(decision.rank_inputs),
                 decision=decision.decision,
                 reasons=_hold_reasons(decision.reasons),
+                protected_lanes=tuple(
+                    sorted(
+                        {
+                            _bounded_text(lane) or ""
+                            for lane in decision.protected_lanes
+                            if _bounded_text(lane)
+                        }
+                    )
+                ),
+                protected_lane_registry_version=_bounded_text(
+                    decision.protected_lane_registry_version
+                ),
+                protected_lane_registry_fingerprint=(
+                    decision.protected_lane_registry_fingerprint
+                ),
             )
             for decision in selected
         ),

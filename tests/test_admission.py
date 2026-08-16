@@ -349,6 +349,86 @@ def test_ac4_zero_or_one_selection_continues_past_a_held_higher_rank() -> None:
     )
 
 
+def test_atlas_258_ac3_multi_lane_saturation_retains_every_owner_and_lane() -> None:
+    candidate = ticket(
+        "ATLAS-1",
+        TicketStatus.PLANNED,
+        priority=20,
+        tags=["migration", "workflow"],
+    )
+    migration_owner = ticket("ATLAS-2", TicketStatus.IN_PROGRESS, tags=["migration"])
+    workflow_owner = ticket("ATLAS-3", TicketStatus.CI_PENDING, tags=["workflow"])
+
+    run = evaluate([candidate, migration_owner, workflow_owner])
+
+    decision = decisions_by_key(run)[candidate.key]
+    lane_reasons = {
+        reason.selector: reason
+        for reason in decision.reasons
+        if reason.code is AdmissionHoldCode.PROTECTED_LANE
+    }
+    assert decision.protected_lanes == (
+        "database-migrations",
+        "workflow-configuration",
+    )
+    assert lane_reasons["database-migrations"].owner_ticket_keys == ("ATLAS-2",)
+    assert lane_reasons["workflow-configuration"].owner_ticket_keys == ("ATLAS-3",)
+    assert all(
+        reason.observed == 2 and reason.limit == 1 for reason in lane_reasons.values()
+    )
+    assert run.selected_ticket_id is None
+
+
+def test_atlas_258_ac4_different_lane_cannot_bypass_higher_feasible_candidate() -> None:
+    higher = ticket("ATLAS-1", TicketStatus.PLANNED, priority=20, tags=["migration"])
+    lower = ticket("ATLAS-2", TicketStatus.PLANNED, priority=10, tags=["workflow"])
+
+    run = evaluate([lower, higher])
+
+    decisions = decisions_by_key(run)
+    assert [decision.ticket_key for decision in run.decisions] == [
+        higher.key,
+        lower.key,
+    ]
+    assert decisions[higher.key].decision is AdmissionDecisionType.ADMIT
+    assert reason_codes(decisions[lower.key]) == {AdmissionHoldCode.SINGLE_WRITE_LIMIT}
+    assert run.selected_ticket_key == higher.key
+
+
+def test_atlas_258_ac4_highest_feasible_candidate_survives_saturated_lane() -> None:
+    blocked_higher = ticket(
+        "ATLAS-1", TicketStatus.PLANNED, priority=20, tags=["migration"]
+    )
+    feasible_lower = ticket(
+        "ATLAS-2", TicketStatus.PLANNED, priority=10, tags=["workflow"]
+    )
+    migration_owner = ticket("ATLAS-3", TicketStatus.IN_PROGRESS, tags=["migration"])
+
+    run = evaluate([feasible_lower, migration_owner, blocked_higher])
+
+    decisions = decisions_by_key(run)
+    assert reason_codes(decisions[blocked_higher.key]) == {
+        AdmissionHoldCode.PROTECTED_LANE
+    }
+    assert decisions[feasible_lower.key].decision is AdmissionDecisionType.ADMIT
+    assert run.selected_ticket_key == feasible_lower.key
+
+
+def test_atlas_258_ac2_ambiguous_candidate_declaration_is_a_typed_hold() -> None:
+    candidate = ticket(
+        "ATLAS-1",
+        TicketStatus.PLANNED,
+        tags=["Migration", "migration"],
+    )
+
+    run = evaluate([candidate])
+
+    decision = decisions_by_key(run)[candidate.key]
+    assert reason_codes(decision) == {AdmissionHoldCode.PROTECTED_LANE_DECLARATION}
+    assert decision.reasons[0].source_code == "contradictory_declaration"
+    assert run.selected_ticket_id is None
+
+
 def test_ac4_missing_external_identity_is_an_explicit_no_write_hold() -> None:
     candidate = ticket("ATLAS-1", TicketStatus.PLANNED, external_linear_id=None)
 

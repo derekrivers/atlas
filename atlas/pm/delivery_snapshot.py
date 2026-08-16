@@ -31,6 +31,13 @@ from atlas.core.models.dependency import TicketDependency
 from atlas.core.models.ticket import Ticket, TicketStatus
 from atlas.linear.client import LinearIssue
 from atlas.linear.ownership import LinearStatusMap
+from atlas.pm.protected_lanes import (
+    DEFAULT_PROTECTED_LANE_REGISTRY,
+    ProtectedLaneClassification,
+    ProtectedLaneClassificationCode,
+    ProtectedLaneRegistry,
+    classify_ticket_protected_lanes,
+)
 
 WORKING_STATUSES: frozenset[TicketStatus] = frozenset(
     {
@@ -67,6 +74,11 @@ class SnapshotIncompletenessCode(StrEnum):
     MISSING_JOINED_ISSUE = "missing_joined_issue"
     MISSING_ATLAS_TICKET = "missing_atlas_ticket"
     ATLAS_LINEAR_STATE_MISMATCH = "atlas_linear_state_mismatch"
+    PROTECTED_LANE_DECLARATION_INVALID = "protected_lane_declaration_invalid"
+    PROTECTED_LANE_DECLARATION_AMBIGUOUS = "protected_lane_declaration_ambiguous"
+    PROTECTED_LANE_DECLARATION_CONTRADICTORY = (
+        "protected_lane_declaration_contradictory"
+    )
 
 
 class OccupancyDimension(StrEnum):
@@ -77,6 +89,7 @@ class OccupancyDimension(StrEnum):
     REVIEW = "review"
     RISK_LANE = "risk_lane"
     COMPONENT_LANE = "component_lane"
+    PROTECTED_LANE = "protected_lane"
 
 
 class SnapshotIncompletenessReason(BaseModel):
@@ -90,6 +103,8 @@ class SnapshotIncompletenessReason(BaseModel):
     ticket_key: str | None = None
     state_id: str | None = None
     pagination_cursor: str | None = None
+    declaration_kind: str | None = None
+    declaration: str | None = None
 
 
 class StatusOccupancy(BaseModel):
@@ -119,6 +134,18 @@ class ComponentLaneOccupancy(BaseModel):
     component: str
     count: int = Field(ge=0)
     limit: int = Field(ge=0)
+
+
+class ProtectedLaneOccupancy(BaseModel):
+    """Working and CI-pending owners of one repository-protected lane."""
+
+    model_config = ConfigDict(frozen=True)
+
+    lane: str
+    count: int = Field(ge=0)
+    limit: int = Field(ge=1)
+    ticket_keys: tuple[str, ...]
+    operator_declared: bool
 
 
 class OccupancyBreach(BaseModel):
@@ -183,6 +210,10 @@ class DeliverySnapshot(BaseModel):
     new_admission_working_capacity: int = Field(ge=0)
     risk_lane_occupancy: tuple[RiskLaneOccupancy, ...]
     component_lane_occupancy: tuple[ComponentLaneOccupancy, ...]
+    protected_lane_registry_version: str
+    protected_lane_registry_fingerprint: str
+    protected_lane_state_fingerprint: str
+    protected_lane_occupancy: tuple[ProtectedLaneOccupancy, ...]
     incompleteness_reasons: tuple[SnapshotIncompletenessReason, ...]
     over_capacity: tuple[OccupancyBreach, ...]
     admission_allowed: bool
@@ -312,6 +343,9 @@ def _store_payload(tickets: Iterable[Ticket]) -> list[dict[str, object]]:
             "priority": ticket.priority,
             "risk_level": ticket.risk_level.value,
             "component": ticket.component,
+            "tags": sorted(ticket.tags),
+            "relevant_docs": sorted(ticket.relevant_docs),
+            "documentation_requirements": sorted(ticket.documentation_requirements),
             "estimated_effort": ticket.estimated_effort,
             "acceptance_criteria": ticket.acceptance_criteria,
         }
@@ -515,11 +549,46 @@ def _reason_sort_key(reason: SnapshotIncompletenessReason) -> tuple[str, ...]:
         reason.ticket_key or "",
         reason.state_id or "",
         reason.pagination_cursor or "",
+        reason.declaration_kind or "",
+        reason.declaration or "",
     )
 
 
 def _breach_sort_key(breach: OccupancyBreach) -> tuple[str, str]:
     return (breach.dimension.value, breach.selector or "")
+
+
+def _protected_lane_reason_code(
+    issue: ProtectedLaneClassificationCode,
+) -> SnapshotIncompletenessCode:
+    if issue is ProtectedLaneClassificationCode.AMBIGUOUS_DECLARATION:
+        return SnapshotIncompletenessCode.PROTECTED_LANE_DECLARATION_AMBIGUOUS
+    if issue is ProtectedLaneClassificationCode.CONTRADICTORY_DECLARATION:
+        return SnapshotIncompletenessCode.PROTECTED_LANE_DECLARATION_CONTRADICTORY
+    return SnapshotIncompletenessCode.PROTECTED_LANE_DECLARATION_INVALID
+
+
+def _protected_lane_state_fingerprint(
+    *,
+    registry: ProtectedLaneRegistry,
+    classifications: Iterable[ProtectedLaneClassification],
+    occupancy: tuple[ProtectedLaneOccupancy, ...],
+) -> str:
+    """Hash every active surface declaration and resulting lane owner set."""
+
+    return _canonical_hash(
+        {
+            "classifications": [
+                json.loads(classification.canonical_bytes())
+                for classification in sorted(
+                    classifications, key=lambda item: item.ticket_key
+                )
+            ],
+            "occupancy": [item.model_dump(mode="json") for item in occupancy],
+            "registry_fingerprint": registry.fingerprint,
+            "registry_version": registry.version,
+        }
+    )
 
 
 def _deduplicate_reasons(
@@ -540,6 +609,7 @@ def build_delivery_snapshot(
     dependencies: Iterable[TicketDependency],
     clock: Callable[[], datetime],
     graph: nx.DiGraph[str] | None = None,
+    protected_lane_registry: ProtectedLaneRegistry = (DEFAULT_PROTECTED_LANE_REGISTRY),
 ) -> DeliverySnapshot:
     """Build one deterministic snapshot without performing any side effect."""
 
@@ -651,6 +721,10 @@ def build_delivery_snapshot(
     integration_ticket_keys: set[str] = set()
     risk_counts: Counter[RiskLevel] = Counter()
     component_counts: Counter[str] = Counter()
+    protected_lane_ticket_keys: dict[str, set[str]] = {
+        lane.key: set() for lane in protected_lane_registry.lanes
+    }
+    protected_classifications: dict[str, ProtectedLaneClassification] = {}
     configured_risks = {lane.risk_level for lane in policy.risk_lane_limits}
     configured_components = {lane.component for lane in policy.component_lane_limits}
 
@@ -700,6 +774,23 @@ def build_delivery_snapshot(
                 )
             if mapped in INTEGRATION_STATUSES:
                 integration_ticket_keys.add(ticket.key)
+            if mapped in WORKING_STATUSES | INTEGRATION_STATUSES:
+                classification = classify_ticket_protected_lanes(
+                    ticket, protected_lane_registry
+                )
+                protected_classifications[ticket.key] = classification
+                for classification_issue in classification.issues:
+                    reasons.append(
+                        SnapshotIncompletenessReason(
+                            code=_protected_lane_reason_code(classification_issue.code),
+                            ticket_key=ticket.key,
+                            declaration_kind=classification_issue.source_kind,
+                            declaration=classification_issue.declaration,
+                        )
+                    )
+                if not classification.issues:
+                    for lane in classification.lanes:
+                        protected_lane_ticket_keys[lane].add(ticket.key)
             if mapped not in WORKING_STATUSES:
                 continue
             if ticket.risk_level in configured_risks:
@@ -744,6 +835,16 @@ def build_delivery_snapshot(
         for lane in sorted(
             policy.component_lane_limits, key=lambda item: item.component
         )
+    )
+    protected_lanes = tuple(
+        ProtectedLaneOccupancy(
+            lane=lane.key,
+            count=len(protected_lane_ticket_keys[lane.key]),
+            limit=lane.capacity,
+            ticket_keys=tuple(sorted(protected_lane_ticket_keys[lane.key])),
+            operator_declared=lane.operator_declared,
+        )
+        for lane in protected_lane_registry.lanes
     )
 
     breaches: list[OccupancyBreach] = []
@@ -791,6 +892,16 @@ def build_delivery_snapshot(
                     limit=component_lane.limit,
                 )
             )
+    for protected_lane in protected_lanes:
+        if protected_lane.count > protected_lane.limit:
+            breaches.append(
+                OccupancyBreach(
+                    dimension=OccupancyDimension.PROTECTED_LANE,
+                    selector=protected_lane.lane,
+                    count=protected_lane.count,
+                    limit=protected_lane.limit,
+                )
+            )
 
     ordered_reasons = _deduplicate_reasons(reasons)
     ordered_breaches = tuple(sorted(breaches, key=_breach_sort_key))
@@ -819,6 +930,14 @@ def build_delivery_snapshot(
         new_admission_working_capacity=new_admission_capacity,
         risk_lane_occupancy=risk_lanes,
         component_lane_occupancy=component_lanes,
+        protected_lane_registry_version=protected_lane_registry.version,
+        protected_lane_registry_fingerprint=protected_lane_registry.fingerprint,
+        protected_lane_state_fingerprint=_protected_lane_state_fingerprint(
+            registry=protected_lane_registry,
+            classifications=protected_classifications.values(),
+            occupancy=protected_lanes,
+        ),
+        protected_lane_occupancy=protected_lanes,
         incompleteness_reasons=ordered_reasons,
         over_capacity=ordered_breaches,
         admission_allowed=(
