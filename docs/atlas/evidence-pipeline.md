@@ -155,26 +155,23 @@ candidate was observable, but the repository's required successful Check Runs
 were attached to the contributor head and the candidate had none. Contributor
 head results therefore cannot be relabelled as candidate evidence.
 
-ATLAS-260's governed system-tier attestation assessment is **PASS** for future
-design refinement only. It proves that an Atlas-owned, immutable-SHA-pinned
-workflow can run unprivileged candidate jobs, use a separate signer job that
-never executes or consumes candidate code, and sign a bounded canonical
-manifest tying the complete required set to one repository/PR/head/live-base/
-candidate/workflow/run-attempt tuple. Atlas must cryptographically verify the
-GitHub/Sigstore provenance and independently corroborate selected PR, branch,
-Git object, workflow-run-attempt and job fields. Missing, moved, duplicate,
-failed, skipped, cancelled, superseded, ambiguous, unverified or oversized
-evidence fails closed.
+ATLAS-260's governed system-tier attestation assessment is **FAIL**. Its
+deterministic harness proves only that a proposed evaluator fails closed when
+given a bounded, independently verified attestation. The harness itself creates
+the claimed candidate mapping and marks its provenance as fixture simulation;
+it does not exercise a trusted producer/signer lifecycle, GitHub OIDC/Sigstore
+verification, or an independently observed candidate-to-required-job binding.
+The missing identity edge from ATLAS-259 therefore remains missing.
 
-This pipeline does not yet ingest or trust that attestation. A future
-implementation must add a distinct system-tier normaliser and storage contract
-before any candidate evidence can participate in verification. It may retain
-only a capped canonical manifest, the bounded signature/certificate/inclusion
-proof needed for verification, selected provenance claims, provider object
-IDs and lifecycle fields. Credentials, raw provider envelopes, arbitrary
-workflow payloads and logs remain excluded. ATLAS-260 changes no current-head
-Evidence record, handoff projection or acceptance-session authority; the
-exact-head/operator-rebase path remains authoritative.
+This pipeline does not ingest or trust candidate attestations. The current
+no-rewrite approach is retired: no candidate normaliser, storage contract or
+verification authority may proceed from ATLAS-260. A later phase may reconsider
+the question only with a materially different governed trust mechanism that
+produces bounded, cryptographically and provider-verifiable evidence outside
+contributor control. Credentials, raw provider envelopes, arbitrary workflow
+payloads and logs remain excluded. ATLAS-260 changes no current-head Evidence
+record, handoff projection or acceptance-session authority; the exact-head/
+operator-rebase path remains authoritative.
 
 ## Retention
 

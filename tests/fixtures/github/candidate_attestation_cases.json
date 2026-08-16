@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "governed_case": "stable-clean-candidate",
-  "expected_governed_decision": "PASS",
+  "expected_governed_decision": "FAIL",
   "trust_policy": {
     "producer_repository": "atlas/ci-trust",
     "workflow_path": ".github/workflows/candidate-ci.yml",
@@ -101,8 +101,8 @@
   "cases": [
     {
       "name": "stable-clean-candidate",
-      "expected_decision": "PASS",
-      "expected_reasons": []
+      "expected_decision": "FAIL",
+      "expected_reasons": ["attestation_unverified"]
     },
     {
       "name": "contributor-head-movement",

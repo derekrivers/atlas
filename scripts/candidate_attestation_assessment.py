@@ -1,8 +1,10 @@
 """ATLAS-260 system-tier synthetic-candidate attestation assessment.
 
-This disposable harness models the bounded output of an Atlas-owned Sigstore
-verification boundary plus bounded GitHub REST reads.  It is an assessment
-artifact, not a production acceptance path.  It has no network client or
+This disposable harness exercises the decision algebra over deterministic
+selected-field fixtures.  It does not exercise an Atlas-owned producer,
+GitHub OIDC/Sigstore verification, or a real candidate-to-job lifecycle.  Its
+fixture provenance is therefore explicitly unverified and the governed result
+is FAIL.  It is not a production acceptance path.  It has no network client or
 provider writer and creates Git objects only in a disposable repository.
 """
 
@@ -33,6 +35,13 @@ MAX_TEXT = 200
 MAX_RETAINED_BYTES = 16 * 1024
 _SHA1_LENGTH = 40
 _SHA256_LENGTH = 64
+
+GOVERNED_FAILURE_MODES = (
+    "producer_signer_lifecycle_not_exercised",
+    "oidc_cryptographic_verification_not_exercised",
+    "candidate_to_required_ci_binding_fixture_synthesized",
+    "independent_provider_attestation_absent",
+)
 
 
 class Decision(StrEnum):
@@ -845,7 +854,7 @@ def _deep_merge(target: dict[str, object], patch: Mapping[str, object]) -> None:
 
 
 def _fixture_manifest(observation: Mapping[str, object]) -> dict[str, object]:
-    """Build a fixture manifest; production must never self-assert provenance."""
+    """Build a non-authoritative fixture claim for algebra tests only."""
     selected = copy.deepcopy(dict(observation))
     selected.pop("attestation", None)
     normalised = _normalise_observation(
@@ -888,7 +897,7 @@ def _fixture_manifest(observation: Mapping[str, object]) -> dict[str, object]:
                     "schema_version": SCHEMA_VERSION,
                 },
                 "provenance": {
-                    "cryptographically_verified": True,
+                    "cryptographically_verified": False,
                     "issuer": "https://token.actions.githubusercontent.com",
                     "predicate_type": "https://atlas.example/candidate-ci/v1",
                     "run_attempt": cast(dict[str, object], selected["execution"])[
@@ -907,7 +916,7 @@ def _fixture_manifest(observation: Mapping[str, object]) -> dict[str, object]:
                     )["workflow_sha"],
                     "subject_digest": "0" * _SHA256_LENGTH,
                     "subject_name": "atlas-candidate-attestation.json",
-                    "verification_source": "atlas_sigstore",
+                    "verification_source": "fixture_simulation",
                 },
             },
         }
@@ -916,13 +925,13 @@ def _fixture_manifest(observation: Mapping[str, object]) -> dict[str, object]:
 
 
 def refresh_fixture_attestation(observation: dict[str, object]) -> None:
-    """Simulate the bounded output of the external verifier for fixtures only."""
+    """Attach an explicitly unverified fixture claim; never confer authority."""
     manifest = _fixture_manifest(observation)
     execution = cast(dict[str, object], observation["execution"])
     observation["attestation"] = {
         "manifest": manifest,
         "provenance": {
-            "cryptographically_verified": True,
+            "cryptographically_verified": False,
             "issuer": "https://token.actions.githubusercontent.com",
             "predicate_type": "https://atlas.example/candidate-ci/v1",
             "run_attempt": execution["run_attempt"],
@@ -933,7 +942,7 @@ def refresh_fixture_attestation(observation: dict[str, object]) -> None:
             "signer_workflow_sha": execution["workflow_sha"],
             "subject_digest": _sha256_payload(manifest),
             "subject_name": "atlas-candidate-attestation.json",
-            "verification_source": "atlas_sigstore",
+            "verification_source": "fixture_simulation",
         },
     }
 
@@ -1081,19 +1090,26 @@ def run_fixture(
             field="expected_governed_decision",
         )
     )
+    governed_identity_matched = (
+        governed.authoritative_identity is not None
+        if expected_governed is Decision.PASS
+        else governed.authoritative_identity is None
+    )
     matched = (
         matched
         and repository_passed
         and governed.decision is expected_governed
-        and governed.authoritative_identity is not None
+        and governed_identity_matched
     )
     report = {
         "case_count": len(summaries),
         "cases": summaries,
-        "fixture_contract_passed": matched,
+        "fixture_expectations_matched": matched,
         "governed_case": fixture.get("governed_case"),
         "governed_decision": governed.decision.value,
+        "governed_failure_modes": list(GOVERNED_FAILURE_MODES),
         "governed_identity": governed.authoritative_identity,
+        "governed_reasons": [reason.value for reason in governed.reasons],
         "mutation_inventory": {
             "automatic_acceptance": False,
             "github_merge_or_update": False,
@@ -1103,6 +1119,14 @@ def run_fixture(
         },
         "repository_evidence": repository_evidence,
         "schema_version": SCHEMA_VERSION,
+        "simulated_claimed_identity": _fixture_manifest(base),
+        "trust_boundary_evidence": {
+            "authoritative": False,
+            "candidate_to_required_ci_binding": "fixture_synthesized",
+            "cryptographic_oidc_verification": "not_exercised",
+            "producer_signer_lifecycle": "not_exercised",
+            "provider_observation": "bounded_deterministic_fixture",
+        },
     }
     if len(_canonical_bytes(report)) > MAX_RETAINED_BYTES:
         raise UnboundedEvidenceError("report exceeds the bounded retention limit")

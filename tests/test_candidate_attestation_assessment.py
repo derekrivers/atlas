@@ -60,7 +60,7 @@ def fixture_payload() -> dict[str, object]:
     return payload
 
 
-def stable_inputs() -> tuple[dict[str, object], dict[str, object]]:
+def simulated_inputs() -> tuple[dict[str, object], dict[str, object]]:
     payload = fixture_payload()
     observation = copy.deepcopy(payload["base_observation"])
     assert isinstance(observation, dict)
@@ -73,15 +73,23 @@ def stable_inputs() -> tuple[dict[str, object], dict[str, object]]:
     return observation, trust
 
 
-def test_governed_assessment_passes_complete_adversarial_matrix(
+def test_governed_assessment_fails_after_complete_adversarial_matrix(
     tmp_path: Path,
 ) -> None:
     report, matched = run_fixture(FIXTURE, tmp_path / "repository")
 
     assert matched is True
-    assert report["fixture_contract_passed"] is True
+    assert report["fixture_expectations_matched"] is True
     assert report["governed_case"] == "stable-clean-candidate"
-    assert report["governed_decision"] == "PASS"
+    assert report["governed_decision"] == "FAIL"
+    assert report["governed_identity"] is None
+    assert report["governed_reasons"] == ["attestation_unverified"]
+    assert report["governed_failure_modes"] == [
+        "producer_signer_lifecycle_not_exercised",
+        "oidc_cryptographic_verification_not_exercised",
+        "candidate_to_required_ci_binding_fixture_synthesized",
+        "independent_provider_attestation_absent",
+    ]
     assert report["case_count"] == 25
     cases = report["cases"]
     assert isinstance(cases, list)
@@ -89,10 +97,20 @@ def test_governed_assessment_passes_complete_adversarial_matrix(
     assert {case["name"] for case in cases} >= REQUIRED_ADVERSARIAL_CASES
 
 
-def test_stable_identity_records_every_required_binding(tmp_path: Path) -> None:
+def test_simulated_claim_records_every_required_binding_without_authority(
+    tmp_path: Path,
+) -> None:
     report, _matched = run_fixture(FIXTURE, tmp_path / "repository")
-    identity = report["governed_identity"]
+    identity = report["simulated_claimed_identity"]
     assert isinstance(identity, dict)
+    assert report["governed_identity"] is None
+    assert report["trust_boundary_evidence"] == {
+        "authoritative": False,
+        "candidate_to_required_ci_binding": "fixture_synthesized",
+        "cryptographic_oidc_verification": "not_exercised",
+        "producer_signer_lifecycle": "not_exercised",
+        "provider_observation": "bounded_deterministic_fixture",
+    }
 
     assert identity["repository"] == "fixture/atlas"
     assert identity["pr_number"] == 260
@@ -127,22 +145,25 @@ def test_stable_identity_records_every_required_binding(tmp_path: Path) -> None:
     } == {(7001, 1)}
 
 
-def test_repeated_unchanged_reads_reproduce_the_same_authoritative_identity() -> None:
-    observation, trust = stable_inputs()
+def test_repeated_unchanged_simulated_reads_reproduce_the_same_failure() -> None:
+    observation, trust = simulated_inputs()
 
     first = assess_observations(observation, copy.deepcopy(observation), trust)
     second = assess_observations(
         copy.deepcopy(observation), copy.deepcopy(observation), trust
     )
 
-    assert first.decision is Decision.PASS
-    assert second.decision is Decision.PASS
-    assert first.authoritative_identity == second.authoritative_identity
+    assert first.decision is Decision.FAIL
+    assert second.decision is Decision.FAIL
+    assert first.authoritative_identity is None
+    assert second.authoritative_identity is None
+    assert first.reasons == (ReasonCode.ATTESTATION_UNVERIFIED,)
+    assert second.reasons == (ReasonCode.ATTESTATION_UNVERIFIED,)
     assert first.payload() == second.payload()
 
 
 def test_unverified_or_contributor_controlled_provenance_fails_closed() -> None:
-    observation, trust = stable_inputs()
+    observation, trust = simulated_inputs()
     unverified = copy.deepcopy(observation)
     attestation = unverified["attestation"]
     assert isinstance(attestation, dict)
@@ -178,7 +199,7 @@ def test_unverified_or_contributor_controlled_provenance_fails_closed() -> None:
 def test_non_successful_required_results_fail_closed(
     status: str, conclusion: str
 ) -> None:
-    observation, trust = stable_inputs()
+    observation, trust = simulated_inputs()
     jobs = observation["provider_jobs"]
     assert isinstance(jobs, list)
     jobs[1]["status"] = status
@@ -264,8 +285,19 @@ def test_assessment_module_has_no_provider_or_control_plane_client() -> None:
     )
 
 
+def test_fixture_claim_cannot_masquerade_as_external_verification() -> None:
+    observation, _trust = simulated_inputs()
+    attestation = observation["attestation"]
+    assert isinstance(attestation, dict)
+    provenance = attestation["provenance"]
+    assert isinstance(provenance, dict)
+
+    assert provenance["cryptographically_verified"] is False
+    assert provenance["verification_source"] == "fixture_simulation"
+
+
 def test_retained_projection_excludes_secrets_logs_and_raw_payloads() -> None:
-    observation, trust = stable_inputs()
+    observation, trust = simulated_inputs()
     observation["authorization"] = "Bearer retained-secret-must-not-appear"
     observation["raw_payload"] = {"body": "x" * 50_000}
     observation["workflow_logs"] = "retained-secret-must-not-appear"
@@ -273,7 +305,9 @@ def test_retained_projection_excludes_secrets_logs_and_raw_payloads() -> None:
     assessment = assess_observations(observation, observation, trust)
     retained = json.dumps(assessment.payload(), sort_keys=True)
 
-    assert assessment.decision is Decision.PASS
+    assert assessment.decision is Decision.FAIL
+    assert assessment.authoritative_identity is None
+    assert ReasonCode.ATTESTATION_UNVERIFIED in assessment.reasons
     assert len(retained.encode()) < 16 * 1024
     assert "retained-secret-must-not-appear" not in retained
     assert "raw_payload" not in retained

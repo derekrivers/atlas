@@ -142,20 +142,20 @@ classification, bounded results or evidence ids holds until a fresh tick; the co
 
 ATLAS-259 recorded **FAIL** for provider-native synthetic-candidate evidence:
 required Check Runs on the contributor head cannot satisfy a candidate commit.
-ATLAS-260 recorded **PASS** only for the feasibility of a stronger future
-system-tier contract. That contract requires a bounded signed manifest from an
-immutable trusted workflow and isolated signer, exact candidate/head/live-base/
-tree/parent identity, a canonical required-set fingerprint, and unique
-successful provider jobs from the same run and attempt, all independently
-re-verified by Atlas. Any movement or ambiguity returns non-authoritative.
+ATLAS-260 recorded **FAIL** for a stronger system-tier contract. The assessment
+harness conditionally tested a bounded manifest evaluator, but generated the
+candidate mapping from its fixture and simulated cryptographic verification.
+It did not independently verify a trusted producer lifecycle or prove that the
+provider's required jobs executed against the exact candidate. The identity
+boundary missing after ATLAS-259 therefore remains unclosed.
 
 No candidate evaluator, VerificationCheck type, evidence resolver or verdict
 path is added by that assessment. The current tests/lint evaluators remain
 pinned to the exact contributor head `C`, and the CI-pending and completion
-folds are unchanged. A future implementation must first introduce the distinct
-candidate-attestation evidence contract and fail-closed evaluator under its own
-governed ticket; assessment fixtures and signed manifests alone cannot satisfy
-current verification.
+folds are unchanged. The current no-rewrite approach must not proceed to
+implementation; only a later governed phase with a materially different,
+independently verifiable trust mechanism may reopen it. Assessment fixtures and
+unverified signed-manifest claims cannot satisfy current verification.
 
 ## Verdict and completion
 

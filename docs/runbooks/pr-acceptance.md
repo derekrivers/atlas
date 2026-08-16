@@ -58,13 +58,13 @@ moves the head after evidence is pulled restarts the spine from evidence.
   stable merge ref, workflow checkout logs, candidate-tree equality and a green
   head rollup are diagnostic only and never admit a behind branch. A clean but
   stale PR uses the same operator rebase command as a conflicted stale PR.
-- ATLAS-260 recorded **PASS** only for the feasibility of a future trusted
-  system-tier candidate attestation. Its isolated-signer and cryptographic
-  contract is not implemented in the evidence pipeline, verifier, acceptance
-  session or Symphony. Do not use the assessment harness, an artifact
-  attestation, a workflow claim or its PASS label to admit a PR. The operational
-  rule remains exact contributor-head ancestry of live `main` plus the
-  operator-owned rebase lane below.
+- ATLAS-260 recorded **FAIL** for a system-tier candidate attestation. Its
+  harness synthesized the candidate-to-job mapping and simulated external
+  cryptographic verification, so it did not prove the missing trusted identity
+  boundary. The current no-rewrite path is retired. Do not use the assessment
+  harness, an artifact attestation or a workflow claim to admit a PR. The
+  operational rule remains exact contributor-head ancestry of live `main` plus
+  the operator-owned rebase lane below.
 - If a Review Required PR is mechanically stale (`behind`, `diverged`, or
   `conflicted`) before evidence is pulled, use the operator-owned lane rather
   than routing through a Symphony implementation cycle:
