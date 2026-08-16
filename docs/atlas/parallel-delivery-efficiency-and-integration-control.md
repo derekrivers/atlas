@@ -588,15 +588,18 @@ flowchart TD
     C["CI pending"] --> R["CI reconciliation"]
     R --> W
     L["Protected lanes"] --> A["API and UI"]
-    S["Merge-evidence spike"] --> N["Conditional no-rewrite lane"]
-    N --> A
+    S["Provider-native spike: FAIL"] --> X["No-rewrite path retired"]
+    T["System-tier attestation: FAIL"] --> X
     W --> M["Efficiency milestone"]
     A --> M
+    X --> M
 ```
 
-The validation, CI-lifecycle and merge-evidence lanes can begin independently
-once their listed existing prerequisites are satisfied. The milestone joins
-them and remains the only Phase 15.5 closure authority.
+The validation and CI-lifecycle lanes can begin independently once their listed
+existing prerequisites are satisfied. The governed merge-evidence assessments
+are complete with FAIL, so closure consumes their recorded retired-path
+disposition rather than a conditional implementation lane. The milestone joins
+those outcomes and remains the only Phase 15.5 closure authority.
 
 ## Milestone and closure
 

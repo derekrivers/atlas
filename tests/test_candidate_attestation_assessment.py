@@ -124,6 +124,7 @@ def test_simulated_claim_records_every_required_binding_without_authority(
     assert identity["execution"] == {
         "run_attempt": 1,
         "run_id": 7001,
+        "run_number": 91,
         "workflow_blob_sha": "b" * 40,
         "workflow_path": ".github/workflows/candidate-ci.yml",
         "workflow_repository": "atlas/ci-trust",
@@ -160,6 +161,21 @@ def test_repeated_unchanged_simulated_reads_reproduce_the_same_failure() -> None
     assert first.reasons == (ReasonCode.ATTESTATION_UNVERIFIED,)
     assert second.reasons == (ReasonCode.ATTESTATION_UNVERIFIED,)
     assert first.payload() == second.payload()
+
+
+def test_inconsistent_run_number_for_one_run_id_fails_as_provider_ambiguity() -> None:
+    observation, trust = simulated_inputs()
+    second = copy.deepcopy(observation)
+    execution = second["execution"]
+    assert isinstance(execution, dict)
+    execution["run_number"] = 92
+    refresh_fixture_attestation(second)
+
+    assessment = assess_observations(observation, second, trust)
+
+    assert assessment.decision is Decision.FAIL
+    assert assessment.authoritative_identity is None
+    assert ReasonCode.PROVIDER_AMBIGUITY in assessment.reasons
 
 
 def test_unverified_or_contributor_controlled_provenance_fails_closed() -> None:

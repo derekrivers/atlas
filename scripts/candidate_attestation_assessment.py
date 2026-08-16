@@ -400,6 +400,10 @@ def _normalise_manifest(value: object) -> dict[str, object]:
             "run_id": _positive_int(
                 execution.get("run_id"), field="attestation.manifest.execution.run_id"
             ),
+            "run_number": _positive_int(
+                execution.get("run_number"),
+                field="attestation.manifest.execution.run_number",
+            ),
             "workflow_blob_sha": _sha1(
                 execution.get("workflow_blob_sha"),
                 field="attestation.manifest.execution.workflow_blob_sha",
@@ -604,6 +608,7 @@ def _expected_manifest(observation: Mapping[str, object]) -> dict[str, object]:
         "execution": {
             "run_attempt": execution["run_attempt"],
             "run_id": execution["run_id"],
+            "run_number": execution["run_number"],
             "workflow_blob_sha": execution["workflow_blob_sha"],
             "workflow_path": execution["workflow_path"],
             "workflow_repository": execution["producer_repository"],
@@ -799,6 +804,8 @@ def assess_observations(
     second_execution = cast(Mapping[str, object], second["execution"])
     if first_execution["run_id"] != second_execution["run_id"]:
         _append(reasons, ReasonCode.RUN_REPLACED)
+    elif first_execution["run_number"] != second_execution["run_number"]:
+        _append(reasons, ReasonCode.PROVIDER_AMBIGUITY)
     if first_execution["run_attempt"] != second_execution["run_attempt"]:
         _append(reasons, ReasonCode.RUN_ATTEMPT_REPLACED)
 
@@ -870,6 +877,9 @@ def _fixture_manifest(observation: Mapping[str, object]) -> dict[str, object]:
                         ],
                         "run_id": cast(dict[str, object], selected["execution"])[
                             "run_id"
+                        ],
+                        "run_number": cast(dict[str, object], selected["execution"])[
+                            "run_number"
                         ],
                         "workflow_blob_sha": cast(
                             dict[str, object], selected["execution"]
