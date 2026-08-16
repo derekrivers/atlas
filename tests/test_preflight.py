@@ -68,7 +68,7 @@ _BASELINE_MAP: dict[str, TicketStatus] = {
 def _workflow_md(
     tmp_path: Path,
     *,
-    project_slug: str = PROJECT_SLUG,
+    project_slug: str | None = PROJECT_SLUG,
     codex_command: str | None = None,
 ) -> Path:
     """Write a temp WORKFLOW.md whose front matter mirrors the canonical
@@ -76,10 +76,15 @@ def _workflow_md(
     adds a ``codex.command`` line for C6's model-parse."""
     path = tmp_path / "WORKFLOW.md"
     codex_block = f"codex:\n  command: {codex_command}\n" if codex_command else ""
+    project_slug_line = (
+        f'    project_slug: "{project_slug}"\n' if project_slug is not None else ""
+    )
     path.write_text(
         "---\n"
         "tracker:\n"
-        f'  project_slug: "{project_slug}"\n'
+        "  kind: linear\n"
+        "  provider:\n"
+        f"{project_slug_line}"
         "  active_states:\n"
         "    - Ready for Agent\n"
         "    - In Progress\n"
@@ -114,7 +119,7 @@ def _run(
     *,
     client: InMemoryLinearClient | None = None,
     status_map: LinearStatusMap | None = None,
-    project_slug: str = PROJECT_SLUG,
+    project_slug: str | None = PROJECT_SLUG,
     allow_assignee: bool = False,
     check_model: bool = False,
     model_probe: ModelProbe | None = None,
@@ -153,6 +158,18 @@ def _no_assignee(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_ac3_1_correct_fixture_all_pass(tmp_path: Path) -> None:
     findings = _run(tmp_path)
     assert all(f.ok for f in findings), [f for f in findings if not f.ok]
+
+
+@pytest.mark.parametrize("project_slug", [None, ""])
+def test_c4_missing_or_empty_nested_project_slug_fails(
+    tmp_path: Path, project_slug: str | None
+) -> None:
+    findings = _run(tmp_path, project_slug=project_slug)
+    c4 = _failing(findings, "C4")
+    assert len(c4) == 1
+    assert (
+        c4[0].message == "WORKFLOW.md tracker.provider.project_slug is missing or empty"
+    )
 
 
 # --- AC3.2: a case-only near-miss is a distinct case-drift finding (D3) --------
