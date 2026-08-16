@@ -62,6 +62,13 @@ registry-version/digest drift, input over the documented bounds and protected
 cross-cutting surfaces select `full-sweep` with explicit fallback reasons. A
 caller must not replace that fallback with a narrower manual plan.
 
+The named `full-sweep` profile is the conservative local path. Run it only when
+the deterministic plan selects it or the operator explicitly instructs it; do
+not add it after a passing scoped plan as a publication ritual. Every selected
+command and explicit test target is mandatory. A failure prevents publication,
+and any fix that changes the head requires a new exact-identity plan; the prior
+plan and results become historical only.
+
 ## The gates
 
 CI runs fourteen independent jobs on pull requests (the title job is omitted on
@@ -223,22 +230,41 @@ Two cautions:
 - **`LINEAR_*_ID` values are the API ids (UUIDs)**, not the human `ATL-123`
   identifiers. An issue-not-found error is usually that mix-up.
 
-## Before you push
+## Before you publish and hand off
 
 A branch is ready for publication when, from a clean `uv sync --locked`:
 
-1. its validation plan names the exact base and head and includes every changed
+1. `git rev-parse --show-toplevel`, `git remote get-url origin` and
+   `git symbolic-ref --quiet --short HEAD` prove the assigned workspace, exact
+   repository and ticket branch, and the intended PR uses that same-repository
+   head against `main`;
+2. `git fetch origin main && git rebase origin/main` succeeds for this candidate
+   publication before the validation plan is calculated;
+3. its validation plan names the exact base and head and includes every changed
    path, ticket requirement and explicit ticket test;
-2. every ordered command in the emitted plan passes, including the complete
-   local sweep whenever fallback is mandatory;
-3. the plan and results are reported as agent-tier confidence, without claiming
-   that scoped checks prove the complete repository result; and
-4. for any change that reads or writes real Linear, the relevant live test has
+4. every ordered command and explicit test target in the emitted plan passes,
+   including the complete local sweep whenever `full-sweep` is selected;
+5. the exact plan, commands and results are reported as agent-tier confidence,
+   without claiming that scoped checks prove the complete repository result;
+   and
+6. for any change that reads or writes real Linear, the relevant live test has
    been run by hand and its result recorded on the PR ([ADR-0008]).
 
-After publication, complete CI at that exact candidate identity remains the
-system-tier completion authority. It runs every required repository job; no
-local profile removes or skips a CI gate.
+Publish that unchanged validated head once. In the Symphony workflow, move the
+ticket through `PR Open` to `CI Pending` and stop in the same turn; do not poll
+CI or wait for review. A failed selected local check never reaches publication.
+After handoff, only the system-tier reconciler may move the exact head to
+`Review Required` on complete required-check success or `Changes Requested` on
+a definite implementation failure. The latter re-dispatches the preserved
+workspace; infrastructure and ambiguous outcomes remain CI Pending without an
+agent turn.
+
+Complete CI at that exact candidate identity remains the system-tier authority
+and runs every required repository job unchanged. Review Required admits the
+operator acceptance sequence; final completion additionally requires the
+accepted exact-head verdict, any required human approval, manual merge and
+merged proof. No local profile removes or skips a CI gate, and a shorter local
+run never weakens CI.
 
 [Hypothesis]: https://hypothesis.readthedocs.io/
 [ADR-0008]: ../decisions/0008-ci-sourced-evidence-with-trust-tiers.md

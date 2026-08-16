@@ -15,16 +15,20 @@ renaming a state in either the doc or ``WORKFLOW.md`` breaks the tie.
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import subprocess
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
+import pytest
 import yaml
 
 # The preflight's own model parser (D6): AC6 pins it against the *live*
 # codex.command so parser and command cannot silently drift apart.
+from atlas.cli import main
 from atlas.linear.preflight import _parse_model
 from atlas.tools.doc_linter import (
     SYMPHONY_MILESTONE_BRANCH,
@@ -341,7 +345,7 @@ def test_atlas_168_contract_rebases_before_pr_push_and_handoff() -> None:
     section = _integration_section()
     assert "before opening the PR" in section
     assert "before every push" in section
-    assert "before moving to `Review Required`" in section
+    assert "Before moving to `CI Pending`" in section
     assert "git fetch origin main && git rebase origin/main" in section
     assert "context pack's scope" in section
     assert "PR description" in section
@@ -352,9 +356,9 @@ def test_atlas_168_contract_rebases_before_pr_push_and_handoff() -> None:
 def test_atlas_168_contract_pins_adr0008_ordering() -> None:
     section = _integration_section()
     assert "ADR-0008" in section
-    assert "rebase precedes push precedes CI" in section
+    assert "rebase precedes validation, push and CI" in section
     assert "system-tier evidence pins to a head" in section
-    assert "After entering `Review Required`, never rebase on your own" in section
+    assert "After entering `CI Pending`, never rebase on your own" in section
     assert "Phase 12" in section
     assert "mechanical staleness" in section
     assert "leaves the ticket in `Review Required`" in section
@@ -515,7 +519,7 @@ def test_pr_title_instruction_uses_embedded_atlas_key_not_identifier() -> None:
     _, body = _split()
     flowed = " ".join(body.split())
     start = flowed.index("`In Progress` — implement against the pack")
-    end = flowed.index("`PR Open` — keep the PR healthy")
+    end = flowed.index("`PR Open` —", start)
     bullet = flowed[start:end]
     # the PR-title source is no longer Linear's identifier ...
     assert "{{ issue.identifier }}" not in bullet
@@ -710,3 +714,205 @@ def test_atlas_252_ac9_milestone_validation_is_explicit_and_branch_pinned() -> N
     assert (
         "milestone validation is preflight evidence, never merge authority" in runbook
     )
+
+
+# --- ATLAS-257: scoped validation, CI handoff and Symphony slot release -------
+
+
+def _routing_section() -> str:
+    _, body = _split()
+    return body[body.index("## How to move the ticket") : body.index("## Hard limits")]
+
+
+def _route_for(state: str) -> str:
+    section = _routing_section()
+    match = re.search(
+        rf"^- `{re.escape(state)}` — (?P<route>.*?)(?=^- `|\n## |\Z)",
+        section,
+        re.MULTILINE | re.DOTALL,
+    )
+    assert match is not None, f"missing workflow route for {state}"
+    return " ".join(match.group("route").split())
+
+
+def test_atlas_257_scoped_success_fixture_requires_exact_plan_and_one_publish() -> None:
+    section = _integration_section()
+    in_progress = _route_for("In Progress")
+
+    for marker in (
+        "`atlas validation-plan`",
+        "exact base and head",
+        "every changed path",
+        "every ticket-declared test file",
+        "Run every ordered command",
+        "exact commands and results",
+        "one successful publication per candidate head",
+    ):
+        assert marker in section
+    assert "publish the candidate once" in in_progress
+    assert "move the ticket to `PR Open`" in in_progress
+
+
+def test_atlas_257_rename_fixture_matches_the_planners_trusted_diff(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    section = _integration_section()
+    protected_old_path = "pyproject.toml"
+    unprotected_new_path = "atlas/github/normaliser.py"
+    rename_diff = f"R100\0{protected_old_path}\0{unprotected_new_path}\0"
+
+    assert (
+        "`git diff --name-status -z --find-renames --find-copies --no-ext-diff "
+        "--no-textconv <base> <head> --`" in " ".join(section.split())
+    )
+    assert "entry contributes its following path" in section
+    assert "entry contributes both following paths (old identity, then" in section
+
+    class RenameGitRunner:
+        def __call__(
+            self,
+            cwd: Path,
+            argv: Sequence[str],
+            *,
+            env: Mapping[str, str] | None = None,
+        ) -> subprocess.CompletedProcess[str]:
+            assert tuple(argv) == (
+                "diff",
+                "--name-status",
+                "-z",
+                "--find-renames",
+                "--find-copies",
+                "--no-ext-diff",
+                "--no-textconv",
+                "a" * 40,
+                "b" * 40,
+                "--",
+            )
+            assert env == {
+                "GIT_OPTIONAL_LOCKS": "0",
+                "GIT_TERMINAL_PROMPT": "0",
+            }
+            assert cwd == REPO_ROOT
+            return subprocess.CompletedProcess(
+                ["git", *argv], 0, stdout=rename_diff, stderr=""
+            )
+
+    assert (
+        main(
+            [
+                "validation-plan",
+                "--base",
+                "a" * 40,
+                "--head",
+                "b" * 40,
+                "--changed-path",
+                protected_old_path,
+                "--changed-path",
+                unprotected_new_path,
+                "--json",
+            ],
+            git_runner=RenameGitRunner(),
+        )
+        == 0
+    )
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["changed_paths"] == [unprotected_new_path, protected_old_path]
+    assert payload["diff_verification"] == "verified"
+    assert "changed_path_mismatch" not in {
+        reason["code"] for reason in payload["fallback_reasons"]
+    }
+    assert any(
+        reason["path"] == protected_old_path
+        for reason in payload["protected_surface_reasons"]
+    )
+
+
+def test_atlas_257_conservative_full_sweep_fixture_is_explicit_only() -> None:
+    section = _integration_section()
+
+    assert (
+        "Run the `full-sweep` profile only when the plan selects it as the "
+        "conservative fallback or the operator explicitly instructs it" in section
+    )
+    assert "Do not substitute a narrower command" in section
+    assert "do not add an unselected complete sweep" in section
+
+
+def test_atlas_257_local_failure_fixture_prevents_publication() -> None:
+    section = _integration_section()
+
+    assert "A failed selected command or explicit test prevents publication" in section
+    assert "remain `In Progress`" in section
+    assert "Old-head local results are historical only" in section
+
+
+def test_atlas_257_ci_pending_seed_stops_without_an_extra_turn() -> None:
+    front, _ = _split()
+    pr_open = _route_for("PR Open")
+
+    assert "move the ticket to `CI Pending` and stop in the same turn" in pr_open
+    assert "Do not poll CI, wait for review, or consume another turn" in pr_open
+
+    # Seed one dispatched PR Open turn. The route's resulting state is not active,
+    # so Symphony cannot continue that session or redispatch it for another turn.
+    state = "PR Open"
+    turns = 0
+    while state in front["tracker"]["active_states"]:
+        turns += 1
+        assert state == "PR Open"
+        state = "CI Pending"
+    assert turns == 1
+    assert state not in front["tracker"]["active_states"]
+
+
+def test_atlas_257_changes_requested_fixture_resumes_preserved_workspace() -> None:
+    front, _ = _split()
+    route = _route_for("Changes Requested")
+
+    assert "Changes Requested" in front["tracker"]["active_states"]
+    assert "preserved workspace" in route
+    assert "move the ticket to `In Progress`" in route
+    assert (
+        "repeat the candidate preparation, validation and one-publish handoff" in route
+    )
+    assert "`PR Open` → `CI Pending`" in route
+
+
+@pytest.mark.parametrize(
+    "prohibited",
+    (
+        "agent may move `CI Pending` to `Review Required`",
+        "agent may move `CI Pending` to `Changes Requested`",
+        "agent may mark its own work `Done`",
+        "agent may merge the PR",
+    ),
+)
+def test_atlas_257_prohibited_transition_fixtures(prohibited: str) -> None:
+    _, body = _split()
+    lowered = body.lower()
+    flowed = " ".join(body.split())
+
+    assert prohibited.lower() not in lowered
+    assert (
+        "Only the system-tier CI reconciler may move `CI Pending` to `Review "
+        "Required` or `Changes Requested`" in flowed
+    )
+    assert "Never mark your own work `Done`" in body
+    assert "never merge the PR" in body
+
+
+def test_atlas_257_identity_and_historical_evidence_contract() -> None:
+    section = _integration_section()
+
+    for command in (
+        "git rev-parse --show-toplevel",
+        "git remote get-url origin",
+        "git symbolic-ref --quiet --short HEAD",
+        "git fetch origin main && git rebase origin/main",
+    ):
+        assert command in section
+    assert "exact repository and branch" in section
+    assert "outside that scope" in section
+    assert "Any head change" in section
+    assert "historical only" in section

@@ -44,13 +44,23 @@ needs:
 - Do not introduce Linear integration before local planning works.
 - Do not introduce Symphony integration before context packs exist.
 - Keep tickets small and dependency-aware. Update documentation when
-  behaviour changes. Before handoff, calculate `atlas validation-plan` from
-  exact base/head identities, every changed path and the ticket's explicit
-  test requirements. The CLI must prove that path set against the read-only
-  Git diff and prove explicit test files at the head; any mismatch falls back
-  to the complete sweep. Run its ordered commands. Scoped local results are
-  agent-tier confidence only; complete CI at the accepted identity is the
-  system-tier completion authority.
+  behaviour changes. Before publication, calculate `atlas validation-plan`
+  from exact base/head identities, every changed path, every explicit ticket
+  validation requirement and every ticket-declared test file. The CLI must
+  prove that path set against the read-only Git diff and prove explicit test
+  files at the head. Run every ordered command and explicit test target. Run a
+  complete local sweep only when the named `full-sweep` conservative profile
+  is selected or the operator explicitly instructs it; never narrow a selected
+  plan or add an unselected sweep as ritual. A selected-check failure prevents
+  publication, and any head change makes old-head results historical only.
+  Scoped local results are agent-tier confidence only; complete CI at the
+  accepted identity remains the system-tier authority and runs unchanged.
+- After one successful current-main rebase, a passing validation plan and one
+  successful candidate publication, record exact commands/results, move the
+  ticket through `PR Open` to `CI Pending`, and stop in the same turn. Do not
+  poll CI or wait for review. `CI Pending` must remain absent from Symphony's
+  active states; only the system-tier reconciler owns its exit to `Review
+  Required` or `Changes Requested`.
 - Gate conduct: a plan gate is a single presentation, not a conversation.
   Present your understanding, the plan, and any working assumptions, then
   stop once. Resolve minor ambiguity by stating an assumption the operator

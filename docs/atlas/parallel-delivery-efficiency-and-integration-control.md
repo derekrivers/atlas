@@ -116,6 +116,14 @@ An unchanged head is validated locally once per selected plan. Repetition of a
 complete sweep for the same identity requires an explicit fallback reason; it
 is not a default handoff ritual.
 
+Before publication the agent supplies the exact base/head, every changed path,
+ticket requirement and explicit test file to the deterministic planner, then
+runs every ordered command and explicit test target. A failed selected check
+blocks publication. The complete local sweep runs only when the named
+`full-sweep` conservative profile is selected or the operator explicitly
+instructs it; the agent neither narrows the plan nor adds a model-selected
+check. Any head change makes the prior plan and results historical only.
+
 ## CI-pending lifecycle
 
 ### State mapping
@@ -140,9 +148,10 @@ stateDiagram-v2
 After successful publication the agent first enters `PR Open`, making the
 published-PR prerequisite durable, then owns only `PR Open → CI Pending` and
 stops. It does not wait, poll, interpret remote failures or consume a Symphony
-working slot. Atlas alone owns `CI Pending → Review Required` and `CI Pending →
-Changes Requested`; browser and Symphony paths own neither exit. A changed head
-invalidates earlier CI authority.
+working slot. The handoff records the exact plan, commands and local results as
+agent-tier confidence. Atlas alone owns `CI Pending → Review Required` and `CI
+Pending → Changes Requested`; browser and Symphony paths own neither exit. A
+changed head invalidates earlier CI authority.
 
 The CI reconciler consumes trusted check evidence pinned to the current head:
 
@@ -174,6 +183,15 @@ reconciliation tick never retries the write. Duplicate observations are
 therefore idempotent, and concurrent owners, lease loss or identity movement
 produce zero mutations. A new head restarts the lifecycle with new evidence;
 previous records remain history.
+
+These states are deliberately different claims. `CI Pending` says only that a
+locally validated candidate was published and CI now owns classification.
+`Review Required` says the system-tier required-check set passed for that exact
+head and the candidate may enter operator acceptance. Final completion still
+requires the accepted exact-head evidence, required human approval, manual
+merge and merged-proof verification; neither local success nor Review Required
+is `Done`. A shorter valid local plan never shortens or weakens the complete CI
+matrix.
 
 ## Three separate capacity budgets
 
@@ -280,19 +298,23 @@ changes retain the existing authenticated confirmation and receipt boundary.
 
 ## Symphony workflow contract
 
-The eventual workflow-prompt cutover will instruct an implementation agent to:
+The binding workflow prompt instructs an implementation agent to:
 
 1. inspect the exact ticket requirements and changed surfaces;
-2. run the deterministic scoped validation plan;
-3. fix locally owned failures and rerun affected checks;
-4. publish the candidate once;
-5. enter `CI Pending`; and
-6. stop the session.
+2. rebase once onto current `origin/main` for the candidate publication;
+3. calculate the deterministic plan from exact identities, every changed path,
+   ticket requirement and explicit test file;
+4. run every selected command and explicit test, publishing nothing on failure;
+5. publish the unchanged validated candidate once and record the exact bounded
+   local results;
+6. enter `CI Pending`; and
+7. stop the session in the same turn.
 
-ATLAS-255 establishes the state, ownership and non-active inventory but does not
-make that prompt change or interpret CI results. Until the owning follow-up
-lands, `WORKFLOW.md` retains its current routing text while mechanically proving
-that `CI Pending` is absent from `active_states`.
+`WORKFLOW.md` mechanically proves that `CI Pending` is absent from
+`active_states`, so the tracker transition releases the Symphony slot instead
+of relying on an instruction to wait quietly. A later system-tier failure can
+return the preserved workspace only through `Changes Requested`; a pass moves
+to `Review Required` without redispatching the agent.
 
 The workflow forbids agent-side CI polling, repeated full sweeps for an
 unchanged head without a fallback reason, automatic rebase/conflict resolution

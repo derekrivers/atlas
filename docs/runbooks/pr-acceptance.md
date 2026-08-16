@@ -11,6 +11,15 @@ Companion to `review-doctrine.md` (what is reviewed) and
 acceptance *sequence*. The reviewer recommends; only the operator
 approves (ADR-0009).
 
+The incoming state chain is explicit. The agent's deterministic local plan is
+agent-tier confidence only; after one publication it moves the ticket to
+`CI Pending` and stops. The system-tier reconciler alone consumes complete CI
+for the exact published head and moves a pass to `Review Required` or a definite
+implementation failure to `Changes Requested`. This runbook begins at Review
+Required. Acceptance and final completion remain later claims: neither a
+shorter valid local plan nor the CI handoff weakens or replaces any CI job,
+human gate, exact-head check, manual merge or merged-proof requirement.
+
 ## The spine
 
 **review → exact-head current → freeze → evidence → confirm → verify PASSED →
@@ -30,7 +39,8 @@ moves the head after evidence is pulled restarts the spine from evidence.
   the issue title and context pack, never the ATL-N Linear board number**.
 - The Linear card is `Review Required` because Atlas recorded complete
   current-head system-tier CI evidence and performed the fenced handoff from
-  `CI Pending`. A green GitHub rollup by itself is not this authority.
+  `CI Pending`. The agent never writes this transition. A green GitHub rollup
+  by itself is not this authority.
   `unrecognised CI job … -> BUILD_RESULT` warnings for the workflow rollup and
   CodeQL are benign.
 - Parallel development and review are allowed before step 2. From head freeze
@@ -58,11 +68,12 @@ moves the head after evidence is pulled restarts the spine from evidence.
   that state on retry by comparing `origin` with the expected old and rebased
   heads. It pushes to the captured validated destination, writes a receipt under
   `.atlas/rebase-receipts/`, and leaves tickets in `review_required`.
-- Ownership rule: agents keep ATLAS-168's pre-handoff rebase discipline before
-  PRs, pushes, and `Review Required`; operators use the Phase 12 lane for
-  mechanical staleness after `Review Required`; `Changes Requested` is used
-  only when implementation or other semantic remediation must return to
-  Symphony.
+- Ownership rule: agents keep ATLAS-168's current-main rebase discipline before
+  PRs and every push, validate the resulting frozen head, publish once, and stop
+  at `CI Pending`; the system-tier reconciler owns CI-pending exits. Operators
+  use the Phase 12 lane for mechanical staleness after `Review Required`;
+  `Changes Requested` is used only when implementation or other semantic
+  remediation must return to Symphony.
 
 ## 0.5. CI-pending handoff
 
@@ -177,9 +188,12 @@ branch identities, and repository identities must match the initial snapshot.
 Any PR-head movement, `main` movement, eligibility change, compare failure, or
 indeterminate mergeability blocks the merge prompt and restarts the spine at
 step 3. Non-PASSED routing: missing human-tier → redo confirm; failing machine
-evidence → `Changes Requested` only when implementation remediation must return
-to Symphony; mechanical staleness → Phase 12 rebase lane; scope/acceptance
-failure → operator judgement. Prefer the fail-closed driver:
+evidence discovered during acceptance → operator-owned
+`Review Required → Changes Requested` only when implementation remediation must
+return to Symphony; mechanical staleness → Phase 12 rebase lane;
+scope/acceptance failure → operator judgement. CI failures were already
+classified at `CI Pending` only by the system-tier reconciler; the agent never
+performs that classification. Prefer the fail-closed driver:
 
 ```
 uv run python scripts/close_ticket.py <N> --repo <owner>/<repo> \
@@ -283,6 +297,8 @@ success from silence alone — verify on the observable (board header,
 ## One-line rules earned by incident
 
 - The verdict is the gate; review and CI are its inputs.
+- Agent-tier local validation ends at CI Pending; the system-tier reconciler
+  alone admits Review Required or requests implementation changes.
 - The human gate is `atlas confirm`, never a GitHub review.
 - `reviews: 0` is healthy; rollup/CodeQL `unrecognised CI job` warnings
   are noise.

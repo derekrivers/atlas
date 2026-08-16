@@ -1,11 +1,12 @@
 # Symphony Integration Design
 
-Status: Delivered integration design for Phases 8 and 12. Phase 8 established
-the agent handoff contract; Phase 12 delivered exact-head assessment, the
-operator-owned lease-guarded rebase lane and the binding acceptance-freshness
-restart. These contracts remain authoritative until superseded by a later
-canonical design. Companion to ADR-0006 (field ownership), ADR-0007
-(planning), ADR-0008 (evidence).
+Status: Delivered integration design for Phases 8, 12 and the Phase 15.5 scoped
+validation handoff. Phase 8 established the agent handoff contract; Phase 12
+delivered exact-head assessment, the operator-owned lease-guarded rebase lane
+and the binding acceptance-freshness restart; Phase 15.5 moves CI observation
+out of the agent session. These contracts remain authoritative until
+superseded by a later canonical design. Companion to ADR-0006 (field
+ownership), ADR-0007 (planning), ADR-0008 (evidence).
 
 ## Boundary
 
@@ -20,8 +21,8 @@ at a handoff state rather than `Done`.
 Atlas therefore does not orchestrate agents. Atlas decides *what* is
 dispatchable (planning, dependencies, readiness), supplies *context*
 (packs), and judges *outcomes* (evidence, verification, lessons). Symphony
-owns everything between "ticket is ready" and "PR exists at a handoff
-state".
+owns everything between "ticket is ready" and "the published PR enters CI
+Pending".
 
 ```text
 Atlas (plan, deps, ready, pack) ──sync──► Linear ──poll──► Symphony
@@ -165,21 +166,31 @@ prompt template. The prompt instructs the agent to:
 
 1. Read the embedded Atlas context pack in the issue description and treat
    its constraints, non-goals, and definition of done as binding.
-2. Move the issue to `In Progress` on start; open a PR referencing the
-   ticket key; move to `PR Open`, then `Review Required` when CI is green
-   — the agent performs all transitions, per the Symphony model.
-3. Never mark its own work `Done`. `Done` requires Atlas verification
+2. Move the issue to `In Progress`, create the ticket branch from current
+   `origin/main`, verify the exact repository/branch identity, and implement the
+   bounded scope.
+3. Rebase the candidate onto current `origin/main`, calculate the deterministic
+   `atlas validation-plan` from exact base/head identities, every changed path,
+   ticket requirement and explicit test file, and run every selected command
+   and explicit test. A selected-check failure prevents publication. The
+   complete local sweep runs only for the named `full-sweep` conservative
+   profile or an explicit operator instruction.
+4. Publish the unchanged validated candidate once, record the exact commands
+   and results, move through `PR Open` to `CI Pending`, and stop in the same
+   turn. The agent does not poll CI or wait for review.
+5. Never mark its own work `Done`. `Done` requires Atlas verification
    (system-tier evidence per ADR-0008) plus any required human approval.
-4. On blockers or ambiguity, comment on the issue and move it to
+6. On blockers or ambiguity, comment on the issue and move it to
    `Needs Human` rather than improvising outside the pack's scope.
-5. File follow-up observations as issue comments tagged `atlas:proposed-
+7. File follow-up observations as issue comments tagged `atlas:proposed-
    follow-up`; the PM Engine converts them into plan proposals (ADR-0007)
    — agents never create tickets directly.
 
-ATLAS-255 adds the `CI Pending` state and its non-active classification without
-changing this prompt. The later workflow-prompt owner will cut over the agent
-route after CI reconciliation exists; until then the current `PR Open → Review
-Required` instructions remain verbatim.
+The agent owns `ready_for_agent → in_progress → pr_open → ci_pending` and no
+CI-pending exit. The system-tier reconciler alone moves a passing exact head to
+`Review Required` or a definite implementation failure to `Changes Requested`.
+Because `CI Pending` is not active, the explicit transition ends Symphony
+ownership without relying on silence or another turn.
 
 ### Mainline freshness discipline
 
@@ -188,26 +199,29 @@ including `Changes Requested` resumes. That keeps the local ref current while
 leaving conflict resolution in the Atlas-owned contract body, where the agent
 can apply judgement.
 
-The contract requires the agent to run
+The contract requires exact workspace-root, `origin`, symbolic-branch, PR-base,
+PR-head and head-SHA checks. It requires the agent to run
 `git fetch origin main && git rebase origin/main` immediately before opening
-the PR, before every push, and before moving to `Review Required`. Conflicts
-that touch only files inside the context pack's scope are resolved by the
-agent and noted in the PR description. Any conflict touching a file outside
+the PR and before every push. That successful current-main rebase precedes
+deterministic scoped validation and the one publication for the candidate.
+Conflicts that touch only files inside the context pack's scope are resolved by
+the agent and noted in the PR description. Any conflict touching a file outside
 that scope is a blocker: the agent comments on Linear and moves the ticket to
 `Needs Human`.
 
 ADR-0008 fixes the ordering: rebase precedes push precedes CI, so
 system-tier evidence pins to the final head that is current against
 `origin/main` at handoff. Agents keep ATLAS-168's pre-handoff discipline:
-rebase before PR, before every push, and before moving to `Review Required`.
-The agent never rebases after entering `Review Required`. If a sibling PR
-merges first and makes the verdict stale, the operator uses the Phase 12
+rebase before PR and before every push, then validate the frozen head before
+publication and the `CI Pending` handoff. The agent never rebases after entering
+`CI Pending`. If the reconciler later moves the candidate to `Review Required`
+and a sibling PR makes the verdict stale, the operator uses the Phase 12
 operator-owned rebase lane for mechanical staleness; that lane leaves the
 ticket in `Review Required`. `Changes Requested` is reserved for implementation
 or other semantic remediation that must return to Symphony. Any route that
-changes the head commit makes old-head evidence and confirmations historical
-only; evidence, human confirmations, manual approval, and verification restart
-at the new exact head.
+changes the head commit makes the prior local plan/results, CI evidence, review
+evidence and confirmations historical only; validation, evidence, human
+confirmations, manual approval and verification restart at the new exact head.
 
 `hooks.after_create` performs a full clone, not `git clone --depth 1`. A
 depth-1 clone can lack the merge base after a later fetch, which makes
@@ -528,7 +542,7 @@ classification is Atlas-owned and non-active; Atlas never restarts agent
 sessions.
 
 **Atlas owns ticket-level outcomes.** The PM Engine watches for: tickets
-cycling `changes_requested ↔ pr_open` more than N times (default 3);
+cycling `changes_requested ↔ in_progress/pr_open` more than N times (default 3);
 tickets dwelling in an active state beyond a configurable horizon; and
 verification failures after handoff. Its responses are planning-level, not
 execution-level: file a failure-analysis note, propose a ticket split
@@ -545,7 +559,11 @@ Unchanged from ADR-0008. Symphony and its agents produce **no evidence
 records**. CI on the agent's PR produces system-tier evidence pinned to the
 head commit; PR review outcomes are ingested as review evidence; the
 Verification Engine gates `Done` on them. The agent's role is to make
-evidence exist (push commits, keep CI green), never to assert it.
+evidence possible by publishing the validated head, never to observe, reproduce
+or assert CI. Local plan results are agent-tier confidence; the CI-pending
+reconciler consumes system-tier CI; `Review Required` admits operator
+acceptance; final verified and merged proof gates `Done`. The complete CI matrix
+does not change when the local plan is shorter.
 
 ## Security posture
 

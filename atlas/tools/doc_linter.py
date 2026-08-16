@@ -76,6 +76,9 @@ v2 (ATLAS-16) adds, per knowledge-core.md "JSON Schema generation":
   remains ten outside the ramp. Canonical authority, current-policy
   reconciliation, five-level gate ordering, rollback and mutation-authority
   wording remain mechanically present in the controlled-ramp docs.
+- HANDOFF: the repository-owned agent contract and its supporting runbooks must
+  not instruct an agent to poll or wait for CI/review, and must not present a
+  scoped local validation result as repository-wide or completion authority.
 
 Exit status: 0 when the doc set is clean, 1 when there are findings.
 This linter only reports; repairing drift is ATLAS-5.
@@ -139,6 +142,15 @@ SYMPHONY_INTEGRATION_PATH = "docs/atlas/symphony-integration.md"
 DELIVERY_CONTROL_PATH = "docs/atlas/multi-agent-delivery-control.md"
 OPERATOR_ENVIRONMENT_PATH = "docs/runbooks/operator-environment.md"
 PHASE_15_CLOSURE_PATH = "docs/closure/phase-15-closure-report.md"
+AGENT_CONTRACT_PATHS = (
+    WORKFLOW_PATH,
+    "AGENTS.md",
+    "docs/atlas/parallel-delivery-efficiency-and-integration-control.md",
+    SYMPHONY_INTEGRATION_PATH,
+    "docs/runbooks/agent-ticket-prompt.md",
+    "docs/runbooks/local-development.md",
+    "docs/runbooks/pr-acceptance.md",
+)
 SYMPHONY_MILESTONE_BRANCH = "phase-15-atlas-253-ceiling-ramp"
 SYMPHONY_MILESTONE_LEVELS = (1, 3, 5, 7, 10)
 
@@ -669,6 +681,44 @@ _WORKFLOW_FRONT_MATTER_RE = re.compile(
 )
 _PHASE_15_CLOSED_RE = re.compile(r"^Status:\s*CLOSED\b", re.IGNORECASE | re.MULTILINE)
 
+_CI_WAITING_INSTRUCTION_RES = (
+    re.compile(
+        r"\b(?:poll|monitor|watch|wait\s+for)\s+(?:remote\s+)?"
+        r"(?:CI|checks?|review)\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\bonce\s+(?:CI|checks?)\s+(?:is|are)\s+"
+        r"(?:complete|finished|green|passing)\b",
+        re.IGNORECASE,
+    ),
+)
+_SCOPED_AUTHORITY_CLAIM_RES = (
+    re.compile(
+        r"\b(?:scoped|focused|selected|shorter)\s+(?:local\s+)?"
+        r"(?:checks?|validation|runs?|results?)\b[^.!?]{0,160}"
+        r"\b(?:prove|proves|certify|certifies|establish|establishes|"
+        r"authorise|authorises|authorize|authorizes)\b[^.!?]{0,120}"
+        r"\b(?:repository(?:-wide)?\s+(?:authority|completion|correctness)|"
+        r"(?:complete|entire|whole)\s+repository|completion\s+evidence)\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\b(?:scoped|focused|selected|shorter)\s+(?:local\s+)?"
+        r"(?:checks?|validation|runs?|results?)\b[^.!?]{0,120}"
+        r"\b(?:is|are|become|becomes|provide|provides)\b[^.!?]{0,80}"
+        r"\b(?:repository-wide\s+authority|completion\s+evidence|"
+        r"sufficient\s+for\s+repository\s+completion)\b",
+        re.IGNORECASE,
+    ),
+)
+_CONTRACT_NEGATION_RE = re.compile(
+    r"\b(?:cannot|do\s+not|does\s+not|forbid|forbids|insufficient|never|no|"
+    r"not|prohibit|prohibits|without)\b|"
+    r"\b(?:don't|doesn't|isn't|aren't)\b",
+    re.IGNORECASE,
+)
+
 
 @dataclass(frozen=True)
 class SymphonyMilestoneValidation:
@@ -734,6 +784,79 @@ def _finding_line(text: str, marker: str) -> int:
     """Return a stable one-based line for a present marker, else line one."""
     offset = text.find(marker)
     return text.count("\n", 0, offset) + 1 if offset >= 0 else 1
+
+
+def _sentence_prefix(text: str, offset: int) -> str:
+    """Return the sentence/paragraph text that can negate a matched claim."""
+    boundaries = (
+        text.rfind(".", 0, offset),
+        text.rfind("!", 0, offset),
+        text.rfind("?", 0, offset),
+        text.rfind(";", 0, offset),
+        text.rfind(", but", 0, offset),
+        text.rfind(", yet", 0, offset),
+        text.rfind("\n\n", 0, offset),
+    )
+    return text[max(boundaries) + 1 : offset]
+
+
+def _positive_contract_matches(
+    text: str, patterns: tuple[re.Pattern[str], ...]
+) -> list[re.Match[str]]:
+    """Return positive prohibited claims while allowing explicit negations."""
+    matches: list[re.Match[str]] = []
+    seen: set[tuple[int, int]] = set()
+    for pattern in patterns:
+        for match in pattern.finditer(text):
+            identity = (match.start(), match.end())
+            if identity in seen:
+                continue
+            prefix = _sentence_prefix(text, match.start())
+            if _CONTRACT_NEGATION_RE.search(prefix + match.group(0)):
+                continue
+            seen.add(identity)
+            matches.append(match)
+    return sorted(matches, key=lambda match: (match.start(), match.end()))
+
+
+def check_scoped_validation_handoff_contract(root: Path) -> list[Finding]:
+    """Reject agent-side CI waiting and local-validation authority overclaims.
+
+    The check is conditional on ``WORKFLOW.md`` for the same reason as the
+    Symphony ceiling check: small standalone linter fixtures do not model the
+    Atlas agent contract. Missing canonical documents remain the manifest
+    check's responsibility.
+    """
+    if not (root / WORKFLOW_PATH).is_file():
+        return []
+
+    findings: list[Finding] = []
+    for rel in AGENT_CONTRACT_PATHS:
+        path = root / rel
+        if not path.is_file():
+            continue
+        text = path.read_text(encoding="utf-8")
+        for match in _positive_contract_matches(text, _CI_WAITING_INSTRUCTION_RES):
+            findings.append(
+                Finding(
+                    rel,
+                    text.count("\n", 0, match.start()) + 1,
+                    "HND001",
+                    "agent contract must hand off to CI Pending without polling "
+                    "or waiting for CI/review",
+                )
+            )
+        for match in _positive_contract_matches(text, _SCOPED_AUTHORITY_CLAIM_RES):
+            findings.append(
+                Finding(
+                    rel,
+                    text.count("\n", 0, match.start()) + 1,
+                    "HND002",
+                    "scoped local validation is agent-tier confidence, not "
+                    "repository-wide or completion authority",
+                )
+            )
+    return findings
 
 
 def check_symphony_ceiling_contract(
@@ -1736,6 +1859,7 @@ def lint_repo(
         *check_backticked_paths(root),
         *check_planning_renders(root),
         *check_symphony_ceiling_contract(root, milestone=symphony_milestone),
+        *check_scoped_validation_handoff_contract(root),
         *check_phase_status(root),
         *check_render_source_anchors(root),
         *check_json_examples(root),
