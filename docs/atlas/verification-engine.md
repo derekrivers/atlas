@@ -138,6 +138,25 @@ product-scoped evidence immediately before the write fence. A change to the
 classification, bounded results or evidence ids holds until a fresh tick; the completion evaluator and its
 `review_required → done` authority are unchanged.
 
+## Candidate-attestation disposition
+
+ATLAS-259 recorded **FAIL** for provider-native synthetic-candidate evidence:
+required Check Runs on the contributor head cannot satisfy a candidate commit.
+ATLAS-260 recorded **FAIL** for a stronger system-tier contract. The assessment
+harness conditionally tested a bounded manifest evaluator, but generated the
+candidate mapping from its fixture and simulated cryptographic verification.
+It did not independently verify a trusted producer lifecycle or prove that the
+provider's required jobs executed against the exact candidate. The identity
+boundary missing after ATLAS-259 therefore remains unclosed.
+
+No candidate evaluator, VerificationCheck type, evidence resolver or verdict
+path is added by that assessment. The current tests/lint evaluators remain
+pinned to the exact contributor head `C`, and the CI-pending and completion
+folds are unchanged. The current no-rewrite approach must not proceed to
+implementation; only a later governed phase with a materially different,
+independently verifiable trust mechanism may reopen it. Assessment fixtures and
+unverified signed-manifest claims cannot satisfy current verification.
+
 ## Verdict and completion
 
 `verify(T)` composes the per-check evaluations into one ticket verdict over the

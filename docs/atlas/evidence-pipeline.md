@@ -148,6 +148,31 @@ pipeline; after freshness is assessed again, a new key may retry. The session
 transition and receipt commit atomically, while evidence already committed by
 the append-only pull is never deleted or rewritten if receipt storage fails.
 
+## Synthetic-candidate attestation assessment
+
+ATLAS-259's provider-native assessment is **FAIL**: the exact synthetic
+candidate was observable, but the repository's required successful Check Runs
+were attached to the contributor head and the candidate had none. Contributor
+head results therefore cannot be relabelled as candidate evidence.
+
+ATLAS-260's governed system-tier attestation assessment is **FAIL**. Its
+deterministic harness proves only that a proposed evaluator fails closed when
+given a bounded, independently verified attestation. The harness itself creates
+the claimed candidate mapping and marks its provenance as fixture simulation;
+it does not exercise a trusted producer/signer lifecycle, GitHub OIDC/Sigstore
+verification, or an independently observed candidate-to-required-job binding.
+The missing identity edge from ATLAS-259 therefore remains missing.
+
+This pipeline does not ingest or trust candidate attestations. The current
+no-rewrite approach is retired: no candidate normaliser, storage contract or
+verification authority may proceed from ATLAS-260. A later phase may reconsider
+the question only with a materially different governed trust mechanism that
+produces bounded, cryptographically and provider-verifiable evidence outside
+contributor control. Credentials, raw provider envelopes, arbitrary workflow
+payloads and logs remain excluded. ATLAS-260 changes no current-head Evidence
+record, handoff projection or acceptance-session authority; the exact-head/
+operator-rebase path remains authoritative.
+
 ## Retention
 
 `raw_payload` is capped at 64KB; a larger payload is replaced by a compact

@@ -376,21 +376,156 @@ the managed-worktree conflicts if any, use `continue` until
 `ready_to_publish`, then use `publish`. All exact-head evidence, confirmations
 and readiness restart at the rebased head.
 
-### Conditional no-rewrite lane
+### ATLAS-260 governed system-tier attestation assessment
 
-Only after a later governed spike PASS may Atlas classify a candidate as
-`exact-base clean`; ATLAS-259 did not authorise this lane.
-Acceptance pins repository, PR, base branch, base commit, candidate head,
-synthetic merge identity, required-check set and acceptance-criteria
-fingerprint. Any movement or ambiguity invalidates the classification and all
-derived authority.
+**Decision: FAIL (2026-08-16).** The assessment did not cross the trusted
+system boundary needed to close ATLAS-259's missing candidate-to-CI identity
+edge. The proposed evaluator is fail-closed, but its stable fixture constructs
+the candidate mapping from the same observation it checks and simulates the
+output of an external cryptographic verifier. No executable evidence exercises
+an Atlas-controlled producer/signer lifecycle, GitHub OIDC/Sigstore
+verification or independent provider proof that every required job ran against
+that exact synthetic candidate. Under the ticket's fail-closed rule, design
+plausibility is not evidence.
 
-An exact-base-clean classification permits review of the unchanged candidate
-without force-pushing a rebased head. It does not merge the PR or bypass
-required checks. A true conflict, failed mergeability, absent synthetic
-identity, branch-protection mismatch or stale observation routes to
-`rebase required` or `indeterminate`. The delivered Phase 12 operator lane
-remains the only rebase/publish mechanism.
+The current no-rewrite approach is retired and no implementation of
+`exact_integration_candidate` may proceed from this assessment. A later phase
+may reopen the question only with a materially different governed trust
+mechanism that supplies the missing independent proof. The exact-head/current-
+main contract and operator-owned rebase lane remain the Phase 15.5 authority.
+
+The executable assessment is
+`scripts/candidate_attestation_assessment.py`, with selected-field fixtures in
+`tests/fixtures/github/candidate_attestation_cases.json` and tests in
+`tests/test_candidate_attestation_assessment.py`. One stable case plus twenty-
+four adversarial cases exercise the complete required matrix. The stable case
+now returns `FAIL` with `attestation_unverified`; its claimed identity is
+retained only as `simulated_claimed_identity`, never as
+`governed_identity`. The report records four governing failure modes:
+
+- producer/signer lifecycle not exercised;
+- OIDC cryptographic verification not exercised;
+- candidate-to-required-CI binding synthesized by the fixture; and
+- independent provider attestation absent.
+
+The harness has no network, GitHub, Linear or Symphony client. Its only
+mutations are local Git plumbing inside a disposable temporary repository, and
+mutation spies reject fetch, merge, push, rebase, update-ref, GitHub merge or
+update, Linear transition, Symphony control and automatic acceptance. Retained
+reports are capped; credentials, raw provider payloads, arbitrary workflow
+payloads and logs are excluded. Oversized inputs fail before retention.
+
+#### Conditional identity algebra tested
+
+The fixture's non-authoritative manifest is canonical JSON and records the
+following proposed identity algebra:
+
+```text
+candidate = (
+  repository, PR number, contributor head SHA,
+  base ref == main, live base SHA,
+  synthetic candidate SHA, candidate tree SHA,
+  ordered parents == (live base SHA, contributor head SHA)
+)
+
+required_set = sha256(canonical_json(
+  ruleset ID,
+  immutable policy repository + path + commit SHA + blob SHA,
+  ordered unique (required context, GitHub App ID) members
+))
+
+execution = (
+  trusted producer repository + workflow path,
+  workflow ref + immutable workflow commit SHA + blob SHA,
+  workflow run ID + run number + run attempt,
+  Atlas-controlled trigger, GitHub-hosted runner,
+  isolated-signer boundary
+)
+
+required_result[i] = (
+  required context + GitHub App ID,
+  provider job ID + Check Run ID,
+  execution run ID + attempt,
+  candidate SHA,
+  status == completed, conclusion == success
+)
+
+proposed_attestation = sigstore_verify(
+  subject_digest == sha256(canonical_manifest),
+  issuer == GitHub Actions OIDC,
+  signer workflow == trusted immutable workflow,
+  invocation == execution run ID + attempt
+)
+```
+
+The conditional evaluator requires two bounded provider reads to reproduce the
+complete candidate, required-set, workflow and execution tuple; the manifest
+to equal the independently reconstructed tuple; and every required member to
+map to exactly one successful provider job in the same run and attempt. It
+rejects head, live-base, candidate, workflow, required-set, run or attempt
+movement; missing, conflicted, indeterminate or malformed candidates; missing,
+failed, duplicate, cancelled, skipped, superseded or candidate-mismatched
+results; stale prior-base evidence; repository/PR ambiguity; tampered
+fingerprints; unverified or contributor-modifiable producers; and oversized
+collections.
+
+Those checks do not prove the premise they consume. In particular,
+`refresh_fixture_attestation()` derives each claimed result's `candidate_sha`
+from the fixture candidate and labels provenance `fixture_simulation` with
+`cryptographically_verified: false`. The provider job fields alone contain no
+independent candidate mapping. Consequently the stable tuple is reproducible
+but non-authoritative, and sibling `main` movement reproducibly invalidates the
+old simulated tuple without making either tuple acceptable.
+
+#### Trust-model answers
+
+1. **Who produces it?** No producer was exercised. The fixture models a
+   proposed isolated signer, which is not evidence that such a producer exists.
+2. **Why is it trusted?** Unproven. No cryptographically verified workload
+   identity or protected producer deployment was observed.
+3. **What immutable identity pins it?** The algebra includes workflow commit
+   and blob SHAs, but no real OIDC statement, workflow definition or pinned
+   action graph was verified against them.
+4. **Can the PR modify it?** Not proven for a real producer. This PR controls
+   the harness and fixture, so their assertions cannot establish isolation.
+5. **What binds head and live base?** The fixture records both and requires the
+   candidate's ordered parents to match. No trusted signer independently made
+   that observation.
+6. **What binds candidate commit and tree?** Deterministic fixture fields and
+   disposable Git prove the algebra and commit/tree distinction only; they do
+   not bind a provider execution.
+7. **What binds every required result?** Nothing independent. The fixture
+   synthesizes each `candidate_sha`; this is the decisive missing edge.
+8. **How are reruns distinguished?** The evaluator distinguishes run ID and
+   attempt and fails on replacement, but no real signed lifecycle was tested.
+9. **How is required-set movement detected?** A canonical fingerprint covers
+   ruleset, immutable policy identity and ordered `(context, App ID)` members,
+   but no live protected policy source was verified.
+10. **What provider API independently verifies it?** None in this assessment.
+    All provider observations are deterministic bounded fixtures.
+11. **What movement invalidates it?** The conditional evaluator invalidates
+    repository/PR, head, base, candidate commit/tree/parents, workflow, policy,
+    required set, run, attempt, job and provenance movement or ambiguity.
+12. **Can Atlas verify it without logs or contributor payloads?** Not proven.
+    The proposed field set excludes logs and arbitrary payloads, but the
+    required external verification lifecycle was not exercised.
+
+Questions 1, 2, 3, 4, 7, 10 and 12 remain unproven, which independently and
+collectively mandates FAIL. Disposable Git evidence separately proves that a
+later two-parent merge and a squash may share the candidate tree while having
+different commit identities; exact commit inequality prevents authority
+transfer in both cases, but cannot repair the missing execution binding.
+
+### Phase 15.5 disposition
+
+ATLAS-259's provider-native synthetic-candidate result is FAIL, and ATLAS-260's
+system-tier attestation result is also FAIL. Experimental fixture evidence is
+not production authority. No `exact-base clean` classification, no-rewrite
+acceptance state, candidate evidence resolver, workflow authority, merge/update
+authority, rebase/push authority, Linear transition, Symphony control or
+automatic acceptance is introduced. The existing exact contributor-head
+ancestry/current-main contract and operator-owned Phase 12 rebase lane remain
+the only production path.
 
 ## API and Operator UI
 
@@ -453,15 +588,18 @@ flowchart TD
     C["CI pending"] --> R["CI reconciliation"]
     R --> W
     L["Protected lanes"] --> A["API and UI"]
-    S["Merge-evidence spike"] --> N["Conditional no-rewrite lane"]
-    N --> A
+    S["Provider-native spike: FAIL"] --> X["No-rewrite path retired"]
+    T["System-tier attestation: FAIL"] --> X
     W --> M["Efficiency milestone"]
     A --> M
+    X --> M
 ```
 
-The validation, CI-lifecycle and merge-evidence lanes can begin independently
-once their listed existing prerequisites are satisfied. The milestone joins
-them and remains the only Phase 15.5 closure authority.
+The validation and CI-lifecycle lanes can begin independently once their listed
+existing prerequisites are satisfied. The governed merge-evidence assessments
+are complete with FAIL, so closure consumes their recorded retired-path
+disposition rather than a conditional implementation lane. The milestone joins
+those outcomes and remains the only Phase 15.5 closure authority.
 
 ## Milestone and closure
 

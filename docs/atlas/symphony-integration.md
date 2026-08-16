@@ -303,6 +303,15 @@ candidate tree equality, workflow logs or an unpinned branch ref. Head, base,
 candidate, missing, conflict, malformed and indeterminate observations remain
 non-authoritative.
 
+ATLAS-260 subsequently recorded **FAIL** for a system-tier candidate
+attestation. Its harness synthesized the candidate-to-job mapping and simulated
+the external cryptographic verifier, so it did not prove a trusted producer/
+signer lifecycle, GitHub OIDC provenance or independent exact-candidate job
+execution. The current no-rewrite approach is retired. Symphony has no
+candidate-attestation consumer or new state edge, this exact-head classifier is
+unchanged, and the operator-owned rebase lane remains the only route for a head
+that lacks live-`main` ancestry.
+
 State vocabulary:
 
 - `eligibility`: `eligible`, `merged`, `closed`, `draft`, `fork_head`, or

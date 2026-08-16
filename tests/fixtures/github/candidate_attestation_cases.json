@@ -1,0 +1,441 @@
+{
+  "schema_version": 1,
+  "governed_case": "stable-clean-candidate",
+  "expected_governed_decision": "FAIL",
+  "trust_policy": {
+    "producer_repository": "atlas/ci-trust",
+    "workflow_path": ".github/workflows/candidate-ci.yml",
+    "workflow_ref": "refs/heads/main",
+    "workflow_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "workflow_blob_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "event": "workflow_dispatch",
+    "producer_control": "atlas",
+    "candidate_permissions": "contents:read;secrets:none;id-token:none;attestations:none",
+    "required_policy": {
+      "repository": "atlas/ci-trust",
+      "path": "policy/required-checks.json",
+      "sha": "cccccccccccccccccccccccccccccccccccccccc",
+      "blob_sha": "dddddddddddddddddddddddddddddddddddddddd"
+    },
+    "issuer": "https://token.actions.githubusercontent.com",
+    "predicate_type": "https://atlas.example/candidate-ci/v1",
+    "runner_environment": "github-hosted",
+    "subject_name": "atlas-candidate-attestation.json",
+    "verification_source": "atlas_sigstore"
+  },
+  "base_observation": {
+    "repository": "fixture/atlas",
+    "pr_number": 260,
+    "contributor_head_sha": "2222222222222222222222222222222222222222",
+    "live_base": {
+      "ref": "main",
+      "sha": "1111111111111111111111111111111111111111"
+    },
+    "mergeability": "mergeable",
+    "candidate": {
+      "sha": "3333333333333333333333333333333333333333",
+      "tree_sha": "4444444444444444444444444444444444444444",
+      "parents": [
+        "1111111111111111111111111111111111111111",
+        "2222222222222222222222222222222222222222"
+      ]
+    },
+    "required_check_set": {
+      "ruleset_id": 17514272,
+      "policy": {
+        "repository": "atlas/ci-trust",
+        "path": "policy/required-checks.json",
+        "sha": "cccccccccccccccccccccccccccccccccccccccc",
+        "blob_sha": "dddddddddddddddddddddddddddddddddddddddd"
+      },
+      "members": [
+        {"name": "lint", "app_id": 15368},
+        {"name": "test", "app_id": 15368}
+      ],
+      "fingerprint": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "execution": {
+      "producer_repository": "atlas/ci-trust",
+      "workflow_path": ".github/workflows/candidate-ci.yml",
+      "workflow_ref": "refs/heads/main",
+      "workflow_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "workflow_blob_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "event": "workflow_dispatch",
+      "run_id": 7001,
+      "run_number": 91,
+      "run_attempt": 1,
+      "status": "completed",
+      "conclusion": "success",
+      "producer_control": "atlas",
+      "candidate_permissions": "contents:read;secrets:none;id-token:none;attestations:none",
+      "pinned_actions": true,
+      "pull_request_target": false,
+      "signer_isolated": true,
+      "signer_uses_candidate_outputs": false
+    },
+    "provider_jobs": [
+      {
+        "name": "lint",
+        "app_id": 15368,
+        "job_id": 8001,
+        "check_run_id": 9001,
+        "run_id": 7001,
+        "run_attempt": 1,
+        "candidate_sha": "3333333333333333333333333333333333333333",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "name": "test",
+        "app_id": 15368,
+        "job_id": 8002,
+        "check_run_id": 9002,
+        "run_id": 7001,
+        "run_attempt": 1,
+        "candidate_sha": "3333333333333333333333333333333333333333",
+        "status": "completed",
+        "conclusion": "success"
+      }
+    ]
+  },
+  "cases": [
+    {
+      "name": "stable-clean-candidate",
+      "expected_decision": "FAIL",
+      "expected_reasons": ["attestation_unverified"]
+    },
+    {
+      "name": "contributor-head-movement",
+      "second_patch": {
+        "contributor_head_sha": "5555555555555555555555555555555555555555",
+        "candidate": {
+          "sha": "6666666666666666666666666666666666666666",
+          "tree_sha": "7777777777777777777777777777777777777777",
+          "parents": [
+            "1111111111111111111111111111111111111111",
+            "5555555555555555555555555555555555555555"
+          ]
+        },
+        "provider_jobs": [
+          {"name": "lint", "app_id": 15368, "job_id": 8101, "check_run_id": 9101, "run_id": 7001, "run_attempt": 1, "candidate_sha": "6666666666666666666666666666666666666666", "status": "completed", "conclusion": "success"},
+          {"name": "test", "app_id": 15368, "job_id": 8102, "check_run_id": 9102, "run_id": 7001, "run_attempt": 1, "candidate_sha": "6666666666666666666666666666666666666666", "status": "completed", "conclusion": "success"}
+        ]
+      },
+      "refresh_second": true,
+      "expected_decision": "FAIL",
+      "expected_reasons": ["head_moved", "candidate_moved"]
+    },
+    {
+      "name": "sibling-live-base-movement",
+      "second_patch": {
+        "live_base": {"ref": "main", "sha": "8888888888888888888888888888888888888888"},
+        "candidate": {
+          "sha": "9999999999999999999999999999999999999999",
+          "tree_sha": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "parents": [
+            "8888888888888888888888888888888888888888",
+            "2222222222222222222222222222222222222222"
+          ]
+        },
+        "provider_jobs": [
+          {"name": "lint", "app_id": 15368, "job_id": 8201, "check_run_id": 9201, "run_id": 7001, "run_attempt": 1, "candidate_sha": "9999999999999999999999999999999999999999", "status": "completed", "conclusion": "success"},
+          {"name": "test", "app_id": 15368, "job_id": 8202, "check_run_id": 9202, "run_id": 7001, "run_attempt": 1, "candidate_sha": "9999999999999999999999999999999999999999", "status": "completed", "conclusion": "success"}
+        ]
+      },
+      "refresh_second": true,
+      "expected_decision": "FAIL",
+      "expected_reasons": ["base_moved", "candidate_moved"]
+    },
+    {
+      "name": "synthetic-candidate-replacement",
+      "second_patch": {
+        "candidate": {
+          "sha": "6666666666666666666666666666666666666666",
+          "tree_sha": "7777777777777777777777777777777777777777"
+        },
+        "provider_jobs": [
+          {"name": "lint", "app_id": 15368, "job_id": 8301, "check_run_id": 9301, "run_id": 7001, "run_attempt": 1, "candidate_sha": "6666666666666666666666666666666666666666", "status": "completed", "conclusion": "success"},
+          {"name": "test", "app_id": 15368, "job_id": 8302, "check_run_id": 9302, "run_id": 7001, "run_attempt": 1, "candidate_sha": "6666666666666666666666666666666666666666", "status": "completed", "conclusion": "success"}
+        ]
+      },
+      "refresh_second": true,
+      "expected_decision": "FAIL",
+      "expected_reasons": ["candidate_moved"]
+    },
+    {
+      "name": "missing-candidate",
+      "first_patch": {
+        "candidate": {"sha": null, "tree_sha": null, "parents": []},
+        "provider_jobs": []
+      },
+      "second_patch": {
+        "candidate": {"sha": null, "tree_sha": null, "parents": []},
+        "provider_jobs": []
+      },
+      "expected_decision": "FAIL",
+      "expected_reasons": ["candidate_missing", "required_result_missing"]
+    },
+    {
+      "name": "conflicted-candidate",
+      "first_patch": {
+        "mergeability": "conflicted",
+        "candidate": {"sha": null, "tree_sha": null, "parents": []},
+        "provider_jobs": []
+      },
+      "second_patch": {
+        "mergeability": "conflicted",
+        "candidate": {"sha": null, "tree_sha": null, "parents": []},
+        "provider_jobs": []
+      },
+      "expected_decision": "FAIL",
+      "expected_reasons": ["candidate_conflicted", "candidate_missing"]
+    },
+    {
+      "name": "indeterminate-mergeability",
+      "first_patch": {"mergeability": "indeterminate"},
+      "second_patch": {"mergeability": "indeterminate"},
+      "expected_decision": "FAIL",
+      "expected_reasons": ["mergeability_indeterminate"]
+    },
+    {
+      "name": "malformed-provider-observation",
+      "second_patch": {"repository": ""},
+      "expected_decision": "FAIL",
+      "expected_reasons": ["malformed_observation"]
+    },
+    {
+      "name": "missing-required-result",
+      "first_patch": {
+        "provider_jobs": [
+          {"name": "lint", "app_id": 15368, "job_id": 8001, "check_run_id": 9001, "run_id": 7001, "run_attempt": 1, "candidate_sha": "3333333333333333333333333333333333333333", "status": "completed", "conclusion": "success"}
+        ]
+      },
+      "second_patch": {
+        "provider_jobs": [
+          {"name": "lint", "app_id": 15368, "job_id": 8001, "check_run_id": 9001, "run_id": 7001, "run_attempt": 1, "candidate_sha": "3333333333333333333333333333333333333333", "status": "completed", "conclusion": "success"}
+        ]
+      },
+      "refresh_first": true,
+      "refresh_second": true,
+      "expected_decision": "FAIL",
+      "expected_reasons": ["required_result_missing"]
+    },
+    {
+      "name": "failed-required-result",
+      "first_patch": {"provider_jobs": [
+        {"name": "lint", "app_id": 15368, "job_id": 8001, "check_run_id": 9001, "run_id": 7001, "run_attempt": 1, "candidate_sha": "3333333333333333333333333333333333333333", "status": "completed", "conclusion": "success"},
+        {"name": "test", "app_id": 15368, "job_id": 8002, "check_run_id": 9002, "run_id": 7001, "run_attempt": 1, "candidate_sha": "3333333333333333333333333333333333333333", "status": "completed", "conclusion": "failure"}
+      ]},
+      "second_patch": {"provider_jobs": [
+        {"name": "lint", "app_id": 15368, "job_id": 8001, "check_run_id": 9001, "run_id": 7001, "run_attempt": 1, "candidate_sha": "3333333333333333333333333333333333333333", "status": "completed", "conclusion": "success"},
+        {"name": "test", "app_id": 15368, "job_id": 8002, "check_run_id": 9002, "run_id": 7001, "run_attempt": 1, "candidate_sha": "3333333333333333333333333333333333333333", "status": "completed", "conclusion": "failure"}
+      ]},
+      "refresh_first": true,
+      "refresh_second": true,
+      "expected_decision": "FAIL",
+      "expected_reasons": ["required_result_not_passed"]
+    },
+    {
+      "name": "duplicate-ambiguous-required-result",
+      "first_patch": {"provider_jobs": [
+        {"name": "lint", "app_id": 15368, "job_id": 8001, "check_run_id": 9001, "run_id": 7001, "run_attempt": 1, "candidate_sha": "3333333333333333333333333333333333333333", "status": "completed", "conclusion": "success"},
+        {"name": "test", "app_id": 15368, "job_id": 8002, "check_run_id": 9002, "run_id": 7001, "run_attempt": 1, "candidate_sha": "3333333333333333333333333333333333333333", "status": "completed", "conclusion": "success"},
+        {"name": "test", "app_id": 15368, "job_id": 8003, "check_run_id": 9003, "run_id": 7001, "run_attempt": 1, "candidate_sha": "3333333333333333333333333333333333333333", "status": "completed", "conclusion": "success"}
+      ]},
+      "second_patch": {"provider_jobs": [
+        {"name": "lint", "app_id": 15368, "job_id": 8001, "check_run_id": 9001, "run_id": 7001, "run_attempt": 1, "candidate_sha": "3333333333333333333333333333333333333333", "status": "completed", "conclusion": "success"},
+        {"name": "test", "app_id": 15368, "job_id": 8002, "check_run_id": 9002, "run_id": 7001, "run_attempt": 1, "candidate_sha": "3333333333333333333333333333333333333333", "status": "completed", "conclusion": "success"},
+        {"name": "test", "app_id": 15368, "job_id": 8003, "check_run_id": 9003, "run_id": 7001, "run_attempt": 1, "candidate_sha": "3333333333333333333333333333333333333333", "status": "completed", "conclusion": "success"}
+      ]},
+      "refresh_first": true,
+      "refresh_second": true,
+      "expected_decision": "FAIL",
+      "expected_reasons": ["required_result_ambiguous"]
+    },
+    {
+      "name": "required-check-set-movement",
+      "second_patch": {
+        "required_check_set": {
+          "members": [
+            {"name": "build", "app_id": 15368},
+            {"name": "lint", "app_id": 15368},
+            {"name": "test", "app_id": 15368}
+          ]
+        },
+        "provider_jobs": [
+          {"name": "build", "app_id": 15368, "job_id": 8000, "check_run_id": 9000, "run_id": 7001, "run_attempt": 1, "candidate_sha": "3333333333333333333333333333333333333333", "status": "completed", "conclusion": "success"},
+          {"name": "lint", "app_id": 15368, "job_id": 8001, "check_run_id": 9001, "run_id": 7001, "run_attempt": 1, "candidate_sha": "3333333333333333333333333333333333333333", "status": "completed", "conclusion": "success"},
+          {"name": "test", "app_id": 15368, "job_id": 8002, "check_run_id": 9002, "run_id": 7001, "run_attempt": 1, "candidate_sha": "3333333333333333333333333333333333333333", "status": "completed", "conclusion": "success"}
+        ]
+      },
+      "refresh_second": true,
+      "expected_decision": "FAIL",
+      "expected_reasons": ["required_check_set_moved"]
+    },
+    {
+      "name": "workflow-configuration-movement",
+      "second_patch": {"execution": {
+        "workflow_sha": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "workflow_blob_sha": "ffffffffffffffffffffffffffffffffffffffff"
+      }},
+      "refresh_second": true,
+      "expected_decision": "FAIL",
+      "expected_reasons": ["workflow_identity_moved", "untrusted_producer"]
+    },
+    {
+      "name": "workflow-rerun-attempt-replacement",
+      "second_patch": {
+        "execution": {"run_attempt": 2},
+        "provider_jobs": [
+          {"name": "lint", "app_id": 15368, "job_id": 8401, "check_run_id": 9401, "run_id": 7001, "run_attempt": 2, "candidate_sha": "3333333333333333333333333333333333333333", "status": "completed", "conclusion": "success"},
+          {"name": "test", "app_id": 15368, "job_id": 8402, "check_run_id": 9402, "run_id": 7001, "run_attempt": 2, "candidate_sha": "3333333333333333333333333333333333333333", "status": "completed", "conclusion": "success"}
+        ]
+      },
+      "refresh_second": true,
+      "expected_decision": "FAIL",
+      "expected_reasons": ["run_attempt_replaced"]
+    },
+    {
+      "name": "workflow-run-replacement",
+      "second_patch": {
+        "execution": {"run_id": 7002, "run_number": 92},
+        "provider_jobs": [
+          {"name": "lint", "app_id": 15368, "job_id": 8501, "check_run_id": 9501, "run_id": 7002, "run_attempt": 1, "candidate_sha": "3333333333333333333333333333333333333333", "status": "completed", "conclusion": "success"},
+          {"name": "test", "app_id": 15368, "job_id": 8502, "check_run_id": 9502, "run_id": 7002, "run_attempt": 1, "candidate_sha": "3333333333333333333333333333333333333333", "status": "completed", "conclusion": "success"}
+        ]
+      },
+      "refresh_second": true,
+      "expected_decision": "FAIL",
+      "expected_reasons": ["run_replaced"]
+    },
+    {
+      "name": "contributor-modifiable-producer",
+      "first_patch": {"execution": {
+        "producer_repository": "fixture/atlas",
+        "workflow_ref": "refs/pull/260/head",
+        "workflow_sha": "2222222222222222222222222222222222222222",
+        "workflow_blob_sha": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "event": "pull_request_target",
+        "producer_control": "candidate",
+        "candidate_permissions": "contents:write;secrets:available;id-token:write;attestations:write",
+        "pinned_actions": false,
+        "pull_request_target": true,
+        "signer_isolated": false,
+        "signer_uses_candidate_outputs": true
+      }},
+      "second_patch": {"execution": {
+        "producer_repository": "fixture/atlas",
+        "workflow_ref": "refs/pull/260/head",
+        "workflow_sha": "2222222222222222222222222222222222222222",
+        "workflow_blob_sha": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "event": "pull_request_target",
+        "producer_control": "candidate",
+        "candidate_permissions": "contents:write;secrets:available;id-token:write;attestations:write",
+        "pinned_actions": false,
+        "pull_request_target": true,
+        "signer_isolated": false,
+        "signer_uses_candidate_outputs": true
+      }},
+      "refresh_first": true,
+      "refresh_second": true,
+      "expected_decision": "FAIL",
+      "expected_reasons": ["untrusted_producer"]
+    },
+    {
+      "name": "stale-attestation-from-previous-base",
+      "second_patch": {
+        "live_base": {"ref": "main", "sha": "8888888888888888888888888888888888888888"},
+        "candidate": {
+          "sha": "9999999999999999999999999999999999999999",
+          "tree_sha": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "parents": ["8888888888888888888888888888888888888888", "2222222222222222222222222222222222222222"]
+        },
+        "provider_jobs": [
+          {"name": "lint", "app_id": 15368, "job_id": 8601, "check_run_id": 9601, "run_id": 7001, "run_attempt": 1, "candidate_sha": "9999999999999999999999999999999999999999", "status": "completed", "conclusion": "success"},
+          {"name": "test", "app_id": 15368, "job_id": 8602, "check_run_id": 9602, "run_id": 7001, "run_attempt": 1, "candidate_sha": "9999999999999999999999999999999999999999", "status": "completed", "conclusion": "success"}
+        ]
+      },
+      "expected_decision": "FAIL",
+      "expected_reasons": ["base_moved", "candidate_moved", "attestation_identity_mismatch"]
+    },
+    {
+      "name": "candidate-mismatched-results",
+      "first_patch": {"attestation": {"manifest": {"required_results": [
+        {"name": "lint", "app_id": 15368, "job_id": 8001, "check_run_id": 9001, "run_id": 7001, "run_attempt": 1, "candidate_sha": "2222222222222222222222222222222222222222", "status": "completed", "conclusion": "success"},
+        {"name": "test", "app_id": 15368, "job_id": 8002, "check_run_id": 9002, "run_id": 7001, "run_attempt": 1, "candidate_sha": "2222222222222222222222222222222222222222", "status": "completed", "conclusion": "success"}
+      ]}}},
+      "second_patch": {"attestation": {"manifest": {"required_results": [
+        {"name": "lint", "app_id": 15368, "job_id": 8001, "check_run_id": 9001, "run_id": 7001, "run_attempt": 1, "candidate_sha": "2222222222222222222222222222222222222222", "status": "completed", "conclusion": "success"},
+        {"name": "test", "app_id": 15368, "job_id": 8002, "check_run_id": 9002, "run_id": 7001, "run_attempt": 1, "candidate_sha": "2222222222222222222222222222222222222222", "status": "completed", "conclusion": "success"}
+      ]}}},
+      "expected_decision": "FAIL",
+      "expected_reasons": ["required_result_candidate_mismatch"]
+    },
+    {
+      "name": "superseded-result-lifecycle",
+      "first_patch": {"execution": {"run_attempt": 2}},
+      "second_patch": {"execution": {"run_attempt": 2}},
+      "refresh_first": true,
+      "refresh_second": true,
+      "expected_decision": "FAIL",
+      "expected_reasons": ["required_result_lifecycle_mismatch"]
+    },
+    {
+      "name": "cancelled-required-result",
+      "first_patch": {"provider_jobs": [
+        {"name": "lint", "app_id": 15368, "job_id": 8001, "check_run_id": 9001, "run_id": 7001, "run_attempt": 1, "candidate_sha": "3333333333333333333333333333333333333333", "status": "completed", "conclusion": "success"},
+        {"name": "test", "app_id": 15368, "job_id": 8002, "check_run_id": 9002, "run_id": 7001, "run_attempt": 1, "candidate_sha": "3333333333333333333333333333333333333333", "status": "completed", "conclusion": "cancelled"}
+      ]},
+      "second_patch": {"provider_jobs": [
+        {"name": "lint", "app_id": 15368, "job_id": 8001, "check_run_id": 9001, "run_id": 7001, "run_attempt": 1, "candidate_sha": "3333333333333333333333333333333333333333", "status": "completed", "conclusion": "success"},
+        {"name": "test", "app_id": 15368, "job_id": 8002, "check_run_id": 9002, "run_id": 7001, "run_attempt": 1, "candidate_sha": "3333333333333333333333333333333333333333", "status": "completed", "conclusion": "cancelled"}
+      ]},
+      "refresh_first": true,
+      "refresh_second": true,
+      "expected_decision": "FAIL",
+      "expected_reasons": ["required_result_not_passed"]
+    },
+    {
+      "name": "skipped-required-result",
+      "first_patch": {"provider_jobs": [
+        {"name": "lint", "app_id": 15368, "job_id": 8001, "check_run_id": 9001, "run_id": 7001, "run_attempt": 1, "candidate_sha": "3333333333333333333333333333333333333333", "status": "completed", "conclusion": "success"},
+        {"name": "test", "app_id": 15368, "job_id": 8002, "check_run_id": 9002, "run_id": 7001, "run_attempt": 1, "candidate_sha": "3333333333333333333333333333333333333333", "status": "completed", "conclusion": "skipped"}
+      ]},
+      "second_patch": {"provider_jobs": [
+        {"name": "lint", "app_id": 15368, "job_id": 8001, "check_run_id": 9001, "run_id": 7001, "run_attempt": 1, "candidate_sha": "3333333333333333333333333333333333333333", "status": "completed", "conclusion": "success"},
+        {"name": "test", "app_id": 15368, "job_id": 8002, "check_run_id": 9002, "run_id": 7001, "run_attempt": 1, "candidate_sha": "3333333333333333333333333333333333333333", "status": "completed", "conclusion": "skipped"}
+      ]},
+      "refresh_first": true,
+      "refresh_second": true,
+      "expected_decision": "FAIL",
+      "expected_reasons": ["required_result_not_passed"]
+    },
+    {
+      "name": "unverified-attestation-provenance",
+      "first_patch": {"attestation": {"provenance": {"cryptographically_verified": false}}},
+      "second_patch": {"attestation": {"provenance": {"cryptographically_verified": false}}},
+      "expected_decision": "FAIL",
+      "expected_reasons": ["attestation_unverified"]
+    },
+    {
+      "name": "provider-repository-pr-ambiguity",
+      "second_patch": {"repository": "fixture/other", "pr_number": 261},
+      "refresh_second": true,
+      "expected_decision": "FAIL",
+      "expected_reasons": ["provider_ambiguity"]
+    },
+    {
+      "name": "tampered-required-set-fingerprint",
+      "first_patch": {"required_check_set": {"fingerprint": "0000000000000000000000000000000000000000000000000000000000000000"}},
+      "second_patch": {"required_check_set": {"fingerprint": "0000000000000000000000000000000000000000000000000000000000000000"}},
+      "expected_decision": "FAIL",
+      "expected_reasons": ["required_check_set_fingerprint_invalid"]
+    },
+    {
+      "name": "oversized-provider-evidence",
+      "expand_second_jobs": 65,
+      "expected_decision": "FAIL",
+      "expected_reasons": ["unbounded_evidence"]
+    }
+  ]
+}
