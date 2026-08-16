@@ -376,10 +376,183 @@ the managed-worktree conflicts if any, use `continue` until
 `ready_to_publish`, then use `publish`. All exact-head evidence, confirmations
 and readiness restart at the rebased head.
 
+### ATLAS-260 governed system-tier attestation assessment
+
+**Decision: PASS (2026-08-16), assessment authority only.** A bounded
+system-tier attestation can close the identity gap found by ATLAS-259 if, and
+only if, its producer is outside contributor control, candidate execution is
+isolated from signing authority, and Atlas independently verifies both the
+signed manifest and the provider lifecycle. This PASS authorises refinement
+and planning of a later implementation ticket. It does not implement or
+activate `exact_integration_candidate`, change acceptance-session identity,
+or permit a no-rewrite classification. The exact-head/current-main contract
+and operator-owned rebase lane remain the Phase 15.5 production authority.
+
+The executable assessment is
+`scripts/candidate_attestation_assessment.py`, with selected-field fixtures in
+`tests/fixtures/github/candidate_attestation_cases.json` and tests in
+`tests/test_candidate_attestation_assessment.py`. Its governed stable case
+records repository, PR, contributor head, live base, candidate commit/tree and
+ordered parents, required-set fingerprint and members, immutable workflow
+commit/blob, run ID, run attempt, job and Check Run IDs, candidate mapping and
+terminal conclusions. Twenty-four adversarial cases fail closed. The harness
+has no network, GitHub, Linear or Symphony client; its only mutations are
+local Git plumbing inside a disposable temporary repository.
+
+The cryptographic boundary is deliberately explicit. The fixture field
+`cryptographically_verified` represents the bounded typed output of an
+Atlas-owned Sigstore verifier, not a boolean that production code may accept
+from a workflow or contributor. A future implementation must verify a capped
+GitHub artifact-attestation envelope against the GitHub Actions OIDC issuer,
+trusted root, subject digest and exact signer identity before constructing that
+typed projection. GitHub documents that an artifact attestation binds a subject
+digest to a signed statement and records workflow/repository/run provenance;
+its verifier warning that a compromised workflow can falsify predicates is why
+workflow isolation is part of the authority rather than an optional hardening
+step ([artifact attestations](https://docs.github.com/en/actions/concepts/security/artifact-attestations),
+[OIDC claims](https://docs.github.com/en/actions/reference/security/oidc),
+[secure-use guidance](https://docs.github.com/en/actions/reference/security/secure-use)).
+
+#### Exact contract proven
+
+The future authoritative manifest is canonical JSON and its SHA-256 is the
+attestation subject digest. The identity algebra is:
+
+```text
+candidate = (
+  repository, PR number, contributor head SHA,
+  base ref == main, live base SHA,
+  synthetic candidate SHA, candidate tree SHA,
+  ordered parents == (live base SHA, contributor head SHA)
+)
+
+required_set = sha256(canonical_json(
+  ruleset ID,
+  immutable policy repository + path + commit SHA + blob SHA,
+  ordered unique (required context, GitHub App ID) members
+))
+
+execution = (
+  trusted producer repository + workflow path,
+  workflow ref + immutable workflow commit SHA + blob SHA,
+  workflow run ID + run number + run attempt,
+  Atlas-controlled trigger, GitHub-hosted runner,
+  isolated-signer boundary
+)
+
+required_result[i] = (
+  required context + GitHub App ID,
+  provider job ID + Check Run ID,
+  execution run ID + attempt,
+  candidate SHA,
+  status == completed, conclusion == success
+)
+
+attestation = sigstore_verify(
+  subject_digest == sha256(canonical_manifest),
+  issuer == GitHub Actions OIDC,
+  signer workflow == trusted immutable workflow,
+  invocation == execution run ID + attempt
+)
+```
+
+Authority exists only when two bounded provider reads reproduce the complete
+candidate, required-set, workflow and execution tuple; the signed manifest
+equals the independently reconstructed tuple; and every required member maps
+to exactly one successful provider job in that same run and attempt. The
+provider Jobs API remains lifecycle corroboration, while the trusted signed
+manifest supplies the candidate mapping absent from ATLAS-259's Check Runs.
+Neither source is sufficient alone.
+
+The producer workflow required by this contract is Atlas-controlled and
+triggered from trusted configuration, with every action reference pinned to a
+full commit SHA. Candidate jobs run on separate GitHub-hosted runners with
+read-only content access, `persist-credentials: false`, no repository or
+environment secrets, no OIDC, no attestation permission and no credentialed
+cache shared with the signer. The signer runs only after every required job on
+a fresh runner. It never checks out or executes candidate code and consumes no
+candidate artifact, cache, output or environment. It independently reads the
+PR, live base, candidate Git objects, immutable required-set policy and its own
+provider jobs; then it emits and signs the bounded manifest. The design does
+not use `pull_request_target` or `workflow_run` with an untrusted checkout.
+
+Atlas independently verifies the retained capped signature envelope and
+manifest, then performs bounded REST reads of the PR, live branch, candidate
+commit/tree/parents, trusted workflow commit/blob, ruleset/policy, workflow
+run attempt and jobs. It retains only the canonical manifest, selected
+certificate/provenance claims, signature and inclusion-proof material needed
+for verification, provider object IDs, lifecycle fields and hashes. Each
+collection has a hard count/byte cap. Credentials, raw provider envelopes,
+arbitrary payloads, workflow logs and job logs are excluded. Unavailable,
+oversized or unverifiable provenance fails closed.
+
+#### Trust-model answers
+
+1. **Producer:** the isolated signer job of the Atlas-owned candidate-CI
+   workflow, after its fixed required candidate jobs finish.
+2. **Why trusted:** Atlas admits only a locally configured producer repository,
+   path, full workflow commit and blob digest after cryptographic provenance
+   verification. A GitHub workflow name, branch name or human claim is not a
+   trust signal.
+3. **Immutable identity:** the producer workflow commit SHA, workflow blob SHA,
+   every action's full commit SHA and the signed attestation's build-config and
+   invocation identities.
+4. **Contributor modification:** no. The producer and required-set policy are
+   outside the PR's writable identity. Candidate code runs on separate
+   unprivileged runners and cannot reach the signer workspace or inputs.
+5. **Head/base binding:** the signer and Atlas each resolve repository/PR,
+   contributor head and live `main`; ordered candidate parents must be exactly
+   `(live base, contributor head)`, and the second read must match the first.
+6. **Candidate binding:** both boundaries resolve the full synthetic commit,
+   tree and ordered parents. The signed manifest contains those exact values.
+7. **Required-result binding:** fixed trusted workflow semantics execute each
+   named job at the manifest candidate; the signer records provider job/Check
+   Run IDs and candidate mapping, while Atlas re-reads each job and requires a
+   unique same-run/same-attempt successful match.
+8. **Reruns:** run ID and `run_attempt` are signed and re-read. A newer attempt
+   or replacement run invalidates all evidence from the old lifecycle.
+9. **Required-set stability:** ordered unique `(context, App ID)` members,
+   ruleset ID and immutable policy file identities form the fingerprint. A
+   changed member, ruleset, policy commit/blob or duplicate invalidates it.
+10. **Independent provider proof:** Sigstore verification plus bounded GitHub
+    PR, branch, Git commit, workflow-run-attempt and job reads corroborate every
+    retained field. The attestation API is addressed by subject digest; the
+    run-attempt and Jobs APIs distinguish the execution lifecycle.
+11. **Invalidating movement:** repository/PR, head, live base, candidate
+    commit/tree/parents, workflow commit/blob/ref, policy/ruleset/fingerprint,
+    run, attempt, job identity/status/conclusion or attestation subject/signer
+    movement invalidates the old evidence immediately. Missing, conflicting,
+    malformed, duplicate, skipped, cancelled and superseded observations also
+    invalidate it.
+12. **No logs or contributor payloads:** yes. Verification consumes only the
+    capped signed manifest, cryptographic provenance and selected provider API
+    fields. Workflow logs and arbitrary candidate-generated artifacts or
+    outputs have no role.
+
+The trust assumptions are GitHub's OIDC/Sigstore and REST identities, full Git
+object immutability, GitHub-hosted job isolation, Atlas protection of its
+producer allowlist and correct implementation of the pinned workflow. If a
+future implementation cannot independently verify any assumption, cannot keep
+the signer isolated, or must accept a candidate-controlled assertion, it must
+return indeterminate/FAIL and retain the rebase lane.
+
+The adversarial matrix proves stable reproduction and fail-closed head, sibling
+base, candidate, workflow, required-set, run and attempt movement; missing,
+conflicted, indeterminate and malformed candidates; missing, failed, duplicate,
+cancelled, skipped, superseded and candidate-mismatched results; unverified or
+contributor-modifiable producers; stale prior-base evidence; repository/PR
+ambiguity; tampered fingerprints; and oversized collections. Disposable Git
+evidence separately proves that a later two-parent merge and a squash may share
+the candidate tree while having different commit identities. Exact commit
+inequality prevents authority transfer in both cases.
+
 ### Conditional no-rewrite lane
 
-Only after a later governed spike PASS may Atlas classify a candidate as
-`exact-base clean`; ATLAS-259 did not authorise this lane.
+ATLAS-260's assessment PASS permits a later implementation ticket to refine
+this lane against the exact attestation contract above; it does not authorise
+Atlas to classify any current candidate as `exact-base clean`. ATLAS-259's
+provider-native route remains FAIL, and no production system-tier candidate
+attestation exists yet.
 Acceptance pins repository, PR, base branch, base commit, candidate head,
 synthetic merge identity, required-check set and acceptance-criteria
 fingerprint. Any movement or ambiguity invalidates the classification and all

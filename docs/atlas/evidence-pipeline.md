@@ -148,6 +148,34 @@ pipeline; after freshness is assessed again, a new key may retry. The session
 transition and receipt commit atomically, while evidence already committed by
 the append-only pull is never deleted or rewritten if receipt storage fails.
 
+## Synthetic-candidate attestation assessment
+
+ATLAS-259's provider-native assessment is **FAIL**: the exact synthetic
+candidate was observable, but the repository's required successful Check Runs
+were attached to the contributor head and the candidate had none. Contributor
+head results therefore cannot be relabelled as candidate evidence.
+
+ATLAS-260's governed system-tier attestation assessment is **PASS** for future
+design refinement only. It proves that an Atlas-owned, immutable-SHA-pinned
+workflow can run unprivileged candidate jobs, use a separate signer job that
+never executes or consumes candidate code, and sign a bounded canonical
+manifest tying the complete required set to one repository/PR/head/live-base/
+candidate/workflow/run-attempt tuple. Atlas must cryptographically verify the
+GitHub/Sigstore provenance and independently corroborate selected PR, branch,
+Git object, workflow-run-attempt and job fields. Missing, moved, duplicate,
+failed, skipped, cancelled, superseded, ambiguous, unverified or oversized
+evidence fails closed.
+
+This pipeline does not yet ingest or trust that attestation. A future
+implementation must add a distinct system-tier normaliser and storage contract
+before any candidate evidence can participate in verification. It may retain
+only a capped canonical manifest, the bounded signature/certificate/inclusion
+proof needed for verification, selected provenance claims, provider object
+IDs and lifecycle fields. Credentials, raw provider envelopes, arbitrary
+workflow payloads and logs remain excluded. ATLAS-260 changes no current-head
+Evidence record, handoff projection or acceptance-session authority; the
+exact-head/operator-rebase path remains authoritative.
+
 ## Retention
 
 `raw_payload` is capped at 64KB; a larger payload is replaced by a compact

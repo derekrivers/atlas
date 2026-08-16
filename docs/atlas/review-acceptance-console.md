@@ -39,6 +39,12 @@ outside the browser workflow in this phase.
   Check Runs remained attached to the contributor head and the candidate had no
   Check Runs of its own. A synthetic candidate is therefore diagnostic only;
   it cannot create, refresh or authorise an acceptance session.
+- ATLAS-260's system-tier attestation assessment is PASS for future design
+  refinement only. The proven contract requires a cryptographically verified,
+  immutable-workflow, isolated-signer manifest plus independent provider reads
+  for one candidate and complete required-job lifecycle. No such production
+  evidence path or session identity exists in Phase 14, so the PASS grants this
+  console no new authority.
 - A stale session is immutable history. The operator starts a new session;
   Atlas never retargets an old session to a new head.
 - The final readiness result is advisory authority for the operator's manual
@@ -93,12 +99,13 @@ Creating a new session after head movement creates a new record and leaves the
 old record intact.
 
 The delivered session identity is intentionally unchanged by the Phase 15.5
-spike. Until a later governed design can supply candidate-pinned system-tier
-checks, `head_sha` must itself contain the resolved live `main` commit. A clean
-synthetic merge, candidate tree equality or a future squash tree relationship
-does not substitute for that ancestry requirement. Mechanically stale sessions
-continue to recover through the Phase 12 operator-owned rebase lane and restart
-as a new exact-head lifecycle.
+assessments. ATLAS-260 identifies the contract a future implementation would
+need, but does not deliver candidate-pinned evidence or activate a candidate
+session. `head_sha` must itself contain the resolved live `main` commit. A clean
+synthetic merge, candidate tree equality, an assessment attestation fixture or
+a future squash tree relationship does not substitute for that ancestry
+requirement. Mechanically stale sessions continue to recover through the Phase
+12 operator-owned rebase lane and restart as a new exact-head lifecycle.
 
 ### Delivered durable-session foundation
 
