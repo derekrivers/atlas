@@ -293,6 +293,16 @@ the compare `merge_base_commit.sha` equals the resolved current-main SHA, and
 field, contradictory compare counts, or a transport failure fails closed and
 cannot yield `current`.
 
+ATLAS-259 tested whether a clean GitHub synthetic merge could safely widen this
+definition and recorded **FAIL**. The provider candidate commit/tree was exact,
+but successful required Check Runs were pinned to the contributor head while
+the candidate itself had no Check Runs. Symphony must therefore continue to
+require contributor-branch ancestry of live `main`; it must not dispatch,
+confirm or infer an `exact-base clean` exception from mergeability, a merge ref,
+candidate tree equality, workflow logs or an unpinned branch ref. Head, base,
+candidate, missing, conflict, malformed and indeterminate observations remain
+non-authoritative.
+
 State vocabulary:
 
 - `eligibility`: `eligible`, `merged`, `closed`, `draft`, `fork_head`, or
@@ -313,6 +323,13 @@ branch update, GitHub mutation, Atlas-store row, or Linear transition. Exit
 code is zero only for `integration_status: current`; any rendered non-current,
 indeterminate, or ineligible assessment exits non-zero. Setup and transport
 failures render a single clean error line and no traceback.
+
+The fallback after the spike is the existing eligible stale route named by this
+assessment:
+`uv run atlas pr rebase prepare --pr <N> --repo <owner>/<repo>`. The operator
+continues or aborts only inside that lane's managed worktree and publishes only
+through its exact old-head lease. The new head restarts CI, confirmation and
+acceptance; old candidate or old-head evidence never crosses the rewrite.
 
 The canonical close driver uses the same assessment in process. Its initial
 freshness assessment runs after local/token/operator preflight but before

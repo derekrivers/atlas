@@ -1,0 +1,317 @@
+{
+  "schema_version": 1,
+  "governed_case": "github-pr-329-recorded",
+  "expected_governed_decision": "FAIL",
+  "cases": [
+    {
+      "name": "stable-candidate",
+      "expected_decision": "PASS",
+      "expected_reasons": [],
+      "observations": [
+        {
+          "repository": "fixture/atlas",
+          "pr_number": 259,
+          "head_sha": "2222222222222222222222222222222222222222",
+          "base_ref": "main",
+          "base_sha": "1111111111111111111111111111111111111111",
+          "mergeability": "mergeable",
+          "candidate_sha": "3333333333333333333333333333333333333333",
+          "candidate_tree_sha": "4444444444444444444444444444444444444444",
+          "candidate_parents": [
+            "1111111111111111111111111111111111111111",
+            "2222222222222222222222222222222222222222"
+          ],
+          "required_checks": [
+            {"name": "lint", "app_id": 15368},
+            {"name": "test", "app_id": 15368}
+          ],
+          "check_results": [
+            {"name": "lint", "app_id": 15368, "external_id": "lint-1", "commit_sha": "3333333333333333333333333333333333333333", "status": "completed", "conclusion": "success"},
+            {"name": "test", "app_id": 15368, "external_id": "test-1", "commit_sha": "3333333333333333333333333333333333333333", "status": "completed", "conclusion": "success"}
+          ]
+        },
+        {
+          "repository": "fixture/atlas",
+          "pr_number": 259,
+          "head_sha": "2222222222222222222222222222222222222222",
+          "base_ref": "main",
+          "base_sha": "1111111111111111111111111111111111111111",
+          "mergeability": "mergeable",
+          "candidate_sha": "3333333333333333333333333333333333333333",
+          "candidate_tree_sha": "4444444444444444444444444444444444444444",
+          "candidate_parents": [
+            "1111111111111111111111111111111111111111",
+            "2222222222222222222222222222222222222222"
+          ],
+          "required_checks": [
+            {"name": "lint", "app_id": 15368},
+            {"name": "test", "app_id": 15368}
+          ],
+          "check_results": [
+            {"name": "lint", "app_id": 15368, "external_id": "lint-1", "commit_sha": "3333333333333333333333333333333333333333", "status": "completed", "conclusion": "success"},
+            {"name": "test", "app_id": 15368, "external_id": "test-1", "commit_sha": "3333333333333333333333333333333333333333", "status": "completed", "conclusion": "success"}
+          ]
+        }
+      ]
+    },
+    {
+      "name": "github-pr-329-recorded",
+      "expected_decision": "FAIL",
+      "expected_reasons": ["required_check_not_candidate_pinned"],
+      "observations": [
+        {
+          "repository": "derekrivers/atlas",
+          "pr_number": 329,
+          "head_sha": "499e3687ac66279ae0ea09c571dbe797db8c13f2",
+          "base_ref": "main",
+          "base_sha": "1c1573715f2f672636493896fb0452f4341e9fff",
+          "mergeability": "mergeable",
+          "candidate_sha": "9c756d071289691dd56f769450b1d623d2d3e2ff",
+          "candidate_tree_sha": "44a3ba815f75d8163a0af1ef009a33d4242c6200",
+          "candidate_parents": [
+            "1c1573715f2f672636493896fb0452f4341e9fff",
+            "499e3687ac66279ae0ea09c571dbe797db8c13f2"
+          ],
+          "required_checks": [
+            {"name": "build-operator-ui", "app_id": 15368},
+            {"name": "lint-operator-ui", "app_id": 15368},
+            {"name": "lint-operator-ui-openapi", "app_id": 15368},
+            {"name": "lint-operator-ui-types", "app_id": 15368},
+            {"name": "lint-pr-title", "app_id": 15368},
+            {"name": "test-operator-ui-acceptance", "app_id": 15368},
+            {"name": "test-operator-ui-components", "app_id": 15368},
+            {"name": "test-operator-ui-e2e", "app_id": 15368}
+          ],
+          "check_results": [
+            {"name": "build-operator-ui", "app_id": 15368, "external_id": "95181435156", "commit_sha": "499e3687ac66279ae0ea09c571dbe797db8c13f2", "status": "completed", "conclusion": "success"},
+            {"name": "lint-operator-ui", "app_id": 15368, "external_id": "95181435134", "commit_sha": "499e3687ac66279ae0ea09c571dbe797db8c13f2", "status": "completed", "conclusion": "success"},
+            {"name": "lint-operator-ui-openapi", "app_id": 15368, "external_id": "95181435128", "commit_sha": "499e3687ac66279ae0ea09c571dbe797db8c13f2", "status": "completed", "conclusion": "success"},
+            {"name": "lint-operator-ui-types", "app_id": 15368, "external_id": "95181435146", "commit_sha": "499e3687ac66279ae0ea09c571dbe797db8c13f2", "status": "completed", "conclusion": "success"},
+            {"name": "lint-pr-title", "app_id": 15368, "external_id": "95181435212", "commit_sha": "499e3687ac66279ae0ea09c571dbe797db8c13f2", "status": "completed", "conclusion": "success"},
+            {"name": "test-operator-ui-acceptance", "app_id": 15368, "external_id": "95181435203", "commit_sha": "499e3687ac66279ae0ea09c571dbe797db8c13f2", "status": "completed", "conclusion": "success"},
+            {"name": "test-operator-ui-components", "app_id": 15368, "external_id": "95181435122", "commit_sha": "499e3687ac66279ae0ea09c571dbe797db8c13f2", "status": "completed", "conclusion": "success"},
+            {"name": "test-operator-ui-e2e", "app_id": 15368, "external_id": "95181435200", "commit_sha": "499e3687ac66279ae0ea09c571dbe797db8c13f2", "status": "completed", "conclusion": "success"}
+          ]
+        },
+        {
+          "repository": "derekrivers/atlas",
+          "pr_number": 329,
+          "head_sha": "499e3687ac66279ae0ea09c571dbe797db8c13f2",
+          "base_ref": "main",
+          "base_sha": "1c1573715f2f672636493896fb0452f4341e9fff",
+          "mergeability": "mergeable",
+          "candidate_sha": "9c756d071289691dd56f769450b1d623d2d3e2ff",
+          "candidate_tree_sha": "44a3ba815f75d8163a0af1ef009a33d4242c6200",
+          "candidate_parents": [
+            "1c1573715f2f672636493896fb0452f4341e9fff",
+            "499e3687ac66279ae0ea09c571dbe797db8c13f2"
+          ],
+          "required_checks": [
+            {"name": "build-operator-ui", "app_id": 15368},
+            {"name": "lint-operator-ui", "app_id": 15368},
+            {"name": "lint-operator-ui-openapi", "app_id": 15368},
+            {"name": "lint-operator-ui-types", "app_id": 15368},
+            {"name": "lint-pr-title", "app_id": 15368},
+            {"name": "test-operator-ui-acceptance", "app_id": 15368},
+            {"name": "test-operator-ui-components", "app_id": 15368},
+            {"name": "test-operator-ui-e2e", "app_id": 15368}
+          ],
+          "check_results": [
+            {"name": "build-operator-ui", "app_id": 15368, "external_id": "95181435156", "commit_sha": "499e3687ac66279ae0ea09c571dbe797db8c13f2", "status": "completed", "conclusion": "success"},
+            {"name": "lint-operator-ui", "app_id": 15368, "external_id": "95181435134", "commit_sha": "499e3687ac66279ae0ea09c571dbe797db8c13f2", "status": "completed", "conclusion": "success"},
+            {"name": "lint-operator-ui-openapi", "app_id": 15368, "external_id": "95181435128", "commit_sha": "499e3687ac66279ae0ea09c571dbe797db8c13f2", "status": "completed", "conclusion": "success"},
+            {"name": "lint-operator-ui-types", "app_id": 15368, "external_id": "95181435146", "commit_sha": "499e3687ac66279ae0ea09c571dbe797db8c13f2", "status": "completed", "conclusion": "success"},
+            {"name": "lint-pr-title", "app_id": 15368, "external_id": "95181435212", "commit_sha": "499e3687ac66279ae0ea09c571dbe797db8c13f2", "status": "completed", "conclusion": "success"},
+            {"name": "test-operator-ui-acceptance", "app_id": 15368, "external_id": "95181435203", "commit_sha": "499e3687ac66279ae0ea09c571dbe797db8c13f2", "status": "completed", "conclusion": "success"},
+            {"name": "test-operator-ui-components", "app_id": 15368, "external_id": "95181435122", "commit_sha": "499e3687ac66279ae0ea09c571dbe797db8c13f2", "status": "completed", "conclusion": "success"},
+            {"name": "test-operator-ui-e2e", "app_id": 15368, "external_id": "95181435200", "commit_sha": "499e3687ac66279ae0ea09c571dbe797db8c13f2", "status": "completed", "conclusion": "success"}
+          ]
+        }
+      ]
+    },
+    {
+      "name": "head-moved",
+      "expected_decision": "FAIL",
+      "expected_reasons": ["head_moved", "candidate_moved"],
+      "observations": [
+        {
+          "repository": "fixture/atlas", "pr_number": 259,
+          "head_sha": "2222222222222222222222222222222222222222",
+          "base_ref": "main", "base_sha": "1111111111111111111111111111111111111111",
+          "mergeability": "mergeable",
+          "candidate_sha": "3333333333333333333333333333333333333333",
+          "candidate_tree_sha": "4444444444444444444444444444444444444444",
+          "candidate_parents": ["1111111111111111111111111111111111111111", "2222222222222222222222222222222222222222"],
+          "required_checks": [{"name": "test", "app_id": 15368}],
+          "check_results": [{"name": "test", "app_id": 15368, "external_id": "test-1", "commit_sha": "3333333333333333333333333333333333333333", "status": "completed", "conclusion": "success"}]
+        },
+        {
+          "repository": "fixture/atlas", "pr_number": 259,
+          "head_sha": "5555555555555555555555555555555555555555",
+          "base_ref": "main", "base_sha": "1111111111111111111111111111111111111111",
+          "mergeability": "mergeable",
+          "candidate_sha": "6666666666666666666666666666666666666666",
+          "candidate_tree_sha": "7777777777777777777777777777777777777777",
+          "candidate_parents": ["1111111111111111111111111111111111111111", "5555555555555555555555555555555555555555"],
+          "required_checks": [{"name": "test", "app_id": 15368}],
+          "check_results": [{"name": "test", "app_id": 15368, "external_id": "test-2", "commit_sha": "6666666666666666666666666666666666666666", "status": "completed", "conclusion": "success"}]
+        }
+      ]
+    },
+    {
+      "name": "sibling-main-moved",
+      "expected_decision": "FAIL",
+      "expected_reasons": ["base_moved", "candidate_moved"],
+      "observations": [
+        {
+          "repository": "fixture/atlas", "pr_number": 259,
+          "head_sha": "2222222222222222222222222222222222222222",
+          "base_ref": "main", "base_sha": "1111111111111111111111111111111111111111",
+          "mergeability": "mergeable",
+          "candidate_sha": "3333333333333333333333333333333333333333",
+          "candidate_tree_sha": "4444444444444444444444444444444444444444",
+          "candidate_parents": ["1111111111111111111111111111111111111111", "2222222222222222222222222222222222222222"],
+          "required_checks": [{"name": "test", "app_id": 15368}],
+          "check_results": [{"name": "test", "app_id": 15368, "external_id": "test-1", "commit_sha": "3333333333333333333333333333333333333333", "status": "completed", "conclusion": "success"}]
+        },
+        {
+          "repository": "fixture/atlas", "pr_number": 259,
+          "head_sha": "2222222222222222222222222222222222222222",
+          "base_ref": "main", "base_sha": "8888888888888888888888888888888888888888",
+          "mergeability": "mergeable",
+          "candidate_sha": "9999999999999999999999999999999999999999",
+          "candidate_tree_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "candidate_parents": ["8888888888888888888888888888888888888888", "2222222222222222222222222222222222222222"],
+          "required_checks": [{"name": "test", "app_id": 15368}],
+          "check_results": [{"name": "test", "app_id": 15368, "external_id": "test-2", "commit_sha": "9999999999999999999999999999999999999999", "status": "completed", "conclusion": "success"}]
+        }
+      ]
+    },
+    {
+      "name": "candidate-missing",
+      "expected_decision": "FAIL",
+      "expected_reasons": ["candidate_missing"],
+      "observations": [
+        {
+          "repository": "fixture/atlas", "pr_number": 259,
+          "head_sha": "2222222222222222222222222222222222222222", "base_ref": "main", "base_sha": "1111111111111111111111111111111111111111",
+          "mergeability": "mergeable", "candidate_sha": null, "candidate_tree_sha": null, "candidate_parents": [],
+          "required_checks": [{"name": "test", "app_id": 15368}], "check_results": []
+        },
+        {
+          "repository": "fixture/atlas", "pr_number": 259,
+          "head_sha": "2222222222222222222222222222222222222222", "base_ref": "main", "base_sha": "1111111111111111111111111111111111111111",
+          "mergeability": "mergeable", "candidate_sha": null, "candidate_tree_sha": null, "candidate_parents": [],
+          "required_checks": [{"name": "test", "app_id": 15368}], "check_results": []
+        }
+      ]
+    },
+    {
+      "name": "candidate-conflicted",
+      "expected_decision": "FAIL",
+      "expected_reasons": ["candidate_conflicted", "candidate_missing"],
+      "observations": [
+        {
+          "repository": "fixture/atlas", "pr_number": 259,
+          "head_sha": "2222222222222222222222222222222222222222", "base_ref": "main", "base_sha": "1111111111111111111111111111111111111111",
+          "mergeability": "conflicted", "candidate_sha": null, "candidate_tree_sha": null, "candidate_parents": [],
+          "required_checks": [{"name": "test", "app_id": 15368}], "check_results": []
+        },
+        {
+          "repository": "fixture/atlas", "pr_number": 259,
+          "head_sha": "2222222222222222222222222222222222222222", "base_ref": "main", "base_sha": "1111111111111111111111111111111111111111",
+          "mergeability": "conflicted", "candidate_sha": null, "candidate_tree_sha": null, "candidate_parents": [],
+          "required_checks": [{"name": "test", "app_id": 15368}], "check_results": []
+        }
+      ]
+    },
+    {
+      "name": "mergeability-indeterminate",
+      "expected_decision": "FAIL",
+      "expected_reasons": ["mergeability_indeterminate"],
+      "observations": [
+        {
+          "repository": "fixture/atlas", "pr_number": 259,
+          "head_sha": "2222222222222222222222222222222222222222", "base_ref": "main", "base_sha": "1111111111111111111111111111111111111111",
+          "mergeability": "indeterminate", "candidate_sha": "3333333333333333333333333333333333333333", "candidate_tree_sha": "4444444444444444444444444444444444444444",
+          "candidate_parents": ["1111111111111111111111111111111111111111", "2222222222222222222222222222222222222222"],
+          "required_checks": [{"name": "test", "app_id": 15368}],
+          "check_results": [{"name": "test", "app_id": 15368, "external_id": "test-1", "commit_sha": "3333333333333333333333333333333333333333", "status": "completed", "conclusion": "success"}]
+        },
+        {
+          "repository": "fixture/atlas", "pr_number": 259,
+          "head_sha": "2222222222222222222222222222222222222222", "base_ref": "main", "base_sha": "1111111111111111111111111111111111111111",
+          "mergeability": "indeterminate", "candidate_sha": "3333333333333333333333333333333333333333", "candidate_tree_sha": "4444444444444444444444444444444444444444",
+          "candidate_parents": ["1111111111111111111111111111111111111111", "2222222222222222222222222222222222222222"],
+          "required_checks": [{"name": "test", "app_id": 15368}],
+          "check_results": [{"name": "test", "app_id": 15368, "external_id": "test-1", "commit_sha": "3333333333333333333333333333333333333333", "status": "completed", "conclusion": "success"}]
+        }
+      ]
+    },
+    {
+      "name": "provider-candidate-ambiguity",
+      "expected_decision": "FAIL",
+      "expected_reasons": ["candidate_moved"],
+      "observations": [
+        {
+          "repository": "fixture/atlas", "pr_number": 259,
+          "head_sha": "2222222222222222222222222222222222222222", "base_ref": "main", "base_sha": "1111111111111111111111111111111111111111",
+          "mergeability": "mergeable", "candidate_sha": "3333333333333333333333333333333333333333", "candidate_tree_sha": "4444444444444444444444444444444444444444",
+          "candidate_parents": ["1111111111111111111111111111111111111111", "2222222222222222222222222222222222222222"],
+          "required_checks": [{"name": "test", "app_id": 15368}],
+          "check_results": [{"name": "test", "app_id": 15368, "external_id": "test-1", "commit_sha": "3333333333333333333333333333333333333333", "status": "completed", "conclusion": "success"}]
+        },
+        {
+          "repository": "fixture/atlas", "pr_number": 259,
+          "head_sha": "2222222222222222222222222222222222222222", "base_ref": "main", "base_sha": "1111111111111111111111111111111111111111",
+          "mergeability": "mergeable", "candidate_sha": "6666666666666666666666666666666666666666", "candidate_tree_sha": "7777777777777777777777777777777777777777",
+          "candidate_parents": ["1111111111111111111111111111111111111111", "2222222222222222222222222222222222222222"],
+          "required_checks": [{"name": "test", "app_id": 15368}],
+          "check_results": [{"name": "test", "app_id": 15368, "external_id": "test-2", "commit_sha": "6666666666666666666666666666666666666666", "status": "completed", "conclusion": "success"}]
+        }
+      ]
+    },
+    {
+      "name": "malformed-candidate",
+      "expected_decision": "FAIL",
+      "expected_reasons": ["malformed_observation"],
+      "observations": [
+        {
+          "repository": "fixture/atlas", "pr_number": 259,
+          "head_sha": "not-a-sha", "base_ref": "main", "base_sha": "1111111111111111111111111111111111111111",
+          "mergeability": "mergeable", "candidate_sha": "3333333333333333333333333333333333333333", "candidate_tree_sha": "4444444444444444444444444444444444444444",
+          "candidate_parents": ["1111111111111111111111111111111111111111", "2222222222222222222222222222222222222222"],
+          "required_checks": [{"name": "test", "app_id": 15368}], "check_results": []
+        },
+        {
+          "repository": "fixture/atlas", "pr_number": 259,
+          "head_sha": "2222222222222222222222222222222222222222", "base_ref": "main", "base_sha": "1111111111111111111111111111111111111111",
+          "mergeability": "mergeable", "candidate_sha": "3333333333333333333333333333333333333333", "candidate_tree_sha": "4444444444444444444444444444444444444444",
+          "candidate_parents": ["1111111111111111111111111111111111111111", "2222222222222222222222222222222222222222"],
+          "required_checks": [{"name": "test", "app_id": 15368}], "check_results": []
+        }
+      ]
+    },
+    {
+      "name": "required-check-missing",
+      "expected_decision": "FAIL",
+      "expected_reasons": ["required_check_missing"],
+      "observations": [
+        {
+          "repository": "fixture/atlas", "pr_number": 259,
+          "head_sha": "2222222222222222222222222222222222222222", "base_ref": "main", "base_sha": "1111111111111111111111111111111111111111",
+          "mergeability": "mergeable", "candidate_sha": "3333333333333333333333333333333333333333", "candidate_tree_sha": "4444444444444444444444444444444444444444",
+          "candidate_parents": ["1111111111111111111111111111111111111111", "2222222222222222222222222222222222222222"],
+          "required_checks": [{"name": "test", "app_id": 15368}], "check_results": []
+        },
+        {
+          "repository": "fixture/atlas", "pr_number": 259,
+          "head_sha": "2222222222222222222222222222222222222222", "base_ref": "main", "base_sha": "1111111111111111111111111111111111111111",
+          "mergeability": "mergeable", "candidate_sha": "3333333333333333333333333333333333333333", "candidate_tree_sha": "4444444444444444444444444444444444444444",
+          "candidate_parents": ["1111111111111111111111111111111111111111", "2222222222222222222222222222222222222222"],
+          "required_checks": [{"name": "test", "app_id": 15368}], "check_results": []
+        }
+      ]
+    }
+  ]
+}

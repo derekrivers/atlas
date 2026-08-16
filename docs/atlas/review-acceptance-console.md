@@ -34,6 +34,11 @@ outside the browser workflow in this phase.
   A mutation that observes movement marks the session stale; a GET reports the
   mismatch without rewriting stored history. A historical PR `base.sha` from
   an ineligible assessment is not evidence that live `main` moved.
+- ATLAS-259's exact-base synthetic-candidate spike is FAIL. GitHub exposed the
+  tested integration commit and tree, but this repository's successful required
+  Check Runs remained attached to the contributor head and the candidate had no
+  Check Runs of its own. A synthetic candidate is therefore diagnostic only;
+  it cannot create, refresh or authorise an acceptance session.
 - A stale session is immutable history. The operator starts a new session;
   Atlas never retargets an old session to a new head.
 - The final readiness result is advisory authority for the operator's manual
@@ -86,6 +91,14 @@ session pins exactly one head.
 Creating it again with the same command key replays the existing result.
 Creating a new session after head movement creates a new record and leaves the
 old record intact.
+
+The delivered session identity is intentionally unchanged by the Phase 15.5
+spike. Until a later governed design can supply candidate-pinned system-tier
+checks, `head_sha` must itself contain the resolved live `main` commit. A clean
+synthetic merge, candidate tree equality or a future squash tree relationship
+does not substitute for that ancestry requirement. Mechanically stale sessions
+continue to recover through the Phase 12 operator-owned rebase lane and restart
+as a new exact-head lifecycle.
 
 ### Delivered durable-session foundation
 
