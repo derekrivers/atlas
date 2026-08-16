@@ -17,6 +17,11 @@ from atlas.storage.ci_handoff_coordination import (
     CIHandoffWriteFenceError,
 )
 from atlas.storage.db import Database
+from atlas.storage.delivery_control_snapshot import (
+    DeliveryControlEvidenceIdentity,
+    DeliveryControlSnapshotRepo,
+    DeliveryControlSourceSnapshot,
+)
 from atlas.storage.maintenance import clear_all_data
 from atlas.storage.repositories import (
     RAW_PAYLOAD_CAP_BYTES,
@@ -76,6 +81,9 @@ __all__ = [
     "Database",
     "DebtItemRepo",
     "DeliveryAdmissionPolicyRepo",
+    "DeliveryControlEvidenceIdentity",
+    "DeliveryControlSnapshotRepo",
+    "DeliveryControlSourceSnapshot",
     "EffortValidationError",
     "EpicRepo",
     "EvidenceRepo",

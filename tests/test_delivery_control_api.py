@@ -18,12 +18,29 @@ from test_plan_pipeline import fresh_db
 from atlas.api.app import create_app
 from atlas.api.dependencies import get_delivery_admission_policy_service
 from atlas.api.security import CSRF_HEADER_NAME
-from atlas.core.enums import ActorType, RiskLevel
+from atlas.core.enums import ActorType, EvidenceStatus, RiskLevel
 from atlas.core.models import (
+    AcceptanceSession,
+    AcceptanceSessionBlockingReason,
+    AcceptanceSessionLifecycle,
+    AcceptanceSessionStep,
+    AcceptanceSessionStepState,
     AdmissionRun,
+    CIHandoffClassification,
+    CIHandoffDecision,
+    CIHandoffReason,
+    CIHandoffReconciliation,
+    Evidence,
+    EvidenceType,
     PmSyncReceipt,
     PmSyncReceiptResult,
     Ticket,
+    VerificationCheckType,
+)
+from atlas.core.models.acceptance_session import (
+    AcceptanceAssessmentSnapshot,
+    AcceptanceCriterionSnapshot,
+    AcceptanceStepSummary,
 )
 from atlas.core.models.admission_run import (
     AdmissionCandidateDecision,
@@ -32,7 +49,9 @@ from atlas.core.models.admission_run import (
     AdmissionHoldReason,
     AdmissionRankInputs,
 )
+from atlas.core.models.ci_handoff_reconciliation import CIHandoffCheckResult
 from atlas.core.models.delivery_admission_policy import DeliveryAdmissionPolicySpec
+from atlas.github import GitHubClient
 from atlas.linear.client import LinearClient
 from atlas.orchestration import (
     DeliveryAdmissionPolicyChangeResult,
@@ -42,15 +61,19 @@ from atlas.orchestration import (
 )
 from atlas.pm import SnapshotIncompletenessCode, delivery_policy_fingerprint
 from atlas.storage import (
+    AcceptanceSessionRepo,
     AdmissionCoordinationRepo,
     AdmissionRunRepo,
+    CIHandoffReconciliationRepo,
     Database,
     DeliveryAdmissionPolicyRepo,
+    EvidenceRepo,
     OperatorActionReceiptRepo,
     PmSyncReceiptRepo,
     ProductRepo,
     TicketRepo,
 )
+from atlas.verification import validation_plan as validation_plan_module
 
 GOOD_TOKEN = "atlas-operator-token-0123456789ABCDEFGHJKLMNPQRSTxyz!@#"
 LOOPBACK_HOST = "127.0.0.1:4173"
@@ -177,6 +200,7 @@ def _ticket(
     status: str,
     risk_level: str = "low",
     component: str | None = None,
+    **overrides: Any,
 ) -> Ticket:
     return TicketRepo(database).add(
         Ticket(
@@ -192,8 +216,128 @@ def _ticket(
                 "created_at": NOW,
                 "updated_at": NOW,
             }
+            | overrides
         )
     )
+
+
+def _seed_ci_reconciliation(
+    database: Database,
+    *,
+    ticket: Ticket,
+    classification: CIHandoffClassification,
+    reason: CIHandoffReason,
+    decision: CIHandoffDecision,
+    status: EvidenceStatus,
+    evidence_ids: tuple[UUID, ...] = (),
+    head_sha: str = "2" * 40,
+    pr_number: int = 438,
+) -> CIHandoffReconciliation:
+    policy = DeliveryAdmissionPolicyRepo(database).get_active(_product_id(database))
+    assert policy is not None
+    return CIHandoffReconciliationRepo(database).record(
+        CIHandoffReconciliation(
+            id=uuid4(),
+            product_id=policy.product_id,
+            ticket_id=ticket.id,
+            ticket_key=ticket.key,
+            linear_issue_id=ticket.external_linear_id,
+            repository_owner="acme",
+            repository_name="atlas",
+            pr_number=pr_number,
+            head_commit=head_sha,
+            policy_id=policy.id,
+            policy_revision=policy.revision,
+            policy_fingerprint=delivery_policy_fingerprint(policy),
+            snapshot_fingerprint="a" * 64,
+            classification=classification,
+            reason=reason,
+            decision=decision,
+            check_results=(
+                CIHandoffCheckResult(
+                    check_type=VerificationCheckType.TESTS,
+                    status=status,
+                    classification=classification,
+                    evidence_ids=evidence_ids,
+                ),
+            ),
+            observed_at=NOW + timedelta(minutes=2),
+            created_by_type=ActorType.SYSTEM,
+            created_by_id="atlas.pm.ci_handoff",
+        )
+    )
+
+
+def _seed_acceptance_assessment(
+    database: Database,
+    *,
+    ticket_key: str,
+    head_sha: str,
+    pr_number: int,
+) -> AcceptanceSession:
+    step_summaries = {
+        step: AcceptanceStepSummary(
+            state=(
+                AcceptanceSessionStepState.COMPLETE
+                if step is AcceptanceSessionStep.PREFLIGHT
+                else AcceptanceSessionStepState.PENDING
+            ),
+            occurred_at=(NOW if step is AcceptanceSessionStep.PREFLIGHT else None),
+        )
+        for step in AcceptanceSessionStep
+    }
+    session = AcceptanceSession(
+        id=uuid4(),
+        repository_owner="acme",
+        repository_name="atlas",
+        pr_number=pr_number,
+        close_set=(ticket_key,),
+        head_ref="agent/candidate",
+        head_sha=head_sha,
+        head_repository="acme/atlas",
+        base_ref="main",
+        base_sha="1" * 40,
+        base_repository="acme/atlas",
+        initial_assessment=AcceptanceAssessmentSnapshot(
+            pr_state="open",
+            pr_draft=False,
+            pr_merged=False,
+            base_sha_source="live_branch",
+            merge_base_sha="1" * 40,
+            ahead_by=1,
+            behind_by=0,
+            compare_status="ahead",
+            mergeability="mergeable",
+            ancestry="current",
+            eligibility="eligible",
+            integration_status="current",
+        ),
+        criteria_snapshot=(
+            AcceptanceCriterionSnapshot(
+                ticket_key=ticket_key,
+                criterion_index=0,
+                text="Prove the delivery-control projection.",
+            ),
+        ),
+        criteria_fingerprint=f"sha256:{'c' * 64}",
+        creation_idempotency_key_identity=f"sha256:{'d' * 64}",
+        created_by_type=ActorType.HUMAN,
+        created_by_id="operator",
+        lifecycle=AcceptanceSessionLifecycle.PREFLIGHT_PASSED,
+        step_summaries=step_summaries,
+        blocking_reasons=(),
+        stored_merge_ready=False,
+        historical_readiness_reasons=(
+            AcceptanceSessionBlockingReason.EVIDENCE_NOT_READY,
+            AcceptanceSessionBlockingReason.CONFIRMATIONS_NOT_READY,
+            AcceptanceSessionBlockingReason.VERIFICATION_NOT_PASSED,
+        ),
+        created_at=NOW,
+        updated_at=NOW,
+    )
+    result = AcceptanceSessionRepo(database).create(session)
+    assert result.created is True
+    return result.session
 
 
 def _receipt(
@@ -518,6 +662,13 @@ def test_ac4_get_is_observational_and_never_uses_mutating_boundaries(
 
     monkeypatch.setattr(AdmissionCoordinationRepo, "try_acquire", forbidden)
     monkeypatch.setattr(LinearClient, "fetch_project_issues", forbidden)
+    monkeypatch.setattr(GitHubClient, "fetch_pull_request", forbidden)
+    monkeypatch.setattr(GitHubClient, "fetch_branch_head", forbidden)
+    monkeypatch.setattr(GitHubClient, "compare_commits", forbidden)
+    monkeypatch.setattr(validation_plan_module, "calculate_validation_plan", forbidden)
+    monkeypatch.setattr(CIHandoffReconciliationRepo, "record", forbidden)
+    monkeypatch.setattr(AcceptanceSessionRepo, "mark_stale", forbidden)
+    monkeypatch.setattr(TicketRepo, "apply_linear_status", forbidden)
     monkeypatch.setattr(
         DeliveryAdmissionPolicyService,
         "revise_current",
@@ -564,6 +715,313 @@ def test_operator_amendment_get_reports_policy_without_reading_workflow(
 
     assert response.status_code == 200
     assert response.json()["policy"]["approved_symphony_ceiling"] == 3
+
+
+def test_atlas_261_ac1_ac2_coherent_snapshot_exposes_exact_source_identities(
+    database: Database,
+) -> None:
+    seeded = _seed_policy(database, spec=policy_spec(integration_budget=3))
+    assert seeded.policy is not None
+    board = _receipt(
+        database,
+        result=PmSyncReceiptResult.SUCCESS_STATUS_ONLY,
+        finished_at=NOW + timedelta(minutes=1),
+    )
+
+    with TestClient(_writable_app(database)) as client:
+        _login(client)
+        response = client.get("/api/v1/delivery-control")
+
+    assert response.status_code == 200
+    payload = response.json()
+    snapshot = payload["snapshot"]
+    assert snapshot["status"] == "coherent"
+    assert snapshot["reasons"] == []
+    assert snapshot["policy_id"] == str(seeded.policy.id)
+    assert snapshot["policy_revision"] == seeded.policy.revision
+    assert snapshot["board"] == {
+        "status": "coherent",
+        "reasons": [],
+        "receipt_id": str(board.id),
+        "status_map_fingerprint": board.status_map_fingerprint,
+        "fetched_board_fingerprint": board.fetched_board_fingerprint,
+        "fetched_board_issue_count": board.fetched_board_issue_count,
+        "observed_at": board.finished_at.isoformat().replace("+00:00", "Z"),
+        "latest_attempt_receipt_id": str(board.id),
+        "latest_attempt_result": board.result.value,
+        "latest_attempt_finished_at": board.finished_at.isoformat().replace(
+            "+00:00", "Z"
+        ),
+        "materialized_ticket_fingerprint": snapshot["board"][
+            "materialized_ticket_fingerprint"
+        ],
+    }
+    assert len(snapshot["fingerprint"]) == 64
+    assert len(snapshot["policy_fingerprint"]) == 64
+    assert len(snapshot["board"]["materialized_ticket_fingerprint"]) == 64
+    assert snapshot["evidence"]["evidence_count"] == 0
+    assert snapshot["integration"]["validation_registry_version"] == (
+        "validation-registry/v1"
+    )
+    assert payload["occupancy"]["integration_occupancy"] == 0
+    assert payload["occupancy"]["new_admission_integration_capacity"] == 3
+    assert payload["ci_pending_ticket_count"] == 0
+
+
+def test_atlas_261_ac2_stale_board_is_visible_and_never_available_capacity(
+    database: Database,
+) -> None:
+    _seed_policy(database, spec=policy_spec(integration_budget=3))
+    successful = _receipt(
+        database,
+        result=PmSyncReceiptResult.SUCCESS_ZERO_ACTION,
+        finished_at=NOW + timedelta(minutes=1),
+    )
+    failed = _receipt(
+        database,
+        result=PmSyncReceiptResult.FAILED,
+        finished_at=NOW + timedelta(minutes=2),
+        error_summary="credential=must-not-project /workspace/private traceback",
+    )
+
+    with TestClient(_writable_app(database)) as client:
+        _login(client)
+        response = client.get("/api/v1/delivery-control")
+
+    payload = response.json()
+    assert payload["snapshot"]["status"] == "stale"
+    assert payload["snapshot"]["reasons"] == ["newer_board_refresh_unsuccessful"]
+    board = payload["snapshot"]["board"]
+    assert board["receipt_id"] == str(successful.id)
+    assert board["latest_attempt_receipt_id"] == str(failed.id)
+    assert board["latest_attempt_result"] == "failed"
+    assert payload["occupancy"]["new_admission_integration_capacity"] == 0
+    assert payload["occupancy"]["new_admission_working_capacity"] == 0
+    assert "must-not-project" not in response.text
+    assert "/workspace/private" not in response.text
+
+
+def test_atlas_261_ac1_over_capacity_and_protected_lane_owners_are_explicit(
+    database: Database,
+) -> None:
+    _seed_policy(database, spec=policy_spec(integration_budget=1))
+    _receipt(
+        database,
+        result=PmSyncReceiptResult.SUCCESS_ZERO_ACTION,
+        finished_at=NOW + timedelta(minutes=1),
+    )
+    for number in (901, 902):
+        _ticket(
+            database,
+            key=f"ATLAS-{number}",
+            status="ci_pending",
+            component="delivery-control",
+        )
+
+    with TestClient(_writable_app(database)) as client:
+        _login(client)
+        response = client.get("/api/v1/delivery-control")
+
+    payload = response.json()
+    occupancy = payload["occupancy"]
+    assert occupancy["integration_occupancy"] == 2
+    assert occupancy["new_admission_integration_capacity"] == 0
+    protected = {lane["lane"]: lane for lane in occupancy["protected_lane_occupancy"]}
+    assert protected["operator-admission-hotspot"] == {
+        "lane": "operator-admission-hotspot",
+        "count": 2,
+        "limit": 1,
+        "ticket_keys": ["ATLAS-901", "ATLAS-902"],
+        "operator_declared": True,
+    }
+    assert {
+        (reason["dimension"], reason["selector"])
+        for reason in occupancy["over_capacity_reasons"]
+    } >= {
+        ("integration", None),
+        ("protected_lane", "operator-admission-hotspot"),
+    }
+    assert payload["snapshot"]["status"] == "indeterminate"
+    assert set(payload["snapshot"]["reasons"]) >= {
+        "ci_reconciliation_unavailable",
+        "validation_plan_provenance_unavailable",
+        "exact_base_assessment_unavailable",
+    }
+
+
+def test_atlas_261_ac1_ac5_ci_failures_waits_and_evidence_are_typed_and_secret_free(
+    database: Database,
+) -> None:
+    _seed_policy(database, spec=policy_spec(integration_budget=3))
+    _receipt(
+        database,
+        result=PmSyncReceiptResult.SUCCESS_ZERO_ACTION,
+        finished_at=NOW + timedelta(minutes=1),
+    )
+    failed_ticket = _ticket(database, key="ATLAS-910", status="ci_pending")
+    pending_ticket = _ticket(database, key="ATLAS-911", status="ci_pending")
+    secret = "provider-token=ci-secret /workspace/agent raw-command-output"
+    evidence = EvidenceRepo(database).add(
+        Evidence(
+            id=uuid4(),
+            product_id=_product_id(database),
+            ticket_id=failed_ticket.id,
+            evidence_type=EvidenceType.TEST_RESULT,
+            status=EvidenceStatus.FAILED,
+            summary=secret,
+            commit_sha="2" * 40,
+            external_run_id=f"run-{secret}",
+            job_name="tests",
+            source_event_at=NOW + timedelta(minutes=1),
+            payload_hash="e" * 64,
+            source_uri=f"https://example.invalid/{secret}",
+            raw_payload={"secret": secret, "logs": [secret]},
+            created_by_type=ActorType.SYSTEM,
+            created_by_id="github",
+            created_at=NOW + timedelta(minutes=1),
+        )
+    )
+    failed = _seed_ci_reconciliation(
+        database,
+        ticket=failed_ticket,
+        classification=CIHandoffClassification.IMPLEMENTATION_FAILURE,
+        reason=CIHandoffReason.COMPLETE_IMPLEMENTATION_FAILURE,
+        decision=CIHandoffDecision.CHANGES_REQUESTED,
+        status=EvidenceStatus.FAILED,
+        evidence_ids=(evidence.id,),
+        pr_number=410,
+    )
+    pending = _seed_ci_reconciliation(
+        database,
+        ticket=pending_ticket,
+        classification=CIHandoffClassification.PENDING,
+        reason=CIHandoffReason.REQUIRED_CHECKS_PENDING,
+        decision=CIHandoffDecision.HOLD,
+        status=EvidenceStatus.PENDING,
+        pr_number=411,
+    )
+
+    with TestClient(_writable_app(database)) as client:
+        _login(client)
+        response = client.get("/api/v1/delivery-control")
+
+    payload = response.json()
+    assert payload["ci_pending_ticket_count"] == 2
+    tickets = {item["ticket_key"]: item for item in payload["ci_pending_tickets"]}
+    failed_item = tickets[failed_ticket.key]
+    assert failed_item["outcome"]["reconciliation_id"] == str(failed.id)
+    assert failed_item["outcome"]["classification"] == "implementation_failure"
+    assert failed_item["outcome"]["decision"] == "changes_requested"
+    assert failed_item["outcome"]["reason"] == "complete_implementation_failure"
+    assert failed_item["outcome"]["check_results"] == [
+        {
+            "check_type": "tests",
+            "status": "failed",
+            "classification": "implementation_failure",
+            "evidence_count": 1,
+            "evidence_ids": [str(evidence.id)],
+            "evidence_ids_truncated": False,
+        }
+    ]
+    assert failed_item["validation_plan"]["status"] == "indeterminate"
+    assert failed_item["validation_plan"]["head_sha"] == "2" * 40
+    assert failed_item["validation_plan"]["reasons"] == [
+        "validation_plan_provenance_unavailable"
+    ]
+    assert failed_item["exact_base"]["status"] == "indeterminate"
+    pending_item = tickets[pending_ticket.key]
+    assert pending_item["outcome"]["reconciliation_id"] == str(pending.id)
+    assert pending_item["outcome"]["classification"] == "pending"
+    assert pending_item["outcome"]["decision"] == "hold"
+    assert pending_item["outcome"]["reason"] == "required_checks_pending"
+    assert payload["snapshot"]["evidence"]["evidence_ids"] == [str(evidence.id)]
+    assert secret not in response.text
+    assert "raw_payload" not in response.text
+    assert "command-output" not in response.text
+
+
+@pytest.mark.parametrize(
+    ("blocking_reason", "expected_status", "expected_reason"),
+    [
+        (
+            AcceptanceSessionBlockingReason.INTEGRATION_BEHIND,
+            "rebase_required",
+            "integration_behind",
+        ),
+        (
+            AcceptanceSessionBlockingReason.INTEGRATION_DIVERGED,
+            "rebase_required",
+            "integration_diverged",
+        ),
+        (
+            AcceptanceSessionBlockingReason.INTEGRATION_CONFLICTED,
+            "rebase_required",
+            "integration_conflicted",
+        ),
+        (
+            AcceptanceSessionBlockingReason.INTEGRATION_INDETERMINATE,
+            "indeterminate",
+            "integration_indeterminate",
+        ),
+    ],
+)
+def test_atlas_261_ac1_stored_exact_base_states_are_not_actions(
+    database: Database,
+    blocking_reason: AcceptanceSessionBlockingReason,
+    expected_status: str,
+    expected_reason: str,
+) -> None:
+    _seed_policy(database, spec=policy_spec(integration_budget=2))
+    _receipt(
+        database,
+        result=PmSyncReceiptResult.SUCCESS_ZERO_ACTION,
+        finished_at=NOW + timedelta(minutes=1),
+    )
+    ticket = _ticket(database, key="ATLAS-920", status="ci_pending")
+    reconciliation = _seed_ci_reconciliation(
+        database,
+        ticket=ticket,
+        classification=CIHandoffClassification.PENDING,
+        reason=CIHandoffReason.REQUIRED_CHECKS_PENDING,
+        decision=CIHandoffDecision.HOLD,
+        status=EvidenceStatus.PENDING,
+        head_sha="3" * 40,
+        pr_number=420,
+    )
+    session = _seed_acceptance_assessment(
+        database,
+        ticket_key=ticket.key,
+        head_sha=reconciliation.head_commit,
+        pr_number=reconciliation.pr_number,
+    )
+
+    with TestClient(_writable_app(database)) as client:
+        _login(client)
+        current = client.get("/api/v1/delivery-control")
+
+    exact = current.json()["ci_pending_tickets"][0]["exact_base"]
+    assert exact == {
+        "status": "exact_branch",
+        "assessment_id": str(session.id),
+        "head_sha": reconciliation.head_commit,
+        "base_sha": "1" * 40,
+        "observed_at": NOW.isoformat().replace("+00:00", "Z"),
+        "reasons": [],
+    }
+
+    AcceptanceSessionRepo(database).mark_stale(
+        session.id,
+        (blocking_reason,),
+        staled_at=NOW + timedelta(minutes=3),
+    )
+    with TestClient(_writable_app(database)) as client:
+        _login(client)
+        stale = client.get("/api/v1/delivery-control")
+
+    rebase = stale.json()["ci_pending_tickets"][0]["exact_base"]
+    assert rebase["status"] == expected_status
+    assert rebase["reasons"] == [expected_reason]
+    assert rebase["assessment_id"] == str(session.id)
 
 
 @pytest.mark.parametrize(
@@ -623,6 +1081,9 @@ def test_ac3_policy_security_fails_before_the_one_service_call(
             if key != "risk_lane_limits"
         },
         _policy_body(working_budget=True),
+        _policy_body(integration_budget=True),
+        _policy_body(integration_budget=0),
+        _policy_body(integration_budget=11),
         _policy_body(
             component_lane_limits=[
                 {"component": "Atlas.API", "limit": 1},
@@ -884,6 +1345,8 @@ def test_ac6_route_inventory_rejects_worker_ticket_and_ceiling_control(
     }
 
     forbidden_fragments = {
+        "branch-update",
+        "ci-retry",
         "ticket-status",
         "dispatch",
         "cancel",
@@ -909,7 +1372,14 @@ def test_ac6_route_inventory_rejects_worker_ticket_and_ceiling_control(
             ("PUT", "/api/v1/delivery-control/policy"),
             ("POST", "/api/v1/delivery-control/automatic-ceiling"),
             ("POST", "/api/v1/delivery-control/dispatch"),
+            ("POST", "/api/v1/delivery-control/ci/410/retry"),
+            ("POST", "/api/v1/delivery-control/ci/410/cancel"),
+            ("POST", "/api/v1/delivery-control/branches/main/update"),
+            ("POST", "/api/v1/delivery-control/branches/main/rebase"),
+            ("POST", "/api/v1/delivery-control/merge"),
+            ("POST", "/api/v1/delivery-control/workers/1/cancel"),
             ("POST", "/api/v1/tickets/ATL-423/status"),
+            ("POST", "/api/v1/tickets/ATL-423/transition"),
             ("POST", "/api/v1/reviews/1/merge"),
             ("POST", "/api/v1/reviews/1/rebase"),
         ):
@@ -981,6 +1451,39 @@ def test_ac7_openapi_pins_authentication_strict_policy_and_bounded_enums(
         "write_indeterminate",
         "indeterminate_still_unresolved",
     }
+    assert set(schemas["DeliveryControlSnapshotStatus"]["enum"]) == {
+        "coherent",
+        "stale",
+        "indeterminate",
+    }
+    assert set(schemas["DeliveryControlExactBaseStatus"]["enum"]) == {
+        "exact_branch",
+        "rebase_required",
+        "stale",
+        "indeterminate",
+    }
+    response = schemas["DeliveryControlResponse"]
+    assert {
+        "snapshot",
+        "ci_pending_ticket_count",
+        "ci_pending_tickets_truncated",
+        "ci_pending_tickets",
+        "protected_lane_holds",
+    } <= set(response["required"])
+    assert response["properties"]["ci_pending_tickets"]["maxItems"] == 100
+    assert response["properties"]["protected_lane_holds"]["maxItems"] == 3_200
+    assert (
+        schemas["DeliveryControlOccupancySchema"]["properties"][
+            "protected_lane_occupancy"
+        ]["maxItems"]
+        == 32
+    )
+    assert (
+        schemas["DeliveryControlCICheckSchema"]["properties"]["evidence_ids"][
+            "maxItems"
+        ]
+        == 32
+    )
     rank_inputs = schemas["DeliveryControlRankInputsSchema"]
     assert rank_inputs["additionalProperties"] is False
     assert set(rank_inputs["required"]) == {

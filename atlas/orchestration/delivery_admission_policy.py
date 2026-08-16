@@ -28,6 +28,10 @@ from atlas.orchestration.operator_actions import (
     OperatorActionMutation,
     canonical_request_fingerprint,
 )
+from atlas.pm.protected_lanes import (
+    DEFAULT_PROTECTED_LANE_REGISTRY,
+    ProtectedLaneRegistry,
+)
 from atlas.storage import Database, DeliveryAdmissionPolicyRepo, ProductRepo
 from atlas.storage.tables import (
     DeliveryAdmissionPolicyActiveRow,
@@ -86,6 +90,9 @@ class DeliveryAdmissionPolicyService:
         policy_id_factory: Callable[[], UUID] = uuid4,
         receipt_id_factory: Callable[[], UUID] = uuid4,
         correlation_id_factory: Callable[[], UUID] = uuid4,
+        protected_lane_registry: ProtectedLaneRegistry = (
+            DEFAULT_PROTECTED_LANE_REGISTRY
+        ),
     ) -> None:
         self._repo = DeliveryAdmissionPolicyRepo(db)
         self._products = ProductRepo(db)
@@ -96,6 +103,7 @@ class DeliveryAdmissionPolicyService:
             correlation_id_factory=correlation_id_factory,
         )
         self._policy_id_factory = policy_id_factory
+        self._protected_lane_registry = protected_lane_registry
 
     def revise_current(
         self,
@@ -133,8 +141,15 @@ class DeliveryAdmissionPolicyService:
         if not isinstance(policy, DeliveryAdmissionPolicySpec):
             raise TypeError("policy must be a validated DeliveryAdmissionPolicySpec")
 
-        payload = {"expected_revision": expected_revision} | policy.model_dump(
-            mode="json"
+        payload = (
+            {"expected_revision": expected_revision}
+            | policy.model_dump(mode="json")
+            | {
+                "protected_lane_registry": {
+                    "version": self._protected_lane_registry.version,
+                    "fingerprint": self._protected_lane_registry.fingerprint,
+                }
+            }
         )
         envelope = OperatorActionEnvelope(
             action=POLICY_ACTION,

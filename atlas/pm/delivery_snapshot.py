@@ -254,6 +254,11 @@ class StoredDeliveryOccupancy(BaseModel):
     new_admission_working_capacity: int = Field(ge=0)
     risk_lane_occupancy: tuple[RiskLaneOccupancy, ...]
     component_lane_occupancy: tuple[ComponentLaneOccupancy, ...]
+    protected_lane_registry_version: str
+    protected_lane_registry_fingerprint: str
+    protected_lane_state_fingerprint: str
+    protected_lane_occupancy: tuple[ProtectedLaneOccupancy, ...]
+    protected_lane_incompleteness_reasons: tuple[SnapshotIncompletenessReason, ...]
     over_capacity: tuple[OccupancyBreach, ...]
 
 
@@ -414,6 +419,7 @@ def build_stored_delivery_occupancy(
     *,
     policy: DeliveryAdmissionPolicyRevision,
     tickets: Iterable[Ticket],
+    protected_lane_registry: ProtectedLaneRegistry = DEFAULT_PROTECTED_LANE_REGISTRY,
 ) -> StoredDeliveryOccupancy:
     """Project current stored occupancy without refreshing or mutating Linear."""
 
@@ -432,6 +438,28 @@ def build_stored_delivery_occupancy(
     configured_components = {lane.component for lane in policy.component_lane_limits}
     risk_counts: Counter[RiskLevel] = Counter()
     component_counts: Counter[str] = Counter()
+    protected_lane_ticket_keys: dict[str, set[str]] = {
+        lane.key: set() for lane in protected_lane_registry.lanes
+    }
+    protected_classifications: dict[str, ProtectedLaneClassification] = {}
+    protected_reasons: list[SnapshotIncompletenessReason] = []
+    for ticket in (*working_tickets, *integration_tickets):
+        classification = classify_ticket_protected_lanes(
+            ticket, protected_lane_registry
+        )
+        protected_classifications[ticket.key] = classification
+        for issue in classification.issues:
+            protected_reasons.append(
+                SnapshotIncompletenessReason(
+                    code=_protected_lane_reason_code(issue.code),
+                    ticket_key=ticket.key,
+                    declaration_kind=issue.source_kind,
+                    declaration=issue.declaration,
+                )
+            )
+        if not classification.issues:
+            for lane in classification.lanes:
+                protected_lane_ticket_keys[lane].add(ticket.key)
     for ticket in working_tickets:
         if ticket.risk_level in configured_risks:
             risk_counts[ticket.risk_level] += 1
@@ -478,6 +506,16 @@ def build_stored_delivery_occupancy(
             policy.component_lane_limits, key=lambda item: item.component
         )
     )
+    protected_lanes = tuple(
+        ProtectedLaneOccupancy(
+            lane=lane.key,
+            count=len(protected_lane_ticket_keys[lane.key]),
+            limit=lane.capacity,
+            ticket_keys=tuple(sorted(protected_lane_ticket_keys[lane.key])),
+            operator_declared=lane.operator_declared,
+        )
+        for lane in protected_lane_registry.lanes
+    )
 
     breaches: list[OccupancyBreach] = []
     if working > policy.working_budget:
@@ -516,6 +554,16 @@ def build_stored_delivery_occupancy(
     )
     breaches.extend(
         OccupancyBreach(
+            dimension=OccupancyDimension.PROTECTED_LANE,
+            selector=lane.lane,
+            count=lane.count,
+            limit=lane.limit,
+        )
+        for lane in protected_lanes
+        if lane.count > lane.limit
+    )
+    breaches.extend(
+        OccupancyBreach(
             dimension=OccupancyDimension.COMPONENT_LANE,
             selector=lane.component,
             count=lane.count,
@@ -537,6 +585,15 @@ def build_stored_delivery_occupancy(
         new_admission_working_capacity=new_admission_capacity,
         risk_lane_occupancy=risk_lanes,
         component_lane_occupancy=component_lanes,
+        protected_lane_registry_version=protected_lane_registry.version,
+        protected_lane_registry_fingerprint=protected_lane_registry.fingerprint,
+        protected_lane_state_fingerprint=_protected_lane_state_fingerprint(
+            registry=protected_lane_registry,
+            classifications=protected_classifications.values(),
+            occupancy=protected_lanes,
+        ),
+        protected_lane_occupancy=protected_lanes,
+        protected_lane_incompleteness_reasons=_deduplicate_reasons(protected_reasons),
         over_capacity=tuple(sorted(breaches, key=_breach_sort_key)),
     )
 

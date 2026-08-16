@@ -690,6 +690,51 @@ function assertDeliveryControlAdmission(
   assertArray(value.decisions, `${path}.decisions`, assertDeliveryControlDecision)
 }
 
+function assertDeliveryControlSnapshot(
+  value: unknown,
+  path: string
+): asserts value is Schema['DeliveryControlSnapshotSchema'] {
+  assertObject(value, path)
+  assertExactKeys(
+    value,
+    [
+      'board',
+      'evidence',
+      'fingerprint',
+      'integration',
+      'policy_fingerprint',
+      'policy_id',
+      'policy_revision',
+      'reasons',
+      'status',
+    ],
+    path
+  )
+  assertString(value.fingerprint, `${path}.fingerprint`)
+  assertString(value.status, `${path}.status`)
+  assertArray(value.reasons, `${path}.reasons`, (reason, reasonPath) => {
+    assertString(reason, reasonPath)
+  })
+  assertUuidString(value.policy_id, `${path}.policy_id`)
+  assertInteger(value.policy_revision, `${path}.policy_revision`)
+  assertString(value.policy_fingerprint, `${path}.policy_fingerprint`)
+  assertObject(value.board, `${path}.board`)
+  assertObject(value.evidence, `${path}.evidence`)
+  assertObject(value.integration, `${path}.integration`)
+  assertString(value.board.status, `${path}.board.status`)
+  assertString(
+    value.board.materialized_ticket_fingerprint,
+    `${path}.board.materialized_ticket_fingerprint`
+  )
+  assertString(value.evidence.fingerprint, `${path}.evidence.fingerprint`)
+  assertInteger(value.evidence.evidence_count, `${path}.evidence.evidence_count`)
+  assertString(value.integration.fingerprint, `${path}.integration.fingerprint`)
+  assertString(
+    value.integration.validation_registry_version,
+    `${path}.integration.validation_registry_version`
+  )
+}
+
 export function assertDeliveryControlResponse(
   value: unknown
 ): asserts value is RouteResponse<'/api/v1/delivery-control'> {
@@ -697,11 +742,16 @@ export function assertDeliveryControlResponse(
   assertExactKeys(
     value,
     [
+      'ci_pending_ticket_count',
+      'ci_pending_tickets',
+      'ci_pending_tickets_truncated',
       'indeterminate_reasons',
       'last_linear_sync_at',
       'latest_admission',
       'occupancy',
       'policy',
+      'protected_lane_holds',
+      'snapshot',
     ],
     'DeliveryControlResponse'
   )
@@ -764,6 +814,29 @@ export function assertDeliveryControlResponse(
     value.policy.created_at,
     'DeliveryControlResponse.policy.created_at'
   )
+  assertInteger(
+    value.ci_pending_ticket_count,
+    'DeliveryControlResponse.ci_pending_ticket_count'
+  )
+  assertBoolean(
+    value.ci_pending_tickets_truncated,
+    'DeliveryControlResponse.ci_pending_tickets_truncated'
+  )
+  assertArray(
+    value.ci_pending_tickets,
+    'DeliveryControlResponse.ci_pending_tickets',
+    (item: unknown, path: string): asserts item is JsonObject => {
+      assertObject(item, path)
+    }
+  )
+  assertArray(
+    value.protected_lane_holds,
+    'DeliveryControlResponse.protected_lane_holds',
+    (item: unknown, path: string): asserts item is JsonObject => {
+      assertObject(item, path)
+    }
+  )
+  assertDeliveryControlSnapshot(value.snapshot, 'DeliveryControlResponse.snapshot')
   assertIsoDateTimeOrNull(
     value.last_linear_sync_at,
     'DeliveryControlResponse.last_linear_sync_at'
@@ -781,8 +854,16 @@ export function assertDeliveryControlResponse(
       'changes_requested_occupancy',
       'changes_requested_reserve_remaining',
       'component_lane_occupancy',
+      'integration_occupancy',
+      'integration_ticket_keys',
+      'integration_ticket_keys_truncated',
+      'new_admission_integration_capacity',
       'new_admission_working_capacity',
       'over_capacity_reasons',
+      'protected_lane_occupancy',
+      'protected_lane_registry_fingerprint',
+      'protected_lane_registry_version',
+      'protected_lane_state_fingerprint',
       'review_occupancy',
       'risk_lane_occupancy',
       'source',
@@ -795,6 +876,30 @@ export function assertDeliveryControlResponse(
   assertInteger(
     value.occupancy.working_occupancy,
     'DeliveryControlResponse.occupancy.working_occupancy'
+  )
+  assertInteger(
+    value.occupancy.integration_occupancy,
+    'DeliveryControlResponse.occupancy.integration_occupancy'
+  )
+  assertArray(
+    value.occupancy.integration_ticket_keys,
+    'DeliveryControlResponse.occupancy.integration_ticket_keys',
+    (item, path) => assertString(item, path)
+  )
+  assertBoolean(
+    value.occupancy.integration_ticket_keys_truncated,
+    'DeliveryControlResponse.occupancy.integration_ticket_keys_truncated'
+  )
+  assertInteger(
+    value.occupancy.new_admission_integration_capacity,
+    'DeliveryControlResponse.occupancy.new_admission_integration_capacity'
+  )
+  assertArray(
+    value.occupancy.protected_lane_occupancy,
+    'DeliveryControlResponse.occupancy.protected_lane_occupancy',
+    (item: unknown, path: string): asserts item is JsonObject => {
+      assertObject(item, path)
+    }
   )
   assertInteger(
     value.occupancy.review_occupancy,

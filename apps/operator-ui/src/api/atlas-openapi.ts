@@ -880,6 +880,24 @@ export interface components {
          */
         AdmissionSyncReason: "lease_unavailable" | "product_ambiguous" | "policy_unavailable" | "snapshot_incomplete" | "no_candidate" | "policy_or_capacity_hold" | "over_capacity" | "revalidation_failed" | "revalidation_mismatch" | "policy_changed" | "protected_lane_registry_unavailable" | "protected_lane_registry_changed" | "protected_lane_state_changed" | "candidate_moved" | "lease_lost" | "write_confirmed" | "write_indeterminate" | "indeterminate_still_unresolved" | "indeterminate_reconciled_admitted" | "indeterminate_reconciled_no_write" | "indeterminate_reconciled_moved";
         /**
+         * CIHandoffClassification
+         * @description Closed evidence classes that can drive or hold the CI-pending edge.
+         * @enum {string}
+         */
+        CIHandoffClassification: "passed" | "implementation_failure" | "pending" | "missing" | "infrastructure" | "stale" | "malformed" | "indeterminate";
+        /**
+         * CIHandoffDecision
+         * @description The only external-state decision represented by a reconciliation.
+         * @enum {string}
+         */
+        CIHandoffDecision: "hold" | "review_required" | "changes_requested";
+        /**
+         * CIHandoffReason
+         * @description Bounded, secret-free reason for the final decision of one operation.
+         * @enum {string}
+         */
+        CIHandoffReason: "complete_required_checks_passed" | "complete_implementation_failure" | "required_checks_pending" | "required_checks_missing" | "infrastructure_evidence" | "stale_evidence" | "malformed_evidence" | "contradictory_evidence" | "indeterminate_evidence" | "no_ci_required_checks" | "lease_unavailable" | "lease_lost" | "policy_unavailable" | "snapshot_incomplete" | "ticket_not_ci_pending" | "ticket_identity_mismatch" | "linear_issue_missing" | "linear_state_mismatch" | "pr_identity_malformed" | "pr_head_moved" | "github_infrastructure" | "board_revalidation_failed" | "board_state_moved" | "policy_changed" | "snapshot_changed" | "evidence_changed" | "concurrent_write_fence" | "fence_still_unresolved" | "fence_reconciled_target" | "fence_reconciled_source" | "fence_reconciled_moved" | "write_confirmed" | "write_indeterminate";
+        /**
          * ComponentLaneLimit
          * @description Maximum working occupancy for one canonical component selector.
          */
@@ -1057,6 +1075,83 @@ export interface components {
             snapshot_observed_at: string;
         };
         /**
+         * DeliveryControlBoardIdentitySchema
+         * @description Pinned last-good board plus the newest refresh attempt.
+         */
+        DeliveryControlBoardIdentitySchema: {
+            /** Fetched Board Fingerprint */
+            fetched_board_fingerprint?: string | null;
+            /** Fetched Board Issue Count */
+            fetched_board_issue_count?: number | null;
+            /** Latest Attempt Finished At */
+            latest_attempt_finished_at: string | null;
+            /** Latest Attempt Receipt Id */
+            latest_attempt_receipt_id: string | null;
+            latest_attempt_result: components["schemas"]["PmSyncReceiptResult"] | null;
+            /** Materialized Ticket Fingerprint */
+            materialized_ticket_fingerprint: string;
+            /** Observed At */
+            observed_at: string | null;
+            /** Reasons */
+            reasons: components["schemas"]["DeliveryControlProjectionReason"][];
+            /** Receipt Id */
+            receipt_id: string | null;
+            status: components["schemas"]["DeliveryControlSnapshotStatus"];
+            /** Status Map Fingerprint */
+            status_map_fingerprint?: string | null;
+        };
+        /**
+         * DeliveryControlCICheckSchema
+         * @description One persisted typed check result without raw CI material.
+         */
+        DeliveryControlCICheckSchema: {
+            check_type: components["schemas"]["VerificationCheckType"];
+            classification: components["schemas"]["CIHandoffClassification"];
+            /** Evidence Count */
+            evidence_count: number;
+            /** Evidence Ids */
+            evidence_ids: string[];
+            /** Evidence Ids Truncated */
+            evidence_ids_truncated: boolean;
+            status: components["schemas"]["EvidenceStatus"];
+        };
+        /**
+         * DeliveryControlCIOutcomeSchema
+         * @description Latest canonical outcome for one CI-pending ticket.
+         */
+        DeliveryControlCIOutcomeSchema: {
+            /** Check Results */
+            check_results: components["schemas"]["DeliveryControlCICheckSchema"][];
+            classification: components["schemas"]["CIHandoffClassification"];
+            decision: components["schemas"]["CIHandoffDecision"];
+            /** Observed At */
+            observed_at: string | null;
+            /** Projection Reasons */
+            projection_reasons: components["schemas"]["DeliveryControlProjectionReason"][];
+            reason: components["schemas"]["CIHandoffReason"] | null;
+            /** Reconciliation Id */
+            reconciliation_id: string | null;
+        };
+        /**
+         * DeliveryControlCIPendingTicketSchema
+         * @description One bounded CI-pending candidate with exact source provenance.
+         */
+        DeliveryControlCIPendingTicketSchema: {
+            exact_base: components["schemas"]["DeliveryControlExactBaseAssessmentSchema"];
+            /** Head Sha */
+            head_sha?: string | null;
+            outcome: components["schemas"]["DeliveryControlCIOutcomeSchema"];
+            /** Pr Number */
+            pr_number?: number | null;
+            /** Repository Name */
+            repository_name?: string | null;
+            /** Repository Owner */
+            repository_owner?: string | null;
+            /** Ticket Key */
+            ticket_key: string;
+            validation_plan: components["schemas"]["DeliveryControlValidationPlanIdentitySchema"];
+        };
+        /**
          * DeliveryControlComponentLaneOccupancySchema
          * @description Current stored occupancy for one configured component lane.
          */
@@ -1096,6 +1191,43 @@ export interface components {
             /** Detail */
             detail: string;
         };
+        /**
+         * DeliveryControlEvidenceIdentitySchema
+         * @description Exact selected evidence set without provider payloads.
+         */
+        DeliveryControlEvidenceIdentitySchema: {
+            /** Evidence Count */
+            evidence_count: number;
+            /** Evidence Ids */
+            evidence_ids: string[];
+            /** Evidence Ids Truncated */
+            evidence_ids_truncated: boolean;
+            /** Fingerprint */
+            fingerprint: string;
+        };
+        /**
+         * DeliveryControlExactBaseAssessmentSchema
+         * @description Stored exact-base status; never a live merge or rebase action.
+         */
+        DeliveryControlExactBaseAssessmentSchema: {
+            /** Assessment Id */
+            assessment_id: string | null;
+            /** Base Sha */
+            base_sha?: string | null;
+            /** Head Sha */
+            head_sha?: string | null;
+            /** Observed At */
+            observed_at: string | null;
+            /** Reasons */
+            reasons: components["schemas"]["DeliveryControlProjectionReason"][];
+            status: components["schemas"]["DeliveryControlExactBaseStatus"];
+        };
+        /**
+         * DeliveryControlExactBaseStatus
+         * @description Stored exact-base assessment without a live GitHub refresh.
+         * @enum {string}
+         */
+        DeliveryControlExactBaseStatus: "exact_branch" | "rebase_required" | "stale" | "indeterminate";
         /**
          * DeliveryControlHoldReasonSchema
          * @description One distinct typed hold reason without raw external identities.
@@ -1142,8 +1274,38 @@ export interface components {
             ticket_key: string;
         };
         /**
+         * DeliveryControlIntegrationIdentitySchema
+         * @description Exact integration, registry and assessment identity set.
+         */
+        DeliveryControlIntegrationIdentitySchema: {
+            /** Acceptance Session Count */
+            acceptance_session_count: number;
+            /** Acceptance Session Ids */
+            acceptance_session_ids: string[];
+            /** Acceptance Session Ids Truncated */
+            acceptance_session_ids_truncated: boolean;
+            /** Fingerprint */
+            fingerprint: string;
+            /** Protected Lane Registry Fingerprint */
+            protected_lane_registry_fingerprint: string;
+            /** Protected Lane Registry Version */
+            protected_lane_registry_version: string;
+            /** Protected Lane State Fingerprint */
+            protected_lane_state_fingerprint: string;
+            /** Reconciliation Count */
+            reconciliation_count: number;
+            /** Reconciliation Ids */
+            reconciliation_ids: string[];
+            /** Reconciliation Ids Truncated */
+            reconciliation_ids_truncated: boolean;
+            /** Validation Registry Fingerprint */
+            validation_registry_fingerprint: string;
+            /** Validation Registry Version */
+            validation_registry_version: string;
+        };
+        /**
          * DeliveryControlOccupancySchema
-         * @description Current persisted occupancy with separate working and review pressure.
+         * @description Current persisted working, integration and review pressure.
          */
         DeliveryControlOccupancySchema: {
             /** Changes Requested Occupancy */
@@ -1152,10 +1314,26 @@ export interface components {
             changes_requested_reserve_remaining: number;
             /** Component Lane Occupancy */
             component_lane_occupancy: components["schemas"]["DeliveryControlComponentLaneOccupancySchema"][];
+            /** Integration Occupancy */
+            integration_occupancy: number;
+            /** Integration Ticket Keys */
+            integration_ticket_keys: string[];
+            /** Integration Ticket Keys Truncated */
+            integration_ticket_keys_truncated: boolean;
+            /** New Admission Integration Capacity */
+            new_admission_integration_capacity: number;
             /** New Admission Working Capacity */
             new_admission_working_capacity: number;
             /** Over Capacity Reasons */
             over_capacity_reasons: components["schemas"]["DeliveryControlOverCapacityReasonSchema"][];
+            /** Protected Lane Occupancy */
+            protected_lane_occupancy: components["schemas"]["DeliveryControlProtectedLaneOccupancySchema"][];
+            /** Protected Lane Registry Fingerprint */
+            protected_lane_registry_fingerprint: string;
+            /** Protected Lane Registry Version */
+            protected_lane_registry_version: string;
+            /** Protected Lane State Fingerprint */
+            protected_lane_state_fingerprint: string;
             /** Review Occupancy */
             review_occupancy: number;
             /** Risk Lane Occupancy */
@@ -1182,6 +1360,44 @@ export interface components {
             limit: number;
             /** Selector */
             selector?: string | null;
+        };
+        /**
+         * DeliveryControlProjectionReason
+         * @description Closed reasons why pressure or candidate provenance is fail-closed.
+         * @enum {string}
+         */
+        DeliveryControlProjectionReason: "successful_board_unavailable" | "newer_board_refresh_unsuccessful" | "evidence_identity_missing" | "protected_lane_classification_invalid" | "ci_reconciliation_unavailable" | "ci_handoff_write_indeterminate" | "validation_plan_provenance_unavailable" | "exact_base_assessment_unavailable" | "integration_identity_mismatch" | "acceptance_assessment_stale" | "integration_behind" | "integration_diverged" | "integration_conflicted" | "integration_indeterminate";
+        /**
+         * DeliveryControlProtectedLaneHoldSchema
+         * @description One bounded persisted protected-lane admission hold.
+         */
+        DeliveryControlProtectedLaneHoldSchema: {
+            /** Lane */
+            lane: string;
+            /** Limit */
+            limit?: number | null;
+            /** Observed */
+            observed?: number | null;
+            /** Owner Ticket Keys */
+            owner_ticket_keys: string[];
+            /** Ticket Key */
+            ticket_key: string;
+        };
+        /**
+         * DeliveryControlProtectedLaneOccupancySchema
+         * @description Current owners and immutable capacity for one protected lane.
+         */
+        DeliveryControlProtectedLaneOccupancySchema: {
+            /** Count */
+            count: number;
+            /** Lane */
+            lane: string;
+            /** Limit */
+            limit: number;
+            /** Operator Declared */
+            operator_declared: boolean;
+            /** Ticket Keys */
+            ticket_keys: string[];
         };
         /**
          * DeliveryControlRankInputsSchema
@@ -1212,6 +1428,12 @@ export interface components {
          * @description Authenticated, observational delivery policy and admission status.
          */
         DeliveryControlResponse: {
+            /** Ci Pending Ticket Count */
+            ci_pending_ticket_count: number;
+            /** Ci Pending Tickets */
+            ci_pending_tickets: components["schemas"]["DeliveryControlCIPendingTicketSchema"][];
+            /** Ci Pending Tickets Truncated */
+            ci_pending_tickets_truncated: boolean;
             /** Indeterminate Reasons */
             indeterminate_reasons: components["schemas"]["DeliveryControlIndeterminateReasonSchema"][];
             /** Last Linear Sync At */
@@ -1219,6 +1441,9 @@ export interface components {
             latest_admission: components["schemas"]["DeliveryControlAdmissionSchema"] | null;
             occupancy: components["schemas"]["DeliveryControlOccupancySchema"];
             policy: components["schemas"]["DeliveryAdmissionPolicySchema"];
+            /** Protected Lane Holds */
+            protected_lane_holds: components["schemas"]["DeliveryControlProtectedLaneHoldSchema"][];
+            snapshot: components["schemas"]["DeliveryControlSnapshotSchema"];
         };
         /**
          * DeliveryControlRiskLaneOccupancySchema
@@ -1232,6 +1457,35 @@ export interface components {
             risk_level: components["schemas"]["RiskLevel"];
         };
         /**
+         * DeliveryControlSnapshotSchema
+         * @description One coherent policy, board, evidence and integration snapshot.
+         */
+        DeliveryControlSnapshotSchema: {
+            board: components["schemas"]["DeliveryControlBoardIdentitySchema"];
+            evidence: components["schemas"]["DeliveryControlEvidenceIdentitySchema"];
+            /** Fingerprint */
+            fingerprint: string;
+            integration: components["schemas"]["DeliveryControlIntegrationIdentitySchema"];
+            /** Policy Fingerprint */
+            policy_fingerprint: string;
+            /**
+             * Policy Id
+             * Format: uuid
+             */
+            policy_id: string;
+            /** Policy Revision */
+            policy_revision: number;
+            /** Reasons */
+            reasons: components["schemas"]["DeliveryControlProjectionReason"][];
+            status: components["schemas"]["DeliveryControlSnapshotStatus"];
+        };
+        /**
+         * DeliveryControlSnapshotStatus
+         * @description Freshness of the complete server-owned projection.
+         * @enum {string}
+         */
+        DeliveryControlSnapshotStatus: "coherent" | "stale" | "indeterminate";
+        /**
          * DeliveryControlStatusOccupancySchema
          * @description Current materialised ticket count for one canonical status.
          */
@@ -1240,6 +1494,33 @@ export interface components {
             count: number;
             status: components["schemas"]["TicketStatus"];
         };
+        /**
+         * DeliveryControlValidationPlanIdentitySchema
+         * @description Exact plan provenance or a typed fail-closed absence.
+         */
+        DeliveryControlValidationPlanIdentitySchema: {
+            /** Base Sha */
+            base_sha?: string | null;
+            /** Head Sha */
+            head_sha?: string | null;
+            /** Plan Fingerprint */
+            plan_fingerprint?: string | null;
+            /** Profiles */
+            profiles: string[];
+            /** Reasons */
+            reasons: components["schemas"]["DeliveryControlProjectionReason"][];
+            /** Registry Fingerprint */
+            registry_fingerprint: string;
+            /** Registry Version */
+            registry_version: string;
+            status: components["schemas"]["DeliveryControlValidationPlanStatus"];
+        };
+        /**
+         * DeliveryControlValidationPlanStatus
+         * @description Whether exact local-validation provenance is stored for a candidate.
+         * @enum {string}
+         */
+        DeliveryControlValidationPlanStatus: "available" | "stale" | "indeterminate";
         /**
          * DeliveryPolicyActionReceiptSchema
          * @description Bounded append-only receipt for one policy replacement.
@@ -1683,6 +1964,12 @@ export interface components {
              */
             type: "lesson";
         };
+        /**
+         * PmSyncReceiptResult
+         * @description Bounded classification for one sync tick receipt.
+         * @enum {string}
+         */
+        PmSyncReceiptResult: "success_definition_changed" | "success_status_only" | "success_zero_action" | "partial" | "malformed_pull" | "cancelled" | "failed";
         /**
          * PromoteLessonRequest
          * @description Exact command payload for promoting one DRAFT lesson.

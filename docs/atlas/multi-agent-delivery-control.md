@@ -368,11 +368,14 @@ one-agent baseline without implying that Symphony is running three workers.
 
 The delivered API read requires the live shared session and is always
 `no-store`. It is deliberately observational: one orchestration operation
-reads the active policy, product-scoped latest successful sync time,
-materialised ticket statuses, latest immutable admission run and unresolved
-write fence. It does not acquire the admission lease, refresh Linear, rerun the
-evaluator, append a run or receipt, or mutate policy. Because no raw board is
-stored, the occupancy projection explicitly names its source as
+consumes one storage-owned repeatable-read snapshot containing the active
+policy, product-scoped sync receipts, materialised ticket statuses, latest
+immutable admission run, latest per-ticket CI reconciliations, their selected
+evidence identities, stored acceptance assessments and unresolved write
+fences. It does not acquire the admission lease, refresh Linear or GitHub,
+calculate or execute validation, rerun an evaluator, append a run or receipt,
+transition a ticket, or mutate policy. Because no raw board is stored, the
+occupancy projection explicitly names its source as
 `materialized_atlas_statuses` and uses the successful-sync timestamp to convey
 freshness rather than claiming a new Linear observation.
 
@@ -391,6 +394,35 @@ its stored fence state is `pending` or `indeterminate`. Raw Linear issue/state
 identities, board payloads, pagination cursors, exception summaries,
 credentials and browser secrets are excluded.
 
+Phase 15.5 adds a composite snapshot fingerprint over exact policy, board,
+evidence and integration identities. The board projection retains the last
+successful receipt and a newer unsuccessful attempt separately. The evidence
+fingerprint covers only bounded ids, commit/run/job pins, payload hashes,
+statuses and lifecycle times selected by persisted CI decisions; the query
+does not load provider payloads, summaries or source URIs. The integration
+fingerprint pins every current CI-pending key, latest reconciliation,
+applicable stored acceptance assessment, validation registry and protected-lane
+active-state fingerprint. Closed `coherent`, `stale` and `indeterminate`
+statuses and reasons are server classifications. A stale or indeterminate
+snapshot reports zero available working and integration admission capacity
+while retaining observed occupancy and limits.
+
+The same response returns at most 100 CI-pending candidates, with total and
+truncation metadata. Persisted CI classifications, decisions, reasons and
+bounded evidence ids are passed through without presenter recomputation.
+Validation registry identity is always explicit; because the local validation
+plan is not a stored system authority, an absent exact plan fingerprint,
+base/head tuple or profile set is `validation_plan_provenance_unavailable`, not
+an invented profile. Exact-base state likewise uses only a matching stored
+acceptance assessment: `exact_branch`, `rebase_required`, `stale` or
+`indeterminate`. No read invokes the live PR integration classifier.
+
+Protected-lane occupancy covers both working and CI-pending owners and returns
+all six registry lanes with bounded owner keys. Candidate holds continue to
+come from the latest immutable admission run. The API exposes registry version,
+semantic fingerprint and active-state fingerprint, but it accepts no client
+lane rule or capacity override.
+
 The complete-policy POST rejects unknown fields recursively: the policy object,
 each risk-lane entry and each component-lane entry are all closed request
 shapes. Nested client-owned actor, action or current-state material cannot cross
@@ -402,6 +434,10 @@ state from the client. After the shared Host/Origin, JSON, session, CSRF and
 idempotency dependencies resolve, the adapter invokes `revise_current` once;
 that service selects the single local product and delegates to the existing
 atomic policy command. Exact replay returns the original revision and receipt.
+The canonical request fingerprint also pins the server-validated protected-lane
+registry version and semantic fingerprint, so integration budget and active
+protected-lane rules share the actor, compare-and-set, idempotency and atomic
+receipt boundary without becoming client-authored policy fields.
 Stale `expected_revision`, altered replay and an in-progress key return `409`
 without changing the active policy. The route inventory contains no
 ticket-status, dispatch, cancel, merge, rebase, arbitrary `PATCH`/`PUT`,
@@ -426,9 +462,10 @@ inference or a manufactured safe result. Loading and refetch preserve the last
 truthful server snapshot as visibly stale, with its server timestamp.
 
 Policy editing is a complete replacement, never a partial patch or hidden
-adjustment. The confirmation names mode, approved policy ceiling, working and
-review budgets, Changes Requested reserve, all risk and component lane limits,
-and `expected_revision`. Each new explicit command receives a fresh idempotency
+adjustment. The confirmation names mode, approved policy ceiling, working,
+integration and review budgets, Changes Requested reserve, all risk and
+component lane limits, the server-observed protected-lane registry identity and
+`expected_revision`. Each new explicit command receives a fresh idempotency
 key. Stale revision and altered replay preserve the proposal but require an
 explicit load/review/reconfirm cycle; only an unchanged ambiguously completed
 command may be explicitly retried with the same key. Success displays the

@@ -17,6 +17,7 @@ from atlas.core.models import (
     LessonCategory,
     OperatorActionOutcome,
     OperatorActionResultCode,
+    PmSyncReceiptResult,
     TicketStatus,
     TicketType,
     VerificationCheckType,
@@ -27,6 +28,11 @@ from atlas.core.models.acceptance_session import (
     AcceptanceStepSummary,
 )
 from atlas.core.models.admission_run import AdmissionDecisionType, AdmissionHoldCode
+from atlas.core.models.ci_handoff_reconciliation import (
+    CIHandoffClassification,
+    CIHandoffDecision,
+    CIHandoffReason,
+)
 from atlas.core.models.delivery_admission_policy import (
     MAX_COMPONENT_LANES,
     ComponentLaneLimit,
@@ -47,6 +53,12 @@ from atlas.orchestration import (
 )
 from atlas.orchestration.delivery_admission_policy import (
     DeliveryAdmissionPolicyConflictCode,
+)
+from atlas.orchestration.delivery_control import (
+    DeliveryControlExactBaseStatus,
+    DeliveryControlProjectionReason,
+    DeliveryControlSnapshotStatus,
+    DeliveryControlValidationPlanStatus,
 )
 from atlas.pm.admission_sync import AdmissionSyncReason
 from atlas.pm.delivery_snapshot import (
@@ -686,6 +698,16 @@ class DeliveryControlComponentLaneOccupancySchema(BaseModel):
     limit: int = Field(ge=0, le=10)
 
 
+class DeliveryControlProtectedLaneOccupancySchema(BaseModel):
+    """Current owners and immutable capacity for one protected lane."""
+
+    lane: str = Field(min_length=1, max_length=128)
+    count: int = Field(ge=0)
+    limit: int = Field(ge=1, le=10)
+    ticket_keys: list[str] = Field(max_length=100)
+    operator_declared: bool
+
+
 class DeliveryControlOverCapacityReasonSchema(BaseModel):
     """One currently breached capacity dimension."""
 
@@ -696,18 +718,154 @@ class DeliveryControlOverCapacityReasonSchema(BaseModel):
 
 
 class DeliveryControlOccupancySchema(BaseModel):
-    """Current persisted occupancy with separate working and review pressure."""
+    """Current persisted working, integration and review pressure."""
 
     source: Literal["materialized_atlas_statuses"]
     status_occupancy: list[DeliveryControlStatusOccupancySchema]
     working_occupancy: int = Field(ge=0)
+    integration_occupancy: int = Field(ge=0)
+    integration_ticket_keys: list[str] = Field(max_length=100)
+    integration_ticket_keys_truncated: bool
+    new_admission_integration_capacity: int = Field(ge=0, le=10)
     review_occupancy: int = Field(ge=0)
     changes_requested_occupancy: int = Field(ge=0)
     changes_requested_reserve_remaining: int = Field(ge=0, le=10)
     new_admission_working_capacity: int = Field(ge=0, le=10)
     risk_lane_occupancy: list[DeliveryControlRiskLaneOccupancySchema]
     component_lane_occupancy: list[DeliveryControlComponentLaneOccupancySchema]
+    protected_lane_registry_version: str = Field(min_length=1, max_length=128)
+    protected_lane_registry_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
+    protected_lane_state_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
+    protected_lane_occupancy: list[DeliveryControlProtectedLaneOccupancySchema] = Field(
+        max_length=32
+    )
     over_capacity_reasons: list[DeliveryControlOverCapacityReasonSchema]
+
+
+class DeliveryControlBoardIdentitySchema(BaseModel):
+    """Pinned last-good board plus the newest refresh attempt."""
+
+    status: DeliveryControlSnapshotStatus
+    reasons: list[DeliveryControlProjectionReason] = Field(max_length=8)
+    receipt_id: UUID | None
+    status_map_fingerprint: str | None = Field(default=None, max_length=128)
+    fetched_board_fingerprint: str | None = Field(default=None, max_length=128)
+    fetched_board_issue_count: int | None = Field(default=None, ge=0)
+    observed_at: datetime | None
+    latest_attempt_receipt_id: UUID | None
+    latest_attempt_result: PmSyncReceiptResult | None
+    latest_attempt_finished_at: datetime | None
+    materialized_ticket_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class DeliveryControlEvidenceIdentitySchema(BaseModel):
+    """Exact selected evidence set without provider payloads."""
+
+    fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
+    evidence_count: int = Field(ge=0)
+    evidence_ids: list[UUID] = Field(max_length=100)
+    evidence_ids_truncated: bool
+
+
+class DeliveryControlIntegrationIdentitySchema(BaseModel):
+    """Exact integration, registry and assessment identity set."""
+
+    fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
+    reconciliation_count: int = Field(ge=0)
+    reconciliation_ids: list[UUID] = Field(max_length=100)
+    reconciliation_ids_truncated: bool
+    acceptance_session_count: int = Field(ge=0)
+    acceptance_session_ids: list[UUID] = Field(max_length=100)
+    acceptance_session_ids_truncated: bool
+    protected_lane_registry_version: str = Field(min_length=1, max_length=128)
+    protected_lane_registry_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
+    protected_lane_state_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
+    validation_registry_version: str = Field(min_length=1, max_length=128)
+    validation_registry_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class DeliveryControlSnapshotSchema(BaseModel):
+    """One coherent policy, board, evidence and integration snapshot."""
+
+    fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
+    status: DeliveryControlSnapshotStatus
+    reasons: list[DeliveryControlProjectionReason] = Field(max_length=32)
+    policy_id: UUID
+    policy_revision: int = Field(ge=1)
+    policy_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
+    board: DeliveryControlBoardIdentitySchema
+    evidence: DeliveryControlEvidenceIdentitySchema
+    integration: DeliveryControlIntegrationIdentitySchema
+
+
+class DeliveryControlCICheckSchema(BaseModel):
+    """One persisted typed check result without raw CI material."""
+
+    check_type: VerificationCheckType
+    status: EvidenceStatus
+    classification: CIHandoffClassification
+    evidence_count: int = Field(ge=0)
+    evidence_ids: list[UUID] = Field(max_length=32)
+    evidence_ids_truncated: bool
+
+
+class DeliveryControlCIOutcomeSchema(BaseModel):
+    """Latest canonical outcome for one CI-pending ticket."""
+
+    reconciliation_id: UUID | None
+    classification: CIHandoffClassification
+    decision: CIHandoffDecision
+    reason: CIHandoffReason | None
+    observed_at: datetime | None
+    check_results: list[DeliveryControlCICheckSchema] = Field(max_length=16)
+    projection_reasons: list[DeliveryControlProjectionReason] = Field(max_length=8)
+
+
+class DeliveryControlValidationPlanIdentitySchema(BaseModel):
+    """Exact plan provenance or a typed fail-closed absence."""
+
+    status: DeliveryControlValidationPlanStatus
+    registry_version: str = Field(min_length=1, max_length=128)
+    registry_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
+    plan_fingerprint: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    base_sha: str | None = Field(default=None, pattern=r"^[0-9a-f]{40,64}$")
+    head_sha: str | None = Field(default=None, pattern=r"^[0-9a-f]{40,64}$")
+    profiles: list[str] = Field(max_length=32)
+    reasons: list[DeliveryControlProjectionReason] = Field(max_length=8)
+
+
+class DeliveryControlExactBaseAssessmentSchema(BaseModel):
+    """Stored exact-base status; never a live merge or rebase action."""
+
+    status: DeliveryControlExactBaseStatus
+    assessment_id: UUID | None
+    head_sha: str | None = Field(default=None, pattern=r"^[0-9a-f]{40}$")
+    base_sha: str | None = Field(default=None, pattern=r"^[0-9a-f]{40}$")
+    observed_at: datetime | None
+    reasons: list[DeliveryControlProjectionReason] = Field(max_length=8)
+
+
+class DeliveryControlCIPendingTicketSchema(BaseModel):
+    """One bounded CI-pending candidate with exact source provenance."""
+
+    ticket_key: str = Field(min_length=1, max_length=128)
+    repository_owner: str | None = Field(default=None, max_length=128)
+    repository_name: str | None = Field(default=None, max_length=128)
+    pr_number: int | None = Field(default=None, gt=0)
+    head_sha: str | None = Field(default=None, pattern=r"^[0-9a-f]{40}$")
+    outcome: DeliveryControlCIOutcomeSchema
+    validation_plan: DeliveryControlValidationPlanIdentitySchema
+    exact_base: DeliveryControlExactBaseAssessmentSchema
+
+
+class DeliveryControlProtectedLaneHoldSchema(BaseModel):
+    """One bounded persisted protected-lane admission hold."""
+
+    ticket_key: str = Field(min_length=1, max_length=128)
+    lane: str = Field(min_length=1, max_length=128)
+    observed: int | None = Field(default=None, ge=0, le=1_000_000)
+    limit: int | None = Field(default=None, ge=0, le=1_000_000)
+    owner_ticket_keys: list[str] = Field(max_length=100)
 
 
 class DeliveryControlHoldReasonSchema(BaseModel):
@@ -783,7 +941,16 @@ class DeliveryControlResponse(BaseModel):
 
     policy: DeliveryAdmissionPolicySchema
     last_linear_sync_at: datetime | None
+    snapshot: DeliveryControlSnapshotSchema
     occupancy: DeliveryControlOccupancySchema
+    ci_pending_ticket_count: int = Field(ge=0)
+    ci_pending_tickets_truncated: bool
+    ci_pending_tickets: list[DeliveryControlCIPendingTicketSchema] = Field(
+        max_length=100
+    )
+    protected_lane_holds: list[DeliveryControlProtectedLaneHoldSchema] = Field(
+        max_length=3_200
+    )
     latest_admission: DeliveryControlAdmissionSchema | None
     indeterminate_reasons: list[DeliveryControlIndeterminateReasonSchema]
 

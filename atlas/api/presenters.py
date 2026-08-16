@@ -21,6 +21,7 @@ from atlas.api.schemas import (
     DeliveryAdmissionPolicyResponse,
     DeliveryAdmissionPolicySchema,
     DeliveryControlAdmissionSchema,
+    DeliveryControlCIPendingTicketSchema,
     DeliveryControlComponentLaneOccupancySchema,
     DeliveryControlDecisionSchema,
     DeliveryControlErrorResponse,
@@ -28,9 +29,12 @@ from atlas.api.schemas import (
     DeliveryControlIndeterminateReasonSchema,
     DeliveryControlOccupancySchema,
     DeliveryControlOverCapacityReasonSchema,
+    DeliveryControlProtectedLaneHoldSchema,
+    DeliveryControlProtectedLaneOccupancySchema,
     DeliveryControlRankInputsSchema,
     DeliveryControlResponse,
     DeliveryControlRiskLaneOccupancySchema,
+    DeliveryControlSnapshotSchema,
     DeliveryControlStatusOccupancySchema,
     DeliveryPolicyActionReceiptSchema,
     DependencyBlockerSchema,
@@ -827,6 +831,7 @@ def present_delivery_control(
         state.status is not DeliveryControlReadStatus.AVAILABLE
         or state.policy is None
         or state.occupancy is None
+        or state.snapshot is None
     ):
         return _delivery_control_error(
             status.HTTP_409_CONFLICT,
@@ -838,6 +843,9 @@ def present_delivery_control(
     return DeliveryControlResponse(
         policy=_present_delivery_policy(state.policy),
         last_linear_sync_at=state.last_linear_sync_at,
+        snapshot=DeliveryControlSnapshotSchema.model_validate(
+            state.snapshot, from_attributes=True
+        ),
         occupancy=DeliveryControlOccupancySchema(
             source="materialized_atlas_statuses",
             status_occupancy=[
@@ -848,6 +856,14 @@ def present_delivery_control(
                 for item in occupancy.status_occupancy
             ],
             working_occupancy=occupancy.working_occupancy,
+            integration_occupancy=occupancy.integration_occupancy,
+            integration_ticket_keys=list(occupancy.integration_ticket_keys[:100]),
+            integration_ticket_keys_truncated=(
+                len(occupancy.integration_ticket_keys) > 100
+            ),
+            new_admission_integration_capacity=(
+                occupancy.new_admission_integration_capacity
+            ),
             review_occupancy=occupancy.review_occupancy,
             changes_requested_occupancy=occupancy.changes_requested_occupancy,
             changes_requested_reserve_remaining=(
@@ -870,6 +886,23 @@ def present_delivery_control(
                 )
                 for item in occupancy.component_lane_occupancy
             ],
+            protected_lane_registry_version=(occupancy.protected_lane_registry_version),
+            protected_lane_registry_fingerprint=(
+                occupancy.protected_lane_registry_fingerprint
+            ),
+            protected_lane_state_fingerprint=(
+                occupancy.protected_lane_state_fingerprint
+            ),
+            protected_lane_occupancy=[
+                DeliveryControlProtectedLaneOccupancySchema(
+                    lane=item.lane,
+                    count=item.count,
+                    limit=item.limit,
+                    ticket_keys=list(item.ticket_keys[:100]),
+                    operator_declared=item.operator_declared,
+                )
+                for item in occupancy.protected_lane_occupancy
+            ],
             over_capacity_reasons=[
                 DeliveryControlOverCapacityReasonSchema(
                     dimension=item.dimension,
@@ -880,6 +913,20 @@ def present_delivery_control(
                 for item in occupancy.over_capacity
             ],
         ),
+        ci_pending_ticket_count=state.ci_pending_ticket_count,
+        ci_pending_tickets_truncated=state.ci_pending_tickets_truncated,
+        ci_pending_tickets=[
+            DeliveryControlCIPendingTicketSchema.model_validate(
+                item, from_attributes=True
+            )
+            for item in state.ci_pending_tickets
+        ],
+        protected_lane_holds=[
+            DeliveryControlProtectedLaneHoldSchema.model_validate(
+                item, from_attributes=True
+            )
+            for item in state.protected_lane_holds
+        ],
         latest_admission=(
             None
             if latest is None
