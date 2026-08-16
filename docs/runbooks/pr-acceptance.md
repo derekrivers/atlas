@@ -52,6 +52,12 @@ moves the head after evidence is pulled restarts the spine from evidence.
   `docs/atlas/symphony-integration.md#exact-head-pr-integration-assessment`;
   use that diagnostic before deciding whether a PR is current enough to enter
   the freeze.
+- There is no synthetic-merge exception to that diagnostic. ATLAS-259 recorded
+  **FAIL** because GitHub's required Check Runs were attached to the contributor
+  head while the exact candidate commit had no Check Runs. Mergeability, a
+  stable merge ref, workflow checkout logs, candidate-tree equality and a green
+  head rollup are diagnostic only and never admit a behind branch. A clean but
+  stale PR uses the same operator rebase command as a conflicted stale PR.
 - If a Review Required PR is mechanically stale (`behind`, `diverged`, or
   `conflicted`) before evidence is pulled, use the operator-owned lane rather
   than routing through a Symphony implementation cycle:

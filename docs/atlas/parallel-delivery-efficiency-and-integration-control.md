@@ -289,9 +289,97 @@ reuse window and no reliance on an agent-provided merge claim. If GitHub cannot
 provide that contract for this repository and branch protection, the spike
 records FAIL and the no-rewrite path is not implemented.
 
+### ATLAS-259 governed feasibility report
+
+**Decision: FAIL (2026-08-16).** The exact synthetic candidate is observable,
+but this repository's bounded GitHub check evidence does not pin required
+results to that candidate. The existing current-head acceptance contract and
+operator-owned rebase lane remain authoritative. ATLAS-260 must not activate a
+no-rewrite path unless its phase design first adds a system-tier candidate
+attestation that closes this gap.
+
+The read-only live probe used merged PR 329 because it retained one complete,
+clean GitHub Actions execution without touching an open production PR. GitHub
+Actions jobs `test` and `lint` independently checked out candidate
+`9c756d071289691dd56f769450b1d623d2d3e2ff`. The candidate has parents
+`1c1573715f2f672636493896fb0452f4341e9fff` (then-current `main`) and
+`499e3687ac66279ae0ea09c571dbe797db8c13f2` (PR head), and tree
+`44a3ba815f75d8163a0af1ef009a33d4242c6200`. The two checkout reads reproduced
+that identity. The corresponding successful Check Runs, however, have
+`head_sha` equal to contributor head `499e3687...`, and the Checks endpoint for
+candidate `9c756d07...` returns zero Check Runs. Active repository ruleset
+`17514272` supplies a closed set of eight required `(context, GitHub App ID)`
+pairs: `build-operator-ui`, the three `lint-operator-ui*` jobs,
+`lint-pr-title`, and the three `test-operator-ui-*` jobs, all for App ID
+`15368`. Every one of those successful results is head-pinned rather than
+candidate-pinned, so the complete provider-required set fails exact candidate
+attribution.
+
+The later GitHub merge commit
+`160a7e3c87f91ce601564eba22c4328b95a963c0` has the same two parents and tree as
+the tested candidate but a different commit SHA. That is useful relationship
+evidence, not a retroactive CI pin. Log parsing is not an acceptable repair:
+logs are unbounded payloads, candidate identity is not part of the bounded
+Check Run result, and relying on checkout implementation details would weaken
+the provider boundary.
+
+The executable harness is
+`scripts/exact_base_candidate_spike.py`, with bounded selected-field fixtures in
+`tests/fixtures/github/exact_base_candidate_cases.json` and mutation-spy tests
+in `tests/test_exact_base_candidate_spike.py`. It creates only unreferenced and
+local Git objects in a temporary repository and runs no `fetch`, `merge`,
+`push`, `rebase` or `update-ref`. It proves:
+
+- repeated clean reads reconstruct one candidate commit and tree;
+- head movement and sibling-`main` movement each mint a different candidate,
+  so the old candidate and its evidence are historical immediately;
+- missing, conflicted, malformed and indeterminate observations fail closed;
+- two candidates for unchanged head/base are provider ambiguity;
+- a final two-parent merge commit may share the candidate tree while having a
+  different commit identity;
+- a squash result has the candidate tree, one base parent and a new commit SHA,
+  so candidate authority and post-merge proof are distinct; and
+- credentials and raw payloads are absent from retained projections, and
+  oversized check collections fail closed before retention.
+
+The sufficient identity algebra for a future amended design is:
+
+```text
+candidate = (
+  repository, PR number,
+  head SHA,
+  base ref, live base SHA,
+  candidate commit SHA, candidate tree SHA,
+  candidate parents == (live base SHA, head SHA),
+  canonical (check name, GitHub App ID) set fingerprint
+)
+
+required result = (
+  check name, GitHub App ID, external execution ID,
+  commit SHA == candidate commit SHA,
+  lifecycle time, terminal conclusion
+)
+```
+
+Two bounded reads of an unchanged repository/PR/head/base tuple must reproduce
+the complete candidate tuple. Every member of the unchanged required-check set
+must then resolve to exactly one current, successful result whose commit SHA is
+the candidate SHA. Any head, live-base, candidate, tree, parent or required-set
+movement; duplicate or absent result; conflict; missing field; delay;
+indeterminate mergeability; or malformed response invalidates the tuple. The
+current provider evidence fails the `commit SHA == candidate commit SHA` term.
+
+Fallback is exact and unchanged: for an eligible mechanically stale Review
+Required PR, run
+`uv run atlas pr rebase prepare --pr <N> --repo <owner>/<repo>`, resolve only
+the managed-worktree conflicts if any, use `continue` until
+`ready_to_publish`, then use `publish`. All exact-head evidence, confirmations
+and readiness restart at the rebased head.
+
 ### Conditional no-rewrite lane
 
-Only after spike PASS may Atlas classify a candidate as `exact-base clean`.
+Only after a later governed spike PASS may Atlas classify a candidate as
+`exact-base clean`; ATLAS-259 did not authorise this lane.
 Acceptance pins repository, PR, base branch, base commit, candidate head,
 synthetic merge identity, required-check set and acceptance-criteria
 fingerprint. Any movement or ambiguity invalidates the classification and all
