@@ -295,16 +295,21 @@ def _check_project(
 
     tracker = front_matter.get("tracker")
     tracker = tracker if isinstance(tracker, dict) else {}
-    project_slug = tracker.get("project_slug")
+    provider = tracker.get("provider")
+    provider = provider if isinstance(provider, dict) else {}
+    project_slug = provider.get("project_slug")
     if not isinstance(project_slug, str) or not project_slug:
         return Finding(
-            "C4", False, "WORKFLOW.md tracker.project_slug is missing or empty"
+            "C4",
+            False,
+            "WORKFLOW.md tracker.provider.project_slug is missing or empty",
         )
     if _PROJECT_SLUG_PLACEHOLDER in project_slug:
         return Finding(
             "C4",
             False,
-            f"tracker.project_slug {project_slug!r} is still the placeholder; "
+            f"tracker.provider.project_slug {project_slug!r} is still the "
+            "placeholder; "
             "point the contract at a real Linear project slug",
         )
     project = client.fetch_project(project_id)
@@ -319,8 +324,9 @@ def _check_project(
             "C4",
             False,
             f"LINEAR_PROJECT_ID resolves to slug {project.slug_id!r}, which does "
-            f"not match WORKFLOW.md tracker.project_slug {project_slug!r}; issues "
-            "Atlas creates would not be visible to Symphony's poll",
+            "not match WORKFLOW.md tracker.provider.project_slug "
+            f"{project_slug!r}; issues Atlas creates would not be visible to "
+            "Symphony's poll",
         )
     return Finding(
         "C4",
