@@ -1,8 +1,8 @@
 # Parallel Delivery Efficiency and Integration Control (Phase 15.5)
 
-Status: Controlled comparison PASS; ATLAS-263 production reachability and
-remediated live-authority proof remain pending before closure can release
-ATLAS-253 for Phase 15's live ceiling ramp.
+Status: CLOSED. The controlled comparison and remediated ATLAS-263 production
+live-authority proof passed at the accepted PR #335 head, releasing ATLAS-253
+for Phase 15's separately governed live ceiling ramp.
 
 ## Problem and outcome
 
@@ -37,7 +37,7 @@ is the explicit operator release gate for ATLAS-253, which still owns Phase
 | Freshness | Review Required enters acceptance only when the exact contributor head satisfies current-main ancestry. Mechanically stale candidates use the operator-owned rebase lane; synthetic composition is diagnostic only. |
 | Rebase fallback | A conflict, stale identity, provider ambiguity or failed spike routes to the delivered operator-owned rebase lane. Atlas never resolves or publishes a rebase automatically. |
 | Existing Phase 15 work | ATLAS-250 and ATLAS-251 continue normally and become prerequisites of the Phase 15.5 API/UI tickets. They are not recreated or rewritten. |
-| Ramp release | ATLAS-253 remains `Needs Human` until the Phase 15.5 milestone and closure are reviewed and merged. |
+| Ramp release | Accepted PR #335 closed Phase 15.5 at the remediated exact head and released ATLAS-253; it did not change or authorise automatic change of the Symphony ceiling. |
 
 ATLAS-259 proved that GitHub required results are pinned to the contributor
 head rather than a synthetic integration candidate. ATLAS-260 did not produce
@@ -782,24 +782,21 @@ The protected contender publishes zero times before release. Every determinate
 CI exit is system-owned; every unsafe evidence class holds. The controlled
 receipt retains all eight baseline/Phase measured identities.
 
-That controlled PASS cannot pre-authorise ATL-437's own CI handoff. The first
-publication became a failed reachability sample when complete CI produced no
-production reconciliation or Linear exit. The operator-authorised semantic
-remediation restarts the authority window at the next final head; the old
-head, checks and local results remain historical. Publication of that final
-head must leave the milestone `PENDING_LIVE_AUTHORITY`: Symphony must stop the
-worker within five seconds, the supported PM cadence must append a genuine
-`ci_handoff_reconciliations` row and perform the corresponding sole determinate
-exit within one tick and five minutes, and no Linear/GitHub automation may
-reactivate the issue. A PR-linked bounded live receipt completes the last gate
-without changing the candidate head. Any missing, ambiguous or unexpected
-observation is FAIL.
+That controlled PASS did not pre-authorise ATL-437's own CI handoff. The first
+publication remains a failed reachability sample because complete CI produced
+no production reconciliation or Linear exit. At the remediated contributor
+head `a598798c1a6c5cabe4c80c0f04020c271f438de1`, the production PM adapter
+caught the local mirror up into `CI Pending`, resolved the issue-bound PR #335
+publication, ingested its exact-head GitHub evidence, appended a genuine
+`ci_handoff_reconciliations` record and alone wrote the determinate passed exit
+to `Review Required`. No agent polled CI, no candidate-head rewrite occurred
+and the disabled Linear/GitHub workflow automation caused no reactivation.
 
-Phase 15.5 closes only when that live gate passes, every controlled threshold
-and authority invariant remains passed, and
-`docs/closure/phase-15.5-closure-report.md` merges at the accepted exact head.
-Until then ATLAS-253 remains `Needs Human` and `WORKFLOW.md`'s committed ceiling
-remains one.
+The operator accepted that unchanged identity and PR #335 merged. Phase 15.5
+is therefore CLOSED and releases ATLAS-253 for a separately operator-
+checkpointed ramp. `WORKFLOW.md`'s committed ceiling remains one until Gate 10
+passes; the synthetic no-rewrite route remains retired and none of this
+evidence grants Atlas ceiling, rebase, push, merge or worker authority.
 
 ## Explicit non-goals
 

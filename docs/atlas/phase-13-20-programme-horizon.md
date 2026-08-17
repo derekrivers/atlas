@@ -252,7 +252,8 @@ working and review capacity.
   Conflict, movement or ambiguity falls back to Phase 12's operator rebase
   lane; Atlas never rebases or resolves conflicts.
 - ATLAS-250 and ATLAS-251 remain prerequisites for API and UI extensions.
-  ATLAS-253 remains `Needs Human` until Phase 15.5 closure is merged.
+  Accepted PR #335 closed Phase 15.5 and released ATLAS-253 for its separately
+  governed Phase 15 live ramp.
 - The phase changes no `WORKFLOW.md` ceiling and does not execute the Phase 15
   ramp.
 
@@ -439,10 +440,10 @@ through the repaired canonical plan/apply path.
 Gate 0 was satisfied and the prepared Phase 13–15 designs and ordered stubs
 entered one accepted Wave A dependency graph through the exact
 `atlas plan --stubs-only` and `atlas apply` boundary. Phase 13 is closed. Phase
-Phases 13 and 14 are closed. Phase 15 is in flight; Phase 15.5 is an
-interstitial prerequisite correction applied through its own governed batch.
-ATLAS-250 and ATLAS-251 may continue where their prerequisites permit, but
-ATLAS-253 remains operator-held until the Phase 15.5 closure gate passes.
+14 is closed. Phase 15 is in flight; Phase 15.5 is a closed interstitial
+prerequisite correction applied through its own governed batch. Accepted PR
+#335 released ATLAS-253 for the operator-checkpointed **1 → 3 → 5 → 7 → 10**
+ramp without changing the committed one-agent ceiling.
 
 ### Gate A — after Phases 15 and 15.5
 

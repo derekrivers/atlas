@@ -864,17 +864,17 @@ passes, the Phase 15 milestone/closure change must commit and merge
 Programme direction: `docs/atlas/phase-13-20-programme-horizon.md`.
 Design authority:
 `docs/atlas/parallel-delivery-efficiency-and-integration-control.md`.
-Status: CLOSED AT ACCEPTED REMEDIATED ATL-437 MERGE;
-PENDING_LIVE_AUTHORITY UNTIL THAT FINAL HEAD PRODUCES A GENUINE PRODUCTION
-HANDOFF AND MERGES.
-Planning state: DELIVERY COMPLETE THROUGH ATLAS-262; ATLAS-263 is the fixed
-comparison, production-reachability remediation and live-authority closure
-milestone. Ticket identities were
+Status: CLOSED AT ACCEPTED REMEDIATED ATL-437 / PR #335 MERGE. The production
+handoff passed at contributor head
+`a598798c1a6c5cabe4c80c0f04020c271f438de1`.
+Planning state: DELIVERY COMPLETE THROUGH ATLAS-262 AND ATLAS-263; the
+separately governed ATLAS-253 Phase 15 live ramp is released. Ticket identities
+were
 assigned only through the governed `atlas plan --stubs-only` and `atlas apply`
 boundary. The existing API ticket ATLAS-250 and UI ticket ATLAS-251 remain
 prerequisites for their delivered extensions.
-This phase changes no Symphony ceiling and must close before the operator
-releases ATLAS-253 from `Needs Human` for the live Phase 15 ramp.
+This phase changed no Symphony ceiling. Its accepted closure released the
+separate Phase 15 ramp for ATLAS-253 without authorising a ceiling transition.
 
 Phase 15.5 makes parallel delivery cheaper and safer before increasing
 capacity. Agents run deterministic ticket-required and affected checks for
@@ -930,10 +930,11 @@ product-scoped system-tier evidence ingestion itself, and scopes the trusted
 reconciler to that pull's full contributor head and complete observed evidence
 identities without requiring a reconstructed AgentRun. It closes that tick's
 workflow write window after a confirmed handoff. The live authority window
-restarts at the remediated final head. Production reachability passes only when
-that head creates a genuine reconciliation row and corresponding authorised
-Linear transition without an agent poll, manual evidence seed or manual state
-repair.
+passed at the remediated final head
+`a598798c1a6c5cabe4c80c0f04020c271f438de1`: the production adapter created a
+genuine reconciliation row and corresponding authorised `CI Pending → Review
+Required` Linear transition for PR #335 without an agent poll, manual evidence
+seed or manual state repair. Accepted merge #335 closed Phase 15.5.
 
 ---
 

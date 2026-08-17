@@ -647,9 +647,10 @@ def test_atlas_252_ac4_failure_rolls_back_without_terminating_or_closing() -> No
     assert "cancel workers or delete workspaces" in flowed
     assert "milestone PR stays unmerged" in flowed
     assert "Phase 15 remains open" in flowed
-    assert "If `origin/main` advances" in flowed
-    assert "restart at Gate 1" in flowed
-    assert "no prior PASS carries across the rebase" in flowed
+    assert "Normal `origin/main` movement does not erase a completed gate" in flowed
+    assert "operator-owned rebase lane" in flowed
+    assert "does not force a Gate 1 restart" in flowed
+    assert "invalidate earlier PASS receipts" in flowed
 
 
 def test_atlas_252_ac5_open_phase_is_one_and_closure_can_only_be_exactly_ten() -> None:

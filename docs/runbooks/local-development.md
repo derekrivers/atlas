@@ -244,10 +244,10 @@ uv run python scripts/phase_15_5_milestone.py \
   tests/fixtures/phase_15_5/milestone_v1.json --pretty
 ```
 
-Exit 3 means the controlled window passed but ATL-437 is correctly
-`PENDING_LIVE_AUTHORITY`; it is not a failed controlled result and is not Phase
-15.5 closure. The seeded live-delivery/fault exercise is deterministic test
-evidence only:
+Exit 3 is the historical pre-live disposition: the controlled window passed
+but the receipt is absent. Phase 15.5 later closed at accepted PR #335; replay
+without that external receipt remains intentionally pending. The seeded live-
+delivery/fault exercise is deterministic test evidence only:
 
 ```bash
 uv run python scripts/phase_15_5_milestone.py \
@@ -256,9 +256,9 @@ uv run python scripts/phase_15_5_milestone.py \
   tests/fixtures/phase_15_5/live_authority_seeded_pass.json --pretty
 ```
 
-An actual bounded receipt for ATL-437 may be evaluated with the same
-`--live-receipt` option only after publication of the remediated final head.
-The receipt must pin
+The accepted bounded ATL-437 receipt was evaluated with the same
+`--live-receipt` contract after publication of remediated head
+`a598798c1a6c5cabe4c80c0f04020c271f438de1`. Such a receipt must pin
 the PR/head, `CI Pending` observation, worker-stop timestamp, determinate CI
 timestamp, reconciler tick/owner, exact transition sequence and absence of
 Linear GitHub workflow state mutation. The publishing agent never runs that
@@ -269,9 +269,9 @@ Seeded evidence never substitutes for that live window.
 ATL-437's first published head is retained as a failed production-reachability
 sample: CI completed, but the supported PM cadence never called the trusted
 handoff service, so no genuine reconciliation row or Linear exit existed. The
-remediated final head restarts the live window. After the agent has stopped at
-`CI Pending`, the system/operator runs the supported adapter from that final
-code identity:
+remediated final head restarted and passed the live window. In an attended
+handoff after an agent has stopped at `CI Pending`, the system/operator runs
+the supported adapter from that exact code identity:
 
 ```bash
 uv run atlas pm sync --once -v
@@ -304,6 +304,38 @@ count. Console output is observability only: verify the append-only
 repair an attribution hold with a title guess, branch guess, rollup inference,
 manual evidence seed or manual state move. A second tick must not repeat a
 confirmed write.
+
+## Phase 15 delivery-control ramp validator (ATLAS-253)
+
+The read-only ramp validator consumes a predeclared workload manifest and a
+durable receipt prefix. The repository fixture
+`tests/fixtures/phase_15/ramp_workload_seed_v1.json` has eleven independent
+non-key meta workloads and every gate exercise. Its validation scope is always
+`offline-read-only`; neither the fixture nor any locally supplied replacement
+can authorise a live gate or closure. Validate and fingerprint the schema:
+
+```bash
+uv run python scripts/phase_15_delivery_control_milestone.py \
+  tests/fixtures/phase_15/ramp_workload_seed_v1.json --fingerprint-only
+uv run pytest tests/test_phase_15_delivery_control_milestone.py
+```
+
+Add offline receipt projections only in gate order:
+
+```bash
+uv run python scripts/phase_15_delivery_control_milestone.py \
+  <live-workload-manifest.json> \
+  --gate-receipt <gate-1.json> \
+  --gate-receipt <gate-3.json> --pretty
+```
+
+Exit 3 names the next pending gate, exit 1 retains an honest gate FAIL and exit
+2 rejects malformed, stale-linked or secret-bearing input. Exit 0 emits only
+`RECEIPT_SEQUENCE_VALIDATED`; `transition_authorized` and
+`closure_authorized` remain false for every input. Gate authority exists only
+at the governed operator/durable-receipt boundary. Gate 1 is currently blocked
+because no deterministic VPS service/configuration/readback procedure has been
+ratified; see `docs/runbooks/operator-environment.md`.
 
 ## Before you publish and hand off
 

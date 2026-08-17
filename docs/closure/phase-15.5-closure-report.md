@@ -5,36 +5,32 @@ Ticket: ATLAS-263 / Linear ATL-437
 Controlled disposition: **PASS**
 First live sample: **FAIL — production reconciler unreachable at
 `dad520cf46c2c6ee2f51b95e0fa6e20660751a96`**
-Remediated live authority disposition: **PENDING — restarts at the next final
-ATL-437 head**
+Remediated live authority disposition: **PASS — production handoff at
+`a598798c1a6c5cabe4c80c0f04020c271f438de1`**
 Symphony ceiling: **unchanged at one**
-ATLAS-253: **remains `Needs Human` until this exact closure candidate is
-accepted and merged**
+ATLAS-253: **released for its separately governed Phase 15 live ramp after PR
+#335 merged**
 
 ## Closure rule
 
-This report is the Phase 15.5 closure candidate, not advance authority for its
-own future CI run. The deterministic comparison and adversarial matrix pass.
-The last gate is ATL-437's restarted live authority window at the remediated
-final head, through its first determinate `CI Pending` exit and subsequent
-acceptance disposition. The first published head completed CI but exposed that
-the supported PM cadence never called the trusted reconciler. It retained no
-genuine ATLAS-263 reconciliation and performed no authorised exit, so it is
-failed historical reachability evidence and cannot satisfy this gate.
+The deterministic comparison, adversarial matrix and remediated live-authority
+gate all passed. The first published head remains a failed historical sample:
+its complete CI result produced no production reconciliation or authorised
+Linear exit. The accepted remediated head
+`a598798c1a6c5cabe4c80c0f04020c271f438de1` then exercised the supported PM
+cadence for the issue-bound PR #335 publication. The production adapter caught
+the local mirror up into `CI Pending`, ingested the exact contributor-head
+GitHub evidence, appended a genuine `ci_handoff_reconciliations` record,
+classified the required checks as passed and alone wrote `CI Pending → Review
+Required`.
 
-The publishing agent must enter `CI Pending` and stop in the same turn. The
-system-tier reconciler and operator complete a bounded PR-linked receipt without
-changing the candidate head. Phase 15.5 closes only if the supported production
-adapter appends a genuine `ci_handoff_reconciliations` row, performs the
-corresponding authorised Linear exit, that receipt is PASS, and the operator
-accepts and merges this exact head. If the receipt is missing, ambiguous or
-FAIL, this report remains a recorded controlled PASS with overall
-`PENDING_LIVE_AUTHORITY` or FAIL; it does not release ATLAS-253.
-
-This ordering resolves the otherwise circular evidence boundary: the commit
-contains the fixed controlled evidence and the immutable rule for evaluating
-its own later live window; system/operator evidence supplies the post-publication
-facts without an agent-side CI poll or a head rewrite.
+The durable operational record retains the exact reconciliation, evidence and
+transition identities. This report records only bounded selected facts; it
+does not copy raw Linear/GitHub responses or provider credentials. The agent
+did not poll CI or rewrite the candidate head, and the disabled Linear
+`PR opened → In Progress` automation produced no reactivation. The operator
+accepted the unchanged head and PR #335 merged, making this report historical
+Phase 15.5 closure authority and releasing ATLAS-253 for a separate action.
 
 ## Entry gate
 
@@ -272,11 +268,14 @@ moving the card or rewriting the branch.
 The fixed controlled comparison is PASS. The synthetic no-rewrite route remains
 retired. The ceiling remains one and no Phase 15/ATLAS-253 ramp occurs here.
 
-The first ATL-437 head is a retained production-reachability FAIL. After the
-operator-authorised remediation, overall Phase 15.5 status returns to
-`PENDING_LIVE_AUTHORITY` for the next final head. If that exact head's receipt
-contains the genuine production reconciliation and Linear exit, every live
-threshold passes, and the operator accepts and merges the unchanged head, the
-merge records Phase 15.5 closure and permits the operator to consider releasing
-ATLAS-253 in a separate action. Otherwise Phase 15.5 remains open, ATLAS-253
-remains `Needs Human`, and no committed Symphony ceiling changes.
+The first ATL-437 head is a retained production-reachability FAIL. The
+remediated exact head
+`a598798c1a6c5cabe4c80c0f04020c271f438de1` is the live-authority PASS: its
+production reconciliation and sole authorised Linear exit satisfy the final
+gate, and accepted PR #335 merged that identity. Phase 15.5 is CLOSED.
+
+The synthetic no-rewrite route remains retired, exact contributor-head/current-
+main acceptance and the operator-owned mechanical rebase lane remain binding,
+and committed `main` still declares the Symphony ceiling at one. Phase 15.5
+authorises no ceiling change; it only releases ATLAS-253 to attempt the
+operator-checkpointed **1 → 3 → 5 → 7 → 10** Phase 15 ramp.
