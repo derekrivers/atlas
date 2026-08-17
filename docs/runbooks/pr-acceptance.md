@@ -104,10 +104,59 @@ write response is ambiguous, the durable fence requires a later complete board
 observation to prove whether the source or target state won; that observation
 does not retry the write. A changed head invalidates the recorded authority and
 starts the evidence chain again for the new commit. The handoff considers only
-evidence belonging to the ticket's product (and, when explicitly ticket-scoped,
-that ticket). If newer same-head evidence changes the selected check results in
-the final pre-write window, Atlas records `evidence_changed`, leaves the card in
-`CI Pending` and lets the next tick classify the new set.
+evidence belonging to the ticket's product and exact publication pull (and,
+when explicitly ticket-scoped, that ticket). If the scoped evidence changes the
+selected check results in the final pre-write window, Atlas records
+`evidence_changed`, leaves the card in `CI Pending` and lets the next tick
+classify the new set.
+
+The trusted reconciler is reached through the normal one-shot and recurring PM
+cadence. After the complete project pull, the local mirror may catch up into
+`CI Pending` from a Symphony-active predecessor when the polling interval
+missed transient `In Progress`/`PR Open` states. The append-only transition
+records that actual direct observation with
+`pm-engine:linear-poll-compression`; it never invents the missed states or
+writes Linear. After AgentRun reconstruction, the adapter considers at most one
+locally `CI Pending` ticket in stable key order. The issue-bound Linear GitHub
+attachment must provide exactly one repository/PR publication whose canonical
+URL and metadata agree. `trusted_publication_unavailable` and
+`trusted_publication_ambiguous` hold before a GitHub call. The adapter then runs
+the normal `drive_evidence_pull` path for that exact publication, resolves the
+full head, persists product-scoped system-tier evidence and passes only the
+complete observed evidence-id set to reconciliation. Provider or malformed
+source failure holds as `system_evidence_ingestion_failed`; normal evidence
+ingestion is not a separate operator precondition. An AgentRun, ticket/PR title,
+branch guess or GitHub rollup is never required or used for identity. A
+confirmed handoff write or target-fence reconciliation ends the tick before
+admission or completion can write another workflow state. In operator-attended
+diagnosis, `atlas pm sync --once -v` prints the bounded result; the durable
+reconciliation row and Linear transition remain the authority.
+
+Linear's `PR opened -> In Progress` GitHub workflow automation caused the
+ATLAS-261/262 reactivation incident and was disabled by the operator on 17
+August 2026. Keep it disabled. The integration may link the PR and expose
+evidence, but it must not mutate Atlas-owned workflow state. During ATLAS-263's
+ATL-437 live authority window, any direct `CI Pending -> In Progress`, `CI
+Pending -> PR Open`, or other Symphony-active reactivation is an immediate
+milestone FAIL unless an authorised `Changes Requested -> In Progress`
+semantic-remediation path occurred first. Do not repair such a transition by
+dragging the issue back; retain its exact timestamps and owner evidence and
+leave ATLAS-253 in `Needs Human`.
+
+ATLAS-263's publishing agent stops at `CI Pending`, so the live receipt is
+necessarily completed afterward by the system reconciler/operator without a
+candidate-head change. It must show slot release within five seconds, exactly
+one system-owned determinate exit within one reconciliation tick and five
+minutes, zero agent CI polls and zero unexpected reactivation. A seeded replay
+is test evidence only and cannot substitute for ATL-437's actual issue and PR
+history.
+
+The first ATL-437 head completed CI but failed this production reachability
+condition because no supported PM caller invoked the service. Retain that head
+and its checks as historical evidence. The operator-authorised remediation
+restarts the authority window at the next final head; PASS additionally
+requires a genuine `ci_handoff_reconciliations` row authored by the production
+adapter and the corresponding authorised Linear exit for that exact head.
 
 ## 1. Review (reviewer-tier, not the gate)
 

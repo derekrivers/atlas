@@ -16,6 +16,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
+from urllib.parse import urlsplit
 from uuid import UUID, uuid4
 
 from atlas.core.models import (
@@ -59,6 +60,8 @@ _HANDOFF_STATUSES = frozenset(
         TicketStatus.NEEDS_HUMAN_DECISION.value,
     }
 )
+_GITHUB_ACTOR = "github-actions"
+_REPOSITORY_PART_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
 
 
 @dataclass(frozen=True)
@@ -151,6 +154,71 @@ def _head_commit(evidence: Sequence[Evidence]) -> str | None:
     return None
 
 
+def _repository_from_uri(value: str | None) -> tuple[str, str] | None:
+    """Read a repository identity only from an exact GitHub evidence URI."""
+
+    if not value:
+        return None
+    parsed = urlsplit(value)
+    if parsed.scheme != "https" or parsed.netloc.casefold() != "github.com":
+        return None
+    parts = [part for part in parsed.path.split("/") if part]
+    if len(parts) < 2:
+        return None
+    owner, name = parts[:2]
+    if name.endswith(".git"):
+        name = name[:-4]
+    if not owner or not name:
+        return None
+    if not _REPOSITORY_PART_RE.fullmatch(owner) or not _REPOSITORY_PART_RE.fullmatch(
+        name
+    ):
+        return None
+    return owner, name
+
+
+def _repository_identity(
+    evidence: Sequence[Evidence],
+    *,
+    pr_number: int | None,
+    head_commit: str | None,
+) -> tuple[str | None, str | None, str]:
+    """Resolve one repository from bounded, system-tier PR evidence.
+
+    The resolver never reads a ticket title or a provider rollup.  A record is
+    eligible only when GitHub Actions authored it, it is pinned to the selected
+    head, its own bounded source/raw payload identifies the selected PR, and its
+    source URI names an exact ``github.com/<owner>/<repo>`` repository.  Missing
+    or contradictory inputs stay explicit so the production handoff adapter can
+    fail closed.
+    """
+
+    if pr_number is None or head_commit is None:
+        return None, None, "unavailable"
+    repositories: set[tuple[str, str]] = set()
+    for record in evidence:
+        if (
+            record.created_by_type.value != "system"
+            or record.created_by_id != _GITHUB_ACTOR
+            or record.commit_sha != head_commit
+        ):
+            continue
+        record_pr = _pr_number_from_text(record.source_uri)
+        if record_pr is None:
+            record_pr = _pr_number_from_payload(record.raw_payload)
+        if record_pr != pr_number:
+            continue
+        repository = _repository_from_uri(record.source_uri)
+        if repository is not None:
+            repositories.add(repository)
+    if len(repositories) == 1:
+        owner, name = next(iter(repositories))
+        return owner, name, "resolved"
+    if repositories:
+        return None, None, "ambiguous"
+    return None, None, "unavailable"
+
+
 def _details(summary: str | None) -> dict[str, Any]:
     if not summary:
         return {}
@@ -241,13 +309,25 @@ def _new_run(
     now: datetime,
 ) -> AgentRun:
     handoff_state = cycle.handoff.to_status if cycle.handoff is not None else None
+    pr_number = _pr_number(evidence)
+    head_commit = _head_commit(evidence)
+    repository_owner, repository_name, repository_identity_status = (
+        _repository_identity(
+            evidence,
+            pr_number=pr_number,
+            head_commit=head_commit,
+        )
+    )
     payload: dict[str, Any] = {
         "source": RECONSTRUCTION_SOURCE,
         "dispatch_transition_id": str(cycle.dispatch.id),
         "handoff_transition_id": str(cycle.handoff.id) if cycle.handoff else None,
         "handoff_state": handoff_state,
-        "pr_number": _pr_number(evidence),
-        "head_commit": _head_commit(evidence),
+        "repository_owner": repository_owner,
+        "repository_name": repository_name,
+        "repository_identity_status": repository_identity_status,
+        "pr_number": pr_number,
+        "head_commit": head_commit,
         "input_context_pack_rendered_at": pack.rendered_at,
     }
     return AgentRun(

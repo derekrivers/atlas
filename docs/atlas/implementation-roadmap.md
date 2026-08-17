@@ -864,24 +864,30 @@ passes, the Phase 15 milestone/closure change must commit and merge
 Programme direction: `docs/atlas/phase-13-20-programme-horizon.md`.
 Design authority:
 `docs/atlas/parallel-delivery-efficiency-and-integration-control.md`.
-Planning state: PLANNING INPUTS PREPARED; ticket identities are assigned only
-through the governed `atlas plan --stubs-only` and `atlas apply` boundary.
-Phase 15.5 may begin after its planning inputs are merged. The existing
-API ticket ATLAS-250 and UI ticket ATLAS-251 remain prerequisites for their
-extensions.
+Status: CLOSED AT ACCEPTED REMEDIATED ATL-437 MERGE;
+PENDING_LIVE_AUTHORITY UNTIL THAT FINAL HEAD PRODUCES A GENUINE PRODUCTION
+HANDOFF AND MERGES.
+Planning state: DELIVERY COMPLETE THROUGH ATLAS-262; ATLAS-263 is the fixed
+comparison, production-reachability remediation and live-authority closure
+milestone. Ticket identities were
+assigned only through the governed `atlas plan --stubs-only` and `atlas apply`
+boundary. The existing API ticket ATLAS-250 and UI ticket ATLAS-251 remain
+prerequisites for their delivered extensions.
 This phase changes no Symphony ceiling and must close before the operator
 releases ATLAS-253 from `Needs Human` for the live Phase 15 ramp.
 
 Phase 15.5 makes parallel delivery cheaper and safer before increasing
 capacity. Agents run deterministic ticket-required and affected checks for
 local confidence; complete CI remains the system-tier authority. Published
-work enters a distinct CI-pending state that does not consume Symphony working
-capacity. Protected repository surfaces are serialized through explicit
-integration lanes. A bounded feasibility spike must prove GitHub's exact-base
-synthetic-merge evidence before clean candidates may avoid branch rewrite;
-otherwise the existing operator-owned rebase lane remains authoritative.
+work enters the distinct `CI Pending` state that does not consume Symphony
+working capacity. Protected repository surfaces are serialized through explicit
+integration lanes. ATLAS-259 and ATLAS-260 recorded FAIL: required GitHub CI is
+pinned to the contributor head and no independent trusted candidate
+attestation closed that identity gap. The synthetic no-rewrite route is
+retired. Exact-head/current-main acceptance and the existing operator-owned
+rebase lane remain authoritative.
 
-Planned delivery contracts (keys assigned only by `atlas apply`):
+Delivered contracts and closure milestone (keys assigned only by `atlas apply`):
 
 1. Tiered local-validation contract and deterministic validation-plan CLI.
 2. CI-pending delivery state and separate integration capacity.
@@ -889,7 +895,8 @@ Planned delivery contracts (keys assigned only by `atlas apply`):
 4. Symphony publish-once, release-slot workflow.
 5. Protected integration lanes for conflict-prone repository surfaces.
 6. Exact-base synthetic-merge feasibility spike.
-7. No-rewrite exact-base acceptance with fail-closed rebase fallback.
+7. No-rewrite exact-base assessment: FAIL; route retired and exact-head rebase
+   fallback retained.
 8. Delivery-pressure API extensions.
 9. Integration-pressure operator console.
 10. Parallel-delivery efficiency and integration milestone.
@@ -900,8 +907,33 @@ Symphony turns, unbounded CI/review/integration queues or unsafe freshness
 shortcuts. Seed protected-surface collisions, implementation and infrastructure
 CI failures, head/base movement, provider ambiguity and true merge conflicts.
 Every case must route deterministically without automatic merge, rebase,
-conflict resolution or ceiling change. A failed or ambiguous result leaves
+conflict resolution or ceiling change. The live ATL-437 window additionally
+requires zero recurrence of the externally caused ATLAS-261/262 `CI Pending ->
+In Progress` reactivation after the conflicting Linear `PR opened -> In
+Progress` automation was disabled. A failed, pending or ambiguous result leaves
 Phase 15.5 open and ATLAS-253 in `Needs Human`.
+
+ATL-437's first published head completed exact-head CI but proved that the
+trusted `reconcile_ci_handoff()` service had no production caller: ordinary
+`atlas pm sync` reached only `sync_tick()`, and no genuine
+`ci_handoff_reconciliations` row or authorised Linear exit was produced. The
+failed head remains historical reachability evidence. The next head showed that
+a 60-second PM poll can miss both short-lived `In Progress`/`PR Open` states and
+observe the board already at `CI Pending`. ATLAS-263 therefore also permits a
+complete trusted board pull to catch the local mirror up from a Symphony-active
+predecessor only. The append-only row records the actual direct observation
+with poll-compression provenance and invents no intermediate transition. The
+remediation wires one deterministically ordered local `CI Pending` candidate
+into every supported PM tick, resolves one exact repository/PR publication
+only from a complete issue-bound Linear GitHub attachment, invokes canonical
+product-scoped system-tier evidence ingestion itself, and scopes the trusted
+reconciler to that pull's full contributor head and complete observed evidence
+identities without requiring a reconstructed AgentRun. It closes that tick's
+workflow write window after a confirmed handoff. The live authority window
+restarts at the remediated final head. Production reachability passes only when
+that head creates a genuine reconciliation row and corresponding authorised
+Linear transition without an agent poll, manual evidence seed or manual state
+repair.
 
 ---
 

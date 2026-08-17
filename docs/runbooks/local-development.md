@@ -230,6 +230,81 @@ Two cautions:
 - **`LINEAR_*_ID` values are the API ids (UUIDs)**, not the human `ATL-123`
   identifiers. An issue-not-found error is usually that mix-up.
 
+## Phase 15.5 milestone replay (ATLAS-263)
+
+The fixed comparison fixture is
+`tests/fixtures/phase_15_5/milestone_v1.json`. Its identity, workload order,
+`IND-1..IND-4` workload/plan/path/lane identities, virtual-clock inputs and
+thresholds were recorded before measurement. Run the controlled comparison
+without a live receipt to prove the comparison while retaining the required
+live gate:
+
+```bash
+uv run python scripts/phase_15_5_milestone.py \
+  tests/fixtures/phase_15_5/milestone_v1.json --pretty
+```
+
+Exit 3 means the controlled window passed but ATL-437 is correctly
+`PENDING_LIVE_AUTHORITY`; it is not a failed controlled result and is not Phase
+15.5 closure. The seeded live-delivery/fault exercise is deterministic test
+evidence only:
+
+```bash
+uv run python scripts/phase_15_5_milestone.py \
+  tests/fixtures/phase_15_5/milestone_v1.json \
+  --live-receipt \
+  tests/fixtures/phase_15_5/live_authority_seeded_pass.json --pretty
+```
+
+An actual bounded receipt for ATL-437 may be evaluated with the same
+`--live-receipt` option only after publication of the remediated final head.
+The receipt must pin
+the PR/head, `CI Pending` observation, worker-stop timestamp, determinate CI
+timestamp, reconciler tick/owner, exact transition sequence and absence of
+Linear GitHub workflow state mutation. The publishing agent never runs that
+post-publication check: it stops at `CI Pending`. The system reconciler and
+operator attach the PR-linked receipt without changing the candidate head.
+Seeded evidence never substitutes for that live window.
+
+ATL-437's first published head is retained as a failed production-reachability
+sample: CI completed, but the supported PM cadence never called the trusted
+handoff service, so no genuine reconciliation row or Linear exit existed. The
+remediated final head restarts the live window. After the agent has stopped at
+`CI Pending`, the system/operator runs the supported adapter from that final
+code identity:
+
+```bash
+uv run atlas pm sync --once -v
+```
+
+`GITHUB_TOKEN`, the existing Linear credentials/state map and
+`LINEAR_PROJECT_ID`/`LINEAR_TEAM_ID` are required production preconditions. The
+initial complete pull may observe Linear already at `CI Pending` while the local
+store still says `Ready for Agent`, `In Progress` or another Symphony-active
+predecessor. This is supported poll-compression recovery: confirm the durable
+transition records the actual direct edge and
+`pm-engine:linear-poll-compression`, with no invented `PR Open` row. Do not
+manually insert intermediate transitions or require an AgentRun before retrying
+the normal one-shot path.
+
+The complete Linear board pull must expose exactly one issue-bound GitHub
+attachment whose canonical PR URL agrees with repository/number metadata and
+whose GitHub close link names an open `main`-target PR. The adapter then calls
+the normal `drive_evidence_pull` mapper itself for that exact publication,
+resolves the full contributor head and scopes reconciliation to the complete
+observed evidence-id set, including rows reused by dedup. No
+separate `atlas evidence pull`, ticket-scoped evidence seed or fast poll is a
+precondition. Missing/ambiguous publication identity and provider/malformed
+evidence-pull failure are typed holds with zero Linear mutation.
+
+The verbose output must name one bounded `CI handoff adapter` result with exact
+repository, PR and full head, classification, decision, reason and mutation
+count. Console output is observability only: verify the append-only
+`ci_handoff_reconciliations` row and corresponding Linear transition. Never
+repair an attribution hold with a title guess, branch guess, rollup inference,
+manual evidence seed or manual state move. A second tick must not repeat a
+confirmed write.
+
 ## Before you publish and hand off
 
 A branch is ready for publication when, from a clean `uv sync --locked`:

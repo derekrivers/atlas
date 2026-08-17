@@ -106,6 +106,7 @@ from atlas.linear.client import (
 from atlas.linear.ownership import LinearStatusMap, LinearStatusMapError
 from atlas.linear.preflight import ModelProbe, PreflightReport, run_preflight
 from atlas.orchestration import (
+    PM_SYNC_CONFIG_ERRORS,
     ConfirmPrompts,
     ContextInputs,
     ContextNotFoundError,
@@ -308,7 +309,7 @@ def _format_sync_result(result: SyncResult, *, verbose: bool = False) -> str:
             f"{decision.phase} {decision.outcome} {decision.ticket_key}: "
             f"{decision.reason}"
         )
-    lines.extend(result.safe_admission_summaries(verbose=verbose))
+    lines.extend(result.safe_operator_summaries(verbose=verbose))
     return "\n".join(lines)
 
 
@@ -1299,13 +1300,12 @@ def _pm_sync(args: argparse.Namespace, resolved_db: Database) -> int:
     installs the shutdown handlers, and drives `run_scheduler` (default 60s
     cadence, or one tick with `--once`). A missing credential / team id / status
     map is a clean EXIT_PRECONDITION, mirroring `plan`'s missing-key handling;
-    otherwise it loops until a shutdown signal (then stops after the current
-    tick) and returns EXIT_OK."""
+    otherwise shutdown stops cleanly after the current tick and returns EXIT_OK."""
 
     try:
         assert_schema_at_head(resolved_db)
         config = build_tick_config(args, resolved_db)
-    except (MissingLinearTokenError, LinearStatusMapError, PlannerClientError) as error:
+    except PM_SYNC_CONFIG_ERRORS as error:
         print(error, file=sys.stderr)
         return EXIT_PRECONDITION
     except SchemaDriftError as error:

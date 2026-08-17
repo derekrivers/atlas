@@ -60,6 +60,7 @@ from uuid import uuid4
 from atlas.core.anchors import SourceDocument
 from atlas.core.enums import ActorType
 from atlas.core.models.tick_failure import TickFailure
+from atlas.github import GitHubClient
 from atlas.learning import LessonModelClient
 from atlas.linear.client import LinearClient, LinearRateLimitError
 from atlas.linear.ownership import LinearStatusMap
@@ -110,7 +111,8 @@ class TickConfig:
     """The injection a single ``sync_tick`` needs, built once and reused every
     tick. Mirrors ``sync_tick``'s keyword-only signature except for the clocks
     (sampled by the scheduler): ``tickets``, ``db``, ``client``, ``status_map``,
-    ``team_id``, ``project_id``, ``inbox_dir``, ``documents``, and the
+    ``team_id``, ``project_id``, ``inbox_dir``, ``documents``, the optional
+    production ``github_client`` used by the CI-handoff adapter, and the
     operator-invoked ``repair_packs`` flag. ``documents`` (ATLAS-164) is the
     pack-inputs provider the CLI builds from the ``atlas.planning`` collectors —
     injected because the import spine places ``atlas.pm`` below
@@ -127,6 +129,7 @@ class TickConfig:
     documents: Callable[[], list[SourceDocument]]
     repair_packs: bool = False
     lesson_client: LessonModelClient | None = None
+    github_client: GitHubClient | None = None
 
 
 def _signature(exc: BaseException) -> str:
@@ -211,6 +214,8 @@ def run_tick(
             tick_kwargs["repair_packs"] = True
         if config.lesson_client is not None:
             tick_kwargs["lesson_client"] = config.lesson_client
+        if config.github_client is not None:
+            tick_kwargs["github_client"] = config.github_client
         result = sync_tick(**tick_kwargs)  # type: ignore[arg-type]
         if result_sink is not None:
             result_sink(result)

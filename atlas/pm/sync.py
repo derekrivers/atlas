@@ -115,6 +115,7 @@ from atlas.core.models.ticket import (
 from atlas.dependencies.blockers import blocked
 from atlas.dependencies.graph import build_dependency_graph
 from atlas.dependencies.validation import TERMINAL_STATUSES
+from atlas.github import GitHubClient
 from atlas.learning import (
     ExtractionTrigger,
     LessonModelClient,
@@ -140,6 +141,11 @@ from atlas.pm.admission_sync import (
     admit_one_ready,
 )
 from atlas.pm.agent_runs import reconstruct_agent_runs
+from atlas.pm.ci_handoff import CIHandoffHooks
+from atlas.pm.ci_handoff_adapter import (
+    CIHandoffAdapterResult,
+    reconcile_one_ci_handoff,
+)
 from atlas.pm.completion import complete_verified
 from atlas.pm.protected_lanes import (
     ProtectedLaneRegistryLoadResult,
@@ -161,6 +167,7 @@ from atlas.storage.repositories import (
 # ``system`` and created_by_id names the writer (matches the §6.1 example).
 # One definition for the system-actor id, mirroring planning's CREATED_BY.
 CREATED_BY = "pm-engine"
+CI_PENDING_POLL_COMPRESSION_CREATED_BY = "pm-engine:linear-poll-compression"
 RECEIPT_EXCEPTION_TYPE_MAX_LEN = 200
 
 
@@ -222,6 +229,21 @@ ACTIVE_COMMENT_SCAN_STATUSES: frozenset[TicketStatus] = frozenset(
         TicketStatus.IN_PROGRESS,
         TicketStatus.PR_OPEN,
         TicketStatus.REVIEW_REQUIRED,
+        TicketStatus.CHANGES_REQUESTED,
+    }
+)
+
+# A complete project pull may observe ``ci_pending`` after Symphony has already
+# crossed one or more short-lived active states between 60-second PM ticks.  The
+# catch-up is deliberately narrower than the workflow ownership table: it only
+# mirrors the current board observation into the local store from a state in
+# which Symphony may have been executing the ticket.  It never writes Linear,
+# invents the missed intermediate states, or authorises a CI-pending exit.
+CI_PENDING_POLL_COMPRESSION_SOURCES: frozenset[TicketStatus] = frozenset(
+    {
+        TicketStatus.READY_FOR_AGENT,
+        TicketStatus.IN_PROGRESS,
+        TicketStatus.PR_OPEN,
         TicketStatus.CHANGES_REQUESTED,
     }
 )
@@ -422,7 +444,11 @@ class SyncResult:
     operator-invoked repair-mode updates that re-embedded a full context pack
     into an already-stamped Linear description that lacked the pack header.
     ``push_decisions`` and ``repair_pack_decisions`` are per-ticket presentation
-    details for one-shot CLI output; they do not change the counter meanings."""
+    details for one-shot CLI output; they do not change the counter meanings.
+    The CI-handoff counters and bounded decisions describe the production
+    adapter's deterministic zero/one candidate evaluation. A confirmed write
+    or target-fence reconciliation closes the tick before any admission,
+    completion or anomaly workflow writer can run."""
 
     status_pulled: int = 0
     status_unchanged: int = 0
@@ -438,6 +464,9 @@ class SyncResult:
     packs_repaired: int = 0
     agent_runs_reconstructed: int = 0
     agent_runs_updated: int = 0
+    ci_handoff_evaluated: int = 0
+    ci_handoff_held: int = 0
+    ci_handoff_mutations: int = 0
     promoted: int = 0
     admitted: int = 0
     held: int = 0
@@ -454,6 +483,7 @@ class SyncResult:
     push_decisions: list[SyncDecision] = field(default_factory=list)
     repair_pack_decisions: list[SyncDecision] = field(default_factory=list)
     admission_decisions: list[AdmissionSyncResult] = field(default_factory=list)
+    ci_handoff_decisions: list[CIHandoffAdapterResult] = field(default_factory=list)
 
     def safe_admission_summaries(self, *, verbose: bool) -> tuple[str, ...]:
         """Return bounded admission details suitable for operator output."""
@@ -463,6 +493,22 @@ class SyncResult:
             for detail in self.admission_decisions
             if verbose or not detail.routine
         )
+
+    def safe_ci_handoff_summaries(self, *, verbose: bool) -> tuple[str, ...]:
+        """Return bounded production-handoff details for operator output."""
+
+        return tuple(
+            detail.safe_summary
+            for detail in self.ci_handoff_decisions
+            if verbose or not detail.routine
+        )
+
+    def safe_operator_summaries(self, *, verbose: bool) -> tuple[str, ...]:
+        """Return all bounded per-ticket details for operator output."""
+
+        return self.safe_admission_summaries(
+            verbose=verbose
+        ) + self.safe_ci_handoff_summaries(verbose=verbose)
 
 
 SYNC_RESULT_COUNTER_NAMES: tuple[str, ...] = (
@@ -480,6 +526,9 @@ SYNC_RESULT_COUNTER_NAMES: tuple[str, ...] = (
     "packs_repaired",
     "agent_runs_reconstructed",
     "agent_runs_updated",
+    "ci_handoff_evaluated",
+    "ci_handoff_held",
+    "ci_handoff_mutations",
     "promoted",
     "admitted",
     "held",
@@ -512,6 +561,9 @@ def sync_result_is_empty(result: SyncResult) -> bool:
         result.packs_repaired,
         result.agent_runs_reconstructed,
         result.agent_runs_updated,
+        result.ci_handoff_evaluated,
+        result.ci_handoff_held,
+        result.ci_handoff_mutations,
         result.promoted,
         result.admitted,
         result.held,
@@ -615,6 +667,20 @@ def _apply_admission_result(result: SyncResult, admission: AdmissionSyncResult) 
         result.indeterminate += 1
 
 
+def _apply_ci_handoff_result(
+    result: SyncResult, handoff: CIHandoffAdapterResult
+) -> None:
+    """Project one bounded production-adapter result into tick observability."""
+
+    result.ci_handoff_decisions.append(handoff)
+    if handoff.ticket_key is None:
+        return
+    result.ci_handoff_evaluated += 1
+    result.ci_handoff_mutations += handoff.linear_mutations
+    if handoff.held:
+        result.ci_handoff_held += 1
+
+
 def _sanitized_error_summary(error: BaseException) -> str:
     """Return bounded diagnostic metadata without exception message content.
 
@@ -668,6 +734,7 @@ def _classify_successful_receipt(
         or result.anomalies_logged > 0
         or result.stale > 0
         or result.indeterminate > 0
+        or result.ci_handoff_held > 0
     ):
         return PmSyncReceiptResult.PARTIAL
     if result.pushed_created > 0 or result.pushed_updated > 0:
@@ -682,6 +749,8 @@ def _classify_successful_receipt(
             result.routed_to_human,
             result.agent_runs_reconstructed,
             result.agent_runs_updated,
+            result.ci_handoff_evaluated,
+            result.ci_handoff_mutations,
             result.follow_ups_stubbed,
             result.dwell_breaches,
             result.review_cycles_logged,
@@ -781,9 +850,10 @@ def _ci_pending_ownership_item(
     """Build the anomaly for a mapped but unauthorised CI-pending edge.
 
     A generic Linear observation proves neither an Atlas-owned CI result nor a
-    valid arbitrary entry.  The sole edge it may mirror is the agent-owned
-    ``pr_open -> ci_pending`` handoff; every other edge touching CI-pending is
-    held unchanged until a trusted owner-specific seam performs it.
+    valid arbitrary entry. It may mirror the agent-owned ``pr_open ->
+    ci_pending`` handoff or record a local-only poll-compressed observation from
+    a Symphony-active predecessor. Every other edge touching CI-pending is held
+    unchanged until a trusted owner-specific seam performs it.
     """
 
     ownership = (
@@ -805,6 +875,22 @@ def _ci_pending_ownership_item(
         created_by_type=ActorType.SYSTEM,
         created_by_id=CREATED_BY,
         created_at=now,
+    )
+
+
+def _is_ci_pending_poll_compression(source: TicketStatus, target: TicketStatus) -> bool:
+    """Whether a complete board pull may catch the local mirror up safely.
+
+    ``pr_open -> ci_pending`` remains the ordinary directly observed agent
+    edge.  The other allowed sources are compressed observations: their
+    durable transition row names the actual local source and carries
+    :data:`CI_PENDING_POLL_COMPRESSION_CREATED_BY`, making the missed
+    intermediates explicit rather than manufacturing them.
+    """
+
+    return (
+        target is TicketStatus.CI_PENDING
+        and source in CI_PENDING_POLL_COMPRESSION_SOURCES
     )
 
 
@@ -1270,13 +1356,15 @@ def _pull(
         result.status_unchanged += 1  # set-to-same is a no-op
         return ticket
     owner = ci_pending_transition_owner(ticket.status, mapped)
-    if TicketStatus.CI_PENDING in {ticket.status, mapped} and (
-        owner is not TicketTransitionOwner.AGENT
+    compressed_ci_pending = _is_ci_pending_poll_compression(ticket.status, mapped)
+    if TicketStatus.CI_PENDING in {ticket.status, mapped} and not (
+        owner is TicketTransitionOwner.AGENT or compressed_ci_pending
     ):
-        # The generic Linear pull may mirror the agent-owned handoff only.
-        # Atlas-owned exits require the trusted CI reconciliation seam delivered
-        # by ATLAS-256; an observed mapped board state cannot impersonate it.
-        # Invalid entries/exits likewise fail closed.  Observation-transition
+        # The generic Linear pull may mirror the agent-owned handoff or the
+        # explicitly bounded local poll-compression sources only. Atlas-owned
+        # exits require the trusted CI reconciliation seam delivered by
+        # ATLAS-256; an observed mapped board state cannot impersonate it.
+        # Invalid entries/exits likewise fail closed. Observation-transition
         # dedup matches the existing unmapped-state anomaly contract.
         if transitioned:
             debt.record(_ci_pending_ownership_item(ticket, issue, mapped, owner, now))
@@ -1297,16 +1385,30 @@ def _pull(
                 ticket.key,
             )
         return ticket
+    transition_actor = (
+        CI_PENDING_POLL_COMPRESSION_CREATED_BY
+        if compressed_ci_pending and owner is not TicketTransitionOwner.AGENT
+        else CREATED_BY
+    )
     updated = tickets.apply_linear_status(
-        ticket.key, mapped, now=now, created_by_id=CREATED_BY
+        ticket.key, mapped, now=now, created_by_id=transition_actor
     )
     result.status_pulled += 1
-    logger.info(
-        "linear-sync: pulled %s -> %s for %s",
-        ticket.status.value,
-        mapped.value,
-        ticket.key,
-    )
+    if transition_actor == CI_PENDING_POLL_COMPRESSION_CREATED_BY:
+        logger.info(
+            "linear-sync: poll-compressed observation caught %s up from %s to "
+            "%s; intermediate Symphony states were not observed",
+            ticket.key,
+            ticket.status.value,
+            mapped.value,
+        )
+    else:
+        logger.info(
+            "linear-sync: pulled %s -> %s for %s",
+            ticket.status.value,
+            mapped.value,
+            ticket.key,
+        )
     if mapped is TicketStatus.DONE:
         _record_lesson_citation_feedback(updated, db)
         lesson = extract_lesson_for_ticket(
@@ -1754,6 +1856,8 @@ def _sync_tick_impl(
     repair_packs: bool = False,
     lesson_client: LessonModelClient | None = None,
     admission_hooks: AdmissionSyncHooks | None = None,
+    github_client: GitHubClient | None = None,
+    ci_handoff_hooks: CIHandoffHooks | None = None,
     admission_registry_provider: Callable[
         [], ProtectedLaneRegistryLoadResult
     ] = load_packaged_protected_lane_registry,
@@ -1795,6 +1899,17 @@ def _sync_tick_impl(
     and re-pushed with a full embed. Successful repairs stamp normally; a board
     whose descriptions already carry the header writes nothing. The plain tick
     does not run this branch and therefore keeps the ATLAS-148 request bound.
+
+    Before definition or workflow writes, the production CI-handoff adapter
+    deterministically selects at most one locally ``ci_pending`` ticket. The
+    complete pull may first catch the local mirror up from a Symphony-active
+    predecessor with explicit poll-compression provenance. Repository, PR and
+    full contributor head then resolve only from the latest bounded trusted
+    GitHub evidence batch for that episode; a reconstructed AgentRun is not
+    required. Missing or contradictory identity holds without a GitHub or
+    Linear call. A confirmed Linear write or target fence reconciliation
+    returns immediately, so admission, completion and anomaly routing cannot
+    become a second workflow mutation in the tick.
 
     Then step 3 (ATLAS-249 replacing ATLAS-43's call site): acquire the
     product-scoped admission lease, build the complete coherent snapshot,
@@ -1903,6 +2018,29 @@ def _sync_tick_impl(
     )
     result.agent_runs_reconstructed = reconstructed.created
     result.agent_runs_updated = reconstructed.updated
+    # Phase 15.5 production CI handoff: after the coherent board pull and local
+    # AgentRun reconstruction, deterministically consider at most one locally
+    # CI-pending ticket. Its issue-bound Linear GitHub attachment supplies the
+    # exact repository/PR publication seam; the adapter then runs the canonical
+    # evidence pull itself and scopes reconciliation to that exact observation
+    # batch and contributor head. A confirmed external mutation (or
+    # confirmation of an earlier fenced target) ends the tick before
+    # definition, admission, completion or anomaly writers.
+    if github_client is not None:
+        handoff = reconcile_one_ci_handoff(
+            db=db,
+            tickets=tickets,
+            github=github_client,
+            linear=client,
+            status_map=status_map,
+            project_id=project_id,
+            initial_issues=fetched_issues,
+            now=now,
+            hooks=ci_handoff_hooks,
+        )
+        _apply_ci_handoff_result(result, handoff)
+        if handoff.ends_workflow_write_window:
+            return result
     # The lazily-invoked pack-inputs seam (ATLAS-164): nothing loads until the
     # first push that will actually embed, so a no-op tick stays byte-identical
     # in both requests and local reads.
@@ -2023,6 +2161,8 @@ def sync_tick(
     repair_packs: bool = False,
     lesson_client: LessonModelClient | None = None,
     admission_hooks: AdmissionSyncHooks | None = None,
+    github_client: GitHubClient | None = None,
+    ci_handoff_hooks: CIHandoffHooks | None = None,
     admission_registry_provider: Callable[
         [], ProtectedLaneRegistryLoadResult
     ] = load_packaged_protected_lane_registry,
@@ -2054,6 +2194,8 @@ def sync_tick(
             repair_packs=repair_packs,
             lesson_client=lesson_client,
             admission_hooks=admission_hooks,
+            github_client=github_client,
+            ci_handoff_hooks=ci_handoff_hooks,
             admission_registry_provider=admission_registry_provider,
             receipt_context=context,
         )

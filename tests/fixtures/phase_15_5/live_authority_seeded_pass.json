@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "source": "seeded-live-delivery-fault-exercise",
+  "ticket_identifier": "ATL-437",
+  "pr_number": 999,
+  "head_sha": "9999999999999999999999999999999999999999",
+  "ci_pending_observed_at": "2026-08-17T10:00:00Z",
+  "worker_stopped_at": "2026-08-17T10:00:04Z",
+  "ci_determinate_at": "2026-08-17T10:07:00Z",
+  "reconciled_at": "2026-08-17T10:07:30Z",
+  "reconciliation_tick_seconds": 30,
+  "agent_ci_poll_count": 0,
+  "linear_github_workflow_state_mutation": false,
+  "transitions": [
+    {
+      "at": "2026-08-17T10:00:00Z",
+      "from": "pr_open",
+      "to": "ci_pending",
+      "owner": "agent"
+    },
+    {
+      "at": "2026-08-17T10:07:30Z",
+      "from": "ci_pending",
+      "to": "review_required",
+      "owner": "system-tier-ci-reconciler"
+    }
+  ]
+}

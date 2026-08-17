@@ -27,6 +27,13 @@ tracker:
     - Changes Requested
   # CI Pending is intentionally absent: it is a non-active Atlas handoff state
   # that releases Symphony working occupancy while consuming integration budget.
+  # Linear/GitHub integrations may link evidence but must not mutate Atlas-owned
+  # workflow state. A complete PM pull may catch the local mirror up from a
+  # Symphony-active predecessor when the poll missed short-lived intermediate
+  # states; it records the observed edge without inventing those states. The
+  # cadence evaluates at most one issue-bound GitHub publication and its exact
+  # canonical evidence pull per tick; any CI Pending reactivation is a milestone
+  # failure.
   terminal_states:
     - Done
     - Canceled
@@ -248,6 +255,15 @@ Route by the current state:
 `tracker.active_states`, so Symphony must neither continue the current session
 nor redispatch the issue while CI owns it.
 
+Linear's conflicting `PR opened -> In Progress` GitHub workflow automation was
+disabled on 17 August 2026 after the ATLAS-261/262 reactivation incident.
+Linear/GitHub integration may continue to link pull requests and expose
+evidence, but it must not write Atlas-owned workflow state. Any direct `CI
+Pending -> In Progress`, `CI Pending -> PR Open`, or other Symphony-active
+reactivation is an immediate ATLAS-263 milestone failure unless a separately
+authorised `Changes Requested -> In Progress` semantic-remediation transition
+occurred first.
+
 ## Hard limits
 
 - Never mark your own work `Done`, and never merge the PR. Your publication
@@ -259,6 +275,9 @@ nor redispatch the issue while CI owns it.
 - Never poll or reproduce CI, cancel CI or a worker, skip a selected check,
   choose validation with model judgement, automatically rebase, or claim that
   scoped local confidence is repository-wide authority.
+- Never enable or rely on a Linear/GitHub workflow automation to move an
+  Atlas-owned ticket state. Linking and read-only evidence exposure are the
+  integration's only permitted roles in this lifecycle.
 - On a blocker, or a genuine ambiguity the pack does not resolve, post a comment
   explaining it and move the ticket to `Needs Human`. Do not improvise outside
   the pack's scope.

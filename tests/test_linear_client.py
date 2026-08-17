@@ -529,12 +529,107 @@ def test_fetch_project_issues_query_shape_and_single_page(
     query = sent[0]["query"]
     assert "project(id: $id)" in query
     assert "issues(first: $first, after: $after)" in query
-    for field in ("identifier", "id", "title", "description", "state"):
+    for field in (
+        "identifier",
+        "id",
+        "title",
+        "description",
+        "state",
+        "attachments",
+        "url",
+        "sourceType",
+        "metadata",
+    ):
         assert field in query
     assert "pageInfo { hasNextPage endCursor }" in query
     assert sent[0]["variables"]["id"] == "proj-1"
     assert [issue.id for issue in issues] == [created.id]
     assert [issue.description for issue in issues] == ["d"]
+
+
+def test_project_pull_validates_issue_bound_github_publication_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    emulator = _Emulator()
+    monkeypatch.setattr(
+        "atlas.linear.client.urllib_request.urlopen", _stub_urlopen(emulator)
+    )
+    client = LinearGraphQLClient(api_key="sk", team_id="team-1")
+    created = client.create_issue(
+        {"title": "One", "description": "d"},
+        team_id="team-1",
+        project_id="proj-1",
+    )
+    emulator.issues[created.id]["attachments"] = {
+        "nodes": [
+            {
+                "id": "attachment-1",
+                "url": "https://github.com/derekrivers/atlas/pull/335",
+                "sourceType": "github",
+                "metadata": {
+                    "id": "4295015089",
+                    "repoId": "1265218302",
+                    "repoLogin": "derekrivers",
+                    "repoName": "atlas",
+                    "number": 335,
+                    "linkKind": "closes",
+                    "targetBranch": "main",
+                    "status": "open",
+                },
+            }
+        ],
+        "pageInfo": {"hasNextPage": False},
+    }
+
+    [issue] = client.fetch_project_issues("proj-1")
+
+    assert issue.github_publications_complete is True
+    assert len(issue.github_publications) == 1
+    publication = issue.github_publications[0]
+    assert publication.attachment_id == "attachment-1"
+    assert publication.repository_owner == "derekrivers"
+    assert publication.repository_name == "atlas"
+    assert publication.pr_number == 335
+
+
+def test_project_pull_marks_contradictory_github_publication_incomplete(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    emulator = _Emulator()
+    monkeypatch.setattr(
+        "atlas.linear.client.urllib_request.urlopen", _stub_urlopen(emulator)
+    )
+    client = LinearGraphQLClient(api_key="sk", team_id="team-1")
+    created = client.create_issue(
+        {"title": "One", "description": "d"},
+        team_id="team-1",
+        project_id="proj-1",
+    )
+    emulator.issues[created.id]["attachments"] = {
+        "nodes": [
+            {
+                "id": "attachment-1",
+                "url": "https://github.com/derekrivers/atlas/pull/335",
+                "sourceType": "github",
+                "metadata": {
+                    "id": "4295015089",
+                    "repoId": "1265218302",
+                    "repoLogin": "other",
+                    "repoName": "atlas",
+                    "number": 335,
+                    "linkKind": "closes",
+                    "targetBranch": "main",
+                    "status": "open",
+                },
+            }
+        ],
+        "pageInfo": {"hasNextPage": False},
+    }
+
+    [issue] = client.fetch_project_issues("proj-1")
+
+    assert issue.github_publications == ()
+    assert issue.github_publications_complete is False
 
 
 def test_fetch_project_issues_paginates_until_exhausted(

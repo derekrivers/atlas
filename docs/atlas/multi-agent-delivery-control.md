@@ -509,8 +509,10 @@ Before creating or resuming that milestone branch, the operator must verify
 that Phase 15.5's efficiency and integration milestone has passed, its closure
 report is merged and ATLAS-253 is deliberately released from `Needs Human`.
 Phase 15.5 changes no ceiling; it proves that focused local validation,
-system-tier CI handoff, protected integration lanes and exact-base acceptance
-do not turn additional slots into avoidable queue and rebase pressure.
+system-tier CI handoff, protected integration lanes and exact-head/current-main
+acceptance do not turn additional slots into avoidable queue and rebase
+pressure. The ATLAS-259/260 synthetic no-rewrite route is retired; mechanically
+stale Review Required candidates use the operator-owned rebase lane.
 `max_turns` is outside this ramp and remains ten. Each edit requires a PASS
 receipt for the preceding gate; no intermediate value is merged or
 cherry-picked independently. The exact preflight, fixed observation window,
@@ -520,6 +522,39 @@ The ramp introduces no delivery-policy mutation path: only the human/operator
 may reconcile the policy mirror through the existing governed Phase 15
 policy-revision boundary, and neither agents nor ramp automation receive that
 authority.
+
+ATLAS-263's live release gate is part of that prerequisite. The ATL-437 worker
+must stop within five seconds of Symphony observing `CI Pending`, and only the
+system-tier reconciler may perform its first determinate exit. The conflicting
+Linear `PR opened -> In Progress` automation was disabled on 17 August 2026;
+any direct reactivation from `CI Pending` into a Symphony-active state is an
+immediate milestone failure. Linear/GitHub integration remains link- and
+evidence-only for Atlas-owned workflow state.
+
+The first ATL-437 candidate exposed a separate production-reachability defect:
+the trusted CI-handoff service existed, but neither the one-shot nor recurring
+`atlas pm sync` path called it. That head completed CI and remained `CI Pending`
+with no `ci_handoff_reconciliations` row, so it is failed historical evidence,
+not the live PASS sample. The supported PM tick now considers only local
+`CI Pending` tickets in stable ticket-key order and evaluates at most one. A
+complete board pull may first catch the local mirror up from a Symphony-active
+predecessor if the cadence missed transient `In Progress`/`PR Open` states. It
+records only the actually observed direct edge with the
+`pm-engine:linear-poll-compression` actor and never manufactures the missing
+transitions. Repository, PR number and full contributor head come only from the
+issue-bound Linear GitHub attachment plus the canonical evidence pull that the
+supported PM tick performs for that exact publication. The attachment URL and
+metadata must agree and the connection must be complete; the pull then supplies
+the full head and exact product-scoped system-tier evidence identities,
+including rows reused by dedup. Title matching, branch guesses, GitHub rollups,
+manual input, old AgentRuns and previous handoff episodes are not identity
+sources, and a reconstructed AgentRun is not required. Missing or conflicting
+publication identity holds before GitHub; provider/malformed ingestion failure
+holds before Linear. A confirmed handoff write or target-fence reconciliation
+ends the tick's workflow-write window, preventing admission, completion or
+anomaly routing from becoming a second mutation. The remediated final ATL-437
+head must produce both a genuine append-only reconciliation and its authorised
+Linear transition before Phase 15.5 can close.
 
 The delivery-control UI may submit a complete policy selected by the operator
 at any governed gate, but it does not advance a gate, validate a PASS receipt,

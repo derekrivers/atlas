@@ -41,6 +41,12 @@ from atlas.pm.ci_handoff import (
     CIHandoffResult,
     reconcile_ci_handoff,
 )
+from atlas.pm.ci_handoff_adapter import (
+    CIHandoffAdapterReason,
+    CIHandoffAdapterResult,
+    CIHandoffIdentity,
+    reconcile_one_ci_handoff,
+)
 from atlas.pm.completion import complete_verified
 from atlas.pm.delivery_snapshot import (
     INTEGRATION_STATUSES,
@@ -126,7 +132,10 @@ __all__ = [
     "AgentRunMetric",
     "AgentRunReconstructionResult",
     "AnomalyCount",
+    "CIHandoffAdapterReason",
+    "CIHandoffAdapterResult",
     "CIHandoffHooks",
+    "CIHandoffIdentity",
     "CIHandoffResult",
     "ComponentLaneOccupancy",
     "CycleTimeStat",
@@ -173,6 +182,7 @@ __all__ = [
     "parse_protected_lane_registry",
     "promote_ready",
     "reconcile_ci_handoff",
+    "reconcile_one_ci_handoff",
     "reconstruct_agent_runs",
     "render_markdown",
     "report_json",

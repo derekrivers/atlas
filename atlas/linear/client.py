@@ -31,6 +31,7 @@ from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 from urllib import error as urllib_error
 from urllib import request as urllib_request
+from urllib.parse import urlsplit
 
 from atlas.linear.ownership import OWNED_LINEAR_INPUT_KEYS
 
@@ -97,6 +98,22 @@ class UnownedFieldError(ValueError):
 
 
 @dataclass(frozen=True)
+class LinearGitHubPublication:
+    """Exact GitHub PR identity carried by a Linear GitHub attachment.
+
+    The attachment is joined to a ticket only through the issue's stable
+    Linear id.  Repository and PR values are accepted only when the canonical
+    GitHub URL and Linear's GitHub metadata agree; titles and branch names are
+    deliberately absent from this DTO.
+    """
+
+    attachment_id: str
+    repository_owner: str
+    repository_name: str
+    pr_number: int
+
+
+@dataclass(frozen=True)
 class LinearIssue:
     """The only issue shape that crosses the boundary.
 
@@ -109,6 +126,10 @@ class LinearIssue:
     diagnostics by the batched pull (ATLAS-148) and is never a join key —
     tickets join to issues by ``external_linear_id``/``id`` ONLY; it defaults
     to ``None`` because the single-issue selections do not fetch it.
+    ``github_publications`` carries only validated repository/PR identities
+    from issue-bound Linear GitHub attachments. ``github_publications_complete``
+    is false when that bounded connection is truncated or contradictory, so a
+    production consumer can hold instead of inferring missing identity.
     """
 
     id: str
@@ -118,6 +139,8 @@ class LinearIssue:
     state_type: str | None
     description: str | None = None
     identifier: str | None = None
+    github_publications: tuple[LinearGitHubPublication, ...] = ()
+    github_publications_complete: bool = True
 
 
 class LinearProjectIssues(list[LinearIssue]):
@@ -264,8 +287,15 @@ def reject_unowned_keys(definition: Mapping[str, Any]) -> None:
 
 
 # GraphQL documents. Every issue selection returns the same fragment so the
-# DTO is assembled identically on create, update, and fetch.
-_ISSUE_FIELDS = "id title description state { id name type }"
+# DTO is assembled identically on create, update, and fetch. GitHub attachments
+# are a read-only publication-identity seam: the bounded connection exposes no
+# comment, title or branch inference, and ``hasNextPage`` makes truncation fail
+# closed at the DTO boundary.
+_ISSUE_FIELDS = (
+    "id title description state { id name type } "
+    "attachments(first: 250) { "
+    "nodes { id url sourceType metadata } pageInfo { hasNextPage } }"
+)
 _CREATE_MUTATION = (
     "mutation IssueCreate($input: IssueCreateInput!) { "
     f"issueCreate(input: $input) {{ success issue {{ {_ISSUE_FIELDS} }} }} }}"
@@ -359,8 +389,101 @@ def _raise_if_rate_limited(errors: Any, message: str) -> None:
         )
 
 
+def _github_publication_from_attachment(
+    node: Mapping[str, Any],
+) -> LinearGitHubPublication | None:
+    """Validate one Linear GitHub attachment without provider-text inference."""
+
+    if node.get("sourceType") != "github":
+        return None
+    attachment_id = node.get("id")
+    value = node.get("url")
+    metadata = node.get("metadata")
+    if (
+        not isinstance(attachment_id, str)
+        or not attachment_id
+        or not isinstance(value, str)
+        or not isinstance(metadata, Mapping)
+    ):
+        raise ValueError("malformed Linear GitHub attachment")
+    parsed = urlsplit(value)
+    parts = [part for part in parsed.path.split("/") if part]
+    if (
+        parsed.scheme != "https"
+        or parsed.netloc.casefold() != "github.com"
+        or parsed.query
+        or parsed.fragment
+        or len(parts) != 4
+        or parts[2] != "pull"
+        or not parts[3].isdigit()
+    ):
+        raise ValueError("malformed Linear GitHub attachment URL")
+    owner, name = parts[:2]
+    number = int(parts[3])
+    metadata_owner = metadata.get("repoLogin")
+    metadata_name = metadata.get("repoName")
+    metadata_number = metadata.get("number")
+    metadata_pr_id = metadata.get("id")
+    metadata_repo_id = metadata.get("repoId")
+    if (
+        not owner
+        or not name
+        or number <= 0
+        or not isinstance(metadata_owner, str)
+        or not isinstance(metadata_name, str)
+        or isinstance(metadata_number, bool)
+        or not isinstance(metadata_number, int)
+        or metadata_owner.casefold() != owner.casefold()
+        or metadata_name.casefold() != name.casefold()
+        or metadata_number != number
+        or not isinstance(metadata_pr_id, str)
+        or not metadata_pr_id.isdigit()
+        or not isinstance(metadata_repo_id, str)
+        or not metadata_repo_id.isdigit()
+        or metadata.get("linkKind") != "closes"
+        or metadata.get("targetBranch") != "main"
+        or metadata.get("status") != "open"
+    ):
+        raise ValueError("contradictory Linear GitHub attachment identity")
+    return LinearGitHubPublication(
+        attachment_id=attachment_id,
+        repository_owner=owner.casefold(),
+        repository_name=name.casefold(),
+        pr_number=number,
+    )
+
+
+def _github_publications(
+    node: Mapping[str, Any],
+) -> tuple[tuple[LinearGitHubPublication, ...], bool]:
+    connection = node.get("attachments")
+    if connection is None:
+        return (), True
+    if not isinstance(connection, Mapping):
+        return (), False
+    nodes = connection.get("nodes")
+    page_info = connection.get("pageInfo")
+    if not isinstance(nodes, list) or not isinstance(page_info, Mapping):
+        return (), False
+    has_next_page = page_info.get("hasNextPage")
+    if not isinstance(has_next_page, bool) or has_next_page:
+        return (), False
+    publications: list[LinearGitHubPublication] = []
+    try:
+        for attachment in nodes:
+            if not isinstance(attachment, Mapping):
+                return (), False
+            publication = _github_publication_from_attachment(attachment)
+            if publication is not None:
+                publications.append(publication)
+    except ValueError:
+        return (), False
+    return tuple(publications), True
+
+
 def _issue_from_node(node: Mapping[str, Any]) -> LinearIssue:
     state = node.get("state")
+    github_publications, github_publications_complete = _github_publications(node)
     return LinearIssue(
         id=node["id"],
         title=node["title"],
@@ -372,6 +495,8 @@ def _issue_from_node(node: Mapping[str, Any]) -> LinearIssue:
         # (ATLAS-148, diagnostics only); the single-issue selections leave it
         # None via the DTO default.
         identifier=node.get("identifier"),
+        github_publications=github_publications,
+        github_publications_complete=github_publications_complete,
     )
 
 

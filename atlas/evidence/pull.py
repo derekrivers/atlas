@@ -27,6 +27,8 @@ class PullResult(NamedTuple):
     checks: list[Evidence]
     reviews: list[Evidence]
     docs: list[Evidence]
+    head_sha: str | None = None
+    observed: tuple[Evidence, ...] = ()
 
 
 class EvidencePullMalformedSourceError(ValueError):
@@ -77,18 +79,34 @@ def _drive_evidence_pull_unchecked(
 
     Protocol-typed in ``client`` (any ``GitHubClient``) so it runs fully offline
     under the fake -- no network, no concrete client wired in. Resolves the head
-    SHA ONCE from the pull-request object (``["head"]["sha"]``) and threads it
-    into the CI/docs normalisers, while reviews and files are fetched by
-    ``pr_number`` (D3). ``now`` is captured once by the caller (D6) and passed to
-    every ``ingest_*`` so the run's records share a creation time. Persistence is
-    the append-only ``EvidenceRepo``; the ATLAS-61 system-tier pinning guard runs
-    inside its ``add``.
+    SHA ONCE from the pull-request object (``["head"]["sha"]``), requires the
+    returned PR number and base repository to match the exact request, and
+    threads the validated full lowercase head into the CI/docs normalisers,
+    while reviews and files are fetched by ``pr_number`` (D3). ``now`` is
+    captured once by the caller (D6) and passed to every ``ingest_*`` so the
+    run's records share a creation time. Persistence is the append-only
+    ``EvidenceRepo``; the ATLAS-61 system-tier pinning guard runs inside its
+    ``add``.
 
     A 404 (unknown PR) or any transport failure surfaces as ``GitHubAPIError``
     for the caller to map to a clean precondition -- never a traceback.
     """
     pull_request = client.fetch_pull_request(owner, repo, pr_number)
-    head_sha = str(pull_request["head"]["sha"])
+    response_number = pull_request["number"]
+    head_sha = pull_request["head"]["sha"]
+    base_repository = pull_request["base"]["repo"]["full_name"]
+    expected_repository = f"{owner}/{repo}"
+    if (
+        isinstance(response_number, bool)
+        or response_number != pr_number
+        or not isinstance(base_repository, str)
+        or base_repository.casefold() != expected_repository.casefold()
+        or not isinstance(head_sha, str)
+        or len(head_sha) != 40
+        or any(character not in "0123456789abcdefABCDEF" for character in head_sha)
+    ):
+        raise ValueError("GitHub pull-request identity was contradictory or malformed")
+    head_sha = head_sha.lower()
 
     checks = [
         *normalise_workflow_runs(
@@ -103,12 +121,42 @@ def _drive_evidence_pull_unchecked(
         client.fetch_pr_files(owner, repo, pr_number), head_sha=head_sha
     )
 
+    persisted_checks = ingest_checks(
+        checks, repo=evidence_repo, product_id=product_id, now=now
+    )
+    persisted_reviews = ingest_reviews(
+        reviews, repo=evidence_repo, product_id=product_id, now=now
+    )
+    persisted_docs = ingest_docs(
+        docs, repo=evidence_repo, product_id=product_id, now=now
+    )
+
+    # The persisted lists intentionally contain only newly appended rows so the
+    # CLI's dedup counts remain stable. The production CI-handoff adapter also
+    # needs the complete exact pull attribution, including a prior immutable
+    # row found by dedup. Resolve every source identity back through the same
+    # canonical repository boundary and carry those records separately.
+    observed: list[Evidence] = []
+    source_items = [
+        *((item.external_run_id, item.payload_hash, True) for item in checks),
+        *((item.external_run_id, item.payload_hash, False) for item in reviews),
+    ]
+    if docs is not None:
+        source_items.append((docs.external_run_id, docs.payload_hash, False))
+    for external_run_id, source_hash, require_job_metadata in source_items:
+        record = evidence_repo.get_by_dedup_key(
+            external_run_id,
+            source_hash,
+            require_job_metadata=require_job_metadata,
+        )
+        if record is None:
+            raise ValueError("persisted evidence source could not be reloaded")
+        observed.append(record)
+
     return PullResult(
-        checks=ingest_checks(
-            checks, repo=evidence_repo, product_id=product_id, now=now
-        ),
-        reviews=ingest_reviews(
-            reviews, repo=evidence_repo, product_id=product_id, now=now
-        ),
-        docs=ingest_docs(docs, repo=evidence_repo, product_id=product_id, now=now),
+        checks=persisted_checks,
+        reviews=persisted_reviews,
+        docs=persisted_docs,
+        head_sha=head_sha,
+        observed=tuple(observed),
     )

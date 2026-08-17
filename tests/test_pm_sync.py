@@ -80,7 +80,7 @@ from atlas.pm import (
     SyncResult,
     sync_tick,
 )
-from atlas.pm.sync import CREATED_BY
+from atlas.pm.sync import CI_PENDING_POLL_COMPRESSION_CREATED_BY, CREATED_BY
 from atlas.storage import (
     AgentRunRepo,
     ContextPackRepo,
@@ -1013,15 +1013,51 @@ def test_ci_pending_agent_entry_is_mirrored_only_from_pr_open(db: Database) -> N
     assert debt_rows(db, AnomalyType.OUT_OF_OWNERSHIP_TRANSITION, ticket.id) == []
 
 
-def test_ci_pending_arbitrary_entry_fails_closed_and_deduplicates_anomaly(
+@pytest.mark.parametrize(
+    "source",
+    [
+        TicketStatus.READY_FOR_AGENT,
+        TicketStatus.IN_PROGRESS,
+        TicketStatus.CHANGES_REQUESTED,
+    ],
+)
+def test_ci_pending_poll_compression_catches_up_only_from_symphony_active_source(
     db: Database,
+    source: TicketStatus,
 ) -> None:
     client = RecordingClient()
     ticket = seed_ticket(
         db,
         client,
         key="ATLAS-25502",
-        status=TicketStatus.IN_PROGRESS,
+        status=source,
+        issue_state=CI_PENDING_STATE,
+    )
+
+    result = run(db, client)
+
+    pulled = TicketRepo(db).get_by_key(ticket.key)
+    assert pulled is not None
+    assert pulled.status is TicketStatus.CI_PENDING
+    assert result.status_pulled == 1
+    assert result.anomalies_logged == 0
+    assert debt_rows(db, AnomalyType.OUT_OF_OWNERSHIP_TRANSITION, ticket.id) == []
+    [transition] = TicketStatusTransitionRepo(db).list_for_ticket(ticket.id)
+    assert transition.from_status == source.value
+    assert transition.to_status == TicketStatus.CI_PENDING.value
+    assert transition.created_by_id == CI_PENDING_POLL_COMPRESSION_CREATED_BY
+    assert client.state_writes == []
+
+
+def test_ci_pending_entry_from_non_agent_state_fails_closed_and_deduplicates_anomaly(
+    db: Database,
+) -> None:
+    client = RecordingClient()
+    ticket = seed_ticket(
+        db,
+        client,
+        key="ATLAS-25504",
+        status=TicketStatus.PLANNED,
         issue_state=CI_PENDING_STATE,
     )
 
@@ -1030,13 +1066,13 @@ def test_ci_pending_arbitrary_entry_fails_closed_and_deduplicates_anomaly(
 
     pulled = TicketRepo(db).get_by_key(ticket.key)
     assert pulled is not None
-    assert pulled.status is TicketStatus.IN_PROGRESS
+    assert pulled.status is TicketStatus.PLANNED
     assert first.status_pulled == second.status_pulled == 0
     assert first.anomalies_logged == 1
     assert second.anomalies_logged == 0
     rows = debt_rows(db, AnomalyType.OUT_OF_OWNERSHIP_TRANSITION, ticket.id)
     assert len(rows) == 1
-    assert "in_progress" in rows[0].summary
+    assert "planned" in rows[0].summary
     assert "ci_pending" in rows[0].summary
     assert client.state_writes == []
 

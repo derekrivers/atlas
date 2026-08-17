@@ -7,14 +7,15 @@ import os
 from pathlib import Path
 
 from atlas.core.anchors import SourceDocument
+from atlas.github import GitHubRESTClient, MissingGitHubTokenError
 from atlas.linear.client import (
     PROJECT_ID_ENV,
     TEAM_ID_ENV,
     LinearGraphQLClient,
     MissingLinearTokenError,
 )
-from atlas.linear.ownership import LinearStatusMap
-from atlas.planning.client import AnthropicPlannerClient
+from atlas.linear.ownership import LinearStatusMap, LinearStatusMapError
+from atlas.planning.client import AnthropicPlannerClient, PlannerClientError
 from atlas.planning.ingestion import (
     collect_input_documents,
     collect_processed_documents,
@@ -22,23 +23,29 @@ from atlas.planning.ingestion import (
 from atlas.pm import TickConfig
 from atlas.storage import Database, TicketRepo
 
+PM_SYNC_CONFIG_ERRORS = (
+    MissingGitHubTokenError,
+    MissingLinearTokenError,
+    LinearStatusMapError,
+    PlannerClientError,
+)
+
 
 def build_tick_config(args: argparse.Namespace, resolved_db: Database) -> TickConfig:
     """Build the real `sync_tick` injection from config (D3): the live
-    `LinearGraphQLClient` (creds from env), the env-configured `LinearStatusMap`,
-    the team id from `LINEAR_TEAM_ID`, the project id from `LINEAR_PROJECT_ID`,
-    the inbox dir from `--inbox-dir`, the pack-inputs documents provider from
-    `--repo` (ATLAS-164), and the operator-invoked `--repair-packs` flag
-    (ATLAS-169). Each boundary fails loud on a missing
-    precondition — `LinearGraphQLClient()` raises `MissingLinearTokenError` without
-    a key, `from_env()` raises `LinearStatusMapError` on a missing/malformed map,
-    and an unset team id OR project id raises `MissingLinearTokenError` — so a
-    misconfigured live path exits cleanly (the caller maps these to
-    EXIT_PRECONDITION) rather than crashing mid-loop. The project id (ATLAS-135) is
-    the project's UUID, NOT its slug, and scopes issue creation so created issues
-    are visible to Symphony's project-scoped poll. Reads the environment only; it
-    makes no network call, so it is testable with fake creds set in the
-    environment.
+    `LinearGraphQLClient` (creds from env), `GitHubRESTClient` (the bounded
+    exact-PR/head read boundary for production CI handoff), the env-configured
+    `LinearStatusMap`, the team id from `LINEAR_TEAM_ID`, the project id from
+    `LINEAR_PROJECT_ID`, the inbox dir from `--inbox-dir`, the pack-inputs
+    documents provider from `--repo` (ATLAS-164), and the operator-invoked
+    `--repair-packs` flag (ATLAS-169). Each boundary fails loud on a missing
+    precondition — `LinearGraphQLClient()` and `GitHubRESTClient()` reject
+    missing tokens, `from_env()` rejects a missing/malformed map, and an unset
+    team id OR project id raises `MissingLinearTokenError` — so a misconfigured
+    live path exits cleanly rather than crashing mid-loop. The project id
+    (ATLAS-135) is the project's UUID, NOT its slug, and scopes issue creation
+    so created issues are visible to Symphony's project-scoped poll. Client
+    construction reads environment only and makes no network call.
 
     The `documents` provider is the ATLAS-162 collector pair over `--repo` — the
     §2.1 corpus plus the committed `processed/` stubs under `--inbox-dir`, exactly
@@ -50,6 +57,7 @@ def build_tick_config(args: argparse.Namespace, resolved_db: Database) -> TickCo
     never at config-build time."""
 
     client = LinearGraphQLClient()  # raises MissingLinearTokenError without a key
+    github_client = GitHubRESTClient()
     status_map = LinearStatusMap.from_env()  # raises LinearStatusMapError if unset
     team_id = os.environ.get(TEAM_ID_ENV)
     if not team_id:
@@ -82,4 +90,5 @@ def build_tick_config(args: argparse.Namespace, resolved_db: Database) -> TickCo
         documents=documents,
         repair_packs=args.repair_packs,
         lesson_client=AnthropicPlannerClient(),
+        github_client=github_client,
     )
