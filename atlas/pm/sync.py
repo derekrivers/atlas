@@ -2020,11 +2020,12 @@ def _sync_tick_impl(
     result.agent_runs_updated = reconstructed.updated
     # Phase 15.5 production CI handoff: after the coherent board pull and local
     # AgentRun reconstruction, deterministically consider at most one locally
-    # CI-pending ticket. The latest handoff transition bounds the episode;
-    # identity comes directly from its latest bounded system-tier GitHub
-    # evidence batch and does not require a reconstructed run. A confirmed
-    # external mutation (or confirmation of an earlier fenced target) ends the
-    # tick before definition, admission, completion or anomaly writers.
+    # CI-pending ticket. Its issue-bound Linear GitHub attachment supplies the
+    # exact repository/PR publication seam; the adapter then runs the canonical
+    # evidence pull itself and scopes reconciliation to that exact observation
+    # batch and contributor head. A confirmed external mutation (or
+    # confirmation of an earlier fenced target) ends the tick before
+    # definition, admission, completion or anomaly writers.
     if github_client is not None:
         handoff = reconcile_one_ci_handoff(
             db=db,

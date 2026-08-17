@@ -270,8 +270,8 @@ ATL-437's first published head is retained as a failed production-reachability
 sample: CI completed, but the supported PM cadence never called the trusted
 handoff service, so no genuine reconciliation row or Linear exit existed. The
 remediated final head restarts the live window. After the agent has stopped at
-`CI Pending` and normal system-tier evidence ingestion has populated the store,
-the system/operator runs the supported adapter from that final code identity:
+`CI Pending`, the system/operator runs the supported adapter from that final
+code identity:
 
 ```bash
 uv run atlas pm sync --once -v
@@ -287,13 +287,23 @@ transition records the actual direct edge and
 manually insert intermediate transitions or require an AgentRun before retrying
 the normal one-shot path.
 
+The complete Linear board pull must expose exactly one issue-bound GitHub
+attachment whose canonical PR URL agrees with repository/number metadata and
+whose GitHub close link names an open `main`-target PR. The adapter then calls
+the normal `drive_evidence_pull` mapper itself for that exact publication,
+resolves the full contributor head and scopes reconciliation to the complete
+observed evidence-id set, including rows reused by dedup. No
+separate `atlas evidence pull`, ticket-scoped evidence seed or fast poll is a
+precondition. Missing/ambiguous publication identity and provider/malformed
+evidence-pull failure are typed holds with zero Linear mutation.
+
 The verbose output must name one bounded `CI handoff adapter` result with exact
 repository, PR and full head, classification, decision, reason and mutation
 count. Console output is observability only: verify the append-only
-`ci_handoff_reconciliations` row and corresponding Linear transition. A missing
-or contradictory latest-episode identity holds before a GitHub or Linear call;
-never repair that hold with a title guess, rollup inference or manual state
-move. A second tick must not repeat a confirmed write.
+`ci_handoff_reconciliations` row and corresponding Linear transition. Never
+repair an attribution hold with a title guess, branch guess, rollup inference,
+manual evidence seed or manual state move. A second tick must not repeat a
+confirmed write.
 
 ## Before you publish and hand off
 

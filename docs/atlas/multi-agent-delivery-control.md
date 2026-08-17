@@ -542,15 +542,19 @@ predecessor if the cadence missed transient `In Progress`/`PR Open` states. It
 records only the actually observed direct edge with the
 `pm-engine:linear-poll-compression` actor and never manufactures the missing
 transitions. Repository, PR number and full contributor head come only from the
-latest episode's bounded system-tier GitHub evidence batch; title matching,
-GitHub rollups, manual input, old AgentRuns and previous handoff episodes are
-not identity sources, and a reconstructed AgentRun is not required. Missing or
-conflicting identity holds before any GitHub or Linear call. A confirmed
-handoff write or target-fence reconciliation ends the tick's workflow-write
-window, preventing admission, completion or anomaly routing from becoming a
-second mutation. The remediated final ATL-437 head must produce both a genuine
-append-only reconciliation and its authorised Linear transition before Phase
-15.5 can close.
+issue-bound Linear GitHub attachment plus the canonical evidence pull that the
+supported PM tick performs for that exact publication. The attachment URL and
+metadata must agree and the connection must be complete; the pull then supplies
+the full head and exact product-scoped system-tier evidence identities,
+including rows reused by dedup. Title matching, branch guesses, GitHub rollups,
+manual input, old AgentRuns and previous handoff episodes are not identity
+sources, and a reconstructed AgentRun is not required. Missing or conflicting
+publication identity holds before GitHub; provider/malformed ingestion failure
+holds before Linear. A confirmed handoff write or target-fence reconciliation
+ends the tick's workflow-write window, preventing admission, completion or
+anomaly routing from becoming a second mutation. The remediated final ATL-437
+head must produce both a genuine append-only reconciliation and its authorised
+Linear transition before Phase 15.5 can close.
 
 The delivery-control UI may submit a complete policy selected by the operator
 at any governed gate, but it does not advance a gate, validate a PASS receipt,

@@ -81,15 +81,27 @@ by the knowledge-core repository rule.
 
 The system-tier CI handoff reconciler consumes these append-only observations;
 it never calls a CI execution or derives authority from a GitHub rollup, a
-command exit code or an agent completion message. For one repository, PR and
-full lowercase head SHA, it resolves the repository-owned required-check
+command exit code or an agent completion message. The production adapter first
+binds the ticket's stable Linear issue id to one validated GitHub attachment,
+then invokes `drive_evidence_pull` for that exact repository/PR. `PullResult`
+continues to expose newly persisted per-source lists for CLI counts and also
+carries the resolved head plus every exact observed row, including unchanged
+rows reused by `(external_run_id, payload_hash)` dedup. This gives the handoff a
+bounded publication-to-evidence attribution without changing normal evidence
+records from product scope to ticket scope.
+
+For that repository, PR, full lowercase head SHA and observed evidence-id set,
+the reconciler derives the immutable external source identities and reloads
+their append-only lifecycle observations before each assessment. A newer
+payload for an observed source therefore changes the deciding evidence ids and
+holds the write; unrelated product evidence is not admitted merely because it
+shares the head. The reconciler resolves the repository-owned required-check
 matrix and evaluates only its system-tier checks: tests, lint and, when the
 matrix requires it, documentation. Every required member must be represented
-by current-head system evidence before the set can pass. The storage projection
-is restricted to the ticket's product, and the pure classifier repeats that
-guard: a ticket-scoped record participates only for its exact `ticket_id`, while
-product-wide PR evidence has no ticket id. Evidence from another product or an
-explicitly different ticket cannot satisfy or fail the handoff even when it
+by current-head system evidence before the set can pass. The pure classifier
+repeats the product guard: a ticket-scoped record participates only for its
+exact `ticket_id`. Evidence from another product, another pull observation or
+an explicitly different ticket cannot satisfy or fail the handoff even when it
 shares the same commit SHA.
 
 The projection distinguishes `passed`, `implementation_failure`, `pending`,
@@ -119,7 +131,9 @@ The shared REST boundary validates source shape before mapping: envelope
 endpoints must return an object containing their required list field, while
 bare-array endpoints must return a top-level list. Malformed, cyclic or
 off-origin pagination is a malformed-source failure, never an empty successful
-pull or a transport failure.
+pull or a transport failure. The canonical pull also requires the returned PR
+number, base repository and full 40-character head to match the exact request
+before any evidence source is normalised or persisted.
 
 The action runs the shared acceptance-session freshness comparator immediately
 before and after the bounded pull. A stale or indeterminate pre-check performs

@@ -31,8 +31,9 @@ tracker:
   # workflow state. A complete PM pull may catch the local mirror up from a
   # Symphony-active predecessor when the poll missed short-lived intermediate
   # states; it records the observed edge without inventing those states. The
-  # cadence evaluates at most one trusted CI-pending identity per tick; any CI
-  # Pending reactivation is a milestone failure.
+  # cadence evaluates at most one issue-bound GitHub publication and its exact
+  # canonical evidence pull per tick; any CI Pending reactivation is a milestone
+  # failure.
   terminal_states:
     - Done
     - Canceled

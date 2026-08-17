@@ -55,11 +55,13 @@ complete board pull may safely catch the local mirror up from a Symphony-active
 predecessor when the polling interval missed `In Progress` or `PR Open`; the
 append-only transition records the actual observed edge with poll-compression
 provenance and invents no intermediate state. Exact repository/PR/head identity
-comes only from the latest bounded system-tier GitHub evidence batch, never a
-title, rollup or required reconstructed AgentRun, and a successful workflow
-write ends the tick. The live window restarts at the next final ATL-437 head:
-the agent enters `CI Pending` and stops, the system-tier reconciler owns the
-determinate exit, and the disabled Linear `PR opened -> In Progress` automation
-must show zero recurrence.
+comes only from a complete issue-bound Linear GitHub attachment plus the
+canonical product-scoped evidence pull that the supported PM tick performs for
+that exact publication, never a title, branch, rollup, manual seed or required
+reconstructed AgentRun. The exact observed evidence identities scope the
+trusted reconciler and a successful workflow write ends the tick. The live
+window restarts at the next final ATL-437 head: the agent enters `CI Pending`
+and stops, the system-tier reconciler owns the determinate exit, and the
+disabled Linear `PR opened -> In Progress` automation must show zero recurrence.
 ATLAS-253 remains `Needs Human` until that exact-head window is accepted and
 this closure change is merged.

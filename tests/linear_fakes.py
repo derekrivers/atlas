@@ -15,6 +15,7 @@ from typing import Any
 
 from atlas.linear.client import (
     LinearComment,
+    LinearGitHubPublication,
     LinearIssue,
     LinearProject,
     WorkflowState,
@@ -78,6 +79,9 @@ class InMemoryLinearClient:
             state_name=current.state_name,
             state_type=current.state_type,
             description=str(definition.get("description", current.description or "")),
+            identifier=current.identifier,
+            github_publications=current.github_publications,
+            github_publications_complete=current.github_publications_complete,
         )
         self._issues[issue_id] = updated
         return updated
@@ -125,9 +129,49 @@ class InMemoryLinearClient:
             state_name=match.name if match else None,
             state_type=match.type if match else None,
             description=current.description,
+            identifier=current.identifier,
+            github_publications=current.github_publications,
+            github_publications_complete=current.github_publications_complete,
         )
         self._issues[issue_id] = updated
         return updated
+
+    def seed_github_publication(
+        self,
+        issue_id: str,
+        *,
+        owner: str,
+        repo: str,
+        pr_number: int,
+        attachment_id: str = "github-publication-1",
+        complete: bool = True,
+        append: bool = False,
+    ) -> None:
+        """Seed the trusted Linear/GitHub attachment observation for tests."""
+
+        current = self._issues[issue_id]
+        new_publication = (
+            LinearGitHubPublication(
+                attachment_id=attachment_id,
+                repository_owner=owner,
+                repository_name=repo,
+                pr_number=pr_number,
+            ),
+        )
+        publications = (
+            current.github_publications + new_publication if append else new_publication
+        )
+        self._issues[issue_id] = LinearIssue(
+            id=current.id,
+            title=current.title,
+            state_id=current.state_id,
+            state_name=current.state_name,
+            state_type=current.state_type,
+            description=current.description,
+            identifier=current.identifier,
+            github_publications=publications,
+            github_publications_complete=complete,
+        )
 
     # --- test-only helpers (not part of LinearClient) -----------------------
     def seed_comment(
@@ -167,4 +211,7 @@ class InMemoryLinearClient:
             state_name=state.name,
             state_type=state.type,
             description=current.description,
+            identifier=current.identifier,
+            github_publications=current.github_publications,
+            github_publications_complete=current.github_publications_complete,
         )

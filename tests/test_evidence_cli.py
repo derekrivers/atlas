@@ -29,6 +29,7 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 from uuid import uuid4
 
 import pytest
@@ -44,7 +45,7 @@ from atlas.cli import EXIT_OK, EXIT_PRECONDITION, main
 from atlas.core.enums import ActorType
 from atlas.core.models import Product
 from atlas.core.models.evidence import EvidenceType
-from atlas.evidence.pull import drive_evidence_pull
+from atlas.evidence.pull import EvidencePullMalformedSourceError, drive_evidence_pull
 from atlas.storage import Database, EvidenceRepo, ProductRepo
 
 # The recorded PR's head SHA (pull_request.json) and the reviews' own commit
@@ -276,6 +277,11 @@ def test_drive_pull_is_offline_under_fake(seeded_db: Database) -> None:
         N_REVIEWS,
         N_DOCS,
     )
+    assert result.head_sha == HEAD_SHA
+    assert len(result.observed) == N_TOTAL
+    assert {record.id for record in result.observed} == {
+        record.id for record in EvidenceRepo(seeded_db).list()
+    }
 
     calls = {call[0]: call for call in fake.calls}
     assert calls["pull_request"] == ("pull_request", "cli", "cli", PR_NUMBER)
@@ -285,6 +291,70 @@ def test_drive_pull_is_offline_under_fake(seeded_db: Database) -> None:
     # ...reviews and files by the PR number.
     assert calls["pr_reviews"] == ("pr_reviews", "cli", "cli", PR_NUMBER)
     assert calls["pr_files"] == ("pr_files", "cli", "cli", PR_NUMBER)
+
+
+def test_drive_pull_retains_complete_observation_when_dedup_reuses_rows(
+    seeded_db: Database,
+) -> None:
+    product = ProductRepo(seeded_db).get_by_key("ATLAS")
+    assert product is not None
+    first = drive_evidence_pull(
+        make_fake(),
+        "cli",
+        "cli",
+        PR_NUMBER,
+        evidence_repo=EvidenceRepo(seeded_db),
+        product_id=product.id,
+        now=datetime.now(UTC),
+    )
+    second = drive_evidence_pull(
+        make_fake(),
+        "cli",
+        "cli",
+        PR_NUMBER,
+        evidence_repo=EvidenceRepo(seeded_db),
+        product_id=product.id,
+        now=datetime.now(UTC),
+    )
+
+    assert len(first.observed) == N_TOTAL
+    assert (second.checks, second.reviews, second.docs) == ([], [], [])
+    assert len(second.observed) == N_TOTAL
+    assert {record.id for record in second.observed} == {
+        record.id for record in first.observed
+    }
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda payload: payload.update(number=PR_NUMBER + 1),
+        lambda payload: payload["base"]["repo"].update(full_name="other/repo"),
+        lambda payload: payload["head"].update(sha="short"),
+    ],
+)
+def test_drive_pull_rejects_contradictory_pr_identity_before_ingestion(
+    seeded_db: Database,
+    mutate: Any,
+) -> None:
+    product = ProductRepo(seeded_db).get_by_key("ATLAS")
+    assert product is not None
+    fake = make_fake()
+    assert fake._pull_request is not None
+    mutate(fake._pull_request)
+
+    with pytest.raises(EvidencePullMalformedSourceError):
+        drive_evidence_pull(
+            fake,
+            "cli",
+            "cli",
+            PR_NUMBER,
+            evidence_repo=EvidenceRepo(seeded_db),
+            product_id=product.id,
+            now=datetime.now(UTC),
+        )
+
+    assert EvidenceRepo(seeded_db).list() == []
 
 
 # --- list (criterion 3) -----------------------------------------------------

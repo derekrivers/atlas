@@ -22,16 +22,15 @@ from test_pm_sync import (
     status_map,
 )
 
-from atlas.core.enums import ActorType, EvidenceStatus
+from atlas.core.enums import ActorType
 from atlas.core.models import (
     CIHandoffClassification,
     CIHandoffReason,
-    Evidence,
-    EvidenceType,
     Ticket,
     TicketStatus,
     TicketStatusTransition,
 )
+from atlas.evidence.pull import drive_evidence_pull
 from atlas.pm import CIHandoffHooks, sync_tick
 from atlas.pm.sync import CI_PENDING_POLL_COMPRESSION_CREATED_BY
 from atlas.storage import (
@@ -65,6 +64,73 @@ def _pr_payload(head: str = HEAD) -> dict[str, Any]:
     }
 
 
+def _check_payload(
+    *,
+    name: str,
+    run_id: int,
+    conclusion: str | None = "success",
+    source_event_at: Any = NOW - timedelta(seconds=20),
+) -> dict[str, Any]:
+    return {
+        "id": run_id,
+        "name": name,
+        "status": "in_progress" if conclusion is None else "completed",
+        "conclusion": conclusion,
+        "completed_at": (
+            None
+            if source_event_at is None
+            else source_event_at.isoformat().replace("+00:00", "Z")
+        ),
+        "html_url": f"https://github.com/derekrivers/atlas/runs/{run_id}",
+        "repository": {"full_name": "derekrivers/atlas"},
+        "pull_requests": [{"number": PR_NUMBER, "head": {"sha": HEAD}}],
+    }
+
+
+def _github(
+    *,
+    head: str = HEAD,
+    test_conclusion: str | None = "success",
+    test_source_event_at: Any = NOW - timedelta(seconds=20),
+    include_test: bool = True,
+) -> FakeGitHubClient:
+    checks = [_check_payload(name="lint-python", run_id=2)]
+    if include_test:
+        checks.append(
+            _check_payload(
+                name="test-python",
+                run_id=1,
+                conclusion=test_conclusion,
+                source_event_at=test_source_event_at,
+            )
+        )
+    return FakeGitHubClient(
+        check_runs=checks,
+        pull_request=_pr_payload(head),
+    )
+
+
+class SequencedPRGitHub(FakeGitHubClient):
+    """Return a deterministic PR head sequence across repeated exact reads."""
+
+    def __init__(self, heads: list[str]) -> None:
+        self._heads = list(heads)
+        super().__init__(
+            check_runs=[
+                _check_payload(name="lint-python", run_id=2),
+                _check_payload(name="test-python", run_id=1),
+            ],
+            pull_request=_pr_payload(heads[0]),
+        )
+
+    def fetch_pull_request(
+        self, owner: str, repo: str, pr_number: int
+    ) -> dict[str, Any]:
+        if self._heads:
+            self._pull_request = _pr_payload(self._heads.pop(0))
+        return super().fetch_pull_request(owner, repo, pr_number)
+
+
 def _transition(
     ticket: Ticket,
     from_status: TicketStatus,
@@ -82,53 +148,11 @@ def _transition(
     )
 
 
-def _evidence(
-    ticket: Ticket,
-    evidence_type: EvidenceType,
-    *,
-    status: EvidenceStatus = EvidenceStatus.PASSED,
-    conclusion: str | None = "success",
-    source_event_at: Any = NOW - timedelta(seconds=20),
-    source_uri: str | None = None,
-    suffix: str,
-) -> Evidence:
-    job = {
-        EvidenceType.TEST_RESULT: "test-python",
-        EvidenceType.LINT_RESULT: "lint-python",
-    }[evidence_type]
-    return Evidence(
-        id=uuid4(),
-        product_id=ticket.product_id,
-        ticket_id=ticket.id,
-        evidence_type=evidence_type,
-        status=status,
-        summary=f"{job}: {status.value}",
-        commit_sha=HEAD,
-        external_run_id=f"{job}-{suffix}",
-        job_name=job,
-        source_event_at=source_event_at,
-        payload_hash=(suffix * 64)[:64],
-        source_uri=(
-            source_uri
-            if source_uri is not None
-            else f"https://github.com/derekrivers/atlas/actions/runs/{suffix}"
-        ),
-        raw_payload={
-            "conclusion": conclusion,
-            "pull_requests": [{"number": PR_NUMBER, "head": {"sha": HEAD}}],
-        },
-        created_by_type=ActorType.SYSTEM,
-        created_by_id="github-actions",
-        created_at=NOW - timedelta(seconds=10),
-    )
-
-
 def _seed_ci_pending(
     db: Database,
     client: RecordingClient,
     *,
     key: str = "ATLAS-263",
-    evidence: list[Evidence] | None = None,
 ) -> Ticket:
     ticket = seed_ticket(
         db,
@@ -166,16 +190,13 @@ def _seed_ci_pending(
             -timedelta(minutes=1),
         )
     )
-    records = (
-        [
-            _evidence(ticket, EvidenceType.TEST_RESULT, suffix="1"),
-            _evidence(ticket, EvidenceType.LINT_RESULT, suffix="2"),
-        ]
-        if evidence is None
-        else evidence
+    assert ticket.external_linear_id is not None
+    client.seed_github_publication(
+        ticket.external_linear_id,
+        owner="derekrivers",
+        repo="atlas",
+        pr_number=PR_NUMBER,
     )
-    for record in records:
-        EvidenceRepo(db).add(record)
     return ticket
 
 
@@ -184,7 +205,7 @@ def _seed_compressed_ci_pending(
     client: RecordingClient,
     *,
     source: TicketStatus,
-    evidence: list[Evidence] | None = None,
+    with_publication: bool = True,
 ) -> Ticket:
     """Seed a board already at CI Pending with no observed transient edges."""
 
@@ -201,16 +222,14 @@ def _seed_compressed_ci_pending(
         linear_synced_at=entered_at,
         status_entered_at=entered_at,
     )
-    records = (
-        [
-            _evidence(ticket, EvidenceType.TEST_RESULT, suffix="1"),
-            _evidence(ticket, EvidenceType.LINT_RESULT, suffix="2"),
-        ]
-        if evidence is None
-        else evidence
-    )
-    for record in records:
-        EvidenceRepo(db).add(record)
+    if with_publication:
+        assert ticket.external_linear_id is not None
+        client.seed_github_publication(
+            ticket.external_linear_id,
+            owner="derekrivers",
+            repo="atlas",
+            pr_number=PR_NUMBER,
+        )
     return ticket
 
 
@@ -243,7 +262,7 @@ def test_production_tick_resolves_exact_identity_writes_once_and_ends_window(
 ) -> None:
     client = RecordingClient()
     ticket = _seed_ci_pending(db, client)
-    github = FakeGitHubClient(pull_request=_pr_payload())
+    github = _github()
 
     def forbidden(*args: Any, **kwargs: Any) -> Any:
         raise AssertionError("a later workflow writer ran after CI handoff")
@@ -266,9 +285,18 @@ def test_production_tick_resolves_exact_identity_writes_once_and_ends_window(
     assert identity.repository_name == "atlas"
     assert identity.pr_number == PR_NUMBER
     assert identity.head_commit == HEAD
-    assert all(
-        call[1:4] == ("derekrivers", "atlas", PR_NUMBER) for call in github.calls
-    )
+    assert all(call[1:3] == ("derekrivers", "atlas") for call in github.calls)
+    assert github.calls[:5] == [
+        ("pull_request", "derekrivers", "atlas", PR_NUMBER),
+        ("workflow_runs", "derekrivers", "atlas", HEAD),
+        ("check_runs", "derekrivers", "atlas", HEAD),
+        ("pr_reviews", "derekrivers", "atlas", PR_NUMBER),
+        ("pr_files", "derekrivers", "atlas", PR_NUMBER),
+    ]
+    assert EvidenceRepo(db).list_for_ticket(ticket.id) == []
+    assert {
+        record.ticket_id for record in EvidenceRepo(db).list_for_product(PRODUCT_ID)
+    } == {None}
     reconciliations = CIHandoffReconciliationRepo(db).list()
     assert len(reconciliations) == 1
     assert reconciliations[0].head_commit == HEAD
@@ -288,7 +316,7 @@ def test_supported_tick_recovers_poll_compression_without_invented_transitions(
 ) -> None:
     client = RecordingClient()
     ticket = _seed_compressed_ci_pending(db, client, source=source)
-    github = FakeGitHubClient(pull_request=_pr_payload())
+    github = _github()
 
     result = _run(db, client, github)
 
@@ -322,7 +350,7 @@ def test_supported_tick_recovers_poll_compression_without_invented_transitions(
     assert reconciliation.head_commit == HEAD
 
 
-def test_compressed_observation_with_missing_identity_holds_before_provider_calls(
+def test_compressed_observation_with_missing_publication_holds_before_provider_calls(
     db: Database,
 ) -> None:
     client = RecordingClient()
@@ -330,14 +358,14 @@ def test_compressed_observation_with_missing_identity_holds_before_provider_call
         db,
         client,
         source=TicketStatus.READY_FOR_AGENT,
-        evidence=[],
+        with_publication=False,
     )
-    github = FakeGitHubClient(pull_request=_pr_payload())
+    github = _github()
 
     result = _run(db, client, github)
 
     decision = result.ci_handoff_decisions[0]
-    assert decision.reason.value == "trusted_identity_unavailable"
+    assert decision.reason.value == "trusted_publication_unavailable"
     assert decision.reconciliation is None
     assert result.ci_handoff_held == 1
     stored = TicketRepo(db).get_by_key(ticket.key)
@@ -347,7 +375,7 @@ def test_compressed_observation_with_missing_identity_holds_before_provider_call
     assert CIHandoffReconciliationRepo(db).list_for_ticket(ticket.id) == []
 
 
-def test_compressed_identity_ambiguity_holds_before_provider_calls(
+def test_compressed_publication_ambiguity_holds_before_provider_calls(
     db: Database,
 ) -> None:
     client = RecordingClient()
@@ -355,23 +383,22 @@ def test_compressed_identity_ambiguity_holds_before_provider_calls(
         db,
         client,
         source=TicketStatus.IN_PROGRESS,
-        evidence=[],
     )
-    EvidenceRepo(db).add(_evidence(ticket, EvidenceType.TEST_RESULT, suffix="1"))
-    EvidenceRepo(db).add(
-        _evidence(
-            ticket,
-            EvidenceType.LINT_RESULT,
-            source_uri="https://github.com/other/atlas/actions/runs/2",
-            suffix="2",
-        )
+    assert ticket.external_linear_id is not None
+    client.seed_github_publication(
+        ticket.external_linear_id,
+        owner="other",
+        repo="atlas",
+        pr_number=PR_NUMBER + 1,
+        attachment_id="github-publication-2",
+        append=True,
     )
-    github = FakeGitHubClient(pull_request=_pr_payload())
+    github = _github()
 
     result = _run(db, client, github)
 
     decision = result.ci_handoff_decisions[0]
-    assert decision.reason.value == "trusted_identity_ambiguous"
+    assert decision.reason.value == "trusted_publication_ambiguous"
     assert decision.reconciliation is None
     assert client.state_writes == []
     assert github.calls == []
@@ -384,7 +411,7 @@ def test_compressed_stale_head_holds_after_exact_provider_revalidation(
     ticket = _seed_compressed_ci_pending(
         db, client, source=TicketStatus.READY_FOR_AGENT
     )
-    github = FakeGitHubClient(pull_request=_pr_payload(OTHER_HEAD))
+    github = SequencedPRGitHub([HEAD, OTHER_HEAD])
 
     result = _run(db, client, github)
 
@@ -403,7 +430,7 @@ def test_compressed_board_movement_holds_at_final_revalidation(
 ) -> None:
     client = RecordingClient()
     ticket = _seed_compressed_ci_pending(db, client, source=TicketStatus.IN_PROGRESS)
-    github = FakeGitHubClient(pull_request=_pr_payload())
+    github = _github()
 
     def move_board() -> None:
         assert ticket.external_linear_id is not None
@@ -443,7 +470,7 @@ def test_ci_pending_observation_from_non_agent_or_terminal_state_never_catches_u
         acceptance_criteria=["bounded transition"],
         linear_synced_at=NOW,
     )
-    github = FakeGitHubClient(pull_request=_pr_payload())
+    github = _github()
 
     result = _run(db, client, github)
 
@@ -459,7 +486,7 @@ def test_ci_pending_observation_from_non_agent_or_terminal_state_never_catches_u
 def test_duplicate_tick_does_not_repeat_publication_handoff_write(db: Database) -> None:
     client = RecordingClient()
     _seed_ci_pending(db, client)
-    github = FakeGitHubClient(pull_request=_pr_payload())
+    github = _github()
 
     first = _run(db, client, github)
     second = _run(db, client, github)
@@ -484,7 +511,7 @@ def test_candidate_discovery_is_ci_pending_only_stable_and_one_per_tick(
         status=TicketStatus.PR_OPEN,
         linear_synced_at=NOW,
     )
-    github = FakeGitHubClient(pull_request=_pr_payload())
+    github = _github()
 
     result = _run(db, client, github)
 
@@ -502,93 +529,75 @@ def test_candidate_discovery_is_ci_pending_only_stable_and_one_per_tick(
 @pytest.mark.parametrize(
     (
         "case",
-        "test_status",
         "conclusion",
         "source_event_at",
         "include_test",
-        "live_head",
         "classification",
         "mutations",
     ),
     [
         (
             "passed",
-            EvidenceStatus.PASSED,
             "success",
             NOW,
             True,
-            HEAD,
             CIHandoffClassification.PASSED,
             1,
         ),
         (
             "implementation",
-            EvidenceStatus.FAILED,
             "failure",
             NOW,
             True,
-            HEAD,
             CIHandoffClassification.IMPLEMENTATION_FAILURE,
             1,
         ),
         (
             "pending",
-            EvidenceStatus.PENDING,
             None,
             NOW,
             True,
-            HEAD,
             CIHandoffClassification.PENDING,
             0,
         ),
         (
             "missing",
-            EvidenceStatus.PASSED,
             "success",
             NOW,
             False,
-            HEAD,
             CIHandoffClassification.MISSING,
             0,
         ),
         (
             "infrastructure",
-            EvidenceStatus.FAILED,
             "timed_out",
             NOW,
             True,
-            HEAD,
+            CIHandoffClassification.INFRASTRUCTURE,
+            0,
+        ),
+        (
+            "unknown-conclusion",
+            "provider_unknown",
+            NOW,
+            True,
             CIHandoffClassification.INFRASTRUCTURE,
             0,
         ),
         (
             "malformed",
-            EvidenceStatus.PASSED,
             "success",
             None,
             True,
-            HEAD,
             CIHandoffClassification.MALFORMED,
             0,
         ),
         (
             "indeterminate",
-            EvidenceStatus.FAILED,
-            "provider_unknown",
+            "skipped",
             NOW,
             True,
-            HEAD,
             CIHandoffClassification.INDETERMINATE,
-            0,
-        ),
-        (
-            "stale",
-            EvidenceStatus.PASSED,
-            "success",
-            NOW,
-            True,
-            OTHER_HEAD,
-            CIHandoffClassification.STALE,
             0,
         ),
     ],
@@ -596,11 +605,9 @@ def test_candidate_discovery_is_ci_pending_only_stable_and_one_per_tick(
 def test_production_adapter_routes_or_holds_every_ci_evidence_class(
     db: Database,
     case: str,
-    test_status: EvidenceStatus,
     conclusion: str | None,
     source_event_at: Any,
     include_test: bool,
-    live_head: str,
     classification: CIHandoffClassification,
     mutations: int,
 ) -> None:
@@ -615,19 +622,15 @@ def test_production_adapter_routes_or_holds_every_ci_evidence_class(
         acceptance_criteria=["bounded transition"],
         linear_synced_at=NOW,
     )
-    records = [_evidence(ticket, EvidenceType.LINT_RESULT, suffix="2")]
-    if include_test:
-        records.append(
-            _evidence(
-                ticket,
-                EvidenceType.TEST_RESULT,
-                status=test_status,
-                conclusion=conclusion,
-                source_event_at=source_event_at,
-                suffix="1",
-            )
-        )
-    # Add the exact dispatch/handoff episode and its selected evidence.
+    assert ticket.external_linear_id is not None
+    client.seed_github_publication(
+        ticket.external_linear_id,
+        owner="derekrivers",
+        repo="atlas",
+        pr_number=PR_NUMBER,
+    )
+    # Add the exact dispatch/handoff episode; production-shaped evidence is
+    # created only by the canonical pull path exercised inside the PM tick.
     transitions = TicketStatusTransitionRepo(db)
     transitions.record(
         _transition(
@@ -642,9 +645,11 @@ def test_production_adapter_routes_or_holds_every_ci_evidence_class(
             ticket, TicketStatus.PR_OPEN, TicketStatus.CI_PENDING, -timedelta(minutes=1)
         )
     )
-    for record in records:
-        EvidenceRepo(db).add(record)
-    github = FakeGitHubClient(pull_request=_pr_payload(live_head))
+    github = _github(
+        test_conclusion=conclusion,
+        test_source_event_at=source_event_at,
+        include_test=include_test,
+    )
 
     result = _run(db, client, github)
     handoff = result.ci_handoff_decisions[0].reconciliation
@@ -654,9 +659,10 @@ def test_production_adapter_routes_or_holds_every_ci_evidence_class(
     assert handoff.linear_mutations == mutations
     assert len(client.state_writes) == mutations
     assert result.ci_handoff_held == (0 if mutations else 1)
+    assert EvidenceRepo(db).list_for_ticket(ticket.id) == []
 
 
-def test_missing_or_conflicting_trusted_repository_identity_holds_without_github(
+def test_unattributed_product_evidence_cannot_satisfy_current_publication(
     db: Database,
 ) -> None:
     client = RecordingClient()
@@ -684,25 +690,34 @@ def test_missing_or_conflicting_trusted_repository_identity_holds_without_github
             ticket, TicketStatus.PR_OPEN, TicketStatus.CI_PENDING, -timedelta(minutes=1)
         )
     )
-    first = _evidence(ticket, EvidenceType.TEST_RESULT, suffix="1")
-    second = _evidence(
-        ticket,
-        EvidenceType.LINT_RESULT,
-        source_uri="https://github.com/other/atlas/actions/runs/2",
-        suffix="2",
+    assert ticket.external_linear_id is not None
+    client.seed_github_publication(
+        ticket.external_linear_id,
+        owner="derekrivers",
+        repo="atlas",
+        pr_number=PR_NUMBER,
     )
-    EvidenceRepo(db).add(first)
-    EvidenceRepo(db).add(second)
-    github = FakeGitHubClient(pull_request=_pr_payload())
+    # A prior product-wide pull has a passing test at the same head. The
+    # current publication pull omits that check, so it must remain missing
+    # rather than borrowing the unrelated historical product record.
+    drive_evidence_pull(
+        _github(),
+        "derekrivers",
+        "atlas",
+        PR_NUMBER,
+        evidence_repo=EvidenceRepo(db),
+        product_id=PRODUCT_ID,
+        now=NOW - timedelta(minutes=5),
+    )
+    github = _github(include_test=False)
 
     result = _run(db, client, github)
 
     decision = result.ci_handoff_decisions[0]
-    assert decision.reason.value == "trusted_identity_ambiguous"
-    assert decision.reconciliation is None
+    assert decision.reconciliation is not None
+    assert decision.reconciliation.classification is CIHandoffClassification.MISSING
     assert result.ci_handoff_held == 1
     assert client.state_writes == []
-    assert github.calls == []
 
 
 def test_head_movement_at_final_revalidation_holds_without_linear_write(
@@ -710,7 +725,7 @@ def test_head_movement_at_final_revalidation_holds_without_linear_write(
 ) -> None:
     client = RecordingClient()
     _seed_ci_pending(db, client)
-    github = FakeGitHubClient(pull_request=_pr_payload())
+    github = _github()
 
     def move_head() -> None:
         github._pull_request = _pr_payload(OTHER_HEAD)
@@ -725,5 +740,41 @@ def test_head_movement_at_final_revalidation_holds_without_linear_write(
     handoff = result.ci_handoff_decisions[0].reconciliation
     assert handoff is not None
     assert handoff.classification is CIHandoffClassification.STALE
+    assert handoff.linear_mutations == 0
+    assert client.state_writes == []
+
+
+def test_pull_scoped_evidence_change_at_final_revalidation_holds(
+    db: Database,
+) -> None:
+    client = RecordingClient()
+    _seed_ci_pending(db, client)
+    github = _github()
+
+    def change_evidence() -> None:
+        drive_evidence_pull(
+            _github(
+                test_conclusion="failure",
+                test_source_event_at=NOW + timedelta(seconds=1),
+            ),
+            "derekrivers",
+            "atlas",
+            PR_NUMBER,
+            evidence_repo=EvidenceRepo(db),
+            product_id=PRODUCT_ID,
+            now=NOW + timedelta(seconds=1),
+        )
+
+    result = _run(
+        db,
+        client,
+        github,
+        hooks=CIHandoffHooks(after_classification=change_evidence),
+    )
+
+    handoff = result.ci_handoff_decisions[0].reconciliation
+    assert handoff is not None
+    assert handoff.classification is CIHandoffClassification.STALE
+    assert handoff.reason is CIHandoffReason.EVIDENCE_CHANGED
     assert handoff.linear_mutations == 0
     assert client.state_writes == []

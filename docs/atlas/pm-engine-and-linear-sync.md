@@ -298,21 +298,28 @@ first catch the local mirror up from a Symphony-active predecessor if the poll
 missed transient states; the direct transition names the real observed source
 and the `pm-engine:linear-poll-compression` actor, never invented intermediate
 rows. The latest transition into `ci_pending` bounds the episode, but identity
-does not require an AgentRun. Instead, the latest system-tier GitHub evidence
-batch explicitly linked to the ticket or an immutable verification check must
-resolve one exact repository, PR number and full contributor-head SHA. Missing
-or contradictory identity holds before any GitHub or Linear request; titles,
-rollups, manual input and earlier handoff episodes are not identity sources.
-The adapter then supplies that identity and the tick's complete project pull
-to the domain operation. The operation takes the shared
-product admission lease, reconciles any earlier
-ambiguous fence first, loads the active delivery policy, builds the coherent
-snapshot and reads the PR identity without consuming GitHub check rollups.
-Stored append-only evidence is loaded only for the ticket's product and
+does not require an AgentRun. Instead, the ticket's issue-bound Linear GitHub
+attachment must expose one exact repository/PR publication. The canonical URL
+and GitHub metadata must agree, the metadata must identify an open
+`main`-target PR that closes the issue, the bounded attachment connection must
+be complete, and the adapter joins it to the ticket only through the stable
+Linear issue id. Missing, truncated, contradictory or multiple publication
+identities hold before any GitHub request; titles, branches, rollups, manual
+input and earlier handoff episodes are not identity sources.
+
+For that exact publication the adapter invokes `drive_evidence_pull` inside the
+supported tick. The canonical mapper persists normal product-scoped
+system-tier GitHub evidence and returns the full contributor head plus every
+exact source observation, including immutable rows reused by dedup. Provider or
+malformed-source failure holds without a Linear mutation. The adapter supplies
+the publication, full head, exact observed evidence ids and the tick's complete
+project pull to the domain operation. The operation takes the shared product
+admission lease, reconciles any earlier ambiguous fence first, loads the active
+delivery policy, builds the coherent snapshot and revalidates the PR/head
+without consuming a GitHub rollup. Only the pull-attributed product evidence is
 classified through the canonical required-check resolver and system-tier
-evaluators. The pure classifier independently rejects records from another
-product and accepts an explicitly ticket-scoped record only for that exact
-ticket.
+evaluators; explicitly ticket-scoped records still participate only for their
+exact ticket.
 
 Only a complete current-head `passed` set selects `review_required`; only a
 complete determinate set containing an explicit implementation `failure`

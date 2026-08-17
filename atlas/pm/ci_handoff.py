@@ -14,6 +14,7 @@ from atlas.core.models import (
     CIHandoffReason,
     CIHandoffReconciliation,
     DeliveryAdmissionPolicyRevision,
+    Evidence,
     Ticket,
     TicketStatus,
 )
@@ -312,6 +313,7 @@ def reconcile_ci_handoff(
     pr_number: int,
     expected_head: str,
     now: datetime,
+    evidence_ids: tuple[UUID, ...] | None = None,
     hooks: CIHandoffHooks | None = None,
     uuid_factory: Callable[[], UUID] = uuid4,
 ) -> CIHandoffResult:
@@ -329,6 +331,25 @@ def reconcile_ci_handoff(
     if ticket is None:
         raise ValueError(f"unknown ticket {ticket_key!r}")
     hooks = hooks or CIHandoffHooks()
+    selected_evidence_ids = None if evidence_ids is None else frozenset(evidence_ids)
+    selected_source_ids: frozenset[str] | None = None
+    if selected_evidence_ids is not None:
+        selected_source_ids = frozenset(
+            record.external_run_id
+            for record in EvidenceRepo(db).list_for_product(ticket.product_id)
+            if record.id in selected_evidence_ids and record.external_run_id is not None
+        )
+
+    def scoped_evidence(product_id: UUID) -> list[Evidence]:
+        records = EvidenceRepo(db).list_for_product(product_id)
+        if selected_source_ids is None:
+            return records
+        return [
+            record
+            for record in records
+            if record.external_run_id in selected_source_ids
+        ]
+
     lease = AdmissionCoordinationRepo(db)
     owner_id = uuid_factory()
     if not lease.try_acquire(
@@ -479,7 +500,7 @@ def reconcile_ci_handoff(
             assessment = evaluate_ci_handoff(
                 current_ticket,
                 head_commit=expected_head,
-                evidence=EvidenceRepo(db).list_for_product(current_ticket.product_id),
+                evidence=scoped_evidence(current_ticket.product_id),
             )
             classification = assessment.classification
             reason = assessment.reason
@@ -643,7 +664,7 @@ def reconcile_ci_handoff(
         refreshed_assessment = evaluate_ci_handoff(
             current_ticket,
             head_commit=expected_head,
-            evidence=EvidenceRepo(db).list_for_product(current_ticket.product_id),
+            evidence=scoped_evidence(current_ticket.product_id),
         )
         if refreshed_assessment != assessment:
             recorded = _record(

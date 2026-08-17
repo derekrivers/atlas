@@ -924,13 +924,16 @@ complete trusted board pull to catch the local mirror up from a Symphony-active
 predecessor only. The append-only row records the actual direct observation
 with poll-compression provenance and invents no intermediate transition. The
 remediation wires one deterministically ordered local `CI Pending` candidate
-into every supported PM tick, resolves exact repository/PR/full-head identity
-only from the latest bounded system-tier GitHub evidence batch without
-requiring a reconstructed AgentRun, and closes that tick's workflow write
-window after a confirmed handoff. The live authority window restarts at the
-remediated final head. Production reachability passes only when that head
-creates a genuine reconciliation row and corresponding authorised Linear
-transition without an agent poll or manual state repair.
+into every supported PM tick, resolves one exact repository/PR publication
+only from a complete issue-bound Linear GitHub attachment, invokes canonical
+product-scoped system-tier evidence ingestion itself, and scopes the trusted
+reconciler to that pull's full contributor head and complete observed evidence
+identities without requiring a reconstructed AgentRun. It closes that tick's
+workflow write window after a confirmed handoff. The live authority window
+restarts at the remediated final head. Production reachability passes only when
+that head creates a genuine reconciliation row and corresponding authorised
+Linear transition without an agent poll, manual evidence seed or manual state
+repair.
 
 ---
 

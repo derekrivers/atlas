@@ -79,25 +79,32 @@ normal PM tick now:
    handoff discovery;
 4. sorts only local `CI Pending` tickets by stable key and considers at most
    one;
-5. binds the latest append-only transition into `ci_pending` to the latest
-   bounded GitHub-Actions-authored evidence batch linked to that ticket or an
-   immutable verification check and fails closed on missing or contradictory
-   repository/PR/full-head identity;
-6. delegates complete identity to the existing lease/snapshot/evidence/fence
-   reconciler; and
-7. ends the tick before definition, admission, completion or anomaly writers
+5. resolves one issue-bound Linear GitHub attachment only when its canonical
+   PR URL, repository/number metadata and bounded connection agree, failing
+   closed before GitHub on missing, truncated, contradictory or multiple
+   publication identity;
+6. runs canonical `drive_evidence_pull` ingestion itself for that exact
+   repository/PR, retaining the full contributor head and complete observed
+   evidence-id set even when append-only dedup reuses product-scoped rows;
+7. delegates that exact publication/head/evidence scope to the existing
+   lease/snapshot/evidence/fence reconciler; and
+8. ends the tick before definition, admission, completion or anomaly writers
    after a confirmed workflow mutation or target-fence reconciliation.
 
-The adapter performs no GitHub mutation and makes no GitHub or Linear call when
-trusted identity is unavailable or ambiguous. `atlas pm sync --once -v`
-exposes bounded evaluated/held/mutation output, while the append-only row and
-Linear transition remain authority. Focused tests cover compressed observations
-from `ready_for_agent` and `in_progress`, absent AgentRuns,
-missing/ambiguous identity, stale heads, contradictory board state,
-non-agent/terminal sources, all evidence classes, zero/one mutation, ordering,
-duplicate ticks and movement races. These are executable remediation evidence,
-not the live production PASS. The final candidate must itself create at least
-one genuine reconciliation row plus its corresponding authorised transition.
+The adapter performs no GitHub mutation and makes no GitHub call when trusted
+publication identity is unavailable or ambiguous. Provider/malformed ingestion
+failure and invalid full-head identity perform no Linear mutation. Normal
+system-tier ingestion is part of the supported one-shot/recurring path rather
+than an operator-supplied precondition. `atlas pm sync --once -v` exposes
+bounded evaluated/held/mutation output, while the append-only row and Linear
+transition remain authority. Focused tests cover real product-scoped mapper
+semantics, dedup attribution, compressed observations from `ready_for_agent`
+and `in_progress`, absent AgentRuns, missing/ambiguous publication identity,
+stale heads, contradictory board state, non-agent/terminal sources, all
+evidence classes, zero/one mutation, ordering, duplicate ticks and movement
+races. These are executable remediation evidence, not the live production
+PASS. The final candidate must itself create at least one genuine reconciliation
+row plus its corresponding authorised transition.
 
 ## Fixed evidence package
 

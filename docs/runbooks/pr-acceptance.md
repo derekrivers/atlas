@@ -104,10 +104,11 @@ write response is ambiguous, the durable fence requires a later complete board
 observation to prove whether the source or target state won; that observation
 does not retry the write. A changed head invalidates the recorded authority and
 starts the evidence chain again for the new commit. The handoff considers only
-evidence belonging to the ticket's product (and, when explicitly ticket-scoped,
-that ticket). If newer same-head evidence changes the selected check results in
-the final pre-write window, Atlas records `evidence_changed`, leaves the card in
-`CI Pending` and lets the next tick classify the new set.
+evidence belonging to the ticket's product and exact publication pull (and,
+when explicitly ticket-scoped, that ticket). If the scoped evidence changes the
+selected check results in the final pre-write window, Atlas records
+`evidence_changed`, leaves the card in `CI Pending` and lets the next tick
+classify the new set.
 
 The trusted reconciler is reached through the normal one-shot and recurring PM
 cadence. After the complete project pull, the local mirror may catch up into
@@ -116,16 +117,20 @@ missed transient `In Progress`/`PR Open` states. The append-only transition
 records that actual direct observation with
 `pm-engine:linear-poll-compression`; it never invents the missed states or
 writes Linear. After AgentRun reconstruction, the adapter considers at most one
-locally `CI Pending` ticket in stable key order. The latest transition bounds
-the episode, while coherent repository, PR number and full head come directly
-from the latest bounded GitHub-Actions-authored evidence batch. An AgentRun,
-ticket/PR title, branch guess or GitHub rollup is never required or used for
-identity. `trusted_identity_unavailable` and `trusted_identity_ambiguous` are
-holds before any GitHub or Linear call. A confirmed handoff write or
-target-fence reconciliation ends the tick before admission or completion can
-write another workflow state. In operator-attended diagnosis, `atlas pm sync
---once -v` prints the bounded result; the durable reconciliation row and Linear
-transition remain the authority.
+locally `CI Pending` ticket in stable key order. The issue-bound Linear GitHub
+attachment must provide exactly one repository/PR publication whose canonical
+URL and metadata agree. `trusted_publication_unavailable` and
+`trusted_publication_ambiguous` hold before a GitHub call. The adapter then runs
+the normal `drive_evidence_pull` path for that exact publication, resolves the
+full head, persists product-scoped system-tier evidence and passes only the
+complete observed evidence-id set to reconciliation. Provider or malformed
+source failure holds as `system_evidence_ingestion_failed`; normal evidence
+ingestion is not a separate operator precondition. An AgentRun, ticket/PR title,
+branch guess or GitHub rollup is never required or used for identity. A
+confirmed handoff write or target-fence reconciliation ends the tick before
+admission or completion can write another workflow state. In operator-attended
+diagnosis, `atlas pm sync --once -v` prints the bounded result; the durable
+reconciliation row and Linear transition remain the authority.
 
 Linear's `PR opened -> In Progress` GitHub workflow automation caused the
 ATLAS-261/262 reactivation incident and was disabled by the operator on 17

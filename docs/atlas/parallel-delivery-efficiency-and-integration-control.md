@@ -194,7 +194,7 @@ source and `pm-engine:linear-poll-compression` provenance; it neither invents
 non-agent or terminal states and every CI-pending exit remain deduplicated
 ownership anomalies. ATLAS-256's trusted CI reconciler is the only seam that
 can exercise the Atlas-owned exits. It re-reads the PR head, complete board,
-active policy, coherent snapshot and product/ticket-scoped evidence assessment
+active policy, coherent snapshot and exact publication-pull evidence assessment
 immediately before the write under the shared product lease. Any change to the
 assessment or its deciding evidence ids records a typed hold and requires a
 fresh tick. Each determinate decision is appended with the exact identity and
@@ -223,26 +223,38 @@ reconstruction, it sorts only locally `CI Pending` tickets by stable ticket key
 and considers the first one. The latest append-only transition into
 `ci_pending` bounds the delivery episode even when the poll-compressed source
 is `ready_for_agent` or `in_progress` and no AgentRun could be reconstructed.
-The latest system-tier GitHub evidence batch explicitly linked to that ticket
-or one of its immutable verification checks must resolve one coherent
-repository owner/name, PR number and full contributor head. Ticket titles,
-branch guesses, PR-title close sets, GitHub rollups, manual operator input,
-earlier AgentRuns and earlier CI-pending episodes are never identity inputs.
-Missing evidence holds as `trusted_identity_unavailable`; contradictory
-repositories, PRs or heads hold as `trusted_identity_ambiguous`, before any
-GitHub or Linear call.
+The same complete board observation carries the issue-bound Linear GitHub
+attachment. Atlas accepts a publication identity only when its canonical
+`github.com/<owner>/<repo>/pull/<number>` URL and GitHub attachment metadata
+agree, the metadata identifies an open `main`-target PR that closes the issue,
+the attachment connection is complete, and exactly one repository/PR identity
+remains. The join to the ticket is the stable Linear issue id. Missing
+publication identity holds as `trusted_publication_unavailable`; truncation,
+contradiction or multiple distinct publications holds as
+`trusted_publication_ambiguous`, before any GitHub call. Ticket titles, branch
+guesses, PR-title close sets, GitHub rollups, manual operator input, earlier
+AgentRuns and earlier CI-pending episodes are never identity inputs.
 
-With a complete identity, the adapter calls the existing trusted reconciler
-with the tick's original complete board. The product lease, coherent snapshot,
-classification, two revalidations, evidence refresh and durable write fence
-remain unchanged. A confirmed workflow mutation or confirmation that an
-earlier ambiguous fence reached its target returns from the tick immediately,
-so definition, admission, completion and anomaly writers cannot add a second
-external workflow mutation. Holds may leave the remaining read/definition
-work intact, but no second CI candidate is evaluated in that tick. `atlas pm
-sync --once -v` exposes one bounded secret-free adapter line plus integer
-evaluated/held/mutation counters; durable authority remains the append-only
-reconciliation, not console text.
+With one complete publication, the adapter invokes the canonical
+`drive_evidence_pull` path itself for that exact repository and PR. That pull
+resolves the full contributor head once, runs the normal GitHub
+workflow/check/review/file mapping, persists product-scoped system-tier
+evidence, and returns the complete observed evidence identities even when
+append-only dedup reused existing rows. Only those exact observations are
+supplied to the existing trusted reconciler. Provider or malformed-source
+failure holds as `system_evidence_ingestion_failed`; an invalid full head holds
+as `trusted_identity_unavailable`. Normal system-tier ingestion is therefore a
+supported part of the PM tick, not an assumed external precondition.
+
+The product lease, coherent snapshot, classification, PR/head revalidation,
+evidence refresh and durable write fence remain unchanged. A confirmed
+workflow mutation or confirmation that an earlier ambiguous fence reached its
+target returns from the tick immediately, so definition, admission, completion
+and anomaly writers cannot add a second external workflow mutation. Holds may
+leave the remaining read/definition work intact, but no second CI candidate is
+evaluated in that tick. `atlas pm sync --once -v` exposes one bounded
+secret-free adapter line plus integer evaluated/held/mutation counters; durable
+authority remains the append-only reconciliation, not console text.
 
 These states are deliberately different claims. `CI Pending` says only that a
 locally validated candidate was published and CI now owns classification.
