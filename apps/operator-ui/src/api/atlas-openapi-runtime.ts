@@ -132,6 +132,56 @@ export const atlasOpenApiEnums = {
     "indeterminate_reconciled_no_write",
     "indeterminate_reconciled_moved"
   ],
+  "CIHandoffClassification": [
+    "passed",
+    "implementation_failure",
+    "pending",
+    "missing",
+    "infrastructure",
+    "stale",
+    "malformed",
+    "indeterminate"
+  ],
+  "CIHandoffDecision": [
+    "hold",
+    "review_required",
+    "changes_requested"
+  ],
+  "CIHandoffReason": [
+    "complete_required_checks_passed",
+    "complete_implementation_failure",
+    "required_checks_pending",
+    "required_checks_missing",
+    "infrastructure_evidence",
+    "stale_evidence",
+    "malformed_evidence",
+    "contradictory_evidence",
+    "indeterminate_evidence",
+    "no_ci_required_checks",
+    "lease_unavailable",
+    "lease_lost",
+    "policy_unavailable",
+    "snapshot_incomplete",
+    "ticket_not_ci_pending",
+    "ticket_identity_mismatch",
+    "linear_issue_missing",
+    "linear_state_mismatch",
+    "pr_identity_malformed",
+    "pr_head_moved",
+    "github_infrastructure",
+    "board_revalidation_failed",
+    "board_state_moved",
+    "policy_changed",
+    "snapshot_changed",
+    "evidence_changed",
+    "concurrent_write_fence",
+    "fence_still_unresolved",
+    "fence_reconciled_target",
+    "fence_reconciled_source",
+    "fence_reconciled_moved",
+    "write_confirmed",
+    "write_indeterminate"
+  ],
   "DeliveryAdmissionMode": [
     "running",
     "paused",
@@ -141,6 +191,38 @@ export const atlasOpenApiEnums = {
     "stale_revision",
     "idempotency_key_reused",
     "in_progress"
+  ],
+  "DeliveryControlExactBaseStatus": [
+    "exact_branch",
+    "rebase_required",
+    "stale",
+    "indeterminate"
+  ],
+  "DeliveryControlProjectionReason": [
+    "successful_board_unavailable",
+    "newer_board_refresh_unsuccessful",
+    "evidence_identity_missing",
+    "protected_lane_classification_invalid",
+    "ci_reconciliation_unavailable",
+    "ci_handoff_write_indeterminate",
+    "validation_plan_provenance_unavailable",
+    "exact_base_assessment_unavailable",
+    "integration_identity_mismatch",
+    "acceptance_assessment_stale",
+    "integration_behind",
+    "integration_diverged",
+    "integration_conflicted",
+    "integration_indeterminate"
+  ],
+  "DeliveryControlSnapshotStatus": [
+    "coherent",
+    "stale",
+    "indeterminate"
+  ],
+  "DeliveryControlValidationPlanStatus": [
+    "available",
+    "stale",
+    "indeterminate"
   ],
   "DependencyType": [
     "depends_on",
@@ -232,6 +314,15 @@ export const atlasOpenApiEnums = {
     "evidence_rate_limit_failed",
     "evidence_malformed_source",
     "action_conflict"
+  ],
+  "PmSyncReceiptResult": [
+    "success_definition_changed",
+    "success_status_only",
+    "success_zero_action",
+    "partial",
+    "malformed_pull",
+    "cancelled",
+    "failed"
   ],
   "RiskLevel": [
     "low",

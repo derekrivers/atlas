@@ -258,7 +258,11 @@ test('refresh loses in-memory write authority and persists neither operator toke
 test('timed expiry closes the reviewed drawer and requires a fresh fetch and review after sign-in', async ({
   page,
 }) => {
+  const initialTime = Date.now()
+  const firstSessionExpiresAt = initialTime + 5 * 60_000
+  let firstSession = true
   let lessonRequestCount = 0
+  await page.clock.install({ time: initialTime })
   page.on('request', (request) => {
     if (
       request.method() === 'GET' &&
@@ -278,11 +282,15 @@ test('timed expiry closes the reviewed drawer and requires a fresh fetch and rev
       csrf_token: string
       expires_at: string
     }
+    const expiresAt = firstSession
+      ? new Date(firstSessionExpiresAt).toISOString()
+      : payload.expires_at
+    firstSession = false
     await route.fulfill({
       response,
       json: {
         ...payload,
-        expires_at: new Date(Date.now() + 1_500).toISOString(),
+        expires_at: expiresAt,
       },
     })
   })
@@ -296,6 +304,7 @@ test('timed expiry closes the reviewed drawer and requires a fresh fetch and rev
     .getByLabel('Operator confidence (0.0–1.0)')
     .fill('0.4')
   const requestsBeforeExpiry = lessonRequestCount
+  await page.clock.pauseAt(firstSessionExpiresAt + 1)
 
   await expect(
     page.getByRole('dialog', { name: 'Session expired' })

@@ -535,6 +535,53 @@ holds, current candidate identities, validation-plan summaries and typed
 freshness outcomes. It adds no generic mutation route and returns no raw
 provider payload, credential, command output or workspace path.
 
+ATLAS-261 implements that extension on the existing authenticated
+`GET /api/v1/delivery-control`. One storage-owned repeatable-read transaction
+freezes the active policy, last-good and latest-attempt board receipts,
+materialised tickets, latest reconciliation within each current CI-pending
+`status_entered_at` episode, its
+selected evidence identities, current write fences and the latest matching
+stored acceptance assessment. The response pins policy, board, evidence and
+integration fingerprints under one composite snapshot fingerprint. A later
+failed board refresh remains visible beside the last successful identity; it
+does not erase the last-good observation or become available capacity.
+
+Integration occupancy exposes the policy budget, used count, bounded owner
+keys and fail-closed available count. Protected-lane occupancy exposes every
+registry lane, capacity, working/CI-pending owners, registry identity and
+active-state fingerprint. Latest immutable admission decisions remain the sole
+source of protected-lane holds. Over-capacity remains a typed observation and
+never cancels, demotes or reprioritises existing work.
+
+Each bounded CI-pending item returns its latest persisted current-episode CI
+classification, decision, reason, exact contributor head and bounded
+check/evidence identities. An unknown episode boundary or only a historical
+reconciliation returns `ci_reconciliation_unavailable` and no repository, PR,
+head or acceptance-assessment identity.
+The API exposes the validation registry identity but does not parse PR prose or
+promote agent-local output into stored provenance. Until an exact local plan is
+stored by a separate canonical producer, its plan fingerprint, base identity
+and profiles are explicitly `indeterminate` with
+`validation_plan_provenance_unavailable`; advertised working and integration
+capacity fail closed to zero. This preserves the Phase 15.5 evidence boundary
+instead of fabricating a validation profile from CI jobs.
+
+Exact-base assessment consumes only an already stored Phase 14 acceptance
+assessment matching repository, PR and head. A current stored assessment is
+`exact_branch`; stored behind, diverged or conflicted movement is
+`rebase_required`; stale, mismatched or absent assessment is typed stale or
+indeterminate. ATLAS-259 and ATLAS-260 remain FAIL, so the API exposes no
+`exact_integration_candidate` or no-rewrite success class. GET performs no
+GitHub refresh and none of these values authorises rebase, branch update,
+merge, CI retry/cancel or ticket transition.
+
+The existing complete-policy command remains the only delivery-control
+mutation. Its validated integration budget and the server-owned protected-lane
+registry version/fingerprint are included in the same canonical command
+fingerprint before the Phase 13 actor, CSRF, idempotency, compare-and-set and
+atomic receipt boundary. Clients cannot submit protected-lane rules or a
+registry override.
+
 After ATLAS-251 delivers the Phase 15 UI, the console shows working,
 CI-pending integration and review pressure separately. It distinguishes
 waiting from failure, explains protected-lane holds, marks identity movement

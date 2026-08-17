@@ -5,9 +5,9 @@ exactly two additive read routes and by the closed Phase 13 loopback operator
 session and governed lesson disposition commands, then by the Phase 14
 authenticated acceptance-session resource closed by
 `docs/closure/phase-14-closure-report.md`, and by Phase 15 for authenticated
-delivery-control status and complete policy replacement. Describes the HTTP
-projection surface delivered by ATLAS-187..191 and the additive governed local
-resources.
+delivery-control status and complete policy replacement, then extended by
+Phase 15.5 for CI and integration pressure. Describes the HTTP projection
+surface delivered by ATLAS-187..191 and the additive governed local resources.
 
 ## Purpose and scope
 
@@ -25,8 +25,10 @@ The original Phase 10 operator API was a read-only projection surface. Phase 13
 adds authenticated session lifecycle routes, the shared mutation-security
 dependency, and exactly two governed lesson commands over the shared lesson
 disposition service. Phase 15 adds one authenticated observational
-delivery-control read and one complete-policy compare-and-set command. No
-generic resource update route is introduced.
+delivery-control read and one complete-policy compare-and-set command. Phase
+15.5 extends that same read with CI-pending, protected-lane, validation
+provenance and stored exact-base state; it adds no route. No generic resource
+update route is introduced.
 
 Phase 14 reuses that exact authentication and mutation boundary. Its GET is an
 authenticated, no-store observational read; each POST uses the shared
@@ -119,7 +121,7 @@ additions as phase authority, is:
 | POST   | `/api/v1/session`       | strict JSON `SessionLoginRequest` | `SessionLoginResponse` | Phase 13 |
 | DELETE | `/api/v1/session`       | live cookie + `X-Atlas-CSRF` | `SessionStateResponse` | Phase 13 |
 | GET    | `/api/v1/status`        | none             | `SystemStatusResponse`    | Phase 10 |
-| GET    | `/api/v1/delivery-control` | live session cookie | `DeliveryControlResponse` | Phase 15 |
+| GET    | `/api/v1/delivery-control` | live session cookie | `DeliveryControlResponse` | Phase 15; extended by Phase 15.5 |
 | POST   | `/api/v1/delivery-control/policy` | strict complete `DeliveryAdmissionPolicyRequest` plus `Idempotency-Key` | `DeliveryAdmissionPolicyResponse` | Phase 15 |
 
 An executable FastAPI route-inventory test asserts the complete method/path
@@ -294,15 +296,62 @@ revision, state and observation time. GET never acquires an admission lease,
 reads Linear, evaluates or records a new admission run, writes an action
 receipt, or changes policy.
 
+The Phase 15.5 extension freezes every delivery-control source in one database
+repeatable-read transaction. `snapshot` pins the active policy id, revision and
+fingerprint; the last successful board receipt, status-map and fetched-board
+fingerprints; a materialised-ticket fingerprint; the exact evidence-id set
+selected by reconciliations observed during each ticket's current CI-pending
+episode; the reconciliation and stored
+acceptance-session ids; and the protected-lane and validation-registry
+identities. Its own fingerprint covers those identities and its closed status
+is `coherent`, `stale` or `indeterminate`. A later unsuccessful sync remains
+visible beside the last good board as `newer_board_refresh_unsuccessful`; no
+exception summary is returned.
+
+Occupancy now separates working, integration and review pressure. Integration
+returns its budget, current `CI Pending` count, bounded ticket keys and
+remaining admission capacity. Protected lanes return registry and active-state
+fingerprints plus bounded owner keys, capacity and whether the lane is the
+explicit operator-declared hotspot. The latest persisted admission run remains
+the authority for candidate protected-lane holds; the presenter does not
+reclassify tickets or holds. When any input needed to claim capacity is stale
+or indeterminate, both advertised new-working and new-integration capacity are
+zero even though the observed counts and configured limits remain visible.
+
+At most 100 CI-pending tickets are returned, with a total and truncation flag.
+Each item carries the exact stored repository, PR and head identity when a CI
+reconciliation exists within the current `status_entered_at` episode; its
+canonical CI classification, decision, reason and
+bounded check/evidence ids; validation-registry identity; and the latest stored
+acceptance assessment for that same repository, PR and head. A missing
+current-episode CI reconciliation, unrecorded local validation plan or absent
+stored exact-base
+assessment is a typed indeterminate result, never an inferred pass. A matching
+stored current assessment is `exact_branch`; stored integration movement is
+`rebase_required`; other stale or mismatched identities remain explicitly
+stale or indeterminate. These are observations only and grant no branch-update,
+rebase, merge, CI or ticket-transition authority.
+
+The evidence identity query selects only ids, commit pins, run/job ids, payload
+hashes, statuses and lifecycle times. It never loads or returns evidence
+summaries, source URIs or raw payloads. Response schemas cap ticket,
+reconciliation, acceptance-session and evidence-id collections; they exclude
+CI/provider payloads, command output, credentials, workspace paths and foreign
+exceptions.
+
 `POST /api/v1/delivery-control/policy` accepts one strict complete policy:
-`expected_revision`, `mode`, approved ceiling, working and review budgets,
-Changes Requested reserve, and both complete lane-limit arrays. Every field is
-required; extra fields at the policy level or inside either lane-entry type,
+`expected_revision`, `mode`, approved ceiling, working, integration and review
+budgets, Changes Requested reserve, and both complete lane-limit arrays. Every
+field is required; extra fields at the policy level or inside either lane-entry type,
 booleans as integers, duplicate canonical selectors, client-supplied
 actor/action/product/current-state fields and partial policy patches are
 rejected. The route resolves the Phase 13 mutation context and
 `Idempotency-Key`, then calls the delivery admission policy service exactly
 once. Product, action identity, actor and current revision remain server-owned.
+The server also pins the validated protected-lane registry version and
+fingerprint into the command fingerprint, so idempotency, compare-and-set,
+revision and atomic receipt semantics cover the complete active capacity rule
+set without accepting client-authored protected-lane rules.
 Applied and exact-replay commands return the immutable policy revision and its
 bounded receipt. Stale revision, altered-key replay and an in-progress owner
 return `409` with safe current policy when available and no policy change.

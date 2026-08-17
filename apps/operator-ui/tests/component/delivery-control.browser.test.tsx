@@ -41,6 +41,9 @@ const receipt: Receipt = {
 
 function deliveryControl(mode: Mode = 'running', revision = 7): DeliveryControl {
   return {
+    ci_pending_ticket_count: 0,
+    ci_pending_tickets: [],
+    ci_pending_tickets_truncated: false,
     indeterminate_reasons: [
       {
         admission_run_id: '00000000-0000-4000-8000-000000000752',
@@ -149,6 +152,10 @@ function deliveryControl(mode: Mode = 'running', revision = 7): DeliveryControl 
       component_lane_occupancy: [
         { component: longComponent, count: 2, limit: 1 },
       ],
+      integration_occupancy: 0,
+      integration_ticket_keys: [],
+      integration_ticket_keys_truncated: false,
+      new_admission_integration_capacity: 0,
       new_admission_working_capacity: 0,
       over_capacity_reasons: [
         { count: 3, dimension: 'review', limit: 2, selector: null },
@@ -159,6 +166,18 @@ function deliveryControl(mode: Mode = 'running', revision = 7): DeliveryControl 
           selector: longComponent,
         },
       ],
+      protected_lane_occupancy: [
+        {
+          count: 1,
+          lane: 'database-migrations',
+          limit: 1,
+          operator_declared: false,
+          ticket_keys: ['ATLAS-752'],
+        },
+      ],
+      protected_lane_registry_fingerprint: 'f'.repeat(64),
+      protected_lane_registry_version: 'protected-integration-lanes/v1',
+      protected_lane_state_fingerprint: 'e'.repeat(64),
       review_occupancy: 3,
       risk_lane_occupancy: [
         { count: 1, limit: 2, risk_level: 'high' },
@@ -187,6 +206,56 @@ function deliveryControl(mode: Mode = 'running', revision = 7): DeliveryControl 
         { limit: 1, risk_level: 'critical' },
       ],
       working_budget: 3,
+    },
+    protected_lane_holds: [
+      {
+        lane: 'database-migrations',
+        limit: 1,
+        observed: 2,
+        owner_ticket_keys: ['ATLAS-250'],
+        ticket_key: 'ATLAS-752',
+      },
+    ],
+    snapshot: {
+      board: {
+        fetched_board_fingerprint: 'board-fingerprint',
+        fetched_board_issue_count: 4,
+        latest_attempt_finished_at: '2026-08-13T10:00:00Z',
+        latest_attempt_receipt_id: '00000000-0000-4000-8000-000000000760',
+        latest_attempt_result: 'success_status_only',
+        materialized_ticket_fingerprint: 'a'.repeat(64),
+        observed_at: '2026-08-13T10:00:00Z',
+        reasons: [],
+        receipt_id: '00000000-0000-4000-8000-000000000760',
+        status: 'coherent',
+        status_map_fingerprint: 'status-map-fingerprint',
+      },
+      evidence: {
+        evidence_count: 0,
+        evidence_ids: [],
+        evidence_ids_truncated: false,
+        fingerprint: 'b'.repeat(64),
+      },
+      fingerprint: 'c'.repeat(64),
+      integration: {
+        acceptance_session_count: 0,
+        acceptance_session_ids: [],
+        acceptance_session_ids_truncated: false,
+        fingerprint: 'd'.repeat(64),
+        protected_lane_registry_fingerprint: 'f'.repeat(64),
+        protected_lane_registry_version: 'protected-integration-lanes/v1',
+        protected_lane_state_fingerprint: 'e'.repeat(64),
+        reconciliation_count: 0,
+        reconciliation_ids: [],
+        reconciliation_ids_truncated: false,
+        validation_registry_fingerprint: '1'.repeat(64),
+        validation_registry_version: 'validation-registry/v1',
+      },
+      policy_fingerprint: 'c'.repeat(64),
+      policy_id: `00000000-0000-4000-8000-${String(revision).padStart(12, '0')}`,
+      policy_revision: revision,
+      reasons: [],
+      status: 'coherent',
     },
   }
 }

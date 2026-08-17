@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import inspect
 import threading
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -23,6 +24,7 @@ from atlas.orchestration import (
     DeliveryAdmissionPolicyService,
     OperatorActionFailureCode,
 )
+from atlas.pm.protected_lanes import DEFAULT_PROTECTED_LANE_REGISTRY
 from atlas.storage import (
     AgentRunRepo,
     Database,
@@ -127,6 +129,55 @@ def test_ac3_exact_replay_is_stable_and_altered_replay_conflicts(
         item.revision
         for item in DeliveryAdmissionPolicyRepo(db).list_revisions(product.id)
     ] == [1]
+
+
+def test_atlas_261_ac4_policy_receipt_fingerprint_pins_protected_lane_rules(
+    tmp_path: Path,
+) -> None:
+    product_id = uuid4()
+    databases = [
+        Database(f"sqlite:///{tmp_path}/policy-registry-{index}.db")
+        for index in range(2)
+    ]
+    for database in databases:
+        database.create_all()
+        ProductRepo(database).add(
+            Product(**product_kwargs() | {"id": product_id, "key": "ATLAS"})
+        )
+
+    default_result = DeliveryAdmissionPolicyService(
+        databases[0], clock=FrozenClock()
+    ).revise(
+        product_id=product_id,
+        expected_revision=0,
+        idempotency_key="registry-pinned-policy",
+        policy=policy_spec(),
+    )
+    first_lane = DEFAULT_PROTECTED_LANE_REGISTRY.lanes[0]
+    changed_registry = replace(
+        DEFAULT_PROTECTED_LANE_REGISTRY,
+        lanes=(
+            replace(first_lane, capacity=first_lane.capacity + 1),
+            *DEFAULT_PROTECTED_LANE_REGISTRY.lanes[1:],
+        ),
+    )
+    changed_result = DeliveryAdmissionPolicyService(
+        databases[1],
+        clock=FrozenClock(),
+        protected_lane_registry=changed_registry,
+    ).revise(
+        product_id=product_id,
+        expected_revision=0,
+        idempotency_key="registry-pinned-policy",
+        policy=policy_spec(),
+    )
+
+    assert default_result.receipt is not None
+    assert changed_result.receipt is not None
+    assert (
+        default_result.receipt.request_fingerprint
+        != changed_result.receipt.request_fingerprint
+    )
 
 
 def test_ac3_stale_compare_and_set_returns_conflict_without_revision(

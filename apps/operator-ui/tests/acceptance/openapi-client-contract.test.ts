@@ -217,7 +217,39 @@ const deliveryControlTypeParity: [
       Schema['AdmissionSyncReason']
     >
   >,
-] = [true, true, true, true, true, true, true, true, true, true]
+  Assert<
+    Equal<
+      DeliveryControl['snapshot']['status'],
+      Schema['DeliveryControlSnapshotStatus']
+    >
+  >,
+  Assert<
+    Equal<
+      DeliveryControl['ci_pending_tickets'][number]['outcome']['classification'],
+      Schema['CIHandoffClassification']
+    >
+  >,
+  Assert<
+    Equal<
+      DeliveryControl['ci_pending_tickets'][number]['exact_base']['status'],
+      Schema['DeliveryControlExactBaseStatus']
+    >
+  >,
+] = [
+  true,
+  true,
+  true,
+  true,
+  true,
+  true,
+  true,
+  true,
+  true,
+  true,
+  true,
+  true,
+  true,
+]
 const closedValueFieldParity: [
   Assert<Equal<TicketBoardItem['status'], Schema['TicketStatus']>>,
   Assert<Equal<TicketBoardItem['ticket_type'], Schema['TicketType']>>,
