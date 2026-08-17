@@ -247,14 +247,15 @@ until you commit it.
 
 ## Symphony ceiling controlled-ramp runbook
 
-This is the operator procedure for the later Phase 15 live milestone. It is
-not authorisation to run that milestone during an implementation ticket. Ten
-is a proven maximum, never a target, and success never requires filling every
-available slot.
+This is the operator procedure for the ATLAS-253 Phase 15 live milestone. The
+publishing agent may prepare the dedicated branch, read-only harness, fixtures
+and documentation, but this procedure grants it no live transition authority.
+Ten is a proven maximum, never a target, and success never requires filling
+every available slot.
 
 ### Authority, branch and gate record
 
-The dedicated branch is exactly `phase-15-atlas-253-ceiling-ramp`. Create it
+The dedicated branch is exactly `phase-15-atlas-253-ceiling-ramp`. Prepare it
 from the then-current `origin/main`, keep one draft milestone PR open for the
 whole exercise, and never merge or cherry-pick an intermediate ceiling commit.
 Ordinary committed `main` must continue to declare `max_concurrent_agents: 1`
@@ -271,14 +272,21 @@ the actual Symphony session identities observed at the instant of capture.
 Before each window the mirror must equal the declared branch value and every
 working or lane budget must be at or below it.
 
+Accepted PR #335 closed Phase 15.5 after the production PM adapter performed
+the genuine exact-head handoff for contributor head
+`a598798c1a6c5cabe4c80c0f04020c271f438de1`. That is the entry authority for
+ATLAS-253; the synthetic/no-rewrite route remains retired and the disabled
+Linear `PR opened → In Progress` automation must stay disabled.
+
 Migration `0025` and policy revision one, whose historical ceiling is three,
 remain immutable history and must not be cited as the current live policy.
 Before the milestone branch is created or Gate 1 begins, the operator appends
 and activates a new policy revision with `approved_symphony_ceiling=1` and
-`working_budget=1`, with valid reserve and lane limits. The operator records
-that revision and fingerprint and observes them alongside committed
-`WORKFLOW.md` at one. Failure to prove this current-policy reconciliation stops
-the milestone before any live ramp window.
+`working_budget=1`, with deliberate integration/review budgets, Changes
+Requested reserve, risk/component limits and protected-lane registry. The
+operator records that revision and fingerprint and observes them alongside
+committed `WORKFLOW.md` at one. Failure to prove this current-policy
+reconciliation stops the milestone before any live ramp window.
 
 Policy reconciliation and later mirror changes are explicit human/operator
 actions through the existing governed Phase 15 policy-revision boundary. The
@@ -290,53 +298,101 @@ separate operator actions in their owning systems. The runbook uses only read
 observations and immutable identifiers from their receipts. It never starts a
 live worker from CI.
 
-For every PASS or FAIL, the operator posts one comment on the single milestone
-PR. Its first line is `atlas:symphony-ceiling-gate v1`, followed by these
-fields with no omissions:
+Editing the branch does not change the running VPS. Before every gate the
+operator must identify the exact branch commit and `WORKFLOW.md` blob, use the
+deployment's documented reload/restart procedure, and capture bounded runtime
+evidence that the active process loaded that exact commit, ceiling and
+unchanged `max_turns: 10`. Record the supported procedure ID, VPS instance ID,
+load/proof timestamps and runtime-proof identity. If the deployment exposes no
+deterministic supported way to prove the loaded commit, stop before workload
+admission; do not substitute a terminal note, process guess or untracked
+configuration edit.
 
-```yaml
-branch: phase-15-atlas-253-ceiling-ramp
-origin_main_sha: <40-hex fetched origin/main commit>
-merge_base_sha: <40-hex branch/origin-main merge base>
-head_sha: <40-hex commit loaded by Symphony>
-workflow_blob_sha: <40-hex WORKFLOW.md blob>
-level: <1|3|5|7|10>
-previous_proven_level: <none|1|3|5|7|10>
-declared_ceiling: <1|3|5|7|10>
-max_turns: 10
-policy_revision: <immutable revision>
-policy_fingerprint: <fingerprint>
-working_budget: <integer>
-review_budget: <integer>
-lane_budget_fingerprint: <fingerprint>
-window_started_at: <UTC timestamp>
-window_ended_at: <UTC timestamp exactly 60 minutes later>
-pm_sync_receipt_ids: <ordered complete list>
-admission_run_ids: <ordered complete list>
-board_fingerprints: <ordered complete list>
-symphony_session_ids_start_peak_end: <three explicit sets>
-working_occupancy_start_peak_end: <three integers>
-review_occupancy_start_peak_end: <three integers>
-lane_occupancy_peaks: <risk/component mapping>
-changes_requested_start_peak_end: <three integers>
-acceptance_session_ids: <ordered list, empty only when not required>
-acceptance_arrivals: <integer>
-acceptance_exact_head_completions: <integer>
-phase_14_closure_ref: <reference or not-required>
-exercise_results: <named result mapping>
-outcome: <PASS|FAIL>
-stop_reasons: <ordered list, empty only for PASS>
-retained_or_restored_level: <1|3|5|7|10>
-rollback_head_sha: <40-hex commit or not-required>
-active_session_ids_after_pause_or_lowering: <explicit set or not-exercised>
-operator_identity: human/operator
-recorded_at: <UTC timestamp>
+Before Gate 1, replace the seeded-only workload fixture with a `live-operator`
+manifest that records more than ten actual workload identities, dependency
+independence, disjoint ordinary touched-path families, protected-lane classes,
+predeclared fault/contention exercises and numerical operational limits. Do
+not claim ticket keys that the key authority has not issued; a hand-dispatched
+workload may use a non-key meta identity. Fingerprint that exact manifest
+before measurement:
+
+```bash
+uv run python scripts/phase_15_delivery_control_milestone.py \
+  <live-workload-manifest.json> --fingerprint-only
 ```
 
-The comment is the durable gate receipt; the successful Phase 15 closure
-report references all five comment links. A screenshot, configured scalar,
-aggregate count or agent assertion is not gate evidence. Raw Linear payloads,
-exception text and credentials are never copied into the receipt.
+For every PASS or FAIL, the operator posts one comment on the single milestone
+PR. Its first line is `atlas:symphony-ceiling-gate v1`; the comment then embeds
+the bounded canonical JSON receipt accepted by the read-only validator. Every
+receipt uses schema `phase-15-ramp-gate-receipt-v1` and contains, with no
+omissions:
+
+- receipt ID, gate, outcome, manifest fingerprint, previous-receipt link,
+  previous proven level, retained/restored level, stop reasons, operator and
+  recorded timestamp;
+- dedicated branch, exact milestone commit and workflow blob, fetched
+  `origin/main`, merge base, plus proof that committed main remains ceiling one
+  and `max_turns: 10`;
+- running Symphony instance, supported reload/proof procedure, exact loaded
+  commit/blob, configured ceiling, `max_turns`, load/proof timestamps and
+  runtime-proof identity;
+- delivery-policy ID/revision/fingerprint, approved ceiling, mode, separate
+  working/integration/review budgets, Changes Requested reserve,
+  risk/component budgets, protected-lane registry and protected-lane budgets;
+- coherent snapshot/board fingerprints, completeness/freshness/continuity and
+  fault/fence flags, with ordered PM-sync, admission-run and CI-handoff
+  reconciliation identities;
+- exact 60-minute start/finish, maximum Symphony/Atlas working, integration,
+  review and Changes Requested occupancy, slot-release, reconciliation, CI and
+  review latency, publications, CI Pending entries/exits and determinate
+  system-owned exit counts;
+- admissions, maximum writes per PM window, holds and typed reasons, ranking
+  reproductions, rework dispatch/starvation, protected-lane holds/collisions,
+  independent parallel work, agent polling/revalidation/republication,
+  indeterminate CI, poll-compression and invented-edge counts;
+- integration/review saturation holds, acceptance arrivals/completions,
+  one-PR-freeze breaches, stale heads, mechanical rebases and semantic
+  conflicts as separate values; and
+- ambiguous/fenced/conflicting writes, CI Pending reactivations, prohibited
+  authority, repository/external mutation and secret-retention counts, plus an
+  evidence identity and PASS/FAIL for every common invariant and gate-specific
+  exercise declared by the harness.
+
+The comment also carries this bounded human-readable index, projected exactly
+from the canonical JSON rather than entered as a second source of truth:
+
+```yaml
+origin_main_sha: <receipt origin_main_sha>
+merge_base_sha: <receipt merge_base_sha>
+head_sha: <receipt milestone_commit_sha>
+workflow_blob_sha: <receipt workflow_blob_sha>
+max_turns: 10
+policy_revision: <receipt policy.revision>
+pm_sync_receipt_ids: <receipt snapshot.pm_sync_receipt_ids>
+symphony_session_ids_start_peak_end: <bounded runtime session observations>
+acceptance_session_ids: <bounded exact-head acceptance identities>
+outcome: <receipt outcome>
+retained_or_restored_level: <receipt retained_or_restored_level>
+```
+
+Evaluate the cumulative receipt prefix in order, adding one option per durable
+PR-comment receipt:
+
+```bash
+uv run python scripts/phase_15_delivery_control_milestone.py \
+  <live-workload-manifest.json> \
+  --gate-receipt <gate-1.json> \
+  --gate-receipt <gate-3.json> --pretty
+```
+
+Exit 0 means all five receipts passed; exit 3 means the named next gate remains
+pending; exit 1 is an honest gate FAIL; exit 2 is invalid or secret-bearing
+input. Seeded authority can produce only `SEEDED_VALIDATOR_PASS`, never closure
+authority. The comments are the durable receipts and the successful Phase 15
+closure report references all five comment links. A screenshot, configured
+scalar, aggregate count or agent assertion is not gate evidence. Raw Linear or
+GitHub payloads, exception text, credentials, credential canaries and workspace
+paths are never copied into a receipt.
 
 ### Exact edit and common preflight
 
@@ -381,14 +437,18 @@ Before loading a level, the operator verifies all of the following:
 4. The current active policy is the reconciled one-agent revision before Gate
    1. For later levels, the operator has paused new admission while changing
    the declaration and its policy mirror. The new immutable policy revision
-   matches the declaration; its independent working/review/lane budgets and
-   Changes Requested reserve validate.
+   matches the declaration; its independent working/integration/review
+   budgets, Changes Requested reserve, risk/component limits and protected-
+   lane registry validate.
 5. A complete fresh board observation and successful PM-sync receipt exist;
-   there is no unresolved admission write fence, partial pull, stale policy or
-   indeterminate Linear result.
-6. Symphony is explicitly loaded from the recorded branch head. The operator
-   records actual active session identities before resuming admission; neither
-   this check nor a lower ceiling claims to cancel them.
+   there is no unresolved admission or CI-handoff write fence, critical
+   delivery-control fault, unexplained CI Pending reactivation, partial pull,
+   stale policy or indeterminate Linear result.
+6. Symphony is explicitly loaded through the documented VPS procedure from
+   the recorded branch head and blob. Bounded process evidence proves the
+   active instance loaded that exact identity and gate ceiling before any new
+   admission. The operator also records actual active session identities;
+   neither this check nor a lower ceiling claims to cancel them.
 
 Any failed preflight is a Gate FAIL without starting the observation window.
 
@@ -409,62 +469,93 @@ For all levels, PASS requires:
 - the declared ceiling and policy mirror stay equal and unchanged;
 - the fetched `origin/main` SHA and branch/origin-main merge-base remain equal
   to the receipt values for the entire window;
-- occupied Symphony slots never exceed the declaration, while working, review,
-  reserve and every matching lane occupancy remain within their own budgets;
-- a full review budget admits no new ticket, Changes Requested work is not
-  starved, and each admission is reproduced from its pinned inputs;
+- occupied Symphony working slots never exceed the declaration, while working,
+  integration, review, reserve and every risk/component/protected-lane
+  occupancy remain within their own budgets; `CI Pending` releases the working
+  slot but retains integration and protected-lane occupancy;
+- a full integration or review budget admits no unsafe new ticket, Changes
+  Requested work remains dispatchable and unstarved, and each admission is
+  reproduced from its pinned ranking inputs with at most one external
+  admission per PM write window;
+- every unchanged head is locally validated and published at most once, agents
+  stop after `PR Open → CI Pending`, Symphony releases the slot within five
+  seconds, and no agent polls CI or repeats a complete sweep while waiting;
+- the production cadence considers at most one issue-bound exact-head
+  CI-handoff candidate per tick; every determinate exit is system-owned and
+  reaches `Review Required` or `Changes Requested` within one tick and five
+  minutes, while every indeterminate class holds;
+- protected lanes remain owned through `CI Pending`; unrelated work remains
+  parallel; exact-head/current-main acceptance, the one-PR freeze and the
+  operator rebase lane remain authoritative, with review dwell, stale-head,
+  mechanical-rebase and semantic-conflict pressure measured separately;
 - paused or draining mode produces no admission, and stale, partial or
   indeterminate input produces no unaccounted write; and
 - all required level exercises pass with complete, internally consistent
   identities. Occupancy below the declared ceiling is acceptable.
 
-Stop immediately and record FAIL for a ceiling/budget breach, an admission
-while paused or draining, an unselected or second write, an unresolved
-stale/partial/indeterminate result, missing or contradictory evidence, branch
-or policy drift, any movement of `origin/main`, or review occupancy equal to
-its budget in two consecutive successful receipts. Pause admission at the stop
-boundary.
+Stop immediately and record FAIL for a ceiling/budget/lane breach, an admission
+while paused or draining, an unselected or second write, Changes Requested
+starvation, an unresolved stale/partial/indeterminate write, missing or
+contradictory evidence, branch/runtime/policy drift, any movement of
+`origin/main`, an unexplained `CI Pending` reactivation, a non-system
+determinate exit, stranded CI Pending work, unsafe exact-head throughput,
+pressure above a predeclared limit, prohibited external mutation or secret-
+bearing retained evidence. Reaching a full integration or review budget is an
+exercise boundary: new admission must stop; it is a gate failure only if the
+budget is breached or the approved pressure limit is exceeded. Pause admission
+at every failure boundary.
 
 ### Gate 1 — serialized baseline admission, pause and rework
 
-Prerequisites are the controlled fixture of more than ten independent tickets,
-the Phase 15 admission observability surfaces, green deterministic admission
-and fault fixtures, and both `origin/main` and the unmodified milestone branch
-declaring one. The current active policy reconciliation to one must already be
-proved. Phase 14 closure is not required for this serialized baseline.
+Prerequisites are the fingerprinted live manifest of more than ten independent
+workloads, the Phase 15 admission/CI/acceptance observability surfaces, green
+deterministic fixtures, merged Phase 15.5 closure and both `origin/main` and the
+unmodified milestone branch declaring one. The running VPS and active policy
+must independently prove coherence at one before the first workload admission.
 
-Within the window, reproduce a normal admission, prove both paused and draining
-modes admit nobody, return to running through a new operator-attributed policy
-revision, and prove the Changes Requested reserve keeps rework dispatchable.
-A PASS receipt for all four exercises makes one the last proven level and is
-the only authority to edit the branch from 1 to 3.
+Exercise every common invariant under a serialized live workload: normal
+admission, pause and drain with no admission or cancellation, rework dispatch,
+integration/review saturation holds, protected-lane ownership through
+`CI Pending`, determinate/indeterminate CI routes, exact-head acceptance and an
+ambiguous-write fence. Return to running only through a new operator-attributed
+policy revision. A complete PASS makes one the last proven level and is the
+only authority to edit the branch from 1 to 3.
 
 ### Gate 3 — first controlled increase and review pressure
 
 Gate 3 cannot begin without the Gate 1 PASS receipt and the exact `1 -> 3`
-branch edit. Within the window, prove the first higher declaration remains a
-maximum rather than a target, occupied Symphony slots never exceed three, a
-full review budget stops new admission, and Changes Requested work remains
-dispatchable within its reserve. Gate 3 PASS is the only authority to edit the
-branch from 3 to 5.
+branch edit, runtime reload proof and coherent policy revision. Within the
+window, run at least two genuinely independent tickets concurrently and
+reproduce their ranking. Prove released workers do not bypass integration,
+review or protected-lane pressure; concurrent `CI Pending` handoffs stay
+bounded under the one-candidate-per-tick PM cadence; review saturation and
+lane contention hold admission; rework remains unstarved; and sibling merges
+create recoverable stale acceptance authority. Gate 3 PASS is the only
+authority to edit the branch from 3 to 5.
 
 ### Gate 5 — stable review and stale-write protection
 
 Gate 5 cannot begin without the Gate 3 PASS receipt and the exact `3 -> 5`
-branch edit. Within the window, prove review occupancy never exceeds its
-budget, a full review budget stops new admission, and the queue ends no higher
-than it began. Inject one stale board-or-policy decision and one partial or
-ambiguous Linear write result through the controlled live fixture: neither may
-admit an unselected ticket or permit a second write, and the write fence must be
-reconciled by a later complete pull. Gate 5 PASS is the only authority to edit
-the branch from 5 to 7.
+branch edit, runtime reload proof and coherent policy revision. Prove working
+occupancy stays at or below five while integration remains an independent
+constraint after workers enter `CI Pending`. Fill integration and review
+budgets separately and prove each stops new work despite free worker slots.
+Seed protected-lane contention while unrelated work continues, keep CI
+latency/reconciliation, review backlog and stale-head pressure within their
+predeclared limits, and dispatch Changes Requested work under sustained mixed
+working/CI/review load. A stale decision and ambiguous write must fail closed
+behind a durable fence. Gate 5 PASS is the only authority to edit the branch
+from 5 to 7.
 
 ### Gate 7 — lanes, recovery and acceptance capacity
 
 Gate 7 cannot begin without the Gate 5 PASS receipt, including its stable-review
-and stale-write evidence, and the exact `5 -> 7` branch edit. Within the window,
-prove risk/component lane limits hold and a Changes Requested ticket recovers
-without starvation or an Atlas scheduling action.
+and stale-write evidence, the exact `5 -> 7` branch edit, runtime reload proof
+and coherent policy revision. Under materially higher concurrency, prove
+risk/component/protected lanes remain bounded, `CI Pending` retains protected-
+lane ownership while workers are reused, Changes Requested work recovers,
+lower-ranked feasible work cannot bypass the selected admission, and sibling-
+merge staleness remains recoverable through the operator rebase lane.
 
 Ten additionally requires Phase 14 to be closed before Gate 10 starts and
 adequate exact-head acceptance throughput in the Gate 7 window. Adequate means
@@ -473,16 +564,25 @@ manual-merge readiness without head drift, exact-head completions are at least
 the number of review arrivals in the window, review occupancy never breaches
 its budget, and ending review occupancy is no higher than starting occupancy.
 The Gate 7 receipt must pin the Phase 14 closure reference and every acceptance
-session identity. Only a PASS satisfying all of those conditions authorises
+session identity and the separately measured working/integration/review/rework
+pressure assessment. Only a PASS satisfying all of those conditions authorises
 the `7 -> 10` edit.
 
 ### Gate 10 — maximum, not target, and closure
 
 Gate 10 cannot begin without the Gate 7 PASS receipt, Phase 14 closure, the
-adequate exact-head throughput proof and the exact `7 -> 10` branch edit. Run
-the common exercises across the controlled wave of more than ten independent
-tickets; actual concurrent occupancy need not reach ten. Gate 10 passes only
-when the fixed window and all common conditions pass with complete evidence.
+adequate exact-head throughput proof, no unresolved admission/CI-handoff fence,
+queues inside their limits, dispatchable rework, the exact `7 -> 10` branch
+edit, runtime reload proof and coherent policy revision. Run every common
+invariant across the controlled wave of more than ten independent workloads;
+actual concurrent occupancy need not reach ten.
+
+Ten is a safe maximum, never a utilisation target. PASS requires every capacity
+control to hold, no stranded `CI Pending`, review saturation to stop admission,
+rework to remain dispatchable, complete typed hold reasons, exact-head
+acceptance at the observed delivery rate, all CI/review/stale-head/rebase
+pressure inside its predeclared limit and zero prohibited authority or secret
+retention. A configured value of ten is not evidence by itself.
 
 After PASS, the operator adds the five receipt links and exact ten declaration
 to the Phase 15 closure report and makes the milestone/closure PR green at its

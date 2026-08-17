@@ -135,13 +135,14 @@ reconciliation row and Linear transition remain the authority.
 Linear's `PR opened -> In Progress` GitHub workflow automation caused the
 ATLAS-261/262 reactivation incident and was disabled by the operator on 17
 August 2026. Keep it disabled. The integration may link the PR and expose
-evidence, but it must not mutate Atlas-owned workflow state. During ATLAS-263's
-ATL-437 live authority window, any direct `CI Pending -> In Progress`, `CI
+evidence, but it must not mutate Atlas-owned workflow state. The accepted
+ATL-437 live authority window established the continuing rule: any direct
+`CI Pending -> In Progress`, `CI
 Pending -> PR Open`, or other Symphony-active reactivation is an immediate
-milestone FAIL unless an authorised `Changes Requested -> In Progress`
-semantic-remediation path occurred first. Do not repair such a transition by
-dragging the issue back; retain its exact timestamps and owner evidence and
-leave ATLAS-253 in `Needs Human`.
+delivery-control gate FAIL unless an authorised `Changes Requested -> In
+Progress` semantic-remediation path occurred first. Do not repair such a
+transition by dragging the issue back; retain its exact timestamps and owner
+evidence and stop the active ramp gate.
 
 ATLAS-263's publishing agent stops at `CI Pending`, so the live receipt is
 necessarily completed afterward by the system reconciler/operator without a
@@ -152,11 +153,13 @@ is test evidence only and cannot substitute for ATL-437's actual issue and PR
 history.
 
 The first ATL-437 head completed CI but failed this production reachability
-condition because no supported PM caller invoked the service. Retain that head
-and its checks as historical evidence. The operator-authorised remediation
-restarts the authority window at the next final head; PASS additionally
-requires a genuine `ci_handoff_reconciliations` row authored by the production
-adapter and the corresponding authorised Linear exit for that exact head.
+condition because no supported PM caller invoked the service; retain that head
+and its checks as historical evidence. The remediated head
+`a598798c1a6c5cabe4c80c0f04020c271f438de1` then passed: the production adapter
+appended the genuine reconciliation and alone performed the corresponding
+authorised Linear exit for exact-head PR #335. That accepted merge closed Phase
+15.5 and released ATLAS-253, while preserving this same handoff contract at
+every Phase 15 gate.
 
 ## 1. Review (reviewer-tier, not the gate)
 

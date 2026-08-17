@@ -239,25 +239,37 @@ agent-side rebasing stops scaling, but it is deferred from v1.
 
 `WORKFLOW.md`'s `agent.max_concurrent_agents` is the single controlling
 Symphony worker ceiling. Symphony reads that declaration; the operator alone
-may change it. The active delivery policy's `approved_symphony_ceiling` is an
+may authorise and perform a live transition. A repository edit is not runtime
+proof: before each gate the operator must reload/restart the supported VPS
+deployment on the exact milestone commit and capture bounded process evidence
+that it loaded that commit, workflow blob, gate ceiling and unchanged
+`max_turns: 10`. A deployment without a deterministic supported identity proof
+stops before expanded admission. The active delivery policy's
+`approved_symphony_ceiling` is an
 admission-side recorded mirror that must equal the live declaration before a
 live gate starts. It is not a second ceiling and changing it does not configure
 Symphony. Historical migration `0025` and policy revision one remain immutable
-at three; they are not the current live ceiling. Before Phase 15 begins, the
-operator must append and activate a policy revision at one so the current
+at three; they are not the current live ceiling. Before Gate 1 workload begins,
+the operator must append and activate a policy revision at one so the current
 policy is coherent with ATLAS-054M's serialized runtime.
 
-Atlas `working_budget`, `review_budget`, Changes Requested reserve and
-risk/component lane limits are independent admission limits. Actual occupied
+Atlas working, integration and review budgets, Changes Requested reserve,
+risk/component limits and protected repository lanes are independent admission
+limits. A `CI Pending` ticket releases its Symphony working slot while retaining
+integration and applicable protected-lane occupancy. Actual occupied working
 slots are the Symphony sessions observed at a point in time. A budget can be
 lower than the declared ceiling, and occupied slots can be lower than both;
-none is a request or target to fill capacity. Ordinary committed `main`
-declares one until the controlled Phase 15 milestone proves ten and the single
-closure change lands exactly `max_concurrent_agents: 10`. Values 3, 5 and 7
+none is a request or target to fill capacity. Actual occupied slots remain
+runtime facts and are never inferred from the configured ceiling, Atlas policy
+or queue counts. Ordinary committed `main` declares one until the controlled
+Phase 15 milestone proves ten and the single closure change lands exactly
+`max_concurrent_agents: 10`. Values 3, 5 and 7
 are confined to the pinned milestone branch. `max_turns: 10` is not part of the
 concurrency ramp and remains unchanged without a separate operator ruling.
 
-The ramp is exclusively an operator procedure. Policy reconciliation remains
+The publishing agent may prepare the dedicated branch, read-only validator,
+fixtures and documentation. Every live boundary remains exclusively an
+operator checkpoint. Policy reconciliation remains
 an explicit human/operator action through the existing governed Phase 15
 policy-revision boundary; the ramp adds no policy endpoint, CLI, agent action
 or automation. It also provides no Atlas endpoint, CLI, agent or automation

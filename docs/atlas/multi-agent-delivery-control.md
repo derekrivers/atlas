@@ -1,8 +1,9 @@
 # Multi-Agent Delivery Control Design (Phase 15)
 
-Status: Planned Phase 15 design authority. Defines operator-owned delivery
-policy, coherent occupancy, deterministic admission to `Ready for Agent`,
-review-pressure protection and the controlled Symphony ceiling ramp.
+Status: Active Phase 15 live-ramp authority. Defines operator-owned delivery
+policy, coherent working/integration/review occupancy, deterministic admission
+to `Ready for Agent`, protected-lane and review-pressure protection, and the
+controlled Symphony ceiling ramp.
 
 ## Purpose and milestone
 
@@ -497,17 +498,19 @@ command stays blocked until an authoritative refresh succeeds.
 There is one operator-owned Symphony ceiling:
 `WORKFLOW.md`'s `agent.max_concurrent_agents`. The policy field
 `approved_symphony_ceiling` is its recorded admission-side mirror, not another
-control. Working and review budgets, Changes Requested reserve and lane limits
-bound Atlas admission independently; actual occupied slots are observed
-Symphony sessions. None is a utilisation target.
+control. Working, integration and review budgets, Changes Requested reserve,
+risk/component lanes and protected repository lanes bound Atlas admission
+independently; actual occupied slots are observed Symphony sessions. None is a
+utilisation target.
 
 Ordinary committed `main` remains at `max_concurrent_agents: 1` and
 `max_turns: 10` while Phase 15 is open. The controlled exercise is pinned to
-the dedicated `phase-15-atlas-253-ceiling-ramp` branch. Only the operator may
-change that branch's declaration in the exact sequence **1 → 3 → 5 → 7 → 10**.
-Before creating or resuming that milestone branch, the operator must verify
-that Phase 15.5's efficiency and integration milestone has passed, its closure
-report is merged and ATLAS-253 is deliberately released from `Needs Human`.
+the dedicated `phase-15-atlas-253-ceiling-ramp` branch. The publishing agent
+may prepare that branch, the read-only harness, fixtures and documentation;
+only the operator may authorise and perform a live declaration transition in
+the exact sequence **1 → 3 → 5 → 7 → 10**. Accepted PR #335 closed Phase 15.5
+at contributor head `a598798c1a6c5cabe4c80c0f04020c271f438de1` and released
+ATLAS-253, satisfying that entry prerequisite.
 Phase 15.5 changes no ceiling; it proves that focused local validation,
 system-tier CI handoff, protected integration lanes and exact-head/current-main
 acceptance do not turn additional slots into avoidable queue and rebase
@@ -552,9 +555,11 @@ sources, and a reconstructed AgentRun is not required. Missing or conflicting
 publication identity holds before GitHub; provider/malformed ingestion failure
 holds before Linear. A confirmed handoff write or target-fence reconciliation
 ends the tick's workflow-write window, preventing admission, completion or
-anomaly routing from becoming a second mutation. The remediated final ATL-437
-head must produce both a genuine append-only reconciliation and its authorised
-Linear transition before Phase 15.5 can close.
+anomaly routing from becoming a second mutation. The remediated ATL-437 head
+`a598798c1a6c5cabe4c80c0f04020c271f438de1` produced both the genuine
+append-only reconciliation and its authorised passed Linear transition for PR
+#335 before that accepted merge closed Phase 15.5. This remains the minimum CI
+handoff authority at every ramp gate.
 
 The delivery-control UI may submit a complete policy selected by the operator
 at any governed gate, but it does not advance a gate, validate a PASS receipt,
@@ -563,7 +568,13 @@ increase is safe, or declare Phase 15 closed. Paused and draining policies stop
 new admission while preserving active work; a lower Atlas policy ceiling does
 not terminate an active Symphony session.
 
-The milestone-only doc-linter and workflow-contract validation context accepts
+The read-only milestone validator is
+`scripts/phase_15_delivery_control_milestone.py`. It binds a predeclared
+more-than-ten-workload manifest to the ordered operator gate receipts, retains
+selected bounded fields only and never calls Git, GitHub, Linear, Symphony,
+CI, delivery-policy or worker mutation surfaces. Its seeded fixture validates
+the failure boundary but cannot create live authority. The milestone-only
+doc-linter and workflow-contract validation context accepts
 levels 1, 3, 5, 7 and 10 only on the exact dedicated branch. Ordinary CI omits
 that context, so an open-phase checkout above one remains non-mergeable. Every
 gate receipt pins the fetched `origin/main` and branch merge-base commits. If
@@ -600,17 +611,25 @@ only as the pinned milestone branch state and remains unmergeable to `main`.
 
 ## Milestone test
 
-Seed more than ten independent tickets across risk and component lanes plus
-Review Required, Needs Human and Changes Requested work. Against the live PM
-sync and Symphony boundary, prove the serialized level and then move
-deliberately through ceilings 1, 3, 5, 7 and 10.
-Prove every occupancy and lane invariant, review-pressure stop, rework reserve,
+Predeclare more than ten genuinely independent tickets/workloads, their
+dependency independence, touched-path families and protected-lane classes
+before Gate 1 measurement. Keep deliberate contention and failure exercises
+separate from ordinary throughput numerators. Seed the live board across risk
+and component lanes plus Review Required, Needs Human and Changes Requested
+work. Against the live PM sync and Symphony boundary, prove the serialized
+level and then move deliberately through ceilings 1, 3, 5, 7 and 10.
+
+At every gate prove running Symphony loaded the exact milestone commit before
+admission and an explicit active policy is coherent with that ceiling. Prove
+working, integration, review, reserve and lane bounds, CI-pending worker release
+and lane retention, review/integration-pressure stops, rework reserve,
 pause/drain behaviour, deterministic selection and truthful sync timestamp.
 Inject stale board/policy snapshots, concurrent ticks, partial/malformed reads,
-ambiguous Linear writes and duplicate policy commands. No case may admit an
+ambiguous Linear writes, duplicate policy commands, CI outcome classes,
+CI-pending reactivation and sibling-merge staleness. No case may admit an
 unselected ticket, exceed an approved budget, conceal indeterminate state or
-grant Atlas scheduler, review, merge or deployment authority. The milestone is
-complete only after the ten-agent gate succeeds and the same closure change
-commits and merges `WORKFLOW.md` at `max_concurrent_agents: 10` to `main`; any
-lower proven branch ceiling is recorded honestly while Phase 15 remains open
-and no ceiling change merges.
+grant Atlas scheduler, worker, CI, review, rebase, push, merge or deployment
+authority. The milestone is complete only after the ten-agent gate succeeds
+and the same closure change commits and merges `WORKFLOW.md` at
+`max_concurrent_agents: 10` to `main`; any lower proven branch ceiling is
+recorded honestly while Phase 15 remains open and no ceiling change merges.

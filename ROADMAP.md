@@ -3,12 +3,12 @@
 The canonical roadmap lives at
 `docs/atlas/implementation-roadmap.md`. Phase closure is recorded
 in `docs/closure/` — Phases 1 through 14 are closed (Phase 14 closed
-2026-08-12). Phase 15.5 has a controlled PASS but remains
-`PENDING_LIVE_AUTHORITY`. ATL-437's first published head exposed that the
-trusted reconciler had no production PM-cadence caller; that sample is retained
-as failed reachability evidence. The live window restarts on the remediated
-final head and closure occurs only after its genuine system-tier handoff is
-accepted and that exact head merges.
+2026-08-12). Phase 15.5 is closed at accepted PR #335. ATL-437's first
+published head exposed that the trusted reconciler had no production PM-cadence
+caller and remains failed historical evidence. The remediated contributor head
+`a598798c1a6c5cabe4c80c0f04020c271f438de1` then produced the genuine
+system-tier handoff, authorised Linear exit and accepted merge that released
+ATLAS-253 for Phase 15's separate live ramp.
 
 The original bootstrap milestone — a dependency-aware backlog
 generated through the plan/apply loop with stable ticket identity
@@ -23,10 +23,10 @@ browser/API workflow stops at advice for a manual GitHub merge and performs no
 GitHub, Git, Linear, Symphony, schema or PM-sync mutation. The architectural
 direction through Phase 20 is recorded in
 `docs/atlas/phase-13-20-programme-horizon.md`; Phase 15 remains the active Wave
-A delivery graph. Phase 15.5 reduces duplicated local validation, releases
+A delivery graph. Closed Phase 15.5 reduces duplicated local validation, releases
 Symphony slots while CI is authoritative, protects conflict-prone integration
 lanes and retains exact-head/current-main acceptance with operator-owned
-mechanical rebase recovery before ATLAS-253 may begin the live ceiling ramp.
+mechanical rebase recovery. ATLAS-253 now owns the live ceiling ramp.
 The ATLAS-259/260 synthetic no-rewrite route is FAIL and retired. Phases 16–20
 remain gated programme horizons. The
 hand-delivered Planning Batch Integrity Guard continues to validate exact
@@ -35,9 +35,8 @@ both plan and apply. Atlas retains no automatic conflict-resolution,
 plan-approval, review, merge, permission-expansion or deployment authority.
 
 Committed `main` retains the repository-owned Symphony ceiling of one while
-Phase 15 remains open and Phase 15.5 awaits live closure. Phase 15.5 changes no
-ceiling. Its closure is
-the explicit operator release gate for ATLAS-253. The operator then performs
+Phase 15 remains open. Phase 15.5 changed no ceiling; its accepted closure was
+the explicit operator release gate for ATLAS-253. The operator now performs
 the controlled 1 → 3 → 5 → 7 → 10 ramp by changing `WORKFLOW.md` on the
 dedicated milestone branch only after each preceding gate passes. A failed gate
 restores or retains the last proven branch value, records the failure, leaves
@@ -59,9 +58,10 @@ comes only from a complete issue-bound Linear GitHub attachment plus the
 canonical product-scoped evidence pull that the supported PM tick performs for
 that exact publication, never a title, branch, rollup, manual seed or required
 reconstructed AgentRun. The exact observed evidence identities scope the
-trusted reconciler and a successful workflow write ends the tick. The live
-window restarts at the next final ATL-437 head: the agent enters `CI Pending`
-and stops, the system-tier reconciler owns the determinate exit, and the
-disabled Linear `PR opened -> In Progress` automation must show zero recurrence.
-ATLAS-253 remains `Needs Human` until that exact-head window is accepted and
-this closure change is merged.
+trusted reconciler and a successful workflow write ends the tick. At remediated
+head `a598798c1a6c5cabe4c80c0f04020c271f438de1`, the agent entered `CI Pending`
+and stopped, the production system-tier adapter appended the genuine
+reconciliation, owned the determinate passed exit to `Review Required`, and
+the disabled Linear `PR opened -> In Progress` automation showed zero
+recurrence. Accepted PR #335 closed Phase 15.5 and released ATLAS-253 without
+changing the committed ceiling.

@@ -1,0 +1,363 @@
+{
+  "schema_version": "phase-15-ramp-workload-v1",
+  "authority": "seeded-validator-only",
+  "milestone_ticket": "ATL-410",
+  "atlas_ticket": "ATLAS-253",
+  "milestone_branch": "phase-15-atlas-253-ceiling-ramp",
+  "ratified_at": "2026-08-17T12:00:00Z",
+  "phase_15_5_release": {
+    "issue": "ATL-437",
+    "state": "Done",
+    "pr_number": 335,
+    "merged": true,
+    "contributor_head": "a598798c1a6c5cabe4c80c0f04020c271f438de1",
+    "controlled_comparison": "PASS",
+    "production_reconciliation_retained": true,
+    "synthetic_no_rewrite_route": "retired",
+    "linear_pr_opened_automation_disabled": true
+  },
+  "operational_limits": {
+    "slot_release_max_seconds": 5,
+    "reconciliation_max_seconds": 300,
+    "ci_queue_run_max_seconds": 900,
+    "review_dwell_max_seconds": 1800,
+    "stale_review_head_maximum": 3,
+    "mechanical_rebase_maximum": 4,
+    "semantic_conflict_maximum": 1
+  },
+  "workloads": [
+    {
+      "workload_id": "RAMP-W01",
+      "independent": true,
+      "dependency_ids": [],
+      "touched_path_family": "controlled-family-01",
+      "touched_paths": [
+        "milestone-workloads/family-01/change.md"
+      ],
+      "protected_lanes": [
+        "seeded-independent-lane-01"
+      ]
+    },
+    {
+      "workload_id": "RAMP-W02",
+      "independent": true,
+      "dependency_ids": [],
+      "touched_path_family": "controlled-family-02",
+      "touched_paths": [
+        "milestone-workloads/family-02/change.md"
+      ],
+      "protected_lanes": [
+        "seeded-independent-lane-02"
+      ]
+    },
+    {
+      "workload_id": "RAMP-W03",
+      "independent": true,
+      "dependency_ids": [],
+      "touched_path_family": "controlled-family-03",
+      "touched_paths": [
+        "milestone-workloads/family-03/change.md"
+      ],
+      "protected_lanes": [
+        "seeded-independent-lane-03"
+      ]
+    },
+    {
+      "workload_id": "RAMP-W04",
+      "independent": true,
+      "dependency_ids": [],
+      "touched_path_family": "controlled-family-04",
+      "touched_paths": [
+        "milestone-workloads/family-04/change.md"
+      ],
+      "protected_lanes": []
+    },
+    {
+      "workload_id": "RAMP-W05",
+      "independent": true,
+      "dependency_ids": [],
+      "touched_path_family": "controlled-family-05",
+      "touched_paths": [
+        "milestone-workloads/family-05/change.md"
+      ],
+      "protected_lanes": []
+    },
+    {
+      "workload_id": "RAMP-W06",
+      "independent": true,
+      "dependency_ids": [],
+      "touched_path_family": "controlled-family-06",
+      "touched_paths": [
+        "milestone-workloads/family-06/change.md"
+      ],
+      "protected_lanes": []
+    },
+    {
+      "workload_id": "RAMP-W07",
+      "independent": true,
+      "dependency_ids": [],
+      "touched_path_family": "controlled-family-07",
+      "touched_paths": [
+        "milestone-workloads/family-07/change.md"
+      ],
+      "protected_lanes": []
+    },
+    {
+      "workload_id": "RAMP-W08",
+      "independent": true,
+      "dependency_ids": [],
+      "touched_path_family": "controlled-family-08",
+      "touched_paths": [
+        "milestone-workloads/family-08/change.md"
+      ],
+      "protected_lanes": []
+    },
+    {
+      "workload_id": "RAMP-W09",
+      "independent": true,
+      "dependency_ids": [],
+      "touched_path_family": "controlled-family-09",
+      "touched_paths": [
+        "milestone-workloads/family-09/change.md"
+      ],
+      "protected_lanes": []
+    },
+    {
+      "workload_id": "RAMP-W10",
+      "independent": true,
+      "dependency_ids": [],
+      "touched_path_family": "controlled-family-10",
+      "touched_paths": [
+        "milestone-workloads/family-10/change.md"
+      ],
+      "protected_lanes": []
+    },
+    {
+      "workload_id": "RAMP-W11",
+      "independent": true,
+      "dependency_ids": [],
+      "touched_path_family": "controlled-family-11",
+      "touched_paths": [
+        "milestone-workloads/family-11/change.md"
+      ],
+      "protected_lanes": []
+    }
+  ],
+  "exercise_catalog": [
+    {
+      "gate_level": 1,
+      "exercise_id": "serialized_controlled_workload",
+      "excluded_from_throughput": false
+    },
+    {
+      "gate_level": 1,
+      "exercise_id": "paused_mode_no_admission",
+      "excluded_from_throughput": false
+    },
+    {
+      "gate_level": 1,
+      "exercise_id": "draining_mode_no_admission",
+      "excluded_from_throughput": false
+    },
+    {
+      "gate_level": 1,
+      "exercise_id": "changes_requested_recovery",
+      "excluded_from_throughput": false
+    },
+    {
+      "gate_level": 1,
+      "exercise_id": "review_saturation_hold",
+      "excluded_from_throughput": true
+    },
+    {
+      "gate_level": 1,
+      "exercise_id": "integration_capacity_accounting",
+      "excluded_from_throughput": false
+    },
+    {
+      "gate_level": 1,
+      "exercise_id": "protected_lane_ci_pending_hold",
+      "excluded_from_throughput": false
+    },
+    {
+      "gate_level": 1,
+      "exercise_id": "ci_failure_and_indeterminate_routes",
+      "excluded_from_throughput": true
+    },
+    {
+      "gate_level": 1,
+      "exercise_id": "exact_head_acceptance",
+      "excluded_from_throughput": false
+    },
+    {
+      "gate_level": 1,
+      "exercise_id": "ambiguous_external_write_fence",
+      "excluded_from_throughput": true
+    },
+    {
+      "gate_level": 3,
+      "exercise_id": "two_independent_tickets_concurrent",
+      "excluded_from_throughput": false
+    },
+    {
+      "gate_level": 3,
+      "exercise_id": "concurrent_ranking_reproduction",
+      "excluded_from_throughput": false
+    },
+    {
+      "gate_level": 3,
+      "exercise_id": "integration_review_lane_pressure",
+      "excluded_from_throughput": false
+    },
+    {
+      "gate_level": 3,
+      "exercise_id": "concurrent_ci_pending_slot_release",
+      "excluded_from_throughput": false
+    },
+    {
+      "gate_level": 3,
+      "exercise_id": "one_ci_candidate_per_tick",
+      "excluded_from_throughput": false
+    },
+    {
+      "gate_level": 3,
+      "exercise_id": "review_saturation_hold",
+      "excluded_from_throughput": true
+    },
+    {
+      "gate_level": 3,
+      "exercise_id": "protected_lane_contention",
+      "excluded_from_throughput": true
+    },
+    {
+      "gate_level": 3,
+      "exercise_id": "changes_requested_recovery",
+      "excluded_from_throughput": false
+    },
+    {
+      "gate_level": 3,
+      "exercise_id": "sibling_merge_staleness_recovery",
+      "excluded_from_throughput": false
+    },
+    {
+      "gate_level": 5,
+      "exercise_id": "five_working_capacity_bound",
+      "excluded_from_throughput": false
+    },
+    {
+      "gate_level": 5,
+      "exercise_id": "integration_pressure_independent",
+      "excluded_from_throughput": false
+    },
+    {
+      "gate_level": 5,
+      "exercise_id": "integration_saturation_hold",
+      "excluded_from_throughput": true
+    },
+    {
+      "gate_level": 5,
+      "exercise_id": "review_saturation_hold",
+      "excluded_from_throughput": true
+    },
+    {
+      "gate_level": 5,
+      "exercise_id": "protected_lane_with_unrelated_parallelism",
+      "excluded_from_throughput": false
+    },
+    {
+      "gate_level": 5,
+      "exercise_id": "ci_latency_bound",
+      "excluded_from_throughput": false
+    },
+    {
+      "gate_level": 5,
+      "exercise_id": "review_and_stale_head_pressure_bound",
+      "excluded_from_throughput": false
+    },
+    {
+      "gate_level": 5,
+      "exercise_id": "changes_requested_mixed_load_recovery",
+      "excluded_from_throughput": false
+    },
+    {
+      "gate_level": 7,
+      "exercise_id": "risk_component_protected_lanes_under_load",
+      "excluded_from_throughput": false
+    },
+    {
+      "gate_level": 7,
+      "exercise_id": "ci_pending_lane_ownership",
+      "excluded_from_throughput": false
+    },
+    {
+      "gate_level": 7,
+      "exercise_id": "changes_requested_recovery",
+      "excluded_from_throughput": false
+    },
+    {
+      "gate_level": 7,
+      "exercise_id": "lower_rank_cannot_bypass_selection",
+      "excluded_from_throughput": false
+    },
+    {
+      "gate_level": 7,
+      "exercise_id": "acceptance_throughput_adequate",
+      "excluded_from_throughput": false
+    },
+    {
+      "gate_level": 7,
+      "exercise_id": "sibling_merge_staleness_recovery",
+      "excluded_from_throughput": false
+    },
+    {
+      "gate_level": 7,
+      "exercise_id": "gate_ten_pressure_assessment",
+      "excluded_from_throughput": false
+    },
+    {
+      "gate_level": 10,
+      "exercise_id": "ten_is_maximum_not_target",
+      "excluded_from_throughput": false
+    },
+    {
+      "gate_level": 10,
+      "exercise_id": "all_capacity_controls_under_maximum",
+      "excluded_from_throughput": false
+    },
+    {
+      "gate_level": 10,
+      "exercise_id": "ci_handoff_cadence_bound",
+      "excluded_from_throughput": false
+    },
+    {
+      "gate_level": 10,
+      "exercise_id": "review_saturation_hold",
+      "excluded_from_throughput": true
+    },
+    {
+      "gate_level": 10,
+      "exercise_id": "rework_dispatchable",
+      "excluded_from_throughput": false
+    },
+    {
+      "gate_level": 10,
+      "exercise_id": "typed_hold_reasons_complete",
+      "excluded_from_throughput": false
+    },
+    {
+      "gate_level": 10,
+      "exercise_id": "exact_head_acceptance_at_observed_rate",
+      "excluded_from_throughput": false
+    },
+    {
+      "gate_level": 10,
+      "exercise_id": "sustained_pressure_within_limits",
+      "excluded_from_throughput": false
+    },
+    {
+      "gate_level": 10,
+      "exercise_id": "zero_prohibited_authority_or_secret_retention",
+      "excluded_from_throughput": false
+    }
+  ]
+}
