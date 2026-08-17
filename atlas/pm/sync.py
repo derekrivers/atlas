@@ -487,6 +487,13 @@ class SyncResult:
             if verbose or not detail.routine
         )
 
+    def safe_operator_summaries(self, *, verbose: bool) -> tuple[str, ...]:
+        """Return all bounded per-ticket details for operator output."""
+
+        return self.safe_admission_summaries(
+            verbose=verbose
+        ) + self.safe_ci_handoff_summaries(verbose=verbose)
+
 
 SYNC_RESULT_COUNTER_NAMES: tuple[str, ...] = (
     "status_pulled",

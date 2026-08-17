@@ -148,7 +148,7 @@ from atlas.orchestration.review_queue import (
     review_queue,
 )
 from atlas.orchestration.system_status import SystemStatus, system_status
-from atlas.orchestration.tick_config import build_tick_config
+from atlas.orchestration.tick_config import PM_SYNC_CONFIG_ERRORS, build_tick_config
 from atlas.orchestration.ticket_board import TicketBoardItemState, ticket_board
 from atlas.orchestration.ticket_evidence import (
     TicketEvidenceRecordState,
@@ -158,6 +158,7 @@ from atlas.orchestration.verify import VerifyResult, run_verify
 
 __all__ = [
     "MAX_DELIVERY_CONTROL_DECISIONS",
+    "PM_SYNC_CONFIG_ERRORS",
     "AcceptanceConfirmationRequest",
     "AcceptanceConfirmationResult",
     "AcceptanceConfirmationStatus",

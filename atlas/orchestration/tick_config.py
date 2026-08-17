@@ -7,21 +7,28 @@ import os
 from pathlib import Path
 
 from atlas.core.anchors import SourceDocument
-from atlas.github import GitHubRESTClient
+from atlas.github import GitHubRESTClient, MissingGitHubTokenError
 from atlas.linear.client import (
     PROJECT_ID_ENV,
     TEAM_ID_ENV,
     LinearGraphQLClient,
     MissingLinearTokenError,
 )
-from atlas.linear.ownership import LinearStatusMap
-from atlas.planning.client import AnthropicPlannerClient
+from atlas.linear.ownership import LinearStatusMap, LinearStatusMapError
+from atlas.planning.client import AnthropicPlannerClient, PlannerClientError
 from atlas.planning.ingestion import (
     collect_input_documents,
     collect_processed_documents,
 )
 from atlas.pm import TickConfig
 from atlas.storage import Database, TicketRepo
+
+PM_SYNC_CONFIG_ERRORS = (
+    MissingGitHubTokenError,
+    MissingLinearTokenError,
+    LinearStatusMapError,
+    PlannerClientError,
+)
 
 
 def build_tick_config(args: argparse.Namespace, resolved_db: Database) -> TickConfig:
