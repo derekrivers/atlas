@@ -1,6 +1,6 @@
 {
   "schema_version": "phase-15-ramp-workload-v1",
-  "authority": "seeded-validator-only",
+  "validation_scope": "offline-read-only",
   "milestone_ticket": "ATL-410",
   "atlas_ticket": "ATLAS-253",
   "milestone_branch": "phase-15-atlas-253-ceiling-ramp",

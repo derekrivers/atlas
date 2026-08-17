@@ -12,6 +12,7 @@ import pytest
 
 from scripts.phase_15_delivery_control_milestone import (
     COMMON_INVARIANTS,
+    FIXTURE_RUNTIME_PROCEDURE,
     GATE_EXERCISES,
     GATE_LEVELS,
     MAX_MANIFEST_BYTES,
@@ -130,6 +131,7 @@ def _receipt(
         for offset, name in enumerate(GATE_EXERCISES[gate])
     }
     level_token = f"{gate:x}"
+    origin_main = f"{index + 1:x}" * 40
     return {
         "schema_version": "phase-15-ramp-gate-receipt-v1",
         "receipt_id": f"seed-gate-{gate}",
@@ -145,17 +147,17 @@ def _receipt(
         ),
         "branch": "phase-15-atlas-253-ceiling-ramp",
         "milestone_commit_sha": level_token * 40,
-        "origin_main_sha": "0" * 40,
-        "merge_base_sha": "0" * 40,
+        "origin_main_sha": origin_main,
+        "merge_base_sha": origin_main,
         "workflow_blob_sha": f"{index + 10:x}" * 40,
         "main_configuration": {
-            "commit_sha": "0" * 40,
+            "commit_sha": origin_main,
             "max_concurrent_agents": 1,
             "max_turns": 10,
         },
         "runtime_configuration": {
             "instance_id": "seeded-symphony-vps",
-            "supported_procedure_id": "seeded-runtime-attestation-v1",
+            "supported_procedure_id": FIXTURE_RUNTIME_PROCEDURE,
             "loaded_commit_sha": level_token * 40,
             "workflow_blob_sha": f"{index + 10:x}" * 40,
             "configured_ceiling": gate,
@@ -173,10 +175,8 @@ def _receipt(
             "integration_budget": max(gate, 2),
             "review_budget": max(gate, 2),
             "changes_requested_reserve": 1,
-            "risk_lane_budgets": {"critical": 1},
-            "component_lane_budgets": {"orchestration": gate},
-            "protected_lane_registry_identity": _identity(5000 + index),
-            "protected_lane_budgets": {"workflow-contract": 1},
+            "risk_lane_limits": [{"risk_level": "critical", "limit": 1}],
+            "component_lane_limits": [{"component": "orchestration", "limit": gate}],
             "mode": "running",
         },
         "snapshot": {
@@ -189,6 +189,18 @@ def _receipt(
             "contradictory": False,
             "unresolved_write_fence": False,
             "critical_fault": False,
+            "protected_lane_registry_version": "protected-integration-lanes/v1",
+            "protected_lane_registry_fingerprint": _identity(5000 + index),
+            "protected_lane_state_fingerprint": _identity(5100 + index),
+            "protected_lane_occupancy": [
+                {
+                    "lane": "workflow-configuration",
+                    "count": 1,
+                    "limit": 1,
+                    "ticket_keys": [f"META-GATE-{gate}"],
+                    "operator_declared": False,
+                }
+            ],
             "pm_sync_receipt_ids": [f"pm-sync-{gate}"],
             "admission_run_ids": [f"admission-{gate}"],
             "ci_handoff_reconciliation_ids": [f"ci-handoff-{gate}"],
@@ -214,7 +226,7 @@ def test_predeclared_manifest_has_more_than_ten_independent_workloads() -> None:
     selected = validate_manifest(_manifest())
     workloads = cast(list[dict[str, Any]], selected["workloads"])
 
-    assert selected["authority"] == "seeded-validator-only"
+    assert selected["validation_scope"] == "offline-read-only"
     assert len(workloads) == 11
     assert all(workload["independent"] is True for workload in workloads)
     assert all(workload["dependency_ids"] == [] for workload in workloads)
@@ -238,33 +250,36 @@ def test_no_receipt_stops_at_gate_one_without_claiming_failure() -> None:
     assert passed is False
     assert report["decision"] == "PENDING_GATE_1"
     assert report["closure_authorized"] is False
-    assert report["last_proven_level"] == 1
+    assert report["last_validated_pass_receipt_level"] is None
 
 
-def test_complete_seeded_sequence_proves_validator_but_not_live_authority() -> None:
+def test_complete_sequence_is_validation_only_and_never_live_authority() -> None:
     manifest = _manifest()
     report, passed = evaluate_ramp(manifest, _receipts(manifest))
     retained = json.dumps(report, separators=(",", ":"), sort_keys=True)
 
     assert passed is True
-    assert report["decision"] == "SEEDED_VALIDATOR_PASS"
+    assert report["decision"] == "RECEIPT_SEQUENCE_VALIDATED"
     assert report["closure_authorized"] is False
+    assert report["transition_authorized"] is False
     assert report["gate_sequence"] == [1, 3, 5, 7, 10]
-    assert report["last_proven_level"] == 10
+    assert report["last_validated_pass_receipt_level"] == 10
     assert len(retained.encode()) <= MAX_REPORT_BYTES
 
 
-def test_live_operator_receipts_are_the_only_closure_authority() -> None:
+def test_self_declared_operator_authority_is_rejected() -> None:
     manifest = _manifest()
     manifest["authority"] = "live-operator"
-    report, passed = evaluate_ramp(manifest, _receipts(manifest))
+    with pytest.raises(ValueError, match="exact required fields"):
+        evaluate_ramp(manifest, [])
 
-    assert passed is True
-    assert report["decision"] == "GATE_10_PASS_CLOSURE_AUTHORIZED"
-    assert report["closure_authorized"] is True
+    manifest = _manifest()
+    manifest["validation_scope"] = "live-operator"
+    with pytest.raises(ValueError, match="offline read-only validation"):
+        evaluate_ramp(manifest, [])
 
 
-def test_gate_order_parent_link_and_main_identity_are_fail_closed() -> None:
+def test_gate_order_parent_link_and_per_gate_main_identity_are_fail_closed() -> None:
     manifest = _manifest()
     receipts = _receipts(manifest)
     receipts[1]["gate_level"] = 5
@@ -277,8 +292,58 @@ def test_gate_order_parent_link_and_main_identity_are_fail_closed() -> None:
         evaluate_ramp(manifest, receipts)
 
     receipts = _receipts(manifest)
-    receipts[2]["origin_main_sha"] = "f" * 40
-    with pytest.raises(ValueError, match="origin/main moved"):
+    assert len({receipt["origin_main_sha"] for receipt in receipts}) == 5
+    report, passed = evaluate_ramp(manifest, receipts)
+    assert passed is True
+    assert report["decision"] == "RECEIPT_SEQUENCE_VALIDATED"
+
+    receipts = _receipts(manifest)
+    receipts[2]["merge_base_sha"] = "f" * 40
+    with pytest.raises(ValueError, match="not fresh against origin/main"):
+        evaluate_ramp(manifest, receipts)
+
+
+def test_policy_validation_matches_the_delivered_domain() -> None:
+    manifest = _manifest()
+    receipts = _receipts(manifest)
+    receipts[0]["policy"]["changes_requested_reserve"] = 0
+    receipts[0]["policy"]["risk_lane_limits"] = []
+    receipts[0]["policy"]["component_lane_limits"] = []
+    report, passed = evaluate_ramp(manifest, receipts)
+    assert passed is True
+    first = cast(list[dict[str, Any]], report["receipt_summaries"])[0]
+    assert first["gate_level"] == 1
+
+    receipts = _receipts(manifest)
+    receipts[1]["policy"]["risk_lane_limits"] = [{"risk_level": "critical", "limit": 0}]
+    receipts[1]["policy"]["component_lane_limits"] = [
+        {"component": "orchestration", "limit": 0}
+    ]
+    assert evaluate_ramp(manifest, receipts)[1] is True
+
+    receipts = _receipts(manifest)
+    receipts[1]["policy"]["component_lane_limits"] = [
+        {"component": "orchestration", "limit": 4}
+    ]
+    with pytest.raises(ValueError, match="lane limit exceeds working_budget"):
+        evaluate_ramp(manifest, receipts)
+
+
+def test_protected_lane_limits_and_state_are_snapshot_owned() -> None:
+    manifest = _manifest()
+    receipts = _receipts(manifest)
+    receipts[0]["policy"]["protected_lane_budgets"] = {"workflow-configuration": 1}
+    with pytest.raises(ValueError, match="exact required fields"):
+        evaluate_ramp(manifest, receipts)
+
+    receipts = _receipts(manifest)
+    receipts[0]["snapshot"]["protected_lane_occupancy"][0]["count"] = 2
+    with pytest.raises(ValueError, match="cannot PASS"):
+        evaluate_ramp(manifest, receipts)
+
+    receipts = _receipts(manifest)
+    receipts[0]["snapshot"]["protected_lane_registry_version"] = "unversioned"
+    with pytest.raises(ValueError, match="registry version is unsupported"):
         evaluate_ramp(manifest, receipts)
 
 
@@ -313,7 +378,7 @@ def test_failed_gate_is_retained_honestly_and_stops_progression() -> None:
 
     assert passed is False
     assert report["decision"] == "FAIL_GATE_3"
-    assert report["last_proven_level"] == 1
+    assert report["last_validated_pass_receipt_level"] == 1
     summaries = cast(list[dict[str, object]], report["receipt_summaries"])
     assert summaries[-1]["retained_or_restored_level"] == 1
 
@@ -335,6 +400,13 @@ def test_runtime_must_prove_exact_branch_configuration_before_admission() -> Non
         "observation"
     ]["finished_at"]
     with pytest.raises(ValueError, match="followed workload admission"):
+        evaluate_ramp(manifest, receipts)
+
+    receipts = _receipts(manifest)
+    receipts[0]["runtime_configuration"]["supported_procedure_id"] = (
+        "operator-claimed-supported-v1"
+    )
+    with pytest.raises(ValueError, match="Gate 1 is blocked"):
         evaluate_ramp(manifest, receipts)
 
 
@@ -422,6 +494,8 @@ def test_required_docs_and_seed_fixture_are_present_and_bounded() -> None:
     assert "running VPS" in runbook
     assert "exact commit" in runbook
     assert "integration/review" in runbook
+    assert "Gate 1 is BLOCKED" in runbook
+    assert "RECEIPT_SEQUENCE_VALIDATED" in runbook
     assert "scripts/phase_15_delivery_control_milestone.py" in delivery_control
     assert "Phase 15.5 is CLOSED" in phase_15_5
     assert not (ROOT / "docs" / "closure" / "phase-15-closure-report.md").exists()

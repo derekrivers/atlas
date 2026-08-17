@@ -775,7 +775,8 @@ _CEILING_RUNBOOK_MARKERS = (
     "Values 3, 5 and 7 are valid only on that branch",
     "never independently mergeable to `main`",
     "existing governed Phase 15 policy-revision boundary",
-    "restart at Gate 1",
+    "Gate 1 is BLOCKED",
+    "mainline progress alone does not force a Gate 1 restart",
     "### Stop, rollback and non-closure",
 )
 

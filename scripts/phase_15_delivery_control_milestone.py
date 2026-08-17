@@ -18,6 +18,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
 
+from atlas.core.models.delivery_admission_policy import DeliveryAdmissionPolicySpec
+
 MILESTONE_BRANCH = "phase-15-atlas-253-ceiling-ramp"
 GATE_LEVELS = (1, 3, 5, 7, 10)
 MANIFEST_SCHEMA = "phase-15-ramp-workload-v1"
@@ -27,6 +29,9 @@ MAX_RECEIPT_BYTES = 60 * 1024
 MAX_REPORT_BYTES = 128 * 1024
 EXPECTED_WINDOW_SECONDS = 60 * 60
 PHASE_15_5_HEAD = "a598798c1a6c5cabe4c80c0f04020c271f438de1"
+VALIDATION_SCOPE = "offline-read-only"
+FIXTURE_RUNTIME_PROCEDURE = "fixture-only-no-live-runtime-v1"
+PROTECTED_LANE_REGISTRY_VERSION = "protected-integration-lanes/v1"
 
 COMMON_INVARIANTS = (
     "configured_capacity_bound",
@@ -257,20 +262,6 @@ def _scan_for_secrets(value: object, *, field: str = "input") -> None:
         raise ValueError(f"{field} contains secret-bearing material")
 
 
-def _budget_map(value: object, *, field: str, ceiling: int) -> dict[str, int]:
-    payload = _mapping(value, field=field)
-    if not payload:
-        raise ValueError(f"{field} must not be empty")
-    result: dict[str, int] = {}
-    for raw_name, raw_budget in payload.items():
-        name = _text(raw_name, field=f"{field}.name", maximum=120)
-        budget = _integer(raw_budget, field=f"{field}.{name}", minimum=1)
-        if budget > ceiling:
-            raise ValueError(f"{field}.{name} exceeds the configured ceiling")
-        result[name] = budget
-    return result
-
-
 def _validate_phase_15_5_release(value: object) -> dict[str, object]:
     release = _mapping(value, field="phase_15_5_release")
     expected = {
@@ -420,7 +411,7 @@ def validate_manifest(value: Mapping[str, Any]) -> dict[str, object]:
         value,
         expected=(
             "schema_version",
-            "authority",
+            "validation_scope",
             "milestone_ticket",
             "atlas_ticket",
             "milestone_branch",
@@ -434,9 +425,8 @@ def validate_manifest(value: Mapping[str, Any]) -> dict[str, object]:
     )
     if value.get("schema_version") != MANIFEST_SCHEMA:
         raise ValueError("manifest schema_version is unsupported")
-    authority = _text(value.get("authority"), field="manifest.authority")
-    if authority not in {"live-operator", "seeded-validator-only"}:
-        raise ValueError("manifest authority is unsupported")
+    if value.get("validation_scope") != VALIDATION_SCOPE:
+        raise ValueError("manifest must remain offline read-only validation")
     if (
         value.get("milestone_ticket") != "ATL-410"
         or value.get("atlas_ticket") != "ATLAS-253"
@@ -451,7 +441,6 @@ def validate_manifest(value: Mapping[str, Any]) -> dict[str, object]:
     exercises = _validate_exercise_catalog(value.get("exercise_catalog"))
     selected = {
         "atlas_ticket": "ATLAS-253",
-        "authority": authority,
         "exercise_catalog": exercises,
         "milestone_branch": MILESTONE_BRANCH,
         "milestone_ticket": "ATL-410",
@@ -459,6 +448,7 @@ def validate_manifest(value: Mapping[str, Any]) -> dict[str, object]:
         "phase_15_5_release": release,
         "ratified_at": ratified_at.isoformat().replace("+00:00", "Z"),
         "schema_version": MANIFEST_SCHEMA,
+        "validation_scope": VALIDATION_SCOPE,
         "workloads": workloads,
     }
     return {**selected, "manifest_fingerprint": _canonical_digest(selected)}
@@ -477,80 +467,44 @@ def _validate_policy(value: object, *, gate: int) -> dict[str, object]:
             "integration_budget",
             "review_budget",
             "changes_requested_reserve",
-            "risk_lane_budgets",
-            "component_lane_budgets",
-            "protected_lane_registry_identity",
-            "protected_lane_budgets",
+            "risk_lane_limits",
+            "component_lane_limits",
             "mode",
         ),
         field=f"gate_{gate}.policy",
     )
-    working = _integer(
-        policy.get("working_budget"),
-        field=f"gate_{gate}.policy.working_budget",
-        minimum=1,
+    spec = DeliveryAdmissionPolicySpec.model_validate(
+        {
+            field: policy.get(field)
+            for field in (
+                "mode",
+                "approved_symphony_ceiling",
+                "working_budget",
+                "integration_budget",
+                "review_budget",
+                "changes_requested_reserve",
+                "risk_lane_limits",
+                "component_lane_limits",
+            )
+        }
     )
-    integration = _integer(
-        policy.get("integration_budget"),
-        field=f"gate_{gate}.policy.integration_budget",
-        minimum=1,
-    )
-    review = _integer(
-        policy.get("review_budget"),
-        field=f"gate_{gate}.policy.review_budget",
-        minimum=1,
-    )
-    reserve = _integer(
-        policy.get("changes_requested_reserve"),
-        field=f"gate_{gate}.policy.changes_requested_reserve",
-        minimum=1,
-    )
-    if policy.get("approved_symphony_ceiling") != gate or working > gate:
+    if spec.approved_symphony_ceiling != gate:
         raise ValueError(f"gate {gate} policy is incoherent with its Symphony ceiling")
-    if reserve > working:
-        raise ValueError(
-            f"gate {gate} Changes Requested reserve exceeds working budget"
-        )
-    if policy.get("mode") != "running":
+    if spec.mode.value != "running":
         raise ValueError(f"gate {gate} measurement policy must be running")
     return {
-        "approved_symphony_ceiling": gate,
-        "changes_requested_reserve": reserve,
-        "component_lane_budgets": _budget_map(
-            policy.get("component_lane_budgets"),
-            field=f"gate_{gate}.policy.component_lane_budgets",
-            ceiling=gate,
-        ),
+        **spec.model_dump(mode="json"),
         "fingerprint": _sha(
             policy.get("fingerprint"),
             field=f"gate_{gate}.policy.fingerprint",
             length=64,
         ),
-        "integration_budget": integration,
-        "mode": "running",
         "policy_id": _text(
             policy.get("policy_id"), field=f"gate_{gate}.policy.policy_id"
         ),
-        "protected_lane_budgets": _budget_map(
-            policy.get("protected_lane_budgets"),
-            field=f"gate_{gate}.policy.protected_lane_budgets",
-            ceiling=gate,
-        ),
-        "protected_lane_registry_identity": _sha(
-            policy.get("protected_lane_registry_identity"),
-            field=f"gate_{gate}.policy.protected_lane_registry_identity",
-            length=64,
-        ),
-        "review_budget": review,
         "revision": _integer(
             policy.get("revision"), field=f"gate_{gate}.policy.revision", minimum=1
         ),
-        "risk_lane_budgets": _budget_map(
-            policy.get("risk_lane_budgets"),
-            field=f"gate_{gate}.policy.risk_lane_budgets",
-            ceiling=gate,
-        ),
-        "working_budget": working,
     }
 
 
@@ -577,8 +531,10 @@ def _validate_runtime(
         runtime.get("supported_procedure_id"),
         field=f"gate_{gate}.runtime_configuration.supported_procedure_id",
     )
-    if "ad-hoc" in procedure.lower() or "unknown" in procedure.lower():
-        raise ValueError(f"gate {gate} runtime proof procedure is not supported")
+    if procedure != FIXTURE_RUNTIME_PROCEDURE:
+        raise ValueError(
+            f"gate {gate} live runtime procedure is not registered; Gate 1 is blocked"
+        )
     loaded_commit = _sha(
         runtime.get("loaded_commit_sha"),
         field=f"gate_{gate}.runtime_configuration.loaded_commit_sha",
@@ -622,6 +578,43 @@ def _validate_runtime(
     }
 
 
+def _validate_protected_lane_occupancy(
+    value: object, *, gate: int
+) -> list[dict[str, object]]:
+    items = _list(value, field=f"gate_{gate}.snapshot.protected_lane_occupancy")
+    if not items:
+        raise ValueError(f"gate {gate} protected lane registry state is empty")
+    result: list[dict[str, object]] = []
+    lanes: set[str] = set()
+    for index, raw in enumerate(items):
+        field = f"gate_{gate}.snapshot.protected_lane_occupancy[{index}]"
+        item = _mapping(raw, field=field)
+        _exact_fields(
+            item,
+            expected=("lane", "count", "limit", "ticket_keys", "operator_declared"),
+            field=field,
+        )
+        lane = _text(item.get("lane"), field=f"{field}.lane", maximum=128)
+        if lane in lanes:
+            raise ValueError(f"gate {gate} protected lane state contains duplicates")
+        lanes.add(lane)
+        result.append(
+            {
+                "count": _integer(item.get("count"), field=f"{field}.count"),
+                "lane": lane,
+                "limit": _integer(item.get("limit"), field=f"{field}.limit", minimum=1),
+                "operator_declared": _boolean(
+                    item.get("operator_declared"),
+                    field=f"{field}.operator_declared",
+                ),
+                "ticket_keys": _string_list(
+                    item.get("ticket_keys"), field=f"{field}.ticket_keys"
+                ),
+            }
+        )
+    return result
+
+
 def _validate_snapshot(value: object, *, gate: int) -> dict[str, object]:
     snapshot = _mapping(value, field=f"gate_{gate}.snapshot")
     _exact_fields(
@@ -636,6 +629,10 @@ def _validate_snapshot(value: object, *, gate: int) -> dict[str, object]:
             "contradictory",
             "unresolved_write_fence",
             "critical_fault",
+            "protected_lane_registry_version",
+            "protected_lane_registry_fingerprint",
+            "protected_lane_state_fingerprint",
+            "protected_lane_occupancy",
             "pm_sync_receipt_ids",
             "admission_run_ids",
             "ci_handoff_reconciliation_ids",
@@ -660,6 +657,13 @@ def _validate_snapshot(value: object, *, gate: int) -> dict[str, object]:
         if not values:
             raise ValueError(f"gate {gate} snapshot {name} must not be empty")
         identity_lists[name] = values
+    registry_version = _text(
+        snapshot.get("protected_lane_registry_version"),
+        field=f"gate_{gate}.snapshot.protected_lane_registry_version",
+        maximum=128,
+    )
+    if registry_version != PROTECTED_LANE_REGISTRY_VERSION:
+        raise ValueError(f"gate {gate} protected lane registry version is unsupported")
     return {
         **identity_lists,
         "board_fingerprint": _sha(
@@ -672,6 +676,20 @@ def _validate_snapshot(value: object, *, gate: int) -> dict[str, object]:
         "contradictory": False,
         "critical_fault": False,
         "fresh": True,
+        "protected_lane_occupancy": _validate_protected_lane_occupancy(
+            snapshot.get("protected_lane_occupancy"), gate=gate
+        ),
+        "protected_lane_registry_fingerprint": _sha(
+            snapshot.get("protected_lane_registry_fingerprint"),
+            field=f"gate_{gate}.snapshot.protected_lane_registry_fingerprint",
+            length=64,
+        ),
+        "protected_lane_registry_version": registry_version,
+        "protected_lane_state_fingerprint": _sha(
+            snapshot.get("protected_lane_state_fingerprint"),
+            field=f"gate_{gate}.snapshot.protected_lane_state_fingerprint",
+            length=64,
+        ),
         "snapshot_fingerprint": _sha(
             snapshot.get("snapshot_fingerprint"),
             field=f"gate_{gate}.snapshot.snapshot_fingerprint",
@@ -793,6 +811,7 @@ def _computed_failures(
     *,
     gate: int,
     policy: Mapping[str, object],
+    snapshot: Mapping[str, object],
     observation: Mapping[str, object],
     limits: Mapping[str, int],
 ) -> list[str]:
@@ -818,11 +837,6 @@ def _computed_failures(
         "max_review_occupancy",
         cast(int, policy["review_budget"]),
         "review_budget_breached",
-    )
-    maximum(
-        "max_changes_requested_occupancy",
-        cast(int, policy["changes_requested_reserve"]),
-        "changes_requested_reserve_breached",
     )
     maximum(
         "max_slot_release_seconds",
@@ -859,6 +873,13 @@ def _computed_failures(
         limits["semantic_conflict_maximum"],
         "semantic_conflict_pressure_breached",
     )
+    protected_lanes = cast(
+        Sequence[Mapping[str, object]], snapshot["protected_lane_occupancy"]
+    )
+    if any(
+        cast(int, lane["count"]) > cast(int, lane["limit"]) for lane in protected_lanes
+    ):
+        failures.append("protected_lane_capacity_breached")
     if number["publication_count"] < 1:
         failures.append("no_live_publication")
     if number["ci_pending_entries"] != number["publication_count"]:
@@ -931,8 +952,6 @@ def _validate_receipt(
     expected_previous_id: str | None,
     previous_proven_level: int,
     manifest: Mapping[str, object],
-    origin_main_sha: str | None,
-    merge_base_sha: str | None,
 ) -> dict[str, object]:
     _scan_for_secrets(raw, field=f"gate_{expected_gate}_receipt")
     _exact_fields(
@@ -990,11 +1009,9 @@ def _validate_receipt(
     current_merge_base = _sha(
         raw.get("merge_base_sha"), field=f"gate_{expected_gate}.merge_base_sha"
     )
-    if origin_main_sha is not None and current_origin != origin_main_sha:
-        raise ValueError("origin/main moved during the cumulative ramp")
-    if merge_base_sha is not None and current_merge_base != merge_base_sha:
+    if current_merge_base != current_origin:
         raise ValueError(
-            "the milestone branch merge base moved during the cumulative ramp"
+            f"gate {expected_gate} milestone branch is not fresh against origin/main"
         )
     main = _mapping(raw.get("main_configuration"), field=f"gate_{expected_gate}.main")
     _exact_fields(
@@ -1044,6 +1061,7 @@ def _validate_receipt(
     computed_failures = _computed_failures(
         gate=expected_gate,
         policy=policy,
+        snapshot=snapshot,
         observation=observation,
         limits=cast(Mapping[str, int], manifest["operational_limits"]),
     )
@@ -1125,8 +1143,7 @@ def evaluate_ramp(
     receipts: list[dict[str, object]] = []
     previous_id: str | None = None
     previous_proven = 1
-    origin_main: str | None = None
-    merge_base: str | None = None
+    last_validated_pass: int | None = None
     failed_gate: int | None = None
     for index, raw in enumerate(receipt_payloads):
         if failed_gate is not None:
@@ -1138,17 +1155,14 @@ def evaluate_ramp(
             expected_previous_id=previous_id,
             previous_proven_level=previous_proven,
             manifest=manifest,
-            origin_main_sha=origin_main,
-            merge_base_sha=merge_base,
         )
         receipts.append(receipt)
         previous_id = cast(str, receipt["receipt_id"])
-        origin_main = cast(str, receipt["origin_main_sha"])
-        merge_base = cast(str, receipt["merge_base_sha"])
         if receipt["outcome"] == "FAIL":
             failed_gate = gate
         else:
             previous_proven = gate
+            last_validated_pass = gate
 
     if failed_gate is not None:
         decision = f"FAIL_GATE_{failed_gate}"
@@ -1158,16 +1172,11 @@ def evaluate_ramp(
         decision = f"PENDING_GATE_{GATE_LEVELS[len(receipts)]}"
         closure_authorized = False
         passed = False
-    elif manifest["authority"] == "live-operator":
-        decision = "GATE_10_PASS_CLOSURE_AUTHORIZED"
-        closure_authorized = True
-        passed = True
     else:
-        decision = "SEEDED_VALIDATOR_PASS"
+        decision = "RECEIPT_SEQUENCE_VALIDATED"
         closure_authorized = False
         passed = True
     report: dict[str, object] = {
-        "authority": manifest["authority"],
         "authority_spies": {
             "external_write_count": 0,
             "network_call_count": 0,
@@ -1177,13 +1186,14 @@ def evaluate_ramp(
         "closure_authorized": closure_authorized,
         "decision": decision,
         "gate_sequence": [receipt["gate_level"] for receipt in receipts],
-        "last_proven_level": previous_proven,
+        "last_validated_pass_receipt_level": last_validated_pass,
         "manifest_fingerprint": manifest["manifest_fingerprint"],
         "milestone_branch": MILESTONE_BRANCH,
         "next_gate": None
         if len(receipts) == len(GATE_LEVELS)
         else GATE_LEVELS[len(receipts)],
         "phase_15_5_entry_gate": manifest["phase_15_5_release"],
+        "transition_authorized": False,
         "receipt_summaries": [
             {
                 "gate_level": receipt["gate_level"],
@@ -1200,6 +1210,7 @@ def evaluate_ramp(
             for receipt in receipts
         ],
         "schema_version": "phase-15-ramp-report-v1",
+        "validation_scope": VALIDATION_SCOPE,
         "workload_count": len(cast(Sequence[object], manifest["workloads"])),
         "workload_identities": [
             cast(Mapping[str, object], workload)["workload_identity"]

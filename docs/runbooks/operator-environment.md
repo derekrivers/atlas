@@ -267,10 +267,14 @@ during this procedure and are never independently mergeable to `main`.
 `WORKFLOW.md`'s `agent.max_concurrent_agents` is the single controlling
 Symphony worker ceiling. The operator alone edits it. The delivery policy's
 `approved_symphony_ceiling` is a recorded mirror for admission checks; working,
-review and lane budgets remain independent limits, while occupied slots are
-the actual Symphony session identities observed at the instant of capture.
-Before each window the mirror must equal the declared branch value and every
-working or lane budget must be at or below it.
+integration and review budgets, Changes Requested reserve and risk/component
+limits remain independent policy controls, while occupied slots are the actual
+Symphony session identities observed at the instant of capture. Protected-lane
+capacities come from the versioned repository registry, not that policy.
+Before each window the mirror must equal the declared branch value, working
+budget must be at or below it, risk/component limits must be at or below the
+working budget, and integration/review budgets and repository-owned protected
+lane capacities must validate independently.
 
 Accepted PR #335 closed Phase 15.5 after the production PM adapter performed
 the genuine exact-head handoff for contributor head
@@ -299,22 +303,44 @@ observations and immutable identifiers from their receipts. It never starts a
 live worker from CI.
 
 Editing the branch does not change the running VPS. Before every gate the
-operator must identify the exact branch commit and `WORKFLOW.md` blob, use the
-deployment's documented reload/restart procedure, and capture bounded runtime
-evidence that the active process loaded that exact commit, ceiling and
-unchanged `max_turns: 10`. Record the supported procedure ID, VPS instance ID,
-load/proof timestamps and runtime-proof identity. If the deployment exposes no
-deterministic supported way to prove the loaded commit, stop before workload
-admission; do not substitute a terminal note, process guess or untracked
-configuration edit.
+operator must identify the exact branch commit and `WORKFLOW.md` blob, use a
+ratified reload/restart procedure, and capture bounded runtime evidence that
+the active process loaded that exact commit, ceiling and unchanged
+`max_turns: 10`.
 
-Before Gate 1, replace the seeded-only workload fixture with a `live-operator`
-manifest that records more than ten actual workload identities, dependency
-independence, disjoint ordinary touched-path families, protected-lane classes,
-predeclared fault/contention exercises and numerical operational limits. Do
-not claim ticket keys that the key authority has not issued; a hand-dispatched
-workload may use a non-key meta identity. Fingerprint that exact manifest
-before measurement:
+**Current disposition: Gate 1 is BLOCKED.** The repository does not identify a
+supported VPS service/unit or process, a canonical deployment checkout and
+configuration path, an exact commit-loading/restart command, or a running-
+process readback that exposes the loaded commit and `WORKFLOW.md` blob. The
+offline validator therefore accepts only
+`fixture-only-no-live-runtime-v1` for schema regression and rejects every
+claimed live procedure. Do not start the Gate 1 workload, create a live gate
+receipt or infer identity from a terminal note, process guess or branch edit.
+
+The operator can unblock Gate 1 only by ratifying and documenting an addendum
+that provides all of the following as one deterministic supported procedure:
+
+1. the exact VPS instance and service/unit or supervised process identity;
+2. the canonical deployment checkout and the exact `WORKFLOW.md` path consumed
+   by that process;
+3. bounded commands that fetch the dedicated branch, select one recorded
+   commit without an implicit moving ref, verify its workflow blob and restart
+   or reload that named process;
+4. a process-owned readback that returns the loaded commit SHA, workflow blob
+   SHA, parsed ceiling and `max_turns` from the running instance rather than
+   merely rereading the checkout;
+5. load/readback timestamps, instance identity and a canonical proof digest;
+   and
+6. the exact rollback/readback procedure for the last proven ceiling.
+
+Once that block is removed, the operator ratifies a workload record containing
+more than ten actual workload identities, dependency independence, disjoint
+ordinary touched-path families, protected-lane classes, predeclared
+fault/contention exercises and numerical operational limits. Do not claim
+ticket keys that the key authority has not issued; a hand-dispatched workload
+may use a non-key meta identity. The JSON remains offline validator input and
+cannot carry operator authority. Fingerprint that exact record before
+measurement:
 
 ```bash
 uv run python scripts/phase_15_delivery_control_milestone.py \
@@ -338,10 +364,11 @@ omissions:
   runtime-proof identity;
 - delivery-policy ID/revision/fingerprint, approved ceiling, mode, separate
   working/integration/review budgets, Changes Requested reserve,
-  risk/component budgets, protected-lane registry and protected-lane budgets;
+  zero-or-more risk/component limits, each bounded by working budget;
 - coherent snapshot/board fingerprints, completeness/freshness/continuity and
-  fault/fence flags, with ordered PM-sync, admission-run and CI-handoff
-  reconciliation identities;
+  fault/fence flags, repository-owned protected-lane registry version,
+  fingerprint, state fingerprint and typed lane occupancy/limits, with ordered
+  PM-sync, admission-run and CI-handoff reconciliation identities;
 - exact 60-minute start/finish, maximum Symphony/Atlas working, integration,
   review and Changes Requested occupancy, slot-release, reconciliation, CI and
   review latency, publications, CI Pending entries/exits and determinate
@@ -385,10 +412,11 @@ uv run python scripts/phase_15_delivery_control_milestone.py \
   --gate-receipt <gate-3.json> --pretty
 ```
 
-Exit 0 means all five receipts passed; exit 3 means the named next gate remains
-pending; exit 1 is an honest gate FAIL; exit 2 is invalid or secret-bearing
-input. Seeded authority can produce only `SEEDED_VALIDATOR_PASS`, never closure
-authority. The comments are the durable receipts and the successful Phase 15
+Exit 0 emits `RECEIPT_SEQUENCE_VALIDATED`; exit 3 means the named next gate
+remains pending; exit 1 is an honest gate FAIL; exit 2 is invalid or secret-
+bearing input. Every report keeps `transition_authorized=false` and
+`closure_authorized=false`. The operator checkpoints and durable comments—not
+the JSON or validator—are the gate authority, and the successful Phase 15
 closure report references all five comment links. A screenshot, configured
 scalar, aggregate count or agent assertion is not gate evidence. Raw Linear or
 GitHub payloads, exception text, credentials, credential canaries and workspace
@@ -427,7 +455,8 @@ Before loading a level, the operator verifies all of the following:
 1. The checked-out branch name is exactly
    `phase-15-atlas-253-ceiling-ramp`; its head and `WORKFLOW.md` blob are
    recorded, the milestone PR is still unmerged, and a fresh fetch records the
-   exact `origin/main` and branch/origin-main merge-base SHAs.
+   exact `origin/main` and branch/origin-main merge-base SHAs. The merge base
+   must equal that fetched main identity at this gate's setup.
 2. Current `origin/main` declares exactly one and keeps `max_turns: 10`. The
    branch declaration is the requested level, is at most ten and differs from
    the last proven declaration only by the one permitted scalar transition;
@@ -464,11 +493,14 @@ not extended until the evidence looks favourable.
 
 Collect every PM-sync receipt, admission run, policy/board fingerprint,
 Symphony session observation and acceptance-session identity in the interval.
-For all levels, PASS requires:
+Normal accepted sibling merges may move main during or between gates. For all
+levels, PASS requires:
 
 - the declared ceiling and policy mirror stay equal and unchanged;
-- the fetched `origin/main` SHA and branch/origin-main merge-base remain equal
-  to the receipt values for the entire window;
+- the milestone branch is current against the fetched `origin/main` at gate
+  setup, while every separate PR acceptance window pins its exact contributor
+  head and then-current main; a sibling merge makes a trailing acceptance stale
+  and routes it through the operator-owned rebase lane;
 - occupied Symphony working slots never exceed the declaration, while working,
   integration, review, reserve and every risk/component/protected-lane
   occupancy remain within their own budgets; `CI Pending` releases the working
@@ -496,8 +528,8 @@ For all levels, PASS requires:
 Stop immediately and record FAIL for a ceiling/budget/lane breach, an admission
 while paused or draining, an unselected or second write, Changes Requested
 starvation, an unresolved stale/partial/indeterminate write, missing or
-contradictory evidence, branch/runtime/policy drift, any movement of
-`origin/main`, an unexplained `CI Pending` reactivation, a non-system
+contradictory evidence, branch/runtime/policy drift, acceptance of a stale
+head/main pair, an unexplained `CI Pending` reactivation, a non-system
 determinate exit, stranded CI Pending work, unsafe exact-head throughput,
 pressure above a predeclared limit, prohibited external mutation or secret-
 bearing retained evidence. Reaching a full integration or review budget is an
@@ -507,11 +539,12 @@ at every failure boundary.
 
 ### Gate 1 — serialized baseline admission, pause and rework
 
-Prerequisites are the fingerprinted live manifest of more than ten independent
-workloads, the Phase 15 admission/CI/acceptance observability surfaces, green
-deterministic fixtures, merged Phase 15.5 closure and both `origin/main` and the
-unmodified milestone branch declaring one. The running VPS and active policy
-must independently prove coherence at one before the first workload admission.
+Prerequisites are resolution of the explicit VPS procedure block above, the
+fingerprinted workload record of more than ten independent workloads, the
+Phase 15 admission/CI/acceptance observability surfaces, green deterministic
+fixtures, merged Phase 15.5 closure and both `origin/main` and the unmodified
+milestone branch declaring one. The running VPS and active policy must
+independently prove coherence at one before the first workload admission.
 
 Exercise every common invariant under a serialized live workload: normal
 admission, pause and drain with no admission or cancellation, rework dispatch,
@@ -607,11 +640,13 @@ only 1, 3, 5 or 7 is an honest incomplete milestone, never authority for
 partial closure. A later retry starts a new fixed window from the
 retained/restored proven value and must satisfy every subsequent gate again.
 
-If `origin/main` advances at any point in the multi-hour exercise, the current
-gate is FAIL and every earlier receipt is historical evidence for its old tree,
-not authority for a rebased head. The operator pauses admission, records the
-movement and active sessions, restores the milestone declaration and policy
-mirror to one, then deliberately rebases the dedicated branch onto the new
-`origin/main`. Because that rebase changes the tested tree, the operator must
-restart at Gate 1 with new head, workflow-blob, origin-main and merge-base
-identities; no prior PASS carries across the rebase.
+Normal `origin/main` movement does not erase a completed gate. If it occurs
+during a PR acceptance window, that window becomes stale and the trailing PR
+uses the operator-owned rebase lane; its old-head evidence becomes historical.
+Before the next gate configuration is loaded, the operator pauses new
+admission, deliberately rebases the dedicated branch onto current
+`origin/main`, records the new head/blob/main/merge-base identities, performs
+the next permitted scalar edit and runtime/policy checkpoint, and continues
+from the last proven level. A critical control failure still records FAIL and
+retains/restores the previous proven ceiling, but mainline progress alone does
+not force a Gate 1 restart or invalidate earlier PASS receipts.

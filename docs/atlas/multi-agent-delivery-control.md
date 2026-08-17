@@ -572,14 +572,27 @@ The read-only milestone validator is
 `scripts/phase_15_delivery_control_milestone.py`. It binds a predeclared
 more-than-ten-workload manifest to the ordered operator gate receipts, retains
 selected bounded fields only and never calls Git, GitHub, Linear, Symphony,
-CI, delivery-policy or worker mutation surfaces. Its seeded fixture validates
-the failure boundary but cannot create live authority. The milestone-only
+CI, delivery-policy or worker mutation surfaces. Every input is untrusted and
+its scope is always `offline-read-only`: even a complete valid sequence emits
+only `RECEIPT_SEQUENCE_VALIDATED`, with transition and closure authority both
+false. Operator checkpoints and durable gate comments remain the authority;
+no manifest label or local JSON value can create it. The milestone-only
 doc-linter and workflow-contract validation context accepts
 levels 1, 3, 5, 7 and 10 only on the exact dedicated branch. Ordinary CI omits
 that context, so an open-phase checkout above one remains non-mergeable. Every
-gate receipt pins the fetched `origin/main` and branch merge-base commits. If
-main moves, the gate fails; after the operator restores one and rebases, every
-old receipt is historical and the cumulative sequence restarts at Gate 1.
+gate receipt pins the fetched `origin/main` and an equal branch merge base at
+that gate's configuration preflight. Each PR acceptance window separately pins
+its contributor head and then-current `main`. Sibling merges may advance main,
+make trailing PRs stale and exercise the operator-owned rebase lane without
+invalidating an earlier gate PASS. Before the next gate, the operator rebases
+the milestone branch onto current main, records the new setup identities and
+continues from the last proven level; prior PASS receipts remain immutable
+historical prerequisites rather than authority for a new acceptance head.
+
+Gate 1 remains blocked until the operator ratifies a deterministic VPS
+Symphony service/configuration/readback procedure. The repository currently
+has no supported live process identity boundary, so the fixture-only runtime
+procedure is accepted solely for offline schema regression tests.
 
 The entry gates are cumulative:
 

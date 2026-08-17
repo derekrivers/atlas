@@ -253,6 +253,14 @@ at three; they are not the current live ceiling. Before Gate 1 workload begins,
 the operator must append and activate a policy revision at one so the current
 policy is coherent with ATLAS-054M's serialized runtime.
 
+No deterministic VPS service/configuration/readback procedure is present in
+the repository as of 17 August 2026, so Gate 1 is blocked. The offline
+validator accepts only its fixture procedure and never grants transition or
+closure authority. Unblocking the live gate requires an operator-ratified
+procedure that names the service, canonical checkout and config path, exact
+commit-loading and restart commands, bounded running-process readback for the
+commit/blob/ceiling/turn values, and rollback evidence.
+
 Atlas working, integration and review budgets, Changes Requested reserve,
 risk/component limits and protected repository lanes are independent admission
 limits. A `CI Pending` ticket releases its Symphony working slot while retaining
@@ -279,11 +287,15 @@ their owning systems and the runbook observes their immutable identities.
 Symphony remains the scheduler and session owner; lowering its branch ceiling
 or pausing Atlas admission does not terminate an active session.
 
-Each gate pins the fetched `origin/main` commit and branch merge-base as well as
-the milestone head and workflow blob. Any mainline movement fails the active
-gate. Rebasing changes the tested tree, makes every earlier PASS historical and
-requires the operator to restore one and restart the cumulative sequence at
-Gate 1; old-head evidence never authorises a new head.
+Each gate configuration preflight pins the fetched `origin/main` commit, an
+equal branch merge base, the milestone head and workflow blob. Each workload's
+acceptance window separately pins its exact contributor head and current main.
+Normal sibling merges can advance main between or during gates; a trailing
+stale PR follows the operator-owned rebase lane and restarts acceptance only
+for its new head. Before the next gate the operator rebases the milestone
+branch and records new setup identities. Earlier PASS receipts remain valid
+historical prerequisites for their completed gates and never authorise a new
+head by themselves.
 
 ### Exact-head PR integration assessment
 

@@ -307,12 +307,12 @@ confirmed write.
 
 ## Phase 15 delivery-control ramp validator (ATLAS-253)
 
-The read-only ramp validator consumes a predeclared live workload manifest and
-the durable operator receipt prefix. The repository fixture
+The read-only ramp validator consumes a predeclared workload manifest and a
+durable receipt prefix. The repository fixture
 `tests/fixtures/phase_15/ramp_workload_seed_v1.json` has eleven independent
-non-key meta workloads and every gate exercise, but its
-`seeded-validator-only` authority can never close a live gate. Validate and
-fingerprint the schema before Gate 1:
+non-key meta workloads and every gate exercise. Its validation scope is always
+`offline-read-only`; neither the fixture nor any locally supplied replacement
+can authorise a live gate or closure. Validate and fingerprint the schema:
 
 ```bash
 uv run python scripts/phase_15_delivery_control_milestone.py \
@@ -320,8 +320,7 @@ uv run python scripts/phase_15_delivery_control_milestone.py \
 uv run pytest tests/test_phase_15_delivery_control_milestone.py
 ```
 
-For the live exercise, use the operator-ratified `live-operator` manifest and
-add receipts only in order:
+Add offline receipt projections only in gate order:
 
 ```bash
 uv run python scripts/phase_15_delivery_control_milestone.py \
@@ -331,12 +330,12 @@ uv run python scripts/phase_15_delivery_control_milestone.py \
 ```
 
 Exit 3 names the next pending gate, exit 1 retains an honest gate FAIL and exit
-2 rejects malformed, stale-linked or secret-bearing input. Exit 0 on seeded
-data proves only the validator. Only five live operator PASS receipts can emit
-`GATE_10_PASS_CLOSURE_AUTHORIZED`, and even that report performs no branch,
-runtime, policy, worker, provider or acceptance mutation. Follow the complete
-VPS reload, observation, stop and rollback procedure in
-`docs/runbooks/operator-environment.md`.
+2 rejects malformed, stale-linked or secret-bearing input. Exit 0 emits only
+`RECEIPT_SEQUENCE_VALIDATED`; `transition_authorized` and
+`closure_authorized` remain false for every input. Gate authority exists only
+at the governed operator/durable-receipt boundary. Gate 1 is currently blocked
+because no deterministic VPS service/configuration/readback procedure has been
+ratified; see `docs/runbooks/operator-environment.md`.
 
 ## Before you publish and hand off
 
