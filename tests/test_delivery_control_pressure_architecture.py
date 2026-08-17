@@ -113,6 +113,28 @@ def test_ac2_snapshot_repo_owns_one_transaction_and_no_repository_fanout() -> No
     assert not any(call.endswith("Repo") for call in calls)
 
 
+def test_ac2_snapshot_repo_pins_ci_history_to_the_current_status_episode() -> None:
+    source = SNAPSHOT_REPO_PATH.read_text(encoding="utf-8")
+    selector = next(
+        node
+        for node in ast.parse(source).body
+        if isinstance(node, ast.FunctionDef)
+        and node.name == "_latest_ci_reconciliations"
+    )
+    expressions = {
+        ast.unparse(node)
+        for node in ast.walk(selector)
+        if isinstance(node, (ast.Call, ast.Compare))
+    }
+
+    assert "TicketRow.status_entered_at.is_not(None)" in expressions
+    assert (
+        "CIHandoffReconciliationRow.observed_at >= TicketRow.status_entered_at"
+        in expressions
+    )
+    assert "TicketRow.status == 'ci_pending'" in expressions
+
+
 def test_ac6_delivery_control_router_still_has_exactly_one_read_and_one_write() -> None:
     source = ROUTER_PATH.read_text(encoding="utf-8")
     tree = ast.parse(source)

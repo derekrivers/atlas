@@ -300,7 +300,8 @@ The Phase 15.5 extension freezes every delivery-control source in one database
 repeatable-read transaction. `snapshot` pins the active policy id, revision and
 fingerprint; the last successful board receipt, status-map and fetched-board
 fingerprints; a materialised-ticket fingerprint; the exact evidence-id set
-selected by the latest CI reconciliations; the reconciliation and stored
+selected by reconciliations observed during each ticket's current CI-pending
+episode; the reconciliation and stored
 acceptance-session ids; and the protected-lane and validation-registry
 identities. Its own fingerprint covers those identities and its closed status
 is `coherent`, `stale` or `indeterminate`. A later unsuccessful sync remains
@@ -319,10 +320,12 @@ zero even though the observed counts and configured limits remain visible.
 
 At most 100 CI-pending tickets are returned, with a total and truncation flag.
 Each item carries the exact stored repository, PR and head identity when a CI
-reconciliation exists; its canonical CI classification, decision, reason and
+reconciliation exists within the current `status_entered_at` episode; its
+canonical CI classification, decision, reason and
 bounded check/evidence ids; validation-registry identity; and the latest stored
-acceptance assessment for that same repository, PR and head. A missing CI
-reconciliation, unrecorded local validation plan or absent stored exact-base
+acceptance assessment for that same repository, PR and head. A missing
+current-episode CI reconciliation, unrecorded local validation plan or absent
+stored exact-base
 assessment is a typed indeterminate result, never an inferred pass. A matching
 stored current assessment is `exact_branch`; stored integration movement is
 `rebase_required`; other stale or mismatched identities remain explicitly

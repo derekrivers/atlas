@@ -370,7 +370,8 @@ The delivered API read requires the live shared session and is always
 `no-store`. It is deliberately observational: one orchestration operation
 consumes one storage-owned repeatable-read snapshot containing the active
 policy, product-scoped sync receipts, materialised ticket statuses, latest
-immutable admission run, latest per-ticket CI reconciliations, their selected
+immutable admission run, latest per-ticket CI reconciliations observed no
+earlier than each current `status_entered_at` episode, their selected
 evidence identities, stored acceptance assessments and unresolved write
 fences. It does not acquire the admission lease, refresh Linear or GitHub,
 calculate or execute validation, rerun an evaluator, append a run or receipt,
@@ -400,15 +401,18 @@ successful receipt and a newer unsuccessful attempt separately. The evidence
 fingerprint covers only bounded ids, commit/run/job pins, payload hashes,
 statuses and lifecycle times selected by persisted CI decisions; the query
 does not load provider payloads, summaries or source URIs. The integration
-fingerprint pins every current CI-pending key, latest reconciliation,
-applicable stored acceptance assessment, validation registry and protected-lane
-active-state fingerprint. Closed `coherent`, `stale` and `indeterminate`
+fingerprint pins every current CI-pending key, latest current-episode
+reconciliation, applicable stored acceptance assessment, validation registry
+and protected-lane active-state fingerprint. Closed `coherent`, `stale` and `indeterminate`
 statuses and reasons are server classifications. A stale or indeterminate
 snapshot reports zero available working and integration admission capacity
 while retaining observed occupancy and limits.
 
 The same response returns at most 100 CI-pending candidates, with total and
-truncation metadata. Persisted CI classifications, decisions, reasons and
+truncation metadata. A missing status-entry boundary or a reconciliation from
+an earlier CI-pending episode fails closed as `ci_reconciliation_unavailable`
+without carrying its PR, head, evidence or acceptance identity forward.
+Persisted CI classifications, decisions, reasons and
 bounded evidence ids are passed through without presenter recomputation.
 Validation registry identity is always explicit; because the local validation
 plan is not a stored system authority, an absent exact plan fingerprint,

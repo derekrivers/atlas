@@ -145,10 +145,8 @@ def _latest_admission(session: Session, product_id: UUID) -> AdmissionRun | None
 
 
 def _latest_ci_reconciliations(
-    session: Session, ticket_ids: tuple[UUID, ...]
+    session: Session, product_id: UUID
 ) -> tuple[CIHandoffReconciliation, ...]:
-    if not ticket_ids:
-        return ()
     ranked = (
         sa.select(
             CIHandoffReconciliationRow.id.label("id"),
@@ -162,7 +160,13 @@ def _latest_ci_reconciliations(
             )
             .label("position"),
         )
-        .where(CIHandoffReconciliationRow.ticket_id.in_(ticket_ids))
+        .join(TicketRow, TicketRow.id == CIHandoffReconciliationRow.ticket_id)
+        .where(
+            TicketRow.product_id == product_id,
+            TicketRow.status == "ci_pending",
+            TicketRow.status_entered_at.is_not(None),
+            CIHandoffReconciliationRow.observed_at >= TicketRow.status_entered_at,
+        )
         .subquery()
     )
     rows = session.scalars(
@@ -317,12 +321,7 @@ class DeliveryControlSnapshotRepo:
                         .order_by(TicketRow.key, TicketRow.id)
                     )
                 )
-                ci_ticket_ids = tuple(
-                    ticket.id
-                    for ticket in tickets
-                    if ticket.status.value == "ci_pending"
-                )
-                reconciliations = _latest_ci_reconciliations(session, ci_ticket_ids)
+                reconciliations = _latest_ci_reconciliations(session, product_id)
                 return DeliveryControlSourceSnapshot(
                     products=products,
                     policy=_policy(session, product_id),

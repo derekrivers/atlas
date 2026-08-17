@@ -35,6 +35,7 @@ from atlas.core.models import (
     PmSyncReceipt,
     PmSyncReceiptResult,
     Ticket,
+    TicketStatus,
     VerificationCheckType,
 )
 from atlas.core.models.acceptance_session import (
@@ -213,6 +214,7 @@ def _ticket(
                 "risk_level": risk_level,
                 "component": component,
                 "external_linear_id": f"linear-{key}",
+                "status_entered_at": NOW,
                 "created_at": NOW,
                 "updated_at": NOW,
             }
@@ -232,6 +234,7 @@ def _seed_ci_reconciliation(
     evidence_ids: tuple[UUID, ...] = (),
     head_sha: str = "2" * 40,
     pr_number: int = 438,
+    observed_at: datetime = NOW + timedelta(minutes=2),
 ) -> CIHandoffReconciliation:
     policy = DeliveryAdmissionPolicyRepo(database).get_active(_product_id(database))
     assert policy is not None
@@ -261,7 +264,7 @@ def _seed_ci_reconciliation(
                     evidence_ids=evidence_ids,
                 ),
             ),
-            observed_at=NOW + timedelta(minutes=2),
+            observed_at=observed_at,
             created_by_type=ActorType.SYSTEM,
             created_by_id="atlas.pm.ci_handoff",
         )
@@ -274,6 +277,8 @@ def _seed_acceptance_assessment(
     ticket_key: str,
     head_sha: str,
     pr_number: int,
+    observed_at: datetime = NOW,
+    identity_seed: str = "d",
 ) -> AcceptanceSession:
     step_summaries = {
         step: AcceptanceStepSummary(
@@ -320,7 +325,7 @@ def _seed_acceptance_assessment(
             ),
         ),
         criteria_fingerprint=f"sha256:{'c' * 64}",
-        creation_idempotency_key_identity=f"sha256:{'d' * 64}",
+        creation_idempotency_key_identity=f"sha256:{identity_seed * 64}",
         created_by_type=ActorType.HUMAN,
         created_by_id="operator",
         lifecycle=AcceptanceSessionLifecycle.PREFLIGHT_PASSED,
@@ -332,8 +337,8 @@ def _seed_acceptance_assessment(
             AcceptanceSessionBlockingReason.CONFIRMATIONS_NOT_READY,
             AcceptanceSessionBlockingReason.VERIFICATION_NOT_PASSED,
         ),
-        created_at=NOW,
-        updated_at=NOW,
+        created_at=observed_at,
+        updated_at=observed_at,
     )
     result = AcceptanceSessionRepo(database).create(session)
     assert result.created is True
@@ -938,6 +943,195 @@ def test_atlas_261_ac1_ac5_ci_failures_waits_and_evidence_are_typed_and_secret_f
     assert secret not in response.text
     assert "raw_payload" not in response.text
     assert "command-output" not in response.text
+
+
+def test_atlas_261_ac2_ci_outcome_is_pinned_to_the_current_ci_pending_episode(
+    database: Database,
+) -> None:
+    _seed_policy(database, spec=policy_spec(integration_budget=2))
+    _receipt(
+        database,
+        result=PmSyncReceiptResult.SUCCESS_ZERO_ACTION,
+        finished_at=NOW + timedelta(minutes=1),
+    )
+    ticket = _ticket(database, key="ATLAS-912", status="ci_pending")
+    old_head = "4" * 40
+    new_head = "5" * 40
+    old_evidence = EvidenceRepo(database).add(
+        Evidence(
+            id=uuid4(),
+            product_id=_product_id(database),
+            ticket_id=ticket.id,
+            evidence_type=EvidenceType.TEST_RESULT,
+            status=EvidenceStatus.FAILED,
+            summary="historical failure",
+            commit_sha=old_head,
+            external_run_id="historical-run",
+            job_name="tests",
+            source_event_at=NOW + timedelta(minutes=1),
+            payload_hash="6" * 64,
+            source_uri="https://example.invalid/historical-run",
+            raw_payload={"historical": True},
+            created_by_type=ActorType.SYSTEM,
+            created_by_id="github",
+            created_at=NOW + timedelta(minutes=1),
+        )
+    )
+    old_reconciliation = _seed_ci_reconciliation(
+        database,
+        ticket=ticket,
+        classification=CIHandoffClassification.IMPLEMENTATION_FAILURE,
+        reason=CIHandoffReason.COMPLETE_IMPLEMENTATION_FAILURE,
+        decision=CIHandoffDecision.CHANGES_REQUESTED,
+        status=EvidenceStatus.FAILED,
+        evidence_ids=(old_evidence.id,),
+        head_sha=old_head,
+        pr_number=412,
+        observed_at=NOW + timedelta(minutes=1),
+    )
+    old_assessment = _seed_acceptance_assessment(
+        database,
+        ticket_key=ticket.key,
+        head_sha=old_head,
+        pr_number=old_reconciliation.pr_number,
+        observed_at=NOW + timedelta(minutes=1),
+    )
+
+    tickets = TicketRepo(database)
+    tickets.apply_linear_status(
+        ticket.key,
+        TicketStatus.CHANGES_REQUESTED,
+        now=NOW + timedelta(minutes=2),
+        created_by_id="atlas.pm.ci_handoff",
+    )
+    AcceptanceSessionRepo(database).mark_stale(
+        old_assessment.id,
+        (AcceptanceSessionBlockingReason.HEAD_SHA_MISMATCH,),
+        staled_at=NOW + timedelta(minutes=2),
+    )
+    for status, minute in (
+        (TicketStatus.IN_PROGRESS, 3),
+        (TicketStatus.PR_OPEN, 4),
+        (TicketStatus.CI_PENDING, 5),
+    ):
+        tickets.apply_linear_status(
+            ticket.key,
+            status,
+            now=NOW + timedelta(minutes=minute),
+            created_by_id="atlas.pm.sync",
+        )
+
+    with TestClient(_writable_app(database)) as client:
+        _login(client)
+        before_new_reconciliation = client.get("/api/v1/delivery-control")
+
+    stale_payload = before_new_reconciliation.json()
+    [stale_item] = stale_payload["ci_pending_tickets"]
+    assert stale_item["ticket_key"] == ticket.key
+    assert {
+        "repository_owner": stale_item["repository_owner"],
+        "repository_name": stale_item["repository_name"],
+        "pr_number": stale_item["pr_number"],
+        "head_sha": stale_item["head_sha"],
+    } == {
+        "repository_owner": None,
+        "repository_name": None,
+        "pr_number": None,
+        "head_sha": None,
+    }
+    assert stale_item["outcome"] == {
+        "reconciliation_id": None,
+        "classification": "indeterminate",
+        "decision": "hold",
+        "reason": None,
+        "observed_at": None,
+        "check_results": [],
+        "projection_reasons": ["ci_reconciliation_unavailable"],
+    }
+    assert stale_item["validation_plan"]["head_sha"] is None
+    assert stale_item["exact_base"]["assessment_id"] is None
+    assert stale_item["exact_base"]["head_sha"] is None
+    integration = stale_payload["snapshot"]["integration"]
+    assert integration["reconciliation_count"] == 0
+    assert integration["reconciliation_ids"] == []
+    assert integration["acceptance_session_count"] == 0
+    assert integration["acceptance_session_ids"] == []
+    assert stale_payload["snapshot"]["evidence"]["evidence_count"] == 0
+    assert stale_payload["snapshot"]["evidence"]["evidence_ids"] == []
+
+    new_reconciliation = _seed_ci_reconciliation(
+        database,
+        ticket=ticket,
+        classification=CIHandoffClassification.PENDING,
+        reason=CIHandoffReason.REQUIRED_CHECKS_PENDING,
+        decision=CIHandoffDecision.HOLD,
+        status=EvidenceStatus.PENDING,
+        head_sha=new_head,
+        pr_number=old_reconciliation.pr_number,
+        observed_at=NOW + timedelta(minutes=6),
+    )
+    new_assessment = _seed_acceptance_assessment(
+        database,
+        ticket_key=ticket.key,
+        head_sha=new_head,
+        pr_number=new_reconciliation.pr_number,
+        observed_at=NOW + timedelta(minutes=6),
+        identity_seed="e",
+    )
+
+    with TestClient(_writable_app(database)) as client:
+        _login(client)
+        after_new_reconciliation = client.get("/api/v1/delivery-control")
+
+    current_payload = after_new_reconciliation.json()
+    [current_item] = current_payload["ci_pending_tickets"]
+    assert current_item["head_sha"] == new_head
+    assert current_item["outcome"]["reconciliation_id"] == str(new_reconciliation.id)
+    assert current_item["outcome"]["classification"] == "pending"
+    assert current_item["exact_base"]["status"] == "exact_branch"
+    assert current_item["exact_base"]["assessment_id"] == str(new_assessment.id)
+    assert current_payload["snapshot"]["integration"]["reconciliation_ids"] == [
+        str(new_reconciliation.id)
+    ]
+    assert current_payload["snapshot"]["integration"]["acceptance_session_ids"] == [
+        str(new_assessment.id)
+    ]
+
+
+def test_atlas_261_ac2_unknown_ci_episode_boundary_rejects_reconciliation(
+    database: Database,
+) -> None:
+    _seed_policy(database, spec=policy_spec(integration_budget=1))
+    _receipt(
+        database,
+        result=PmSyncReceiptResult.SUCCESS_ZERO_ACTION,
+        finished_at=NOW + timedelta(minutes=1),
+    )
+    ticket = _ticket(
+        database,
+        key="ATLAS-913",
+        status="ci_pending",
+        status_entered_at=None,
+    )
+    _seed_ci_reconciliation(
+        database,
+        ticket=ticket,
+        classification=CIHandoffClassification.PASSED,
+        reason=CIHandoffReason.COMPLETE_REQUIRED_CHECKS_PASSED,
+        decision=CIHandoffDecision.REVIEW_REQUIRED,
+        status=EvidenceStatus.PASSED,
+    )
+
+    with TestClient(_writable_app(database)) as client:
+        _login(client)
+        response = client.get("/api/v1/delivery-control")
+
+    [item] = response.json()["ci_pending_tickets"]
+    assert item["outcome"]["reconciliation_id"] is None
+    assert item["outcome"]["classification"] == "indeterminate"
+    assert item["outcome"]["projection_reasons"] == ["ci_reconciliation_unavailable"]
+    assert item["head_sha"] is None
+    assert item["exact_base"]["assessment_id"] is None
 
 
 @pytest.mark.parametrize(

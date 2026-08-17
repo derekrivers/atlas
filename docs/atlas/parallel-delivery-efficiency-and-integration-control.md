@@ -538,7 +538,8 @@ provider payload, credential, command output or workspace path.
 ATLAS-261 implements that extension on the existing authenticated
 `GET /api/v1/delivery-control`. One storage-owned repeatable-read transaction
 freezes the active policy, last-good and latest-attempt board receipts,
-materialised tickets, latest CI reconciliation per CI-pending ticket, its
+materialised tickets, latest reconciliation within each current CI-pending
+`status_entered_at` episode, its
 selected evidence identities, current write fences and the latest matching
 stored acceptance assessment. The response pins policy, board, evidence and
 integration fingerprints under one composite snapshot fingerprint. A later
@@ -552,8 +553,11 @@ active-state fingerprint. Latest immutable admission decisions remain the sole
 source of protected-lane holds. Over-capacity remains a typed observation and
 never cancels, demotes or reprioritises existing work.
 
-Each bounded CI-pending item returns its latest persisted CI classification,
-decision, reason, exact contributor head and bounded check/evidence identities.
+Each bounded CI-pending item returns its latest persisted current-episode CI
+classification, decision, reason, exact contributor head and bounded
+check/evidence identities. An unknown episode boundary or only a historical
+reconciliation returns `ci_reconciliation_unavailable` and no repository, PR,
+head or acceptance-assessment identity.
 The API exposes the validation registry identity but does not parse PR prose or
 promote agent-local output into stored provenance. Until an exact local plan is
 stored by a separate canonical producer, its plan fingerprint, base identity
