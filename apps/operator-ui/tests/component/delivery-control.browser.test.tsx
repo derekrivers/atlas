@@ -9,6 +9,7 @@ import {
 } from '@tanstack/react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { components } from '@/api/atlas-openapi'
+import { atlasOpenApiEnums } from '@/api/atlas-openapi-runtime'
 import { atlasForgetSession } from '@/api/client'
 import { createAtlasQueryClient } from '@/api/query-policy'
 import { AppProviders } from '@/app-providers'
@@ -18,6 +19,9 @@ type Schema = components['schemas']
 type DeliveryControl = Schema['DeliveryControlResponse']
 type Mode = Schema['DeliveryAdmissionMode']
 type Receipt = Schema['DeliveryPolicyActionReceiptSchema']
+type CIClassification = Schema['CIHandoffClassification']
+type CIReason = Schema['CIHandoffReason']
+type ExactBaseStatus = Schema['DeliveryControlExactBaseStatus']
 
 const longComponent =
   'operator-ui/admission-explanation-with-an-intentionally-long-responsive-component-name'
@@ -260,6 +264,122 @@ function deliveryControl(mode: Mode = 'running', revision = 7): DeliveryControl 
   }
 }
 
+function ciPendingTicket({
+  classification,
+  exactBaseStatus,
+  index,
+  reason,
+}: {
+  classification: CIClassification
+  exactBaseStatus: ExactBaseStatus
+  index: number
+  reason: CIReason
+}): Schema['DeliveryControlCIPendingTicketSchema'] {
+  const ticketKey = `ATLAS-${800 + index}`
+  const head = String((index % 9) + 1).repeat(40)
+  let exactReasons: Schema['DeliveryControlProjectionReason'][] = []
+  if (exactBaseStatus === 'indeterminate') {
+    exactReasons = ['exact_base_assessment_unavailable']
+  } else if (exactBaseStatus === 'rebase_required') {
+    exactReasons = ['integration_behind']
+  } else if (exactBaseStatus === 'stale') {
+    exactReasons = ['acceptance_assessment_stale']
+  }
+  const decision: Schema['CIHandoffDecision'] =
+    classification === 'passed'
+      ? 'review_required'
+      : classification === 'implementation_failure'
+        ? 'changes_requested'
+        : 'hold'
+  const checkStatus: Schema['EvidenceStatus'] =
+    classification === 'passed'
+      ? 'passed'
+      : classification === 'implementation_failure'
+        ? 'failed'
+        : 'pending'
+  return {
+    exact_base: {
+      assessment_id: `00000000-0000-4000-8000-${String(900 + index).padStart(12, '0')}`,
+      base_sha: 'a'.repeat(40),
+      head_sha: head,
+      observed_at: '2026-08-13T10:04:00Z',
+      reasons: exactReasons,
+      status: exactBaseStatus,
+    },
+    head_sha: head,
+    outcome: {
+      check_results: [
+        {
+          check_type: 'tests',
+          classification,
+          evidence_count: 1,
+          evidence_ids: [
+            `00000000-0000-4000-8000-${String(1000 + index).padStart(12, '0')}`,
+          ],
+          evidence_ids_truncated: false,
+          status: checkStatus,
+        },
+      ],
+      classification,
+      decision,
+      observed_at: '2026-08-13T10:04:00Z',
+      projection_reasons:
+        classification === 'indeterminate'
+          ? ['ci_handoff_write_indeterminate']
+          : [],
+      reason,
+      reconciliation_id: `00000000-0000-4000-8000-${String(1100 + index).padStart(12, '0')}`,
+    },
+    pr_number: 500 + index,
+    repository_name: 'atlas-with-an-intentionally-long-repository-identity',
+    repository_owner: 'operator-ui-live-seed-owner',
+    ticket_key: ticketKey,
+    validation_plan: {
+      base_sha: 'a'.repeat(40),
+      head_sha: head,
+      plan_fingerprint: exactBaseStatus === 'exact_branch' ? 'b'.repeat(64) : null,
+      profiles: exactBaseStatus === 'exact_branch' ? ['operator-ui', 'scoped'] : [],
+      reasons:
+        exactBaseStatus === 'exact_branch'
+          ? []
+          : ['validation_plan_provenance_unavailable'],
+      registry_fingerprint: '1'.repeat(64),
+      registry_version: 'validation-registry/v1',
+      status: exactBaseStatus === 'exact_branch' ? 'available' : 'indeterminate',
+    },
+  }
+}
+
+function deliveryControlWithIntegrationPressure(): DeliveryControl {
+  const data = deliveryControl()
+  const classifications = atlasOpenApiEnums.CIHandoffClassification
+  const exactStatuses = atlasOpenApiEnums.DeliveryControlExactBaseStatus
+  data.ci_pending_tickets = atlasOpenApiEnums.CIHandoffReason.map((reason, index) =>
+    ciPendingTicket({
+      classification: classifications[index % classifications.length],
+      exactBaseStatus: exactStatuses[index % exactStatuses.length],
+      index,
+      reason,
+    })
+  )
+  data.ci_pending_ticket_count = data.ci_pending_tickets.length
+  data.occupancy.integration_occupancy = data.ci_pending_tickets.length
+  data.occupancy.integration_ticket_keys = data.ci_pending_tickets.map(
+    (ticket) => ticket.ticket_key
+  )
+  data.occupancy.new_admission_integration_capacity = 0
+  data.occupancy.status_occupancy.push({
+    count: data.ci_pending_tickets.length,
+    status: 'ci_pending',
+  })
+  data.snapshot.status = 'indeterminate'
+  data.snapshot.reasons = [
+    'validation_plan_provenance_unavailable',
+    'integration_identity_mismatch',
+  ]
+  return data
+}
+
 let mountedRoot: Root | undefined
 let container: HTMLDivElement | undefined
 let originalFetch: typeof window.fetch
@@ -470,6 +590,7 @@ describe('delivery control browser component', () => {
     expect(text).toContain('database-migrations')
     expect(text).toContain('protected-integration-lanes/v1')
     expect(text).toContain('current owners ATLAS-250')
+    expect(text).toContain('A free Symphony slot never overrides a saturated protected lane')
     expect(text).toContain('Server reports over-capacity state')
     expect(text).toContain('Server reports indeterminate delivery state')
     expect(text).toContain('write_indeterminate')
@@ -491,15 +612,87 @@ describe('delivery control browser component', () => {
       'Edit WORKFLOW.md',
       'Configure Symphony',
       'Merge pull request',
+      'Update GitHub branch',
+      'Retry CI',
+      'Cancel CI',
       'Rebase branch',
+      'Push branch',
+      'Transition ticket',
       'Optimise policy',
       'Advance ramp',
+      'Increase concurrency',
     ]) {
       expect(
         Array.from(document.querySelectorAll('button')).some((item) =>
           item.textContent?.includes(forbiddenControl)
         )
       ).toBe(false)
+    }
+  })
+
+  it('renders every server CI class, wait/failure reason, exact-base class, and separate pressure quantity without client actions', async () => {
+    window.fetch = vi.fn(async (input, init) => {
+      const path = requestPath(input)
+      if (path === '/api/v1/session' && init?.method === 'POST') {
+        return jsonResponse({
+          authenticated: true,
+          csrf_token: 'integration-pressure-csrf',
+          expires_at: '2099-08-13T11:00:00Z',
+        })
+      }
+      if (path === '/api/v1/session') {
+        return jsonResponse({ authenticated: false, expires_at: null })
+      }
+      return jsonResponse(deliveryControlWithIntegrationPressure())
+    })
+
+    await renderControl()
+    await signIn()
+
+    const text = document.body.textContent ?? ''
+    expect(text).toContain('Working capacity')
+    expect(text).toContain('CI / integration capacity')
+    expect(text).toContain('Review pressure')
+    expect(text).toContain('Changes Requested reserve')
+    expect(text).toContain('Indeterminate server snapshot')
+    expect(text).toContain('validation_plan_provenance_unavailable')
+    expect(text).toContain('integration_identity_mismatch')
+    expect(text).toContain('Exact contributor head')
+    expect(text).toContain('Required-check states')
+    expect(text).toContain('Validation provenance')
+    expect(text).toContain('Assessment evidence only — never merge approval')
+    expect(text).toContain('Exact integration candidate is not an available server class')
+    expect(text).toContain('did not establish a system-tier no-rewrite attestation')
+
+    for (const classification of atlasOpenApiEnums.CIHandoffClassification) {
+      expect(
+        document.querySelector(`[data-ci-classification="${classification}"]`)
+      ).not.toBeNull()
+    }
+    for (const status of atlasOpenApiEnums.DeliveryControlExactBaseStatus) {
+      expect(document.querySelector(`[data-assessment="${status}"]`)).not.toBeNull()
+    }
+    for (const reason of atlasOpenApiEnums.CIHandoffReason) {
+      expect(text).toContain(reason)
+    }
+
+    const interactiveLabels = Array.from(
+      document.querySelectorAll<HTMLElement>('button, [role="button"], a')
+    ).map((item) => item.textContent?.trim() ?? '')
+    for (const prohibited of [
+      'Retry CI',
+      'Cancel CI',
+      'Transition ticket',
+      'Update GitHub',
+      'Merge',
+      'Rebase',
+      'Push branch',
+      'Start worker',
+      'Stop worker',
+      'Increase concurrency',
+      'Ramp automatically',
+    ]) {
+      expect(interactiveLabels.some((name) => name.includes(prohibited))).toBe(false)
     }
   })
 
@@ -530,6 +723,43 @@ describe('delivery control browser component', () => {
     )
     expect(document.body.textContent).toContain(terminationCopy)
   })
+
+  it.each([
+    ['stale', 'Stale server snapshot', 'newer_board_refresh_unsuccessful'],
+    ['indeterminate', 'Indeterminate server snapshot', 'integration_identity_mismatch'],
+  ] as const)(
+    'renders the server-owned %s snapshot classification and complete reasons',
+    async (status, title, reason) => {
+      window.fetch = vi.fn(async (input, init) => {
+        const path = requestPath(input)
+        if (path === '/api/v1/session' && init?.method === 'POST') {
+          return jsonResponse({
+            authenticated: true,
+            csrf_token: 'snapshot-class-csrf',
+            expires_at: '2099-08-13T11:00:00Z',
+          })
+        }
+        if (path === '/api/v1/session') {
+          return jsonResponse({ authenticated: false, expires_at: null })
+        }
+        const data = deliveryControl()
+        data.snapshot.status = status
+        data.snapshot.reasons = [reason]
+        data.occupancy.new_admission_integration_capacity = 0
+        data.occupancy.new_admission_working_capacity = 0
+        return jsonResponse(data)
+      })
+
+      await renderControl()
+      await signIn()
+      expect(document.body.textContent).toContain(title)
+      expect(document.body.textContent).toContain(reason)
+      expect(
+        document.querySelector('[data-testid="delivery-snapshot-freshness"]')
+          ?.getAttribute('aria-live')
+      ).toBe('assertive')
+    }
+  )
 
   it('confirms and submits the complete generated policy with a fresh key, then refetches server authority', async () => {
     let current = deliveryControl()
@@ -582,6 +812,11 @@ describe('delivery control browser component', () => {
     expect(summary?.textContent).toContain('Risk lane limits')
     expect(summary?.textContent).toContain('Component lane limits')
     expect(summary?.textContent).toContain('Expected policy revision')
+    expect(summary?.textContent).toContain('Fresh idempotency command identity')
+    expect(summary?.textContent).toContain('Server-observed protected-lane registry')
+    expect(summary?.textContent).toContain('protected-integration-lanes/v1')
+    expect(summary?.textContent).toContain('f'.repeat(64))
+    expect(summary?.textContent).toContain('e'.repeat(64))
     expect(summary?.textContent).toContain('7')
     expect(button('Confirm and submit').disabled).toBe(true)
 
@@ -648,7 +883,7 @@ describe('delivery control browser component', () => {
     await waitForAssertion(() => {
       expect(document.body.textContent).toContain('policy command succeeded')
       expect(document.body.textContent).toContain(receipt.receipt_id)
-      expect(document.body.textContent).toContain('Last truthful server snapshot — stale')
+      expect(document.body.textContent).toContain('Last truthful server response — refresh stale')
     })
     expect(document.body.textContent).not.toContain('Retry exact command safely')
     expect(button('Review complete replacement').matches(':disabled')).toBe(true)
@@ -704,13 +939,16 @@ describe('delivery control browser component', () => {
         expect(document.body.textContent).toContain('entered proposal is preserved')
       })
       expect(review.value).toBe('1')
-      expect(document.body.textContent).toContain('Server current revision 8')
-      expect(button('Load and review current policy')).toBeTruthy()
-      await click('Load and review current policy')
-      expect(review.value).toBe('2')
+      expect(document.body.textContent).toContain('Current server policy to inspect')
+      expect(document.body.textContent).toContain('Revision8')
+      expect(button('Use current revision and review preserved proposal')).toBeTruthy()
+      await click('Use current revision and review preserved proposal')
+      expect(review.value).toBe('1')
       expect(
         document.querySelector<HTMLInputElement>('#policy-expected-revision')?.value
       ).toBe('8')
+      await openConfirmation()
+      expect(document.body.textContent).toContain('Fresh idempotency command identity')
     }
   )
 
@@ -737,7 +975,7 @@ describe('delivery control browser component', () => {
     await signIn()
     await click('Refresh server state')
     await waitForAssertion(() => {
-      expect(document.body.textContent).toContain('Last truthful server snapshot — stale')
+      expect(document.body.textContent).toContain('Last truthful server response — refresh stale')
       expect(document.body.textContent).toContain('Policy revision')
       expect(document.body.textContent).toContain('ATLAS-751')
     })

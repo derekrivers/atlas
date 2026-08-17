@@ -582,11 +582,32 @@ fingerprint before the Phase 13 actor, CSRF, idempotency, compare-and-set and
 atomic receipt boundary. Clients cannot submit protected-lane rules or a
 registry override.
 
-After ATLAS-251 delivers the Phase 15 UI, the console shows working,
-CI-pending integration and review pressure separately. It distinguishes
-waiting from failure, explains protected-lane holds, marks identity movement
-stale and never presents a no-rewrite classification as a merge action. Policy
-changes retain the existing authenticated confirmation and receipt boundary.
+ATLAS-262 extends the delivered Phase 15 UI with the CI and integration-pressure
+console. Working, CI-pending integration, review and Changes Requested pressure
+remain separate server-owned quantities; only returned working/integration
+availability is shown. The composite snapshot's coherent, stale or
+indeterminate class and every reason are visible. Each CI-pending card renders
+the exact contributor head, validation profiles/provenance, required-check
+states, persisted outcome and every typed wait/failure reason without raw logs.
+
+Protected lanes show all current owners, immutable capacities, registry and
+active-state identity, held candidates and complete hold reasons. The console
+states that a free Symphony slot cannot override a saturated lane. Exact
+branch, rebase-required, stale and indeterminate assessments are visually
+distinct evidence claims and never merge approval; the failed ATLAS-259/260
+boundary remains visible as the absence of an exact-integration-candidate
+success class.
+
+Policy confirmation now shows the integration budget, observed protected-lane
+registry version/fingerprint, expected revision and freshly minted idempotency
+identity. A conflict preserves the complete entered proposal, requires
+inspection of current policy and explicit revision adoption, and then requires
+fresh review/reconfirmation. The executable inventory proves the console has no
+CI retry/cancel, ticket transition, GitHub update/merge, Git rebase/push,
+Symphony worker or automatic concurrency/ramp control. Seeded live-API browser
+and accessibility evidence covers dense reasons, long identities, focus,
+announcements, responsive widths, WCAG and zero external writes beyond an
+explicit policy command.
 
 ## Symphony workflow contract
 

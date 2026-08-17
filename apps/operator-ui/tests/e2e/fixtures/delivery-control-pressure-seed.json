@@ -1,0 +1,45 @@
+{
+  "extends": "live-api-seed.json",
+  "ticket_overrides": [
+    {
+      "key": "ATLAS-2",
+      "status": "ci_pending",
+      "external_linear_id": "LIN-seeded-pressure-atlas-2",
+      "tags": ["operator-ui", "admission"]
+    },
+    {
+      "key": "ATLAS-3",
+      "status": "ci_pending",
+      "external_linear_id": "LIN-seeded-pressure-atlas-3",
+      "component": "delivery-control",
+      "tags": ["operator-ui", "admission"]
+    }
+  ],
+  "delivery_control_pressure": [
+    {
+      "ticket_key": "ATLAS-2",
+      "reconciliation_id": "00000000-0000-4000-8000-00000000c102",
+      "acceptance_session_id": "00000000-0000-4000-8000-00000000a102",
+      "classification": "pending",
+      "reason": "required_checks_pending",
+      "check_type": "tests",
+      "check_status": "pending",
+      "head_sha": "2222222222222222222222222222222222222222",
+      "pr_number": 430,
+      "exact_base": "exact_branch"
+    },
+    {
+      "ticket_key": "ATLAS-3",
+      "reconciliation_id": "00000000-0000-4000-8000-00000000c103",
+      "acceptance_session_id": "00000000-0000-4000-8000-00000000a103",
+      "evidence_id": "00000000-0000-4000-8000-00000000e103",
+      "classification": "implementation_failure",
+      "reason": "complete_implementation_failure",
+      "check_type": "tests",
+      "check_status": "failed",
+      "head_sha": "3333333333333333333333333333333333333333",
+      "pr_number": 431,
+      "exact_base": "rebase_required"
+    }
+  ]
+}

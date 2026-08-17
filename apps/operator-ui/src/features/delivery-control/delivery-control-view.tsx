@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { AlertTriangle, CircleGauge, RefreshCw, ShieldCheck } from 'lucide-react'
+import { AlertTriangle, RefreshCw, ShieldCheck } from 'lucide-react'
 import { Link } from '@tanstack/react-router'
 import type { components } from '@/api/atlas-openapi'
 import { AtlasRequestError } from '@/api/client'
@@ -19,6 +19,11 @@ import {
 } from '@/components/ui/card'
 import { useOperatorSession } from '@/context/operator-session-provider'
 import { PolicyEditor } from '@/features/delivery-control/policy-editor'
+import {
+  CIPendingConsole,
+  ProtectedLaneConsole,
+  ServerSnapshotStatus,
+} from '@/features/delivery-control/integration-pressure-console'
 import { cn } from '@/lib/utils'
 
 type Schema = components['schemas']
@@ -34,10 +39,6 @@ function label(value: string): string {
     .join(' ')
 }
 
-function headroom(count: number, limit: number): number {
-  return Math.max(0, limit - count)
-}
-
 function modeExplanation(mode: Policy['mode']): string {
   if (mode === 'paused') {
     return 'Paused: no new admission occurs. Already-active work is preserved; pausing does not terminate active Symphony sessions.'
@@ -50,11 +51,13 @@ function modeExplanation(mode: Policy['mode']): string {
 
 function CapacityValue({
   available,
+  availableLabel = 'available for new admission',
   label: valueLabel,
   limit,
   used,
 }: {
-  available: number
+  available: number | null
+  availableLabel?: string
   label: string
   limit: number
   used: number
@@ -65,7 +68,9 @@ function CapacityValue({
       <dd className='mt-2 space-y-1'>
         <p className='text-2xl font-semibold tabular-nums'>{used} used</p>
         <p className='text-sm tabular-nums'>
-          {available} available before the maximum of {limit}
+          {available === null
+            ? `Maximum ${limit}; no separate admission-availability value returned`
+            : `${available} ${availableLabel} · maximum ${limit}`}
         </p>
       </dd>
     </div>
@@ -128,11 +133,11 @@ function CapacityOverview({ data }: { data: DeliveryControl }) {
       <CardHeader>
         <CardTitle>Capacity and pressure</CardTitle>
         <CardDescription>
-          Materialised Atlas ticket statuses from the server. Working and review pressure remain separate; count-versus-limit headroom does not predict admission.
+          Materialised Atlas ticket statuses from the server. Working, CI/integration, review and Changes Requested pressure remain separate; count-versus-limit headroom does not predict admission.
         </CardDescription>
       </CardHeader>
       <CardContent className='space-y-6'>
-        <dl className='grid gap-3 sm:grid-cols-2 lg:grid-cols-3'>
+        <dl className='grid gap-3 sm:grid-cols-2 xl:grid-cols-4'>
           <CapacityValue
             label='Working capacity'
             used={occupancy.working_occupancy}
@@ -140,9 +145,15 @@ function CapacityOverview({ data }: { data: DeliveryControl }) {
             limit={policy.working_budget}
           />
           <CapacityValue
+            label='CI / integration capacity'
+            used={occupancy.integration_occupancy}
+            available={occupancy.new_admission_integration_capacity}
+            limit={policy.integration_budget}
+          />
+          <CapacityValue
             label='Review pressure'
             used={occupancy.review_occupancy}
-            available={headroom(occupancy.review_occupancy, policy.review_budget)}
+            available={null}
             limit={policy.review_budget}
           />
           <div className='rounded-lg border p-4'>
@@ -160,7 +171,7 @@ function CapacityOverview({ data }: { data: DeliveryControl }) {
           </div>
         </dl>
         <p className='text-muted-foreground text-sm'>
-          Changes Requested reserve is protected for rework. It is not ordinary unused capacity for new work. Review headroom is arithmetic over the displayed server count and limit only; the UI never converts working or policy ceiling values into review availability.
+          Working and integration availability are the server-returned admission capacities. Review remains server-counted pressure against its displayed maximum; this UI does not manufacture a review-availability or admission result. Changes Requested reserve is protected for rework and is not ordinary unused capacity for new work.
         </p>
 
         <div className='grid gap-6 lg:grid-cols-2'>
@@ -174,7 +185,7 @@ function CapacityOverview({ data }: { data: DeliveryControl }) {
                   <div key={lane.risk_level} className='grid grid-cols-[minmax(0,1fr)_auto] gap-3 rounded-md border p-3 text-sm'>
                     <dt className='break-words'>{label(lane.risk_level)}</dt>
                     <dd className='text-end tabular-nums'>
-                      {lane.count} used · {headroom(lane.count, lane.limit)} available · maximum {lane.limit}
+                      {lane.count} used · maximum {lane.limit}
                     </dd>
                   </div>
                 ))}
@@ -191,7 +202,7 @@ function CapacityOverview({ data }: { data: DeliveryControl }) {
                   <div key={lane.component} className='grid min-w-0 gap-2 rounded-md border p-3 text-sm sm:grid-cols-[minmax(0,1fr)_auto]'>
                     <dt className='break-all font-mono'>{lane.component}</dt>
                     <dd className='text-start tabular-nums sm:text-end'>
-                      {lane.count} used · {headroom(lane.count, lane.limit)} available · maximum {lane.limit}
+                      {lane.count} used · maximum {lane.limit}
                     </dd>
                   </div>
                 ))}
@@ -391,36 +402,6 @@ function ExceptionalState({ data }: { data: DeliveryControl }) {
   )
 }
 
-function SnapshotFreshness({
-  data,
-  stale,
-}: {
-  data: DeliveryControl
-  stale: boolean
-}) {
-  return (
-    <Alert
-      data-testid='delivery-snapshot-freshness'
-      className={cn(stale && 'border-destructive/50')}
-      aria-live={stale ? 'assertive' : 'polite'}
-    >
-      {stale ? <AlertTriangle aria-hidden='true' /> : <CircleGauge aria-hidden='true' />}
-      <AlertTitle>{stale ? 'Last truthful server snapshot — stale' : 'Current server snapshot'}</AlertTitle>
-      <AlertDescription>
-        <p>
-          Last successful Linear sync reported by Atlas:{' '}
-          <span className='break-words font-mono'>{data.last_linear_sync_at ?? 'none reported'}</span>.
-        </p>
-        <p>
-          {stale
-            ? 'Loading or recovery retains this snapshot visibly as stale until a successful server replacement arrives.'
-            : 'The displayed policy, occupancy, decisions, reasons, and timestamps came from the authenticated delivery-control response.'}
-        </p>
-      </AlertDescription>
-    </Alert>
-  )
-}
-
 export function DeliveryControlView() {
   const session = useOperatorSession()
   const query = useDeliveryControlQuery(session.authenticated)
@@ -447,10 +428,10 @@ export function DeliveryControlView() {
     <Main className='space-y-6' fluid>
       <header className='flex flex-wrap items-start justify-between gap-4'>
         <div>
-          <p className='text-muted-foreground text-sm font-medium'>Phase 15 instrument</p>
+          <p className='text-muted-foreground text-sm font-medium'>Phase 15.5 instrument</p>
           <h1 className='mt-1 text-2xl font-bold tracking-tight'>Delivery control</h1>
           <p className='text-muted-foreground mt-2 max-w-4xl text-sm'>
-            Inspect server-owned Atlas policy, capacity, admission decisions, and explanations. Ceilings and budgets are maximum limits, never targets. This surface has no ticket-state, dispatch, worker, Symphony configuration, WORKFLOW.md, merge, rebase, optimiser, or automatic 1 → 3 → 5 → 7 → 10 ramp controls.
+            Inspect server-owned Atlas policy, working, CI/integration, review and rework pressure, exact evidence, and admission explanations. Ceilings and budgets are maximum limits, never targets. This surface has no CI retry/cancel, ticket transition, GitHub update/merge, Git rebase/push, Symphony worker, optimiser, or automatic concurrency/ramp controls.
           </p>
         </div>
         <Button
@@ -487,15 +468,22 @@ export function DeliveryControlView() {
 
       {data ? (
         <>
-          <SnapshotFreshness data={data} stale={snapshotStale} />
+          <ServerSnapshotStatus data={data} transportStale={snapshotStale} />
           <ExceptionalState data={data} />
           <PolicyOverview policy={data.policy} />
           <CapacityOverview data={data} />
+          <ProtectedLaneConsole data={data} />
+          <CIPendingConsole data={data} />
           <AdmissionExplanation data={data} />
           <Card>
             <CardContent>
               <PolicyEditor
                 policy={data.policy}
+                protectedLaneRegistry={{
+                  fingerprint: data.snapshot.integration.protected_lane_registry_fingerprint,
+                  stateFingerprint: data.snapshot.integration.protected_lane_state_fingerprint,
+                  version: data.snapshot.integration.protected_lane_registry_version,
+                }}
                 refreshCurrent={async () => query.refetch()}
               />
             </CardContent>
