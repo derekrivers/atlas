@@ -867,13 +867,14 @@ Design authority:
 Status: CLOSED AT ACCEPTED REMEDIATED ATL-437 / PR #335 MERGE. The production
 handoff passed at contributor head
 `a598798c1a6c5cabe4c80c0f04020c271f438de1`.
-Planning state: DELIVERY COMPLETE THROUGH ATLAS-263; ATLAS-253 is released for
-its separately governed Phase 15 live ramp. Ticket identities were
+Planning state: DELIVERY COMPLETE THROUGH ATLAS-262 AND ATLAS-263; the
+separately governed ATLAS-253 Phase 15 live ramp is released. Ticket identities
+were
 assigned only through the governed `atlas plan --stubs-only` and `atlas apply`
 boundary. The existing API ticket ATLAS-250 and UI ticket ATLAS-251 remain
 prerequisites for their delivered extensions.
-This phase changed no Symphony ceiling. Its accepted closure released
-ATLAS-253 for the live Phase 15 ramp without authorising a ceiling transition.
+This phase changed no Symphony ceiling. Its accepted closure released the
+separate Phase 15 ramp for ATLAS-253 without authorising a ceiling transition.
 
 Phase 15.5 makes parallel delivery cheaper and safer before increasing
 capacity. Agents run deterministic ticket-required and affected checks for
