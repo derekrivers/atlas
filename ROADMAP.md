@@ -3,8 +3,12 @@
 The canonical roadmap lives at
 `docs/atlas/implementation-roadmap.md`. Phase closure is recorded
 in `docs/closure/` — Phases 1 through 14 are closed (Phase 14 closed
-2026-08-12). Phase 15.5 is CLOSED at the accepted ATL-437 merge; while this
-candidate remains unmerged its status is `PENDING_LIVE_AUTHORITY`.
+2026-08-12). Phase 15.5 has a controlled PASS but remains
+`PENDING_LIVE_AUTHORITY`. ATL-437's first published head exposed that the
+trusted reconciler had no production PM-cadence caller; that sample is retained
+as failed reachability evidence. The live window restarts on the remediated
+final head and closure occurs only after its genuine system-tier handoff is
+accepted and that exact head merges.
 
 The original bootstrap milestone — a dependency-aware backlog
 generated through the plan/apply loop with stable ticket identity
@@ -31,7 +35,8 @@ both plan and apply. Atlas retains no automatic conflict-resolution,
 plan-approval, review, merge, permission-expansion or deployment authority.
 
 Committed `main` retains the repository-owned Symphony ceiling of one while
-Phases 15 and 15.5 are delivered. Phase 15.5 changes no ceiling. Its closure is
+Phase 15 remains open and Phase 15.5 awaits live closure. Phase 15.5 changes no
+ceiling. Its closure is
 the explicit operator release gate for ATLAS-253. The operator then performs
 the controlled 1 → 3 → 5 → 7 → 10 ramp by changing `WORKFLOW.md` on the
 dedicated milestone branch only after each preceding gate passes. A failed gate
@@ -42,9 +47,14 @@ milestone/closure change lands
 
 ATLAS-263 is the Phase 15.5 closure milestone. Its fixed `IND-1..IND-4`
 comparison, protected `LANE-A/LANE-B` collision and fault matrix must pass
-without changing the ceiling. Its live authority window begins only when the
-ATL-437 PR is published: the agent enters `CI Pending` and stops, the
-system-tier reconciler owns the determinate exit, and the disabled Linear
-`PR opened -> In Progress` automation must show zero recurrence. ATLAS-253
-remains `Needs Human` until that exact-head window is accepted and this closure
-change is merged.
+without changing the ceiling. The first ATL-437 head
+`dad520cf46c2c6ee2f51b95e0fa6e20660751a96` completed CI but remained in `CI
+Pending` because `reconcile_ci_handoff()` was not reachable from `atlas pm sync`.
+The remediation wires one deterministic CI-pending candidate per PM tick using
+only the latest handoff transition's bounded system-tier repository/PR/head
+identity and ends the tick after a successful workflow write. The live window
+restarts at the next final ATL-437 head: the agent enters `CI Pending` and
+stops, the system-tier reconciler owns the determinate exit, and the disabled
+Linear `PR opened -> In Progress` automation must show zero recurrence.
+ATLAS-253 remains `Needs Human` until that exact-head window is accepted and
+this closure change is merged.

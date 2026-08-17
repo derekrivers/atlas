@@ -290,9 +290,17 @@ integration step.
 ## System-tier CI handoff reconciliation
 
 `reconcile_ci_handoff` is the one-candidate PM operation for Atlas-owned exits
-from `ci_pending`. A bounded scheduler or API adapter supplies one exact
-repository, PR, expected full head SHA and the tick's complete project pull.
-The operation takes the shared product admission lease, reconciles any earlier
+from `ci_pending`. The production `reconcile_one_ci_handoff` adapter is reached
+by both one-shot and recurring `atlas pm sync` ticks. After the complete project
+pull and AgentRun reconstruction it considers only locally `ci_pending` tickets
+in stable key order and evaluates at most one. It binds the latest transition
+into `ci_pending` to exactly one reconstructed AgentRun, whose bounded
+GitHub-Actions-authored evidence must resolve one exact repository, PR number
+and full contributor-head SHA. Missing or contradictory identity holds before
+any GitHub or Linear request; titles, rollups and earlier handoff episodes are
+not identity sources. The adapter then supplies that identity and the tick's
+complete project pull to the domain operation. The operation takes the shared
+product admission lease, reconciles any earlier
 ambiguous fence first, loads the active delivery policy, builds the coherent
 snapshot and reads the PR identity without consuming GitHub check rollups.
 Stored append-only evidence is loaded only for the ticket's product and
@@ -327,6 +335,9 @@ attempts a second write.
 This seam has no GitHub mutation, Git, Symphony, policy, acceptance,
 verification-waiver, merge or Done authority. The generic Linear pull continues
 to reject both `ci_pending` exits; it does not become a second writer.
+After a confirmed CI-handoff mutation or target-fence reconciliation, the sync
+body returns immediately. Admission, verified completion and anomaly routing
+therefore cannot perform a second workflow mutation in the same tick.
 
 ## Sync loop
 
@@ -361,6 +372,14 @@ Pull-based, consistent with ADR-0008 (no webhooks before hosting):
    (`pack_id`, `rendered_at`). Missing pieces remain null and never block the
    tick. The step makes no Linear call of its own and updates an existing
    partial run when later ticks observe handoff or evidence.
+
+   The production CI-handoff adapter then selects at most one local
+   `ci_pending` ticket and either records a typed identity hold or delegates to
+   the system-tier reconciler. A confirmed write or reconciled target fence
+   ends the tick here. Otherwise the tick continues to definition and admission
+   work without considering another CI candidate. `GITHUB_TOKEN` is therefore
+   a production `atlas pm sync` precondition alongside the Linear credentials;
+   the GitHub client is read-only and is not called for an unresolved identity.
 
 2. Push definition updates (title/priority/labels/description) for
    tickets whose Atlas `updated_at` is newer, only while the ticket is in

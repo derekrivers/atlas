@@ -257,6 +257,9 @@ def test_atlas_161_lifecycle_reconstructs_one_complete_agent_run(
     assert details["handoff_state"] == TicketStatus.REVIEW_REQUIRED.value
     assert details["pr_number"] == 166
     assert details["head_commit"] == HEAD
+    assert details["repository_owner"] == "acme"
+    assert details["repository_name"] == "atlas"
+    assert details["repository_identity_status"] == "resolved"
 
 
 def test_atlas_255_ci_pending_completes_the_agent_run_at_handoff(
@@ -401,6 +404,7 @@ def test_partial_observation_records_null_pr_and_commit(db: Database) -> None:
     assert run.input_context_pack_id is None
     assert details["pr_number"] is None
     assert details["head_commit"] is None
+    assert details["repository_identity_status"] == "unavailable"
     assert details["handoff_state"] == TicketStatus.REVIEW_REQUIRED.value
 
 

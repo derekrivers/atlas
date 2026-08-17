@@ -3,8 +3,10 @@
 Date: 2026-08-17
 Ticket: ATLAS-263 / Linear ATL-437
 Controlled disposition: **PASS**
-Live authority disposition at candidate authoring: **PENDING — begins at first
-ATL-437 PR publication**
+First live sample: **FAIL — production reconciler unreachable at
+`dad520cf46c2c6ee2f51b95e0fa6e20660751a96`**
+Remediated live authority disposition: **PENDING — restarts at the next final
+ATL-437 head**
 Symphony ceiling: **unchanged at one**
 ATLAS-253: **remains `Needs Human` until this exact closure candidate is
 accepted and merged**
@@ -13,15 +15,20 @@ accepted and merged**
 
 This report is the Phase 15.5 closure candidate, not advance authority for its
 own future CI run. The deterministic comparison and adversarial matrix pass.
-The last gate is ATL-437's live authority window from first PR publication
-through its first determinate `CI Pending` exit and subsequent acceptance
-disposition.
+The last gate is ATL-437's restarted live authority window at the remediated
+final head, through its first determinate `CI Pending` exit and subsequent
+acceptance disposition. The first published head completed CI but exposed that
+the supported PM cadence never called the trusted reconciler. It retained no
+genuine ATLAS-263 reconciliation and performed no authorised exit, so it is
+failed historical reachability evidence and cannot satisfy this gate.
 
 The publishing agent must enter `CI Pending` and stop in the same turn. The
 system-tier reconciler and operator complete a bounded PR-linked receipt without
-changing the candidate head. Phase 15.5 closes only if that receipt is PASS and
-the operator accepts and merges this exact head. If the receipt is missing,
-ambiguous or FAIL, this report remains a recorded controlled PASS with overall
+changing the candidate head. Phase 15.5 closes only if the supported production
+adapter appends a genuine `ci_handoff_reconciliations` row, performs the
+corresponding authorised Linear exit, that receipt is PASS, and the operator
+accepts and merges this exact head. If the receipt is missing, ambiguous or
+FAIL, this report remains a recorded controlled PASS with overall
 `PENDING_LIVE_AUTHORITY` or FAIL; it does not release ATLAS-253.
 
 This ordering resolves the otherwise circular evidence boundary: the commit
@@ -47,6 +54,43 @@ The entry gate passed before the first controlled result:
   Pending`; the system-tier reconciler alone owns determinate exits.
 - The fixed observation windows, workload-independence rule and numerical
   thresholds were present in the ATL-437 contract before the run.
+
+## Production reachability remediation
+
+PR #335 first published
+`dad520cf46c2c6ee2f51b95e0fa6e20660751a96`. Its exact-head required checks
+completed successfully, ATL-437 remained `CI Pending`, and the operational
+store contained no ATLAS-263 `ci_handoff_reconciliations` or
+`ci_handoff_write_fences`. Repository inspection confirmed that
+`reconcile_ci_handoff()` was defined, exported and tested but had no caller in
+the supported one-shot or recurring PM path. That sample is **FAIL / production
+unreachable** and remains historical after this amendment.
+
+The operator authorised remediation in ATLAS-263 rather than a new ticket. The
+normal PM tick now:
+
+1. performs its complete bounded Linear project pull and authorised generic
+   status reconciliation;
+2. reconstructs AgentRuns, including repository identity resolved only from
+   GitHub-Actions-authored evidence pinned to the run's PR/head;
+3. sorts only local `CI Pending` tickets by stable key and considers at most
+   one;
+4. binds the latest append-only transition into `ci_pending` to exactly one
+   reconstructed run and fails closed on missing or contradictory
+   repository/PR/full-head identity;
+5. delegates complete identity to the existing lease/snapshot/evidence/fence
+   reconciler; and
+6. ends the tick before definition, admission, completion or anomaly writers
+   after a confirmed workflow mutation or target-fence reconciliation.
+
+The adapter performs no GitHub mutation and makes no GitHub or Linear call when
+trusted identity is unavailable or ambiguous. `atlas pm sync --once -v`
+exposes bounded evaluated/held/mutation output, while the append-only row and
+Linear transition remain authority. Focused tests cover production candidate
+discovery, exact identity, all evidence classes, zero/one mutation, ordering,
+duplicate ticks and movement races. These are executable remediation evidence,
+not the live production PASS. The final candidate must itself create at least
+one genuine reconciliation row plus its corresponding authorised transition.
 
 ## Fixed evidence package
 
@@ -162,9 +206,11 @@ The selected-field repository and external-call spies record:
 
 Production-domain tests separately exercise the actual deterministic
 validation planner, protected-lane classifier, coherent occupancy snapshot,
-CI-handoff reconciler, exact-head classifier, API projection, Operator UI and
-workflow contract with mutation/fault spies. The milestone adds composition
-evidence; it does not create a second production authority implementation.
+CI-handoff reconciler and production PM adapter, exact-head classifier, API
+projection, Operator UI and workflow contract with mutation/fault spies. The
+adapter delegates to the existing authority rather than creating a second
+classifier or scheduler. The milestone adds composition evidence; it does not
+create a second production authority implementation.
 
 ## Live authority receipt required at publication
 
@@ -177,7 +223,9 @@ The PR handoff record must pin all of the following:
 3. zero agent CI polls and no repeated validation/publication after handoff;
 4. complete determinate CI timestamp, reconciler tick duration and exact exit
    timestamp, with one tick and <= 5 minutes;
-5. system-tier reconciler ownership of the sole determinate exit;
+5. a genuine append-only `ci_handoff_reconciliations` row authored through the
+   supported production adapter and system-tier ownership of the corresponding
+   sole determinate exit;
 6. zero `CI Pending -> In Progress`, `CI Pending -> PR Open` or other
    Symphony-active reactivation;
 7. confirmation that Linear/GitHub linked evidence but performed no workflow
@@ -196,23 +244,25 @@ moving the card or rewriting the branch.
 | --- | --- |
 | Workflow/slot release | `WORKFLOW.md`; `tests/test_workflow_contract.py`; Phase 15.5 harness |
 | Fixed comparison and thresholds | `tests/fixtures/phase_15_5/milestone_v1.json`; `tests/test_phase_15_5_milestone.py` |
-| CI ownership and fault routes | `tests/test_ci_handoff_reconciliation.py`; milestone CI matrix |
+| CI ownership, production reachability and fault routes | `tests/test_ci_handoff_reconciliation.py`; `tests/test_pm_ci_handoff_adapter.py`; `tests/test_pm_scheduler.py`; milestone CI matrix |
 | Protected lane hold | `tests/test_protected_lanes.py`; `tests/test_delivery_snapshot.py`; `LANE-A/LANE-B` receipt |
 | Exact-head/rebase-only freshness | `tests/test_pr_integration.py`; milestone freshness matrix |
 | Pressure API and console | `tests/test_delivery_control_api.py`; `tests/test_delivery_control_pressure_architecture.py`; Operator UI acceptance/component/e2e suites |
 | Prohibited authority | production mutation-spy tests; milestone AST/call/file spies |
 | Canonical contract | `ROADMAP.md`; `docs/atlas/implementation-roadmap.md`; `docs/atlas/multi-agent-delivery-control.md`; `docs/atlas/parallel-delivery-efficiency-and-integration-control.md` |
 | Operator procedure | `docs/runbooks/local-development.md`; `docs/runbooks/pr-acceptance.md` |
-| Actual external remediation | PR-linked ATL-437 live authority receipt, completed after publication |
+| Actual external remediation | PR-linked remediated-head ATL-437 live authority receipt, including a genuine production-adapter reconciliation row and corresponding Linear exit, completed after publication |
 
 ## Final disposition
 
 The fixed controlled comparison is PASS. The synthetic no-rewrite route remains
 retired. The ceiling remains one and no Phase 15/ATLAS-253 ramp occurs here.
 
-At candidate authoring, overall Phase 15.5 status is
-`PENDING_LIVE_AUTHORITY`. If the exact ATL-437 publication receipt passes and
-the operator accepts and merges this unchanged head, the merge records Phase
-15.5 closure and permits the operator to consider releasing ATLAS-253 in a
-separate action. Otherwise Phase 15.5 remains open, ATLAS-253 remains `Needs
-Human`, and no committed Symphony ceiling changes.
+The first ATL-437 head is a retained production-reachability FAIL. After the
+operator-authorised remediation, overall Phase 15.5 status returns to
+`PENDING_LIVE_AUTHORITY` for the next final head. If that exact head's receipt
+contains the genuine production reconciliation and Linear exit, every live
+threshold passes, and the operator accepts and merges the unchanged head, the
+merge records Phase 15.5 closure and permits the operator to consider releasing
+ATLAS-253 in a separate action. Otherwise Phase 15.5 remains open, ATLAS-253
+remains `Needs Human`, and no committed Symphony ceiling changes.

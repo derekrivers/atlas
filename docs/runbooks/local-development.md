@@ -257,13 +257,35 @@ uv run python scripts/phase_15_5_milestone.py \
 ```
 
 An actual bounded receipt for ATL-437 may be evaluated with the same
-`--live-receipt` option only after its first publication. The receipt must pin
+`--live-receipt` option only after publication of the remediated final head.
+The receipt must pin
 the PR/head, `CI Pending` observation, worker-stop timestamp, determinate CI
 timestamp, reconciler tick/owner, exact transition sequence and absence of
 Linear GitHub workflow state mutation. The publishing agent never runs that
 post-publication check: it stops at `CI Pending`. The system reconciler and
 operator attach the PR-linked receipt without changing the candidate head.
 Seeded evidence never substitutes for that live window.
+
+ATL-437's first published head is retained as a failed production-reachability
+sample: CI completed, but the supported PM cadence never called the trusted
+handoff service, so no genuine reconciliation row or Linear exit existed. The
+remediated final head restarts the live window. After the agent has stopped at
+`CI Pending` and normal system-tier evidence ingestion has populated the store,
+the system/operator runs the supported adapter from that final code identity:
+
+```bash
+uv run atlas pm sync --once -v
+```
+
+`GITHUB_TOKEN`, the existing Linear credentials/state map and
+`LINEAR_PROJECT_ID`/`LINEAR_TEAM_ID` are required production preconditions. The
+verbose output must name one bounded `CI handoff adapter` result with exact
+repository, PR and full head, classification, decision, reason and mutation
+count. Console output is observability only: verify the append-only
+`ci_handoff_reconciliations` row and corresponding Linear transition. A missing
+or contradictory latest-episode identity holds before a GitHub or Linear call;
+never repair that hold with a title guess, rollup inference or manual state
+move. A second tick must not repeat a confirmed write.
 
 ## Before you publish and hand off
 

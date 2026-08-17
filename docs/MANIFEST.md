@@ -206,8 +206,9 @@ Phase closure reports (`docs/closure/`):
   Console) closure: exact-head live-API/browser evidence, movement and failure
   matrix, no-external-mutation proof, residual risks and criteria self-assessment
 - `docs/closure/phase-15.5-closure-report.md` — Phase 15.5 controlled
-  efficiency/integration PASS and the exact ATL-437 live-authority gate whose
-  accepted merge records closure without changing the Symphony ceiling
+  efficiency/integration PASS, failed first production-reachability sample and
+  remediated ATL-437 live-authority gate whose accepted merge records closure
+  without changing the Symphony ceiling
 
 Stubs awaiting content: `docs/product/`. `docs/tech-debt/` holds the
 debt register (`docs/tech-debt/debt-register.md`), a hand-maintained,

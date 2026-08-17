@@ -34,6 +34,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from github_fakes import FakeGitHubClient
 from linear_fakes import InMemoryLinearClient
 from schema_drift_helpers import assert_schema_drift_message, drifted_database
 
@@ -46,6 +47,8 @@ from atlas.cli import (
 )
 from atlas.core.enums import ActorType
 from atlas.core.models import TicketStatus
+from atlas.github import GitHubRESTClient
+from atlas.github.client import TOKEN_ENV as GITHUB_TOKEN_ENV
 from atlas.linear.client import (
     API_KEY_ENV,
     PROJECT_ID_ENV,
@@ -500,6 +503,30 @@ def test_repair_pack_flag_is_passed_into_sync_tick(
     assert spy.calls[0]["repair_packs"] is True
 
 
+def test_github_client_is_passed_into_every_scheduler_tick(
+    db: Database, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    spy = SpyTick()
+    spy_sync_tick(monkeypatch, spy)
+    github = FakeGitHubClient()
+    config = make_config(db, tmp_path)
+    config = TickConfig(
+        tickets=config.tickets,
+        db=config.db,
+        client=config.client,
+        status_map=config.status_map,
+        team_id=config.team_id,
+        project_id=config.project_id,
+        inbox_dir=config.inbox_dir,
+        documents=config.documents,
+        github_client=github,
+    )
+
+    run_tick(config, TickFailureRepo(db), now=NOW)
+
+    assert spy.calls[0]["github_client"] is github
+
+
 # --- GAP 2: the failure signature -------------------------------------------
 
 
@@ -551,6 +578,7 @@ def _live_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """Set fake-but-well-formed Linear env so the live config builds with no
     network (client construction and map parsing read env only)."""
     monkeypatch.setenv(API_KEY_ENV, "lin_api_fake")
+    monkeypatch.setenv(GITHUB_TOKEN_ENV, "github_fake")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "anthropic_fake")
     monkeypatch.setenv(TEAM_ID_ENV, "team-xyz")
     monkeypatch.setenv(PROJECT_ID_ENV, "project-xyz")
@@ -574,6 +602,7 @@ def test_build_tick_config_wires_from_env(
 
     assert config.db is db
     assert isinstance(config.client, LinearGraphQLClient)
+    assert isinstance(config.github_client, GitHubRESTClient)
     assert config.team_id == "team-xyz"  # from LINEAR_TEAM_ID
     assert config.project_id == "project-xyz"  # from LINEAR_PROJECT_ID
     assert config.inbox_dir == Path(str(tmp_path))  # from --inbox-dir
@@ -631,6 +660,17 @@ def test_sync_missing_creds_is_clean_precondition(
     monkeypatch.delenv(API_KEY_ENV, raising=False)
     code = main(["pm", "sync", "--once"], database=db)
     assert code == EXIT_PRECONDITION  # missing key fails loud, no traceback
+
+
+def test_sync_missing_github_credential_is_clean_precondition(
+    db: Database, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _live_env(monkeypatch)
+    monkeypatch.delenv(GITHUB_TOKEN_ENV, raising=False)
+
+    code = main(["pm", "sync", "--once"], database=db)
+
+    assert code == EXIT_PRECONDITION
 
 
 def test_sync_missing_team_id_is_clean_precondition(

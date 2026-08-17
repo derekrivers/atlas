@@ -10,7 +10,12 @@ from dataclasses import fields
 from typing import get_type_hints
 
 from atlas.cli import _format_sync_result
-from atlas.pm import SyncDecisionClassification, SyncResult
+from atlas.pm import (
+    CIHandoffAdapterReason,
+    CIHandoffAdapterResult,
+    SyncDecisionClassification,
+    SyncResult,
+)
 from atlas.pm.sync import SyncDecision
 
 
@@ -75,3 +80,20 @@ def test_sync_result_prefixes_no_work_and_completed_only_results() -> None:
 
     assert all_zero[0].startswith("pm sync: no work performed;")
     assert completed_only[0].startswith("pm sync: completed;")
+
+
+def test_verbose_sync_output_exposes_bounded_ci_handoff_adapter_result() -> None:
+    result = SyncResult(
+        ci_handoff_decisions=[
+            CIHandoffAdapterResult(
+                reason=CIHandoffAdapterReason.NO_CANDIDATE,
+                candidate_count=0,
+            )
+        ]
+    )
+
+    assert "CI handoff adapter:" not in _format_sync_result(result)
+    assert (
+        "CI handoff adapter: reason=no_ci_pending_candidate candidates=0"
+        in _format_sync_result(result, verbose=True)
+    )

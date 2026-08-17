@@ -864,9 +864,12 @@ passes, the Phase 15 milestone/closure change must commit and merge
 Programme direction: `docs/atlas/phase-13-20-programme-horizon.md`.
 Design authority:
 `docs/atlas/parallel-delivery-efficiency-and-integration-control.md`.
-Status: CLOSED AT ACCEPTED ATL-437 MERGE; PENDING_LIVE_AUTHORITY WHILE UNMERGED.
+Status: CLOSED AT ACCEPTED REMEDIATED ATL-437 MERGE;
+PENDING_LIVE_AUTHORITY UNTIL THAT FINAL HEAD PRODUCES A GENUINE PRODUCTION
+HANDOFF AND MERGES.
 Planning state: DELIVERY COMPLETE THROUGH ATLAS-262; ATLAS-263 is the fixed
-comparison and live-authority closure milestone. Ticket identities were
+comparison, production-reachability remediation and live-authority closure
+milestone. Ticket identities were
 assigned only through the governed `atlas plan --stubs-only` and `atlas apply`
 boundary. The existing API ticket ATLAS-250 and UI ticket ATLAS-251 remain
 prerequisites for their delivered extensions.
@@ -909,6 +912,19 @@ requires zero recurrence of the externally caused ATLAS-261/262 `CI Pending ->
 In Progress` reactivation after the conflicting Linear `PR opened -> In
 Progress` automation was disabled. A failed, pending or ambiguous result leaves
 Phase 15.5 open and ATLAS-253 in `Needs Human`.
+
+ATL-437's first published head completed exact-head CI but proved that the
+trusted `reconcile_ci_handoff()` service had no production caller: ordinary
+`atlas pm sync` reached only `sync_tick()`, and no genuine
+`ci_handoff_reconciliations` row or authorised Linear exit was produced. The
+failed head remains historical reachability evidence. ATLAS-263 now wires one
+deterministically ordered local `CI Pending` candidate into every supported PM
+tick, resolves exact repository/PR/full-head identity only from the latest
+handoff episode's bounded system-tier evidence, and closes that tick's workflow
+write window after a confirmed handoff. The live authority window restarts at
+the remediated final head. Production reachability passes only when that head
+creates a genuine reconciliation row and corresponding authorised Linear
+transition without an agent poll or manual state repair.
 
 ---
 

@@ -1,8 +1,8 @@
 # Parallel Delivery Efficiency and Integration Control (Phase 15.5)
 
-Status: Delivered through ATLAS-262; ATLAS-263 controls the fixed comparison,
-live-authority proof and closure required before ATLAS-253 may begin Phase 15's
-live ceiling ramp.
+Status: Controlled comparison PASS; ATLAS-263 production reachability and
+remediated live-authority proof remain pending before closure can release
+ATLAS-253 for Phase 15's live ceiling ramp.
 
 ## Problem and outcome
 
@@ -31,7 +31,7 @@ is the explicit operator release gate for ATLAS-253, which still owns Phase
 | Local validation | Agents run ticket-required and affected checks selected by a deterministic repository-owned registry. Unknown or protected surfaces fall back to a complete local sweep. |
 | CI authority | Complete CI remains mandatory and is the only system-tier authority. Scoped local checks are confidence evidence, never completion evidence. |
 | Agent lifetime | After focused checks and one successful publication, the ticket enters `CI Pending`; the Symphony slot is released and the agent does not poll CI. |
-| CI reconciliation | Atlas observes pinned GitHub check evidence and performs one deterministic state transition. Infrastructure, pending and ambiguous outcomes remain held without retry churn. |
+| CI reconciliation | Each supported PM tick deterministically considers at most one local `CI Pending` ticket, resolves its exact repository/PR/full-head identity from the latest handoff episode's bounded system-tier evidence, and delegates to the trusted reconciler. Infrastructure, pending, missing, stale, malformed, contradictory and identity-ambiguous outcomes remain held without retry churn. |
 | Capacity accounting | Working, CI/integration and review occupancy are separate budgets. Freeing a worker never makes the CI-pending queue unbounded. |
 | Conflict avoidance | Declared protected surfaces are exclusive integration lanes. Independent surfaces remain parallel. |
 | Freshness | Review Required enters acceptance only when the exact contributor head satisfies current-main ancestry. Mechanically stale candidates use the operator-owned rebase lane; synthetic composition is diagnostic only. |
@@ -200,6 +200,42 @@ reconciliation tick never retries the write. Duplicate observations are
 therefore idempotent, and concurrent owners, lease loss or identity movement
 produce zero mutations. A new head restarts the lifecycle with new evidence;
 previous records remain history.
+
+### Production cadence adapter
+
+ATL-437's first published candidate proved that a domain service is not a
+production authority unless the supported cadence reaches it. Exact-head CI
+completed at `dad520cf46c2c6ee2f51b95e0fa6e20660751a96`, but `atlas pm sync`
+called only the generic `sync_tick()` body and never invoked
+`reconcile_ci_handoff()`. The issue remained `CI Pending` and the operational
+store contained no ATLAS-263 reconciliation or write fence. That head is
+retained as a failed production-reachability sample; the live window restarts
+at the remediated final head.
+
+Both recurring and `--once` PM modes now share the same adapter. After the
+complete project pull, authorised generic status reconciliation and AgentRun
+reconstruction, it sorts only locally `CI Pending` tickets by stable ticket key
+and considers the first one. The adapter binds the candidate to the latest
+append-only transition into `ci_pending`, then requires exactly one matching
+reconstructed AgentRun. Repository owner/name, PR number and full contributor
+head must resolve coherently from that run's bounded GitHub Actions-authored,
+commit-pinned evidence. Ticket titles, PR-title close sets, GitHub rollups,
+earlier AgentRuns and earlier CI-pending episodes are never identity inputs.
+Missing evidence holds as `trusted_identity_unavailable`; contradictory
+repositories or duplicate episode identity holds as
+`trusted_identity_ambiguous`, before any GitHub or Linear call.
+
+With a complete identity, the adapter calls the existing trusted reconciler
+with the tick's original complete board. The product lease, coherent snapshot,
+classification, two revalidations, evidence refresh and durable write fence
+remain unchanged. A confirmed workflow mutation or confirmation that an
+earlier ambiguous fence reached its target returns from the tick immediately,
+so definition, admission, completion and anomaly writers cannot add a second
+external workflow mutation. Holds may leave the remaining read/definition
+work intact, but no second CI candidate is evaluated in that tick. `atlas pm
+sync --once -v` exposes one bounded secret-free adapter line plus integer
+evaluated/held/mutation counters; durable authority remains the append-only
+reconciliation, not console text.
 
 These states are deliberately different claims. `CI Pending` says only that a
 locally validated candidate was published and CI now owns classification.
@@ -727,15 +763,18 @@ The protected contender publishes zero times before release. Every determinate
 CI exit is system-owned; every unsafe evidence class holds. The controlled
 receipt retains all eight baseline/Phase measured identities.
 
-That controlled PASS cannot pre-authorise ATL-437's own future CI handoff. The
-live authority window starts at its first PR publication and ends after the
-first determinate CI-pending exit and acceptance disposition. Publication must
-therefore leave the milestone `PENDING_LIVE_AUTHORITY`: Symphony must stop the
-worker within five seconds, the system-tier reconciler must make the only
-determinate exit within one tick and five minutes, and no Linear/GitHub
-automation may reactivate the issue. A PR-linked bounded live receipt completes
-the last gate without changing the candidate head. Any missing, ambiguous or
-unexpected observation is FAIL.
+That controlled PASS cannot pre-authorise ATL-437's own CI handoff. The first
+publication became a failed reachability sample when complete CI produced no
+production reconciliation or Linear exit. The operator-authorised semantic
+remediation restarts the authority window at the next final head; the old
+head, checks and local results remain historical. Publication of that final
+head must leave the milestone `PENDING_LIVE_AUTHORITY`: Symphony must stop the
+worker within five seconds, the supported PM cadence must append a genuine
+`ci_handoff_reconciliations` row and perform the corresponding sole determinate
+exit within one tick and five minutes, and no Linear/GitHub automation may
+reactivate the issue. A PR-linked bounded live receipt completes the last gate
+without changing the candidate head. Any missing, ambiguous or unexpected
+observation is FAIL.
 
 Phase 15.5 closes only when that live gate passes, every controlled threshold
 and authority invariant remains passed, and

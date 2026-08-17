@@ -109,6 +109,19 @@ that ticket). If newer same-head evidence changes the selected check results in
 the final pre-write window, Atlas records `evidence_changed`, leaves the card in
 `CI Pending` and lets the next tick classify the new set.
 
+The trusted reconciler is reached through the normal one-shot and recurring PM
+cadence. After the project pull and AgentRun reconstruction, the adapter
+considers at most one locally `CI Pending` ticket in stable key order. It binds
+only the latest transition into that state to exactly one reconstructed run and
+requires a coherent repository, PR number and full head from bounded
+GitHub-Actions-authored evidence. It never reads the ticket/PR title or a
+GitHub rollup for identity. `trusted_identity_unavailable` and
+`trusted_identity_ambiguous` are holds before any GitHub or Linear call. A
+confirmed handoff write or target-fence reconciliation ends the tick before
+admission or completion can write another workflow state. In operator-attended
+diagnosis, `atlas pm sync --once -v` prints the bounded result; the durable
+reconciliation row and Linear transition remain the authority.
+
 Linear's `PR opened -> In Progress` GitHub workflow automation caused the
 ATLAS-261/262 reactivation incident and was disabled by the operator on 17
 August 2026. Keep it disabled. The integration may link the PR and expose
@@ -127,6 +140,13 @@ one system-owned determinate exit within one reconciliation tick and five
 minutes, zero agent CI polls and zero unexpected reactivation. A seeded replay
 is test evidence only and cannot substitute for ATL-437's actual issue and PR
 history.
+
+The first ATL-437 head completed CI but failed this production reachability
+condition because no supported PM caller invoked the service. Retain that head
+and its checks as historical evidence. The operator-authorised remediation
+restarts the authority window at the next final head; PASS additionally
+requires a genuine `ci_handoff_reconciliations` row authored by the production
+adapter and the corresponding authorised Linear exit for that exact head.
 
 ## 1. Review (reviewer-tier, not the gate)
 

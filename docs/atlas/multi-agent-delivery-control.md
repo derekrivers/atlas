@@ -531,6 +531,22 @@ any direct reactivation from `CI Pending` into a Symphony-active state is an
 immediate milestone failure. Linear/GitHub integration remains link- and
 evidence-only for Atlas-owned workflow state.
 
+The first ATL-437 candidate exposed a separate production-reachability defect:
+the trusted CI-handoff service existed, but neither the one-shot nor recurring
+`atlas pm sync` path called it. That head completed CI and remained `CI Pending`
+with no `ci_handoff_reconciliations` row, so it is failed historical evidence,
+not the live PASS sample. The supported PM tick now considers only local
+`CI Pending` tickets in stable ticket-key order and evaluates at most one. Its
+repository, PR number and full contributor head come only from the latest
+CI-pending transition's reconstructed system-tier GitHub evidence; title
+matching, GitHub rollups, old AgentRuns and previous handoff episodes are not
+identity sources. Missing or conflicting identity holds before any GitHub or
+Linear call. A confirmed handoff write or target-fence reconciliation ends the
+tick's workflow-write window, preventing admission, completion or anomaly
+routing from becoming a second mutation. The remediated final ATL-437 head must
+produce both a genuine append-only reconciliation and its authorised Linear
+transition before Phase 15.5 can close.
+
 The delivery-control UI may submit a complete policy selected by the operator
 at any governed gate, but it does not advance a gate, validate a PASS receipt,
 edit the milestone branch or `WORKFLOW.md`, start or stop agents, decide that an
