@@ -457,23 +457,38 @@ or hide a temporary policy/configuration mismatch. Any future server-provided
 configured-ceiling or occupied-session observation must be a distinct field;
 the present UI consumes only the delivery-control projection.
 
-Budgets are shown as maximums rather than targets. Server-provided used and
-available working capacity, review pressure, protected Changes Requested
-reserve, risk lanes, component lanes and indeterminate/over-capacity state stay
-visually distinct. Every persisted admission decision, rank input and complete
-typed reason inventory is displayed without browser reranking, availability
-inference or a manufactured safe result. Loading and refetch preserve the last
-truthful server snapshot as visibly stale, with its server timestamp.
+Budgets are shown as maximums rather than targets. Server-provided working and
+CI/integration used/available capacity, review pressure, protected Changes
+Requested reserve, risk lanes, component lanes and indeterminate/over-capacity
+state stay visually distinct. Review availability is not inferred. The
+composite server snapshot's coherent, stale or indeterminate class, complete
+reasons and pinned identities are explicit, while loading and refetch failure
+preserve the last truthful response as transport-stale. Every persisted
+admission decision, rank input and complete typed reason inventory is displayed
+without browser reranking, availability inference or a manufactured safe
+result.
+
+CI-pending cards pass through exact head/PR identity, persisted outcome and
+required-check classes, bounded evidence ids, validation profiles/provenance
+and all typed wait/failure reasons without raw provider material. Exact branch,
+rebase required, stale and indeterminate assessment classes are visually
+distinct evidence claims and never merge approval. The failed ATLAS-259/260
+boundary is explicit: the client shows no exact-integration-candidate success
+class. Protected-lane cards show all occupants, immutable limits, registry and
+active-state identity, held candidates and complete lane reasons; Symphony
+capacity cannot override lane saturation.
 
 Policy editing is a complete replacement, never a partial patch or hidden
 adjustment. The confirmation names mode, approved policy ceiling, working,
 integration and review budgets, Changes Requested reserve, all risk and
 component lane limits, the server-observed protected-lane registry identity and
-`expected_revision`. Each new explicit command receives a fresh idempotency
-key. Stale revision and altered replay preserve the proposal but require an
-explicit load/review/reconfirm cycle; only an unchanged ambiguously completed
-command may be explicitly retried with the same key. Success displays the
-server revision and receipt and refetches before claiming current state. If
+`expected_revision`, plus the newly minted idempotency identity that will be
+submitted. Each new explicit command receives a fresh key. Stale revision and
+altered replay preserve every entered proposal field; after inspecting the
+complete current policy the operator may adopt only its revision, then must
+review and reconfirm a freshly keyed command. Only an unchanged ambiguously
+completed command may be explicitly retried with the same key. Success displays
+the server revision and receipt and refetches before claiming current state. If
 that refetch fails, the confirmed success remains non-retryable and another
 command stays blocked until an authoritative refresh succeeds.
 

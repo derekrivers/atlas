@@ -36,6 +36,7 @@ import {
   validatePolicyDraft,
   type PolicyDraft,
 } from '@/features/delivery-control/policy-draft'
+import type { ProtectedLaneRegistryIdentity } from '@/features/delivery-control/integration-pressure-console'
 
 type Schema = components['schemas']
 type Policy = Schema['DeliveryAdmissionPolicySchema']
@@ -92,16 +93,27 @@ function modeLabel(mode: Schema['DeliveryAdmissionMode']): string {
   return mode.charAt(0).toUpperCase() + mode.slice(1)
 }
 
-function LaneSummary({ proposal }: { proposal: AtlasDeliveryAdmissionPolicyRequest }) {
+type LaneLimits = Pick<
+  AtlasDeliveryAdmissionPolicyRequest,
+  'component_lane_limits' | 'risk_lane_limits'
+>
+
+function LaneSummary({
+  policy,
+  qualifier,
+}: {
+  policy: LaneLimits
+  qualifier: 'Current' | 'Proposed'
+}) {
   return (
     <div className='grid gap-4 sm:grid-cols-2'>
-      <section aria-label='Proposed risk lane limits'>
+      <section aria-label={`${qualifier} risk lane limits`}>
         <h4 className='text-sm font-medium'>Risk lane limits</h4>
-        {proposal.risk_lane_limits.length === 0 ? (
+        {policy.risk_lane_limits.length === 0 ? (
           <p className='text-muted-foreground text-sm'>No risk-specific limits.</p>
         ) : (
           <ul className='mt-1 space-y-1 text-sm'>
-            {proposal.risk_lane_limits.map((lane) => (
+            {policy.risk_lane_limits.map((lane) => (
               <li key={lane.risk_level} className='break-words'>
                 <code>{lane.risk_level}</code>: maximum {lane.limit}
               </li>
@@ -109,13 +121,13 @@ function LaneSummary({ proposal }: { proposal: AtlasDeliveryAdmissionPolicyReque
           </ul>
         )}
       </section>
-      <section aria-label='Proposed component lane limits' className='min-w-0'>
+      <section aria-label={`${qualifier} component lane limits`} className='min-w-0'>
         <h4 className='text-sm font-medium'>Component lane limits</h4>
-        {proposal.component_lane_limits.length === 0 ? (
+        {policy.component_lane_limits.length === 0 ? (
           <p className='text-muted-foreground text-sm'>No component-specific limits.</p>
         ) : (
           <ul className='mt-1 space-y-1 text-sm'>
-            {proposal.component_lane_limits.map((lane, index) => (
+            {policy.component_lane_limits.map((lane, index) => (
               <li key={`${lane.component}-${index}`} className='break-all'>
                 <code>{lane.component}</code>: maximum {lane.limit}
               </li>
@@ -128,9 +140,13 @@ function LaneSummary({ proposal }: { proposal: AtlasDeliveryAdmissionPolicyReque
 }
 
 export function PolicyProposalSummary({
+  commandIdentity,
   proposal,
+  protectedLaneRegistry,
 }: {
+  commandIdentity: string
   proposal: AtlasDeliveryAdmissionPolicyRequest
+  protectedLaneRegistry: ProtectedLaneRegistryIdentity
 }) {
   return (
     <section aria-label='Complete proposed policy summary' className='space-y-4'>
@@ -163,8 +179,52 @@ export function PolicyProposalSummary({
           <dt className='text-foreground'>Expected policy revision</dt>
           <dd className='font-medium'>{proposal.expected_revision}</dd>
         </div>
+        <div className='sm:col-span-2'>
+          <dt className='text-foreground'>Fresh idempotency command identity</dt>
+          <dd className='break-all font-mono text-xs'>{commandIdentity}</dd>
+        </div>
       </dl>
-      <LaneSummary proposal={proposal} />
+      <LaneSummary policy={proposal} qualifier='Proposed' />
+      <section aria-label='Server-observed protected-lane registry' className='rounded-lg border p-3'>
+        <h4 className='text-sm font-medium'>Server-observed protected-lane registry</h4>
+        <p className='text-muted-foreground mt-1 text-sm'>
+          Atlas pins this registry identity into the command fingerprint. It is not a client-authored lane override.
+        </p>
+        <dl className='mt-3 grid min-w-0 gap-3 text-sm sm:grid-cols-2'>
+          <div>
+            <dt className='text-muted-foreground'>Registry version</dt>
+            <dd className='break-words font-mono text-xs'>{protectedLaneRegistry.version}</dd>
+          </div>
+          <div>
+            <dt className='text-muted-foreground'>Registry fingerprint</dt>
+            <dd className='break-all font-mono text-xs'>{protectedLaneRegistry.fingerprint}</dd>
+          </div>
+          <div className='sm:col-span-2'>
+            <dt className='text-muted-foreground'>Observed active-state fingerprint</dt>
+            <dd className='break-all font-mono text-xs'>{protectedLaneRegistry.stateFingerprint}</dd>
+          </div>
+        </dl>
+      </section>
+    </section>
+  )
+}
+
+function CurrentPolicyConflictSummary({ policy }: { policy: Policy }) {
+  return (
+    <section aria-label='Current server policy after conflict' className='rounded-lg border p-3'>
+      <h4 className='text-sm font-medium'>Current server policy to inspect</h4>
+      <dl className='mt-2 grid gap-2 text-sm sm:grid-cols-3'>
+        <div><dt>Revision</dt><dd className='font-medium'>{policy.revision}</dd></div>
+        <div><dt>Mode</dt><dd className='font-medium'>{modeLabel(policy.mode)}</dd></div>
+        <div><dt>Approved ceiling</dt><dd className='font-medium'>{policy.approved_symphony_ceiling}</dd></div>
+        <div><dt>Working budget</dt><dd className='font-medium'>{policy.working_budget}</dd></div>
+        <div><dt>Integration budget</dt><dd className='font-medium'>{policy.integration_budget}</dd></div>
+        <div><dt>Review budget</dt><dd className='font-medium'>{policy.review_budget}</dd></div>
+        <div><dt>Changes Requested reserve</dt><dd className='font-medium'>{policy.changes_requested_reserve}</dd></div>
+      </dl>
+      <div className='mt-3'>
+        <LaneSummary policy={policy} qualifier='Current' />
+      </div>
     </section>
   )
 }
@@ -205,9 +265,11 @@ function FieldError({ error, id }: { error?: string; id: string }) {
 
 export function PolicyEditor({
   policy,
+  protectedLaneRegistry,
   refreshCurrent,
 }: {
   policy: Policy
+  protectedLaneRegistry: ProtectedLaneRegistryIdentity
   refreshCurrent: () => Promise<RefreshResult>
 }) {
   const session = useOperatorSession()
@@ -220,6 +282,10 @@ export function PolicyEditor({
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [proposal, setProposal] =
     useState<AtlasDeliveryAdmissionPolicyRequest | null>(null)
+  const [proposalCommandIdentity, setProposalCommandIdentity] =
+    useState<string | null>(null)
+  const [proposalLaneRegistry, setProposalLaneRegistry] =
+    useState<ProtectedLaneRegistryIdentity | null>(null)
   const [confirmationOpen, setConfirmationOpen] = useState(false)
   const [summaryConfirmed, setSummaryConfirmed] = useState(false)
   const [pendingCommand, setPendingCommand] =
@@ -267,6 +333,8 @@ export function PolicyEditor({
       return
     }
     setProposal(validation.proposal)
+    setProposalCommandIdentity(window.crypto.randomUUID())
+    setProposalLaneRegistry(protectedLaneRegistry)
     setSummaryConfirmed(false)
     setCommandError(null)
     setConflict(null)
@@ -287,6 +355,8 @@ export function PolicyEditor({
     }
 
     setPendingCommand(null)
+    setProposalCommandIdentity(null)
+    setProposalLaneRegistry(null)
     setConfirmationOpen(false)
     if (!(error instanceof AtlasRequestError)) {
       setCommandError('The policy command failed before Atlas returned a result.')
@@ -354,6 +424,8 @@ export function PolicyEditor({
         `Atlas confirmed policy revision ${response.policy.revision} and returned receipt ${response.receipt.receipt_id}. The delivery-control snapshot is being refetched before it is presented as current.`
       )
       setPendingCommand(null)
+      setProposalCommandIdentity(null)
+      setProposalLaneRegistry(null)
       setConfirmationOpen(false)
       try {
         const refreshed = await refreshCurrent()
@@ -383,9 +455,9 @@ export function PolicyEditor({
   }
 
   function confirmProposal() {
-    if (!proposal || !summaryConfirmed) return
+    if (!proposal || !proposalCommandIdentity || !summaryConfirmed) return
     const command = {
-      idempotencyKey: window.crypto.randomUUID(),
+      idempotencyKey: proposalCommandIdentity,
       request: proposal,
     }
     setPendingCommand(command)
@@ -406,6 +478,9 @@ export function PolicyEditor({
       }))
       loadedPolicyRevision.current = currentPolicy.revision
       setPendingCommand(null)
+      setProposal(null)
+      setProposalCommandIdentity(null)
+      setProposalLaneRegistry(null)
       setConflict(null)
       setCommandError(null)
       setAuthoritativeRefreshRequired(false)
@@ -428,12 +503,33 @@ export function PolicyEditor({
     loadedPolicyRevision.current = current.revision
     setDirty(false)
     setProposal(null)
+    setProposalCommandIdentity(null)
+    setProposalLaneRegistry(null)
     setPendingCommand(null)
     setConflict(null)
     setCommandError(null)
     setAuthoritativeRefreshRequired(false)
     setAnnouncement(
       `Loaded authoritative policy revision ${current.revision}. Review the complete form before creating a newly keyed command.`
+    )
+  }
+
+  function adoptCurrentRevisionWithPreservedProposal(current: Policy) {
+    setDraft((entered) => ({
+      ...entered,
+      expectedRevision: current.revision,
+    }))
+    loadedPolicyRevision.current = current.revision
+    setDirty(true)
+    setProposal(null)
+    setProposalCommandIdentity(null)
+    setProposalLaneRegistry(null)
+    setPendingCommand(null)
+    setConflict(null)
+    setCommandError(null)
+    setAuthoritativeRefreshRequired(false)
+    setAnnouncement(
+      `Inspected authoritative revision ${current.revision}. The entered proposal is preserved with the current expected revision; review it and explicitly confirm a freshly keyed command.`
     )
   }
 
@@ -500,22 +596,20 @@ export function PolicyEditor({
               <code>{conflict.conflict_code ?? 'unspecified'}</code>.
             </p>
             <p>
-              The entered proposal is preserved and was not replayed. Inspect the current policy, then explicitly load it before preparing a newly confirmed command.
+              The entered proposal is preserved and was not replayed. Inspect the complete current policy, adopt only its expected revision, then review the preserved proposal and explicitly confirm a freshly keyed command.
             </p>
             {conflict.current_policy ? (
-              <div className='space-y-2'>
-                <p>
-                  Server current revision {conflict.current_policy.revision}, mode{' '}
-                  {conflict.current_policy.mode}, approved policy ceiling{' '}
-                  {conflict.current_policy.approved_symphony_ceiling}.
-                </p>
+              <div className='space-y-3'>
+                <CurrentPolicyConflictSummary policy={conflict.current_policy} />
                 <Button
                   type='button'
                   size='sm'
                   variant='outline'
-                  onClick={() => loadCurrentPolicy(conflict.current_policy!)}
+                  onClick={() =>
+                    adoptCurrentRevisionWithPreservedProposal(conflict.current_policy!)
+                  }
                 >
-                  Load and review current policy
+                  Use current revision and review preserved proposal
                 </Button>
               </div>
             ) : (
@@ -833,7 +927,14 @@ export function PolicyEditor({
         onOpenChange={(open) => {
           if (!busy) {
             setConfirmationOpen(open)
-            if (!open) setSummaryConfirmed(false)
+            if (!open) {
+              setSummaryConfirmed(false)
+              if (pendingCommand === null) {
+                setProposal(null)
+                setProposalCommandIdentity(null)
+                setProposalLaneRegistry(null)
+              }
+            }
           }
         }}
       >
@@ -848,10 +949,16 @@ export function PolicyEditor({
           <AlertDialogHeader>
             <AlertDialogTitle>Confirm complete policy replacement</AlertDialogTitle>
             <AlertDialogDescription className='text-foreground'>
-              Inspect every proposed maximum and the compare-and-set revision. Atlas will not change Symphony configuration or terminate active work.
+              Inspect every proposed maximum, the compare-and-set revision, the observed protected-lane registry and the fresh command identity. Atlas will not change Symphony configuration or terminate active work.
             </AlertDialogDescription>
           </AlertDialogHeader>
-          {proposal ? <PolicyProposalSummary proposal={proposal} /> : null}
+          {proposal && proposalCommandIdentity && proposalLaneRegistry ? (
+            <PolicyProposalSummary
+              commandIdentity={proposalCommandIdentity}
+              proposal={proposal}
+              protectedLaneRegistry={proposalLaneRegistry}
+            />
+          ) : null}
           <div className='flex items-start gap-3 rounded-lg border p-3'>
             <Checkbox
               id='confirm-complete-policy'

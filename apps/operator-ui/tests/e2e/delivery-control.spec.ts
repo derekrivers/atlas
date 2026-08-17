@@ -1,4 +1,6 @@
 import AxeBuilder from '@axe-core/playwright'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import {
   expect,
   test,
@@ -15,11 +17,16 @@ const appPort = Number(process.env.ATLAS_OPERATOR_UI_E2E_PORT ?? 4173)
 const appBaseURL = `http://127.0.0.1:${appPort}`
 const longComponent =
   'operator-ui/admission-explanation-with-an-intentionally-long-responsive-component-name'
+const pressureSeedPath = join(
+  dirname(fileURLToPath(import.meta.url)),
+  'fixtures',
+  'delivery-control-pressure-seed.json'
+)
 
 let apiServer: Awaited<ReturnType<typeof startAtlasApiServer>> | undefined
 
 test.beforeAll(async () => {
-  apiServer = await startAtlasApiServer()
+  apiServer = await startAtlasApiServer({ seedPath: pressureSeedPath })
 })
 
 test.afterAll(async () => {
@@ -83,8 +90,18 @@ async function newDeliveryPage(browser: Browser): Promise<{
 }
 
 async function expectNoHorizontalScrolling(page: Page): Promise<void> {
-  const offenders = await page.evaluate(() =>
-    [
+  const offenders = await page.evaluate(() => {
+    const viewportWidth = document.documentElement.clientWidth
+    function elementLabel(element: Element): string {
+      const text = element.textContent?.replace(/\s+/g, ' ').trim() ?? ''
+      return [
+        element.tagName.toLowerCase(),
+        element.getAttribute('data-testid') ?? '',
+        element.getAttribute('aria-label') ?? '',
+        text.slice(0, 80),
+      ].filter(Boolean).join(' ')
+    }
+    return [
       document.documentElement,
       document.body,
       ...Array.from(document.querySelectorAll('*')),
@@ -97,17 +114,20 @@ async function expectNoHorizontalScrolling(page: Page): Promise<void> {
           style.visibility !== 'hidden' &&
           box.width > 0 &&
           box.height > 0 &&
-          (element === document.documentElement ||
+          (((element === document.documentElement ||
             ['auto', 'scroll'].includes(style.overflowX)) &&
-          element.scrollWidth > element.clientWidth + 1
+            element.scrollWidth > element.clientWidth + 1) ||
+            (box.right > viewportWidth + 1 && box.left < viewportWidth && box.right > 0))
         )
       })
       .map((element) => ({
         clientWidth: element.clientWidth,
-        element: element.getAttribute('aria-label') ?? element.tagName,
+        element: elementLabel(element),
+        left: element.getBoundingClientRect().left,
+        right: element.getBoundingClientRect().right,
         scrollWidth: element.scrollWidth,
       }))
-  )
+  })
   expect(offenders).toEqual([])
 }
 
@@ -136,6 +156,23 @@ test('live delivery-control policy revisions are explicit, stale-safe, server-au
   await expect(page.getByText('pagination_gap')).toBeVisible()
   await expect(page.getByText('Server reports indeterminate delivery state')).toBeVisible()
   await expect(page.getByText('write_indeterminate')).toBeVisible()
+  await expect(page.getByText('CI pending evidence and integration readiness')).toBeVisible()
+  await expect(page.getByText('ATLAS-2', { exact: true }).first()).toBeVisible()
+  await expect(page.getByText('ATLAS-3', { exact: true }).first()).toBeVisible()
+  await expect(page.getByText('CI: Pending')).toBeVisible()
+  await expect(page.getByText('CI: Implementation Failure')).toBeVisible()
+  await expect(page.getByText('required_checks_pending')).toBeVisible()
+  await expect(page.getByText('complete_implementation_failure')).toBeVisible()
+  await expect(page.getByText('Exact branch', { exact: true })).toBeVisible()
+  await expect(page.getByText('Rebase required', { exact: true })).toBeVisible()
+  await expect(page.getByText('operator-admission-hotspot', { exact: true }).first()).toBeVisible()
+  await expect(page.getByText('Held candidates and complete lane reasons')).toBeVisible()
+  await expect(page.getByText('Exact integration candidate is not an available server class')).toBeVisible()
+  await expect(page.getByText('raw-ci-log-canary-must-never-reach-the-browser')).toHaveCount(0)
+  await expect(page.getByTestId('delivery-snapshot-freshness')).toHaveAttribute(
+    'aria-live',
+    'assertive'
+  )
 
   const forbiddenLabels = [
     'Live Symphony ceiling',
@@ -157,11 +194,15 @@ test('live delivery-control policy revisions are explicit, stale-safe, server-au
     await expect(summary).toContainText('Paused')
     await expect(summary).toContainText('Approved policy ceiling')
     await expect(summary).toContainText('Working budget')
+    await expect(summary).toContainText('Integration budget')
     await expect(summary).toContainText('Review budget')
     await expect(summary).toContainText('Changes Requested reserve')
     await expect(summary).toContainText('Risk lane limits')
     await expect(summary).toContainText('Component lane limits')
     await expect(summary).toContainText('Expected policy revision')
+    await expect(summary).toContainText('Fresh idempotency command identity')
+    await expect(summary).toContainText('Server-observed protected-lane registry')
+    await expect(summary).toContainText('protected-integration-lanes/v1')
     await expect(summary).toContainText('1')
 
     for (let index = 0; index < 6; index += 1) {
@@ -193,11 +234,15 @@ test('live delivery-control policy revisions are explicit, stale-safe, server-au
     await expect(second.page.getByText('stale_revision')).toBeVisible()
     await expect(second.page.getByText(/entered proposal is preserved/)).toBeVisible()
     await expect(
-      second.page.getByRole('button', { name: 'Load and review current policy' })
+      second.page.getByRole('button', {
+        name: 'Use current revision and review preserved proposal',
+      })
     ).toBeVisible()
 
     await second.page
-      .getByRole('button', { name: 'Load and review current policy' })
+      .getByRole('button', {
+        name: 'Use current revision and review preserved proposal',
+      })
       .click()
     await expect(second.page.getByLabel('Expected policy revision')).toHaveValue('2')
     await setPolicyMode(second.page, 'Draining')
@@ -250,6 +295,7 @@ test('delivery-control dense states, confirmation, keyboard focus, long lanes, a
   for (const viewport of [
     { height: 768, width: 1366 },
     { height: 768, width: 1024 },
+    { height: 844, width: 390 },
   ]) {
     await page.setViewportSize(viewport)
     const result = await new AxeBuilder({ page })

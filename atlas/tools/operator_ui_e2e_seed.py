@@ -16,9 +16,18 @@ from uuid import UUID
 
 from atlas.core.enums import ActorType, EntityStatus, EvidenceStatus, RiskLevel
 from atlas.core.models import (
+    AcceptanceSession,
+    AcceptanceSessionBlockingReason,
+    AcceptanceSessionLifecycle,
+    AcceptanceSessionStep,
+    AcceptanceSessionStepState,
     AdmissionRun,
     ADRStatus,
     ArchitectureDecisionRecord,
+    CIHandoffClassification,
+    CIHandoffDecision,
+    CIHandoffReason,
+    CIHandoffReconciliation,
     DependencyType,
     Epic,
     EpicStatus,
@@ -36,6 +45,11 @@ from atlas.core.models import (
     VerificationCheck,
     VerificationCheckType,
 )
+from atlas.core.models.acceptance_session import (
+    AcceptanceAssessmentSnapshot,
+    AcceptanceCriterionSnapshot,
+    AcceptanceStepSummary,
+)
 from atlas.core.models.admission_run import (
     AdmissionCandidateDecision,
     AdmissionDecisionType,
@@ -43,6 +57,7 @@ from atlas.core.models.admission_run import (
     AdmissionHoldReason,
     AdmissionRankInputs,
 )
+from atlas.core.models.ci_handoff_reconciliation import CIHandoffCheckResult
 from atlas.core.models.delivery_admission_policy import DeliveryAdmissionPolicySpec
 from atlas.orchestration import (
     DeliveryAdmissionPolicyChangeStatus,
@@ -50,10 +65,13 @@ from atlas.orchestration import (
 )
 from atlas.pm import SnapshotIncompletenessCode, delivery_policy_fingerprint
 from atlas.storage import (
+    AcceptanceSessionRepo,
     AdmissionCoordinationRepo,
     AdmissionRunRepo,
     ADRRepo,
+    CIHandoffReconciliationRepo,
     Database,
+    DeliveryAdmissionPolicyRepo,
     EpicRepo,
     EvidenceRepo,
     LessonRepo,
@@ -134,7 +152,27 @@ def _remove_existing_sqlite(url: str) -> None:
 
 
 def _load_seed(path: Path) -> Mapping[str, Any]:
-    return _record(json.loads(path.read_text(encoding="utf-8")), str(path))
+    document = dict(_record(json.loads(path.read_text(encoding="utf-8")), str(path)))
+    extended = document.pop("extends", None)
+    if extended is None:
+        return document
+    if not isinstance(extended, str) or not extended:
+        raise ValueError(f"{path}: extends must be a non-empty relative path")
+    base_path = (path.parent / extended).resolve()
+    base = dict(_load_seed(base_path))
+    base.update(document)
+    return base
+
+
+def _ticket_seed_records(seed: Mapping[str, Any]) -> Sequence[Mapping[str, Any]]:
+    records = [dict(record) for record in _records(seed.get("tickets"), "tickets")]
+    by_key = {_required(record, "key", str): record for record in records}
+    for override in _records(seed.get("ticket_overrides", []), "ticket_overrides"):
+        key = _required(override, "key", str)
+        if key not in by_key:
+            raise ValueError(f"ticket override references unknown key {key}")
+        by_key[key].update(override)
+    return records
 
 
 def _ticket_defaults(key: str, timestamp: datetime) -> dict[str, Any]:
@@ -553,6 +591,31 @@ def _seed_delivery_control(
     revision = result.policy
     admitted = tickets[_required(record, "admitted_ticket_key", str)]
     held = tickets[_required(record, "held_ticket_key", str)]
+    protected_pressure = "admission" in held.tags
+    held_reasons = (
+        AdmissionHoldReason(
+            code=AdmissionHoldCode.SNAPSHOT_INCOMPLETE,
+            source_code=SnapshotIncompletenessCode.PAGINATION_GAP.value,
+        ),
+        AdmissionHoldReason(
+            code=AdmissionHoldCode.COMPONENT_LANE,
+            selector=held.component,
+            observed=1,
+            limit=1,
+        ),
+    ) + (
+        (
+            AdmissionHoldReason(
+                code=AdmissionHoldCode.PROTECTED_LANE,
+                selector="operator-admission-hotspot",
+                observed=2,
+                limit=1,
+                owner_ticket_keys=("ATLAS-3",),
+            ),
+        )
+        if protected_pressure
+        else ()
+    )
     run = AdmissionRun(
         id=UUID("00000000-0000-4000-8000-000000000751"),
         product_id=product.id,
@@ -598,17 +661,15 @@ def _seed_delivery_control(
                     continuously_eligible_age_microseconds=120_000_000,
                 ),
                 decision=AdmissionDecisionType.HOLD,
-                reasons=(
-                    AdmissionHoldReason(
-                        code=AdmissionHoldCode.SNAPSHOT_INCOMPLETE,
-                        source_code=SnapshotIncompletenessCode.PAGINATION_GAP.value,
-                    ),
-                    AdmissionHoldReason(
-                        code=AdmissionHoldCode.COMPONENT_LANE,
-                        selector=held.component,
-                        observed=1,
-                        limit=1,
-                    ),
+                reasons=held_reasons,
+                protected_lanes=(
+                    ("operator-admission-hotspot",) if protected_pressure else ()
+                ),
+                protected_lane_registry_version=(
+                    "protected-integration-lanes/v1" if protected_pressure else None
+                ),
+                protected_lane_registry_fingerprint=(
+                    "f" * 64 if protected_pressure else None
                 ),
             ),
         ),
@@ -645,6 +706,191 @@ def _seed_delivery_control(
     )
 
 
+def _seed_pressure_acceptance(
+    db: Database,
+    *,
+    record: Mapping[str, Any],
+    ticket: Ticket,
+    head_sha: str,
+    pr_number: int,
+    observed_at: datetime,
+) -> None:
+    step_summaries = {
+        step: AcceptanceStepSummary(
+            state=(
+                AcceptanceSessionStepState.COMPLETE
+                if step is AcceptanceSessionStep.PREFLIGHT
+                else AcceptanceSessionStepState.PENDING
+            ),
+            occurred_at=(
+                observed_at if step is AcceptanceSessionStep.PREFLIGHT else None
+            ),
+        )
+        for step in AcceptanceSessionStep
+    }
+    session = AcceptanceSession(
+        id=_uuid(_required(record, "acceptance_session_id", str)),
+        repository_owner="operator-ui-live-seed-owner-with-a-long-identity",
+        repository_name="atlas",
+        pr_number=pr_number,
+        close_set=(ticket.key,),
+        head_ref=f"agent/{ticket.key.lower()}-long-integration-candidate-branch",
+        head_sha=head_sha,
+        head_repository="operator-ui-live-seed-owner-with-a-long-identity/atlas",
+        base_ref="main",
+        base_sha="1" * 40,
+        base_repository="operator-ui-live-seed-owner-with-a-long-identity/atlas",
+        initial_assessment=AcceptanceAssessmentSnapshot(
+            pr_state="open",
+            pr_draft=False,
+            pr_merged=False,
+            base_sha_source="live_branch",
+            merge_base_sha="1" * 40,
+            ahead_by=1,
+            behind_by=0,
+            compare_status="ahead",
+            mergeability="mergeable",
+            ancestry="current",
+            eligibility="eligible",
+            integration_status="current",
+        ),
+        criteria_snapshot=(
+            AcceptanceCriterionSnapshot(
+                ticket_key=ticket.key,
+                criterion_index=0,
+                text="Render the seeded delivery-control pressure projection.",
+            ),
+        ),
+        criteria_fingerprint=f"sha256:{'c' * 64}",
+        creation_idempotency_key_identity=(
+            f"sha256:{format(pr_number % 16, 'x') * 64}"
+        ),
+        created_by_type=ActorType.HUMAN,
+        created_by_id="operator",
+        lifecycle=AcceptanceSessionLifecycle.PREFLIGHT_PASSED,
+        step_summaries=step_summaries,
+        blocking_reasons=(),
+        stored_merge_ready=False,
+        historical_readiness_reasons=(
+            AcceptanceSessionBlockingReason.EVIDENCE_NOT_READY,
+            AcceptanceSessionBlockingReason.CONFIRMATIONS_NOT_READY,
+            AcceptanceSessionBlockingReason.VERIFICATION_NOT_PASSED,
+        ),
+        created_at=observed_at,
+        updated_at=observed_at,
+    )
+    result = AcceptanceSessionRepo(db).create(session)
+    if not result.created:
+        raise RuntimeError("delivery-pressure acceptance session was not created")
+    exact_base = _required(record, "exact_base", str)
+    if exact_base == "rebase_required":
+        AcceptanceSessionRepo(db).mark_stale(
+            session.id,
+            (AcceptanceSessionBlockingReason.INTEGRATION_BEHIND,),
+            staled_at=observed_at + timedelta(seconds=1),
+        )
+    elif exact_base != "exact_branch":
+        raise ValueError(f"unsupported seeded exact_base class {exact_base}")
+
+
+def _seed_delivery_control_pressure(
+    db: Database,
+    records: Sequence[Mapping[str, Any]],
+    product: Product,
+    tickets: Mapping[str, Ticket],
+    timestamp: datetime,
+) -> None:
+    policy = DeliveryAdmissionPolicyRepo(db).get_active(product.id)
+    if policy is None:
+        raise RuntimeError("delivery-pressure seed requires an active policy")
+    evidence_repo = EvidenceRepo(db)
+    reconciliation_repo = CIHandoffReconciliationRepo(db)
+    for index, record in enumerate(records):
+        ticket = tickets[_required(record, "ticket_key", str)]
+        if ticket.status is not TicketStatus.CI_PENDING:
+            raise ValueError(f"{ticket.key} must be ci_pending in the pressure seed")
+        classification = CIHandoffClassification(
+            _required(record, "classification", str)
+        )
+        reason = CIHandoffReason(_required(record, "reason", str))
+        check_status = EvidenceStatus(_required(record, "check_status", str))
+        check_type = VerificationCheckType(_required(record, "check_type", str))
+        observed_at = timestamp + timedelta(minutes=10 + index)
+        evidence_ids: tuple[UUID, ...] = ()
+        evidence_id = _optional(record, "evidence_id", str)
+        if evidence_id is not None:
+            evidence = evidence_repo.add(
+                Evidence(
+                    id=_uuid(evidence_id),
+                    product_id=product.id,
+                    ticket_id=ticket.id,
+                    evidence_type=EvidenceType.TEST_RESULT,
+                    status=check_status,
+                    summary="Seeded bounded result; raw log canary must not render.",
+                    commit_sha=_required(record, "head_sha", str),
+                    external_run_id=f"seeded-pressure-run-{index}",
+                    job_name=check_type.value,
+                    source_event_at=observed_at,
+                    payload_hash=str(index + 2) * 64,
+                    source_uri="https://example.invalid/seeded-pressure",
+                    raw_payload={
+                        "logs": "raw-ci-log-canary-must-never-reach-the-browser"
+                    },
+                    created_by_type=ActorType.SYSTEM,
+                    created_by_id="github-actions",
+                    created_at=observed_at,
+                )
+            )
+            evidence_ids = (evidence.id,)
+        decision = {
+            CIHandoffClassification.PASSED: CIHandoffDecision.REVIEW_REQUIRED,
+            CIHandoffClassification.IMPLEMENTATION_FAILURE: (
+                CIHandoffDecision.CHANGES_REQUESTED
+            ),
+        }.get(classification, CIHandoffDecision.HOLD)
+        head_sha = _required(record, "head_sha", str)
+        pr_number = _required(record, "pr_number", int)
+        reconciliation_repo.record(
+            CIHandoffReconciliation(
+                id=_uuid(_required(record, "reconciliation_id", str)),
+                product_id=product.id,
+                ticket_id=ticket.id,
+                ticket_key=ticket.key,
+                linear_issue_id=ticket.external_linear_id,
+                repository_owner=("operator-ui-live-seed-owner-with-a-long-identity"),
+                repository_name="atlas",
+                pr_number=pr_number,
+                head_commit=head_sha,
+                policy_id=policy.id,
+                policy_revision=policy.revision,
+                policy_fingerprint=delivery_policy_fingerprint(policy),
+                snapshot_fingerprint="a" * 64,
+                classification=classification,
+                reason=reason,
+                decision=decision,
+                check_results=(
+                    CIHandoffCheckResult(
+                        check_type=check_type,
+                        status=check_status,
+                        classification=classification,
+                        evidence_ids=evidence_ids,
+                    ),
+                ),
+                observed_at=observed_at,
+                created_by_type=ActorType.SYSTEM,
+                created_by_id="atlas.pm.ci_handoff",
+            )
+        )
+        _seed_pressure_acceptance(
+            db,
+            record=record,
+            ticket=ticket,
+            head_sha=head_sha,
+            pr_number=pr_number,
+            observed_at=observed_at,
+        )
+
+
 def seed_store(db_url: str, seed_path: Path = DEFAULT_SEED_PATH) -> Database:
     """Create a fresh SQLite store and load the committed e2e fixture."""
     seed = _load_seed(seed_path)
@@ -659,7 +905,7 @@ def seed_store(db_url: str, seed_path: Path = DEFAULT_SEED_PATH) -> Database:
     adrs = _seed_adrs(db, _records(seed.get("adrs"), "adrs"), product, timestamp)
     tickets = _seed_tickets(
         db,
-        _records(seed.get("tickets"), "tickets"),
+        _ticket_seed_records(seed),
         product,
         epics,
         timestamp,
@@ -696,6 +942,15 @@ def seed_store(db_url: str, seed_path: Path = DEFAULT_SEED_PATH) -> Database:
         _seed_delivery_control(
             db,
             _record(delivery_control, "delivery_control"),
+            product,
+            tickets,
+            timestamp,
+        )
+    pressure = seed.get("delivery_control_pressure")
+    if pressure is not None:
+        _seed_delivery_control_pressure(
+            db,
+            _records(pressure, "delivery_control_pressure"),
             product,
             tickets,
             timestamp,

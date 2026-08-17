@@ -305,12 +305,30 @@ UUID keeps it visible.
 
 Consumes the authenticated delivery-control projection and the complete-policy
 replacement command. The authoritative snapshot shows policy revision and
-mode, truthful last-successful-sync time, server-reported working capacity,
-review pressure, protected Changes Requested reserve, risk and component lane
-occupancy, and every returned admission decision, rank input, reason and
-indeterminate or over-capacity state. Working and review capacity remain
-visually distinct. Lane limits and budgets are maximums, never utilisation
-targets or browser scoring inputs.
+mode, truthful last-successful-sync time and the server's coherent, stale or
+indeterminate classification with every typed reason and pinned board,
+evidence, validation-registry and integration identity. Working,
+CI/integration, review and Changes Requested pressure are separate cards.
+Working and integration availability are rendered only from server-returned
+fields; review remains a server count against its maximum, and the browser does
+not manufacture review availability or an admission result. Risk, component
+and protected-lane occupancy, every admission decision, rank input and complete
+reason set remain visible. Lane limits and budgets are maximums, never
+utilisation targets or browser scoring inputs.
+
+The CI-pending inventory renders the exact contributor head, repository/PR
+identity, persisted CI classification, decision, outcome reason, every bounded
+required-check result and evidence id, validation profiles and provenance, and
+every projection reason. It requests and renders no raw log. Exact-base
+assessments label `exact_branch`, `rebase_required`, `stale` and `indeterminate`
+distinctly and say that each is evidence, never merge approval. Because the
+governed ATLAS-259/260 feasibility work failed, `exact_integration_candidate`
+is visibly unavailable rather than fabricated by the browser.
+
+Protected integration lanes show every registry lane, current working or
+CI-pending owner, immutable maximum, operator-declared flag, active-state
+fingerprint and every persisted held candidate with its complete lane reason.
+The copy states that a free Symphony slot never overrides a saturated lane.
 
 The primary `approved_symphony_ceiling` label is **Approved policy ceiling**.
 Supporting text states that it is operator-owned Atlas admission policy, not an
@@ -322,14 +340,17 @@ state and does not imply that Symphony is configured for, or occupies, three
 workers.
 
 The policy form is a complete replacement: mode, approved policy ceiling,
-working and review budgets, protected Changes Requested reserve, all risk lane
-limits, all component lane limits, and `expected_revision` are visible in an
-explicit confirmation before submission. A fresh cryptographic idempotency key
-belongs to each new explicit command. Stale revision or altered replay requires
-the operator to load and inspect the current server policy before explicitly
-confirming another command; an ambiguous response permits only an explicit
-same-key retry of the unchanged command. Session expiry, security refusal and
-API unavailability preserve the proposal where safe.
+working, integration and review budgets, protected Changes Requested reserve,
+all risk lane limits, all component lane limits, `expected_revision`, the
+server-observed protected-lane registry identity and a freshly generated
+idempotency command identity are visible in an explicit confirmation before
+submission. The registry fields remain server-owned and are not submitted as a
+client override. Stale revision or altered replay preserves the entered
+proposal, displays the complete current server policy, and permits only an
+explicit adoption of its revision followed by review and reconfirmation with a
+fresh key. An ambiguous response permits only an explicit same-key retry of the
+unchanged command. Session expiry, security refusal and API unavailability
+preserve the proposal where safe.
 
 Success displays the server-returned policy revision and action receipt, then
 refetches the delivery-control projection. Submitted values never become
@@ -342,10 +363,12 @@ Paused and draining explanations say that no new admission occurs while active
 work is preserved, and never imply that a mode or lower policy limit terminates
 Symphony sessions.
 
-This route exposes no ticket promote/demote, dispatch, worker cancel/terminate,
-Symphony configuration, `WORKFLOW.md` edit, merge, rebase, policy optimiser or
-automatic **1 → 3 → 5 → 7 → 10** ramp control. The milestone sequence remains
-operator governed outside this UI.
+This route exposes no CI retry/cancel, ticket transition, GitHub branch update
+or merge, Git rebase or push, dispatch, Symphony worker cancel/terminate,
+Symphony configuration, `WORKFLOW.md` edit, policy optimiser, automatic
+concurrency control or automatic **1 → 3 → 5 → 7 → 10** ramp control. The
+milestone sequence remains operator governed outside this UI. The executable
+control inventory admits only the existing complete-policy mutation.
 
 ### App shell
 
@@ -513,6 +536,17 @@ CI exposes the Operator UI contract as independent required checks:
 `test-operator-ui-accessibility`. The end-to-end and accessibility jobs are
 gates, not advisory, and run with the Playwright package and Chromium browser
 metadata pinned by `apps/operator-ui/package-lock.json`.
+
+The delivery-control evidence names three complementary gates:
+`delivery-control.browser.test.tsx` covers every CI classification and typed
+outcome reason, all four exact-base classes, policy success/conflict, stale
+transport and long values; `delivery-control.spec.ts` exercises pending and
+implementation-failure candidates plus saturated protected lanes through the
+seeded live API and proves zero external writes beyond explicit policy
+commands; its `@accessibility` case covers keyboard focus containment and
+return, live announcements, dense lists, desktop/tablet/mobile widths,
+horizontal overflow and WCAG 2 A/AA, 2.1 A/AA and 2.2 AA rules. The acceptance
+inventory separately proves the prohibited command set remains empty.
 
 ## Development and serving
 
