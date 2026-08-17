@@ -1,0 +1,393 @@
+{
+  "schema_version": 1,
+  "fixture_identity": "8df6db27792661c9fe5365d20385cceb2398f3bad112e3696e46d6b775cc995b",
+  "ratified_at": "2026-08-17T08:45:00Z",
+  "window_started_at": "2026-08-17T09:00:00Z",
+  "parent_ticket": "ATL-437",
+  "thresholds": {
+    "agent_active_median_ratio": 0.85,
+    "matched_agent_active_ratio": 1.25,
+    "local_validation_median_ratio": 0.75,
+    "ci_median_ratio": 1.2,
+    "normal_ci_max_seconds": 900,
+    "slot_release_max_seconds": 5,
+    "live_review_max_seconds": 300,
+    "review_dwell_median_ratio": 1.2,
+    "accepted_flow_min_ratio": 1.2,
+    "max_mechanical_rebases": 1
+  },
+  "policy": {
+    "identity": "9e28b65cf01e64280c371a67eb7d3e6ec8f6c25fc2e612bcc2ec563f54e970fc",
+    "revision": 1,
+    "working_budget": 4,
+    "integration_budget": 4,
+    "review_budget": 4,
+    "changes_requested_reserve": 1,
+    "approved_symphony_ceiling": 1,
+    "protected_lane_registry_version": "protected-integration-lanes/v1"
+  },
+  "workloads": [
+    {
+      "workload_id": "IND-1",
+      "workload_identity": "83f879bbc149d7eeb1a5c76e312f0048d52482f18a4ef6263b1b2a2284421f27",
+      "parent_ticket": "ATL-437",
+      "fixture_input": {
+        "operation": "classify-ci-evidence",
+        "revision": 1
+      },
+      "touched_path_family": "atlas/verification/ci-handoff",
+      "touched_paths": [
+        "atlas/verification/ci_handoff.py"
+      ],
+      "protected_lanes": [],
+      "validation_plan": {
+        "identity": "12fa6da81dd152232b1c96edf22b6ea5322e55c61c30faa1ea72bcd5cfe3a123",
+        "registry_version": "validation-registry/v1",
+        "base_sha": "1111111111111111111111111111111111111111",
+        "head_sha": "2222222222222222222222222222222222222222",
+        "changed_paths": [
+          "atlas/verification/ci_handoff.py"
+        ],
+        "profiles": [
+          "python",
+          "static"
+        ],
+        "commands": [
+          "uv run pytest",
+          "uv run ruff check .",
+          "uv run ruff format --check .",
+          "uv run mypy atlas tests",
+          "uv run lint-imports"
+        ]
+      },
+      "candidate_head": "2222222222222222222222222222222222222222",
+      "ci_run_id": "sim-ci-ind-1-v1",
+      "ci_evidence_identity": "4d51afbfbc2529e2da39d4bb9a4633cfc469f5214ce6bbabf72950c34dcce089",
+      "cost_model": {
+        "implementation_seconds": 150,
+        "baseline_full_sweep_seconds": 420,
+        "scoped_validation_seconds": 180,
+        "publication_handoff_seconds": 30,
+        "ci_queue_run_seconds": 360,
+        "baseline_review_dwell_seconds": 180,
+        "phase_review_dwell_seconds": 30,
+        "acceptance_processing_seconds": 60,
+        "slot_release_seconds": 2
+      }
+    },
+    {
+      "workload_id": "IND-2",
+      "workload_identity": "bc386e242d6d6ea64b0ddde9afd94a764ec04b3fb0778f4fdbdafeb34bc57a14",
+      "parent_ticket": "ATL-437",
+      "fixture_input": {
+        "operation": "update-pr-acceptance-runbook",
+        "revision": 1
+      },
+      "touched_path_family": "docs/runbooks",
+      "touched_paths": [
+        "docs/runbooks/pr-acceptance.md"
+      ],
+      "protected_lanes": [],
+      "validation_plan": {
+        "identity": "8dd3756e8c96f6a55e6e91c0c7569d4bf01a09c9fc041ac9ab6cc2abdf112cf1",
+        "registry_version": "validation-registry/v1",
+        "base_sha": "3333333333333333333333333333333333333333",
+        "head_sha": "4444444444444444444444444444444444444444",
+        "changed_paths": [
+          "docs/runbooks/pr-acceptance.md"
+        ],
+        "profiles": [
+          "documentation"
+        ],
+        "commands": [
+          "uv run python -m atlas.tools.doc_linter"
+        ]
+      },
+      "candidate_head": "4444444444444444444444444444444444444444",
+      "ci_run_id": "sim-ci-ind-2-v1",
+      "ci_evidence_identity": "0b3d8caeed4977660c663935228252d26450748a8b4a1581f84f8885f055f65c",
+      "cost_model": {
+        "implementation_seconds": 180,
+        "baseline_full_sweep_seconds": 460,
+        "scoped_validation_seconds": 200,
+        "publication_handoff_seconds": 32,
+        "ci_queue_run_seconds": 420,
+        "baseline_review_dwell_seconds": 210,
+        "phase_review_dwell_seconds": 30,
+        "acceptance_processing_seconds": 70,
+        "slot_release_seconds": 2
+      }
+    },
+    {
+      "workload_id": "IND-3",
+      "workload_identity": "ca214e98cb75d1b880274d8f46d261db358eb7c950388393775eded90ac33a05",
+      "parent_ticket": "ATL-437",
+      "fixture_input": {
+        "operation": "render-integration-pressure",
+        "revision": 1
+      },
+      "touched_path_family": "apps/operator-ui/src/features/delivery-control",
+      "touched_paths": [
+        "apps/operator-ui/src/features/delivery-control/integration-pressure-console.tsx"
+      ],
+      "protected_lanes": [],
+      "validation_plan": {
+        "identity": "7ce8283a8ace79c925bfe49f2b1c526a7ebffd3581718eb841ac2cec8dfe82a7",
+        "registry_version": "validation-registry/v1",
+        "base_sha": "5555555555555555555555555555555555555555",
+        "head_sha": "6666666666666666666666666666666666666666",
+        "changed_paths": [
+          "apps/operator-ui/src/features/delivery-control/integration-pressure-console.tsx"
+        ],
+        "profiles": [
+          "ui",
+          "browser"
+        ],
+        "commands": [
+          "npm --prefix apps/operator-ui ci",
+          "npm --prefix apps/operator-ui run lint",
+          "npm --prefix apps/operator-ui run typecheck",
+          "npm --prefix apps/operator-ui run test:acceptance",
+          "npm --prefix apps/operator-ui run build:bundle",
+          "apps/operator-ui/node_modules/.bin/playwright install chromium",
+          "npm --prefix apps/operator-ui run test:browser",
+          "npm --prefix apps/operator-ui run test:e2e",
+          "npm --prefix apps/operator-ui run test:a11y"
+        ]
+      },
+      "candidate_head": "6666666666666666666666666666666666666666",
+      "ci_run_id": "sim-ci-ind-3-v1",
+      "ci_evidence_identity": "b709fcadf0de3c326ac5c6275ef087238531b1e0af66f68a0e7e9569374939c9",
+      "cost_model": {
+        "implementation_seconds": 210,
+        "baseline_full_sweep_seconds": 500,
+        "scoped_validation_seconds": 220,
+        "publication_handoff_seconds": 34,
+        "ci_queue_run_seconds": 480,
+        "baseline_review_dwell_seconds": 240,
+        "phase_review_dwell_seconds": 60,
+        "acceptance_processing_seconds": 80,
+        "slot_release_seconds": 3
+      }
+    },
+    {
+      "workload_id": "IND-4",
+      "workload_identity": "665a71e8ea34fb025b3caa4030e99c66e73c078ca0467b2714d50b0982dc7ad1",
+      "parent_ticket": "ATL-437",
+      "fixture_input": {
+        "operation": "bounded-close-driver-diagnostic",
+        "revision": 1
+      },
+      "touched_path_family": "scripts",
+      "touched_paths": [
+        "scripts/close_ticket.py"
+      ],
+      "protected_lanes": [],
+      "validation_plan": {
+        "identity": "0e31ebbc9964ada8ddcf045fc2141173eee9709a95aa5d0f792693a9bedba00b",
+        "registry_version": "validation-registry/v1",
+        "base_sha": "7777777777777777777777777777777777777777",
+        "head_sha": "8888888888888888888888888888888888888888",
+        "changed_paths": [
+          "scripts/close_ticket.py"
+        ],
+        "profiles": [
+          "python",
+          "static"
+        ],
+        "commands": [
+          "uv run pytest",
+          "uv run ruff check .",
+          "uv run ruff format --check .",
+          "uv run mypy atlas tests",
+          "uv run lint-imports"
+        ]
+      },
+      "candidate_head": "8888888888888888888888888888888888888888",
+      "ci_run_id": "sim-ci-ind-4-v1",
+      "ci_evidence_identity": "0978c82d61498326d391d0f575360ceb81af868d9e7a9cb318dafb910a9b696c",
+      "cost_model": {
+        "implementation_seconds": 240,
+        "baseline_full_sweep_seconds": 540,
+        "scoped_validation_seconds": 240,
+        "publication_handoff_seconds": 36,
+        "ci_queue_run_seconds": 540,
+        "baseline_review_dwell_seconds": 270,
+        "phase_review_dwell_seconds": 60,
+        "acceptance_processing_seconds": 90,
+        "slot_release_seconds": 4
+      }
+    }
+  ],
+  "protected_lane_window": {
+    "fixtures": [
+      {
+        "workload_id": "LANE-A",
+        "touched_path_family": "atlas/pm/admission-hotspot",
+        "protected_lanes": [
+          "operator-admission-hotspot"
+        ]
+      },
+      {
+        "workload_id": "LANE-B",
+        "touched_path_family": "atlas/pm/admission-hotspot",
+        "protected_lanes": [
+          "operator-admission-hotspot"
+        ]
+      }
+    ],
+    "contention_at": "2026-08-17T09:02:00Z",
+    "owner_release_at": "2026-08-17T09:12:00Z",
+    "contention_decision": "hold_before_publication",
+    "independent_decision": "admit",
+    "post_release_decision": "admit"
+  },
+  "ci_fault_matrix": [
+    {
+      "classification": "passed",
+      "expected_decision": "review_required",
+      "expected_owner": "system-tier-ci-reconciler",
+      "expected_transition_writes": 1
+    },
+    {
+      "classification": "implementation_failure",
+      "expected_decision": "changes_requested",
+      "expected_owner": "system-tier-ci-reconciler",
+      "expected_transition_writes": 1
+    },
+    {
+      "classification": "pending",
+      "expected_decision": "hold",
+      "expected_owner": "system-tier-ci-reconciler",
+      "expected_transition_writes": 0
+    },
+    {
+      "classification": "missing",
+      "expected_decision": "hold",
+      "expected_owner": "system-tier-ci-reconciler",
+      "expected_transition_writes": 0
+    },
+    {
+      "classification": "infrastructure",
+      "expected_decision": "hold",
+      "expected_owner": "system-tier-ci-reconciler",
+      "expected_transition_writes": 0
+    },
+    {
+      "classification": "malformed",
+      "expected_decision": "hold",
+      "expected_owner": "system-tier-ci-reconciler",
+      "expected_transition_writes": 0
+    },
+    {
+      "classification": "stale",
+      "expected_decision": "hold",
+      "expected_owner": "system-tier-ci-reconciler",
+      "expected_transition_writes": 0
+    },
+    {
+      "classification": "ambiguous",
+      "expected_decision": "hold",
+      "expected_owner": "system-tier-ci-reconciler",
+      "expected_transition_writes": 0
+    },
+    {
+      "classification": "partial_failure",
+      "expected_decision": "hold",
+      "expected_owner": "system-tier-ci-reconciler",
+      "expected_transition_writes": 0
+    }
+  ],
+  "freshness_matrix": [
+    {
+      "case": "exact_head_current",
+      "expected_decision": "acceptance_eligible",
+      "operator_rebase_lane": false,
+      "synthetic_candidate_authority": false
+    },
+    {
+      "case": "mechanically_behind",
+      "expected_decision": "operator_rebase_required",
+      "operator_rebase_lane": true,
+      "synthetic_candidate_authority": false
+    },
+    {
+      "case": "mechanically_diverged",
+      "expected_decision": "operator_rebase_required",
+      "operator_rebase_lane": true,
+      "synthetic_candidate_authority": false
+    },
+    {
+      "case": "conflicted",
+      "expected_decision": "operator_rebase_required",
+      "operator_rebase_lane": true,
+      "synthetic_candidate_authority": false
+    },
+    {
+      "case": "head_moved",
+      "expected_decision": "hold_identity_invalidated",
+      "operator_rebase_lane": false,
+      "synthetic_candidate_authority": false
+    },
+    {
+      "case": "base_moved",
+      "expected_decision": "hold_identity_invalidated",
+      "operator_rebase_lane": false,
+      "synthetic_candidate_authority": false
+    },
+    {
+      "case": "provider_ambiguity",
+      "expected_decision": "hold_identity_indeterminate",
+      "operator_rebase_lane": false,
+      "synthetic_candidate_authority": false
+    },
+    {
+      "case": "synthetic_tree_equal_only",
+      "expected_decision": "diagnostic_only",
+      "operator_rebase_lane": false,
+      "synthetic_candidate_authority": false
+    }
+  ],
+  "reactivation_matrix": [
+    {
+      "from": "ci_pending",
+      "to": "in_progress",
+      "prior_transition": null,
+      "expected_decision": "FAIL"
+    },
+    {
+      "from": "ci_pending",
+      "to": "pr_open",
+      "prior_transition": null,
+      "expected_decision": "FAIL"
+    },
+    {
+      "from": "changes_requested",
+      "to": "in_progress",
+      "prior_transition": "changes_requested_to_in_progress",
+      "expected_decision": "ALLOW"
+    }
+  ],
+  "authority_spies": {
+    "observed_actions": [
+      "read_repository_identity",
+      "calculate_validation_plan",
+      "observe_ci_evidence",
+      "classify_protected_lane",
+      "classify_exact_head",
+      "record_bounded_simulation_receipt"
+    ],
+    "must_remain_absent": [
+      "automatic_merge",
+      "automatic_rebase",
+      "automatic_push",
+      "branch_update",
+      "cancel_worker",
+      "ci_mutation",
+      "deployment",
+      "permission_expansion",
+      "plan_approval",
+      "secret_retention"
+    ]
+  }
+}

@@ -1,7 +1,8 @@
 # Parallel Delivery Efficiency and Integration Control (Phase 15.5)
 
-Status: Planned interstitial design authority. Defines the bounded workflow
-correction required before ATLAS-253 may begin Phase 15's live ceiling ramp.
+Status: Delivered through ATLAS-262; ATLAS-263 controls the fixed comparison,
+live-authority proof and closure required before ATLAS-253 may begin Phase 15's
+live ceiling ramp.
 
 ## Problem and outcome
 
@@ -33,10 +34,26 @@ is the explicit operator release gate for ATLAS-253, which still owns Phase
 | CI reconciliation | Atlas observes pinned GitHub check evidence and performs one deterministic state transition. Infrastructure, pending and ambiguous outcomes remain held without retry churn. |
 | Capacity accounting | Working, CI/integration and review occupancy are separate budgets. Freeing a worker never makes the CI-pending queue unbounded. |
 | Conflict avoidance | Declared protected surfaces are exclusive integration lanes. Independent surfaces remain parallel. |
-| Freshness | A clean candidate may avoid branch rewrite only after a feasibility spike proves exact repository, PR, base, head and synthetic-merge identities from authoritative GitHub evidence. |
+| Freshness | Review Required enters acceptance only when the exact contributor head satisfies current-main ancestry. Mechanically stale candidates use the operator-owned rebase lane; synthetic composition is diagnostic only. |
 | Rebase fallback | A conflict, stale identity, provider ambiguity or failed spike routes to the delivered operator-owned rebase lane. Atlas never resolves or publishes a rebase automatically. |
 | Existing Phase 15 work | ATLAS-250 and ATLAS-251 continue normally and become prerequisites of the Phase 15.5 API/UI tickets. They are not recreated or rewritten. |
 | Ramp release | ATLAS-253 remains `Needs Human` until the Phase 15.5 milestone and closure are reviewed and merged. |
+
+ATLAS-259 proved that GitHub required results are pinned to the contributor
+head rather than a synthetic integration candidate. ATLAS-260 did not produce
+an independent trusted attestation that closes that identity gap. Both results
+remain FAIL and the synthetic no-rewrite route is retired. Head or base
+movement, provider ambiguity, stale evidence and indeterminate identity fail
+closed; tree equality and mergeability never create acceptance authority.
+
+The ATLAS-261/262 `CI Pending -> In Progress -> PR Open -> CI Pending`
+reactivation was caused by Linear's `PR opened -> In Progress` GitHub workflow
+automation, not the trusted CI reconciler or the configured Atlas state map.
+The operator disabled that automation on 17 August 2026. GitHub/Linear may
+still link pull requests and expose evidence, but it must not mutate
+Atlas-owned workflow state. ATLAS-263 requires zero recurrence in ATL-437's
+live authority window; any unexplained transition from `CI Pending` to a
+Symphony-active state is an immediate FAIL.
 
 ## Authority and non-authority
 
@@ -671,28 +688,60 @@ those outcomes and remains the only Phase 15.5 closure authority.
 
 ## Milestone and closure
 
-Before running the milestone, the operator records fixed observation windows,
-an independent workload and numerical PASS/FAIL thresholds for:
+The operator ratified the ATLAS-263 observation protocol and thresholds on 17
+August 2026 before the first result. The digest-bound fixture at
+`tests/fixtures/phase_15_5/milestone_v1.json` records exactly four independent
+workloads in fixed order, `IND-1..IND-4`. Each has its workload and validation
+plan identity, candidate head, CI evidence identity, primary touched-path
+family and protected-lane set. The families and path/lane sets are pairwise
+disjoint. `LANE-A` and `LANE-B` share only
+`operator-admission-hotspot`, are excluded from comparison numerators and
+prove a deterministic hold before the contender may publish.
 
-- agent active time and local-validation time;
-- duplicate complete sweeps per unchanged identity;
-- CI queue/run time and indeterminate outcomes;
-- working, CI-pending integration and review queue bounds;
-- review dwell, conflicts and rebases; and
-- accepted completed flow, not merely PR creation or worker utilisation.
+`scripts/phase_15_5_milestone.py` replays the same inputs once through the
+documented pre-Phase-15.5 model and once through the delivered model on a
+virtual clock. It retains bounded selected fields only and performs no network,
+Git, GitHub, Linear, Symphony, CI, deployment or repository mutation. Its
+fault matrices cover complete pass, definite implementation failure, pending,
+missing, infrastructure, malformed, stale, partial and ambiguous evidence;
+exact-head current, behind, diverged, conflicted, head/base movement and
+provider ambiguity; and prohibited CI-pending reactivation. Repository and
+external-call spies retain zero prohibited calls.
 
-The controlled run includes protected-lane collisions, definite code failure,
-infrastructure failure, provider ambiguity, head/base movement and a genuine
-merge conflict. Repository and external-call spies prove the absence of
-automatic merge, rebase, push, worker cancellation, CI mutation, plan
-approval, permission expansion, deployment and secret-bearing retained
-evidence.
+The fixed controlled result is PASS:
 
-Phase 15.5 closes only when every predeclared threshold and authority invariant
-passes and the Phase 15.5 closure report lands at
-docs/closure/phase-15.5-closure-report.md. A failed or
-ambiguous result records the evidence, leaves Phase 15.5 open, keeps ATLAS-253
-in `Needs Human` and leaves `WORKFLOW.md`'s committed ceiling unchanged.
+| Measure | Baseline | Phase 15.5 | Bound | Result |
+| --- | ---: | ---: | ---: | --- |
+| median agent-active seconds | 1158 | 440.5 | <= 85% | 38.04%, PASS |
+| median local-validation seconds | 480 | 210 | <= 75% | 43.75%, PASS |
+| median CI queue/run seconds | 450 | 450 | <= 120% | 100%, PASS |
+| median review-dwell seconds | 225 | 45 | <= 120% | 20%, PASS |
+| accepted completions/agent-hour | 3.1088 | 8.1679 | >= 1.20x | 2.6273x, PASS |
+
+All four Phase 15.5 fixtures reach their accepted completion state. The maximum
+normal CI duration is 540 seconds, working/integration/review occupancy is
+4/4/1 against budgets 4/4/4, slot release is at most four seconds, and there
+are zero Phase 15.5 CI polls, duplicate publications, redundant complete
+sweeps, semantic conflicts, mechanical rebases or prohibited authority calls.
+The protected contender publishes zero times before release. Every determinate
+CI exit is system-owned; every unsafe evidence class holds. The controlled
+receipt retains all eight baseline/Phase measured identities.
+
+That controlled PASS cannot pre-authorise ATL-437's own future CI handoff. The
+live authority window starts at its first PR publication and ends after the
+first determinate CI-pending exit and acceptance disposition. Publication must
+therefore leave the milestone `PENDING_LIVE_AUTHORITY`: Symphony must stop the
+worker within five seconds, the system-tier reconciler must make the only
+determinate exit within one tick and five minutes, and no Linear/GitHub
+automation may reactivate the issue. A PR-linked bounded live receipt completes
+the last gate without changing the candidate head. Any missing, ambiguous or
+unexpected observation is FAIL.
+
+Phase 15.5 closes only when that live gate passes, every controlled threshold
+and authority invariant remains passed, and
+`docs/closure/phase-15.5-closure-report.md` merges at the accepted exact head.
+Until then ATLAS-253 remains `Needs Human` and `WORKFLOW.md`'s committed ceiling
+remains one.
 
 ## Explicit non-goals
 

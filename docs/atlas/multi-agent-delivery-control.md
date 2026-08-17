@@ -509,8 +509,10 @@ Before creating or resuming that milestone branch, the operator must verify
 that Phase 15.5's efficiency and integration milestone has passed, its closure
 report is merged and ATLAS-253 is deliberately released from `Needs Human`.
 Phase 15.5 changes no ceiling; it proves that focused local validation,
-system-tier CI handoff, protected integration lanes and exact-base acceptance
-do not turn additional slots into avoidable queue and rebase pressure.
+system-tier CI handoff, protected integration lanes and exact-head/current-main
+acceptance do not turn additional slots into avoidable queue and rebase
+pressure. The ATLAS-259/260 synthetic no-rewrite route is retired; mechanically
+stale Review Required candidates use the operator-owned rebase lane.
 `max_turns` is outside this ramp and remains ten. Each edit requires a PASS
 receipt for the preceding gate; no intermediate value is merged or
 cherry-picked independently. The exact preflight, fixed observation window,
@@ -520,6 +522,14 @@ The ramp introduces no delivery-policy mutation path: only the human/operator
 may reconcile the policy mirror through the existing governed Phase 15
 policy-revision boundary, and neither agents nor ramp automation receive that
 authority.
+
+ATLAS-263's live release gate is part of that prerequisite. The ATL-437 worker
+must stop within five seconds of Symphony observing `CI Pending`, and only the
+system-tier reconciler may perform its first determinate exit. The conflicting
+Linear `PR opened -> In Progress` automation was disabled on 17 August 2026;
+any direct reactivation from `CI Pending` into a Symphony-active state is an
+immediate milestone failure. Linear/GitHub integration remains link- and
+evidence-only for Atlas-owned workflow state.
 
 The delivery-control UI may submit a complete policy selected by the operator
 at any governed gate, but it does not advance a gate, validate a PASS receipt,

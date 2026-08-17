@@ -109,6 +109,25 @@ that ticket). If newer same-head evidence changes the selected check results in
 the final pre-write window, Atlas records `evidence_changed`, leaves the card in
 `CI Pending` and lets the next tick classify the new set.
 
+Linear's `PR opened -> In Progress` GitHub workflow automation caused the
+ATLAS-261/262 reactivation incident and was disabled by the operator on 17
+August 2026. Keep it disabled. The integration may link the PR and expose
+evidence, but it must not mutate Atlas-owned workflow state. During ATLAS-263's
+ATL-437 live authority window, any direct `CI Pending -> In Progress`, `CI
+Pending -> PR Open`, or other Symphony-active reactivation is an immediate
+milestone FAIL unless an authorised `Changes Requested -> In Progress`
+semantic-remediation path occurred first. Do not repair such a transition by
+dragging the issue back; retain its exact timestamps and owner evidence and
+leave ATLAS-253 in `Needs Human`.
+
+ATLAS-263's publishing agent stops at `CI Pending`, so the live receipt is
+necessarily completed afterward by the system reconciler/operator without a
+candidate-head change. It must show slot release within five seconds, exactly
+one system-owned determinate exit within one reconciliation tick and five
+minutes, zero agent CI polls and zero unexpected reactivation. A seeded replay
+is test evidence only and cannot substitute for ATL-437's actual issue and PR
+history.
+
 ## 1. Review (reviewer-tier, not the gate)
 
 Fresh-clone the PR head, review per `review-doctrine.md`, run the full

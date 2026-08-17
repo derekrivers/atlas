@@ -230,6 +230,41 @@ Two cautions:
 - **`LINEAR_*_ID` values are the API ids (UUIDs)**, not the human `ATL-123`
   identifiers. An issue-not-found error is usually that mix-up.
 
+## Phase 15.5 milestone replay (ATLAS-263)
+
+The fixed comparison fixture is
+`tests/fixtures/phase_15_5/milestone_v1.json`. Its identity, workload order,
+`IND-1..IND-4` workload/plan/path/lane identities, virtual-clock inputs and
+thresholds were recorded before measurement. Run the controlled comparison
+without a live receipt to prove the comparison while retaining the required
+live gate:
+
+```bash
+uv run python scripts/phase_15_5_milestone.py \
+  tests/fixtures/phase_15_5/milestone_v1.json --pretty
+```
+
+Exit 3 means the controlled window passed but ATL-437 is correctly
+`PENDING_LIVE_AUTHORITY`; it is not a failed controlled result and is not Phase
+15.5 closure. The seeded live-delivery/fault exercise is deterministic test
+evidence only:
+
+```bash
+uv run python scripts/phase_15_5_milestone.py \
+  tests/fixtures/phase_15_5/milestone_v1.json \
+  --live-receipt \
+  tests/fixtures/phase_15_5/live_authority_seeded_pass.json --pretty
+```
+
+An actual bounded receipt for ATL-437 may be evaluated with the same
+`--live-receipt` option only after its first publication. The receipt must pin
+the PR/head, `CI Pending` observation, worker-stop timestamp, determinate CI
+timestamp, reconciler tick/owner, exact transition sequence and absence of
+Linear GitHub workflow state mutation. The publishing agent never runs that
+post-publication check: it stops at `CI Pending`. The system reconciler and
+operator attach the PR-linked receipt without changing the candidate head.
+Seeded evidence never substitutes for that live window.
+
 ## Before you publish and hand off
 
 A branch is ready for publication when, from a clean `uv sync --locked`:
