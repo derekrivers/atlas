@@ -283,14 +283,17 @@ ATLAS-253; the synthetic/no-rewrite route remains retired and the disabled
 Linear `PR opened → In Progress` automation must stay disabled.
 
 Migration `0025` and policy revision one, whose historical ceiling is three,
-remain immutable history and must not be cited as the current live policy.
-Before the milestone branch is created or Gate 1 begins, the operator appends
-and activates a new policy revision with `approved_symphony_ceiling=1` and
-`working_budget=1`, with deliberate integration/review budgets, Changes
-Requested reserve, risk/component limits and protected-lane registry. The
-operator records that revision and fingerprint and observes them alongside
-committed `WORKFLOW.md` at one. Failure to prove this current-policy
-reconciliation stops the milestone before any live ramp window.
+remain immutable history and must not be cited as the current live policy. At
+each gate, including Gate 1, the operator keeps admission paused while proving
+the running Symphony identity. Only after that process-owned proof succeeds,
+the operator appends and activates a new policy revision whose
+`approved_symphony_ceiling` matches the gate, whose working budget is at or
+below it and whose deliberate integration/review budgets, Changes Requested
+reserve, risk/component limits and protected-lane registry validate. The
+Gate 1 revision specifically has `approved_symphony_ceiling=1` and
+`working_budget=1`. The operator records that revision and fingerprint before
+admitting workload. Failure to prove this current-policy reconciliation stops
+the milestone before any live ramp window.
 
 Policy reconciliation and later mirror changes are explicit human/operator
 actions through the existing governed Phase 15 policy-revision boundary. The
@@ -308,35 +311,94 @@ ratified reload/restart procedure, and capture bounded runtime evidence that
 the active process loaded that exact commit, ceiling and unchanged
 `max_turns: 10`.
 
-**Current disposition: Gate 1 is BLOCKED.** The repository does not identify a
-supported VPS service/unit or process, a canonical deployment checkout and
-configuration path, an exact commit-loading/restart command, or a running-
-process readback that exposes the loaded commit and `WORKFLOW.md` blob. The
-offline validator therefore accepts only
-`fixture-only-no-live-runtime-v1` for schema regression and rejects every
-claimed live procedure. Do not start the Gate 1 workload, create a live gate
-receipt or infer identity from a terminal note, process guess or branch edit.
+**Current disposition: the managed VPS runtime procedure is supported.** Its
+identifier is exactly `vps-systemd-immutable-workflow-readback-v1`. It is
+limited to the operator-owned `atlas-symphony.service` boundary and the frozen
+Symphony release
+`e5c5e48917e9e91ffb6709ab5a2a02c5af16bf02`. A later release is unsupported
+until the operator ratifies it and this repository registers that replacement.
+The release contains the process-owned `GET /api/v1/runtime` readback. That
+endpoint returns the cached accepted `WorkflowStore` identity; it does not
+reread `WORKFLOW.md` for each request, and a failed reload preserves the last
+known good identity.
 
-The operator can unblock Gate 1 only by ratifying and documenting an addendum
-that provides all of the following as one deterministic supported procedure:
+For every Gate 1/3/5/7/10, the operator performs this exact sequence while
+admission remains paused:
 
-1. the exact VPS instance and service/unit or supervised process identity;
-2. the canonical deployment checkout and the exact `WORKFLOW.md` path consumed
-   by that process;
-3. bounded commands that fetch the dedicated branch, select one recorded
-   commit without an implicit moving ref, verify its workflow blob and restart
-   or reload that named process;
-4. a process-owned readback that returns the loaded commit SHA, workflow blob
-   SHA, parsed ceiling and `max_turns` from the running instance rather than
-   merely rereading the checkout;
-5. load/readback timestamps, instance identity and a canonical proof digest;
-   and
-6. the exact rollback/readback procedure for the last proven ceiling.
+1. Fetch current `origin/main`, update the dedicated milestone branch through
+   the operator-owned exact-current-main rebase lane and identify one immutable
+   `<gate-commit>`. Record the exact commit and require its merge base to equal
+   the fetched main identity.
+2. Verify that `<gate-commit>:WORKFLOW.md` declares the expected gate ceiling
+   and unchanged `max_turns: 10` with the milestone doc-linter and workflow
+   contract commands below. Record the Git object identity with
+   `git rev-parse <gate-commit>:WORKFLOW.md`; no moving branch name may
+   substitute for `<gate-commit>` after this point.
+3. Choose a new gate-specific immutable runtime file in the operator-owned VPS
+   runtime area. Require that it does not already exist, materialise the exact
+   bytes with `git show <gate-commit>:WORKFLOW.md > <immutable-workflow-file>`,
+   make it read-only and calculate `sha256sum <immutable-workflow-file>`. Record
+   the Git workflow blob and the lowercase 64-character content SHA-256. The
+   raw path and workflow contents remain outside the retained Atlas receipt.
+4. Through the existing operator-owned systemd configuration boundary, point
+   `atlas-symphony.service` at that exact immutable workflow file. Do not copy
+   the service environment or environment-file contents into milestone
+   evidence. Run `systemctl daemon-reload`, then operator-restart exactly
+   `atlas-symphony.service` and require it to return active.
+5. Read `MainPID` with
+   `systemctl show --property MainPID --value atlas-symphony.service`, require a
+   live non-zero process and inspect that PID's command line. It must identify
+   the intended immutable workflow file. Independently require the deployed
+   Symphony release provenance to equal the ratified commit. Retain only the
+   bounded instance alias, service unit and ratified release commit—not the
+   command line or raw path.
+6. Call the process-owned `/api/v1/runtime` endpoint. Require its cached
+   `workflow_content_sha256`, configured ceiling and `max_turns` to equal the
+   materialised SHA-256, the gate level and ten. A missing response, failed
+   reload, last-known-good identity from a different gate or any mismatch stops
+   the gate before workload admission.
+7. Record load and proof timestamps and construct the bounded runtime identity
+   described below. Only after the operator confirms that process proof and its
+   canonical identity may the operator deliberately activate a new Atlas
+   delivery-policy revision coherent with this gate, change the policy from
+   paused to running and admit the predeclared workload.
 
-Once that block is removed, the operator ratifies a workload record containing
-more than ten actual workload identities, dependency independence, disjoint
-ordinary touched-path families, protected-lane classes, predeclared
-fault/contention exercises and numerical operational limits. Do not claim
+The live runtime receipt contains exactly the bounded `instance_id`,
+`supported_procedure_id`, `service_unit`, `symphony_commit_sha`,
+`workflow_content_sha256`, `loaded_commit_sha`, `workflow_blob_sha`,
+`configured_ceiling`, `max_turns`, `loaded_at`, `proof_observed_at` and
+`proof_identity`. `service_unit` must be `atlas-symphony.service`; the Symphony
+commit must be the ratified release above; the loaded commit/blob must equal
+the gate receipt; the content digest is lowercase SHA-256; the ceiling must
+equal the gate; `max_turns` must be ten; and timestamps must be ordered, fresh
+and no later than workload admission. `proof_identity` is the SHA-256 of the
+UTF-8 canonical JSON object containing the other selected fields, with keys
+sorted, ASCII escaping and compact separators. Timestamps are normalised to
+UTC `Z` before hashing. Raw provider payloads, environment values, credentials,
+secret-bearing paths, workflow or prompt contents, process command lines and
+arbitrary process environment never enter the receipt.
+
+`fixture-only-no-live-runtime-v1` remains accepted for
+fixture/schema regression only. It is never production runtime evidence and
+cannot establish that the VPS loaded a gate configuration. The harness remains
+unconditionally
+offline and read-only: either procedure can only validate a supplied receipt;
+neither creates transition, closure, deployment, policy or runtime-mutation
+authority.
+
+For rollback, keep admission paused and point `atlas-symphony.service` back to
+the previous proven gate's exact immutable workflow file. Run `systemctl
+daemon-reload` and operator-restart the named service, then recapture
+MainPID/process identity and require `/api/v1/runtime` to report the previous
+content SHA-256, ceiling and `max_turns: 10`. Only after that process-owned
+readback succeeds may the operator activate a policy revision coherent with
+the restored ceiling and resume. Never infer rollback from a branch edit, a
+checkout read or a service restart result alone.
+
+After this procedure support is accepted, the operator ratifies a workload
+record containing more than ten actual workload identities, dependency
+independence, disjoint ordinary touched-path families, protected-lane classes,
+predeclared fault/contention exercises and numerical operational limits. Do not claim
 ticket keys that the key authority has not issued; a hand-dispatched workload
 may use a non-key meta identity. The JSON remains offline validator input and
 cannot carry operator authority. Fingerprint that exact record before
@@ -359,8 +421,9 @@ omissions:
 - dedicated branch, exact milestone commit and workflow blob, fetched
   `origin/main`, merge base, plus proof that committed main remains ceiling one
   and `max_turns: 10`;
-- running Symphony instance, supported reload/proof procedure, exact loaded
-  commit/blob, configured ceiling, `max_turns`, load/proof timestamps and
+- running Symphony instance, supported reload/proof procedure, exact service
+  unit and Symphony release, loaded commit/blob, workflow content SHA-256,
+  configured ceiling, `max_turns`, load/proof timestamps and canonical
   runtime-proof identity;
 - delivery-policy ID/revision/fingerprint, approved ceiling, mode, separate
   working/integration/review budgets, Changes Requested reserve,
@@ -539,7 +602,7 @@ at every failure boundary.
 
 ### Gate 1 — serialized baseline admission, pause and rework
 
-Prerequisites are resolution of the explicit VPS procedure block above, the
+Prerequisites are the supported VPS procedure above, the
 fingerprinted workload record of more than ten independent workloads, the
 Phase 15 admission/CI/acceptance observability surfaces, green deterministic
 fixtures, merged Phase 15.5 closure and both `origin/main` and the unmodified

@@ -589,10 +589,20 @@ the milestone branch onto current main, records the new setup identities and
 continues from the last proven level; prior PASS receipts remain immutable
 historical prerequisites rather than authority for a new acceptance head.
 
-Gate 1 remains blocked until the operator ratifies a deterministic VPS
-Symphony service/configuration/readback procedure. The repository currently
-has no supported live process identity boundary, so the fixture-only runtime
-procedure is accepted solely for offline schema regression tests.
+The operator-ratified live process boundary is
+`vps-systemd-immutable-workflow-readback-v1`: `atlas-symphony.service` at the
+frozen Symphony release
+`e5c5e48917e9e91ffb6709ab5a2a02c5af16bf02`, loaded from an exact
+gate-specific immutable workflow file and verified through the process-owned
+`GET /api/v1/runtime` cached `WorkflowStore` readback. Every gate receipt binds
+the exact milestone commit/blob, workflow content SHA-256, service/release,
+configured ceiling, unchanged `max_turns: 10`, ordered load/proof timestamps
+and canonical proof identity before a coherent policy revision is activated or
+work is admitted. The exact load, proof and rollback sequence is operator-owned
+and documented in `docs/runbooks/operator-environment.md`; the validator only
+checks bounded supplied evidence and never controls the service or policy.
+`fixture-only-no-live-runtime-v1` remains fixture/schema regression only and is
+never production runtime evidence.
 
 The entry gates are cumulative:
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import hashlib
 import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -15,6 +16,9 @@ from scripts.phase_15_delivery_control_milestone import (
     FIXTURE_RUNTIME_PROCEDURE,
     GATE_EXERCISES,
     GATE_LEVELS,
+    LIVE_RUNTIME_PROCEDURE,
+    LIVE_RUNTIME_SERVICE_UNIT,
+    LIVE_SYMPHONY_COMMIT_SHA,
     MAX_MANIFEST_BYTES,
     MAX_REPORT_BYTES,
     evaluate_ramp,
@@ -47,6 +51,25 @@ def _timestamp(value: datetime) -> str:
 
 def _identity(seed: int) -> str:
     return f"{seed:064x}"[-64:]
+
+
+def _use_live_runtime(receipt: dict[str, Any]) -> dict[str, Any]:
+    runtime = cast(dict[str, Any], receipt["runtime_configuration"])
+    runtime.update(
+        {
+            "service_unit": LIVE_RUNTIME_SERVICE_UNIT,
+            "supported_procedure_id": LIVE_RUNTIME_PROCEDURE,
+            "symphony_commit_sha": LIVE_SYMPHONY_COMMIT_SHA,
+            "workflow_content_sha256": _identity(9000 + receipt["gate_level"]),
+        }
+    )
+    identity = {key: value for key, value in runtime.items() if key != "proof_identity"}
+    runtime["proof_identity"] = hashlib.sha256(
+        json.dumps(
+            identity, ensure_ascii=True, separators=(",", ":"), sort_keys=True
+        ).encode()
+    ).hexdigest()
+    return runtime
 
 
 def _receipt(
@@ -406,8 +429,90 @@ def test_runtime_must_prove_exact_branch_configuration_before_admission() -> Non
     receipts[0]["runtime_configuration"]["supported_procedure_id"] = (
         "operator-claimed-supported-v1"
     )
-    with pytest.raises(ValueError, match="Gate 1 is blocked"):
+    with pytest.raises(ValueError, match="runtime procedure is unsupported"):
         evaluate_ramp(manifest, receipts)
+
+
+def test_live_runtime_procedure_retains_only_its_bounded_coherent_identity() -> None:
+    manifest = _manifest()
+    receipts = _receipts(manifest)
+    expected = _use_live_runtime(receipts[0]).copy()
+
+    report, passed = evaluate_ramp(manifest, receipts)
+
+    assert passed is True
+    first = cast(list[dict[str, Any]], report["receipt_summaries"])[0]
+    assert first["runtime_identity"] == expected
+    assert first["runtime_proof_identity"] == expected["proof_identity"]
+    assert expected["service_unit"] == "atlas-symphony.service"
+    assert expected["symphony_commit_sha"] == (
+        "e5c5e48917e9e91ffb6709ab5a2a02c5af16bf02"
+    )
+    assert set(expected) == {
+        "configured_ceiling",
+        "instance_id",
+        "loaded_at",
+        "loaded_commit_sha",
+        "max_turns",
+        "proof_identity",
+        "proof_observed_at",
+        "service_unit",
+        "supported_procedure_id",
+        "symphony_commit_sha",
+        "workflow_blob_sha",
+        "workflow_content_sha256",
+    }
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    (
+        ("service_unit", "wrong.service", "service unit is unsupported"),
+        ("symphony_commit_sha", "f" * 40, "release identity is unsupported"),
+        ("workflow_content_sha256", "f" * 63, "64-character digest"),
+        ("loaded_commit_sha", "f" * 40, "identity mismatches the branch"),
+        ("workflow_blob_sha", "f" * 40, "identity mismatches the branch"),
+        ("configured_ceiling", 3, "values are incoherent"),
+        ("max_turns", 11, "values are incoherent"),
+        ("proof_identity", "f" * 63, "64-character digest"),
+        ("proof_identity", "f" * 64, "proof identity is incoherent"),
+    ),
+)
+def test_live_runtime_identity_mismatches_fail_closed(
+    field: str, value: object, message: str
+) -> None:
+    manifest = _manifest()
+    receipt = _receipts(manifest)[0]
+    runtime = _use_live_runtime(receipt)
+    runtime[field] = value
+
+    with pytest.raises(ValueError, match=message):
+        evaluate_ramp(manifest, [receipt])
+
+
+def test_live_runtime_proof_rejects_stale_inverted_and_secret_bearing_input() -> None:
+    manifest = _manifest()
+    receipt = _receipts(manifest)[0]
+    runtime = _use_live_runtime(receipt)
+    runtime["proof_observed_at"] = "2026-08-17T12:57:00Z"
+    runtime["loaded_at"] = "2026-08-17T12:58:00Z"
+    _use_live_runtime(receipt)
+    with pytest.raises(ValueError, match="predates the runtime load"):
+        evaluate_ramp(manifest, [receipt])
+
+    receipt = _receipts(manifest)[0]
+    runtime = _use_live_runtime(receipt)
+    runtime["loaded_at"] = "2026-08-17T11:58:00Z"
+    runtime["proof_observed_at"] = "2026-08-17T11:59:00Z"
+    _use_live_runtime(receipt)
+    with pytest.raises(ValueError, match="runtime proof is stale"):
+        evaluate_ramp(manifest, [receipt])
+
+    receipt = _receipts(manifest)[0]
+    runtime = _use_live_runtime(receipt)
+    runtime["instance_id"] = "/root/atlas-runtime/secret-bearing-path"
+    with pytest.raises(ValueError, match="secret-bearing material"):
+        evaluate_ramp(manifest, [receipt])
 
 
 def test_secret_bearing_input_is_rejected_without_echoing_the_value(
@@ -494,7 +599,11 @@ def test_required_docs_and_seed_fixture_are_present_and_bounded() -> None:
     assert "running VPS" in runbook
     assert "exact commit" in runbook
     assert "integration/review" in runbook
-    assert "Gate 1 is BLOCKED" in runbook
+    assert LIVE_RUNTIME_PROCEDURE in runbook
+    assert LIVE_RUNTIME_SERVICE_UNIT in runbook
+    assert "process-owned `/api/v1/runtime`" in runbook
+    assert "fixture/schema regression only" in runbook
+    assert "Gate 1 is BLOCKED" not in runbook
     assert "RECEIPT_SEQUENCE_VALIDATED" in runbook
     assert "scripts/phase_15_delivery_control_milestone.py" in delivery_control
     assert "Phase 15.5 is CLOSED" in phase_15_5

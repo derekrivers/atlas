@@ -249,17 +249,22 @@ stops before expanded admission. The active delivery policy's
 admission-side recorded mirror that must equal the live declaration before a
 live gate starts. It is not a second ceiling and changing it does not configure
 Symphony. Historical migration `0025` and policy revision one remain immutable
-at three; they are not the current live ceiling. Before Gate 1 workload begins,
-the operator must append and activate a policy revision at one so the current
-policy is coherent with ATLAS-054M's serialized runtime.
+at three; they are not the current live ceiling. At every gate, the operator
+keeps admission paused until the running runtime identity is proven, then
+appends and activates a coherent policy revision before workload admission.
 
-No deterministic VPS service/configuration/readback procedure is present in
-the repository as of 17 August 2026, so Gate 1 is blocked. The offline
-validator accepts only its fixture procedure and never grants transition or
-closure authority. Unblocking the live gate requires an operator-ratified
-procedure that names the service, canonical checkout and config path, exact
-commit-loading and restart commands, bounded running-process readback for the
-commit/blob/ceiling/turn values, and rollback evidence.
+The registered live boundary is
+`vps-systemd-immutable-workflow-readback-v1`: the operator materialises the
+exact milestone commit's workflow bytes into a gate-specific immutable file,
+points `atlas-symphony.service` at it, restarts the service and proves the
+MainPID command identity plus the cached process-owned `GET /api/v1/runtime`
+content SHA-256, ceiling and turn limit. Bounded receipts also pin the frozen
+Symphony release, exact Git commit/blob and ordered timestamps. Rollback
+restores the prior exact immutable workflow identity and requires the same
+process readback before resuming. The offline validator accepts that bounded
+identity but never grants transition, closure, deployment, policy or runtime
+mutation authority; its fixture procedure remains non-production schema
+regression only.
 
 Atlas working, integration and review budgets, Changes Requested reserve,
 risk/component limits and protected repository lanes are independent admission

@@ -333,9 +333,12 @@ Exit 3 names the next pending gate, exit 1 retains an honest gate FAIL and exit
 2 rejects malformed, stale-linked or secret-bearing input. Exit 0 emits only
 `RECEIPT_SEQUENCE_VALIDATED`; `transition_authorized` and
 `closure_authorized` remain false for every input. Gate authority exists only
-at the governed operator/durable-receipt boundary. Gate 1 is currently blocked
-because no deterministic VPS service/configuration/readback procedure has been
-ratified; see `docs/runbooks/operator-environment.md`.
+at the governed operator/durable-receipt boundary. The registered production
+procedure is `vps-systemd-immutable-workflow-readback-v1`; its operator-owned
+load, process readback and rollback sequence is in
+`docs/runbooks/operator-environment.md`. The retained
+`fixture-only-no-live-runtime-v1` procedure is fixture/schema regression only
+and is never production runtime evidence.
 
 ## Before you publish and hand off
 
