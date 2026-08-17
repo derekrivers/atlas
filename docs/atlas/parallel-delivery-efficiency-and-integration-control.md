@@ -185,11 +185,16 @@ and each deciding failed observation must carry the provider's explicit
 contradictory current observations cannot send implementation back to Symphony.
 
 Only an owner-specific PM boundary performs Linear transitions. The generic
-Linear status pull may mirror the agent-owned `PR Open → CI Pending` entry, but
-it rejects arbitrary entries and every CI-pending exit as a deduplicated
-ownership anomaly. ATLAS-256's trusted CI reconciler is the only seam that can
-exercise the Atlas-owned exits. It re-reads the PR head, complete board, active
-policy, coherent snapshot and product/ticket-scoped evidence assessment
+Linear status pull mirrors the agent-owned `PR Open → CI Pending` entry. A
+complete project pull may also catch the local store up directly into `CI
+Pending` from a Symphony-active predecessor when short-lived intermediate
+states fell between polls. That local-only observation records the actual
+source and `pm-engine:linear-poll-compression` provenance; it neither invents
+`In Progress`/`PR Open` rows nor authorises any Linear write. Entries from
+non-agent or terminal states and every CI-pending exit remain deduplicated
+ownership anomalies. ATLAS-256's trusted CI reconciler is the only seam that
+can exercise the Atlas-owned exits. It re-reads the PR head, complete board,
+active policy, coherent snapshot and product/ticket-scoped evidence assessment
 immediately before the write under the shared product lease. Any change to the
 assessment or its deciding evidence ids records a typed hold and requires a
 fresh tick. Each determinate decision is appended with the exact identity and
@@ -213,17 +218,19 @@ retained as a failed production-reachability sample; the live window restarts
 at the remediated final head.
 
 Both recurring and `--once` PM modes now share the same adapter. After the
-complete project pull, authorised generic status reconciliation and AgentRun
+complete project pull, authorised status reconciliation and AgentRun
 reconstruction, it sorts only locally `CI Pending` tickets by stable ticket key
-and considers the first one. The adapter binds the candidate to the latest
-append-only transition into `ci_pending`, then requires exactly one matching
-reconstructed AgentRun. Repository owner/name, PR number and full contributor
-head must resolve coherently from that run's bounded GitHub Actions-authored,
-commit-pinned evidence. Ticket titles, PR-title close sets, GitHub rollups,
+and considers the first one. The latest append-only transition into
+`ci_pending` bounds the delivery episode even when the poll-compressed source
+is `ready_for_agent` or `in_progress` and no AgentRun could be reconstructed.
+The latest system-tier GitHub evidence batch explicitly linked to that ticket
+or one of its immutable verification checks must resolve one coherent
+repository owner/name, PR number and full contributor head. Ticket titles,
+branch guesses, PR-title close sets, GitHub rollups, manual operator input,
 earlier AgentRuns and earlier CI-pending episodes are never identity inputs.
 Missing evidence holds as `trusted_identity_unavailable`; contradictory
-repositories or duplicate episode identity holds as
-`trusted_identity_ambiguous`, before any GitHub or Linear call.
+repositories, PRs or heads hold as `trusted_identity_ambiguous`, before any
+GitHub or Linear call.
 
 With a complete identity, the adapter calls the existing trusted reconciler
 with the tick's original complete board. The product lease, coherent snapshot,

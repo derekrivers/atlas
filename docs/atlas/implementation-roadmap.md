@@ -917,12 +917,18 @@ ATL-437's first published head completed exact-head CI but proved that the
 trusted `reconcile_ci_handoff()` service had no production caller: ordinary
 `atlas pm sync` reached only `sync_tick()`, and no genuine
 `ci_handoff_reconciliations` row or authorised Linear exit was produced. The
-failed head remains historical reachability evidence. ATLAS-263 now wires one
-deterministically ordered local `CI Pending` candidate into every supported PM
-tick, resolves exact repository/PR/full-head identity only from the latest
-handoff episode's bounded system-tier evidence, and closes that tick's workflow
-write window after a confirmed handoff. The live authority window restarts at
-the remediated final head. Production reachability passes only when that head
+failed head remains historical reachability evidence. The next head showed that
+a 60-second PM poll can miss both short-lived `In Progress`/`PR Open` states and
+observe the board already at `CI Pending`. ATLAS-263 therefore also permits a
+complete trusted board pull to catch the local mirror up from a Symphony-active
+predecessor only. The append-only row records the actual direct observation
+with poll-compression provenance and invents no intermediate transition. The
+remediation wires one deterministically ordered local `CI Pending` candidate
+into every supported PM tick, resolves exact repository/PR/full-head identity
+only from the latest bounded system-tier GitHub evidence batch without
+requiring a reconstructed AgentRun, and closes that tick's workflow write
+window after a confirmed handoff. The live authority window restarts at the
+remediated final head. Production reachability passes only when that head
 creates a genuine reconciliation row and corresponding authorised Linear
 transition without an agent poll or manual state repair.
 

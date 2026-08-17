@@ -536,16 +536,21 @@ the trusted CI-handoff service existed, but neither the one-shot nor recurring
 `atlas pm sync` path called it. That head completed CI and remained `CI Pending`
 with no `ci_handoff_reconciliations` row, so it is failed historical evidence,
 not the live PASS sample. The supported PM tick now considers only local
-`CI Pending` tickets in stable ticket-key order and evaluates at most one. Its
-repository, PR number and full contributor head come only from the latest
-CI-pending transition's reconstructed system-tier GitHub evidence; title
-matching, GitHub rollups, old AgentRuns and previous handoff episodes are not
-identity sources. Missing or conflicting identity holds before any GitHub or
-Linear call. A confirmed handoff write or target-fence reconciliation ends the
-tick's workflow-write window, preventing admission, completion or anomaly
-routing from becoming a second mutation. The remediated final ATL-437 head must
-produce both a genuine append-only reconciliation and its authorised Linear
-transition before Phase 15.5 can close.
+`CI Pending` tickets in stable ticket-key order and evaluates at most one. A
+complete board pull may first catch the local mirror up from a Symphony-active
+predecessor if the cadence missed transient `In Progress`/`PR Open` states. It
+records only the actually observed direct edge with the
+`pm-engine:linear-poll-compression` actor and never manufactures the missing
+transitions. Repository, PR number and full contributor head come only from the
+latest episode's bounded system-tier GitHub evidence batch; title matching,
+GitHub rollups, manual input, old AgentRuns and previous handoff episodes are
+not identity sources, and a reconstructed AgentRun is not required. Missing or
+conflicting identity holds before any GitHub or Linear call. A confirmed
+handoff write or target-fence reconciliation ends the tick's workflow-write
+window, preventing admission, completion or anomaly routing from becoming a
+second mutation. The remediated final ATL-437 head must produce both a genuine
+append-only reconciliation and its authorised Linear transition before Phase
+15.5 can close.
 
 The delivery-control UI may submit a complete policy selected by the operator
 at any governed gate, but it does not advance a gate, validate a PASS receipt,

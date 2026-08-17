@@ -71,23 +71,30 @@ normal PM tick now:
 
 1. performs its complete bounded Linear project pull and authorised generic
    status reconciliation;
-2. reconstructs AgentRuns, including repository identity resolved only from
-   GitHub-Actions-authored evidence pinned to the run's PR/head;
-3. sorts only local `CI Pending` tickets by stable key and considers at most
+2. catches the local mirror up into `CI Pending` only from a Symphony-active
+   predecessor when the board pull compressed transient states, recording the
+   actual direct edge and `pm-engine:linear-poll-compression` provenance without
+   inventing intermediate transitions;
+3. reconstructs any observable AgentRuns, without requiring one for compressed
+   handoff discovery;
+4. sorts only local `CI Pending` tickets by stable key and considers at most
    one;
-4. binds the latest append-only transition into `ci_pending` to exactly one
-   reconstructed run and fails closed on missing or contradictory
+5. binds the latest append-only transition into `ci_pending` to the latest
+   bounded GitHub-Actions-authored evidence batch linked to that ticket or an
+   immutable verification check and fails closed on missing or contradictory
    repository/PR/full-head identity;
-5. delegates complete identity to the existing lease/snapshot/evidence/fence
+6. delegates complete identity to the existing lease/snapshot/evidence/fence
    reconciler; and
-6. ends the tick before definition, admission, completion or anomaly writers
+7. ends the tick before definition, admission, completion or anomaly writers
    after a confirmed workflow mutation or target-fence reconciliation.
 
 The adapter performs no GitHub mutation and makes no GitHub or Linear call when
 trusted identity is unavailable or ambiguous. `atlas pm sync --once -v`
 exposes bounded evaluated/held/mutation output, while the append-only row and
-Linear transition remain authority. Focused tests cover production candidate
-discovery, exact identity, all evidence classes, zero/one mutation, ordering,
+Linear transition remain authority. Focused tests cover compressed observations
+from `ready_for_agent` and `in_progress`, absent AgentRuns,
+missing/ambiguous identity, stale heads, contradictory board state,
+non-agent/terminal sources, all evidence classes, zero/one mutation, ordering,
 duplicate ticks and movement races. These are executable remediation evidence,
 not the live production PASS. The final candidate must itself create at least
 one genuine reconciliation row plus its corresponding authorised transition.

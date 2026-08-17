@@ -50,11 +50,16 @@ comparison, protected `LANE-A/LANE-B` collision and fault matrix must pass
 without changing the ceiling. The first ATL-437 head
 `dad520cf46c2c6ee2f51b95e0fa6e20660751a96` completed CI but remained in `CI
 Pending` because `reconcile_ci_handoff()` was not reachable from `atlas pm sync`.
-The remediation wires one deterministic CI-pending candidate per PM tick using
-only the latest handoff transition's bounded system-tier repository/PR/head
-identity and ends the tick after a successful workflow write. The live window
-restarts at the next final ATL-437 head: the agent enters `CI Pending` and
-stops, the system-tier reconciler owns the determinate exit, and the disabled
-Linear `PR opened -> In Progress` automation must show zero recurrence.
+The remediation wires one deterministic CI-pending candidate per PM tick. A
+complete board pull may safely catch the local mirror up from a Symphony-active
+predecessor when the polling interval missed `In Progress` or `PR Open`; the
+append-only transition records the actual observed edge with poll-compression
+provenance and invents no intermediate state. Exact repository/PR/head identity
+comes only from the latest bounded system-tier GitHub evidence batch, never a
+title, rollup or required reconstructed AgentRun, and a successful workflow
+write ends the tick. The live window restarts at the next final ATL-437 head:
+the agent enters `CI Pending` and stops, the system-tier reconciler owns the
+determinate exit, and the disabled Linear `PR opened -> In Progress` automation
+must show zero recurrence.
 ATLAS-253 remains `Needs Human` until that exact-head window is accepted and
 this closure change is merged.

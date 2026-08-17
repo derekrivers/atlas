@@ -279,7 +279,15 @@ uv run atlas pm sync --once -v
 
 `GITHUB_TOKEN`, the existing Linear credentials/state map and
 `LINEAR_PROJECT_ID`/`LINEAR_TEAM_ID` are required production preconditions. The
-verbose output must name one bounded `CI handoff adapter` result with exact
+initial complete pull may observe Linear already at `CI Pending` while the local
+store still says `Ready for Agent`, `In Progress` or another Symphony-active
+predecessor. This is supported poll-compression recovery: confirm the durable
+transition records the actual direct edge and
+`pm-engine:linear-poll-compression`, with no invented `PR Open` row. Do not
+manually insert intermediate transitions or require an AgentRun before retrying
+the normal one-shot path.
+
+The verbose output must name one bounded `CI handoff adapter` result with exact
 repository, PR and full head, classification, decision, reason and mutation
 count. Console output is observability only: verify the append-only
 `ci_handoff_reconciliations` row and corresponding Linear transition. A missing

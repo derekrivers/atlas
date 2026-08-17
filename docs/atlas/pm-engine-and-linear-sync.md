@@ -293,13 +293,18 @@ integration step.
 from `ci_pending`. The production `reconcile_one_ci_handoff` adapter is reached
 by both one-shot and recurring `atlas pm sync` ticks. After the complete project
 pull and AgentRun reconstruction it considers only locally `ci_pending` tickets
-in stable key order and evaluates at most one. It binds the latest transition
-into `ci_pending` to exactly one reconstructed AgentRun, whose bounded
-GitHub-Actions-authored evidence must resolve one exact repository, PR number
-and full contributor-head SHA. Missing or contradictory identity holds before
-any GitHub or Linear request; titles, rollups and earlier handoff episodes are
-not identity sources. The adapter then supplies that identity and the tick's
-complete project pull to the domain operation. The operation takes the shared
+in stable key order and evaluates at most one. A complete board observation may
+first catch the local mirror up from a Symphony-active predecessor if the poll
+missed transient states; the direct transition names the real observed source
+and the `pm-engine:linear-poll-compression` actor, never invented intermediate
+rows. The latest transition into `ci_pending` bounds the episode, but identity
+does not require an AgentRun. Instead, the latest system-tier GitHub evidence
+batch explicitly linked to the ticket or an immutable verification check must
+resolve one exact repository, PR number and full contributor-head SHA. Missing
+or contradictory identity holds before any GitHub or Linear request; titles,
+rollups, manual input and earlier handoff episodes are not identity sources.
+The adapter then supplies that identity and the tick's complete project pull
+to the domain operation. The operation takes the shared
 product admission lease, reconciles any earlier
 ambiguous fence first, loads the active delivery policy, builds the coherent
 snapshot and reads the PR identity without consuming GitHub check rollups.
@@ -362,6 +367,14 @@ Pull-based, consistent with ADR-0008 (no webhooks before hosting):
    individually — ~110 requests per tick on a 110-ticket board, which is
    what starved the 2,500/hour budget at the default cadence.)
 
+   A complete pull that observes `ci_pending` may catch the local mirror up
+   from `ready_for_agent`, `in_progress`, `pr_open` or `changes_requested` —
+   exactly Symphony's active predecessors — when transient intermediate states
+   were compressed between polls. The one direct append-only transition keeps
+   the actual source and poll-compression provenance. It creates no missing
+   state rows, makes no Linear write and grants no CI-exit authority. Other
+   entries and every exit still fail closed as ownership anomalies.
+
    Immediately after the pull, reconstruct `AgentRun` rows from local
    observations (ATLAS-166): each `in_progress` entry in the
    `TicketStatusTransition` log is one dispatch cycle, keyed by that dispatch
@@ -374,7 +387,9 @@ Pull-based, consistent with ADR-0008 (no webhooks before hosting):
    partial run when later ticks observe handoff or evidence.
 
    The production CI-handoff adapter then selects at most one local
-   `ci_pending` ticket and either records a typed identity hold or delegates to
+   `ci_pending` ticket and resolves identity directly from bounded trusted
+   GitHub evidence, so a compressed observation with no reconstructed AgentRun
+   remains recoverable. It either records a typed identity hold or delegates to
    the system-tier reconciler. A confirmed write or reconciled target fence
    ends the tick here. Otherwise the tick continues to definition and admission
    work without considering another CI candidate. `GITHUB_TOKEN` is therefore

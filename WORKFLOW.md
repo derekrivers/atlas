@@ -28,9 +28,11 @@ tracker:
   # CI Pending is intentionally absent: it is a non-active Atlas handoff state
   # that releases Symphony working occupancy while consuming integration budget.
   # Linear/GitHub integrations may link evidence but must not mutate Atlas-owned
-  # workflow state. The supported PM cadence evaluates at most one trusted
-  # CI-pending identity per tick; any CI Pending reactivation is a milestone
-  # failure.
+  # workflow state. A complete PM pull may catch the local mirror up from a
+  # Symphony-active predecessor when the poll missed short-lived intermediate
+  # states; it records the observed edge without inventing those states. The
+  # cadence evaluates at most one trusted CI-pending identity per tick; any CI
+  # Pending reactivation is a milestone failure.
   terminal_states:
     - Done
     - Canceled

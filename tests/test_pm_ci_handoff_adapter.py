@@ -15,6 +15,7 @@ from test_pm_sync import (
     CI_PENDING_STATE,
     PACK_DOC,
     PROJECT_ID,
+    STARTED,
     TEAM_ID,
     RecordingClient,
     seed_ticket,
@@ -24,6 +25,7 @@ from test_pm_sync import (
 from atlas.core.enums import ActorType, EvidenceStatus
 from atlas.core.models import (
     CIHandoffClassification,
+    CIHandoffReason,
     Evidence,
     EvidenceType,
     Ticket,
@@ -31,7 +33,9 @@ from atlas.core.models import (
     TicketStatusTransition,
 )
 from atlas.pm import CIHandoffHooks, sync_tick
+from atlas.pm.sync import CI_PENDING_POLL_COMPRESSION_CREATED_BY
 from atlas.storage import (
+    AgentRunRepo,
     CIHandoffReconciliationRepo,
     Database,
     EvidenceRepo,
@@ -162,10 +166,50 @@ def _seed_ci_pending(
             -timedelta(minutes=1),
         )
     )
-    for record in evidence or [
-        _evidence(ticket, EvidenceType.TEST_RESULT, suffix="1"),
-        _evidence(ticket, EvidenceType.LINT_RESULT, suffix="2"),
-    ]:
+    records = (
+        [
+            _evidence(ticket, EvidenceType.TEST_RESULT, suffix="1"),
+            _evidence(ticket, EvidenceType.LINT_RESULT, suffix="2"),
+        ]
+        if evidence is None
+        else evidence
+    )
+    for record in records:
+        EvidenceRepo(db).add(record)
+    return ticket
+
+
+def _seed_compressed_ci_pending(
+    db: Database,
+    client: RecordingClient,
+    *,
+    source: TicketStatus,
+    evidence: list[Evidence] | None = None,
+) -> Ticket:
+    """Seed a board already at CI Pending with no observed transient edges."""
+
+    entered_at = NOW - timedelta(minutes=5)
+    ticket = seed_ticket(
+        db,
+        client,
+        key="ATLAS-263",
+        product_id=PRODUCT_ID,
+        status=source,
+        issue_state=CI_PENDING_STATE,
+        acceptance_criteria=["bounded transition"],
+        updated_at=entered_at,
+        linear_synced_at=entered_at,
+        status_entered_at=entered_at,
+    )
+    records = (
+        [
+            _evidence(ticket, EvidenceType.TEST_RESULT, suffix="1"),
+            _evidence(ticket, EvidenceType.LINT_RESULT, suffix="2"),
+        ]
+        if evidence is None
+        else evidence
+    )
+    for record in records:
         EvidenceRepo(db).add(record)
     return ticket
 
@@ -232,6 +276,184 @@ def test_production_tick_resolves_exact_identity_writes_once_and_ends_window(
     assert receipt.counters["ci_handoff_evaluated"] == 1
     assert receipt.counters["ci_handoff_held"] == 0
     assert receipt.counters["ci_handoff_mutations"] == 1
+
+
+@pytest.mark.parametrize(
+    "source",
+    [TicketStatus.READY_FOR_AGENT, TicketStatus.IN_PROGRESS],
+)
+def test_supported_tick_recovers_poll_compression_without_invented_transitions(
+    db: Database,
+    source: TicketStatus,
+) -> None:
+    client = RecordingClient()
+    ticket = _seed_compressed_ci_pending(db, client, source=source)
+    github = FakeGitHubClient(pull_request=_pr_payload())
+
+    result = _run(db, client, github)
+
+    assert client.state_writes == [(ticket.external_linear_id, "state-review-required")]
+    decision = result.ci_handoff_decisions[0]
+    assert decision.identity is not None
+    assert decision.identity.repository_owner == "derekrivers"
+    assert decision.identity.repository_name == "atlas"
+    assert decision.identity.pr_number == PR_NUMBER
+    assert decision.identity.head_commit == HEAD
+    assert decision.reconciliation is not None
+    assert decision.reconciliation.classification is CIHandoffClassification.PASSED
+    assert decision.reconciliation.linear_mutations == 1
+    transitions = TicketStatusTransitionRepo(db).list_for_ticket(ticket.id)
+    assert {
+        (row.from_status, row.to_status, row.created_by_id) for row in transitions
+    } == {
+        (
+            source.value,
+            TicketStatus.CI_PENDING.value,
+            CI_PENDING_POLL_COMPRESSION_CREATED_BY,
+        ),
+        (
+            TicketStatus.CI_PENDING.value,
+            TicketStatus.REVIEW_REQUIRED.value,
+            "ci-handoff-reconciler",
+        ),
+    }
+    assert AgentRunRepo(db).list_for_ticket(ticket.id) == []
+    [reconciliation] = CIHandoffReconciliationRepo(db).list_for_ticket(ticket.id)
+    assert reconciliation.head_commit == HEAD
+
+
+def test_compressed_observation_with_missing_identity_holds_before_provider_calls(
+    db: Database,
+) -> None:
+    client = RecordingClient()
+    ticket = _seed_compressed_ci_pending(
+        db,
+        client,
+        source=TicketStatus.READY_FOR_AGENT,
+        evidence=[],
+    )
+    github = FakeGitHubClient(pull_request=_pr_payload())
+
+    result = _run(db, client, github)
+
+    decision = result.ci_handoff_decisions[0]
+    assert decision.reason.value == "trusted_identity_unavailable"
+    assert decision.reconciliation is None
+    assert result.ci_handoff_held == 1
+    stored = TicketRepo(db).get_by_key(ticket.key)
+    assert stored is not None and stored.status is TicketStatus.CI_PENDING
+    assert client.state_writes == []
+    assert github.calls == []
+    assert CIHandoffReconciliationRepo(db).list_for_ticket(ticket.id) == []
+
+
+def test_compressed_identity_ambiguity_holds_before_provider_calls(
+    db: Database,
+) -> None:
+    client = RecordingClient()
+    ticket = _seed_compressed_ci_pending(
+        db,
+        client,
+        source=TicketStatus.IN_PROGRESS,
+        evidence=[],
+    )
+    EvidenceRepo(db).add(_evidence(ticket, EvidenceType.TEST_RESULT, suffix="1"))
+    EvidenceRepo(db).add(
+        _evidence(
+            ticket,
+            EvidenceType.LINT_RESULT,
+            source_uri="https://github.com/other/atlas/actions/runs/2",
+            suffix="2",
+        )
+    )
+    github = FakeGitHubClient(pull_request=_pr_payload())
+
+    result = _run(db, client, github)
+
+    decision = result.ci_handoff_decisions[0]
+    assert decision.reason.value == "trusted_identity_ambiguous"
+    assert decision.reconciliation is None
+    assert client.state_writes == []
+    assert github.calls == []
+
+
+def test_compressed_stale_head_holds_after_exact_provider_revalidation(
+    db: Database,
+) -> None:
+    client = RecordingClient()
+    ticket = _seed_compressed_ci_pending(
+        db, client, source=TicketStatus.READY_FOR_AGENT
+    )
+    github = FakeGitHubClient(pull_request=_pr_payload(OTHER_HEAD))
+
+    result = _run(db, client, github)
+
+    handoff = result.ci_handoff_decisions[0].reconciliation
+    assert handoff is not None
+    assert handoff.classification is CIHandoffClassification.STALE
+    assert handoff.reason is CIHandoffReason.PR_HEAD_MOVED
+    assert handoff.linear_mutations == 0
+    assert client.state_writes == []
+    stored = TicketRepo(db).get_by_key(ticket.key)
+    assert stored is not None and stored.status is TicketStatus.CI_PENDING
+
+
+def test_compressed_board_movement_holds_at_final_revalidation(
+    db: Database,
+) -> None:
+    client = RecordingClient()
+    ticket = _seed_compressed_ci_pending(db, client, source=TicketStatus.IN_PROGRESS)
+    github = FakeGitHubClient(pull_request=_pr_payload())
+
+    def move_board() -> None:
+        assert ticket.external_linear_id is not None
+        client.simulate_linear_state(ticket.external_linear_id, STARTED)
+
+    result = _run(
+        db,
+        client,
+        github,
+        hooks=CIHandoffHooks(after_classification=move_board),
+    )
+
+    handoff = result.ci_handoff_decisions[0].reconciliation
+    assert handoff is not None
+    assert handoff.classification is CIHandoffClassification.STALE
+    assert handoff.reason is CIHandoffReason.BOARD_STATE_MOVED
+    assert handoff.linear_mutations == 0
+    assert client.state_writes == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [TicketStatus.PLANNED, TicketStatus.REVIEW_REQUIRED, TicketStatus.DONE],
+)
+def test_ci_pending_observation_from_non_agent_or_terminal_state_never_catches_up(
+    db: Database,
+    source: TicketStatus,
+) -> None:
+    client = RecordingClient()
+    ticket = seed_ticket(
+        db,
+        client,
+        key="ATLAS-263",
+        product_id=PRODUCT_ID,
+        status=source,
+        issue_state=CI_PENDING_STATE,
+        acceptance_criteria=["bounded transition"],
+        linear_synced_at=NOW,
+    )
+    github = FakeGitHubClient(pull_request=_pr_payload())
+
+    result = _run(db, client, github)
+
+    stored = TicketRepo(db).get_by_key(ticket.key)
+    assert stored is not None and stored.status is source
+    assert result.ci_handoff_evaluated == 0
+    assert result.ci_handoff_mutations == 0
+    assert client.state_writes == []
+    assert github.calls == []
+    assert TicketStatusTransitionRepo(db).list_for_ticket(ticket.id) == []
 
 
 def test_duplicate_tick_does_not_repeat_publication_handoff_write(db: Database) -> None:

@@ -110,17 +110,22 @@ the final pre-write window, Atlas records `evidence_changed`, leaves the card in
 `CI Pending` and lets the next tick classify the new set.
 
 The trusted reconciler is reached through the normal one-shot and recurring PM
-cadence. After the project pull and AgentRun reconstruction, the adapter
-considers at most one locally `CI Pending` ticket in stable key order. It binds
-only the latest transition into that state to exactly one reconstructed run and
-requires a coherent repository, PR number and full head from bounded
-GitHub-Actions-authored evidence. It never reads the ticket/PR title or a
-GitHub rollup for identity. `trusted_identity_unavailable` and
-`trusted_identity_ambiguous` are holds before any GitHub or Linear call. A
-confirmed handoff write or target-fence reconciliation ends the tick before
-admission or completion can write another workflow state. In operator-attended
-diagnosis, `atlas pm sync --once -v` prints the bounded result; the durable
-reconciliation row and Linear transition remain the authority.
+cadence. After the complete project pull, the local mirror may catch up into
+`CI Pending` from a Symphony-active predecessor when the polling interval
+missed transient `In Progress`/`PR Open` states. The append-only transition
+records that actual direct observation with
+`pm-engine:linear-poll-compression`; it never invents the missed states or
+writes Linear. After AgentRun reconstruction, the adapter considers at most one
+locally `CI Pending` ticket in stable key order. The latest transition bounds
+the episode, while coherent repository, PR number and full head come directly
+from the latest bounded GitHub-Actions-authored evidence batch. An AgentRun,
+ticket/PR title, branch guess or GitHub rollup is never required or used for
+identity. `trusted_identity_unavailable` and `trusted_identity_ambiguous` are
+holds before any GitHub or Linear call. A confirmed handoff write or
+target-fence reconciliation ends the tick before admission or completion can
+write another workflow state. In operator-attended diagnosis, `atlas pm sync
+--once -v` prints the bounded result; the durable reconciliation row and Linear
+transition remain the authority.
 
 Linear's `PR opened -> In Progress` GitHub workflow automation caused the
 ATLAS-261/262 reactivation incident and was disabled by the operator on 17

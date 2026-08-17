@@ -167,6 +167,7 @@ from atlas.storage.repositories import (
 # ``system`` and created_by_id names the writer (matches the §6.1 example).
 # One definition for the system-actor id, mirroring planning's CREATED_BY.
 CREATED_BY = "pm-engine"
+CI_PENDING_POLL_COMPRESSION_CREATED_BY = "pm-engine:linear-poll-compression"
 RECEIPT_EXCEPTION_TYPE_MAX_LEN = 200
 
 
@@ -228,6 +229,21 @@ ACTIVE_COMMENT_SCAN_STATUSES: frozenset[TicketStatus] = frozenset(
         TicketStatus.IN_PROGRESS,
         TicketStatus.PR_OPEN,
         TicketStatus.REVIEW_REQUIRED,
+        TicketStatus.CHANGES_REQUESTED,
+    }
+)
+
+# A complete project pull may observe ``ci_pending`` after Symphony has already
+# crossed one or more short-lived active states between 60-second PM ticks.  The
+# catch-up is deliberately narrower than the workflow ownership table: it only
+# mirrors the current board observation into the local store from a state in
+# which Symphony may have been executing the ticket.  It never writes Linear,
+# invents the missed intermediate states, or authorises a CI-pending exit.
+CI_PENDING_POLL_COMPRESSION_SOURCES: frozenset[TicketStatus] = frozenset(
+    {
+        TicketStatus.READY_FOR_AGENT,
+        TicketStatus.IN_PROGRESS,
+        TicketStatus.PR_OPEN,
         TicketStatus.CHANGES_REQUESTED,
     }
 )
@@ -834,9 +850,10 @@ def _ci_pending_ownership_item(
     """Build the anomaly for a mapped but unauthorised CI-pending edge.
 
     A generic Linear observation proves neither an Atlas-owned CI result nor a
-    valid arbitrary entry.  The sole edge it may mirror is the agent-owned
-    ``pr_open -> ci_pending`` handoff; every other edge touching CI-pending is
-    held unchanged until a trusted owner-specific seam performs it.
+    valid arbitrary entry. It may mirror the agent-owned ``pr_open ->
+    ci_pending`` handoff or record a local-only poll-compressed observation from
+    a Symphony-active predecessor. Every other edge touching CI-pending is held
+    unchanged until a trusted owner-specific seam performs it.
     """
 
     ownership = (
@@ -858,6 +875,22 @@ def _ci_pending_ownership_item(
         created_by_type=ActorType.SYSTEM,
         created_by_id=CREATED_BY,
         created_at=now,
+    )
+
+
+def _is_ci_pending_poll_compression(source: TicketStatus, target: TicketStatus) -> bool:
+    """Whether a complete board pull may catch the local mirror up safely.
+
+    ``pr_open -> ci_pending`` remains the ordinary directly observed agent
+    edge.  The other allowed sources are compressed observations: their
+    durable transition row names the actual local source and carries
+    :data:`CI_PENDING_POLL_COMPRESSION_CREATED_BY`, making the missed
+    intermediates explicit rather than manufacturing them.
+    """
+
+    return (
+        target is TicketStatus.CI_PENDING
+        and source in CI_PENDING_POLL_COMPRESSION_SOURCES
     )
 
 
@@ -1323,13 +1356,15 @@ def _pull(
         result.status_unchanged += 1  # set-to-same is a no-op
         return ticket
     owner = ci_pending_transition_owner(ticket.status, mapped)
-    if TicketStatus.CI_PENDING in {ticket.status, mapped} and (
-        owner is not TicketTransitionOwner.AGENT
+    compressed_ci_pending = _is_ci_pending_poll_compression(ticket.status, mapped)
+    if TicketStatus.CI_PENDING in {ticket.status, mapped} and not (
+        owner is TicketTransitionOwner.AGENT or compressed_ci_pending
     ):
-        # The generic Linear pull may mirror the agent-owned handoff only.
-        # Atlas-owned exits require the trusted CI reconciliation seam delivered
-        # by ATLAS-256; an observed mapped board state cannot impersonate it.
-        # Invalid entries/exits likewise fail closed.  Observation-transition
+        # The generic Linear pull may mirror the agent-owned handoff or the
+        # explicitly bounded local poll-compression sources only. Atlas-owned
+        # exits require the trusted CI reconciliation seam delivered by
+        # ATLAS-256; an observed mapped board state cannot impersonate it.
+        # Invalid entries/exits likewise fail closed. Observation-transition
         # dedup matches the existing unmapped-state anomaly contract.
         if transitioned:
             debt.record(_ci_pending_ownership_item(ticket, issue, mapped, owner, now))
@@ -1350,16 +1385,30 @@ def _pull(
                 ticket.key,
             )
         return ticket
+    transition_actor = (
+        CI_PENDING_POLL_COMPRESSION_CREATED_BY
+        if compressed_ci_pending and owner is not TicketTransitionOwner.AGENT
+        else CREATED_BY
+    )
     updated = tickets.apply_linear_status(
-        ticket.key, mapped, now=now, created_by_id=CREATED_BY
+        ticket.key, mapped, now=now, created_by_id=transition_actor
     )
     result.status_pulled += 1
-    logger.info(
-        "linear-sync: pulled %s -> %s for %s",
-        ticket.status.value,
-        mapped.value,
-        ticket.key,
-    )
+    if transition_actor == CI_PENDING_POLL_COMPRESSION_CREATED_BY:
+        logger.info(
+            "linear-sync: poll-compressed observation caught %s up from %s to "
+            "%s; intermediate Symphony states were not observed",
+            ticket.key,
+            ticket.status.value,
+            mapped.value,
+        )
+    else:
+        logger.info(
+            "linear-sync: pulled %s -> %s for %s",
+            ticket.status.value,
+            mapped.value,
+            ticket.key,
+        )
     if mapped is TicketStatus.DONE:
         _record_lesson_citation_feedback(updated, db)
         lesson = extract_lesson_for_ticket(
@@ -1852,13 +1901,15 @@ def _sync_tick_impl(
     does not run this branch and therefore keeps the ATLAS-148 request bound.
 
     Before definition or workflow writes, the production CI-handoff adapter
-    deterministically selects at most one locally ``ci_pending`` ticket. It
-    resolves repository, PR and full contributor head only from the latest
-    CI-pending transition's reconstructed system-tier evidence, then delegates
-    to :func:`reconcile_one_ci_handoff`. Missing or contradictory identity
-    holds without a GitHub or Linear call. A confirmed Linear write or target
-    fence reconciliation returns immediately, so admission, completion and
-    anomaly routing cannot become a second workflow mutation in the tick.
+    deterministically selects at most one locally ``ci_pending`` ticket. The
+    complete pull may first catch the local mirror up from a Symphony-active
+    predecessor with explicit poll-compression provenance. Repository, PR and
+    full contributor head then resolve only from the latest bounded trusted
+    GitHub evidence batch for that episode; a reconstructed AgentRun is not
+    required. Missing or contradictory identity holds without a GitHub or
+    Linear call. A confirmed Linear write or target fence reconciliation
+    returns immediately, so admission, completion and anomaly routing cannot
+    become a second workflow mutation in the tick.
 
     Then step 3 (ATLAS-249 replacing ATLAS-43's call site): acquire the
     product-scoped admission lease, build the complete coherent snapshot,
@@ -1969,10 +2020,11 @@ def _sync_tick_impl(
     result.agent_runs_updated = reconstructed.updated
     # Phase 15.5 production CI handoff: after the coherent board pull and local
     # AgentRun reconstruction, deterministically consider at most one locally
-    # CI-pending ticket. Identity comes only from the exact handoff transition
-    # and bounded system-tier GitHub evidence reconstructed onto that run. A
-    # confirmed external mutation (or confirmation of an earlier fenced target)
-    # ends the tick before definition, admission, completion or anomaly writers.
+    # CI-pending ticket. The latest handoff transition bounds the episode;
+    # identity comes directly from its latest bounded system-tier GitHub
+    # evidence batch and does not require a reconstructed run. A confirmed
+    # external mutation (or confirmation of an earlier fenced target) ends the
+    # tick before definition, admission, completion or anomaly writers.
     if github_client is not None:
         handoff = reconcile_one_ci_handoff(
             db=db,
