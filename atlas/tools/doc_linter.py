@@ -769,13 +769,21 @@ _CEILING_RUNBOOK_MARKERS = (
     "Gate 7 cannot begin without the Gate 5 PASS receipt",
     "Gate 10 cannot begin without the Gate 7 PASS receipt, Phase 14 closure",
     "adequate exact-head acceptance throughput",
-    "Before the milestone branch is created or Gate 1 begins",
+    "Only after that process-owned proof succeeds",
     "Current `origin/main` declares exactly one and keeps `max_turns: 10`",
     "Only the operator may change the milestone-branch declaration",
     "Values 3, 5 and 7 are valid only on that branch",
     "never independently mergeable to `main`",
     "existing governed Phase 15 policy-revision boundary",
-    "Gate 1 is BLOCKED",
+    "vps-systemd-immutable-workflow-readback-v1",
+    "atlas-symphony.service",
+    "e5c5e48917e9e91ffb6709ab5a2a02c5af16bf02",
+    "git show <gate-commit>:WORKFLOW.md > <immutable-workflow-file>",
+    "process-owned `/api/v1/runtime`",
+    "workflow_content_sha256",
+    "fixture/schema regression only",
+    "never production runtime evidence",
+    "previous proven gate's exact immutable workflow file",
     "mainline progress alone does not force a Gate 1 restart",
     "### Stop, rollback and non-closure",
 )
@@ -1060,7 +1068,7 @@ def check_symphony_ceiling_contract(
     )
     flowed_ramp = " ".join(ramp.split())
     forbidden_mutation_path = re.search(
-        r"(?im)^\s*(?:GET|POST|PUT|PATCH|DELETE)\s+/|/api/|linear_graphql",
+        r"(?im)^\s*(?:POST|PUT|PATCH|DELETE)\s+/|linear_graphql",
         ramp,
     )
     authority_boundary = (

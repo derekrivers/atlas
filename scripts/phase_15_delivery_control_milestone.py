@@ -31,6 +31,9 @@ EXPECTED_WINDOW_SECONDS = 60 * 60
 PHASE_15_5_HEAD = "a598798c1a6c5cabe4c80c0f04020c271f438de1"
 VALIDATION_SCOPE = "offline-read-only"
 FIXTURE_RUNTIME_PROCEDURE = "fixture-only-no-live-runtime-v1"
+LIVE_RUNTIME_PROCEDURE = "vps-systemd-immutable-workflow-readback-v1"
+LIVE_RUNTIME_SERVICE_UNIT = "atlas-symphony.service"
+LIVE_SYMPHONY_COMMIT_SHA = "e5c5e48917e9e91ffb6709ab5a2a02c5af16bf02"
 PROTECTED_LANE_REGISTRY_VERSION = "protected-integration-lanes/v1"
 
 COMMON_INVARIANTS = (
@@ -512,29 +515,38 @@ def _validate_runtime(
     value: object, *, gate: int, receipt: Mapping[str, Any]
 ) -> dict[str, object]:
     runtime = _mapping(value, field=f"gate_{gate}.runtime_configuration")
-    _exact_fields(
-        runtime,
-        expected=(
-            "instance_id",
-            "supported_procedure_id",
-            "loaded_commit_sha",
-            "workflow_blob_sha",
-            "configured_ceiling",
-            "max_turns",
-            "loaded_at",
-            "proof_observed_at",
-            "proof_identity",
-        ),
-        field=f"gate_{gate}.runtime_configuration",
-    )
     procedure = _text(
         runtime.get("supported_procedure_id"),
         field=f"gate_{gate}.runtime_configuration.supported_procedure_id",
     )
-    if procedure != FIXTURE_RUNTIME_PROCEDURE:
-        raise ValueError(
-            f"gate {gate} live runtime procedure is not registered; Gate 1 is blocked"
+    base_fields = (
+        "instance_id",
+        "supported_procedure_id",
+        "loaded_commit_sha",
+        "workflow_blob_sha",
+        "configured_ceiling",
+        "max_turns",
+        "loaded_at",
+        "proof_observed_at",
+        "proof_identity",
+    )
+    expected_fields: Sequence[str]
+    if procedure == FIXTURE_RUNTIME_PROCEDURE:
+        expected_fields = base_fields
+    elif procedure == LIVE_RUNTIME_PROCEDURE:
+        expected_fields = (
+            *base_fields,
+            "service_unit",
+            "symphony_commit_sha",
+            "workflow_content_sha256",
         )
+    else:
+        raise ValueError(f"gate {gate} runtime procedure is unsupported")
+    _exact_fields(
+        runtime,
+        expected=expected_fields,
+        field=f"gate_{gate}.runtime_configuration",
+    )
     loaded_commit = _sha(
         runtime.get("loaded_commit_sha"),
         field=f"gate_{gate}.runtime_configuration.loaded_commit_sha",
@@ -558,7 +570,7 @@ def _validate_runtime(
     )
     if observed_at < loaded_at:
         raise ValueError(f"gate {gate} runtime proof predates the runtime load")
-    return {
+    selected: dict[str, object] = {
         "configured_ceiling": gate,
         "instance_id": _text(
             runtime.get("instance_id"),
@@ -567,15 +579,44 @@ def _validate_runtime(
         "loaded_at": loaded_at.isoformat().replace("+00:00", "Z"),
         "loaded_commit_sha": loaded_commit,
         "max_turns": 10,
-        "proof_identity": _sha(
-            runtime.get("proof_identity"),
-            field=f"gate_{gate}.runtime_configuration.proof_identity",
-            length=64,
-        ),
         "proof_observed_at": observed_at.isoformat().replace("+00:00", "Z"),
         "supported_procedure_id": procedure,
         "workflow_blob_sha": blob,
     }
+    proof_identity = _sha(
+        runtime.get("proof_identity"),
+        field=f"gate_{gate}.runtime_configuration.proof_identity",
+        length=64,
+    )
+    if procedure == LIVE_RUNTIME_PROCEDURE:
+        service_unit = _text(
+            runtime.get("service_unit"),
+            field=f"gate_{gate}.runtime_configuration.service_unit",
+        )
+        if service_unit != LIVE_RUNTIME_SERVICE_UNIT:
+            raise ValueError(f"gate {gate} runtime service unit is unsupported")
+        symphony_commit = _sha(
+            runtime.get("symphony_commit_sha"),
+            field=f"gate_{gate}.runtime_configuration.symphony_commit_sha",
+        )
+        if symphony_commit != LIVE_SYMPHONY_COMMIT_SHA:
+            raise ValueError(f"gate {gate} Symphony release identity is unsupported")
+        selected.update(
+            {
+                "service_unit": service_unit,
+                "symphony_commit_sha": symphony_commit,
+                "workflow_content_sha256": _sha(
+                    runtime.get("workflow_content_sha256"),
+                    field=(
+                        f"gate_{gate}.runtime_configuration.workflow_content_sha256"
+                    ),
+                    length=64,
+                ),
+            }
+        )
+        if proof_identity != _canonical_digest(selected):
+            raise ValueError(f"gate {gate} runtime proof identity is incoherent")
+    return {**selected, "proof_identity": proof_identity}
 
 
 def _validate_protected_lane_occupancy(
@@ -1041,9 +1082,16 @@ def _validate_receipt(
         runtime["proof_observed_at"],
         field=f"gate_{expected_gate}.runtime_configuration.proof_observed_at",
     )
+    runtime_loaded = _instant(
+        runtime["loaded_at"],
+        field=f"gate_{expected_gate}.runtime_configuration.loaded_at",
+    )
     window_started = _instant(
         observation["started_at"], field=f"gate_{expected_gate}.observation.started_at"
     )
+    manifest_ratified = _instant(manifest["ratified_at"], field="manifest.ratified_at")
+    if runtime_loaded < manifest_ratified or runtime_observed < manifest_ratified:
+        raise ValueError(f"gate {expected_gate} runtime proof is stale")
     if runtime_observed > window_started:
         raise ValueError(
             f"gate {expected_gate} runtime proof followed workload admission"
@@ -1202,6 +1250,7 @@ def evaluate_ramp(
                 "receipt_fingerprint": receipt["receipt_fingerprint"],
                 "receipt_id": receipt["receipt_id"],
                 "retained_or_restored_level": receipt["retained_or_restored_level"],
+                "runtime_identity": receipt["runtime_configuration"],
                 "runtime_proof_identity": cast(
                     Mapping[str, object], receipt["runtime_configuration"]
                 )["proof_identity"],

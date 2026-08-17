@@ -274,6 +274,25 @@ def test_atlas_252_doc_linter_requires_all_level_gates_in_order(
     assert "SCG005" in _codes(check_symphony_ceiling_contract(tmp_path))
 
 
+def test_atlas_253_doc_linter_requires_registered_live_runtime_boundary(
+    tmp_path: Path,
+) -> None:
+    _build_contract_fixture(tmp_path)
+    path = tmp_path / "docs/runbooks/operator-environment.md"
+    text = path.read_text(encoding="utf-8")
+    write(
+        tmp_path,
+        "docs/runbooks/operator-environment.md",
+        text.replace(
+            "vps-systemd-immutable-workflow-readback-v1",
+            "unsupported-live-runtime",
+            1,
+        ),
+    )
+
+    assert "SCG005" in _codes(check_symphony_ceiling_contract(tmp_path))
+
+
 def test_atlas_252_doc_linter_rejects_atlas_mutation_path_in_runbook(
     tmp_path: Path,
 ) -> None:

@@ -678,9 +678,10 @@ def test_atlas_252_ac6_runbook_exposes_no_atlas_or_agent_mutation_path() -> None
         "Symphony configuration, acceptance evidence or milestone receipts" in flowed
     )
     assert not re.search(
-        r"(?im)^\s*(?:GET|POST|PUT|PATCH|DELETE)\s+/|/api/|linear_graphql",
+        r"(?im)^\s*(?:POST|PUT|PATCH|DELETE)\s+/|linear_graphql",
         runbook,
     )
+    assert "process-owned `/api/v1/runtime`" in flowed
     assert "never starts a live worker from CI" in flowed
 
 
