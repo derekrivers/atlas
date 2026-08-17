@@ -314,7 +314,8 @@ def test_failed_gate_is_retained_honestly_and_stops_progression() -> None:
     assert passed is False
     assert report["decision"] == "FAIL_GATE_3"
     assert report["last_proven_level"] == 1
-    assert report["receipt_summaries"][-1]["retained_or_restored_level"] == 1
+    summaries = cast(list[dict[str, object]], report["receipt_summaries"])
+    assert summaries[-1]["retained_or_restored_level"] == 1
 
     gate_five = _receipt(5, 2, manifest_fingerprint=fingerprint)
     with pytest.raises(ValueError, match="after a failed gate"):
