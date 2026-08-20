@@ -98,11 +98,7 @@ implementation_notes:
     state, not malformed data. Preserve fail-closed handling for every other
     contradiction.
 
-documentation_requirements:
-  - >-
-    Update canonical delivery/CI-handoff documentation only if it currently
-    implies that a published candidate must be GitHub ready-for-review before
-    system-tier CI reconciliation.
+documentation_requirements: []
 
 definition_of_done:
   - >-
