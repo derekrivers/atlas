@@ -1,7 +1,7 @@
 # Render written only by `atlas apply` (ADR-0006/0007); do not hand-edit.
-# plan_run_id: 93dd3344-4857-44de-8213-25ed0330e2ef
+# plan_run_id: fe5ac39d-e3ba-4a74-a947-cd3e41454cb9
 # prompt_version: stubs-only
-# ticket_key_high_water: 278
+# ticket_key_high_water: 279
 # epic_key_high_water: 13
 tickets:
 - id: 06701bee-33ed-44e6-b735-52dfd7c5edc8
@@ -12138,7 +12138,7 @@ tickets:
   title: Phase 16 runtime source identity contract
   objective: Define the immutable RuntimeSourceDescriptor contract that pins the exact runtime, projector, Codex protocol and observable capability identity used by later runtime-event import and reporting.
   context: 'Experiment E proved that structured runtime capture is feasible only when evidence stays bound to a precise Symphony/Codex configuration. Phase 16 section 8 therefore requires one versioned descriptor per source configuration. This is a pure foundation slice for the ATLAS-253 overlap: it creates no persistence, adapter, export or live runtime behavior.'
-  status: planned
+  status: ci_pending
   ticket_type: feature
   risk_level: medium
   priority: 50
@@ -12165,7 +12165,7 @@ tickets:
   - The named contract family exists only in `atlas/core/models/runtime_source.py`, all focused tests in `tests/test_runtime_source.py` pass, and the final diff contains no other production/test path.
   - The PR completion report states the exact two-path diff, confirms no sibling Track-A import/dependency/protected-lane expansion, and preserves all authority/non-goal boundaries from the dedicated design.
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: 762b0d44-231a-422e-a1bb-79098f7b67fb
   external_github_issue_id: null
   tags:
   - phase-16
@@ -12173,9 +12173,9 @@ tickets:
   - runtime-telemetry
   - contract
   component: runtime-source-contract
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-08-20T09:08:00.028884Z'
+  last_observed_linear_state_id: 85cdfa65-b990-41cc-a4ea-0071868ba27f
+  status_entered_at: '2026-08-20T10:52:57.513597Z'
   review_cycle_count: 0
   lesson_extraction_attempted_at: null
   source_anchor: docs/planning/inbox/processed/inbox-stub-01-runtime-source-identity.md#phase-16-runtime-source-identity-contract
@@ -12218,7 +12218,7 @@ tickets:
   - The named contract family exists only in `atlas/core/models/runtime_event.py`, all focused tests in `tests/test_runtime_event.py` pass, and the final diff contains no other production/test path.
   - The PR completion report states the exact two-path diff, confirms no sibling Track-A import/dependency/protected-lane expansion, and preserves all authority/non-goal boundaries from the dedicated design.
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: 2ac97f48-9d14-4021-b243-707fdbf5d4d5
   external_github_issue_id: null
   tags:
   - phase-16
@@ -12226,8 +12226,8 @@ tickets:
   - runtime-event
   - contract
   component: runtime-event-contract
-  linear_synced_at: null
-  last_observed_linear_state_id: null
+  linear_synced_at: '2026-08-20T09:08:00.028884Z'
+  last_observed_linear_state_id: f95de64e-f351-4226-b4ec-a5bddbc6fd2d
   status_entered_at: null
   review_cycle_count: 0
   lesson_extraction_attempted_at: null
@@ -12271,7 +12271,7 @@ tickets:
   - The named contract family exists only in `atlas/core/models/runtime_trace.py`, all focused tests in `tests/test_runtime_trace.py` pass, and the final diff contains no other production/test path.
   - The PR completion report states the exact two-path diff, confirms no sibling Track-A import/dependency/protected-lane expansion, and preserves all authority/non-goal boundaries from the dedicated design.
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: 484f75e9-8907-49a4-9664-3deb5dd6c2a0
   external_github_issue_id: null
   tags:
   - phase-16
@@ -12279,8 +12279,8 @@ tickets:
   - runtime-replay
   - contract
   component: runtime-trace-contract
-  linear_synced_at: null
-  last_observed_linear_state_id: null
+  linear_synced_at: '2026-08-20T09:08:00.028884Z'
+  last_observed_linear_state_id: f95de64e-f351-4226-b4ec-a5bddbc6fd2d
   status_entered_at: null
   review_cycle_count: 0
   lesson_extraction_attempted_at: null
@@ -12324,7 +12324,7 @@ tickets:
   - The named contract family exists only in `atlas/core/models/execution_topology.py`, all focused tests in `tests/test_execution_topology.py` pass, and the final diff contains no other production/test path.
   - The PR completion report states the exact two-path diff, confirms no sibling Track-A import/dependency/protected-lane expansion, and preserves all authority/non-goal boundaries from the dedicated design.
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: 370eecb7-ed38-4645-bdaf-1ea9bee11a81
   external_github_issue_id: null
   tags:
   - phase-16
@@ -12332,8 +12332,8 @@ tickets:
   - topology
   - contract
   component: execution-topology-contract
-  linear_synced_at: null
-  last_observed_linear_state_id: null
+  linear_synced_at: '2026-08-20T09:08:00.028884Z'
+  last_observed_linear_state_id: f95de64e-f351-4226-b4ec-a5bddbc6fd2d
   status_entered_at: null
   review_cycle_count: 0
   lesson_extraction_attempted_at: null
@@ -12377,7 +12377,7 @@ tickets:
   - The named contract family exists only in `atlas/core/models/role_capability.py`, all focused tests in `tests/test_role_capability.py` pass, and the final diff contains no other production/test path.
   - The PR completion report states the exact two-path diff, confirms no sibling Track-A import/dependency/protected-lane expansion, and preserves all authority/non-goal boundaries from the dedicated design.
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: 57222b6f-92e4-459c-912c-575c43fdbfeb
   external_github_issue_id: null
   tags:
   - phase-16
@@ -12385,8 +12385,8 @@ tickets:
   - least-privilege
   - contract
   component: role-capability-contract
-  linear_synced_at: null
-  last_observed_linear_state_id: null
+  linear_synced_at: '2026-08-20T09:08:00.028884Z'
+  last_observed_linear_state_id: f95de64e-f351-4226-b4ec-a5bddbc6fd2d
   status_entered_at: null
   review_cycle_count: 0
   lesson_extraction_attempted_at: null
@@ -12430,7 +12430,7 @@ tickets:
   - The named contract family exists only in `atlas/core/models/interface_contract.py`, all focused tests in `tests/test_interface_contract.py` pass, and the final diff contains no other production/test path.
   - The PR completion report states the exact two-path diff, confirms no sibling Track-A import/dependency/protected-lane expansion, and preserves all authority/non-goal boundaries from the dedicated design.
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: 7a5910f2-bda2-4c1a-8e03-fb1633b68cbe
   external_github_issue_id: null
   tags:
   - phase-16
@@ -12438,8 +12438,8 @@ tickets:
   - interface-ownership
   - contract
   component: interface-contract
-  linear_synced_at: null
-  last_observed_linear_state_id: null
+  linear_synced_at: '2026-08-20T09:08:00.028884Z'
+  last_observed_linear_state_id: f95de64e-f351-4226-b4ec-a5bddbc6fd2d
   status_entered_at: null
   review_cycle_count: 0
   lesson_extraction_attempted_at: null
@@ -12483,7 +12483,7 @@ tickets:
   - The named contract family exists only in `atlas/core/models/runtime_handoff.py`, all focused tests in `tests/test_runtime_handoff.py` pass, and the final diff contains no other production/test path.
   - The PR completion report states the exact two-path diff, confirms no sibling Track-A import/dependency/protected-lane expansion, and preserves all authority/non-goal boundaries from the dedicated design.
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: c856c75c-c0cc-4898-9ff1-db0a611b43a4
   external_github_issue_id: null
   tags:
   - phase-16
@@ -12491,8 +12491,8 @@ tickets:
   - coordination
   - contract
   component: runtime-handoff-contract
-  linear_synced_at: null
-  last_observed_linear_state_id: null
+  linear_synced_at: '2026-08-20T09:08:00.028884Z'
+  last_observed_linear_state_id: f95de64e-f351-4226-b4ec-a5bddbc6fd2d
   status_entered_at: null
   review_cycle_count: 0
   lesson_extraction_attempted_at: null
@@ -12536,7 +12536,7 @@ tickets:
   - The named contract family exists only in `atlas/core/models/execution_outcome.py`, all focused tests in `tests/test_execution_outcome.py` pass, and the final diff contains no other production/test path.
   - The PR completion report states the exact two-path diff, confirms no sibling Track-A import/dependency/protected-lane expansion, and preserves all authority/non-goal boundaries from the dedicated design.
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: 441c9b88-0a0f-4697-975a-d27f302ba8df
   external_github_issue_id: null
   tags:
   - phase-16
@@ -12544,8 +12544,8 @@ tickets:
   - outcomes
   - contract
   component: execution-outcome-contract
-  linear_synced_at: null
-  last_observed_linear_state_id: null
+  linear_synced_at: '2026-08-20T09:08:00.028884Z'
+  last_observed_linear_state_id: f95de64e-f351-4226-b4ec-a5bddbc6fd2d
   status_entered_at: null
   review_cycle_count: 0
   lesson_extraction_attempted_at: null
@@ -12589,7 +12589,7 @@ tickets:
   - The named contract family exists only in `atlas/core/models/trajectory_alert.py`, all focused tests in `tests/test_trajectory_alert.py` pass, and the final diff contains no other production/test path.
   - The PR completion report states the exact two-path diff, confirms no sibling Track-A import/dependency/protected-lane expansion, and preserves all authority/non-goal boundaries from the dedicated design.
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: dd093da2-b4b4-49c4-96e4-8be1e4dc9019
   external_github_issue_id: null
   tags:
   - phase-16
@@ -12597,8 +12597,8 @@ tickets:
   - trajectory
   - shadow
   component: trajectory-alert-contract
-  linear_synced_at: null
-  last_observed_linear_state_id: null
+  linear_synced_at: '2026-08-20T09:08:00.028884Z'
+  last_observed_linear_state_id: f95de64e-f351-4226-b4ec-a5bddbc6fd2d
   status_entered_at: null
   review_cycle_count: 0
   lesson_extraction_attempted_at: null
@@ -12642,7 +12642,7 @@ tickets:
   - The named contract family exists only in `atlas/core/models/steering_request.py`, all focused tests in `tests/test_steering_request.py` pass, and the final diff contains no other production/test path.
   - The PR completion report states the exact two-path diff, confirms no sibling Track-A import/dependency/protected-lane expansion, and preserves all authority/non-goal boundaries from the dedicated design.
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: a7923524-48d3-4009-b5ac-6375ee124e5b
   external_github_issue_id: null
   tags:
   - phase-16
@@ -12650,8 +12650,8 @@ tickets:
   - steering
   - stale-safety
   component: steering-contract
-  linear_synced_at: null
-  last_observed_linear_state_id: null
+  linear_synced_at: '2026-08-20T09:08:00.028884Z'
+  last_observed_linear_state_id: f95de64e-f351-4226-b4ec-a5bddbc6fd2d
   status_entered_at: null
   review_cycle_count: 0
   lesson_extraction_attempted_at: null
@@ -12695,7 +12695,7 @@ tickets:
   - The named contract family exists only in `atlas/core/models/chaos_run.py`, all focused tests in `tests/test_chaos_run.py` pass, and the final diff contains no other production/test path.
   - The PR completion report states the exact two-path diff, confirms no sibling Track-A import/dependency/protected-lane expansion, and preserves all authority/non-goal boundaries from the dedicated design.
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: ef77cb1a-b70a-4746-acd5-f909cd1bad4f
   external_github_issue_id: null
   tags:
   - phase-16
@@ -12703,8 +12703,8 @@ tickets:
   - chaos
   - contract
   component: chaos-evidence-contract
-  linear_synced_at: null
-  last_observed_linear_state_id: null
+  linear_synced_at: '2026-08-20T09:08:00.028884Z'
+  last_observed_linear_state_id: f95de64e-f351-4226-b4ec-a5bddbc6fd2d
   status_entered_at: null
   review_cycle_count: 0
   lesson_extraction_attempted_at: null
@@ -12748,7 +12748,7 @@ tickets:
   - The named contract family exists only in `atlas/core/models/effect_request.py`, all focused tests in `tests/test_effect_request.py` pass, and the final diff contains no other production/test path.
   - The PR completion report states the exact two-path diff, confirms no sibling Track-A import/dependency/protected-lane expansion, and preserves all authority/non-goal boundaries from the dedicated design.
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: 0371cff5-bf9a-491c-9284-fb82d43376f0
   external_github_issue_id: null
   tags:
   - phase-16
@@ -12756,8 +12756,8 @@ tickets:
   - runtime-policy
   - effects
   component: effect-request-contract
-  linear_synced_at: null
-  last_observed_linear_state_id: null
+  linear_synced_at: '2026-08-20T09:08:00.028884Z'
+  last_observed_linear_state_id: f95de64e-f351-4226-b4ec-a5bddbc6fd2d
   status_entered_at: null
   review_cycle_count: 0
   lesson_extraction_attempted_at: null
@@ -12801,7 +12801,7 @@ tickets:
   - The named contract family exists only in `atlas/core/models/runtime_policy.py`, all focused tests in `tests/test_runtime_policy.py` pass, and the final diff contains no other production/test path.
   - The PR completion report states the exact two-path diff, confirms no sibling Track-A import/dependency/protected-lane expansion, and preserves all authority/non-goal boundaries from the dedicated design.
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: a990fbf1-97fd-4a07-ad01-2aecc1ed0d29
   external_github_issue_id: null
   tags:
   - phase-16
@@ -12809,8 +12809,8 @@ tickets:
   - runtime-policy
   - audit
   component: effect-authority-contract
-  linear_synced_at: null
-  last_observed_linear_state_id: null
+  linear_synced_at: '2026-08-20T09:08:00.028884Z'
+  last_observed_linear_state_id: f95de64e-f351-4226-b4ec-a5bddbc6fd2d
   status_entered_at: null
   review_cycle_count: 0
   lesson_extraction_attempted_at: null
@@ -12854,7 +12854,7 @@ tickets:
   - The named contract family exists only in `atlas/core/models/pr_interaction.py`, all focused tests in `tests/test_pr_interaction.py` pass, and the final diff contains no other production/test path.
   - The PR completion report states the exact two-path diff, confirms no sibling Track-A import/dependency/protected-lane expansion, and preserves all authority/non-goal boundaries from the dedicated design.
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: 20a99281-bafb-462a-a145-987fb2b375e6
   external_github_issue_id: null
   tags:
   - phase-16
@@ -12862,8 +12862,8 @@ tickets:
   - pr-interaction
   - advisory
   component: pr-interaction-contract
-  linear_synced_at: null
-  last_observed_linear_state_id: null
+  linear_synced_at: '2026-08-20T09:08:00.028884Z'
+  last_observed_linear_state_id: f95de64e-f351-4226-b4ec-a5bddbc6fd2d
   status_entered_at: null
   review_cycle_count: 0
   lesson_extraction_attempted_at: null
@@ -12907,7 +12907,7 @@ tickets:
   - The named contract family exists only in `atlas/core/models/reviewer_evidence.py`, all focused tests in `tests/test_reviewer_evidence.py` pass, and the final diff contains no other production/test path.
   - The PR completion report states the exact two-path diff, confirms no sibling Track-A import/dependency/protected-lane expansion, and preserves all authority/non-goal boundaries from the dedicated design.
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: c7ad0f50-4201-4a9a-b79f-f14b49114df5
   external_github_issue_id: null
   tags:
   - phase-16
@@ -12915,8 +12915,8 @@ tickets:
   - reviewer-evidence
   - metrics
   component: reviewer-evidence-contract
-  linear_synced_at: null
-  last_observed_linear_state_id: null
+  linear_synced_at: '2026-08-20T09:08:00.028884Z'
+  last_observed_linear_state_id: f95de64e-f351-4226-b4ec-a5bddbc6fd2d
   status_entered_at: null
   review_cycle_count: 0
   lesson_extraction_attempted_at: null
@@ -12925,4 +12925,61 @@ tickets:
   created_by_id: planner
   created_at: '2026-08-20T09:08:00.028884Z'
   updated_at: '2026-08-20T09:08:00.028884Z'
+  completed_at: null
+- id: 623a2d2b-7604-4b51-a35e-bb4524b84ea8
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 4d034c8b-0752-4089-8ff9-2fd43f51c6f4
+  key: ATLAS-279
+  title: Accept coherent draft GitHub publications at the CI-handoff trust boundary
+  objective: Allow the production CI-handoff adapter to trust a coherent issue-bound Linear GitHub publication whose pull request is still draft, while preserving the existing fail-closed repository, PR, base-branch and attachment identity checks.
+  context: 'The first live ATLAS-253 Gate 1 attempt exposed a production compatibility defect at ceiling one. ATLAS-264 published draft PR #341 at exact head 4aa61c550f49927dc25c445b0b8ec52566a9c06e and GitHub CI completed successfully, but Atlas repeatedly held the ticket in CI Pending before domain reconciliation. Linear returned one complete GitHub attachment with canonical URL https://github.com/derekrivers/atlas/pull/341 and coherent repoLogin=derekrivers, repoName=atlas, number=341, numeric PR/repository ids, linkKind=closes and targetBranch=main. The only differing field was the truthful PR lifecycle value status=draft. atlas.linear.client currently requires status=open, so the complete attachment is classified contradictory, github_publications_complete becomes false, the CI-handoff adapter fails closed before evidence ingestion/reconciliation, PM receipts become partial and a determinate green CI result cannot reach Review Required.'
+  status: planned
+  ticket_type: bug
+  risk_level: high
+  priority: 50
+  relevant_docs:
+  - WORKFLOW.md
+  - docs/atlas/evidence-pipeline.md
+  - docs/atlas/parallel-delivery-efficiency-and-integration-control.md
+  - docs/runbooks/operator-environment.md
+  acceptance_criteria:
+  - A coherent Linear GitHub attachment whose metadata status is draft is accepted as a trusted live pull-request publication when every existing repository, PR number, URL, link kind, target branch and numeric identity check also passes.
+  - Existing coherent status=open publications remain accepted with identical canonical repository/PR identity.
+  - Closed, merged, unknown or malformed publication statuses remain rejected; accepting draft must not weaken any repository, URL, PR-number, base-branch, link-kind, pagination-completeness or metadata-consistency check.
+  - The production CI-handoff adapter can proceed from an issue-bound coherent draft publication into exact-head evidence ingestion and domain reconciliation instead of returning trusted_publication_ambiguous.
+  - 'Regression coverage reproduces the Gate-1 failure shape: one complete draft GitHub attachment for a CI Pending ticket with green exact-head CI is not discarded solely because the PR remains draft.'
+  - The change adds no fallback inference from title, branch name, comments or arbitrary GitHub search; Linear's issue-bound publication plus independent GitHub exact-head revalidation remain the authority boundary.
+  non_goals:
+  - No automatic conversion of draft PRs to ready-for-review, no manual Linear status workaround, no relaxation for closed/merged PRs, no automatic merge, no Symphony ceiling change and no Gate-1 transition authority.
+  implementation_notes:
+  - Keep the fix at the publication-validation boundary. Draft and open are both live candidate PR states; do not infer publication identity elsewhere or bypass the existing independent GitHub head verification performed before the CI Pending exit.
+  - The Gate-1 reproduction showed Linear status=draft is truthful provider state, not malformed data. Preserve fail-closed handling for every other contradiction.
+  test_requirements:
+  - Linear-client tests prove draft and open coherent publications are accepted, while closed, merged, unknown/malformed statuses and every existing contradictory identity case fail closed.
+  - CI-handoff adapter/integration coverage proves a trusted draft publication reaches evidence ingestion and normal reconciliation without adding any new external write owner.
+  - Existing CI-handoff, evidence, Linear-client, import-linter and relevant workflow-contract tests remain green.
+  documentation_requirements: []
+  definition_of_done:
+  - The Gate-1 draft-publication reproduction is covered by deterministic tests, coherent draft/open publication identity is accepted without weakening the trust boundary, all selected validation passes, complete CI passes on the exact published head, and the PR title carries the minted Atlas ticket key.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - phase-15
+  - ci-handoff
+  - linear
+  - github
+  - fail-closed
+  - gate-1
+  component: delivery-coordination
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/gate-1-draft-pr-publication-trust-fix.md#accept-coherent-draft-github-publications-at-the-ci-handoff-trust-boundary
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-20T12:19:06.710173Z'
+  updated_at: '2026-08-20T12:19:06.710173Z'
   completed_at: null
