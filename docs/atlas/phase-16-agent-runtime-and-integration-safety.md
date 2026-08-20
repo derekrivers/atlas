@@ -3,7 +3,7 @@
 
 > **Operator ratification record — 20 August 2026.** This dedicated Phase 16 design is accepted for planning the authority-neutral Track-A controlled-delivery overlap. Ratification does not activate Phase 16 production authority, change Symphony, close Phase 15, or authorise Track B/S/M implementation before their owning gates.
 
-**Status:** Proposed dedicated Phase 16 design. Design authority only until operator ratification; not planning-input, ticket-minting, runtime-activation, policy-change or workload-admission authority.
+**Status:** Ratified design and Track-A ticketisation authority for the authority-neutral controlled Phase 16 overlap. Real ticket keys still require `atlas plan --stubs-only`, operator proposal review and `atlas apply`; this ratification does not activate Phase 16 production/runtime authority, change Symphony or ATLAS-253 authority, permit Track B/S/M implementation, or close Phase 16.
 **Date:** 20 August 2026.
 **Phase:** 16 — Agent Runtime and Integration Safety.
 **Architecture horizon:** `Atlas Agentic Engineering Programme Design v4 — Cumulative Research Edition`, including completed Experiments E and F.
@@ -11,7 +11,7 @@
 **Pinned Symphony feasibility baseline:** `derekrivers/symphony-1` `e5c5e48917e9e91ffb6709ab5a2a02c5af16bf02`.
 **Pinned Codex feasibility baseline:** `codex-cli 0.147.0`; generated app-server protocol fingerprint `35a2fe7f243d088c41a8151628232e2785abf2bfc341dd4b1c7bb789b1b5e226`.
 **Current operating disposition:** Phase 15.5 closed; ATLAS-253 open and paused before real workload admission; ordinary Atlas `main` remains Symphony ceiling one while Phase 15 is open.
-**Intended repository destination after ratification:** `docs/atlas/phase-16-agent-runtime-and-integration-safety.md`.
+**Canonical repository location:** `docs/atlas/phase-16-agent-runtime-and-integration-safety.md`.
 **Ticket identity rule:** all `P16-*`, `R16-*`, `M16-*` identifiers in this document are design slice identifiers only. Real `ATLAS-N` keys are minted later through `atlas plan` / operator review / `atlas apply`.
 
 ---

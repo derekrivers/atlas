@@ -3,7 +3,7 @@
 
 > **Repository adoption record — 20 August 2026.** The operator has accepted this cumulative programme design as the governing architecture authority for the controlled Phase 16 delivery overlap. This adoption does **not** trigger the document's full future-horizon supersession rule while Phase 15 remains open; that atomic horizon supersession remains a Phase 15 closure action. For the controlled overlap only, the dedicated Phase 16 design named below is ticketisation authority for Track A. No Phase 17–22 ticketisation is authorised by this record.
 
-**Status:** Proposed canonical `architecture_horizon` for Atlas future phases 16–22. Design authority only; not planning-input or ticket-minting authority.
+**Status:** Adopted architecture authority for the controlled Phase 16 Track-A overlap. Full future-horizon supersession for Phases 16–22 remains deferred until the Phase 15 closure gate; this programme document does not itself mint tickets or activate production/runtime authority.
 **Date:** 19 August 2026.
 **Revision model:** **Cumulative.** This v4 is built on v3 as the preservation baseline. No material v3 design section is intentionally removed. Where a v3 ruling changes, v4 marks the supersession explicitly and gives the reason.
 **Current Atlas evidence baseline:** `derekrivers/atlas` `main` at `563d96a4b189d8d43fd57f7569d87513a6c6163f` after merged PR #337 (`ATLAS-253: Ratify managed Symphony runtime proof`).
@@ -18,7 +18,7 @@
 
 **Experiment F evidence incorporation:** 20 August 2026. This cumulative edition now also retains the completed Atlas interface-ownership retrospective described in section 25. Experiment F found real historical cases where repository changes were file-disjoint yet coupled by a semantic invariant, and it also found cases where existing dependency, protected-lane or dedicated integrity controls were already the correct mechanism. The resulting Phase 16 ruling is intentionally narrow: an `InterfaceContract` is a versioned named invariant shared across independently editable producer/consumer or authority surfaces; it is not a replacement for dependencies, protected lanes, path overlap, import structure or every ordinary API call.
 
-**Dedicated Phase 16 design incorporation:** 20 August 2026. The completed multi-pass dedicated Phase 16 design, `Atlas Phase 16 — Agent Runtime and Integration Safety`, is now incorporated into this cumulative horizon at programme-decision level. Its working artifact SHA-256 is `29117eb5745b3b00ef9c29035411e93a06a3e09b58122098a2a5176faea42379` and its intended repository destination after operator acceptance is `docs/atlas/phase-16-agent-runtime-and-integration-safety.md`. The dedicated design resolves the remaining Phase 16 architecture choices around repository ownership, runtime transport identity, work-shape versus production topology, effect-policy execution, ticket-size discipline, ATLAS-253 overlap and evidence-only milestones. This incorporation does **not** itself activate Phase 16 runtime authority, restart Symphony, change the Phase 15 ramp, mint tickets or substitute for explicit operator acceptance of the dedicated design.
+**Dedicated Phase 16 design incorporation:** 20 August 2026. The completed multi-pass dedicated Phase 16 design, `Atlas Phase 16 — Agent Runtime and Integration Safety`, is now incorporated into this cumulative horizon at programme-decision level. Its working artifact SHA-256 is `f00fd36e8492dfdebedee2cad163ce6a5706333990616c442555be24b7c9a43e` and its intended repository destination after operator acceptance is `docs/atlas/phase-16-agent-runtime-and-integration-safety.md`. The dedicated design resolves the remaining Phase 16 architecture choices around repository ownership, runtime transport identity, work-shape versus production topology, effect-policy execution, ticket-size discipline, ATLAS-253 overlap and evidence-only milestones. This incorporation does **not** itself activate Phase 16 runtime authority, restart Symphony, change the Phase 15 ramp, mint tickets or substitute for explicit operator acceptance of the dedicated design.
 
 
 
@@ -264,7 +264,7 @@ Evidence identities for this incorporation:
 
 ```text
 cumulative-horizon-input-sha256 = b41637accbb798268b2b94dcc715da632b811a6a5a63af5f3f379da3da611f2c
-dedicated-phase-16-design-sha256 = 29117eb5745b3b00ef9c29035411e93a06a3e09b58122098a2a5176faea42379
+dedicated-phase-16-design-sha256 = f00fd36e8492dfdebedee2cad163ce6a5706333990616c442555be24b7c9a43e
 ```
 
 The dedicated design resolves **32 Phase 16 decisions** and defines four delivery tracks:
