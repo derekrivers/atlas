@@ -1,0 +1,58 @@
+schema_version: 1
+repository: derekrivers/atlas
+base_commit: 563d96a4b189d8d43fd57f7569d87513a6c6163f
+repository_files:
+- ROADMAP.md
+- docs/MANIFEST.md
+- docs/atlas/implementation-roadmap.md
+- docs/atlas/phase-13-20-programme-horizon.md
+- docs/atlas/agentic-engineering-programme-design.md
+- docs/atlas/phase-16-agent-runtime-and-integration-safety.md
+- docs/planning/inbox/inbox-stub-01-runtime-source-identity.md
+- docs/planning/inbox/inbox-stub-02-runtime-event-envelopes.md
+- docs/planning/inbox/inbox-stub-03-runtime-import-trace-evidence.md
+- docs/planning/inbox/inbox-stub-04-work-shape-topology.md
+- docs/planning/inbox/inbox-stub-05-role-capability-envelope.md
+- docs/planning/inbox/inbox-stub-06-semantic-interface-contract.md
+- docs/planning/inbox/inbox-stub-07-runtime-handoff-coordination.md
+- docs/planning/inbox/inbox-stub-08-execution-outcome-contract.md
+- docs/planning/inbox/inbox-stub-09-trajectory-alert-contract.md
+- docs/planning/inbox/inbox-stub-10-steering-identity-contract.md
+- docs/planning/inbox/inbox-stub-11-chaos-evidence-contract.md
+- docs/planning/inbox/inbox-stub-12-effect-request-policy-context.md
+- docs/planning/inbox/inbox-stub-13-effect-authority-audit.md
+- docs/planning/inbox/inbox-stub-14-pr-interaction-queue-advice.md
+- docs/planning/inbox/inbox-stub-15-reviewer-evidence-cost.md
+- docs/planning/inbox/planning-batch-phase-16-track-a.yaml
+future_document_paths: []
+stubs:
+- path: docs/planning/inbox/inbox-stub-01-runtime-source-identity.md
+  phase: 16
+- path: docs/planning/inbox/inbox-stub-02-runtime-event-envelopes.md
+  phase: 16
+- path: docs/planning/inbox/inbox-stub-03-runtime-import-trace-evidence.md
+  phase: 16
+- path: docs/planning/inbox/inbox-stub-04-work-shape-topology.md
+  phase: 16
+- path: docs/planning/inbox/inbox-stub-05-role-capability-envelope.md
+  phase: 16
+- path: docs/planning/inbox/inbox-stub-06-semantic-interface-contract.md
+  phase: 16
+- path: docs/planning/inbox/inbox-stub-07-runtime-handoff-coordination.md
+  phase: 16
+- path: docs/planning/inbox/inbox-stub-08-execution-outcome-contract.md
+  phase: 16
+- path: docs/planning/inbox/inbox-stub-09-trajectory-alert-contract.md
+  phase: 16
+- path: docs/planning/inbox/inbox-stub-10-steering-identity-contract.md
+  phase: 16
+- path: docs/planning/inbox/inbox-stub-11-chaos-evidence-contract.md
+  phase: 16
+- path: docs/planning/inbox/inbox-stub-12-effect-request-policy-context.md
+  phase: 16
+- path: docs/planning/inbox/inbox-stub-13-effect-authority-audit.md
+  phase: 16
+- path: docs/planning/inbox/inbox-stub-14-pr-interaction-queue-advice.md
+  phase: 16
+- path: docs/planning/inbox/inbox-stub-15-reviewer-evidence-cost.md
+  phase: 16

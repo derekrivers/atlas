@@ -27,6 +27,8 @@ A delivery graph. Closed Phase 15.5 reduces duplicated local validation, release
 Symphony slots while CI is authoritative, protects conflict-prone integration
 lanes and retains exact-head/current-main acceptance with operator-owned
 mechanical rebase recovery. ATLAS-253 now owns the live ceiling ramp.
+
+Phase 16 controlled-delivery overlap is now design-ratified for the authority-neutral Track-A foundation only. Governing design authority is `docs/atlas/agentic-engineering-programme-design.md` plus `docs/atlas/phase-16-agent-runtime-and-integration-safety.md`. The overlap may supply real independent workloads to ATLAS-253, but Phase 16 cannot close and no new Phase 16 production authority may activate before Phase 15 closes. Track B/S/M and Phases 17–22 remain unticketed.
 The ATLAS-259/260 synthetic no-rewrite route is FAIL and retired. Phases 16–20
 remain gated programme horizons. The
 hand-delivered Planning Batch Integrity Guard continues to validate exact

@@ -24,6 +24,10 @@ No Phase 16–20 inbox stubs may be created merely because the phase appears
 here. Their ticket batches are deliberately deferred by the rolling-wave gates
 below.
 
+### Controlled Phase 16 overlap exception while Phase 15 remains open
+
+This document remains the pre-v4 repository horizon until the cumulative programme design's atomic supersession gate is reached at Phase 15 closure. One narrow exception is now ratified: `docs/atlas/agentic-engineering-programme-design.md` and `docs/atlas/phase-16-agent-runtime-and-integration-safety.md` may authorise the authority-neutral Phase 16 **Track-A foundation** planning batch used as real ATLAS-253 workload. The exception does not authorise Track B/S/M, does not activate Phase 16 production authority, does not close Phase 16, and does not permit Phase 17–22 ticketisation. If those newer documents and this historical horizon differ about Phase 16 Track-A, the dedicated Phase 16 design owns this controlled overlap only.
+
 ## Programme objective
 
 Phase 12 proved exact-head integration control. The next programme turns the
