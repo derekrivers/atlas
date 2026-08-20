@@ -938,7 +938,25 @@ seed or manual state repair. Accepted merge #335 closed Phase 15.5.
 
 ---
 
-# Phase 16 — Delivery Intelligence and Agent Evaluation
+# Phase 16 — Agent Runtime and Integration Safety
+
+Programme direction: `docs/atlas/agentic-engineering-programme-design.md`.
+Dedicated design authority: `docs/atlas/phase-16-agent-runtime-and-integration-safety.md`.
+Planning state: CONTROLLED OVERLAP — TRACK A ONLY while Phase 15 / ATLAS-253 remains open.
+
+Phase 16 builds the governed software-factory runtime substrate: bounded structured runtime-event identities, work-shape/topology and semantic-interface contracts, typed handoffs/outcomes, shadow trajectory evidence, chaos/effect-policy contracts, exact-head PR interaction advice and reviewer-oriented evidence. During the still-open Phase 15 ramp, only the fifteen authority-neutral Track-A contract families from the dedicated design may be ticketised. They are real independent Atlas-repository work with no migration, shared export/registry, API/UI, WORKFLOW/Symphony edit, external mutation or live authority activation. They may supply the frozen ATLAS-253 workload pool after interface/path/lane pre-certification.
+
+Phase 16 cannot close and Track B/S/M cannot activate merely because Track A is delivered; Phase 15 must close first and each later slice retains its dedicated dependency/authority gate. Production execution remains BASELINE_SINGLE_ROLE in Phase 16.
+
+Track-A planning families (design identifiers only; real keys come only from `atlas apply`): runtime source identity; runtime event envelopes; runtime import/trace evidence; work shape/topology; role capability; semantic interface; handoff/coordination; execution outcome; trajectory alert; steering identity; chaos evidence; effect request/context; effect authority/audit; PR interaction advice; reviewer evidence/cost.
+
+Milestone authority remains with ATLAS-253 for the current ramp. No Phase-16 milestone is minted in this controlled-overlap batch.
+
+---
+
+# Deferred pre-v4 future-direction block — Delivery Intelligence and Agent Evaluation
+
+The following pre-v4 block is preserved for history while Phase 15 remains open. Its measurement/evaluation intent moves to the later programme wave under the cumulative design; it is **not** Phase-16 ticketisation authority and no tickets are minted from it in this batch. Full Phase 17–22 roadmap renumbering/adoption remains part of the post-Phase-15 atomic horizon-supersession change.
 
 Programme direction: `docs/atlas/phase-13-20-programme-horizon.md`.
 Planning state: HORIZON; detailed design and ticketing gated on Phase 15 and

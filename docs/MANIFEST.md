@@ -26,6 +26,7 @@ Strategy and specification (`docs/atlas/`):
 - `phase-13-20-programme-horizon.md` — rolling-wave architectural direction
   after Phase 12: bounded authority progression, dependencies, planning gates
   and milestone outcomes through the Atlas-managing-Atlas capstone
+- `agentic-engineering-programme-design.md` — cumulative programme architecture horizon and research/design authority for Phases 16–22; while Phase 15 remains open it supplies the controlled Phase-16 overlap rulings without yet triggering full horizon supersession
 - `bootstrap-guide.md` — day-one bootstrap guide
 - `symphony-integration.md` — delivered Phase 8 and Phase 12 integration
   design (state mapping, pack delivery, exact-head assessment,
@@ -63,6 +64,7 @@ Phase design documents (one per engine; phase-readiness rule below):
 - `docs/atlas/parallel-delivery-efficiency-and-integration-control.md` — Phase
   15.5: scoped local confidence with CI authority, CI-pending slot release,
   protected integration lanes and no-rewrite exact-base acceptance
+- `docs/atlas/phase-16-agent-runtime-and-integration-safety.md` — Phase 16 dedicated design: runtime event/identity contracts, topology/interface ownership, outcomes, shadow trajectory safety, chaos, governed effects, PR interaction intelligence and the authority-neutral Track-A overlap
 
 Playbooks (generated canonical docs):
 
