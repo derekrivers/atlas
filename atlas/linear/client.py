@@ -442,7 +442,7 @@ def _github_publication_from_attachment(
         or not metadata_repo_id.isdigit()
         or metadata.get("linkKind") != "closes"
         or metadata.get("targetBranch") != "main"
-        or metadata.get("status") != "open"
+        or metadata.get("status") not in ("open", "draft")
     ):
         raise ValueError("contradictory Linear GitHub attachment identity")
     return LinearGitHubPublication(

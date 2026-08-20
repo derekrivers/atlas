@@ -226,9 +226,10 @@ is `ready_for_agent` or `in_progress` and no AgentRun could be reconstructed.
 The same complete board observation carries the issue-bound Linear GitHub
 attachment. Atlas accepts a publication identity only when its canonical
 `github.com/<owner>/<repo>/pull/<number>` URL and GitHub attachment metadata
-agree, the metadata identifies an open `main`-target PR that closes the issue,
-the attachment connection is complete, and exactly one repository/PR identity
-remains. The join to the ticket is the stable Linear issue id. Missing
+agree, the metadata identifies a live (`open` or `draft`) `main`-target PR that
+closes the issue, the attachment connection is complete, and exactly one
+repository/PR identity remains. The join to the ticket is the stable Linear
+issue id. Missing
 publication identity holds as `trusted_publication_unavailable`; truncation,
 contradiction or multiple distinct publications holds as
 `trusted_publication_ambiguous`, before any GitHub call. Ticket titles, branch

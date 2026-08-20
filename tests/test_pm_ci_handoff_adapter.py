@@ -31,6 +31,7 @@ from atlas.core.models import (
     TicketStatusTransition,
 )
 from atlas.evidence.pull import drive_evidence_pull
+from atlas.linear.client import LinearIssue, _github_publication_from_attachment
 from atlas.pm import CIHandoffHooks, sync_tick
 from atlas.pm.sync import CI_PENDING_POLL_COMPRESSION_CREATED_BY
 from atlas.storage import (
@@ -107,6 +108,38 @@ def _github(
     return FakeGitHubClient(
         check_runs=checks,
         pull_request=_pr_payload(head),
+    )
+
+
+def _draft_publication_issue(issue: LinearIssue) -> LinearIssue:
+    publication = _github_publication_from_attachment(
+        {
+            "id": "github-publication-1",
+            "url": f"https://github.com/derekrivers/atlas/pull/{PR_NUMBER}",
+            "sourceType": "github",
+            "metadata": {
+                "id": "4295015089",
+                "repoId": "1265218302",
+                "repoLogin": "derekrivers",
+                "repoName": "atlas",
+                "number": PR_NUMBER,
+                "linkKind": "closes",
+                "targetBranch": "main",
+                "status": "draft",
+            },
+        }
+    )
+    assert publication is not None
+    return LinearIssue(
+        id=issue.id,
+        title=issue.title,
+        state_id=issue.state_id,
+        state_name=issue.state_name,
+        state_type=issue.state_type,
+        description=issue.description,
+        identifier=issue.identifier,
+        github_publications=(publication,),
+        github_publications_complete=True,
     )
 
 
@@ -304,6 +337,36 @@ def test_production_tick_resolves_exact_identity_writes_once_and_ends_window(
     assert receipt.counters["ci_handoff_evaluated"] == 1
     assert receipt.counters["ci_handoff_held"] == 0
     assert receipt.counters["ci_handoff_mutations"] == 1
+
+
+def test_production_tick_accepts_draft_publication_and_reconciles_green_exact_head(
+    db: Database,
+) -> None:
+    client = RecordingClient()
+    ticket = _seed_ci_pending(db, client)
+    assert ticket.external_linear_id is not None
+    issue = client.fetch_issue(ticket.external_linear_id)
+    assert issue is not None
+    client._issues[ticket.external_linear_id] = _draft_publication_issue(issue)
+    github = _github()
+
+    result = _run(db, client, github)
+
+    decision = result.ci_handoff_decisions[0]
+    assert decision.reason.value == "reconciled"
+    assert decision.identity is not None
+    assert decision.identity.head_commit == HEAD
+    assert decision.reconciliation is not None
+    assert decision.reconciliation.classification is CIHandoffClassification.PASSED
+    assert client.state_writes == [(ticket.external_linear_id, "state-review-required")]
+    assert github.calls[:3] == [
+        ("pull_request", "derekrivers", "atlas", PR_NUMBER),
+        ("workflow_runs", "derekrivers", "atlas", HEAD),
+        ("check_runs", "derekrivers", "atlas", HEAD),
+    ]
+    assert {
+        record.commit_sha for record in EvidenceRepo(db).list_for_product(PRODUCT_ID)
+    } == {HEAD}
 
 
 @pytest.mark.parametrize(
