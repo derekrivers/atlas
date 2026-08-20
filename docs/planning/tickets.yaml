@@ -1,7 +1,7 @@
 # Render written only by `atlas apply` (ADR-0006/0007); do not hand-edit.
-# plan_run_id: 330d3f84-2920-4731-b885-4512418eae05
+# plan_run_id: 93dd3344-4857-44de-8213-25ed0330e2ef
 # prompt_version: stubs-only
-# ticket_key_high_water: 263
+# ticket_key_high_water: 278
 # epic_key_high_water: 13
 tickets:
 - id: 06701bee-33ed-44e6-b735-52dfd7c5edc8
@@ -11309,7 +11309,7 @@ tickets:
   title: Authenticated delivery-control policy and status API
   objective: Expose current policy, occupancy and admission reasons and allow one authenticated compare-and-set policy replacement without creating a generic ticket or Symphony control surface.
   context: The operator needs to understand why eligible work is held and deliberately change budgets or mode. Phase 13 owns mutation security and receipts; Phase 15 services own validation and admission. The API remains thin and exposes no ticket-state, agent-session or automatic-ceiling action.
-  status: changes_requested
+  status: done
   ticket_type: feature
   risk_level: high
   priority: 50
@@ -11347,16 +11347,16 @@ tickets:
   - authentication
   component: atlas.api
   linear_synced_at: '2026-08-02T12:32:32.638319Z'
-  last_observed_linear_state_id: a3bba9c2-716e-47a6-b1ce-dcff4183c425
-  status_entered_at: '2026-08-13T21:18:28.436729Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-08-14T05:44:44.050329Z'
   review_cycle_count: 0
-  lesson_extraction_attempted_at: null
+  lesson_extraction_attempted_at: '2026-08-14T05:44:44.050329Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-20-delivery-control-api.md#authenticated-delivery-control-policy-and-status-api
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-08-02T12:32:32.638319Z'
   updated_at: '2026-08-02T12:32:32.638319Z'
-  completed_at: null
+  completed_at: '2026-08-14T05:44:44.050329Z'
 - id: a2caf27e-bac7-4733-80d7-c97cbf6522f2
   product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
   epic_id: 80047dd6-542c-4ad8-8213-a2372ab4e560
@@ -11364,7 +11364,7 @@ tickets:
   title: Operator delivery-control and admission-explanation UI
   objective: Give the operator a clear control panel for working/review capacity, policy revisions and admit/hold reasons while keeping every delivery action and authority boundary server-owned.
   context: Phase 15 needs an instrument, not an autonomous optimiser. The UI consumes generated delivery-control schemas, displays ceilings as limits rather than targets and submits explicit full-policy revisions through the Phase 13 mutation primitive. It never changes a ticket status or controls Symphony.
-  status: planned
+  status: done
   ticket_type: feature
   risk_level: high
   priority: 50
@@ -11402,16 +11402,16 @@ tickets:
   - explainability
   component: operator-ui
   linear_synced_at: '2026-08-02T12:32:32.638319Z'
-  last_observed_linear_state_id: f95de64e-f351-4226-b4ec-a5bddbc6fd2d
-  status_entered_at: null
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-08-14T07:29:03.042758Z'
   review_cycle_count: 0
-  lesson_extraction_attempted_at: null
+  lesson_extraction_attempted_at: '2026-08-14T07:29:03.042758Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-21-delivery-control-ui.md#operator-delivery-control-and-admission-explanation-ui
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-08-02T12:32:32.638319Z'
   updated_at: '2026-08-02T12:32:32.638319Z'
-  completed_at: null
+  completed_at: '2026-08-14T07:29:03.042758Z'
 - id: 1a647b7e-3c62-4289-88c4-203e0722bb2d
   product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
   epic_id: 4d034c8b-0752-4089-8ff9-2fd43f51c6f4
@@ -11525,7 +11525,7 @@ tickets:
   component: orchestration
   linear_synced_at: '2026-08-02T12:32:32.638319Z'
   last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
-  status_entered_at: '2026-08-10T20:29:46.695575Z'
+  status_entered_at: '2026-08-17T21:04:13.675025Z'
   review_cycle_count: 0
   lesson_extraction_attempted_at: null
   source_anchor: docs/planning/inbox/processed/inbox-stub-23-delivery-control-milestone.md#three-to-five-to-seven-to-ten-delivery-control-milestone
@@ -11541,7 +11541,7 @@ tickets:
   title: Tiered local-validation contract and deterministic validation-plan CLI
   objective: Replace mandatory per-agent repository-wide sweeps with a deterministic, reviewable validation plan that selects the smallest safe local checks for the changed surfaces while keeping complete CI authoritative.
   context: 'Atlas currently instructs every agent to reproduce the complete Python and Operator UI CI matrix before handoff. Under concurrent delivery this repeats expensive work, occupies Symphony turns and obscures whether implementation or validation is the bottleneck. The new contract follows local confidence, CI authority: agents run ticket-required and affected checks locally; CI still runs every required repository gate. Unknown, cross-cutting or protected changes fall back conservatively to a complete local sweep.'
-  status: planned
+  status: done
   ticket_type: infrastructure
   risk_level: high
   priority: 50
@@ -11574,7 +11574,7 @@ tickets:
   definition_of_done:
   - All six criteria have named deterministic tests, the CLI produces stable plans, documentation clearly separates local confidence from CI authority, focused gates pass and the PR title carries the minted ticket key.
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: dfca918b-80c7-4744-8936-48af932d279b
   external_github_issue_id: null
   tags:
   - phase-15-5
@@ -11582,17 +11582,17 @@ tickets:
   - ci
   - developer-workflow
   component: verification
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-08-13T21:44:51.546427Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-08-14T09:20:56.571547Z'
   review_cycle_count: 0
-  lesson_extraction_attempted_at: null
+  lesson_extraction_attempted_at: '2026-08-14T09:20:56.571547Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-01-tiered-local-validation.md#tiered-local-validation-contract-and-deterministic-validation-plan-cli
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-08-13T21:44:51.546427Z'
   updated_at: '2026-08-13T21:44:51.546427Z'
-  completed_at: null
+  completed_at: '2026-08-14T09:20:56.571547Z'
 - id: f96ef51b-d6e9-44a3-81a3-358d59ae9b37
   product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
   epic_id: e0d47d14-bbd1-4d5d-96bc-f9e7adfeb3cf
@@ -11600,7 +11600,7 @@ tickets:
   title: CI-pending delivery state and bounded integration capacity
   objective: Represent work that has left an agent but has not yet earned system-tier CI handoff as a distinct non-Symphony-active state with an operator-owned integration budget.
   context: '`PR Open` is currently a Symphony-active working state, so an agent can remain claimed for repeated turns while CI runs. Treating that time as active coding wastes worker capacity, while treating it as free capacity can flood CI and review. Introduce an explicit CI-pending lifecycle and budget: it does not consume a Symphony working slot, but it does consume integration capacity until required CI evidence reaches a terminal classification.'
-  status: planned
+  status: done
   ticket_type: infrastructure
   risk_level: critical
   priority: 50
@@ -11635,7 +11635,7 @@ tickets:
   definition_of_done:
   - All six criteria have named model/migration/contract evidence, historical policy remains immutable, full focused Python and documentation gates pass, and the PR title carries the minted ticket key.
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: 8f66cdeb-d50a-4b65-8418-b13c3914ae8b
   external_github_issue_id: null
   tags:
   - phase-15-5
@@ -11643,17 +11643,17 @@ tickets:
   - capacity
   - state-ownership
   component: delivery-control
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-08-13T21:44:51.546427Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-08-14T13:03:25.627306Z'
   review_cycle_count: 0
-  lesson_extraction_attempted_at: null
+  lesson_extraction_attempted_at: '2026-08-14T13:03:25.627306Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-02-ci-pending-capacity.md#ci-pending-delivery-state-and-bounded-integration-capacity
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-08-13T21:44:51.546427Z'
   updated_at: '2026-08-13T21:44:51.546427Z'
-  completed_at: null
+  completed_at: '2026-08-14T13:03:25.627306Z'
 - id: da881b16-d010-49cb-b1a8-09dac29a3313
   product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
   epic_id: 01499978-f6b2-4cd9-9924-4056720e5a2d
@@ -11661,7 +11661,7 @@ tickets:
   title: System-tier CI handoff reconciler
   objective: Reconcile one CI-pending PR into Review Required or Changes Requested from complete commit-pinned system-tier evidence without keeping an agent alive to poll CI or granting CI any merge authority.
   context: Once an agent publishes and enters CI-pending, Atlas must own the next state edge. A complete required-check set at the exact PR head may advance to human review; a definite implementation failure may return to rework. Pending, missing, stale, infrastructure, malformed or contradictory evidence must not manufacture either success or actionable code failure.
-  status: planned
+  status: done
   ticket_type: feature
   risk_level: critical
   priority: 50
@@ -11694,7 +11694,7 @@ tickets:
   definition_of_done:
   - All six criteria have named race/failure tests, the writer is exactly bounded, complete CI remains system-tier authority, focused gates pass and the PR title carries the minted ticket key.
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: 335fcf7c-d3f5-42f3-a65e-9e42969b79dd
   external_github_issue_id: null
   tags:
   - phase-15-5
@@ -11702,17 +11702,17 @@ tickets:
   - evidence
   - reconciliation
   component: delivery-control
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-08-13T21:44:51.546427Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-08-14T15:42:29.685014Z'
   review_cycle_count: 0
-  lesson_extraction_attempted_at: null
+  lesson_extraction_attempted_at: '2026-08-14T15:42:29.685014Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-03-system-tier-ci-handoff.md#system-tier-ci-handoff-reconciler
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-08-13T21:44:51.546427Z'
   updated_at: '2026-08-13T21:44:51.546427Z'
-  completed_at: null
+  completed_at: '2026-08-14T15:42:29.685014Z'
 - id: dea96799-fcfb-44d5-b5e7-3d68b69f220e
   product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
   epic_id: 4d034c8b-0752-4089-8ff9-2fd43f51c6f4
@@ -11720,7 +11720,7 @@ tickets:
   title: Symphony scoped-validation and slot-release workflow
   objective: Make the repository-owned agent contract execute scoped local validation, publish once, enter CI-pending and release the Symphony slot without polling or reproducing CI inside the agent session.
   context: Symphony may run up to `max_turns` back-to-back while an issue remains in an active state. The workflow must therefore end agent ownership through an explicit tracker transition, not an instruction to wait quietly. This ticket adopts the validation planner and CI reconciler while preserving exact-head evidence, current-branch safety and the prohibition on agent merge authority.
-  status: planned
+  status: done
   ticket_type: infrastructure
   risk_level: high
   priority: 50
@@ -11757,7 +11757,7 @@ tickets:
   definition_of_done:
   - All six criteria have executable workflow/prompt evidence, a seeded agent stops at CI-pending without an extra turn, CI remains authoritative, focused gates pass and the PR title carries the minted ticket key.
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: 3ffcda97-5b71-4710-93f3-abddc9410fcd
   external_github_issue_id: null
   tags:
   - phase-15-5
@@ -11765,17 +11765,17 @@ tickets:
   - workflow
   - validation
   component: orchestration
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-08-13T21:44:51.546427Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-08-16T14:50:22.766312Z'
   review_cycle_count: 0
-  lesson_extraction_attempted_at: null
+  lesson_extraction_attempted_at: '2026-08-16T14:50:22.766312Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-04-symphony-slot-release-workflow.md#symphony-scoped-validation-and-slot-release-workflow
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-08-13T21:44:51.546427Z'
   updated_at: '2026-08-13T21:44:51.546427Z'
-  completed_at: null
+  completed_at: '2026-08-16T14:50:22.766312Z'
 - id: 3559bee8-1865-44c6-aa96-8b8605a24ecd
   product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
   epic_id: e0d47d14-bbd1-4d5d-96bc-f9e7adfeb3cf
@@ -11783,7 +11783,7 @@ tickets:
   title: Protected integration-lane classification and admission holds
   objective: Prevent available worker slots from dispatching tickets that compete for the same high-contention repository surfaces by applying deterministic protected integration lanes before admission.
   context: Phase 15 component and risk lanes bound broad delivery classes, but repeated conflicts cluster around migrations, generated contracts, workflow files, planning sources, shared manifests and other single-writer surfaces. Phase 15.5 adds an explicit repository-owned lane registry and ticket classification. Lane saturation produces a typed hold even when working and Symphony capacity remain available.
-  status: planned
+  status: done
   ticket_type: feature
   risk_level: critical
   priority: 50
@@ -11815,7 +11815,7 @@ tickets:
   definition_of_done:
   - All six criteria have named deterministic/property evidence, protected surfaces are operator-visible and fail closed, focused gates pass and the PR title carries the minted ticket key.
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: 86461655-4b3e-4ea8-9bf3-142df18cdd2c
   external_github_issue_id: null
   tags:
   - phase-15-5
@@ -11823,17 +11823,17 @@ tickets:
   - integration
   - conflict-control
   component: delivery-control
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-08-13T21:44:51.546427Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-08-16T16:26:49.852275Z'
   review_cycle_count: 0
-  lesson_extraction_attempted_at: null
+  lesson_extraction_attempted_at: '2026-08-16T16:26:49.852275Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-05-protected-integration-lanes.md#protected-integration-lane-classification-and-admission-holds
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-08-13T21:44:51.546427Z'
   updated_at: '2026-08-13T21:44:51.546427Z'
-  completed_at: null
+  completed_at: '2026-08-16T16:26:49.852275Z'
 - id: 35bebc52-6a4d-4e90-be32-738f6ca9a01a
   product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
   epic_id: 4d034c8b-0752-4089-8ff9-2fd43f51c6f4
@@ -11841,7 +11841,7 @@ tickets:
   title: Exact-base synthetic-merge evidence feasibility spike
   objective: Determine whether Atlas can bind GitHub's clean integration candidate and CI evidence to one exact PR head and current base strongly enough to avoid an unnecessary contributor-branch rebase without weakening exact-head safety.
   context: The current acceptance contract requires the PR branch itself to contain current `main`, so every sibling merge makes trailing branches stale even when they merge cleanly. GitHub may expose a synthetic merge candidate and CI identity for an exact head/base pair, but its availability, stability, evidence mapping and squash-merge relationship must be proven before Atlas changes authority. This is a read-only feasibility spike with a governed PASS/FAIL report.
-  status: planned
+  status: done
   ticket_type: spike
   risk_level: high
   priority: 50
@@ -11873,7 +11873,7 @@ tickets:
   definition_of_done:
   - All six criteria have executable evidence, the report reaches an explicit PASS or FAIL without production mutation, retained artifacts are bounded, focused gates pass and the PR title carries the minted ticket key.
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: fb9dda17-fdd2-4fb2-a5c4-46c1e05b9905
   external_github_issue_id: null
   tags:
   - phase-15-5
@@ -11881,17 +11881,17 @@ tickets:
   - exact-head
   - rebase
   component: integration
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-08-13T21:44:51.546427Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-08-16T16:26:49.852275Z'
   review_cycle_count: 0
-  lesson_extraction_attempted_at: null
+  lesson_extraction_attempted_at: '2026-08-16T16:26:49.852275Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-06-synthetic-merge-feasibility.md#exact-base-synthetic-merge-evidence-feasibility-spike
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-08-13T21:44:51.546427Z'
   updated_at: '2026-08-13T21:44:51.546427Z'
-  completed_at: null
+  completed_at: '2026-08-16T16:26:49.852275Z'
 - id: cc1200e6-cb03-4a2f-a0a9-e27ba531cefd
   product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
   epic_id: f64bcf20-dbdf-4d8e-98b3-d615de1bc6a4
@@ -11899,7 +11899,7 @@ tickets:
   title: No-rewrite exact-base acceptance assessment
   objective: Accept a clean PR against current `main` from exact integration-candidate evidence without rewriting its branch, while retaining the operator rebase lane for conflicts, missing evidence and every indeterminate case.
   context: 'A successful feasibility result allows Atlas to distinguish branch freshness from integration freshness. The accepted identity becomes the tuple of repository, PR, contributor head, live base and provider integration candidate. Evidence, confirmations and readiness bind to that complete tuple. Atlas remains advisory: it does not update, rebase or merge the branch.'
-  status: planned
+  status: done
   ticket_type: infrastructure
   risk_level: critical
   priority: 50
@@ -11934,7 +11934,7 @@ tickets:
   definition_of_done:
   - All six criteria have exact-identity and adversarial evidence, the clean no-rewrite path is advisory and current-base-safe, prohibited mutations are mechanically absent, full applicable gates pass and the PR title carries the minted ticket key.
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: 0b00552b-caf0-4b35-8772-6980e77ea60a
   external_github_issue_id: null
   tags:
   - phase-15-5
@@ -11942,17 +11942,17 @@ tickets:
   - acceptance
   - rebase
   component: integration
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-08-13T21:44:51.546427Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-08-16T18:43:20.232164Z'
   review_cycle_count: 0
-  lesson_extraction_attempted_at: null
+  lesson_extraction_attempted_at: '2026-08-16T18:43:20.232164Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-07-no-rewrite-exact-base-acceptance.md#no-rewrite-exact-base-acceptance-assessment
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-08-13T21:44:51.546427Z'
   updated_at: '2026-08-13T21:44:51.546427Z'
-  completed_at: null
+  completed_at: '2026-08-16T18:43:20.232164Z'
 - id: f21a5cea-5b68-4b70-b13c-a401e8a79967
   product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
   epic_id: 86fe8167-7b99-45fd-ac96-3d0f4d3a0f53
@@ -11960,7 +11960,7 @@ tickets:
   title: Delivery-control CI and integration-pressure API
   objective: Expose CI-pending capacity, validation-plan provenance, protected-lane holds and exact-base integration state through the authenticated delivery-control API without creating a CI, GitHub or Symphony command surface.
   context: Phase 15's API explains policy and admission. Phase 15.5 adds new pressure dimensions and an exact-base assessment that the operator must understand before raising concurrency. The API remains a thin projection over canonical services. Reads are observational; the existing policy replacement remains the only delivery-control mutation.
-  status: planned
+  status: done
   ticket_type: feature
   risk_level: high
   priority: 50
@@ -11990,7 +11990,7 @@ tickets:
   definition_of_done:
   - All six criteria have named API/architecture evidence, generated contracts are drift-free, the API exposes no new external command authority, full applicable gates pass and the PR title carries the minted ticket key.
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: b7249000-4a29-47ac-bdbd-3a174a8f7c4e
   external_github_issue_id: null
   tags:
   - phase-15-5
@@ -11998,17 +11998,17 @@ tickets:
   - ci
   - integration
   component: atlas.api
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-08-13T21:44:51.546427Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-08-17T05:59:45.344214Z'
   review_cycle_count: 0
-  lesson_extraction_attempted_at: null
+  lesson_extraction_attempted_at: '2026-08-17T05:59:45.344214Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-08-delivery-pressure-api.md#delivery-control-ci-and-integration-pressure-api
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-08-13T21:44:51.546427Z'
   updated_at: '2026-08-13T21:44:51.546427Z'
-  completed_at: null
+  completed_at: '2026-08-17T05:59:45.344214Z'
 - id: 2a8d0edf-20bf-45ae-883f-3ec9812e31c1
   product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
   epic_id: 80047dd6-542c-4ad8-8213-a2372ab4e560
@@ -12016,7 +12016,7 @@ tickets:
   title: Operator CI and integration-pressure console
   objective: Make CI waiting, protected-lane contention, validation scope and exact-base integration readiness legible to the operator without client-side inference or merge, rebase, retry and worker controls.
   context: 'Worker utilisation alone is a misleading concurrency signal. The existing delivery-control UI must show where work is accumulating and why: coding, CI, integration lanes, review or rework. It consumes generated API types and presents server classifications as limits and evidence, never as automatic recommendations to fill capacity.'
-  status: planned
+  status: done
   ticket_type: feature
   risk_level: high
   priority: 50
@@ -12047,7 +12047,7 @@ tickets:
   definition_of_done:
   - All seven criteria have named component/browser/accessibility evidence, no forbidden control exists, generated-client and production-build gates pass, and the PR title carries the minted ticket key.
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: 48714af6-b35a-4727-a81c-725fa48652ed
   external_github_issue_id: null
   tags:
   - phase-15-5
@@ -12055,17 +12055,17 @@ tickets:
   - ci
   - integration
   component: operator-ui
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-08-13T21:44:51.546427Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-08-17T07:53:38.569805Z'
   review_cycle_count: 0
-  lesson_extraction_attempted_at: null
+  lesson_extraction_attempted_at: '2026-08-17T07:53:38.569805Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-09-integration-pressure-console.md#operator-ci-and-integration-pressure-console
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-08-13T21:44:51.546427Z'
   updated_at: '2026-08-13T21:44:51.546427Z'
-  completed_at: null
+  completed_at: '2026-08-17T07:53:38.569805Z'
 - id: eee8bd89-36dd-4e3d-ac18-321bb68f4728
   product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
   epic_id: 4d034c8b-0752-4089-8ff9-2fd43f51c6f4
@@ -12073,7 +12073,7 @@ tickets:
   title: Parallel-delivery efficiency and integration milestone
   objective: Prove that the Phase 15.5 operating model increases accepted delivery flow without duplicated full-suite work, stranded Symphony turns, unbounded CI or review queues, unsafe integration shortcuts or avoidable rebases.
   context: Focused tests cannot prove that the new workflow works under concurrent delivery. The milestone runs a controlled independent workload before ATLAS-253's live ceiling ramp. It compares the current operating model with the Phase 15.5 model using predeclared windows and thresholds. Passing this milestone is the explicit operator gate for releasing ATLAS-253 from Needs Human; it does not itself execute or close the Phase 15 concurrency ramp.
-  status: planned
+  status: done
   ticket_type: infrastructure
   risk_level: critical
   priority: 50
@@ -12112,7 +12112,7 @@ tickets:
   definition_of_done:
   - All seven criteria pass with complete bounded receipts, Phase 15.5 closure and canonical docs land together, ATLAS-253 remains operator-gated until that merge, no Symphony ceiling change occurs and the PR title carries the minted ticket key.
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: dc90d948-baf6-41c3-91b3-3d998cceea70
   external_github_issue_id: null
   tags:
   - phase-15-5
@@ -12120,14 +12120,809 @@ tickets:
   - throughput
   - integration
   component: orchestration
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-08-13T21:44:51.546427Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-08-17T16:33:33.535703Z'
   review_cycle_count: 0
-  lesson_extraction_attempted_at: null
+  lesson_extraction_attempted_at: '2026-08-17T16:33:33.535703Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-10-parallel-delivery-efficiency-milestone.md#parallel-delivery-efficiency-and-integration-milestone
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-08-13T21:44:51.546427Z'
   updated_at: '2026-08-13T21:44:51.546427Z'
+  completed_at: '2026-08-17T16:33:33.535703Z'
+- id: 8a288725-f6c0-42f3-9544-4fb7bfdc5508
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 4d034c8b-0752-4089-8ff9-2fd43f51c6f4
+  key: ATLAS-264
+  title: Phase 16 runtime source identity contract
+  objective: Define the immutable RuntimeSourceDescriptor contract that pins the exact runtime, projector, Codex protocol and observable capability identity used by later runtime-event import and reporting.
+  context: 'Experiment E proved that structured runtime capture is feasible only when evidence stays bound to a precise Symphony/Codex configuration. Phase 16 section 8 therefore requires one versioned descriptor per source configuration. This is a pure foundation slice for the ATLAS-253 overlap: it creates no persistence, adapter, export or live runtime behavior.'
+  status: planned
+  ticket_type: feature
+  risk_level: medium
+  priority: 50
+  relevant_docs:
+  - docs/atlas/agentic-engineering-programme-design.md
+  - docs/atlas/phase-16-agent-runtime-and-integration-safety.md
+  acceptance_criteria:
+  - '`RuntimeSourceDescriptor` represents every field required by dedicated-design section 8, including source/product scope, pinned Symphony/Codex/protocol/projector identities, declared sequence semantics, supported event/identity/coordination capabilities and the optional tool/channel inventory fingerprints.'
+  - The contract is immutable for one source configuration and exposes deterministic canonical bytes/fingerprint behavior that is independent of construction/input ordering.
+  - Changing any material runtime configuration identity changes the fingerprint; an unsupported or uninstrumented capability is represented explicitly rather than inferred from silence.
+  - Validation rejects malformed digest/version/bounded-list inputs and duplicate identities with named deterministic errors.
+  - The implementation remains a self-contained pure contract with zero storage, filesystem, network, runtime or external-system side effects.
+  non_goals:
+  - No package-level re-export, generated schema/export registration, database migration/repository, API/UI, shared registry, WORKFLOW.md/Symphony edit, external mutation, production activation or live milestone proof.
+  - No import from another new Phase 16 Track-A module; if implementation requires a sibling Track-A contract, stop and return the planning/dependency issue to the operator rather than coupling the ramp workloads.
+  implementation_notes:
+  - Planned Track-A changed-path envelope is exactly `atlas/core/models/runtime_source.py` plus `tests/test_runtime_source.py`. Do not add convenience exports or generated artifacts; Track-B integration owns those after ATLAS-253.
+  - Use immutable/frozen Pydantic/domain values and deterministic canonicalization consistent with the dedicated Phase 16 design. This ticket is intended to remain independently useful even if the concurrency ramp did not exist.
+  test_requirements:
+  - Focused deterministic tests in `tests/test_runtime_source.py` cover valid construction, every closed enum/value boundary, malformed/contradictory inputs, canonical serialization/fingerprint stability and order-independence where collections are semantically sets.
+  - An architecture/scope assertion proves the production change stays within the named contract module and imports only stable existing lower-layer/Pydantic/shared primitives; tests exercise zero filesystem, database, Git/GitHub, Linear, Symphony or network mutation.
+  documentation_requirements: []
+  definition_of_done:
+  - The named contract family exists only in `atlas/core/models/runtime_source.py`, all focused tests in `tests/test_runtime_source.py` pass, and the final diff contains no other production/test path.
+  - The PR completion report states the exact two-path diff, confirms no sibling Track-A import/dependency/protected-lane expansion, and preserves all authority/non-goal boundaries from the dedicated design.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - phase-16
+  - track-a
+  - runtime-telemetry
+  - contract
+  component: runtime-source-contract
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/inbox-stub-01-runtime-source-identity.md#phase-16-runtime-source-identity-contract
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-20T09:08:00.028884Z'
+  updated_at: '2026-08-20T09:08:00.028884Z'
+  completed_at: null
+- id: c8ae612e-5d0c-4c7f-a98d-55c8f545ca84
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 4d034c8b-0752-4089-8ff9-2fd43f51c6f4
+  key: ATLAS-265
+  title: Phase 16 runtime transport and canonical event envelope contracts
+  objective: Define the bounded RuntimeTransportEvent and RuntimeEvent contracts that separate Symphony-owned source identity from Atlas-owned canonical ticket/product identity.
+  context: Experiment E and the dedicated design establish that Symphony knows runtime/issue identity but must not open Atlas storage to invent product/ticket UUIDs. Section 9 therefore separates the source transport envelope from the canonical Atlas event. This ticket defines only those envelopes and canonical fingerprint primitives; import, duplicate reconciliation and persistence are later composition work.
+  status: planned
+  ticket_type: feature
+  risk_level: high
+  priority: 50
+  relevant_docs:
+  - docs/atlas/agentic-engineering-programme-design.md
+  - docs/atlas/phase-16-agent-runtime-and-integration-safety.md
+  acceptance_criteria:
+  - '`RuntimeTransportEvent` and `RuntimeEvent` carry the exact bounded identity, timing, event-family, operation, path/head/base, coordination and metadata fields required by dedicated-design section 9, with their distinct source-side versus Atlas-side schemas preserved.'
+  - The source event key is structurally representable as `(runtime_attempt_id, source_sequence_no)` and both envelopes expose deterministic fingerprints over canonical bounded data.
+  - Event-family and phase-classification values are restricted to the dedicated-design v1 vocabularies, including `UNKNOWN` where specified; arbitrary raw Codex methods do not become unbounded enum values.
+  - Forbidden transcript/secret/raw-payload fields are absent from the model surface, while bounded metadata and payload digests remain available for correlation.
+  - The module performs no import joining, persistence, filesystem spool access or runtime observation.
+  non_goals:
+  - No package-level re-export, generated schema/export registration, database migration/repository, API/UI, shared registry, WORKFLOW.md/Symphony edit, external mutation, production activation or live milestone proof.
+  - No import from another new Phase 16 Track-A module; if implementation requires a sibling Track-A contract, stop and return the planning/dependency issue to the operator rather than coupling the ramp workloads.
+  implementation_notes:
+  - Planned Track-A changed-path envelope is exactly `atlas/core/models/runtime_event.py` plus `tests/test_runtime_event.py`. Do not add convenience exports or generated artifacts; Track-B integration owns those after ATLAS-253.
+  - Use immutable/frozen Pydantic/domain values and deterministic canonicalization consistent with the dedicated Phase 16 design. This ticket is intended to remain independently useful even if the concurrency ramp did not exist.
+  test_requirements:
+  - Focused deterministic tests in `tests/test_runtime_event.py` cover valid construction, every closed enum/value boundary, malformed/contradictory inputs, canonical serialization/fingerprint stability and order-independence where collections are semantically sets.
+  - An architecture/scope assertion proves the production change stays within the named contract module and imports only stable existing lower-layer/Pydantic/shared primitives; tests exercise zero filesystem, database, Git/GitHub, Linear, Symphony or network mutation.
+  documentation_requirements: []
+  definition_of_done:
+  - The named contract family exists only in `atlas/core/models/runtime_event.py`, all focused tests in `tests/test_runtime_event.py` pass, and the final diff contains no other production/test path.
+  - The PR completion report states the exact two-path diff, confirms no sibling Track-A import/dependency/protected-lane expansion, and preserves all authority/non-goal boundaries from the dedicated design.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - phase-16
+  - track-a
+  - runtime-event
+  - contract
+  component: runtime-event-contract
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/inbox-stub-02-runtime-event-envelopes.md#phase-16-runtime-transport-and-canonical-event-envelope-contracts
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-20T09:08:00.028884Z'
+  updated_at: '2026-08-20T09:08:00.028884Z'
+  completed_at: null
+- id: 8dbf9625-bfe7-4341-93a3-8eb66120b875
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 4d034c8b-0752-4089-8ff9-2fd43f51c6f4
+  key: ATLAS-266
+  title: Phase 16 runtime import and trace evidence contracts
+  objective: Define the bounded import, trace-completeness and retention evidence contracts used later to make runtime gaps, duplicates, contradictions and lifecycle outcomes explicit.
+  context: Runtime telemetry is useful only if missing or contradictory observations remain visible. The dedicated design therefore separates source/canonical events from import/trace evidence and retention disposition. This foundation ticket defines those evidence records only; importer behavior, storage and replay are later Track-B slices.
+  status: planned
+  ticket_type: feature
+  risk_level: medium
+  priority: 50
+  relevant_docs:
+  - docs/atlas/agentic-engineering-programme-design.md
+  - docs/atlas/phase-16-agent-runtime-and-integration-safety.md
+  acceptance_criteria:
+  - '`RuntimeImportReceipt`, `RuntimeTraceAssessment` and `RuntimeRetentionDisposition` provide bounded immutable representations for one import attempt, trace completeness/gap/duplicate/contradiction assessment, and retention lifecycle decision respectively.'
+  - The trace assessment can represent healthy, incomplete and contradictory evidence without coercing missing observations to zero or success.
+  - Canonical fingerprints are deterministic and retain the exact source/runtime-attempt/import identities required for replay provenance.
+  - Validation bounds counts/reason identities and rejects internally contradictory states such as a complete trace carrying unresolved gaps/contradictions.
+  - The module imports no sibling Track-A contract and performs no storage, spool, cleanup or replay action.
+  non_goals:
+  - No package-level re-export, generated schema/export registration, database migration/repository, API/UI, shared registry, WORKFLOW.md/Symphony edit, external mutation, production activation or live milestone proof.
+  - No import from another new Phase 16 Track-A module; if implementation requires a sibling Track-A contract, stop and return the planning/dependency issue to the operator rather than coupling the ramp workloads.
+  implementation_notes:
+  - Planned Track-A changed-path envelope is exactly `atlas/core/models/runtime_trace.py` plus `tests/test_runtime_trace.py`. Do not add convenience exports or generated artifacts; Track-B integration owns those after ATLAS-253.
+  - Use immutable/frozen Pydantic/domain values and deterministic canonicalization consistent with the dedicated Phase 16 design. This ticket is intended to remain independently useful even if the concurrency ramp did not exist.
+  test_requirements:
+  - Focused deterministic tests in `tests/test_runtime_trace.py` cover valid construction, every closed enum/value boundary, malformed/contradictory inputs, canonical serialization/fingerprint stability and order-independence where collections are semantically sets.
+  - An architecture/scope assertion proves the production change stays within the named contract module and imports only stable existing lower-layer/Pydantic/shared primitives; tests exercise zero filesystem, database, Git/GitHub, Linear, Symphony or network mutation.
+  documentation_requirements: []
+  definition_of_done:
+  - The named contract family exists only in `atlas/core/models/runtime_trace.py`, all focused tests in `tests/test_runtime_trace.py` pass, and the final diff contains no other production/test path.
+  - The PR completion report states the exact two-path diff, confirms no sibling Track-A import/dependency/protected-lane expansion, and preserves all authority/non-goal boundaries from the dedicated design.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - phase-16
+  - track-a
+  - runtime-replay
+  - contract
+  component: runtime-trace-contract
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/inbox-stub-03-runtime-import-trace-evidence.md#phase-16-runtime-import-and-trace-evidence-contracts
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-20T09:08:00.028884Z'
+  updated_at: '2026-08-20T09:08:00.028884Z'
+  completed_at: null
+- id: 17168f52-f613-427e-8335-b6d2437117bf
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 4d034c8b-0752-4089-8ff9-2fd43f51c6f4
+  key: ATLAS-267
+  title: Phase 16 work-shape and execution-topology contracts
+  objective: Define WorkShapeClassification and ExecutionTopology while preserving the Phase 16 ruling that work shape is observable coordination structure, not permission to spawn extra production roles.
+  context: The programme needs to distinguish independent leaves, pipelines, shared specifications, shared interfaces, co-delivery groups and unknown work. Phase 16 records those shapes but production remains BASELINE_SINGLE_ROLE. This ticket defines the two pure contracts only and must not select, schedule or activate a topology.
+  status: planned
+  ticket_type: feature
+  risk_level: medium
+  priority: 50
+  relevant_docs:
+  - docs/atlas/agentic-engineering-programme-design.md
+  - docs/atlas/phase-16-agent-runtime-and-integration-safety.md
+  acceptance_criteria:
+  - '`WorkShapeClassification` carries the exact v1 class vocabulary, evidence/interface/dependency/lane references, unknown reasons, classifier identity and deterministic fingerprint required by section 11.'
+  - '`ExecutionTopology` represents one immutable measured attempt with work-shape identity, execution mode, roles/handoffs/shared artifacts/interfaces, parallel-role bound, review/validation requirements and policy fingerprint.'
+  - The Phase 16 production baseline `BASELINE_SINGLE_ROLE` with one `implementation_executor` and `max_parallel_roles=1` is representable without making other fixture-only topology classes production defaults.
+  - Materially incomplete classification facts can be represented as `UNKNOWN`; no model-supplied advisory value can masquerade as a protected deterministic classification field.
+  - Construction and fingerprinting perform no admission, worker scheduling, model selection, Linear mutation or Symphony action.
+  non_goals:
+  - No package-level re-export, generated schema/export registration, database migration/repository, API/UI, shared registry, WORKFLOW.md/Symphony edit, external mutation, production activation or live milestone proof.
+  - No import from another new Phase 16 Track-A module; if implementation requires a sibling Track-A contract, stop and return the planning/dependency issue to the operator rather than coupling the ramp workloads.
+  implementation_notes:
+  - Planned Track-A changed-path envelope is exactly `atlas/core/models/execution_topology.py` plus `tests/test_execution_topology.py`. Do not add convenience exports or generated artifacts; Track-B integration owns those after ATLAS-253.
+  - Use immutable/frozen Pydantic/domain values and deterministic canonicalization consistent with the dedicated Phase 16 design. This ticket is intended to remain independently useful even if the concurrency ramp did not exist.
+  test_requirements:
+  - Focused deterministic tests in `tests/test_execution_topology.py` cover valid construction, every closed enum/value boundary, malformed/contradictory inputs, canonical serialization/fingerprint stability and order-independence where collections are semantically sets.
+  - An architecture/scope assertion proves the production change stays within the named contract module and imports only stable existing lower-layer/Pydantic/shared primitives; tests exercise zero filesystem, database, Git/GitHub, Linear, Symphony or network mutation.
+  documentation_requirements: []
+  definition_of_done:
+  - The named contract family exists only in `atlas/core/models/execution_topology.py`, all focused tests in `tests/test_execution_topology.py` pass, and the final diff contains no other production/test path.
+  - The PR completion report states the exact two-path diff, confirms no sibling Track-A import/dependency/protected-lane expansion, and preserves all authority/non-goal boundaries from the dedicated design.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - phase-16
+  - track-a
+  - topology
+  - contract
+  component: execution-topology-contract
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/inbox-stub-04-work-shape-topology.md#phase-16-work-shape-and-execution-topology-contracts
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-20T09:08:00.028884Z'
+  updated_at: '2026-08-20T09:08:00.028884Z'
+  completed_at: null
+- id: 60d4bd3a-c971-46b2-b216-ee144c0a90c4
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 4d034c8b-0752-4089-8ff9-2fd43f51c6f4
+  key: ATLAS-268
+  title: Phase 16 role capability envelope contract
+  objective: Define the explicit least-privilege RoleCapabilityEnvelope that later phases can evaluate before introducing specialised scouts, reviewers or advisors.
+  context: Phase 16 keeps production on the existing implementation executor but needs a durable contract for future specialised roles. A role name in a prompt must never create capability or authority. This ticket defines the envelope only; no new role is activated.
+  status: planned
+  ticket_type: feature
+  risk_level: medium
+  priority: 50
+  relevant_docs:
+  - docs/atlas/agentic-engineering-programme-design.md
+  - docs/atlas/phase-16-agent-runtime-and-integration-safety.md
+  acceptance_criteria:
+  - '`RoleCapabilityEnvelope` carries the section-12 fields for role identity/kind, readable and writable workspace surfaces, dynamic capabilities, external-effect families, credential claims, optional budgets, forbidden capabilities and policy fingerprint.'
+  - Lists/identities are bounded and deterministically canonicalised; contradictory capability declarations such as the same capability being both granted and forbidden are rejected.
+  - The existing Phase 16 baseline executor can be represented without adding authority beyond the surrounding current Atlas workflow contract.
+  - Future specialised roles require distinct explicit envelopes; the contract contains no prompt/persona shortcut that grants authority.
+  - The module has no scheduler, credential, runtime, policy-evaluator or external-effect behavior.
+  non_goals:
+  - No package-level re-export, generated schema/export registration, database migration/repository, API/UI, shared registry, WORKFLOW.md/Symphony edit, external mutation, production activation or live milestone proof.
+  - No import from another new Phase 16 Track-A module; if implementation requires a sibling Track-A contract, stop and return the planning/dependency issue to the operator rather than coupling the ramp workloads.
+  implementation_notes:
+  - Planned Track-A changed-path envelope is exactly `atlas/core/models/role_capability.py` plus `tests/test_role_capability.py`. Do not add convenience exports or generated artifacts; Track-B integration owns those after ATLAS-253.
+  - Use immutable/frozen Pydantic/domain values and deterministic canonicalization consistent with the dedicated Phase 16 design. This ticket is intended to remain independently useful even if the concurrency ramp did not exist.
+  test_requirements:
+  - Focused deterministic tests in `tests/test_role_capability.py` cover valid construction, every closed enum/value boundary, malformed/contradictory inputs, canonical serialization/fingerprint stability and order-independence where collections are semantically sets.
+  - An architecture/scope assertion proves the production change stays within the named contract module and imports only stable existing lower-layer/Pydantic/shared primitives; tests exercise zero filesystem, database, Git/GitHub, Linear, Symphony or network mutation.
+  documentation_requirements: []
+  definition_of_done:
+  - The named contract family exists only in `atlas/core/models/role_capability.py`, all focused tests in `tests/test_role_capability.py` pass, and the final diff contains no other production/test path.
+  - The PR completion report states the exact two-path diff, confirms no sibling Track-A import/dependency/protected-lane expansion, and preserves all authority/non-goal boundaries from the dedicated design.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - phase-16
+  - track-a
+  - least-privilege
+  - contract
+  component: role-capability-contract
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/inbox-stub-05-role-capability-envelope.md#phase-16-role-capability-envelope-contract
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-20T09:08:00.028884Z'
+  updated_at: '2026-08-20T09:08:00.028884Z'
+  completed_at: null
+- id: 4afad594-d956-4f65-a670-c6c345fc03cb
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 4d034c8b-0752-4089-8ff9-2fd43f51c6f4
+  key: ATLAS-269
+  title: Phase 16 semantic interface contract family
+  objective: Define the narrow InterfaceContract family used to represent named compatibility or authority invariants between independently editable surfaces without duplicating dependencies or protected lanes.
+  context: 'Experiment F proved real file-disjoint semantic coupling in Atlas while also showing that migrations and other conflict-prone surfaces already have stronger controls. The dedicated design therefore makes InterfaceContract intentionally rare: it represents what independently editable surfaces must agree on, not generic conceptual relatedness. This ticket defines the complete domain family only.'
+  status: planned
+  ticket_type: feature
+  risk_level: high
+  priority: 50
+  relevant_docs:
+  - docs/atlas/agentic-engineering-programme-design.md
+  - docs/atlas/phase-16-agent-runtime-and-integration-safety.md
+  acceptance_criteria:
+  - '`InterfaceSurface`, `InterfaceContract`, `InterfaceUsage` and `InterfaceValidationResult` implement the v1 interface kinds, typed surface kinds, revision/owner/invariant/producers/consumers/validation evidence and change/consume/own usage semantics from section 13.'
+  - Surface identities are bounded canonical data; free-form prose cannot become a protected join key, and duplicate/ambiguous surface identities are rejected deterministically.
+  - The contract can represent ownerless/stale/compatible/incompatible validation outcomes without treating a model opinion as deterministic authority.
+  - The domain distinguishes interface compatibility from dependency ordering and protected-lane exclusivity; it contains no automatic admission/serialization side effect.
+  - The implementation is self-contained and does not create the repository interface registry, Ticket fields, persistence, Context Pack integration or certification command.
+  non_goals:
+  - No package-level re-export, generated schema/export registration, database migration/repository, API/UI, shared registry, WORKFLOW.md/Symphony edit, external mutation, production activation or live milestone proof.
+  - No import from another new Phase 16 Track-A module; if implementation requires a sibling Track-A contract, stop and return the planning/dependency issue to the operator rather than coupling the ramp workloads.
+  implementation_notes:
+  - Planned Track-A changed-path envelope is exactly `atlas/core/models/interface_contract.py` plus `tests/test_interface_contract.py`. Do not add convenience exports or generated artifacts; Track-B integration owns those after ATLAS-253.
+  - Use immutable/frozen Pydantic/domain values and deterministic canonicalization consistent with the dedicated Phase 16 design. This ticket is intended to remain independently useful even if the concurrency ramp did not exist.
+  test_requirements:
+  - Focused deterministic tests in `tests/test_interface_contract.py` cover valid construction, every closed enum/value boundary, malformed/contradictory inputs, canonical serialization/fingerprint stability and order-independence where collections are semantically sets.
+  - An architecture/scope assertion proves the production change stays within the named contract module and imports only stable existing lower-layer/Pydantic/shared primitives; tests exercise zero filesystem, database, Git/GitHub, Linear, Symphony or network mutation.
+  documentation_requirements: []
+  definition_of_done:
+  - The named contract family exists only in `atlas/core/models/interface_contract.py`, all focused tests in `tests/test_interface_contract.py` pass, and the final diff contains no other production/test path.
+  - The PR completion report states the exact two-path diff, confirms no sibling Track-A import/dependency/protected-lane expansion, and preserves all authority/non-goal boundaries from the dedicated design.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - phase-16
+  - track-a
+  - interface-ownership
+  - contract
+  component: interface-contract
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/inbox-stub-06-semantic-interface-contract.md#phase-16-semantic-interface-contract-family
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-20T09:08:00.028884Z'
+  updated_at: '2026-08-20T09:08:00.028884Z'
+  completed_at: null
+- id: 3ddc35f5-7214-44f5-a102-c092224d75db
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 4d034c8b-0752-4089-8ff9-2fd43f51c6f4
+  key: ATLAS-270
+  title: Phase 16 runtime handoff and coordination observation contracts
+  objective: Define typed durable runtime handoffs and bounded coordination observations without introducing a peer-message bus or treating missing channels as no coordination.
+  context: The software-factory design requires persistent facts to travel through typed artifacts where appropriate. Phase 16 does not add general agent-to-agent chat. It instead defines handoff identity/content references and coordination edges that later runtime instrumentation can emit.
+  status: planned
+  ticket_type: feature
+  risk_level: medium
+  priority: 50
+  relevant_docs:
+  - docs/atlas/agentic-engineering-programme-design.md
+  - docs/atlas/phase-16-agent-runtime-and-integration-safety.md
+  acceptance_criteria:
+  - '`RuntimeHandoff` captures a bounded typed handoff identity, producer/consumer role or attempt identity, artifact/interface references, creation/consumption state and deterministic fingerprint consistent with section 14.'
+  - '`CoordinationObservation` can represent instrumented role/artifact/interface/capability interactions and explicit unknown/uninstrumented channel state without storing arbitrary peer-message content.'
+  - Handoff and observation identities are immutable/bounded and reject impossible state combinations or duplicate typed references deterministically.
+  - Persistent coordination facts are represented as typed identities/digests rather than raw transcripts or hidden evaluation material.
+  - The ticket adds no communication transport, message bus, runtime projector, persistence or role activation.
+  non_goals:
+  - No package-level re-export, generated schema/export registration, database migration/repository, API/UI, shared registry, WORKFLOW.md/Symphony edit, external mutation, production activation or live milestone proof.
+  - No import from another new Phase 16 Track-A module; if implementation requires a sibling Track-A contract, stop and return the planning/dependency issue to the operator rather than coupling the ramp workloads.
+  implementation_notes:
+  - Planned Track-A changed-path envelope is exactly `atlas/core/models/runtime_handoff.py` plus `tests/test_runtime_handoff.py`. Do not add convenience exports or generated artifacts; Track-B integration owns those after ATLAS-253.
+  - Use immutable/frozen Pydantic/domain values and deterministic canonicalization consistent with the dedicated Phase 16 design. This ticket is intended to remain independently useful even if the concurrency ramp did not exist.
+  test_requirements:
+  - Focused deterministic tests in `tests/test_runtime_handoff.py` cover valid construction, every closed enum/value boundary, malformed/contradictory inputs, canonical serialization/fingerprint stability and order-independence where collections are semantically sets.
+  - An architecture/scope assertion proves the production change stays within the named contract module and imports only stable existing lower-layer/Pydantic/shared primitives; tests exercise zero filesystem, database, Git/GitHub, Linear, Symphony or network mutation.
+  documentation_requirements: []
+  definition_of_done:
+  - The named contract family exists only in `atlas/core/models/runtime_handoff.py`, all focused tests in `tests/test_runtime_handoff.py` pass, and the final diff contains no other production/test path.
+  - The PR completion report states the exact two-path diff, confirms no sibling Track-A import/dependency/protected-lane expansion, and preserves all authority/non-goal boundaries from the dedicated design.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - phase-16
+  - track-a
+  - coordination
+  - contract
+  component: runtime-handoff-contract
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/inbox-stub-07-runtime-handoff-coordination.md#phase-16-runtime-handoff-and-coordination-observation-contracts
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-20T09:08:00.028884Z'
+  updated_at: '2026-08-20T09:08:00.028884Z'
+  completed_at: null
+- id: 3263fdd1-b78d-460a-a1f2-84b1f4cd71f6
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 4d034c8b-0752-4089-8ff9-2fd43f51c6f4
+  key: ATLAS-271
+  title: Phase 16 execution outcome taxonomy and fact contract
+  objective: Freeze the deterministic run-level execution outcome taxonomy and the bounded ExecutionOutcomeFacts input contract separately from AgentRun and Linear ticket workflow state.
+  context: A runtime attempt can succeed, be flawed, block on environment/authority/dependency/interface/infrastructure, hit a manual boundary, require intervention, abort safely or remain indeterminate. Those are execution facts, not Linear status. This ticket defines the taxonomy and classifier-input/output records only; classification logic and persistence are later slices.
+  status: planned
+  ticket_type: feature
+  risk_level: high
+  priority: 50
+  relevant_docs:
+  - docs/atlas/agentic-engineering-programme-design.md
+  - docs/atlas/phase-16-agent-runtime-and-integration-safety.md
+  acceptance_criteria:
+  - '`ExecutionOutcome` contains exactly the frozen v1 values `SUCCEEDED`, `FLAWED`, `BLOCKED_ENVIRONMENT`, `BLOCKED_AUTHORITY`, `BLOCKED_DEPENDENCY`, `BLOCKED_INTERFACE`, `BLOCKED_INFRASTRUCTURE`, `MANUAL_BOUNDARY`, `INTERVENTION_REQUIRED`, `ABORTED_SAFE`, and `INDETERMINATE`.'
+  - '`ExecutionOutcomeFacts` represents the bounded deterministic facts needed by section 15 precedence, including material-evidence completeness and the named block/failure/manual/intervention/safe-abort signals without model-selected terminal authority.'
+  - The contract can represent insufficient evidence explicitly and never aliases `SUCCEEDED` to CI pass, review acceptance, merge or Ticket `Done`.
+  - Canonical serialization/fingerprinting is deterministic and rejects contradictory mutually-exclusive facts where the design requires exclusivity.
+  - The module performs no classifier, TicketStatus write, AgentRun rewrite, storage or completion action.
+  non_goals:
+  - No package-level re-export, generated schema/export registration, database migration/repository, API/UI, shared registry, WORKFLOW.md/Symphony edit, external mutation, production activation or live milestone proof.
+  - No import from another new Phase 16 Track-A module; if implementation requires a sibling Track-A contract, stop and return the planning/dependency issue to the operator rather than coupling the ramp workloads.
+  implementation_notes:
+  - Planned Track-A changed-path envelope is exactly `atlas/core/models/execution_outcome.py` plus `tests/test_execution_outcome.py`. Do not add convenience exports or generated artifacts; Track-B integration owns those after ATLAS-253.
+  - Use immutable/frozen Pydantic/domain values and deterministic canonicalization consistent with the dedicated Phase 16 design. This ticket is intended to remain independently useful even if the concurrency ramp did not exist.
+  test_requirements:
+  - Focused deterministic tests in `tests/test_execution_outcome.py` cover valid construction, every closed enum/value boundary, malformed/contradictory inputs, canonical serialization/fingerprint stability and order-independence where collections are semantically sets.
+  - An architecture/scope assertion proves the production change stays within the named contract module and imports only stable existing lower-layer/Pydantic/shared primitives; tests exercise zero filesystem, database, Git/GitHub, Linear, Symphony or network mutation.
+  documentation_requirements: []
+  definition_of_done:
+  - The named contract family exists only in `atlas/core/models/execution_outcome.py`, all focused tests in `tests/test_execution_outcome.py` pass, and the final diff contains no other production/test path.
+  - The PR completion report states the exact two-path diff, confirms no sibling Track-A import/dependency/protected-lane expansion, and preserves all authority/non-goal boundaries from the dedicated design.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - phase-16
+  - track-a
+  - outcomes
+  - contract
+  component: execution-outcome-contract
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/inbox-stub-08-execution-outcome-contract.md#phase-16-execution-outcome-taxonomy-and-fact-contract
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-20T09:08:00.028884Z'
+  updated_at: '2026-08-20T09:08:00.028884Z'
+  completed_at: null
+- id: a0c506d9-790e-4dbd-9a26-df11bc5bf9a2
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 4d034c8b-0752-4089-8ff9-2fd43f51c6f4
+  key: ATLAS-272
+  title: Phase 16 trajectory alert contract
+  objective: Define replayable deterministic TrajectoryAlert output for SHADOW monitoring without enabling production steering.
+  context: Phase 16 adopts LivePlan-style deterministic monitoring but closes in SHADOW mode. The alert contract must identify the exact attempt/rule/evidence and remain reproducible without model chain-of-thought. Rule implementations and steering are later slices.
+  status: planned
+  ticket_type: feature
+  risk_level: medium
+  priority: 50
+  relevant_docs:
+  - docs/atlas/agentic-engineering-programme-design.md
+  - docs/atlas/phase-16-agent-runtime-and-integration-safety.md
+  acceptance_criteria:
+  - '`TrajectoryAlert` carries the section-16 identity, rule/version, runtime attempt/turn scope, severity/materiality, bounded evidence references, observation window and deterministic fingerprint needed for replay.'
+  - Alert values cannot embed raw transcript/chain-of-thought or unbounded command output; evidence references remain bounded runtime identities/digests.
+  - The contract can represent all initial deterministic rule families without itself implementing thresholds or rule execution.
+  - Canonical bytes/fingerprint are deterministic and invalid/stale identity combinations fail validation.
+  - No steering request, Symphony command, runtime mutation, production mode switch or external effect is introduced.
+  non_goals:
+  - No package-level re-export, generated schema/export registration, database migration/repository, API/UI, shared registry, WORKFLOW.md/Symphony edit, external mutation, production activation or live milestone proof.
+  - No import from another new Phase 16 Track-A module; if implementation requires a sibling Track-A contract, stop and return the planning/dependency issue to the operator rather than coupling the ramp workloads.
+  implementation_notes:
+  - Planned Track-A changed-path envelope is exactly `atlas/core/models/trajectory_alert.py` plus `tests/test_trajectory_alert.py`. Do not add convenience exports or generated artifacts; Track-B integration owns those after ATLAS-253.
+  - Use immutable/frozen Pydantic/domain values and deterministic canonicalization consistent with the dedicated Phase 16 design. This ticket is intended to remain independently useful even if the concurrency ramp did not exist.
+  test_requirements:
+  - Focused deterministic tests in `tests/test_trajectory_alert.py` cover valid construction, every closed enum/value boundary, malformed/contradictory inputs, canonical serialization/fingerprint stability and order-independence where collections are semantically sets.
+  - An architecture/scope assertion proves the production change stays within the named contract module and imports only stable existing lower-layer/Pydantic/shared primitives; tests exercise zero filesystem, database, Git/GitHub, Linear, Symphony or network mutation.
+  documentation_requirements: []
+  definition_of_done:
+  - The named contract family exists only in `atlas/core/models/trajectory_alert.py`, all focused tests in `tests/test_trajectory_alert.py` pass, and the final diff contains no other production/test path.
+  - The PR completion report states the exact two-path diff, confirms no sibling Track-A import/dependency/protected-lane expansion, and preserves all authority/non-goal boundaries from the dedicated design.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - phase-16
+  - track-a
+  - trajectory
+  - shadow
+  component: trajectory-alert-contract
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/inbox-stub-09-trajectory-alert-contract.md#phase-16-trajectory-alert-contract
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-20T09:08:00.028884Z'
+  updated_at: '2026-08-20T09:08:00.028884Z'
+  completed_at: null
+- id: 8b868213-14b6-4dd9-9a75-0f625fc2a6c8
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 4d034c8b-0752-4089-8ff9-2fd43f51c6f4
+  key: ATLAS-273
+  title: Phase 16 stale-safe steering identity and receipt contracts
+  objective: Define the exact runtime-attempt/thread/expected-turn identity for native Codex steering plus bounded accepted/stale/indeterminate receipt semantics, without exposing a production steering command.
+  context: Experiment E proved `turn/steer` and `expectedTurnId` exist in the pinned Codex protocol. The dedicated design requires double stale binding through Atlas/Symphony and forbids blind retry after ambiguous transport. This Track-A slice defines identity and receipt contracts only.
+  status: planned
+  ticket_type: feature
+  risk_level: high
+  priority: 50
+  relevant_docs:
+  - docs/atlas/agentic-engineering-programme-design.md
+  - docs/atlas/phase-16-agent-runtime-and-integration-safety.md
+  acceptance_criteria:
+  - '`SteeringRequest` requires exact ticket/runtime-attempt/Codex-thread/expected-turn identity plus bounded instruction/reason/policy identity as defined in section 17.'
+  - '`SteeringReceipt` distinguishes applied, rejected-stale and indeterminate outcomes while retaining the exact request/attempt/thread/turn identity and deterministic fingerprint.'
+  - A request cannot omit or wildcard `expected_turn_id`, and invalid/mismatched identity shapes fail validation before any adapter behavior could occur.
+  - Receipt semantics support the design rule that ambiguous transport is `INDETERMINATE` and must not imply a safe automatic resend.
+  - The module adds no Symphony adapter, JSON-RPC request, public CLI/API, steering activation or live test.
+  non_goals:
+  - No package-level re-export, generated schema/export registration, database migration/repository, API/UI, shared registry, WORKFLOW.md/Symphony edit, external mutation, production activation or live milestone proof.
+  - No import from another new Phase 16 Track-A module; if implementation requires a sibling Track-A contract, stop and return the planning/dependency issue to the operator rather than coupling the ramp workloads.
+  implementation_notes:
+  - Planned Track-A changed-path envelope is exactly `atlas/core/models/steering_request.py` plus `tests/test_steering_request.py`. Do not add convenience exports or generated artifacts; Track-B integration owns those after ATLAS-253.
+  - Use immutable/frozen Pydantic/domain values and deterministic canonicalization consistent with the dedicated Phase 16 design. This ticket is intended to remain independently useful even if the concurrency ramp did not exist.
+  test_requirements:
+  - Focused deterministic tests in `tests/test_steering_request.py` cover valid construction, every closed enum/value boundary, malformed/contradictory inputs, canonical serialization/fingerprint stability and order-independence where collections are semantically sets.
+  - An architecture/scope assertion proves the production change stays within the named contract module and imports only stable existing lower-layer/Pydantic/shared primitives; tests exercise zero filesystem, database, Git/GitHub, Linear, Symphony or network mutation.
+  documentation_requirements: []
+  definition_of_done:
+  - The named contract family exists only in `atlas/core/models/steering_request.py`, all focused tests in `tests/test_steering_request.py` pass, and the final diff contains no other production/test path.
+  - The PR completion report states the exact two-path diff, confirms no sibling Track-A import/dependency/protected-lane expansion, and preserves all authority/non-goal boundaries from the dedicated design.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - phase-16
+  - track-a
+  - steering
+  - stale-safety
+  component: steering-contract
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/inbox-stub-10-steering-identity-contract.md#phase-16-stale-safe-steering-identity-and-receipt-contracts
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-20T09:08:00.028884Z'
+  updated_at: '2026-08-20T09:08:00.028884Z'
+  completed_at: null
+- id: 6509b836-7e13-429e-b013-8bdbbe82c455
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 4d034c8b-0752-4089-8ff9-2fd43f51c6f4
+  key: ATLAS-274
+  title: Phase 16 chaos fault and run evidence contracts
+  objective: Define deterministic ChaosFaultSpec and ChaosRun evidence records so later fault campaigns can prove that an injection fired and distinguish safe degradation from false success.
+  context: AgentChaos motivates crash, omission and value faults, but Phase 16 requires bounded deterministic campaign evidence rather than ad hoc failure testing. This ticket defines fault/run identity and outcome facts only; the injector and campaigns come later.
+  status: planned
+  ticket_type: feature
+  risk_level: medium
+  priority: 50
+  relevant_docs:
+  - docs/atlas/agentic-engineering-programme-design.md
+  - docs/atlas/phase-16-agent-runtime-and-integration-safety.md
+  acceptance_criteria:
+  - '`ChaosFaultSpec` represents the section-18 crash/omission/value fault families with deterministic seed/target/injection identity and bounded parameters.'
+  - '`ChaosRun` records exact fault spec/seed, trigger proof, retries/wall-time, resulting typed outcome, unintended mutation and false-success evidence required by later campaigns.'
+  - A campaign result cannot claim that the fault was exercised unless trigger evidence is present; contradictory fired/not-fired evidence is rejected.
+  - Canonical fingerprinting is deterministic and secret/provider raw payload material is excluded from the contract surface.
+  - The module performs no fault injection, network/provider call, live mutation or campaign orchestration.
+  non_goals:
+  - No package-level re-export, generated schema/export registration, database migration/repository, API/UI, shared registry, WORKFLOW.md/Symphony edit, external mutation, production activation or live milestone proof.
+  - No import from another new Phase 16 Track-A module; if implementation requires a sibling Track-A contract, stop and return the planning/dependency issue to the operator rather than coupling the ramp workloads.
+  implementation_notes:
+  - Planned Track-A changed-path envelope is exactly `atlas/core/models/chaos_run.py` plus `tests/test_chaos_run.py`. Do not add convenience exports or generated artifacts; Track-B integration owns those after ATLAS-253.
+  - Use immutable/frozen Pydantic/domain values and deterministic canonicalization consistent with the dedicated Phase 16 design. This ticket is intended to remain independently useful even if the concurrency ramp did not exist.
+  test_requirements:
+  - Focused deterministic tests in `tests/test_chaos_run.py` cover valid construction, every closed enum/value boundary, malformed/contradictory inputs, canonical serialization/fingerprint stability and order-independence where collections are semantically sets.
+  - An architecture/scope assertion proves the production change stays within the named contract module and imports only stable existing lower-layer/Pydantic/shared primitives; tests exercise zero filesystem, database, Git/GitHub, Linear, Symphony or network mutation.
+  documentation_requirements: []
+  definition_of_done:
+  - The named contract family exists only in `atlas/core/models/chaos_run.py`, all focused tests in `tests/test_chaos_run.py` pass, and the final diff contains no other production/test path.
+  - The PR completion report states the exact two-path diff, confirms no sibling Track-A import/dependency/protected-lane expansion, and preserves all authority/non-goal boundaries from the dedicated design.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - phase-16
+  - track-a
+  - chaos
+  - contract
+  component: chaos-evidence-contract
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/inbox-stub-11-chaos-evidence-contract.md#phase-16-chaos-fault-and-run-evidence-contracts
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-20T09:08:00.028884Z'
+  updated_at: '2026-08-20T09:08:00.028884Z'
+  completed_at: null
+- id: b706e713-0783-4de3-9200-2581221ead8f
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 4d034c8b-0752-4089-8ff9-2fd43f51c6f4
+  key: ATLAS-275
+  title: Phase 16 governed effect request and runtime policy context contracts
+  objective: Define the host-bound typed EffectRequest and RuntimePolicyContext that let an immutable host evaluator decide a bounded external effect without exposing provider credentials to the executor.
+  context: Experiment E proved the host dynamic-tool seam but also found unrestricted `linear_graphql` invalidates non-bypassability. Phase 16 therefore requires host-generated effect identity and host-generated policy context before any governed provider mutation. This ticket defines those two pure records only.
+  status: planned
+  ticket_type: feature
+  risk_level: high
+  priority: 50
+  relevant_docs:
+  - docs/atlas/agentic-engineering-programme-design.md
+  - docs/atlas/phase-16-agent-runtime-and-integration-safety.md
+  acceptance_criteria:
+  - '`EffectRequest` contains the exact host-owned request/runtime/tool-call/target/capability/argument-digest identities and deterministic request fingerprint required by section 19; the model cannot choose or override the idempotency identity.'
+  - '`RuntimePolicyContext` contains only bounded host-observed temporal/runtime/policy/channel facts needed for evaluation and excludes provider credentials or mutable hidden state.'
+  - Both contracts are immutable/canonical and reject missing runtime binding, malformed target/capability identity and altered same-request identity combinations deterministically.
+  - Missing or stale context can be represented explicitly so later evaluation can return `INDETERMINATE` rather than infer ALLOW.
+  - The module performs no policy evaluation, subprocess execution, provider mutation, persistence or credential access.
+  non_goals:
+  - No package-level re-export, generated schema/export registration, database migration/repository, API/UI, shared registry, WORKFLOW.md/Symphony edit, external mutation, production activation or live milestone proof.
+  - No import from another new Phase 16 Track-A module; if implementation requires a sibling Track-A contract, stop and return the planning/dependency issue to the operator rather than coupling the ramp workloads.
+  implementation_notes:
+  - Planned Track-A changed-path envelope is exactly `atlas/core/models/effect_request.py` plus `tests/test_effect_request.py`. Do not add convenience exports or generated artifacts; Track-B integration owns those after ATLAS-253.
+  - Use immutable/frozen Pydantic/domain values and deterministic canonicalization consistent with the dedicated Phase 16 design. This ticket is intended to remain independently useful even if the concurrency ramp did not exist.
+  test_requirements:
+  - Focused deterministic tests in `tests/test_effect_request.py` cover valid construction, every closed enum/value boundary, malformed/contradictory inputs, canonical serialization/fingerprint stability and order-independence where collections are semantically sets.
+  - An architecture/scope assertion proves the production change stays within the named contract module and imports only stable existing lower-layer/Pydantic/shared primitives; tests exercise zero filesystem, database, Git/GitHub, Linear, Symphony or network mutation.
+  documentation_requirements: []
+  definition_of_done:
+  - The named contract family exists only in `atlas/core/models/effect_request.py`, all focused tests in `tests/test_effect_request.py` pass, and the final diff contains no other production/test path.
+  - The PR completion report states the exact two-path diff, confirms no sibling Track-A import/dependency/protected-lane expansion, and preserves all authority/non-goal boundaries from the dedicated design.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - phase-16
+  - track-a
+  - runtime-policy
+  - effects
+  component: effect-request-contract
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/inbox-stub-12-effect-request-policy-context.md#phase-16-governed-effect-request-and-runtime-policy-context-contracts
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-20T09:08:00.028884Z'
+  updated_at: '2026-08-20T09:08:00.028884Z'
+  completed_at: null
+- id: 42fbc294-8947-4d8c-9e0d-544d9f33507b
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 4d034c8b-0752-4089-8ff9-2fd43f51c6f4
+  key: ATLAS-276
+  title: Phase 16 runtime policy decision and effect audit contract family
+  objective: Define the policy decision, execution receipt, channel claim and immutable policy-bundle contracts that later prove a governed effect is identity-bound, replayable and non-bypassable within its declared channel scope.
+  context: The dedicated design separates policy, provider execution receipt, channel inventory and bundle identity so no single agent claim can authorise itself. This foundation family contains those tightly coupled authority/audit records only; evaluator, gateway, persistence and live Linear proof are separate Track-B/S/M work.
+  status: planned
+  ticket_type: feature
+  risk_level: high
+  priority: 50
+  relevant_docs:
+  - docs/atlas/agentic-engineering-programme-design.md
+  - docs/atlas/phase-16-agent-runtime-and-integration-safety.md
+  acceptance_criteria:
+  - '`RuntimePolicyBundle`, `RuntimePolicyDecision`, `EffectExecutionReceipt` and `EffectChannelClaim` represent the section-19 bundle/rule identity, ALLOW/DENY/INDETERMINATE decision, exact request/decision execution outcome/fence state, and channel-inventory/non-bypassability evidence respectively.'
+  - Policy decisions bind the exact request fingerprint, policy bundle fingerprint, evaluator version/identity and reason codes; a mismatched request or bundle cannot be represented as an authoritative decision.
+  - Effect receipts distinguish no-effect denial, executed effect and unresolved/ambiguous pre-effect fence states so absence of a terminal provider receipt cannot imply safe retry.
+  - Channel claims carry exact Symphony/Codex/tool/MCP/credential/shell/helper/policy/evaluator inventory fingerprints and become stale when any material identity changes; `generic_mutation_channel_absent` is explicit evidence, not inference.
+  - The family contains no actual policy rules, evaluator process, provider credential, generic Linear tool change, persistence or live effect.
+  non_goals:
+  - No package-level re-export, generated schema/export registration, database migration/repository, API/UI, shared registry, WORKFLOW.md/Symphony edit, external mutation, production activation or live milestone proof.
+  - No import from another new Phase 16 Track-A module; if implementation requires a sibling Track-A contract, stop and return the planning/dependency issue to the operator rather than coupling the ramp workloads.
+  implementation_notes:
+  - Planned Track-A changed-path envelope is exactly `atlas/core/models/runtime_policy.py` plus `tests/test_runtime_policy.py`. Do not add convenience exports or generated artifacts; Track-B integration owns those after ATLAS-253.
+  - Use immutable/frozen Pydantic/domain values and deterministic canonicalization consistent with the dedicated Phase 16 design. This ticket is intended to remain independently useful even if the concurrency ramp did not exist.
+  test_requirements:
+  - Focused deterministic tests in `tests/test_runtime_policy.py` cover valid construction, every closed enum/value boundary, malformed/contradictory inputs, canonical serialization/fingerprint stability and order-independence where collections are semantically sets.
+  - An architecture/scope assertion proves the production change stays within the named contract module and imports only stable existing lower-layer/Pydantic/shared primitives; tests exercise zero filesystem, database, Git/GitHub, Linear, Symphony or network mutation.
+  documentation_requirements: []
+  definition_of_done:
+  - The named contract family exists only in `atlas/core/models/runtime_policy.py`, all focused tests in `tests/test_runtime_policy.py` pass, and the final diff contains no other production/test path.
+  - The PR completion report states the exact two-path diff, confirms no sibling Track-A import/dependency/protected-lane expansion, and preserves all authority/non-goal boundaries from the dedicated design.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - phase-16
+  - track-a
+  - runtime-policy
+  - audit
+  component: effect-authority-contract
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/inbox-stub-13-effect-authority-audit.md#phase-16-runtime-policy-decision-and-effect-audit-contract-family
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-20T09:08:00.028884Z'
+  updated_at: '2026-08-20T09:08:00.028884Z'
+  completed_at: null
+- id: 8478be86-e603-44cd-862d-955106a8c01e
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 4d034c8b-0752-4089-8ff9-2fd43f51c6f4
+  key: ATLAS-277
+  title: Phase 16 PR interaction observation and advisory queue-plan contracts
+  objective: Define exact-head stale-aware PR relation evidence and a separate advisory QueuePlan artifact without creating merge, rebase, rejection or workflow authority.
+  context: BulkPR-style interaction reasoning is useful only when evidence identity and advisory disposition stay separate. Phase 16 supports deterministic relation evidence plus an advisory queue plan, while exact-head acceptance/manual merge remain authoritative. This ticket defines those records only.
+  status: planned
+  ticket_type: feature
+  risk_level: medium
+  priority: 50
+  relevant_docs:
+  - docs/atlas/agentic-engineering-programme-design.md
+  - docs/atlas/phase-16-agent-runtime-and-integration-safety.md
+  acceptance_criteria:
+  - '`PRInteractionObservation` represents exact repository/PR/head pairs, the frozen relation vocabulary, evidence state, evidence/interface/lane/dependency references, detector identity/time and deterministic fingerprint from section 20.'
+  - '`QueuePlan` represents snapshot/candidate/interaction identities, per-PR advisory disposition, unresolved unknowns, planner identity/time and deterministic fingerprint from section 21.'
+  - Relation/evidence/disposition enums are closed to the dedicated-design vocabularies; stale/unknown/disputed evidence remains distinct from corroborated evidence.
+  - Neither contract contains an execution field or mutation authority for GitHub, Git, Linear, Symphony or Phase-14 acceptance.
+  - The module performs no provider read/write, relation detection, composition, queue planning or merge-readiness derivation.
+  non_goals:
+  - No package-level re-export, generated schema/export registration, database migration/repository, API/UI, shared registry, WORKFLOW.md/Symphony edit, external mutation, production activation or live milestone proof.
+  - No import from another new Phase 16 Track-A module; if implementation requires a sibling Track-A contract, stop and return the planning/dependency issue to the operator rather than coupling the ramp workloads.
+  implementation_notes:
+  - Planned Track-A changed-path envelope is exactly `atlas/core/models/pr_interaction.py` plus `tests/test_pr_interaction.py`. Do not add convenience exports or generated artifacts; Track-B integration owns those after ATLAS-253.
+  - Use immutable/frozen Pydantic/domain values and deterministic canonicalization consistent with the dedicated Phase 16 design. This ticket is intended to remain independently useful even if the concurrency ramp did not exist.
+  test_requirements:
+  - Focused deterministic tests in `tests/test_pr_interaction.py` cover valid construction, every closed enum/value boundary, malformed/contradictory inputs, canonical serialization/fingerprint stability and order-independence where collections are semantically sets.
+  - An architecture/scope assertion proves the production change stays within the named contract module and imports only stable existing lower-layer/Pydantic/shared primitives; tests exercise zero filesystem, database, Git/GitHub, Linear, Symphony or network mutation.
+  documentation_requirements: []
+  definition_of_done:
+  - The named contract family exists only in `atlas/core/models/pr_interaction.py`, all focused tests in `tests/test_pr_interaction.py` pass, and the final diff contains no other production/test path.
+  - The PR completion report states the exact two-path diff, confirms no sibling Track-A import/dependency/protected-lane expansion, and preserves all authority/non-goal boundaries from the dedicated design.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - phase-16
+  - track-a
+  - pr-interaction
+  - advisory
+  component: pr-interaction-contract
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/inbox-stub-14-pr-interaction-queue-advice.md#phase-16-pr-interaction-observation-and-advisory-queue-plan-contracts
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-20T09:08:00.028884Z'
+  updated_at: '2026-08-20T09:08:00.028884Z'
+  completed_at: null
+- id: 51ec3606-dd63-487d-9f14-477564e58261
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 4d034c8b-0752-4089-8ff9-2fd43f51c6f4
+  key: ATLAS-278
+  title: Phase 16 reviewer evidence and burden proxy contracts
+  objective: Define the bounded ReviewerEvidenceBundle and reproducible ReviewerBurdenProxy records that later reduce human reconstruction work without replacing human acceptance.
+  context: Reviewer/operator burden is a first-class system cost. Phase 16 needs a deterministic bounded evidence bundle and cost proxy contract before it can expose reviewer-oriented projections. This Track-A slice defines the records only; projection, API/UI and measurement are post-ramp work.
+  status: planned
+  ticket_type: feature
+  risk_level: medium
+  priority: 50
+  relevant_docs:
+  - docs/atlas/agentic-engineering-programme-design.md
+  - docs/atlas/phase-16-agent-runtime-and-integration-safety.md
+  acceptance_criteria:
+  - '`ReviewerEvidenceBundle` represents the section-22 exact repository/PR/head/base/ticket/runtime/topology/interface/validation/CI/outcome/trajectory/policy/interaction/unknown/acceptance identities and deterministic projector fingerprint without raw execution content.'
+  - '`ReviewerBurdenProxy` can represent the declared deterministic proxies: acceptance elapsed duration/action count, Changes Requested cycles, stale/restart and mechanical-rebase/semantic-conflict counts, evidence unknowns and material alert count.'
+  - Bundle/proxy values are bounded/canonical and reject impossible negative counts, duplicate identities and head/base identity malformation.
+  - The contracts explicitly exclude raw transcripts, full command logs, credentials, chain-of-thought, hidden evaluation material and any machine approval/merge-readiness substitute.
+  - The module performs no projection, API/UI rendering, acceptance action, review disposition or metrics persistence.
+  non_goals:
+  - No package-level re-export, generated schema/export registration, database migration/repository, API/UI, shared registry, WORKFLOW.md/Symphony edit, external mutation, production activation or live milestone proof.
+  - No import from another new Phase 16 Track-A module; if implementation requires a sibling Track-A contract, stop and return the planning/dependency issue to the operator rather than coupling the ramp workloads.
+  implementation_notes:
+  - Planned Track-A changed-path envelope is exactly `atlas/core/models/reviewer_evidence.py` plus `tests/test_reviewer_evidence.py`. Do not add convenience exports or generated artifacts; Track-B integration owns those after ATLAS-253.
+  - Use immutable/frozen Pydantic/domain values and deterministic canonicalization consistent with the dedicated Phase 16 design. This ticket is intended to remain independently useful even if the concurrency ramp did not exist.
+  test_requirements:
+  - Focused deterministic tests in `tests/test_reviewer_evidence.py` cover valid construction, every closed enum/value boundary, malformed/contradictory inputs, canonical serialization/fingerprint stability and order-independence where collections are semantically sets.
+  - An architecture/scope assertion proves the production change stays within the named contract module and imports only stable existing lower-layer/Pydantic/shared primitives; tests exercise zero filesystem, database, Git/GitHub, Linear, Symphony or network mutation.
+  documentation_requirements: []
+  definition_of_done:
+  - The named contract family exists only in `atlas/core/models/reviewer_evidence.py`, all focused tests in `tests/test_reviewer_evidence.py` pass, and the final diff contains no other production/test path.
+  - The PR completion report states the exact two-path diff, confirms no sibling Track-A import/dependency/protected-lane expansion, and preserves all authority/non-goal boundaries from the dedicated design.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - phase-16
+  - track-a
+  - reviewer-evidence
+  - metrics
+  component: reviewer-evidence-contract
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/inbox-stub-15-reviewer-evidence-cost.md#phase-16-reviewer-evidence-and-burden-proxy-contracts
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-20T09:08:00.028884Z'
+  updated_at: '2026-08-20T09:08:00.028884Z'
   completed_at: null
