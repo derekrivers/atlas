@@ -312,8 +312,9 @@ durable receipt prefix. Live proof requires
 `phase-15-ramp-workload-v2`/`phase-15-ramp-gate-receipt-v2`. The contract-valid
 repository fixture `tests/fixtures/phase_15/ramp_workload_seed_v2.json` keeps
 eleven ordinary independent workloads and separately binds real fixture ticket
-identities to the Gate 1 owner and Gate 3 same-lane owner/blocked-candidate
-roles through the digest-pinned repository classifier. It is deterministic
+identities to every protected-lane exercise: the Gate 1 owner, Gate 3 same-lane
+owner/blocked candidate, Gate 5 owner and both Gate 7 owners. All are classified
+through the digest-pinned repository classifier. The fixture is deterministic
 schema evidence only, never a live manifest or ratification. Validate and
 fingerprint v2:
 

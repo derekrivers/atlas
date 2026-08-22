@@ -416,13 +416,16 @@ classification fingerprint, and is classified against the manifest's exact
 digest-pinned repository registry version/fingerprint.
 
 The separate `exercise_bindings` collection has exactly one Gate 1
-`protected_lane_ci_pending_hold` owner and distinct Gate 3
-`protected_lane_contention` owner/blocked-candidate roles. The Gate 3 pair must
-recompute into the same lane; any other same-lane exercise pair is invalid.
-Every exercise workload is bound exactly once, so missing, duplicate,
-substituted and orphaned identities fail closed. Do not claim ticket keys that
-the key authority has not issued, and never use a non-key meta identity for a
-protected-lane exercise. The JSON remains offline validator input and cannot
+`protected_lane_ci_pending_hold` owner, distinct Gate 3
+`protected_lane_contention` owner/blocked-candidate roles, one Gate 5
+`protected_lane_with_unrelated_parallelism` owner, and separate Gate 7 owners
+for `risk_component_protected_lanes_under_load` and
+`ci_pending_lane_ownership`. The Gate 3 pair must recompute into the same lane;
+any other same-lane exercise pair is invalid. Every exercise workload is bound
+exactly once, so missing, duplicate, substituted and orphaned identities fail
+closed. Do not claim ticket keys that the key authority has not issued, and
+never use a non-key meta identity for a protected-lane exercise. The JSON
+remains offline validator input and cannot
 carry operator authority. Fingerprint that exact record before measurement:
 
 ```bash
@@ -468,12 +471,12 @@ omissions:
   authority, repository/external mutation and secret-retention counts, plus an
   evidence identity and PASS/FAIL for every common invariant and gate-specific
   exercise declared by the harness; and
-- for Gate 1 and Gate 3 protected-lane exercises, the exact gate, exercise,
+- for every Gate 1/3/5/7 protected-lane exercise, the exact gate, exercise,
   exercise-workload identity, real ticket key, bounded role, recomputed lane,
   observed `CI Pending`/held status, evidence identity and exact manifest
-  fingerprint. The aggregate exercise evidence identity must bind those rows,
-  the owner must be the exact lane occupant and the blocked candidate must not
-  appear as an occupant.
+  fingerprint. Each aggregate exercise evidence identity must bind that
+  exercise's rows, every owner must be the exact lane occupant and any blocked
+  candidate must not appear as an occupant.
 
 The comment also carries this bounded human-readable index, projected exactly
 from the canonical JSON rather than entered as a second source of truth:
@@ -639,7 +642,7 @@ at every failure boundary.
 
 Prerequisites are the supported VPS procedure above, the separately
 re-ratified v2 workload record with more than ten independent ordinary
-workloads, the exact declared Gate 1 owner and Gate 3 owner/candidate bindings, the
+workloads, every exact declared Gate 1/3/5/7 protected-exercise binding, the
 Phase 15 admission/CI/acceptance observability surfaces, green deterministic
 fixtures, merged Phase 15.5 closure and both `origin/main` and the unmodified
 milestone branch declaring one. The running VPS and active policy must
@@ -685,6 +688,11 @@ working/CI/review load. A stale decision and ambiguous write must fail closed
 behind a durable fence. Gate 5 PASS is the only authority to edit the branch
 from 5 to 7.
 
+The protected-lane observation must name the manifest-bound Gate 5 owner and
+bind its workload, ticket, lane, `CI Pending` occupancy, evidence and exact v2
+manifest fingerprint. Generic passed evidence and aggregate parallelism or
+hold counters cannot establish this exercise.
+
 ### Gate 7 — lanes, recovery and acceptance capacity
 
 Gate 7 cannot begin without the Gate 5 PASS receipt, including its stable-review
@@ -694,6 +702,13 @@ risk/component/protected lanes remain bounded, `CI Pending` retains protected-
 lane ownership while workers are reused, Changes Requested work recovers,
 lower-ranked feasible work cannot bypass the selected admission, and sibling-
 merge staleness remains recoverable through the operator rebase lane.
+
+Both protected-lane observations must independently name their manifest-bound
+Gate 7 owner: one for `risk_component_protected_lanes_under_load` and one for
+`ci_pending_lane_ownership`. Each exercise digest binds its own workload row,
+real ticket, lane, `CI Pending` occupancy, evidence identity and exact v2
+manifest fingerprint; generic exercise rows alone cannot establish either
+exercise.
 
 Ten additionally requires Phase 14 to be closed before Gate 10 starts and
 adequate exact-head acceptance throughput in the Gate 7 window. Adequate means

@@ -142,11 +142,71 @@
         "ticket_key": "ATLAS-251"
       },
       "classification_fingerprint": "25637b1b0413d4ab94c317702b6198494f4231aed41695712f23c7fc08484381"
+    },
+    {
+      "exercise_workload_id": "RAMP-EX-G5-OWNER",
+      "ticket_key": "ATLAS-14",
+      "touched_path_family": "storage-migration",
+      "touched_paths": ["atlas/storage/migrations/versions/0001_knowledge_core_baseline.py"],
+      "component": "atlas.storage",
+      "tags": ["storage", "sqlalchemy", "alembic", "migration"],
+      "relevant_docs": ["docs/decisions/0002-use-postgresql-as-source-of-truth.md", "docs/decisions/0006-source-of-truth-hierarchy.md", "ARCHITECTURE.md", "docs/atlas/implementation-roadmap.md"],
+      "documentation_requirements": [],
+      "excluded_from_throughput": true,
+      "classification": {
+        "issues": [],
+        "matches": [{"declarations": [["tag", "migration", "database-migration-surface"]], "lane": "database-migrations"}],
+        "registry_fingerprint": "1ff564dd475ca5271ea5a27e4e8160d01507c6038d4d28c7c1eb285324b2e568",
+        "registry_version": "protected-integration-lanes/v1",
+        "ticket_key": "ATLAS-14"
+      },
+      "classification_fingerprint": "c4840e2ec7a26da942a76192428fc51e84275d71b5c52a11e2687bce8f972406"
+    },
+    {
+      "exercise_workload_id": "RAMP-EX-G7-CI-PENDING-OWNER",
+      "ticket_key": "ATLAS-8",
+      "touched_path_family": "ticket-model",
+      "touched_paths": ["atlas/core/models/ticket.py"],
+      "component": "atlas.core",
+      "tags": ["models", "core", "planning", "ticket"],
+      "relevant_docs": ["docs/decisions/0006-source-of-truth-hierarchy.md", "docs/decisions/0007-generative-planning-with-deterministic-reconciliation.md", "docs/atlas/dependency-engine.md", "docs/atlas/planning-engine-specification.md", "docs/atlas/pm-engine-and-linear-sync.md"],
+      "documentation_requirements": [],
+      "excluded_from_throughput": true,
+      "classification": {
+        "issues": [],
+        "matches": [{"declarations": [["tag", "planning", "planning-source-and-render-surface"]], "lane": "planning-state"}],
+        "registry_fingerprint": "1ff564dd475ca5271ea5a27e4e8160d01507c6038d4d28c7c1eb285324b2e568",
+        "registry_version": "protected-integration-lanes/v1",
+        "ticket_key": "ATLAS-8"
+      },
+      "classification_fingerprint": "1d993fa7876619072fbee84d871b7f3346b9c8c9cc355ad1b67abb6a564b594a"
+    },
+    {
+      "exercise_workload_id": "RAMP-EX-G7-COMPONENT-LANES-OWNER",
+      "ticket_key": "ATLAS-234",
+      "touched_path_family": "lesson-disposition-api-contract",
+      "touched_paths": ["atlas/api/routers/lessons.py"],
+      "component": "atlas.api",
+      "tags": ["api", "lessons", "authentication", "idempotency", "openapi"],
+      "relevant_docs": ["docs/atlas/governed-operator-actions.md", "docs/atlas/operator-api.md", "docs/decisions/0009-single-operator-governance.md"],
+      "documentation_requirements": ["docs/atlas/operator-api.md", "docs/atlas/governed-operator-actions.md"],
+      "excluded_from_throughput": true,
+      "classification": {
+        "issues": [],
+        "matches": [{"declarations": [["tag", "openapi", "generated-api-client-contracts"]], "lane": "generated-contracts"}],
+        "registry_fingerprint": "1ff564dd475ca5271ea5a27e4e8160d01507c6038d4d28c7c1eb285324b2e568",
+        "registry_version": "protected-integration-lanes/v1",
+        "ticket_key": "ATLAS-234"
+      },
+      "classification_fingerprint": "2ad36cc7a37b1c0ce08812de05d78cc4b0c814dde4a7970e37f9e4965c2b265f"
     }
   ],
   "exercise_bindings": [
     {"gate_level": 1, "exercise_id": "protected_lane_ci_pending_hold", "exercise_workload_id": "RAMP-EX-G1-OWNER", "role": "owner"},
     {"gate_level": 3, "exercise_id": "protected_lane_contention", "exercise_workload_id": "RAMP-EX-G3-OWNER", "role": "owner"},
-    {"gate_level": 3, "exercise_id": "protected_lane_contention", "exercise_workload_id": "RAMP-EX-G3-BLOCKED", "role": "blocked_candidate"}
+    {"gate_level": 3, "exercise_id": "protected_lane_contention", "exercise_workload_id": "RAMP-EX-G3-BLOCKED", "role": "blocked_candidate"},
+    {"gate_level": 5, "exercise_id": "protected_lane_with_unrelated_parallelism", "exercise_workload_id": "RAMP-EX-G5-OWNER", "role": "owner"},
+    {"gate_level": 7, "exercise_id": "ci_pending_lane_ownership", "exercise_workload_id": "RAMP-EX-G7-CI-PENDING-OWNER", "role": "owner"},
+    {"gate_level": 7, "exercise_id": "risk_component_protected_lanes_under_load", "exercise_workload_id": "RAMP-EX-G7-COMPONENT-LANES-OWNER", "role": "owner"}
   ]
 }

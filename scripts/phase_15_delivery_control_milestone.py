@@ -49,6 +49,9 @@ _PROTECTED_EXERCISE_BINDINGS = (
     (1, "protected_lane_ci_pending_hold", "owner"),
     (3, "protected_lane_contention", "blocked_candidate"),
     (3, "protected_lane_contention", "owner"),
+    (5, "protected_lane_with_unrelated_parallelism", "owner"),
+    (7, "ci_pending_lane_ownership", "owner"),
+    (7, "risk_component_protected_lanes_under_load", "owner"),
 )
 
 COMMON_INVARIANTS = (
@@ -1708,26 +1711,36 @@ def _validate_protected_lane_exercise_evidence(
             cast(str, evidence["exercise_workload_id"]),
         )
     )
-    if bindings:
-        exercise_ids = {cast(str, binding["exercise_id"]) for binding in bindings}
-        if len(exercise_ids) != 1:
-            raise ValueError(f"gate {gate} protected exercise binding is ambiguous")
-        exercise_id = next(iter(exercise_ids))
+    occupancy = {
+        cast(str, item["lane"]): cast(Mapping[str, object], item)
+        for item in cast(Sequence[object], snapshot["protected_lane_occupancy"])
+    }
+    occupied_ticket_keys = {
+        ticket_key
+        for item in occupancy.values()
+        for ticket_key in cast(Sequence[str], item["ticket_keys"])
+    }
+    for exercise_id in sorted(
+        {cast(str, binding["exercise_id"]) for binding in bindings}
+    ):
+        exercise_evidence = [
+            evidence
+            for evidence in selected_evidence
+            if evidence["exercise_id"] == exercise_id
+        ]
         if exercises[exercise_id]["evidence_identity"] != _canonical_digest(
-            selected_evidence
+            exercise_evidence
         ):
             raise ValueError(
                 f"gate {gate} protected exercise evidence identity is unbound"
             )
-        occupancy = {
-            cast(str, item["lane"]): cast(Mapping[str, object], item)
-            for item in cast(Sequence[object], snapshot["protected_lane_occupancy"])
-        }
         owners = [
-            evidence for evidence in selected_evidence if evidence["role"] == "owner"
+            evidence for evidence in exercise_evidence if evidence["role"] == "owner"
         ]
         if len(owners) != 1:
-            raise ValueError(f"gate {gate} protected exercise requires one owner")
+            raise ValueError(
+                f"gate {gate} protected exercise {exercise_id} requires one owner"
+            )
         owner = owners[0]
         lane_state = occupancy.get(cast(str, owner["protected_lane"]))
         if lane_state is None or lane_state["ticket_keys"] != [owner["ticket_key"]]:
@@ -1736,14 +1749,9 @@ def _validate_protected_lane_exercise_evidence(
             )
         blocked = [
             evidence
-            for evidence in selected_evidence
+            for evidence in exercise_evidence
             if evidence["role"] == "blocked_candidate"
         ]
-        occupied_ticket_keys = {
-            ticket_key
-            for item in occupancy.values()
-            for ticket_key in cast(Sequence[str], item["ticket_keys"])
-        }
         if any(
             evidence["protected_lane"] != owner["protected_lane"]
             or evidence["ticket_key"] in occupied_ticket_keys

@@ -3963,7 +3963,8 @@ The next authority steps are now:
 6. interface/path/lane/dependency pre-certify the eligible authority-neutral
    Track-A subset for ATLAS-253;
 7. accept the Phase 15 v2 evidence-binding repair, including its pinned
-   registry classification and exact Gate 1/Gate 3 role contract;
+   registry classification and exact Gate 1/3/5/7 protected-exercise role
+   contract;
 8. separately re-ratify and freeze the single live ATLAS-253 v2 manifest before
    observation;
 9. restart governed Symphony only when the Phase 15 runtime/policy/v2-workload

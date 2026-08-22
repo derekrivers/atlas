@@ -230,40 +230,56 @@ def _receipt(
                 evidence["exercise_workload_id"],
             )
         )
-        if protected_lane_exercise_evidence:
-            exercise_id = protected_lane_exercise_evidence[0]["exercise_id"]
+        for exercise_id in sorted(
+            {evidence["exercise_id"] for evidence in protected_lane_exercise_evidence}
+        ):
+            bound_evidence = [
+                evidence
+                for evidence in protected_lane_exercise_evidence
+                if evidence["exercise_id"] == exercise_id
+            ]
             exercise_evidence[exercise_id]["evidence_identity"] = hashlib.sha256(
                 json.dumps(
-                    protected_lane_exercise_evidence,
+                    bound_evidence,
                     ensure_ascii=True,
                     separators=(",", ":"),
                     sort_keys=True,
                 ).encode()
             ).hexdigest()
-    if is_v2 and gate == 1:
-        lane_occupancy = {
-            "lane": "workflow-configuration",
-            "count": 1,
-            "limit": 1,
-            "ticket_keys": ["ATLAS-252"],
-            "operator_declared": False,
-        }
+    if is_v2 and protected_lane_exercise_evidence:
+        lane_occupancy = [
+            {
+                "lane": evidence["protected_lane"],
+                "count": 1,
+                "limit": 1,
+                "ticket_keys": [evidence["ticket_key"]],
+                "operator_declared": (
+                    evidence["protected_lane"] == "operator-admission-hotspot"
+                ),
+            }
+            for evidence in protected_lane_exercise_evidence
+            if evidence["role"] == "owner"
+        ]
     elif is_v2:
-        lane_occupancy = {
-            "lane": "operator-admission-hotspot",
-            "count": 1,
-            "limit": 1,
-            "ticket_keys": ["ATLAS-250"],
-            "operator_declared": True,
-        }
+        lane_occupancy = [
+            {
+                "lane": "operator-admission-hotspot",
+                "count": 1,
+                "limit": 1,
+                "ticket_keys": ["ATLAS-250"],
+                "operator_declared": True,
+            }
+        ]
     else:
-        lane_occupancy = {
-            "lane": "workflow-configuration",
-            "count": 1,
-            "limit": 1,
-            "ticket_keys": [f"META-GATE-{gate}"],
-            "operator_declared": False,
-        }
+        lane_occupancy = [
+            {
+                "lane": "workflow-configuration",
+                "count": 1,
+                "limit": 1,
+                "ticket_keys": [f"META-GATE-{gate}"],
+                "operator_declared": False,
+            }
+        ]
     level_token = f"{gate:x}"
     origin_main = f"{index + 1:x}" * 40
     receipt: dict[str, Any] = {
@@ -334,7 +350,7 @@ def _receipt(
                 else _identity(5000 + index)
             ),
             "protected_lane_state_fingerprint": _identity(5100 + index),
-            "protected_lane_occupancy": [lane_occupancy],
+            "protected_lane_occupancy": lane_occupancy,
             "pm_sync_receipt_ids": [f"pm-sync-{gate}"],
             "admission_run_ids": [f"admission-{gate}"],
             "ci_handoff_reconciliation_ids": [f"ci-handoff-{gate}"],
@@ -390,7 +406,7 @@ def test_predeclared_manifest_has_more_than_ten_independent_workloads() -> None:
     assert selected["protected_lane_registry_fingerprint"] == (
         DEFAULT_PROTECTED_LANE_REGISTRY.fingerprint
     )
-    assert len(exercise_workloads) == 3
+    assert len(exercise_workloads) == 6
     assert all(
         workload["excluded_from_throughput"] is True for workload in exercise_workloads
     )
@@ -398,6 +414,9 @@ def test_predeclared_manifest_has_more_than_ten_independent_workloads() -> None:
         "ATLAS-250",
         "ATLAS-251",
         "ATLAS-252",
+        "ATLAS-8",
+        "ATLAS-14",
+        "ATLAS-234",
     }
     assert selected["phase_15_5_release"] == {
         "issue": "ATL-437",
@@ -750,6 +769,31 @@ def test_v2_receipt_protected_exercise_bindings_fail_closed(
         raise AssertionError(case)
 
     with pytest.raises(ValueError, match=message):
+        evaluate_ramp(manifest, receipts)
+
+
+@pytest.mark.parametrize(
+    ("gate", "exercise_id"),
+    (
+        (5, "protected_lane_with_unrelated_parallelism"),
+        (7, "risk_component_protected_lanes_under_load"),
+        (7, "ci_pending_lane_ownership"),
+    ),
+)
+def test_later_protected_exercises_reject_generic_evidence_without_bound_workload(
+    gate: int, exercise_id: str
+) -> None:
+    manifest = _manifest()
+    receipts = _receipts(manifest)
+    receipt = receipts[GATE_LEVELS.index(gate)]
+    assert receipt["gate_exercises"][exercise_id]["passed"] is True
+    receipt["protected_lane_exercise_evidence"] = [
+        evidence
+        for evidence in receipt["protected_lane_exercise_evidence"]
+        if evidence["exercise_id"] != exercise_id
+    ]
+
+    with pytest.raises(ValueError, match="lacks exact workload-bound"):
         evaluate_ramp(manifest, receipts)
 
 

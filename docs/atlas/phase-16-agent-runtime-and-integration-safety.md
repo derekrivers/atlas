@@ -2291,8 +2291,11 @@ lane strings and unbound meta owners. Live proof now requires the accepted
 `phase-15-ramp-workload-v2` / `phase-15-ramp-gate-receipt-v2` implementation:
 the digest-pinned repository classifier recomputes every protected exercise
 workload, Gate 1 binds one owner through `CI Pending`, and Gate 3 binds distinct
-same-lane owner/blocked-candidate identities. The v2 implementation does not
-itself re-ratify a live manifest or resume the ramp.
+same-lane owner/blocked-candidate identities. Gate 5 binds its protected-lane
+owner, while Gate 7 binds separate owners for
+`risk_component_protected_lanes_under_load` and
+`ci_pending_lane_ownership`. The v2 implementation does not itself re-ratify a
+live manifest or resume the ramp.
 
 The interface check is a **pre-freeze certification artifact**, not a new receipt field or gate authority.
 
@@ -2344,7 +2347,7 @@ Before Gate 1:
 5. the accepted v2 implementation recomputes the exact protected-exercise
    classifier inputs against the pinned repository registry;
 6. the operator separately re-ratifies and freezes the v2 manifest, including
-   one Gate 1 owner and distinct Gate 3 same-lane owner/candidate bindings;
+   every Gate 1/3/5/7 protected-exercise owner/candidate binding;
 7. any candidate that no longer matches its frozen contract is not silently
    replaced by a new identity.
 

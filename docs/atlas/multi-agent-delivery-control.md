@@ -577,8 +577,10 @@ The read-only milestone validator is
 `scripts/phase_15_delivery_control_milestone.py`. It binds a predeclared
 v2 manifest to the ordered operator gate receipts. The v2 manifest preserves
 the more-than-ten dependency-independent ordinary pool and separately binds
-the Gate 1 owner and distinct Gate 3 owner/blocked candidate to real,
-predeclared exercise workloads. Their exact classifier inputs are recomputed
+every protected-lane exercise to real, predeclared exercise workloads: the
+Gate 1 owner, distinct Gate 3 owner/blocked candidate, Gate 5 owner and separate
+Gate 7 owners for `risk_component_protected_lanes_under_load` and
+`ci_pending_lane_ownership`. Their exact classifier inputs are recomputed
 against the digest-pinned repository protected-lane registry; every bound
 receipt row pins the workload, ticket, role, lane, observed status, evidence
 identity and manifest fingerprint. A positive hold count or aggregate passed
@@ -623,7 +625,7 @@ The entry gates are cumulative:
 
 | Level to begin | Evidence that must already exist |
 | ---: | --- |
-| 1 | Phase 15.5 closure is merged; the v2 repair is accepted; an exact live v2 manifest with the declared Gate 1/Gate 3 exercise workloads is separately re-ratified; the active policy is reconciled to the live one-agent declaration; Phase 15 controlled fixtures and admission observability are ready |
+| 1 | Phase 15.5 closure is merged; the v2 repair is accepted; an exact live v2 manifest with every declared Gate 1/3/5/7 protected exercise workload is separately re-ratified; the active policy is reconciled to the live one-agent declaration; Phase 15 controlled fixtures and admission observability are ready |
 | 3 | Gate 1 PASS proves the serialized baseline, paused/draining no-admit behaviour and Changes Requested rework reserve |
 | 5 | Gate 3 PASS proves the first controlled increase and bounded review pressure |
 | 7 | Gate 5 PASS proves stable review pressure and stale/partial-write fail-closed behaviour |
@@ -654,10 +656,12 @@ dependency independence, touched-path families and protected-lane classes
 before Gate 1 measurement. Keep deliberate contention and failure exercises
 in a separate throughput-excluded collection. Bind Gate 1's exact owner through
 `CI Pending`; bind Gate 3's distinct real owner and blocked candidate to the
-same recomputed repository lane. Every receipt must carry those exact workload,
-ticket, role, lane, status, evidence and manifest identities. Seed the live board across risk
-and component lanes plus Review Required, Needs Human and Changes Requested
-work. Against the live PM sync and Symphony boundary, prove the serialized
+same recomputed repository lane; and bind the Gate 5 owner plus separate Gate 7
+owners for both protected-lane exercises. Every receipt must carry those exact
+workload, ticket, role, lane, status, evidence and manifest identities. Seed
+the live board across risk and component lanes plus Review Required, Needs
+Human and Changes Requested work. Against the live PM sync and Symphony
+boundary, prove the serialized
 level and then move deliberately through ceilings 1, 3, 5, 7 and 10.
 
 At every gate prove running Symphony loaded the exact milestone commit before
