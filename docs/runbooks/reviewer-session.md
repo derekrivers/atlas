@@ -80,9 +80,11 @@ an AI assistant; the reviewer recommends, only the operator approves
   `tests/test_acceptance.py` and the export count in
   `tests/test_schemas_export.py` are confirmed unchanged on every
   ticket, or the change is named in the approved plan.
-- **PR title.** The pull request title carries the ticket key in the
-  form `(ATLAS-NN)`. Title, not `Closes` body lines — body-line
-  linkage silently under-covers.
+- **PR title.** Normal delivery PR titles carry a real ticket key, such as
+  `(ATLAS-142)`. Keyless records, runbook or stub-landing PR titles may instead
+  carry a fresh `ATLAS-00xM` meta label. Meta labels are non-keys and
+  deliberately close no ticket. Title provenance is title-only: body
+  `Closes ATLAS-NN` text does not satisfy the gate.
 - **Evidence tiers.** Everything the reviewer runs locally is
   reviewer-tier; the standard verdict is approve-pending-CI. Final
   close requires the system-tier record with the full pin triple —

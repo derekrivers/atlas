@@ -25,7 +25,7 @@ needs:
 - Symptom-driven diagnosis → `docs/runbooks/troubleshooting.md`
 - Review and acceptance → `docs/runbooks/review-doctrine.md`,
   `docs/runbooks/reviewer-session.md`, `docs/runbooks/pr-acceptance.md`
-- Governing decisions → `docs/decisions/` (ADR-0001..0009; ADR-0004
+- Governing decisions → `docs/decisions/` (ADR-0001..0011; ADR-0004
   retired, number not reused)
 - Day-one setup → `docs/atlas/bootstrap-guide.md`
 

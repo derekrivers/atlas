@@ -171,7 +171,13 @@ Start with the source identity rather than the rendered text:
 1. confirm the ticket's `source_anchor` and `relevant_docs`;
 2. if the ticket came from a stub, confirm the consumed stub is committed under
    `docs/planning/inbox/processed/`;
-3. run the relevant `uv run atlas context show/validate <ATLAS-N>` command;
+3. run the relevant supported context commands:
+
+   ```bash
+   uv run atlas context show <ATLAS-N>
+   uv run atlas context validate <ATLAS-N>
+   ```
+
 4. inspect PM-sync pack-render failure counters/evidence; and
 5. use the supported context-pack repair path after the source problem is fixed.
 
