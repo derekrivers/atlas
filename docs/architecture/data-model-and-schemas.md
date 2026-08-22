@@ -1754,6 +1754,58 @@ CREATE TABLE ci_handoff_write_fences (
 );
 ```
 
+## 5.18 One-Time ATLAS-280 Bootstrap Recovery Receipt
+
+`Atlas280BootstrapRecoveryReceipt` is the purpose-specific, append-only proof
+for the explicit ATLAS-280/ATLAS-281 bootstrap exception. The model and storage
+seam fix the ticket UUIDs and keys, Linear UUIDs and identifiers, governed
+admission run, PM receipt, PR #350 contributor head, historical debt item,
+paused policy revision/fingerprint and direct `planned -> ci_pending` edge.
+It cannot be retargeted to another ticket pair.
+
+The deterministic receipt identity is derived from that bounded proof. The
+receipt contains only stable identities, fingerprints, timestamp and human
+operator provenance: no issue/PR body, provider payload, arbitrary metadata,
+transcript or credential. The ticket compare-and-set, one direct transition and
+receipt insert share one database transaction. Unique incident/admission/PM
+keys make replay idempotent; SQLite and PostgreSQL triggers reject update and
+delete.
+
+```sql
+CREATE TABLE atlas_280_bootstrap_recovery_receipts (
+    id UUID PRIMARY KEY,
+    schema_version TEXT NOT NULL,
+    product_id UUID NOT NULL REFERENCES products(id),
+    blocker_ticket_id UUID NOT NULL UNIQUE REFERENCES tickets(id),
+    blocker_ticket_key TEXT NOT NULL,
+    blocker_linear_issue_id TEXT NOT NULL,
+    blocker_linear_identifier TEXT NOT NULL,
+    blocker_linear_state_id TEXT NOT NULL,
+    repair_ticket_id UUID NOT NULL REFERENCES tickets(id),
+    repair_ticket_key TEXT NOT NULL,
+    repair_linear_issue_id TEXT NOT NULL,
+    repair_linear_identifier TEXT NOT NULL,
+    repair_linear_state_id TEXT NOT NULL,
+    source_local_status TEXT NOT NULL,
+    recovered_local_status TEXT NOT NULL,
+    admission_run_id UUID NOT NULL UNIQUE REFERENCES admission_runs(id),
+    pm_sync_receipt_id UUID NOT NULL UNIQUE REFERENCES pm_sync_receipts(id),
+    publication_repository_owner TEXT NOT NULL,
+    publication_repository_name TEXT NOT NULL,
+    publication_pr_number INTEGER NOT NULL,
+    publication_head TEXT NOT NULL,
+    historical_debt_item_id UUID NOT NULL REFERENCES debt_items(id),
+    board_fingerprint TEXT NOT NULL,
+    policy_id UUID NOT NULL REFERENCES delivery_admission_policy_revisions(id),
+    policy_revision INTEGER NOT NULL,
+    policy_fingerprint TEXT NOT NULL,
+    accepted_main_commit TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL,
+    created_by_type TEXT NOT NULL,
+    created_by_id TEXT NOT NULL
+);
+```
+
 ---
 
 ## 5.13 Lesson Disposition Result Snapshot

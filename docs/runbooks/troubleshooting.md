@@ -211,6 +211,31 @@ identity movement.
 Do **not** manually drag `CI Pending` into `Review Required` or
 `Changes Requested`. The trusted reconciler owns determinate exits.
 
+### One-time ATLAS-280/ATLAS-281 bootstrap exception
+
+The ATLAS-280 local-`Planned`/external-`CI Pending` incident has one
+operator-invoked, exact-pair diagnostic command. It is not a general repair
+tool and accepts no ticket argument:
+
+```bash
+uv run python scripts/bootstrap_atlas_280_ci_pending_mirror_recovery.py \
+  check --db <explicit-database-url>
+```
+
+`check` is read-only and emits only the bounded eligibility/proof projection.
+An ineligible result is fail-closed: preserve the reported identity class and
+do not repair a nearby state by hand. The separate `apply` mode is documented
+by the command's help but must not be run without fresh, explicit operator
+authorisation after the implementation has merged and CI is green. It repairs
+only the local ATLAS-280 mirror and does not move ATLAS-281, write Linear,
+invoke CI reconciliation, change policy or lanes, or affect Symphony.
+
+After a separately authorised successful apply, run no embedded follow-on
+action from the bootstrap command. A later normal PM cadence owns the
+`CI Pending` evidence classification and safe exit. ATLAS-281 remains the owner
+of the reusable governed recovery contract; this bootstrap exists solely
+because that repair ticket was blocked by the incident it must repair.
+
 ## CI Pending unexpectedly reactivates into Symphony work
 
 Preserve the exact transition timestamps, issue history and actor/integration

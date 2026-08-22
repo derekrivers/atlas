@@ -206,6 +206,16 @@ therefore idempotent, and concurrent owners, lease loss or identity movement
 produce zero mutations. A new head restarts the lifecycle with new evidence;
 previous records remain history.
 
+The one-time ATLAS-280/ATLAS-281 bootstrap exception does not alter this
+ownership model. Its fixed executable can only repair ATLAS-280's local mirror
+from `Planned` to the already-observed external `CI Pending`, with an atomic
+append-only incident receipt; it cannot reconcile CI or write Linear. The
+exception exists because ATLAS-281, which owns the reusable governed recovery,
+is blocked by that exact mismatch. It is not a reusable poll-compression source
+or protected-lane bypass, and live execution requires separate post-merge
+operator authorisation. Normal PM cadence and ATLAS-256 remain the sole owners
+of any later `CI Pending` exit.
+
 ### Production cadence adapter
 
 ATL-437's first published candidate proved that a domain service is not a

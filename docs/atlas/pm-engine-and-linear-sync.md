@@ -351,6 +351,31 @@ After a confirmed CI-handoff mutation or target-fence reconciliation, the sync
 body returns immediately. Admission, verified completion and anomaly routing
 therefore cannot perform a second workflow mutation in the same tick.
 
+### One-time ATLAS-280/ATLAS-281 bootstrap exception
+
+The explicit operator bootstrap exception for ATLAS-280/ATL-456 and
+ATLAS-281/ATL-457 is an incident-bound local-mirror repair, not generic PM
+authority or precedent. It exists only because the ticket that owns the
+reusable governed repair, ATLAS-281, is itself blocked by ATLAS-280's local
+`Planned`/external `CI Pending` mismatch. ATLAS-281 remains responsible for the
+reusable recovery contract.
+
+The standalone bootstrap executable accepts no ticket identity. Its read-only
+check reconstructs the fixed tickets, admission run and PM receipt, issue-bound
+PR #350 head, historical anomaly, complete board observation, paused policy,
+dependencies and absent write fences. A separately authorised apply may then
+commit only the direct local `Planned -> CI Pending` transition and its
+purpose-specific append-only receipt in one transaction. It writes neither
+Linear nor GitHub, creates no `AgentRun`, invokes no CI handoff, and changes no
+policy, lane, Symphony or other ticket state.
+
+This exception does not add `planned` to
+`CI_PENDING_POLL_COMPRESSION_SOURCES`, redefine an incomplete snapshot as
+complete, or widen any normal state owner. After a later authorised live apply,
+only a subsequent normal PM cadence may invoke ATLAS-256's CI reconciler for a
+`CI Pending` exit. Live use requires fresh operator authorisation after the
+implementation is reviewed, merged and validated by CI.
+
 ## Sync loop
 
 Pull-based, consistent with ADR-0008 (no webhooks before hosting):

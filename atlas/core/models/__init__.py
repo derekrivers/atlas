@@ -16,6 +16,9 @@ from atlas.core.models.acceptance_session import (
 from atlas.core.models.admission_run import AdmissionRun
 from atlas.core.models.adr import ADRStatus, ArchitectureDecisionRecord
 from atlas.core.models.agent_run import AgentProvider, AgentRun, AgentRunStatus
+from atlas.core.models.atlas_280_bootstrap_recovery import (
+    Atlas280BootstrapRecoveryReceipt,
+)
 from atlas.core.models.ci_handoff_reconciliation import (
     CIHandoffClassification,
     CIHandoffDecision,
@@ -72,6 +75,7 @@ __all__ = [
     "AgentRunStatus",
     "AnomalyType",
     "ArchitectureDecisionRecord",
+    "Atlas280BootstrapRecoveryReceipt",
     "CIHandoffClassification",
     "CIHandoffDecision",
     "CIHandoffReason",

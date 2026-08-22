@@ -265,11 +265,12 @@ def _status_transition_row(
 ) -> TicketStatusTransitionRow:
     """The single definition of a status-transition row (ATLAS-121 D3).
 
-    Both write paths build their row here so the two cannot drift: the inline
+    All write paths build their row here so they cannot drift: the inline
     writer in ``apply_linear_status`` (which appends atomically with the status
     change) and ``TicketStatusTransitionRepo.record`` (the completeness/tests
-    verb). ``created_by_type`` is always ``system`` — a transition is observed
-    by deterministic system logic, never an agent or human — and the caller
+    verb), plus the exact-pair ATLAS-280 bootstrap repository ruled as a
+    one-time exception. ``created_by_type`` is always ``system`` — a transition
+    is observed by deterministic system logic, never an agent or human — and the caller
     supplies ``created_by_id``: storage never presumes its caller's identity,
     so the PM sync loop threads its own ``CREATED_BY`` through.
     """
