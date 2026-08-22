@@ -2281,17 +2281,29 @@ Before ramp workload freeze:
 - none activates Phase 16 production authority;
 - none changes a material shared InterfaceContract;
 - interface pre-certification says no unresolved material `change/consume`, `change/change`, stale or ownerless collision;
-- exact workload identities are frozen in the existing ATLAS-253 manifest before results.
+- exact ordinary and protected-exercise workload identities are frozen in the
+  separately re-ratified ATLAS-253 v2 manifest before results.
 
-## 30.2 No contract rewrite
+## 30.2 Phase 15 v2 binding repair
 
-The Phase 15 ramp harness is unchanged.
+The former v1 harness is historical-only because it could accept arbitrary
+lane strings and unbound meta owners. Live proof now requires the accepted
+`phase-15-ramp-workload-v2` / `phase-15-ramp-gate-receipt-v2` implementation:
+the digest-pinned repository classifier recomputes every protected exercise
+workload, Gate 1 binds one owner through `CI Pending`, and Gate 3 binds distinct
+same-lane owner/blocked-candidate identities. The v2 implementation does not
+itself re-ratify a live manifest or resume the ramp.
 
 The interface check is a **pre-freeze certification artifact**, not a new receipt field or gate authority.
 
 ## 30.3 Workload quantity and gate reuse
 
-The actual Phase 15 validator requires the frozen workload manifest to contain **more than ten** independent workloads. Every gate receipt pins the same manifest fingerprint. The receipt schema does **not** assign a fresh workload-id set to each gate.
+The actual Phase 15 validator requires the frozen workload manifest to contain
+**more than ten** independent ordinary workloads. Deliberate protected-lane
+exercises occupy a separate, throughput-excluded collection and do not weaken
+that floor. Every v2 gate receipt pins the same manifest fingerprint. The
+receipt schema does **not** assign a fresh ordinary workload-id set to each
+gate.
 
 Therefore Phase 16 must **not** infer a requirement for `1 + 3 + 5 + 7 + 10 = 26` distinct tickets. That arithmetic describes one possible fresh-cohort operating choice, not the milestone contract. Treating it as a ticket target would create exactly the filler/over-decomposition pressure this design is intended to prevent.
 
@@ -2329,8 +2341,12 @@ Before Gate 1:
 2. each ticket's exact contract is stable;
 3. path sets/families/lanes are calculated;
 4. interface pre-certification is recorded;
-5. manifest is frozen;
-6. any candidate that no longer matches its frozen contract is not silently replaced by a new identity.
+5. the accepted v2 implementation recomputes the exact protected-exercise
+   classifier inputs against the pinned repository registry;
+6. the operator separately re-ratifies and freezes the v2 manifest, including
+   one Gate 1 owner and distinct Gate 3 same-lane owner/candidate bindings;
+7. any candidate that no longer matches its frozen contract is not silently
+   replaced by a new identity.
 
 ---
 
@@ -2931,10 +2947,15 @@ The next governed programme step after operator ratification is:
 3. run atlas plan --stubs-only;
 4. review the generated ticket graph aggressively for size/dependency/interface mistakes;
 5. apply only after the operator accepts that graph;
-6. pre-certify and freeze the eligible real workload manifest;
-7. restart the existing Phase 15 governed runtime only when ATLAS-253 prerequisites are coherent;
-8. resume the ramp;
-9. after Phase 15 closure, proceed into runtime-support promotion and the dependent Phase 16 composition graph.
+6. accept the Phase 15 v2 evidence-binding repair, then pre-certify the eligible
+   real ordinary and protected-exercise workload identities;
+7. separately re-ratify and freeze the exact live v2 manifest;
+8. restart the existing Phase 15 governed runtime only when ATLAS-253
+   prerequisites are coherent;
+9. resume the ramp from the operator-paused Attempt-3 ceiling-one /
+   `max_turns: 10` identity;
+10. after Phase 15 closure, proceed into runtime-support promotion and the
+    dependent Phase 16 composition graph.
 ```
 
 ---

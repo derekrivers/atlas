@@ -308,16 +308,29 @@ confirmed write.
 ## Phase 15 delivery-control ramp validator (ATLAS-253)
 
 The read-only ramp validator consumes a predeclared workload manifest and a
-durable receipt prefix. The repository fixture
-`tests/fixtures/phase_15/ramp_workload_seed_v1.json` has eleven independent
-non-key meta workloads and every gate exercise. Its validation scope is always
-`offline-read-only`; neither the fixture nor any locally supplied replacement
-can authorise a live gate or closure. Validate and fingerprint the schema:
+durable receipt prefix. Live proof requires
+`phase-15-ramp-workload-v2`/`phase-15-ramp-gate-receipt-v2`. The contract-valid
+repository fixture `tests/fixtures/phase_15/ramp_workload_seed_v2.json` keeps
+eleven ordinary independent workloads and separately binds real fixture ticket
+identities to the Gate 1 owner and Gate 3 same-lane owner/blocked-candidate
+roles through the digest-pinned repository classifier. It is deterministic
+schema evidence only, never a live manifest or ratification. Validate and
+fingerprint v2:
+
+```bash
+uv run python scripts/phase_15_delivery_control_milestone.py \
+  tests/fixtures/phase_15/ramp_workload_seed_v2.json --fingerprint-only
+uv run pytest tests/test_phase_15_delivery_control_milestone.py
+```
+
+The retained
+`tests/fixtures/phase_15/ramp_workload_seed_v1.json` fixture exists only to prove
+unmodified Attempt-1/Attempt-2 receipt replay. V1 reports
+`HISTORICAL_RECEIPT_REPLAY` and cannot produce a new successful live result:
 
 ```bash
 uv run python scripts/phase_15_delivery_control_milestone.py \
   tests/fixtures/phase_15/ramp_workload_seed_v1.json --fingerprint-only
-uv run pytest tests/test_phase_15_delivery_control_milestone.py
 ```
 
 Add offline receipt projections only in gate order:
@@ -339,6 +352,11 @@ load, process readback and rollback sequence is in
 `docs/runbooks/operator-environment.md`. The retained
 `fixture-only-no-live-runtime-v1` procedure is fixture/schema regression only
 and is never production runtime evidence.
+
+ATLAS-253 remains operator-paused at the proven Attempt-3 ceiling-one /
+`max_turns: 10` identity. No new Gate 1 observation may begin until this v2
+implementation is accepted and the operator separately re-ratifies the exact
+live v2 manifest; running the fixture commands above does neither.
 
 ## Before you publish and hand off
 

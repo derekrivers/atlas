@@ -15,6 +15,8 @@ from atlas.pm.protected_lanes import (
     REGISTRY_PATH,
     REGISTRY_SHA256,
     ProtectedLaneClassificationCode,
+    ProtectedLaneClassifierInput,
+    classify_protected_lane_inputs,
     classify_ticket_protected_lanes,
     load_protected_lane_registry_bytes,
     parse_protected_lane_registry,
@@ -177,6 +179,34 @@ def test_atlas_258_ac2_model_prose_cannot_change_classification() -> None:
     )
 
     assert first.canonical_bytes() == second.canonical_bytes()
+
+
+def test_atlas_280_pure_classifier_input_matches_ticket_materialisation() -> None:
+    candidate = ticket(
+        "ATLAS-258",
+        TicketStatus.PLANNED,
+        component="delivery-control",
+        tags=["workflow"],
+        relevant_docs=["pyproject.toml"],
+        documentation_requirements=[".github/workflows/ci.yml"],
+    )
+
+    materialised = classify_ticket_protected_lanes(
+        candidate, DEFAULT_PROTECTED_LANE_REGISTRY
+    )
+    selected = classify_protected_lane_inputs(
+        ProtectedLaneClassifierInput(
+            ticket_key=candidate.key,
+            component=candidate.component,
+            tags=tuple(candidate.tags),
+            relevant_docs=tuple(candidate.relevant_docs),
+            documentation_requirements=tuple(candidate.documentation_requirements),
+        ),
+        DEFAULT_PROTECTED_LANE_REGISTRY,
+    )
+
+    assert selected == materialised
+    assert selected.fingerprint == materialised.fingerprint
 
 
 @given(st.permutations((0, 1, 2)))
