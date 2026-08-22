@@ -21,6 +21,33 @@ the operator separately reviews `atlas plan --stubs-only` and confirms
 `atlas apply`. Only apply assigns keys, mutates the Atlas store, writes the four
 planning renders and retires the considered stubs and batch manifest.
 
+## Before the batch: ratify decisions and boundaries
+
+Do not use stub authoring to hide unresolved programme decisions. Before
+constructing the batch, review the owning phase/design document and make every
+material operator decision explicit. A major architectural choice still open
+inside an implementation stub means the phase is not ready to mint unless that
+ticket's bounded purpose is specifically to present the named decision for
+operator ratification.
+
+Review the proposed phase as a system before reducing it to stubs:
+
+- each intended capability appears once;
+- dependencies express technical prerequisites, not preferred human order;
+- genuinely independent work has a parallel lane rather than an accidental
+  serial chain;
+- milestone/release tickets are held behind the evidence that authorises them;
+- no two tickets independently claim ownership of the same schema, policy,
+  runtime or state transition; and
+- each ticket is small enough to reach one independently reviewable candidate.
+
+Repeated agent runs around an hour or more are a planning signal, especially
+when time is dominated by broad validation, conflict recovery or repeated
+context reconstruction. Investigate whether the ticket contains separable
+contracts before increasing turns or weakening validation. This is not a hard
+wall-clock limit: split only at a real independent review, authority or
+behaviour boundary.
+
 ## External handoff package
 
 Every external planning handoff is one ZIP containing:
@@ -172,6 +199,20 @@ prohibited mutations, focused deterministic tests and exact documentation
 scope. Seven criteria are a ceiling, not a target. Dependencies express real
 technical prerequisites rather than a preferred human sequence.
 
+Before accepting the batch, ask of every stub:
+
+- Is there one coherent objective or several independently shippable ones?
+- Can its acceptance criteria be falsified without depending on a sibling's
+  implementation?
+- Are non-goals strong enough to stop an agent expanding into adjacent work?
+- Does the ticket own a bounded production surface and its matching docs/tests?
+- Would a semantic conflict require an operator decision that should have been
+  made before minting?
+- Does the dependency graph allow safe parallelism where the design does?
+
+If several answers are unclear, refine the stub before it receives an Atlas key;
+key assignment is not the time to discover that the ticket boundary is wrong.
+
 ## Validation and commit boundary
 
 Before delivery and before the local planning commit, run the packaged
@@ -202,10 +243,42 @@ uv run atlas plan --stubs-only
 uv run atlas apply
 ```
 
-Inspect the diff before confirmation. After apply, verify minted keys and
-dependencies, then commit the apply-owned renders plus the moves into
-`docs/planning/inbox/processed/`. The active stubs and their
-`planning-batch-*.yaml` manifest must all be retired by the same apply.
+Inspect the diff before confirmation. Expected ADD count must match the
+approved stub count, and an unexpected MODIFY, PROPOSE_ARCHIVE or CONFLICT is a
+stop, not something to accept because the stubs themselves looked correct.
+
+Immediately after a successful apply, before unrelated work:
+
+```bash
+git status --short
+head -n 6 docs/planning/tickets.yaml
+```
+
+Verify the monotonic key range/high-water, the resolved dependency edges, all
+four apply-owned renders, and every consumed stub plus the batch manifest under
+`docs/planning/inbox/processed/`. Then stage the complete planning tree,
+including deletions and newly created processed files:
+
+```bash
+git add -A docs/planning/
+```
+
+Commit and publish those apply artifacts before resetting, switching away or
+running another mint. The store has already advanced; discarding the working
+tree can leave committed renders/stub retirement behind operational state and
+later cause duplicate promotion or broken context anchors.
+
+Minting into Atlas and publishing to Linear are separate boundaries. After the
+apply-artifact change is merged, verify the next PM sync:
+
+```bash
+uv run atlas pm sync --once -v
+```
+
+First sync creates the Linear issue for a pushable minted ticket, records its
+`external_linear_id`, pushes the Atlas-owned definition/context and asserts the
+mapped create-time state. A failure there is a sync incident; do **not** re-run
+`atlas apply` to repair it.
 
 If Atlas reports an integrity failure, stop. Correct the planning inputs,
 regenerate the complete package against current main and repeat validation;

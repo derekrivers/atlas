@@ -154,7 +154,13 @@ Runbooks (`docs/runbooks/`):
 - `docs/runbooks/local-development.md` — toolchain, running the test
   suite, reproducing the CI gates, pre-commit, the shape of the suite,
   and the operator-run live tests
-- Stubs awaiting content: `docs/runbooks/troubleshooting.md`
+- `docs/runbooks/operational-practice.md` — cross-cutting operator handbook:
+  fresh-session truth establishment, authority map, phase/ticket
+  decomposition, mint/apply/Linear handoffs, review practice, diagnosis and
+  durable knowledge capture
+- `docs/runbooks/troubleshooting.md` — symptom-driven recovery for dispatch,
+  Symphony/Codex, Git credentials, plan/apply, mint/render drift, PM sync,
+  CI Pending, acceptance staleness, database identity and live runtime gates
 - `docs/runbooks/pr-acceptance.md` — operator acceptance protocol from
   agent PR to board Done: the spine (evidence/confirm/verify/merge), Done
   is a hand motion, migration parity, silence discipline, planning-side
