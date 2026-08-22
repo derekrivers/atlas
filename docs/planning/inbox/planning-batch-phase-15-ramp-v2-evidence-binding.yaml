@@ -1,0 +1,10 @@
+schema_version: 1
+repository: "derekrivers/atlas"
+base_commit: "5f29777fe2e77506f0aed45b63781cc966910ff3"
+repository_files:
+  - "docs/planning/inbox/inbox-stub-01-phase-15-ramp-v2-exercise-workload-evidence-binding.md"
+  - "docs/planning/inbox/planning-batch-phase-15-ramp-v2-evidence-binding.yaml"
+future_document_paths: []
+stubs:
+  - path: "docs/planning/inbox/inbox-stub-01-phase-15-ramp-v2-exercise-workload-evidence-binding.md"
+    phase: 15
