@@ -20,6 +20,10 @@ an AI assistant; the reviewer recommends, only the operator approves
 - If any session-level instruction conflicts with `AGENTS.md` or the
   canonical documents, the repository wins; `docs/MANIFEST.md`
   resolves conflicts among documents.
+- For programme-level review or operator investigation, read
+  `operational-practice.md` before reasoning from live state. Record the exact
+  repository, ticket, PR and relevant database/runtime identities; a prior chat
+  or completion report is context, not ground truth.
 
 ## The loop
 
@@ -42,15 +46,24 @@ an AI assistant; the reviewer recommends, only the operator approves
 
 ## Branch verification mechanics
 
-- Fresh clone, checked out at the pushed branch head. Record the
-  head commit SHA in the verdict.
-- Full gate sweep, in order: `ruff check` → `ruff format --check` →
-  `mypy atlas tests` → `lint-imports` → `pytest` →
-  `pre-commit run --all-files`. Exact commands and their meaning:
-  `local-development.md`.
-- `ATLAS_LIVE_TESTS` must be `0` or unset for the sweep. Live
-  acceptance tests are opt-in only and are never part of a merge
-  verdict; verification runs at CI parity.
+- Fresh clone, checked out at the pushed branch head. Record the exact base
+  and head commit SHAs in the verdict and enumerate the complete base-to-head
+  changed-path identity set (including both sides of renames/copies).
+- Reproduce or independently calculate the repository-owned
+  `atlas validation-plan` for those exact identities, all changed paths, every
+  explicit ticket validation requirement and every ticket-declared test file.
+  Require the plan's read-only diff/test proofs to pass.
+- Run every ordered command and explicit test target selected by that exact
+  plan. Do **not** add a repository-wide local sweep as a review ritual:
+  `full-sweep` runs only when the deterministic plan selects it or the operator
+  explicitly requires it. Never narrow a selected plan.
+- `ATLAS_LIVE_TESTS` remains `0` or unset unless an explicitly operator-owned
+  live test is the task. Reviewer-local results are confidence evidence; the
+  complete required CI set at the published exact head remains system-tier
+  authority.
+- Additional targeted diagnostic checks are permitted when review needs them,
+  but label them diagnostic. They neither replace a selected plan command nor
+  create system-tier authority.
 - **Seeded-defect probes.** Each acceptance criterion is proven
   falsifiable by seeding a defect that must make it fail — the probe
   must bite before the criterion counts as verified. Seed the smallest
@@ -67,9 +80,11 @@ an AI assistant; the reviewer recommends, only the operator approves
   `tests/test_acceptance.py` and the export count in
   `tests/test_schemas_export.py` are confirmed unchanged on every
   ticket, or the change is named in the approved plan.
-- **PR title.** The pull request title carries the ticket key in the
-  form `(ATLAS-NN)`. Title, not `Closes` body lines — body-line
-  linkage silently under-covers.
+- **PR title.** Normal delivery PR titles carry a real ticket key, such as
+  `(ATLAS-142)`. Keyless records, runbook or stub-landing PR titles may instead
+  carry a fresh `ATLAS-00xM` meta label. Meta labels are non-keys and
+  deliberately close no ticket. Title provenance is title-only: body
+  `Closes ATLAS-NN` text does not satisfy the gate.
 - **Evidence tiers.** Everything the reviewer runs locally is
   reviewer-tier; the standard verdict is approve-pending-CI. Final
   close requires the system-tier record with the full pin triple —

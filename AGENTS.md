@@ -18,7 +18,14 @@ needs:
 - Planning (plan/apply, reconciler, gates) →
   `docs/atlas/planning-engine-specification.md`
 - Delivery programme → `docs/atlas/implementation-roadmap.md`
-- Governing decisions → `docs/decisions/` (ADR-0001..0009; ADR-0004
+- Operational practice / fresh-agent bootstrap →
+  `docs/runbooks/operational-practice.md`
+- Operator environment / credentials / runtime facts →
+  `docs/runbooks/operator-environment.md`
+- Symptom-driven diagnosis → `docs/runbooks/troubleshooting.md`
+- Review and acceptance → `docs/runbooks/review-doctrine.md`,
+  `docs/runbooks/reviewer-session.md`, `docs/runbooks/pr-acceptance.md`
+- Governing decisions → `docs/decisions/` (ADR-0001..0011; ADR-0004
   retired, number not reused)
 - Day-one setup → `docs/atlas/bootstrap-guide.md`
 
@@ -26,6 +33,11 @@ needs:
 
 - Treat `docs/atlas/atlas-master-plan.md` as the single canonical master
   plan; the MANIFEST resolves conflicts.
+- For programme-level investigation, review, diagnosis, minting or live
+  milestone work, read `docs/runbooks/operational-practice.md` first. Establish
+  exact repository, ticket, PR, database and runtime identities before making
+  claims about current state; prior conversations and cached reports are
+  working context, not authority.
 - Documents are the source of truth for intent; the database for
   operational state; `docs/planning/` files are renders (ADR-0006).
 - Never hand-edit `docs/planning/`; only `atlas apply` writes there
@@ -61,6 +73,10 @@ needs:
   poll CI or wait for review. `CI Pending` must remain absent from Symphony's
   active states; only the system-tier reconciler owns its exit to `Review
   Required` or `Changes Requested`.
+- If a substantial session reveals a durable operating rule, diagnosis
+  pattern or environment fact that a fresh agent would otherwise have to
+  rediscover, put it in the owning canonical document/runbook or Atlas lesson
+  before relying on that knowledge in a later session.
 - Gate conduct: a plan gate is a single presentation, not a conversation.
   Present your understanding, the plan, and any working assumptions, then
   stop once. Resolve minor ambiguity by stating an assumption the operator
