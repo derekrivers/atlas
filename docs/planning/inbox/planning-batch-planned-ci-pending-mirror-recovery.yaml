@@ -1,0 +1,10 @@
+schema_version: 1
+repository: "derekrivers/atlas"
+base_commit: "008ece783b2b5f5a1453ae071e88005f42151c47"
+repository_files:
+  - "docs/planning/inbox/inbox-stub-01-planned-ci-pending-mirror-recovery.md"
+  - "docs/planning/inbox/planning-batch-planned-ci-pending-mirror-recovery.yaml"
+future_document_paths: []
+stubs:
+  - path: "docs/planning/inbox/inbox-stub-01-planned-ci-pending-mirror-recovery.md"
+    phase: 15
