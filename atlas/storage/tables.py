@@ -569,6 +569,84 @@ class AdmissionRunRow(Base):
     created_by_id: Mapped[str] = mapped_column(sa.Text)
 
 
+class Atlas280BootstrapRecoveryReceiptRow(Base):
+    """Append-only proof for the one ruled ATLAS-280 mirror repair."""
+
+    __tablename__ = "atlas_280_bootstrap_recovery_receipts"
+    __table_args__ = (
+        sa.UniqueConstraint("blocker_ticket_id"),
+        sa.UniqueConstraint("admission_run_id"),
+        sa.UniqueConstraint("pm_sync_receipt_id"),
+        sa.CheckConstraint(
+            "schema_version = 'atlas-280-bootstrap-mirror-recovery-v1'",
+            name="atlas_280_bootstrap_recovery_schema_version",
+        ),
+        sa.CheckConstraint(
+            "blocker_ticket_key = 'ATLAS-280' AND repair_ticket_key = 'ATLAS-281'",
+            name="atlas_280_bootstrap_recovery_fixed_pair",
+        ),
+        sa.CheckConstraint(
+            "blocker_linear_identifier = 'ATL-456' AND "
+            "repair_linear_identifier = 'ATL-457'",
+            name="atlas_280_bootstrap_recovery_fixed_linear_pair",
+        ),
+        sa.CheckConstraint(
+            "source_local_status = 'planned' AND recovered_local_status = 'ci_pending'",
+            name="atlas_280_bootstrap_recovery_status_edge",
+        ),
+        sa.CheckConstraint(
+            "publication_repository_owner = 'derekrivers' AND "
+            "publication_repository_name = 'atlas' AND publication_pr_number = 350",
+            name="atlas_280_bootstrap_recovery_publication",
+        ),
+        sa.CheckConstraint(
+            "policy_revision = 17 AND created_by_type = 'human'",
+            name="atlas_280_bootstrap_recovery_authority",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(sa.Uuid, primary_key=True)
+    schema_version: Mapped[str] = mapped_column(sa.Text)
+    product_id: Mapped[UUID] = mapped_column(sa.Uuid, sa.ForeignKey("products.id"))
+    blocker_ticket_id: Mapped[UUID] = mapped_column(
+        sa.Uuid, sa.ForeignKey("tickets.id")
+    )
+    blocker_ticket_key: Mapped[str] = mapped_column(sa.Text)
+    blocker_linear_issue_id: Mapped[str] = mapped_column(sa.Text)
+    blocker_linear_identifier: Mapped[str] = mapped_column(sa.Text)
+    blocker_linear_state_id: Mapped[str] = mapped_column(sa.Text)
+    repair_ticket_id: Mapped[UUID] = mapped_column(sa.Uuid, sa.ForeignKey("tickets.id"))
+    repair_ticket_key: Mapped[str] = mapped_column(sa.Text)
+    repair_linear_issue_id: Mapped[str] = mapped_column(sa.Text)
+    repair_linear_identifier: Mapped[str] = mapped_column(sa.Text)
+    repair_linear_state_id: Mapped[str] = mapped_column(sa.Text)
+    source_local_status: Mapped[str] = mapped_column(sa.Text)
+    recovered_local_status: Mapped[str] = mapped_column(sa.Text)
+    admission_run_id: Mapped[UUID] = mapped_column(
+        sa.Uuid, sa.ForeignKey("admission_runs.id")
+    )
+    pm_sync_receipt_id: Mapped[UUID] = mapped_column(
+        sa.Uuid, sa.ForeignKey("pm_sync_receipts.id")
+    )
+    publication_repository_owner: Mapped[str] = mapped_column(sa.Text)
+    publication_repository_name: Mapped[str] = mapped_column(sa.Text)
+    publication_pr_number: Mapped[int] = mapped_column(sa.Integer)
+    publication_head: Mapped[str] = mapped_column(sa.Text)
+    historical_debt_item_id: Mapped[UUID] = mapped_column(
+        sa.Uuid, sa.ForeignKey("debt_items.id")
+    )
+    board_fingerprint: Mapped[str] = mapped_column(sa.Text)
+    policy_id: Mapped[UUID] = mapped_column(
+        sa.Uuid, sa.ForeignKey("delivery_admission_policy_revisions.id")
+    )
+    policy_revision: Mapped[int] = mapped_column(sa.Integer)
+    policy_fingerprint: Mapped[str] = mapped_column(sa.Text)
+    accepted_main_commit: Mapped[str] = mapped_column(sa.Text)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime())
+    created_by_type: Mapped[str] = mapped_column(sa.Text)
+    created_by_id: Mapped[str] = mapped_column(sa.Text)
+
+
 class AdmissionLeaseRow(Base):
     """One expiring, product-scoped owner of the PM admission write lane."""
 
@@ -931,6 +1009,7 @@ def _drop_sqlite_trigger(table_name: str, operation: str) -> sa.DDL:
 
 _APPEND_ONLY_TABLES = (
     cast(sa.Table, AdmissionRunRow.__table__),
+    cast(sa.Table, Atlas280BootstrapRecoveryReceiptRow.__table__),
     cast(sa.Table, CIHandoffReconciliationRow.__table__),
     cast(sa.Table, DeliveryAdmissionPolicyRevisionRow.__table__),
     cast(sa.Table, LessonDispositionResultSnapshotRow.__table__),

@@ -11,6 +11,12 @@ from atlas.storage.admission_coordination import (
     AdmissionWriteFenceError,
 )
 from atlas.storage.apply import apply_backlog
+from atlas.storage.atlas_280_bootstrap_recovery import (
+    Atlas280BootstrapApplyRecord,
+    Atlas280BootstrapRecoveryRepo,
+    Atlas280BootstrapStorageCode,
+    Atlas280BootstrapStorageError,
+)
 from atlas.storage.ci_handoff_coordination import (
     CIHandoffCoordinationRepo,
     CIHandoffWriteFence,
@@ -73,6 +79,10 @@ __all__ = [
     "AdmissionWriteFence",
     "AdmissionWriteFenceError",
     "AgentRunRepo",
+    "Atlas280BootstrapApplyRecord",
+    "Atlas280BootstrapRecoveryRepo",
+    "Atlas280BootstrapStorageCode",
+    "Atlas280BootstrapStorageError",
     "CIHandoffCoordinationRepo",
     "CIHandoffReconciliationRepo",
     "CIHandoffWriteFence",

@@ -431,6 +431,39 @@ DOCUMENTED_COLUMNS: dict[str, dict[str, tuple[bool, str | None]]] = {
         "created_by_type": (NN, None),
         "created_by_id": (NN, None),
     },
+    # §5.18 one-time exact-pair ATLAS-280 bootstrap recovery proof.
+    "atlas_280_bootstrap_recovery_receipts": {
+        "id": (NN, None),
+        "schema_version": (NN, None),
+        "product_id": (NN, None),
+        "blocker_ticket_id": (NN, None),
+        "blocker_ticket_key": (NN, None),
+        "blocker_linear_issue_id": (NN, None),
+        "blocker_linear_identifier": (NN, None),
+        "blocker_linear_state_id": (NN, None),
+        "repair_ticket_id": (NN, None),
+        "repair_ticket_key": (NN, None),
+        "repair_linear_issue_id": (NN, None),
+        "repair_linear_identifier": (NN, None),
+        "repair_linear_state_id": (NN, None),
+        "source_local_status": (NN, None),
+        "recovered_local_status": (NN, None),
+        "admission_run_id": (NN, None),
+        "pm_sync_receipt_id": (NN, None),
+        "publication_repository_owner": (NN, None),
+        "publication_repository_name": (NN, None),
+        "publication_pr_number": (NN, None),
+        "publication_head": (NN, None),
+        "historical_debt_item_id": (NN, None),
+        "board_fingerprint": (NN, None),
+        "policy_id": (NN, None),
+        "policy_revision": (NN, None),
+        "policy_fingerprint": (NN, None),
+        "accepted_main_commit": (NN, None),
+        "created_at": (NN, None),
+        "created_by_type": (NN, None),
+        "created_by_id": (NN, None),
+    },
     # Phase-15 single-write admission coordination state.
     "admission_leases": {
         "product_id": (NN, None),
@@ -533,6 +566,15 @@ DOCUMENTED_FOREIGN_KEYS: dict[str, dict[str, str]] = {
         "policy_id": "delivery_admission_policy_revisions",
         "selected_ticket_id": "tickets",
     },
+    "atlas_280_bootstrap_recovery_receipts": {
+        "product_id": "products",
+        "blocker_ticket_id": "tickets",
+        "repair_ticket_id": "tickets",
+        "admission_run_id": "admission_runs",
+        "pm_sync_receipt_id": "pm_sync_receipts",
+        "historical_debt_item_id": "debt_items",
+        "policy_id": "delivery_admission_policy_revisions",
+    },
     "admission_leases": {"product_id": "products"},
     "admission_eligibility": {
         "ticket_id": "tickets",
@@ -567,6 +609,11 @@ DOCUMENTED_UNIQUES: dict[str, list[list[str]]] = {
     "acceptance_sessions": [["creation_idempotency_key_identity"]],
     "delivery_admission_policy_revisions": [["product_id", "revision"]],
     "admission_runs": [],
+    "atlas_280_bootstrap_recovery_receipts": [
+        ["admission_run_id"],
+        ["blocker_ticket_id"],
+        ["pm_sync_receipt_id"],
+    ],
     "admission_leases": [],
     "admission_eligibility": [],
     "admission_write_fences": [["admission_run_id"]],
@@ -891,7 +938,7 @@ def test_pm_sync_receipt_migration_preserves_ticket_definition_cursors(
 def test_alembic_upgrades_fresh_db_and_matches_metadata(tmp_path: Path) -> None:
     url = f"sqlite:///{tmp_path}/migrated.db"
     config = _alembic_config(url)
-    assert ScriptDirectory.from_config(config).get_heads() == ["0032"]
+    assert ScriptDirectory.from_config(config).get_heads() == ["0033"]
     command.upgrade(config, "head")
 
     engine = sa.create_engine(url)
@@ -1379,12 +1426,70 @@ def test_ci_handoff_migration_compiles_for_postgresql() -> None:
     assert "CREATE TRIGGER ci_handoff_reconciliations_append_only" in migration_sql
 
 
+def test_atlas_280_bootstrap_receipt_migration_installs_and_removes_guards(
+    tmp_path: Path,
+) -> None:
+    url = f"sqlite:///{tmp_path}/atlas-280-bootstrap.db"
+    config = _alembic_config(url)
+    command.upgrade(config, "0032")
+    engine = sa.create_engine(url)
+    with engine.connect() as connection:
+        assert (
+            "atlas_280_bootstrap_recovery_receipts"
+            not in sa.inspect(connection).get_table_names()
+        )
+
+    command.upgrade(config, "0033")
+    with engine.connect() as connection:
+        inspector = sa.inspect(connection)
+        assert "atlas_280_bootstrap_recovery_receipts" in inspector.get_table_names()
+        trigger_names = {
+            row[0]
+            for row in connection.execute(
+                sa.text(
+                    "SELECT name FROM sqlite_master WHERE type = 'trigger' "
+                    "AND name LIKE 'atlas_280_bootstrap_recovery_receipts_no_%'"
+                )
+            )
+        }
+    assert trigger_names == {
+        "atlas_280_bootstrap_recovery_receipts_no_update",
+        "atlas_280_bootstrap_recovery_receipts_no_delete",
+    }
+
+    command.downgrade(config, "0032")
+    with engine.connect() as connection:
+        assert (
+            "atlas_280_bootstrap_recovery_receipts"
+            not in sa.inspect(connection).get_table_names()
+        )
+
+
+def test_atlas_280_bootstrap_receipt_migration_compiles_for_postgresql() -> None:
+    output = StringIO()
+    config = Config(str(REPO_ROOT / "alembic.ini"), output_buffer=output)
+    config.set_main_option(
+        "script_location", str(REPO_ROOT / "atlas" / "storage" / "migrations")
+    )
+    config.set_main_option("sqlalchemy.url", "postgresql://atlas:atlas@localhost/atlas")
+
+    command.upgrade(config, "0032:0033", sql=True)
+
+    migration_sql = output.getvalue()
+    assert "-- Running upgrade 0032 -> 0033" in migration_sql
+    assert "CREATE TABLE atlas_280_bootstrap_recovery_receipts" in migration_sql
+    assert (
+        "CREATE TRIGGER atlas_280_bootstrap_recovery_receipts_append_only"
+        in migration_sql
+    )
+
+
 def test_acceptance_evidence_receipt_outcomes_migrate_without_losing_guards(
     tmp_path: Path,
 ) -> None:
     url = f"sqlite:///{tmp_path}/acceptance-evidence-outcomes.db"
     config = _alembic_config(url)
-    assert ScriptDirectory.from_config(config).get_heads() == ["0032"]
+    assert ScriptDirectory.from_config(config).get_heads() == ["0033"]
     command.upgrade(config, "head")
 
     engine = sa.create_engine(url)
