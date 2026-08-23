@@ -3895,9 +3895,12 @@ Next sequence:
 12. run `atlas plan --stubs-only`;
 13. operator reviews full proposal;
 14. `atlas apply` mints keys;
-15. freeze the ATLAS-253 workload manifest before results;
-16. restart governed Symphony only when runtime, policy, workload and measurement prerequisites are coherent;
-17. resume the ramp;
+15. accept the Phase 15 v2 exercise-workload evidence-binding repair, then
+    separately re-ratify and freeze the exact live v2 manifest before results;
+16. restart governed Symphony only when runtime, policy, v2 workload and
+    measurement prerequisites are coherent;
+17. resume the ramp from the operator-paused Attempt-3 ceiling-one /
+    `max_turns: 10` identity;
 18. keep Phases 17–22 unticketed until their rolling-wave design gates.
 
 The authority chain remains:
@@ -3935,7 +3938,9 @@ Experiment F resolves the Phase 16 interface-ownership design direction sufficie
 - `consume/consume` does not serialize by itself;
 - `change/consume`, `change/change`, stale and ownerless material interfaces fail conservative unless compatibility/topology is proven;
 - stronger dedicated controls remain authoritative and are referenced rather than duplicated;
-- Phase 16 candidates used as ATLAS-253 workloads require this additional pre-certification before manifest freeze, without changing the Phase 15 contract.
+- Phase 16 candidates used as ATLAS-253 workloads require this additional
+  pre-certification before manifest freeze; it remains separate from the later
+  Phase 15 v2 protected-exercise binding contract.
 
 The next programme action is now to write the dedicated **Phase 16 design** from this cumulative horizon. Experiment G remains optional at this stage exactly as previously ruled.
 
@@ -3955,8 +3960,21 @@ The next authority steps are now:
 3. run `atlas plan --stubs-only`;
 4. perform an aggressive operator/architecture review of every proposed ticket, splitting or rejecting anything that violates the one-concept/one-seam rule or resembles a Phase 15.5 mega-ticket;
 5. only after review, run `atlas apply` to mint real keys;
-6. interface/path/lane/dependency pre-certify the eligible authority-neutral Track-A subset for ATLAS-253;
-7. freeze the single ATLAS-253 workload manifest before observation;
-8. restart governed Symphony only when the Phase 15 runtime/policy/workload measurement prerequisites are coherent;
-9. resume the `1 -> 3 -> 5 -> 7 -> 10` ramp without changing the Phase 15 contract;
-10. keep later Phase 16 activation/integration and Phases 17–22 behind their own evidence gates.
+6. interface/path/lane/dependency pre-certify the eligible authority-neutral
+   Track-A subset for ATLAS-253;
+7. accept the Phase 15 v2 evidence-binding repair, including its pinned
+   registry classification and exact Gate 1/3/5/7 protected-exercise role
+   contract;
+8. separately re-ratify and freeze the single live ATLAS-253 v2 manifest before
+   observation;
+9. restart governed Symphony only when the Phase 15 runtime/policy/v2-workload
+   measurement prerequisites are coherent;
+10. resume the `1 -> 3 -> 5 -> 7 -> 10` ramp from the operator-paused Attempt-3
+    ceiling-one / `max_turns: 10` identity;
+11. keep later Phase 16 activation/integration and Phases 17–22 behind their
+    own evidence gates.
+
+The v1 Attempt-1/Attempt-2 ramp records remain immutable historical replay and
+cannot establish a future PASS. Repository v2 fixtures prove the validator
+contract only: they neither create the later live protected-lane workloads nor
+perform the operator's separate live-manifest re-ratification.

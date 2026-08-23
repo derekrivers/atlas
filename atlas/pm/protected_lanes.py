@@ -204,6 +204,22 @@ class ProtectedLaneClassification:
         return hashlib.sha256(self.canonical_bytes()).hexdigest()
 
 
+@dataclass(frozen=True)
+class ProtectedLaneClassifierInput:
+    """Exact trusted declarations consumed by the repository classifier.
+
+    This pure materialisation seam lets bounded offline validators classify an
+    already selected ticket projection without manufacturing unrelated
+    persistence and lifecycle fields on :class:`Ticket`.
+    """
+
+    ticket_key: str
+    component: str | None = None
+    tags: tuple[str, ...] = ()
+    relevant_docs: tuple[str, ...] = ()
+    documentation_requirements: tuple[str, ...] = ()
+
+
 def _string_list(value: object, *, field: str) -> list[str]:
     if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
         raise ValueError(f"{field} must be a string list")
@@ -345,13 +361,13 @@ def load_packaged_protected_lane_registry() -> ProtectedLaneRegistryLoadResult:
 
 
 def _ticket_declarations(
-    ticket: Ticket,
+    classifier_input: ProtectedLaneClassifierInput,
 ) -> tuple[tuple[tuple[str, str], ...], tuple[ProtectedLaneClassificationIssue, ...]]:
     declarations: set[tuple[str, str]] = set()
     issues: set[ProtectedLaneClassificationIssue] = set()
 
-    if ticket.component is not None:
-        component = _canonical_selector(ticket.component)
+    if classifier_input.component is not None:
+        component = _canonical_selector(classifier_input.component)
         if component is None:
             issues.add(
                 ProtectedLaneClassificationIssue(
@@ -364,7 +380,7 @@ def _ticket_declarations(
             declarations.add(("component", component))
 
     canonical_tags: dict[str, str] = {}
-    for raw in ticket.tags:
+    for raw in classifier_input.tags:
         tag = _canonical_selector(raw)
         if tag is None:
             issues.add(
@@ -385,7 +401,10 @@ def _ticket_declarations(
         canonical_tags[tag] = raw
         declarations.add(("tag", tag))
 
-    for raw in (*ticket.relevant_docs, *ticket.documentation_requirements):
+    for raw in (
+        *classifier_input.relevant_docs,
+        *classifier_input.documentation_requirements,
+    ):
         path = _canonical_path(raw)
         if path is None:
             issues.add(
@@ -400,12 +419,13 @@ def _ticket_declarations(
     return tuple(sorted(declarations)), tuple(sorted(issues))
 
 
-def classify_ticket_protected_lanes(
-    ticket: Ticket, registry: ProtectedLaneRegistry
+def classify_protected_lane_inputs(
+    classifier_input: ProtectedLaneClassifierInput,
+    registry: ProtectedLaneRegistry,
 ) -> ProtectedLaneClassification:
-    """Classify from component, tags and declared paths; never inspect prose."""
+    """Classify exact component, tag and path inputs; never inspect prose."""
 
-    declarations, initial_issues = _ticket_declarations(ticket)
+    declarations, initial_issues = _ticket_declarations(classifier_input)
     issues = set(initial_issues)
     matches: dict[str, set[tuple[str, str, str]]] = {}
     for kind, declaration in declarations:
@@ -430,9 +450,26 @@ def classify_ticket_protected_lanes(
     return ProtectedLaneClassification(
         registry_version=registry.version,
         registry_fingerprint=registry.fingerprint,
-        ticket_key=ticket.key,
+        ticket_key=classifier_input.ticket_key,
         matches=ordered_matches,
         issues=tuple(sorted(issues)),
+    )
+
+
+def classify_ticket_protected_lanes(
+    ticket: Ticket, registry: ProtectedLaneRegistry
+) -> ProtectedLaneClassification:
+    """Classify one materialised ticket through the pure declaration seam."""
+
+    return classify_protected_lane_inputs(
+        ProtectedLaneClassifierInput(
+            ticket_key=ticket.key,
+            component=ticket.component,
+            tags=tuple(ticket.tags),
+            relevant_docs=tuple(ticket.relevant_docs),
+            documentation_requirements=tuple(ticket.documentation_requirements),
+        ),
+        registry,
     )
 
 
@@ -450,10 +487,12 @@ __all__ = [
     "ProtectedLaneClassification",
     "ProtectedLaneClassificationCode",
     "ProtectedLaneClassificationIssue",
+    "ProtectedLaneClassifierInput",
     "ProtectedLaneMatch",
     "ProtectedLaneRegistry",
     "ProtectedLaneRegistryLoadResult",
     "ProtectedLaneRule",
+    "classify_protected_lane_inputs",
     "classify_ticket_protected_lanes",
     "load_packaged_protected_lane_registry",
     "load_protected_lane_registry_bytes",

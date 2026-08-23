@@ -282,6 +282,14 @@ the genuine exact-head handoff for contributor head
 ATLAS-253; the synthetic/no-rewrite route remains retired and the disabled
 Linear `PR opened → In Progress` automation must stay disabled.
 
+**Current checkpoint (22 August 2026): ATLAS-253 is operator-paused at the
+proven Attempt-3 ceiling-one / `max_turns: 10` runtime identity.** No new gate
+may start from the historical v1 workload contract. The
+`phase-15-ramp-workload-v2` / `phase-15-ramp-gate-receipt-v2` implementation
+must first be accepted; the operator must then separately re-ratify one exact
+live v2 manifest before resuming. Repository fixtures exercise the contract
+only and are not that re-ratification.
+
 Migration `0025` and policy revision one, whose historical ceiling is three,
 remain immutable history and must not be cited as the current live policy. At
 each gate, including Gate 1, the operator keeps admission paused while proving
@@ -395,14 +403,30 @@ readback succeeds may the operator activate a policy revision coherent with
 the restored ceiling and resume. Never infer rollback from a branch edit, a
 checkout read or a service restart result alone.
 
-After this procedure support is accepted, the operator ratifies a workload
-record containing more than ten actual workload identities, dependency
-independence, disjoint ordinary touched-path families, protected-lane classes,
-predeclared fault/contention exercises and numerical operational limits. Do not claim
-ticket keys that the key authority has not issued; a hand-dispatched workload
-may use a non-key meta identity. The JSON remains offline validator input and
-cannot carry operator authority. Fingerprint that exact record before
-measurement:
+After the v2 implementation is accepted, the operator separately ratifies a
+`phase-15-ramp-workload-v2` record. It keeps more than ten ordinary,
+dependency-independent workloads with unique path families, disjoint touched
+paths and mutually independent registry-known protected lanes. A separate
+bounded `exercise_workloads` collection declares the real `ATLAS-N` ticket,
+stable exercise-workload identity, exact path family/paths, component, tags,
+relevant documents and documentation requirements for each deliberate
+protected-lane exercise. Every exercise workload is explicitly excluded from
+ordinary throughput, carries the classifier's canonical reconstruction and
+classification fingerprint, and is classified against the manifest's exact
+digest-pinned repository registry version/fingerprint.
+
+The separate `exercise_bindings` collection has exactly one Gate 1
+`protected_lane_ci_pending_hold` owner, distinct Gate 3
+`protected_lane_contention` owner/blocked-candidate roles, one Gate 5
+`protected_lane_with_unrelated_parallelism` owner, and separate Gate 7 owners
+for `risk_component_protected_lanes_under_load` and
+`ci_pending_lane_ownership`. The Gate 3 pair must recompute into the same lane;
+any other same-lane exercise pair is invalid. Every exercise workload is bound
+exactly once, so missing, duplicate, substituted and orphaned identities fail
+closed. Do not claim ticket keys that the key authority has not issued, and
+never use a non-key meta identity for a protected-lane exercise. The JSON
+remains offline validator input and cannot
+carry operator authority. Fingerprint that exact record before measurement:
 
 ```bash
 uv run python scripts/phase_15_delivery_control_milestone.py \
@@ -410,9 +434,9 @@ uv run python scripts/phase_15_delivery_control_milestone.py \
 ```
 
 For every PASS or FAIL, the operator posts one comment on the single milestone
-PR. Its first line is `atlas:symphony-ceiling-gate v1`; the comment then embeds
+PR. Its first line is `atlas:symphony-ceiling-gate v2`; the comment then embeds
 the bounded canonical JSON receipt accepted by the read-only validator. Every
-receipt uses schema `phase-15-ramp-gate-receipt-v1` and contains, with no
+receipt uses schema `phase-15-ramp-gate-receipt-v2` and contains, with no
 omissions:
 
 - receipt ID, gate, outcome, manifest fingerprint, previous-receipt link,
@@ -446,7 +470,13 @@ omissions:
 - ambiguous/fenced/conflicting writes, CI Pending reactivations, prohibited
   authority, repository/external mutation and secret-retention counts, plus an
   evidence identity and PASS/FAIL for every common invariant and gate-specific
-  exercise declared by the harness.
+  exercise declared by the harness; and
+- for every Gate 1/3/5/7 protected-lane exercise, the exact gate, exercise,
+  exercise-workload identity, real ticket key, bounded role, recomputed lane,
+  observed `CI Pending`/held status, evidence identity and exact manifest
+  fingerprint. Each aggregate exercise evidence identity must bind that
+  exercise's rows, every owner must be the exact lane occupant and any blocked
+  candidate must not appear as an occupant.
 
 The comment also carries this bounded human-readable index, projected exactly
 from the canonical JSON rather than entered as a second source of truth:
@@ -484,6 +514,14 @@ closure report references all five comment links. A screenshot, configured
 scalar, aggregate count or agent assertion is not gate evidence. Raw Linear or
 GitHub payloads, exception text, credentials, credential canaries and workspace
 paths are never copied into a receipt.
+
+The v1 manifest and unmodified Attempt-1/Attempt-2 v1 receipts remain
+deterministically replayable as `HISTORICAL_RECEIPT_REPLAY`. Their retained
+comments keep the original first line `atlas:symphony-ceiling-gate v1`; do not
+rewrite it to the v2 tag. The replay result is
+historical only and can never return exit 0 or establish a future live PASS.
+Do not rewrite those receipts into v2; live proof resumes only from the
+separately re-ratified v2 manifest.
 
 ### Exact edit and common preflight
 
@@ -602,8 +640,9 @@ at every failure boundary.
 
 ### Gate 1 — serialized baseline admission, pause and rework
 
-Prerequisites are the supported VPS procedure above, the
-fingerprinted workload record of more than ten independent workloads, the
+Prerequisites are the supported VPS procedure above, the separately
+re-ratified v2 workload record with more than ten independent ordinary
+workloads, every exact declared Gate 1/3/5/7 protected-exercise binding, the
 Phase 15 admission/CI/acceptance observability surfaces, green deterministic
 fixtures, merged Phase 15.5 closure and both `origin/main` and the unmodified
 milestone branch declaring one. The running VPS and active policy must
@@ -629,6 +668,12 @@ lane contention hold admission; rework remains unstarved; and sibling merges
 create recoverable stale acceptance authority. Gate 3 PASS is the only
 authority to edit the branch from 3 to 5.
 
+The contention proof is valid only when the receipt names the manifest-bound,
+distinct owner and blocked-candidate workloads, both recompute into the same
+repository lane, the owner alone appears in that lane's occupancy and both
+evidence rows bind the exact v2 manifest fingerprint. A lane hold counter or
+aggregate passed flag without those identities is invalid input, not PASS.
+
 ### Gate 5 — stable review and stale-write protection
 
 Gate 5 cannot begin without the Gate 3 PASS receipt and the exact `3 -> 5`
@@ -643,6 +688,11 @@ working/CI/review load. A stale decision and ambiguous write must fail closed
 behind a durable fence. Gate 5 PASS is the only authority to edit the branch
 from 5 to 7.
 
+The protected-lane observation must name the manifest-bound Gate 5 owner and
+bind its workload, ticket, lane, `CI Pending` occupancy, evidence and exact v2
+manifest fingerprint. Generic passed evidence and aggregate parallelism or
+hold counters cannot establish this exercise.
+
 ### Gate 7 — lanes, recovery and acceptance capacity
 
 Gate 7 cannot begin without the Gate 5 PASS receipt, including its stable-review
@@ -652,6 +702,13 @@ risk/component/protected lanes remain bounded, `CI Pending` retains protected-
 lane ownership while workers are reused, Changes Requested work recovers,
 lower-ranked feasible work cannot bypass the selected admission, and sibling-
 merge staleness remains recoverable through the operator rebase lane.
+
+Both protected-lane observations must independently name their manifest-bound
+Gate 7 owner: one for `risk_component_protected_lanes_under_load` and one for
+`ci_pending_lane_ownership`. Each exercise digest binds its own workload row,
+real ticket, lane, `CI Pending` occupancy, evidence identity and exact v2
+manifest fingerprint; generic exercise rows alone cannot establish either
+exercise.
 
 Ten additionally requires Phase 14 to be closed before Gate 10 starts and
 adequate exact-head acceptance throughput in the Gate 7 window. Adequate means
