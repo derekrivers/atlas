@@ -17,6 +17,7 @@ from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
+from uuid import UUID
 
 from atlas.core.models.delivery_admission_policy import DeliveryAdmissionPolicySpec
 from atlas.pm.protected_lanes import (
@@ -31,9 +32,10 @@ MILESTONE_BRANCH = "phase-15-atlas-253-ceiling-ramp"
 GATE_LEVELS = (1, 3, 5, 7, 10)
 MANIFEST_SCHEMA_V1 = "phase-15-ramp-workload-v1"
 MANIFEST_SCHEMA_V2 = "phase-15-ramp-workload-v2"
+MANIFEST_SCHEMA_V3 = "phase-15-ramp-workload-v3"
 RECEIPT_SCHEMA_V1 = "phase-15-ramp-gate-receipt-v1"
 RECEIPT_SCHEMA_V2 = "phase-15-ramp-gate-receipt-v2"
-REPORT_SCHEMA = "phase-15-ramp-report-v2"
+REPORT_SCHEMA = "phase-15-ramp-report-v3"
 MAX_MANIFEST_BYTES = 60 * 1024
 MAX_RECEIPT_BYTES = 60 * 1024
 MAX_REPORT_BYTES = 128 * 1024
@@ -53,6 +55,47 @@ _PROTECTED_EXERCISE_BINDINGS = (
     (7, "ci_pending_lane_ownership", "owner"),
     (7, "risk_component_protected_lanes_under_load", "owner"),
 )
+
+_V3_EXERCISE_ROLES: Mapping[str, tuple[int, str, str, str]] = {
+    "gate_1_protected_lane_ci_pending_hold_owner": (
+        1,
+        "protected_lane_ci_pending_hold",
+        "owner",
+        "workflow-configuration",
+    ),
+    "gate_3_protected_lane_contention_blocked_candidate": (
+        3,
+        "protected_lane_contention",
+        "blocked_candidate",
+        "operator-admission-hotspot",
+    ),
+    "gate_3_protected_lane_contention_owner": (
+        3,
+        "protected_lane_contention",
+        "owner",
+        "operator-admission-hotspot",
+    ),
+    "gate_5_protected_lane_with_unrelated_parallelism_owner": (
+        5,
+        "protected_lane_with_unrelated_parallelism",
+        "owner",
+        "database-migrations",
+    ),
+    "gate_7_ci_pending_lane_ownership_owner": (
+        7,
+        "ci_pending_lane_ownership",
+        "owner",
+        "planning-state",
+    ),
+    "gate_7_risk_component_protected_lanes_under_load_owner": (
+        7,
+        "risk_component_protected_lanes_under_load",
+        "owner",
+        "generated-contracts",
+    ),
+}
+
+_RISK_LEVELS = {"low", "medium", "high", "critical"}
 
 COMMON_INVARIANTS = (
     "configured_capacity_bound",
@@ -153,6 +196,7 @@ GATE_EXERCISES: Mapping[int, tuple[str, ...]] = {
 
 _HEX_RE = re.compile(r"^[0-9a-f]+$")
 _REAL_TICKET_KEY_RE = re.compile(r"^ATLAS-[1-9][0-9]*$")
+_LINEAR_IDENTIFIER_RE = re.compile(r"^ATL-[1-9][0-9]*$")
 _SECRET_VALUE_RE = re.compile(
     r"(?i)(bearer\s+[a-z0-9._-]+|github_pat_|gh[pousr]_|sk-[a-z0-9]|"
     r"credential[-_ ]?canary|secret[-_ ]?canary|"
@@ -234,6 +278,75 @@ def _sha(value: object, *, field: str, length: int = 40) -> str:
     if len(result) != length or _HEX_RE.fullmatch(result) is None:
         raise ValueError(f"{field} must be a lowercase {length}-character digest")
     return result
+
+
+def _atlas_key(value: object, *, field: str) -> str:
+    key = _text(value, field=field)
+    if _REAL_TICKET_KEY_RE.fullmatch(key) is None:
+        raise ValueError(f"{field} must be a real Atlas ticket key")
+    return key
+
+
+def _linear_identifier(value: object, *, field: str) -> str:
+    identifier = _text(value, field=field)
+    if _LINEAR_IDENTIFIER_RE.fullmatch(identifier) is None:
+        raise ValueError(f"{field} must be a Linear ATL-N identifier")
+    return identifier
+
+
+def _linear_uuid(value: object, *, field: str) -> str:
+    raw = _text(value, field=field, maximum=36)
+    try:
+        parsed = UUID(raw)
+    except ValueError as error:
+        raise ValueError(f"{field} must be a canonical Linear UUID") from error
+    canonical = str(parsed)
+    if raw != canonical:
+        raise ValueError(f"{field} must be a canonical Linear UUID")
+    return canonical
+
+
+def _dependency_identities(value: object, *, field: str) -> list[dict[str, str]]:
+    identities: list[dict[str, str]] = []
+    atlas_keys: set[str] = set()
+    linear_identifiers: set[str] = set()
+    linear_uuids: set[str] = set()
+    for index, raw in enumerate(_list(value, field=field)):
+        identity_field = f"{field}[{index}]"
+        item = _mapping(raw, field=identity_field)
+        _exact_fields(
+            item,
+            expected=("atlas_key", "linear_identifier", "linear_uuid"),
+            field=identity_field,
+        )
+        atlas_key = _atlas_key(
+            item.get("atlas_key"), field=f"{identity_field}.atlas_key"
+        )
+        linear_identifier = _linear_identifier(
+            item.get("linear_identifier"),
+            field=f"{identity_field}.linear_identifier",
+        )
+        linear_uuid = _linear_uuid(
+            item.get("linear_uuid"), field=f"{identity_field}.linear_uuid"
+        )
+        if (
+            atlas_key in atlas_keys
+            or linear_identifier in linear_identifiers
+            or linear_uuid in linear_uuids
+        ):
+            raise ValueError(f"{field} contains duplicate Atlas or Linear identities")
+        atlas_keys.add(atlas_key)
+        linear_identifiers.add(linear_identifier)
+        linear_uuids.add(linear_uuid)
+        identities.append(
+            {
+                "atlas_key": atlas_key,
+                "linear_identifier": linear_identifier,
+                "linear_uuid": linear_uuid,
+            }
+        )
+    identities.sort(key=lambda identity: identity["atlas_key"])
+    return identities
 
 
 def _instant(value: object, *, field: str) -> datetime:
@@ -369,9 +482,12 @@ def _validate_declared_classification(
                 raise ValueError(
                     f"{declaration_field} must contain exactly three identities"
                 )
-            selected = tuple(
-                _text(part, field=f"{declaration_field}[{part_index}]")
-                for part_index, part in enumerate(parts)
+            selected = cast(
+                tuple[str, str, str],
+                tuple(
+                    _text(part, field=f"{declaration_field}[{part_index}]")
+                    for part_index, part in enumerate(parts)
+                ),
             )
             if selected in seen_declarations:
                 raise ValueError(f"{match_field}.declarations contains duplicates")
@@ -787,9 +903,16 @@ def _validate_exercise_workloads(
 
 
 def _exercise_workload_lane(workload: Mapping[str, object]) -> str:
-    classification = cast(Mapping[str, object], workload["classification"])
+    classification = cast(
+        Mapping[str, object],
+        workload.get("protected_lane_classification", workload.get("classification")),
+    )
     matches = cast(Sequence[Mapping[str, object]], classification["matches"])
     return cast(str, matches[0]["lane"])
+
+
+def _exercise_ticket_key(workload: Mapping[str, object]) -> str:
+    return cast(str, workload.get("atlas_key", workload.get("ticket_key")))
 
 
 def _validate_exercise_bindings(
@@ -862,8 +985,7 @@ def _validate_exercise_bindings(
         for binding in gate_three
     ]
     if (
-        len({cast(str, workload["ticket_key"]) for workload in gate_three_workloads})
-        != 2
+        len({_exercise_ticket_key(workload) for workload in gate_three_workloads}) != 2
         or len({_exercise_workload_lane(workload) for workload in gate_three_workloads})
         != 1
     ):
@@ -980,14 +1102,637 @@ def _validate_manifest_v2(value: Mapping[str, Any]) -> dict[str, object]:
     return {**selected, "manifest_fingerprint": _canonical_digest(selected)}
 
 
+def _validate_v3_workloads(
+    value: object, *, registry: ProtectedLaneRegistry
+) -> list[dict[str, object]]:
+    raw_workloads = _list(value, field="workloads")
+    if len(raw_workloads) <= 10:
+        raise ValueError("the live ramp requires more than ten independent workloads")
+    known_lanes = {lane.key for lane in registry.lanes}
+    atlas_keys: set[str] = set()
+    linear_identifiers: set[str] = set()
+    linear_uuids: set[str] = set()
+    workload_ids: set[str] = set()
+    families: set[str] = set()
+    touched_paths: set[str] = set()
+    protected_lanes: set[str] = set()
+    workloads: list[dict[str, object]] = []
+    for index, raw in enumerate(raw_workloads):
+        field = f"workloads[{index}]"
+        item = _mapping(raw, field=field)
+        _exact_fields(
+            item,
+            expected=(
+                "workload_id",
+                "atlas_key",
+                "linear_identifier",
+                "linear_uuid",
+                "risk",
+                "production_paths",
+                "test_paths",
+                "path_family",
+                "independent",
+                "dependency_identities",
+                "protected_lane_classification",
+                "workload_role",
+                "earliest_permitted_gate",
+                "excluded_from_throughput",
+                "native_workload_fingerprint",
+            ),
+            field=field,
+        )
+        workload_id = _text(item.get("workload_id"), field=f"{field}.workload_id")
+        atlas_key = _atlas_key(item.get("atlas_key"), field=f"{field}.atlas_key")
+        linear_identifier = _linear_identifier(
+            item.get("linear_identifier"), field=f"{field}.linear_identifier"
+        )
+        linear_uuid = _linear_uuid(
+            item.get("linear_uuid"), field=f"{field}.linear_uuid"
+        )
+        if workload_id in workload_ids:
+            raise ValueError("workloads contain duplicate identities")
+        if (
+            atlas_key in atlas_keys
+            or linear_identifier in linear_identifiers
+            or linear_uuid in linear_uuids
+        ):
+            raise ValueError("workloads contain duplicate Atlas or Linear identities")
+        workload_ids.add(workload_id)
+        atlas_keys.add(atlas_key)
+        linear_identifiers.add(linear_identifier)
+        linear_uuids.add(linear_uuid)
+        risk = _text(item.get("risk"), field=f"{field}.risk")
+        if risk not in _RISK_LEVELS:
+            raise ValueError(f"{field}.risk is unsupported")
+        production_paths = sorted(
+            _repository_path(path, field=f"{field}.production_paths")
+            for path in _string_list(
+                item.get("production_paths"), field=f"{field}.production_paths"
+            )
+        )
+        test_paths = sorted(
+            _repository_path(path, field=f"{field}.test_paths")
+            for path in _string_list(
+                item.get("test_paths"), field=f"{field}.test_paths"
+            )
+        )
+        workload_paths = set(production_paths) | set(test_paths)
+        if (
+            not workload_paths
+            or len(workload_paths) != len(production_paths) + len(test_paths)
+            or not touched_paths.isdisjoint(workload_paths)
+        ):
+            raise ValueError("ordinary workload paths must be non-empty and disjoint")
+        touched_paths.update(workload_paths)
+        family = _text(item.get("path_family"), field=f"{field}.path_family")
+        if family in families:
+            raise ValueError("ordinary workload path families must be distinct")
+        families.add(family)
+        dependencies = _dependency_identities(
+            item.get("dependency_identities"),
+            field=f"{field}.dependency_identities",
+        )
+        independent = _boolean(item.get("independent"), field=f"{field}.independent")
+        if independent is not True:
+            raise ValueError(f"{field} contradicts the required workload independence")
+        if dependencies:
+            raise ValueError(
+                f"{field} contradicts its dependency-independent declaration"
+            )
+        lanes = sorted(
+            _string_list(
+                item.get("protected_lane_classification"),
+                field=f"{field}.protected_lane_classification",
+            )
+        )
+        if any(lane not in known_lanes for lane in lanes):
+            raise ValueError("ordinary workload uses an unknown protected lane")
+        if not protected_lanes.isdisjoint(lanes):
+            raise ValueError("ordinary workload protected lanes must be disjoint")
+        protected_lanes.update(lanes)
+        if item.get("workload_role") != "ordinary":
+            raise ValueError(f"{field} must declare the ordinary workload role")
+        earliest_gate = _integer(
+            item.get("earliest_permitted_gate"),
+            field=f"{field}.earliest_permitted_gate",
+        )
+        if earliest_gate != 1:
+            raise ValueError(
+                f"{field} ordinary role requires earliest permitted Gate 1"
+            )
+        if item.get("excluded_from_throughput") is not False:
+            raise ValueError(f"{field} ordinary workload must enter throughput")
+        material = {
+            "atlas_key": atlas_key,
+            "dependency_identities": dependencies,
+            "earliest_permitted_gate": earliest_gate,
+            "excluded_from_throughput": False,
+            "independent": True,
+            "linear_identifier": linear_identifier,
+            "linear_uuid": linear_uuid,
+            "path_family": family,
+            "production_paths": production_paths,
+            "protected_lane_classification": lanes,
+            "risk": risk,
+            "test_paths": test_paths,
+            "workload_id": workload_id,
+            "workload_role": "ordinary",
+        }
+        declared_fingerprint = _sha(
+            item.get("native_workload_fingerprint"),
+            field=f"{field}.native_workload_fingerprint",
+            length=64,
+        )
+        native_fingerprint = _canonical_digest(material)
+        if declared_fingerprint != native_fingerprint:
+            raise ValueError(f"{field} native workload fingerprint drifted")
+        workloads.append(
+            {
+                **material,
+                "native_workload_fingerprint": native_fingerprint,
+            }
+        )
+    workloads.sort(key=lambda workload: cast(str, workload["atlas_key"]))
+    return workloads
+
+
+def _validate_v3_classifier_inputs(
+    value: object, *, field: str, atlas_key: str
+) -> dict[str, object]:
+    inputs = _mapping(value, field=field)
+    _exact_fields(
+        inputs,
+        expected=(
+            "atlas_key",
+            "component",
+            "tags",
+            "relevant_docs",
+            "documentation_requirements",
+        ),
+        field=field,
+    )
+    if _atlas_key(inputs.get("atlas_key"), field=f"{field}.atlas_key") != atlas_key:
+        raise ValueError(f"{field} contradicts the exercise Atlas identity")
+    component = _text(inputs.get("component"), field=f"{field}.component")
+    tags = _sorted_string_list(inputs.get("tags"), field=f"{field}.tags")
+    relevant_docs = sorted(
+        _repository_path(path, field=f"{field}.relevant_docs")
+        for path in _string_list(
+            inputs.get("relevant_docs"), field=f"{field}.relevant_docs"
+        )
+    )
+    documentation_requirements = sorted(
+        _repository_path(path, field=f"{field}.documentation_requirements")
+        for path in _string_list(
+            inputs.get("documentation_requirements"),
+            field=f"{field}.documentation_requirements",
+        )
+    )
+    return {
+        "atlas_key": atlas_key,
+        "component": component,
+        "documentation_requirements": documentation_requirements,
+        "relevant_docs": relevant_docs,
+        "tags": tags,
+    }
+
+
+def _validate_v3_exercise_workloads(
+    value: object,
+    *,
+    registry: ProtectedLaneRegistry,
+    ordinary_workloads: Sequence[Mapping[str, object]],
+) -> list[dict[str, object]]:
+    raw_workloads = _list(value, field="exercise_workloads")
+    if len(raw_workloads) != len(_V3_EXERCISE_ROLES):
+        raise ValueError("exercise_workloads must contain the six required roles")
+    ordinary_atlas = {cast(str, item["atlas_key"]) for item in ordinary_workloads}
+    ordinary_identifiers = {
+        cast(str, item["linear_identifier"]) for item in ordinary_workloads
+    }
+    ordinary_uuids = {cast(str, item["linear_uuid"]) for item in ordinary_workloads}
+    touched_paths = {
+        path
+        for workload in ordinary_workloads
+        for name in ("production_paths", "test_paths")
+        for path in cast(Sequence[str], workload[name])
+    }
+    families = {cast(str, item["path_family"]) for item in ordinary_workloads}
+    atlas_keys = set(ordinary_atlas)
+    linear_identifiers = set(ordinary_identifiers)
+    linear_uuids = set(ordinary_uuids)
+    workload_ids: set[str] = set()
+    observed_roles: set[str] = set()
+    workloads: list[dict[str, object]] = []
+    for index, raw in enumerate(raw_workloads):
+        field = f"exercise_workloads[{index}]"
+        item = _mapping(raw, field=field)
+        _exact_fields(
+            item,
+            expected=(
+                "exercise_workload_id",
+                "atlas_key",
+                "linear_identifier",
+                "linear_uuid",
+                "objective",
+                "production_paths",
+                "test_paths",
+                "path_family",
+                "classifier_inputs",
+                "protected_lane_classification",
+                "reconstructed_protected_lanes",
+                "classifier_fingerprint",
+                "dependency_identities",
+                "exercise_role",
+                "earliest_permitted_gate",
+                "excluded_from_throughput",
+            ),
+            field=field,
+        )
+        workload_id = _text(
+            item.get("exercise_workload_id"), field=f"{field}.exercise_workload_id"
+        )
+        atlas_key = _atlas_key(item.get("atlas_key"), field=f"{field}.atlas_key")
+        linear_identifier = _linear_identifier(
+            item.get("linear_identifier"), field=f"{field}.linear_identifier"
+        )
+        linear_uuid = _linear_uuid(
+            item.get("linear_uuid"), field=f"{field}.linear_uuid"
+        )
+        if workload_id in workload_ids:
+            raise ValueError("exercise_workloads contain duplicate identities")
+        if (
+            atlas_key in atlas_keys
+            or linear_identifier in linear_identifiers
+            or linear_uuid in linear_uuids
+        ):
+            raise ValueError(
+                "ordinary and exercise workloads contain duplicate Atlas or "
+                "Linear identities"
+            )
+        workload_ids.add(workload_id)
+        atlas_keys.add(atlas_key)
+        linear_identifiers.add(linear_identifier)
+        linear_uuids.add(linear_uuid)
+        objective = _text(
+            item.get("objective"), field=f"{field}.objective", maximum=2000
+        )
+        production_paths = sorted(
+            _repository_path(path, field=f"{field}.production_paths")
+            for path in _string_list(
+                item.get("production_paths"), field=f"{field}.production_paths"
+            )
+        )
+        test_paths = sorted(
+            _repository_path(path, field=f"{field}.test_paths")
+            for path in _string_list(
+                item.get("test_paths"), field=f"{field}.test_paths"
+            )
+        )
+        workload_paths = set(production_paths) | set(test_paths)
+        if (
+            not workload_paths
+            or len(workload_paths) != len(production_paths) + len(test_paths)
+            or not touched_paths.isdisjoint(workload_paths)
+        ):
+            raise ValueError("exercise workload paths must be non-empty and disjoint")
+        touched_paths.update(workload_paths)
+        family = _text(item.get("path_family"), field=f"{field}.path_family")
+        if family in families:
+            raise ValueError("ordinary and exercise path families must be distinct")
+        families.add(family)
+        classifier_inputs = _validate_v3_classifier_inputs(
+            item.get("classifier_inputs"),
+            field=f"{field}.classifier_inputs",
+            atlas_key=atlas_key,
+        )
+        classification = classify_protected_lane_inputs(
+            ProtectedLaneClassifierInput(
+                ticket_key=atlas_key,
+                component=cast(str, classifier_inputs["component"]),
+                tags=tuple(cast(Sequence[str], classifier_inputs["tags"])),
+                relevant_docs=tuple(
+                    cast(Sequence[str], classifier_inputs["relevant_docs"])
+                ),
+                documentation_requirements=tuple(
+                    cast(
+                        Sequence[str],
+                        classifier_inputs["documentation_requirements"],
+                    )
+                ),
+            ),
+            registry,
+        )
+        if classification.issues or len(classification.lanes) != 1:
+            raise ValueError(
+                f"{field} must recompute into exactly one unambiguous protected lane"
+            )
+        recomputed = _classification_projection(classification)
+        declared = _validate_declared_classification(
+            item.get("protected_lane_classification"),
+            field=f"{field}.protected_lane_classification",
+        )
+        if declared != recomputed:
+            raise ValueError(f"{field} classifier reconstruction mismatch")
+        reconstructed_lanes = sorted(
+            _string_list(
+                item.get("reconstructed_protected_lanes"),
+                field=f"{field}.reconstructed_protected_lanes",
+            )
+        )
+        if reconstructed_lanes != sorted(classification.lanes):
+            raise ValueError(f"{field} reconstructed protected lanes drifted")
+        classifier_fingerprint = _sha(
+            item.get("classifier_fingerprint"),
+            field=f"{field}.classifier_fingerprint",
+            length=64,
+        )
+        if classifier_fingerprint != classification.fingerprint:
+            raise ValueError(f"{field} classifier fingerprint drifted")
+        dependencies = _dependency_identities(
+            item.get("dependency_identities"),
+            field=f"{field}.dependency_identities",
+        )
+        if any(dependency["atlas_key"] == atlas_key for dependency in dependencies):
+            raise ValueError(f"{field} dependency identities contradict the workload")
+        exercise_role = _text(item.get("exercise_role"), field=f"{field}.exercise_role")
+        role_contract = _V3_EXERCISE_ROLES.get(exercise_role)
+        if role_contract is None or exercise_role in observed_roles:
+            raise ValueError("exercise_workloads do not contain the six required roles")
+        observed_roles.add(exercise_role)
+        earliest_gate = _integer(
+            item.get("earliest_permitted_gate"),
+            field=f"{field}.earliest_permitted_gate",
+        )
+        if earliest_gate != role_contract[0]:
+            raise ValueError(f"{field} earliest gate contradicts its exercise role")
+        lane = classification.lanes[0]
+        if lane != role_contract[3]:
+            raise ValueError(f"{field} exercise role binds the wrong protected lane")
+        if item.get("excluded_from_throughput") is not True:
+            raise ValueError(f"{field} must be explicitly excluded from throughput")
+        workloads.append(
+            {
+                "atlas_key": atlas_key,
+                "classifier_fingerprint": classification.fingerprint,
+                "classifier_inputs": classifier_inputs,
+                "dependency_identities": dependencies,
+                "earliest_permitted_gate": earliest_gate,
+                "excluded_from_throughput": True,
+                "exercise_role": exercise_role,
+                "exercise_workload_id": workload_id,
+                "linear_identifier": linear_identifier,
+                "linear_uuid": linear_uuid,
+                "objective": objective,
+                "path_family": family,
+                "production_paths": production_paths,
+                "protected_lane_classification": recomputed,
+                "reconstructed_protected_lanes": reconstructed_lanes,
+                "test_paths": test_paths,
+            }
+        )
+    if observed_roles != set(_V3_EXERCISE_ROLES):
+        raise ValueError("exercise_workloads do not contain the six required roles")
+    workloads.sort(key=lambda workload: cast(str, workload["exercise_role"]))
+    return workloads
+
+
+def _validate_v3_exclusions(
+    value: object, *, exercise_workloads: Sequence[Mapping[str, object]]
+) -> list[dict[str, str]]:
+    expected_keys = {cast(str, item["atlas_key"]) for item in exercise_workloads}
+    exclusions: list[dict[str, str]] = []
+    observed: set[str] = set()
+    for index, raw in enumerate(_list(value, field="explicit_exclusions")):
+        field = f"explicit_exclusions[{index}]"
+        item = _mapping(raw, field=field)
+        _exact_fields(item, expected=("atlas_key", "reason"), field=field)
+        atlas_key = _atlas_key(item.get("atlas_key"), field=f"{field}.atlas_key")
+        if atlas_key in observed:
+            raise ValueError("explicit_exclusions contains duplicate identities")
+        if item.get("reason") != "protected-lane-exercise":
+            raise ValueError("explicit_exclusions contains an unsupported reason")
+        observed.add(atlas_key)
+        exclusions.append({"atlas_key": atlas_key, "reason": "protected-lane-exercise"})
+    if observed != expected_keys:
+        raise ValueError("explicit_exclusions must name every exercise workload")
+    exclusions.sort(key=lambda exclusion: exclusion["atlas_key"])
+    return exclusions
+
+
+def _validate_v3_dependency_consistency(
+    workloads: Sequence[Mapping[str, object]],
+    exercise_workloads: Sequence[Mapping[str, object]],
+) -> None:
+    primary = {
+        cast(str, item["atlas_key"]): (
+            cast(str, item["linear_identifier"]),
+            cast(str, item["linear_uuid"]),
+            cast(int, item["earliest_permitted_gate"]),
+        )
+        for item in (*workloads, *exercise_workloads)
+    }
+    linear_identifier_owner = {
+        identity[0]: atlas_key for atlas_key, identity in primary.items()
+    }
+    linear_uuid_owner = {
+        identity[1]: atlas_key for atlas_key, identity in primary.items()
+    }
+    dependency_by_atlas: dict[str, tuple[str, str]] = {}
+    for workload in (*workloads, *exercise_workloads):
+        workload_key = cast(str, workload["atlas_key"])
+        earliest_gate = cast(int, workload["earliest_permitted_gate"])
+        for dependency in cast(
+            Sequence[Mapping[str, str]], workload["dependency_identities"]
+        ):
+            dependency_key = dependency["atlas_key"]
+            dependency_identity = (
+                dependency["linear_identifier"],
+                dependency["linear_uuid"],
+            )
+            prior = dependency_by_atlas.setdefault(dependency_key, dependency_identity)
+            if prior != dependency_identity:
+                raise ValueError("dependency identities contain a contradiction")
+            identifier_owner = linear_identifier_owner.setdefault(
+                dependency_identity[0], dependency_key
+            )
+            uuid_owner = linear_uuid_owner.setdefault(
+                dependency_identity[1], dependency_key
+            )
+            if identifier_owner != dependency_key or uuid_owner != dependency_key:
+                raise ValueError("dependency identities contradict workload authority")
+            declared = primary.get(dependency_key)
+            if declared is not None and (
+                dependency_identity != declared[:2]
+                or declared[2] > earliest_gate
+                or dependency_key == workload_key
+            ):
+                raise ValueError("dependency identities contradict workload authority")
+
+
+def _validate_manifest_v3(
+    value: Mapping[str, Any], *, verify_fingerprint: bool = True
+) -> dict[str, object]:
+    _scan_for_secrets(value, field="manifest")
+    _exact_fields(
+        value,
+        expected=(
+            "schema_version",
+            "validation_scope",
+            "milestone_ticket",
+            "atlas_ticket",
+            "governing_origin_main_sha",
+            "milestone_branch",
+            "milestone_head_sha",
+            "milestone_base_sha",
+            "ratified_at",
+            "phase_15_5_release",
+            "operational_limits",
+            "protected_lane_registry_version",
+            "protected_lane_registry_fingerprint",
+            "workloads",
+            "exercise_catalog",
+            "exercise_workloads",
+            "exercise_bindings",
+            "throughput_numerator",
+            "explicit_exclusions",
+            "manifest_fingerprint",
+        ),
+        field="manifest",
+    )
+    if value.get("schema_version") != MANIFEST_SCHEMA_V3:
+        raise ValueError("manifest schema_version is unsupported")
+    if value.get("validation_scope") != VALIDATION_SCOPE:
+        raise ValueError("manifest must remain offline read-only validation")
+    if (
+        value.get("milestone_ticket") != "ATL-410"
+        or value.get("atlas_ticket") != "ATLAS-253"
+    ):
+        raise ValueError("manifest ticket identity is not ATL-410 / ATLAS-253")
+    if value.get("milestone_branch") != MILESTONE_BRANCH:
+        raise ValueError("manifest milestone branch is not the dedicated branch")
+    governing_origin = _sha(
+        value.get("governing_origin_main_sha"),
+        field="manifest.governing_origin_main_sha",
+    )
+    milestone_head = _sha(
+        value.get("milestone_head_sha"), field="manifest.milestone_head_sha"
+    )
+    milestone_base = _sha(
+        value.get("milestone_base_sha"), field="manifest.milestone_base_sha"
+    )
+    if milestone_base != governing_origin:
+        raise ValueError("manifest milestone base contradicts governing origin/main")
+    registry = _load_protected_lane_registry()
+    registry_version = _text(
+        value.get("protected_lane_registry_version"),
+        field="manifest.protected_lane_registry_version",
+        maximum=128,
+    )
+    registry_fingerprint = _sha(
+        value.get("protected_lane_registry_fingerprint"),
+        field="manifest.protected_lane_registry_fingerprint",
+        length=64,
+    )
+    if registry_version != registry.version:
+        raise ValueError("manifest protected lane registry version drifted")
+    if registry_fingerprint != registry.fingerprint:
+        raise ValueError("manifest protected lane registry fingerprint drifted")
+    ratified_at = _instant(value.get("ratified_at"), field="manifest.ratified_at")
+    release = _validate_phase_15_5_release(value.get("phase_15_5_release"))
+    limits = _validate_limits(value.get("operational_limits"))
+    workloads = _validate_v3_workloads(value.get("workloads"), registry=registry)
+    exercises = _validate_exercise_catalog(
+        value.get("exercise_catalog"), canonical_order=True
+    )
+    exercise_workloads = _validate_v3_exercise_workloads(
+        value.get("exercise_workloads"),
+        registry=registry,
+        ordinary_workloads=workloads,
+    )
+    _validate_v3_dependency_consistency(workloads, exercise_workloads)
+    exercise_bindings = _validate_exercise_bindings(
+        value.get("exercise_bindings"),
+        exercise_workloads=exercise_workloads,
+        exercise_catalog=exercises,
+    )
+    exercise_by_id = {
+        cast(str, item["exercise_workload_id"]): item for item in exercise_workloads
+    }
+    for binding in exercise_bindings:
+        workload = exercise_by_id[cast(str, binding["exercise_workload_id"])]
+        expected_gate, expected_exercise, expected_role, _expected_lane = (
+            _V3_EXERCISE_ROLES[cast(str, workload["exercise_role"])]
+        )
+        if (
+            binding["gate_level"] != expected_gate
+            or binding["exercise_id"] != expected_exercise
+            or binding["role"] != expected_role
+        ):
+            raise ValueError("exercise binding contradicts the declared exercise role")
+    numerator = sorted(
+        _atlas_key(item, field="throughput_numerator")
+        for item in _string_list(
+            value.get("throughput_numerator"), field="throughput_numerator"
+        )
+    )
+    expected_numerator = sorted(cast(str, item["atlas_key"]) for item in workloads)
+    if numerator != expected_numerator:
+        raise ValueError(
+            "throughput numerator includes an excluded exercise or omission"
+        )
+    exclusions = _validate_v3_exclusions(
+        value.get("explicit_exclusions"), exercise_workloads=exercise_workloads
+    )
+    selected = {
+        "atlas_ticket": "ATLAS-253",
+        "exercise_bindings": exercise_bindings,
+        "exercise_catalog": exercises,
+        "exercise_workloads": exercise_workloads,
+        "explicit_exclusions": exclusions,
+        "governing_origin_main_sha": governing_origin,
+        "milestone_base_sha": milestone_base,
+        "milestone_branch": MILESTONE_BRANCH,
+        "milestone_head_sha": milestone_head,
+        "milestone_ticket": "ATL-410",
+        "operational_limits": limits,
+        "phase_15_5_release": release,
+        "protected_lane_registry_fingerprint": registry.fingerprint,
+        "protected_lane_registry_version": registry.version,
+        "ratified_at": ratified_at.isoformat().replace("+00:00", "Z"),
+        "schema_version": MANIFEST_SCHEMA_V3,
+        "throughput_numerator": numerator,
+        "validation_scope": VALIDATION_SCOPE,
+        "workloads": workloads,
+    }
+    declared_fingerprint = _sha(
+        value.get("manifest_fingerprint"),
+        field="manifest.manifest_fingerprint",
+        length=64,
+    )
+    canonical_fingerprint = _canonical_digest(selected)
+    if verify_fingerprint and declared_fingerprint != canonical_fingerprint:
+        raise ValueError("manifest canonical fingerprint drifted")
+    return {**selected, "manifest_fingerprint": canonical_fingerprint}
+
+
+def calculate_v3_manifest_fingerprint(value: Mapping[str, Any]) -> str:
+    """Calculate v3's canonical projection digest without accepting it as valid."""
+
+    selected = _validate_manifest_v3(value, verify_fingerprint=False)
+    return cast(str, selected["manifest_fingerprint"])
+
+
 def validate_manifest(value: Mapping[str, Any]) -> dict[str, object]:
-    """Validate one historical-v1 or live-proof-capable v2 manifest."""
+    """Validate one historical v1/v2 or live-freeze-authoritative v3 manifest."""
 
     schema = value.get("schema_version")
     if schema == MANIFEST_SCHEMA_V1:
         return _validate_manifest_v1(value)
     if schema == MANIFEST_SCHEMA_V2:
         return _validate_manifest_v2(value)
+    if schema == MANIFEST_SCHEMA_V3:
+        return _validate_manifest_v3(value)
     raise ValueError("manifest schema_version is unsupported")
 
 
@@ -1274,7 +2019,7 @@ def _validate_snapshot(
     if registry_version != PROTECTED_LANE_REGISTRY_VERSION:
         raise ValueError(f"gate {gate} protected lane registry version is unsupported")
     registry: ProtectedLaneRegistry | None = None
-    if manifest["schema_version"] == MANIFEST_SCHEMA_V2:
+    if manifest["schema_version"] in {MANIFEST_SCHEMA_V2, MANIFEST_SCHEMA_V3}:
         registry = _load_protected_lane_registry()
         if registry_version != manifest["protected_lane_registry_version"]:
             raise ValueError(
@@ -1582,7 +2327,7 @@ def _validate_protected_lane_exercise_evidence(
         if cast(Mapping[str, object], binding)["gate_level"] == gate
     ]
     workloads = {
-        cast(str, workload["exercise_workload_id"]): cast(
+        cast(str, cast(Mapping[str, object], workload)["exercise_workload_id"]): cast(
             Mapping[str, object], workload
         )
         for workload in cast(Sequence[object], manifest["exercise_workloads"])
@@ -1649,10 +2394,9 @@ def _validate_protected_lane_exercise_evidence(
                 f"gate {gate} protected lane evidence duplicates a ticket identity"
             )
         observed_tickets.add(ticket_key)
-        if (
-            _REAL_TICKET_KEY_RE.fullmatch(ticket_key) is None
-            or ticket_key != workload["ticket_key"]
-        ):
+        if _REAL_TICKET_KEY_RE.fullmatch(
+            ticket_key
+        ) is None or ticket_key != _exercise_ticket_key(workload):
             raise ValueError(
                 f"gate {gate} protected lane evidence substitutes a ticket identity"
             )
@@ -1712,7 +2456,9 @@ def _validate_protected_lane_exercise_evidence(
         )
     )
     occupancy = {
-        cast(str, item["lane"]): cast(Mapping[str, object], item)
+        cast(str, cast(Mapping[str, object], item)["lane"]): cast(
+            Mapping[str, object], item
+        )
         for item in cast(Sequence[object], snapshot["protected_lane_occupancy"])
     }
     occupied_ticket_keys = {
@@ -1772,7 +2518,10 @@ def _validate_receipt(
     manifest: Mapping[str, object],
 ) -> dict[str, object]:
     _scan_for_secrets(raw, field=f"gate_{expected_gate}_receipt")
-    is_v2 = manifest["schema_version"] == MANIFEST_SCHEMA_V2
+    is_v2 = manifest["schema_version"] in {
+        MANIFEST_SCHEMA_V2,
+        MANIFEST_SCHEMA_V3,
+    }
     receipt_schema = RECEIPT_SCHEMA_V2 if is_v2 else RECEIPT_SCHEMA_V1
     receipt_fields = (
         "schema_version",
@@ -1835,6 +2584,18 @@ def _validate_receipt(
     if current_merge_base != current_origin:
         raise ValueError(
             f"gate {expected_gate} milestone branch is not fresh against origin/main"
+        )
+    if (
+        expected_gate == 1
+        and manifest["schema_version"] == MANIFEST_SCHEMA_V3
+        and (
+            current_origin != manifest["governing_origin_main_sha"]
+            or current_merge_base != manifest["milestone_base_sha"]
+            or milestone_commit != manifest["milestone_head_sha"]
+        )
+    ):
+        raise ValueError(
+            "Gate 1 receipt contradicts the repository-authoritative v3 freeze"
         )
     main = _mapping(raw.get("main_configuration"), field=f"gate_{expected_gate}.main")
     _exact_fields(
@@ -2027,8 +2788,19 @@ def evaluate_ramp(
     else:
         evaluated_decision = "RECEIPT_SEQUENCE_VALIDATED"
         passed = True
-    historical_only = manifest["schema_version"] == MANIFEST_SCHEMA_V1
-    decision = "HISTORICAL_RECEIPT_REPLAY" if historical_only else evaluated_decision
+    schema = manifest["schema_version"]
+    historical_only = schema in {MANIFEST_SCHEMA_V1, MANIFEST_SCHEMA_V2}
+    manifest_authority = {
+        MANIFEST_SCHEMA_V1: "historical-receipt-replay-v1",
+        MANIFEST_SCHEMA_V2: "historical-schema-valid-v2",
+        MANIFEST_SCHEMA_V3: "live-freeze-authoritative-v3",
+    }[cast(str, schema)]
+    if schema == MANIFEST_SCHEMA_V1:
+        decision = "HISTORICAL_RECEIPT_REPLAY"
+    elif schema == MANIFEST_SCHEMA_V2:
+        decision = "HISTORICAL_SCHEMA_VALIDATION"
+    else:
+        decision = evaluated_decision
     if historical_only:
         passed = False
     report: dict[str, object] = {
@@ -2043,6 +2815,7 @@ def evaluate_ramp(
         "gate_sequence": [receipt["gate_level"] for receipt in receipts],
         "last_validated_pass_receipt_level": last_validated_pass,
         "manifest_fingerprint": manifest["manifest_fingerprint"],
+        "manifest_authority": manifest_authority,
         "manifest_schema_version": manifest["schema_version"],
         "milestone_branch": MILESTONE_BRANCH,
         "next_gate": None
@@ -2051,6 +2824,7 @@ def evaluate_ramp(
         "phase_15_5_entry_gate": manifest["phase_15_5_release"],
         "historical_only": historical_only,
         "historical_result": evaluated_decision if historical_only else None,
+        "live_freeze_authoritative": schema == MANIFEST_SCHEMA_V3,
         "transition_authorized": False,
         "receipt_summaries": [
             {
@@ -2074,14 +2848,20 @@ def evaluate_ramp(
             cast(Sequence[object], manifest.get("exercise_workloads", []))
         ),
         "classification_fingerprints": [
-            cast(Mapping[str, object], workload)["classification_fingerprint"]
+            cast(Mapping[str, object], workload).get(
+                "classifier_fingerprint",
+                cast(Mapping[str, object], workload).get("classification_fingerprint"),
+            )
             for workload in cast(
                 Sequence[object], manifest.get("exercise_workloads", [])
             )
         ],
         "workload_count": len(cast(Sequence[object], manifest["workloads"])),
         "workload_identities": [
-            cast(Mapping[str, object], workload)["workload_identity"]
+            cast(Mapping[str, object], workload).get(
+                "native_workload_fingerprint",
+                cast(Mapping[str, object], workload).get("workload_identity"),
+            )
             for workload in cast(Sequence[object], manifest["workloads"])
         ],
     }

@@ -2282,19 +2282,20 @@ Before ramp workload freeze:
 - none changes a material shared InterfaceContract;
 - interface pre-certification says no unresolved material `change/consume`, `change/change`, stale or ownerless collision;
 - exact ordinary and protected-exercise workload identities are frozen in the
-  separately re-ratified ATLAS-253 v2 manifest before results.
+  separately re-ratified ATLAS-253 v3 manifest before results.
 
-## 30.2 Phase 15 v2 binding repair
+## 30.2 Phase 15 v3 repository-authority binding
 
-The former v1 harness is historical-only because it could accept arbitrary
-lane strings and unbound meta owners. Live proof now requires the accepted
-`phase-15-ramp-workload-v2` / `phase-15-ramp-gate-receipt-v2` implementation:
-the digest-pinned repository classifier recomputes every protected exercise
-workload, Gate 1 binds one owner through `CI Pending`, and Gate 3 binds distinct
-same-lane owner/blocked-candidate identities. Gate 5 binds its protected-lane
-owner, while Gate 7 binds separate owners for
+V1 receipt replay and schema-valid v2 fixtures are historical-only. Live proof
+requires an accepted `phase-15-ramp-workload-v3` manifest with the existing
+`phase-15-ramp-gate-receipt-v2` receipts. V3 pins the governing main and exact
+milestone branch/head/base, real Atlas/Linear identity triplets, native
+ordinary fingerprints, dependency/path/risk/role/gate/throughput authority and
+the digest-pinned classifier reconstruction. Gate 1 binds one owner through
+`CI Pending`, and Gate 3 binds distinct same-lane owner/blocked-candidate
+identities. Gate 5 binds its protected-lane owner, while Gate 7 binds separate owners for
 `risk_component_protected_lanes_under_load` and
-`ci_pending_lane_ownership`. The v2 implementation does not itself re-ratify a
+`ci_pending_lane_ownership`. The v3 implementation does not itself re-ratify a
 live manifest or resume the ramp.
 
 The interface check is a **pre-freeze certification artifact**, not a new receipt field or gate authority.
@@ -2304,7 +2305,7 @@ The interface check is a **pre-freeze certification artifact**, not a new receip
 The actual Phase 15 validator requires the frozen workload manifest to contain
 **more than ten** independent ordinary workloads. Deliberate protected-lane
 exercises occupy a separate, throughput-excluded collection and do not weaken
-that floor. Every v2 gate receipt pins the same manifest fingerprint. The
+that floor. Every v2 gate receipt pins the same v3 manifest fingerprint. The
 receipt schema does **not** assign a fresh ordinary workload-id set to each
 gate.
 
@@ -2344,10 +2345,11 @@ Before Gate 1:
 2. each ticket's exact contract is stable;
 3. path sets/families/lanes are calculated;
 4. interface pre-certification is recorded;
-5. the accepted v2 implementation recomputes the exact protected-exercise
+5. the accepted v3 implementation recomputes the exact protected-exercise
    classifier inputs against the pinned repository registry;
-6. the operator separately re-ratifies and freezes the v2 manifest, including
-   every Gate 1/3/5/7 protected-exercise owner/candidate binding;
+6. the operator separately re-ratifies and freezes the v3 manifest, including
+   governing repository identities, every real ordinary identity and every
+   Gate 1/3/5/7 protected-exercise owner/candidate binding;
 7. any candidate that no longer matches its frozen contract is not silently
    replaced by a new identity.
 
@@ -2950,9 +2952,9 @@ The next governed programme step after operator ratification is:
 3. run atlas plan --stubs-only;
 4. review the generated ticket graph aggressively for size/dependency/interface mistakes;
 5. apply only after the operator accepts that graph;
-6. accept the Phase 15 v2 evidence-binding repair, then pre-certify the eligible
+6. accept the Phase 15 v3 repository-authority repair, then pre-certify the eligible
    real ordinary and protected-exercise workload identities;
-7. separately re-ratify and freeze the exact live v2 manifest;
+7. separately re-ratify and freeze the exact live v3 manifest;
 8. restart the existing Phase 15 governed runtime only when ATLAS-253
    prerequisites are coherent;
 9. resume the ramp from the operator-paused Attempt-3 ceiling-one /

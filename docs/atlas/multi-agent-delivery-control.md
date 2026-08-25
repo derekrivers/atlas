@@ -512,10 +512,11 @@ the exact sequence **1 → 3 → 5 → 7 → 10**. Accepted PR #335 closed Phase
 at contributor head `a598798c1a6c5cabe4c80c0f04020c271f438de1` and released
 ATLAS-253, satisfying that entry prerequisite. The later live attempts proved
 only the Attempt-3 ceiling-one / `max_turns: 10` runtime identity. ATLAS-253 is
-now operator-paused there: the protected-exercise evidence-binding repair must
-be accepted and one exact live v2 manifest separately re-ratified before any
-new gate observation. Neither this implementation nor its repository fixture
-performs that re-ratification.
+now operator-paused there: the repository-authority workload-freeze repair must
+be accepted and one exact live v3 manifest separately re-ratified before any
+new gate observation. Historical/schema-valid v2 fixtures cannot serve as that
+live freeze. Neither this implementation nor its repository fixtures perform
+the re-ratification.
 Phase 15.5 changes no ceiling; it proves that focused local validation,
 system-tier CI handoff, protected integration lanes and exact-head/current-main
 acceptance do not turn additional slots into avoidable queue and rebase
@@ -574,24 +575,26 @@ new admission while preserving active work; a lower Atlas policy ceiling does
 not terminate an active Symphony session.
 
 The read-only milestone validator is
-`scripts/phase_15_delivery_control_milestone.py`. It binds a predeclared
-v2 manifest to the ordered operator gate receipts. The v2 manifest preserves
-the more-than-ten dependency-independent ordinary pool and separately binds
-every protected-lane exercise to real, predeclared exercise workloads: the
-Gate 1 owner, distinct Gate 3 owner/blocked candidate, Gate 5 owner and separate
-Gate 7 owners for `risk_component_protected_lanes_under_load` and
-`ci_pending_lane_ownership`. Their exact classifier inputs are recomputed
-against the digest-pinned repository protected-lane registry; every bound
-receipt row pins the workload, ticket, role, lane, observed status, evidence
-identity and manifest fingerprint. A positive hold count or aggregate passed
-flag is never a substitute. V1 Attempt-1/Attempt-2 inputs replay only as
-`HISTORICAL_RECEIPT_REPLAY` and cannot establish a new live PASS.
+`scripts/phase_15_delivery_control_milestone.py`. A live workload freeze must
+use `phase-15-ramp-workload-v3`; v2 remains deterministic historical/schema
+evidence only. V3 preserves the more-than-ten dependency-independent ordinary
+pool and the six protected-exercise bindings, and additionally pins the
+governing `origin/main`, milestone branch/head/base, each real Atlas key plus
+Linear identifier/UUID, risk, production/test paths, path family, dependency
+identities, role, earliest gate and throughput disposition. Native ordinary
+fingerprints and reconstructed classifier fingerprints are checked before the
+self-declared canonical manifest fingerprint. Gate 1's receipt must match the
+frozen repository identities. A positive hold count or aggregate passed flag
+is never a substitute. V1 Attempt-1/Attempt-2 and v2 fixture inputs cannot
+establish a new live freeze.
 
 The validator retains selected bounded fields only and never calls Git,
 GitHub, Linear, Symphony, CI, delivery-policy or worker mutation surfaces.
 Every input is untrusted and its scope is always `offline-read-only`: even a
-complete valid v2 sequence emits only `RECEIPT_SEQUENCE_VALIDATED`, with
-transition and closure authority both false. Operator checkpoints and durable
+complete valid v3 sequence emits only `RECEIPT_SEQUENCE_VALIDATED`, with
+transition and closure authority both false. The report explicitly labels v2
+as `historical-schema-valid-v2` and v3 as `live-freeze-authoritative-v3`;
+workload-freeze authority is not policy or gate-transition authority. Operator checkpoints and durable
 gate comments remain the authority; no manifest label or local JSON value can
 create it. The milestone-only
 doc-linter and workflow-contract validation context accepts
@@ -625,7 +628,7 @@ The entry gates are cumulative:
 
 | Level to begin | Evidence that must already exist |
 | ---: | --- |
-| 1 | Phase 15.5 closure is merged; the v2 repair is accepted; an exact live v2 manifest with every declared Gate 1/3/5/7 protected exercise workload is separately re-ratified; the active policy is reconciled to the live one-agent declaration; Phase 15 controlled fixtures and admission observability are ready |
+| 1 | Phase 15.5 closure is merged; the v3 repository-authority repair is accepted; an exact live v3 manifest with governing main/branch/head/base, every real ordinary identity and every declared Gate 1/3/5/7 protected exercise workload is separately re-ratified; the active policy is reconciled to the live one-agent declaration; Phase 15 controlled fixtures and admission observability are ready |
 | 3 | Gate 1 PASS proves the serialized baseline, paused/draining no-admit behaviour and Changes Requested rework reserve |
 | 5 | Gate 3 PASS proves the first controlled increase and bounded review pressure |
 | 7 | Gate 5 PASS proves stable review pressure and stale/partial-write fail-closed behaviour |

@@ -3895,9 +3895,9 @@ Next sequence:
 12. run `atlas plan --stubs-only`;
 13. operator reviews full proposal;
 14. `atlas apply` mints keys;
-15. accept the Phase 15 v2 exercise-workload evidence-binding repair, then
-    separately re-ratify and freeze the exact live v2 manifest before results;
-16. restart governed Symphony only when runtime, policy, v2 workload and
+15. accept the Phase 15 v3 repository-authority workload-freeze repair, then
+    separately re-ratify and freeze the exact live v3 manifest before results;
+16. restart governed Symphony only when runtime, policy, v3 workload and
     measurement prerequisites are coherent;
 17. resume the ramp from the operator-paused Attempt-3 ceiling-one /
     `max_turns: 10` identity;
@@ -3940,7 +3940,7 @@ Experiment F resolves the Phase 16 interface-ownership design direction sufficie
 - stronger dedicated controls remain authoritative and are referenced rather than duplicated;
 - Phase 16 candidates used as ATLAS-253 workloads require this additional
   pre-certification before manifest freeze; it remains separate from the later
-  Phase 15 v2 protected-exercise binding contract.
+  Phase 15 v3 repository-authority workload-freeze contract.
 
 The next programme action is now to write the dedicated **Phase 16 design** from this cumulative horizon. Experiment G remains optional at this stage exactly as previously ruled.
 
@@ -3962,12 +3962,12 @@ The next authority steps are now:
 5. only after review, run `atlas apply` to mint real keys;
 6. interface/path/lane/dependency pre-certify the eligible authority-neutral
    Track-A subset for ATLAS-253;
-7. accept the Phase 15 v2 evidence-binding repair, including its pinned
-   registry classification and exact Gate 1/3/5/7 protected-exercise role
-   contract;
-8. separately re-ratify and freeze the single live ATLAS-253 v2 manifest before
+7. accept the Phase 15 v3 repository-authority repair, including its pinned
+   repository identities, real Atlas/Linear workload identities, registry
+   classification and exact Gate 1/3/5/7 protected-exercise role contract;
+8. separately re-ratify and freeze the single live ATLAS-253 v3 manifest before
    observation;
-9. restart governed Symphony only when the Phase 15 runtime/policy/v2-workload
+9. restart governed Symphony only when the Phase 15 runtime/policy/v3-workload
    measurement prerequisites are coherent;
 10. resume the `1 -> 3 -> 5 -> 7 -> 10` ramp from the operator-paused Attempt-3
     ceiling-one / `max_turns: 10` identity;
