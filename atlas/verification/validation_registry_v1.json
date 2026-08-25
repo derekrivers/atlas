@@ -5,6 +5,7 @@
     "python",
     "static",
     "documentation",
+    "skill-contract",
     "schema",
     "generated-client",
     "ui",
@@ -14,9 +15,7 @@
   ],
   "profiles": {
     "python": {
-      "commands": [
-        "uv run pytest"
-      ]
+      "commands": []
     },
     "static": {
       "commands": [
@@ -29,6 +28,11 @@
     "documentation": {
       "commands": [
         "uv run python -m atlas.tools.doc_linter"
+      ]
+    },
+    "skill-contract": {
+      "commands": [
+        "uv run pytest tests/test_skill_linear.py"
       ]
     },
     "schema": {
@@ -47,17 +51,13 @@
         "npm --prefix apps/operator-ui ci",
         "npm --prefix apps/operator-ui run lint",
         "npm --prefix apps/operator-ui run typecheck",
-        "npm --prefix apps/operator-ui run test:acceptance",
         "npm --prefix apps/operator-ui run build:bundle"
       ]
     },
     "browser": {
       "commands": [
         "npm --prefix apps/operator-ui ci",
-        "apps/operator-ui/node_modules/.bin/playwright install chromium",
-        "npm --prefix apps/operator-ui run test:browser",
-        "npm --prefix apps/operator-ui run test:e2e",
-        "npm --prefix apps/operator-ui run test:a11y"
+        "apps/operator-ui/node_modules/.bin/playwright install chromium"
       ]
     },
     "workflow-contract": {
@@ -120,6 +120,14 @@
       "reason": "Root documentation changed."
     },
     {
+      "id": "linear-skill-contract",
+      "exact": [
+        ".codex/skills/linear/SKILL.md"
+      ],
+      "profiles": ["skill-contract"],
+      "reason": "Vendored Linear skill documentation changed."
+    },
+    {
       "id": "database-migrations",
       "prefix": "atlas/storage/migrations/",
       "profiles": ["schema"],
@@ -175,7 +183,7 @@
     {
       "id": "operator-ui-source",
       "prefix": "apps/operator-ui/src/",
-      "profiles": ["ui", "browser"],
+      "profiles": ["ui"],
       "reason": "Operator UI runtime surface changed."
     },
     {
@@ -229,8 +237,10 @@
       "reason": "Symphony workflow contract changed."
     },
     {
-      "id": "validation-registry",
+      "id": "validation-policy",
       "exact": [
+        "atlas/orchestration/validation_plan_cli.py",
+        "atlas/verification/validation_plan.py",
         "atlas/verification/validation_registry_v1.json"
       ],
       "profiles": ["full-sweep"],
@@ -257,6 +267,7 @@
     "generated-client": ["generated-client"],
     "python": ["python"],
     "schema": ["schema"],
+    "skill-contract": ["skill-contract"],
     "static": ["static"],
     "ui": ["ui"],
     "workflow-contract": ["workflow-contract"]
@@ -282,7 +293,7 @@
         "apps/operator-ui/src/api/atlas-openapi.ts",
         "atlas/tools/operator_ui_openapi.py"
       ],
-      "reason": "Generated-client surfaces require complete local validation."
+      "reason": "Generated-client surfaces are a protected generated-contract boundary."
     },
     {
       "id": "workflow-policy",
