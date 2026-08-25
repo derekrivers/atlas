@@ -40,6 +40,7 @@ from atlas.tools.doc_linter import (
 REPO_ROOT = Path(__file__).resolve().parent.parent
 WORKFLOW_PATH = REPO_ROOT / "WORKFLOW.md"
 SYMPHONY_DOC = REPO_ROOT / "docs" / "atlas" / "symphony-integration.md"
+LINEAR_SKILL = REPO_ROOT / ".codex" / "skills" / "linear" / "SKILL.md"
 DELIVERY_CONTROL_DOC = REPO_ROOT / "docs" / "atlas" / "multi-agent-delivery-control.md"
 OPERATOR_ENVIRONMENT_DOC = REPO_ROOT / "docs" / "runbooks" / "operator-environment.md"
 PHASE_15_CLOSURE_DOC = REPO_ROOT / "docs" / "closure" / "phase-15-closure-report.md"
@@ -528,14 +529,14 @@ def test_pr_title_instruction_uses_embedded_atlas_key_not_identifier() -> None:
     assert "prefix before the first `:`" in bullet
 
 
-def test_issue_identifier_survives_only_as_display_prose() -> None:
-    # AC-4: `{{ issue.identifier }}` may remain for display/logging (the opening
-    # "working a single Linear ticket, `{{ issue.identifier }}`" line) but nowhere
-    # as the PR-title source. Exactly one occurrence remains, and it is display.
+def test_issue_identifier_is_display_and_closing_identity_not_pr_title_source() -> None:
+    # ATLAS-069M gives the Linear identifier one additional exact role: the
+    # standalone issue-closing line. It remains excluded from the title source.
     _, body = _split()
-    assert body.count("{{ issue.identifier }}") == 1
+    assert body.count("{{ issue.identifier }}") == 2
     flowed = " ".join(body.split())
     assert "working a single Linear ticket, `{{ issue.identifier }}`" in flowed
+    assert "Closes {{ issue.identifier }}" in body
 
 
 def test_pack_reword_scope_confined_to_body() -> None:
@@ -874,10 +875,8 @@ def test_atlas_257_changes_requested_fixture_resumes_preserved_workspace() -> No
 
     assert "Changes Requested" in front["tracker"]["active_states"]
     assert "preserved workspace" in route
-    assert "move the ticket to `In Progress`" in route
-    assert (
-        "repeat the candidate preparation, validation and one-publish handoff" in route
-    )
+    assert "before moving to `In Progress`" in route
+    assert "update the same PR" in route
     assert "`PR Open` → `CI Pending`" in route
 
 
@@ -918,3 +917,378 @@ def test_atlas_257_identity_and_historical_evidence_contract() -> None:
     assert "outside that scope" in section
     assert "Any head change" in section
     assert "historical only" in section
+
+
+# --- ATLAS-069M: issue-bound publication and deterministic remediation --------
+
+_CLOSE_LINE_RE = re.compile(r"^Closes [A-Z][A-Z0-9]*-[0-9]+$")
+_HEAD = "a" * 40
+_OLD_HEAD = "b" * 40
+
+
+def _publication_is_exact(
+    snapshot: Mapping[str, Any],
+    *,
+    repository: str = "derekrivers/atlas",
+    pr_number: int = 457,
+    branch: str = "atl-457",
+    head: str = _HEAD,
+    issue_identifier: str = "ATL-457",
+) -> bool:
+    body = snapshot.get("body")
+    if not isinstance(body, str):
+        return False
+    lines = body.replace("\r\n", "\n").split("\n")
+    closing_lines = [
+        line for line in lines if line.strip().casefold().startswith("closes ")
+    ]
+    expected_closing = f"Closes {issue_identifier}"
+    return bool(
+        snapshot.get("repository") == repository
+        and snapshot.get("number") == pr_number
+        and snapshot.get("head_repository") == repository
+        and snapshot.get("head_branch") == branch
+        and snapshot.get("base_branch") == "main"
+        and snapshot.get("head_sha") == head
+        and closing_lines == [expected_closing]
+        and _CLOSE_LINE_RE.fullmatch(expected_closing)
+    )
+
+
+def _publication(**overrides: Any) -> dict[str, Any]:
+    snapshot: dict[str, Any] = {
+        "repository": "derekrivers/atlas",
+        "number": 457,
+        "head_repository": "derekrivers/atlas",
+        "head_branch": "atl-457",
+        "base_branch": "main",
+        "head_sha": _HEAD,
+        "body": "Summary\n\nCloses ATL-457\n",
+    }
+    snapshot.update(overrides)
+    return snapshot
+
+
+def _parse_human_envelope(body: str) -> tuple[dict[str, str], str] | None:
+    lines = body.replace("\r\n", "\n").split("\n")
+    if len(lines) < 9 or lines[0] != "atlas:remediation:v1" or lines[7] != "":
+        return None
+    expected_fields = ("source", "ticket", "issue", "repository", "pr", "head")
+    values: dict[str, str] = {}
+    for line, field in zip(lines[1:7], expected_fields, strict=True):
+        prefix = f"{field}: "
+        if not line.startswith(prefix) or not line.removeprefix(prefix):
+            return None
+        values[field] = line.removeprefix(prefix)
+    prose = "\n".join(lines[8:])
+    if (
+        values["source"] != "human-review"
+        or not re.fullmatch(r"[0-9a-f]{40}", values["head"])
+        or not 1 <= len(prose) <= 4_000
+    ):
+        return None
+    return values, prose
+
+
+def _matching_envelopes(
+    comments: Sequence[str],
+    *,
+    ticket: str = "ATLAS-281",
+    issue: str = "ATL-457",
+    repository: str = "derekrivers/atlas",
+    pr: str = "354",
+    head: str = _HEAD,
+) -> list[str]:
+    matches: list[str] = []
+    expected = {
+        "source": "human-review",
+        "ticket": ticket,
+        "issue": issue,
+        "repository": repository,
+        "pr": pr,
+        "head": head,
+    }
+    for comment in comments:
+        parsed = _parse_human_envelope(comment)
+        if parsed is not None and parsed[0] == expected:
+            matches.append(parsed[1])
+    return matches
+
+
+def _envelope(**overrides: str) -> str:
+    fields = {
+        "source": "human-review",
+        "ticket": "ATLAS-281",
+        "issue": "ATL-457",
+        "repository": "derekrivers/atlas",
+        "pr": "354",
+        "head": _HEAD,
+        "prose": "Correct the exact current-head recovery predicate.",
+    }
+    fields.update(overrides)
+    return (
+        "atlas:remediation:v1\n"
+        f"source: {fields['source']}\n"
+        f"ticket: {fields['ticket']}\n"
+        f"issue: {fields['issue']}\n"
+        f"repository: {fields['repository']}\n"
+        f"pr: {fields['pr']}\n"
+        f"head: {fields['head']}\n\n"
+        f"{fields['prose']}"
+    )
+
+
+def _system_diagnostics(
+    *,
+    tracker_state: str,
+    exact_current_candidate: bool,
+    checks: Sequence[Mapping[str, str]],
+) -> tuple[str, ...]:
+    """Reference fixture: trusted state gates diagnostics; checks never classify."""
+
+    if tracker_state != "Changes Requested" or not exact_current_candidate:
+        return ()
+    return tuple(
+        check["name"]
+        for check in checks
+        if check.get("status") == "COMPLETED" and check.get("conclusion") == "FAILURE"
+    )
+
+
+def test_atlas_069m_normal_publication_requires_exact_linear_closing_line() -> None:
+    _, body = _split()
+    in_progress = _route_for("In Progress")
+
+    assert body.count("Closes {{ issue.identifier }}") == 1
+    assert "Linear issue identifier, not the Atlas key" in body
+    assert "Atlas ticket key embedded at the start" in in_progress
+    assert "{{ issue.identifier }}" not in in_progress
+    assert _publication_is_exact(_publication())
+
+
+@pytest.mark.parametrize(
+    "snapshot",
+    (
+        _publication(body="Summary only"),
+        _publication(body="Summary\n\nCloses ATL-999\n"),
+        _publication(body="Closes ATL-457\nCloses ATL-457"),
+        _publication(body=" Closes ATL-457\n"),
+        _publication(body="Closes ATL-457\nCloses ATL-999 \n"),
+        _publication(body="Closes ATL-457\ncloses ATL-999\n"),
+        _publication(number=458),
+        _publication(head_sha=_OLD_HEAD),
+        _publication(head_branch="stale-branch"),
+    ),
+    ids=(
+        "missing",
+        "wrong-linear-identifier",
+        "duplicate",
+        "malformed",
+        "correct-plus-malformed",
+        "correct-plus-wrong-case",
+        "wrong-pr",
+        "old-head",
+        "wrong-branch",
+    ),
+)
+def test_atlas_069m_publication_readback_refuses_wrong_or_stale_identity(
+    snapshot: Mapping[str, Any],
+) -> None:
+    assert not _publication_is_exact(snapshot)
+
+
+def test_atlas_069m_linear_read_is_bounded_and_attachment_trust_matches_atlas() -> None:
+    skill = _read(LINEAR_SKILL)
+    workflow = _read(WORKFLOW_PATH)
+    flowed_skill = " ".join(skill.split())
+    flowed_workflow = " ".join(workflow.split())
+
+    for marker in (
+        "comments(first: 250)",
+        "nodes { id body createdAt }",
+        "attachments(first: 250)",
+        "nodes { id url sourceType metadata }",
+        "pageInfo { hasNextPage endCursor }",
+        "hasNextPage: true",
+        "sourceType == github",
+        "repoLogin`/`repoName`/`number",
+        "linkKind == closes",
+        "targetBranch == main",
+        "open` or `draft",
+    ):
+        assert marker in skill
+    assert (
+        "metadata GitHub PR `id` and repository `repoId` are numeric strings"
+        in flowed_skill
+    )
+    assert "hasNextPage: true" in workflow
+    assert "multiple distinct publications" in flowed_workflow
+    assert "Never infer the publication from title or branch prose" in flowed_workflow
+
+
+def test_atlas_069m_current_head_human_envelope_is_accepted_and_bounded() -> None:
+    [prose] = _matching_envelopes([_envelope()])
+    assert prose == "Correct the exact current-head recovery predicate."
+    assert _parse_human_envelope(_envelope(prose="x" * 4_000)) is not None
+    assert _parse_human_envelope(_envelope(prose="x" * 4_001)) is None
+
+
+@pytest.mark.parametrize(
+    "override",
+    (
+        {"ticket": "ATLAS-999"},
+        {"issue": "ATL-999"},
+        {"repository": "other/atlas"},
+        {"pr": "999"},
+        {"head": _OLD_HEAD},
+    ),
+    ids=("wrong-ticket", "wrong-issue", "wrong-repository", "wrong-pr", "old-head"),
+)
+def test_atlas_069m_mismatched_or_old_head_envelopes_are_historical(
+    override: dict[str, str],
+) -> None:
+    assert _matching_envelopes([_envelope(**override)]) == []
+
+
+def test_atlas_069m_multiple_matching_human_envelopes_fail_closed() -> None:
+    comments = [_envelope(), _envelope(prose="A conflicting current instruction.")]
+    matches = _matching_envelopes(comments)
+    assert len(matches) == 2
+    route = _route_for("Changes Requested")
+    remediation = _read(WORKFLOW_PATH)[
+        _read(WORKFLOW_PATH).index("## Changes Requested remediation input") : _read(
+            WORKFLOW_PATH
+        ).index("## How to move the ticket")
+    ]
+    flowed = " ".join(remediation.split())
+    assert "More than one matching current-head envelope is ambiguous" in flowed
+    assert "move the issue to `Needs Human`, and stop" in flowed
+    assert "resolve and freeze exact current-head input before moving" in route
+
+
+def test_atlas_069m_raw_failure_is_diagnostic_not_classification_authority() -> None:
+    failure = ({"name": "test", "status": "COMPLETED", "conclusion": "FAILURE"},)
+    remediation = _read(WORKFLOW_PATH)[
+        _read(WORKFLOW_PATH).index("## Changes Requested remediation input") : _read(
+            WORKFLOW_PATH
+        ).index("## How to move the ticket")
+    ]
+    flowed = " ".join(remediation.split())
+
+    assert (
+        _system_diagnostics(
+            tracker_state="In Progress",
+            exact_current_candidate=True,
+            checks=failure,
+        )
+        == ()
+    )
+    assert _system_diagnostics(
+        tracker_state="Changes Requested",
+        exact_current_candidate=True,
+        checks=failure,
+    ) == ("test",)
+    assert "transition is the classification authority" in flowed
+    assert "raw GitHub check failure is diagnostic only" in flowed
+    assert "must not reproduce `CIHandoffAssessment`" in flowed
+
+
+@pytest.mark.parametrize(
+    ("status", "conclusion"),
+    (
+        ("IN_PROGRESS", ""),
+        ("COMPLETED", "CANCELLED"),
+        ("COMPLETED", "TIMED_OUT"),
+        ("COMPLETED", "STALE"),
+        ("COMPLETED", "NEUTRAL"),
+        ("COMPLETED", "SKIPPED"),
+    ),
+)
+def test_atlas_069m_non_failure_ci_observations_are_not_system_instructions(
+    status: str,
+    conclusion: str,
+) -> None:
+    checks = ({"name": "test", "status": status, "conclusion": conclusion},)
+    assert (
+        _system_diagnostics(
+            tracker_state="Changes Requested",
+            exact_current_candidate=True,
+            checks=checks,
+        )
+        == ()
+    )
+
+
+def test_atlas_069m_inconsistent_system_route_fails_closed_and_union_is_frozen() -> (
+    None
+):
+    remediation = _read(WORKFLOW_PATH)[
+        _read(WORKFLOW_PATH).index("## Changes Requested remediation input") : _read(
+            WORKFLOW_PATH
+        ).index("## How to move the ticket")
+    ]
+    flowed = " ".join(remediation.split())
+    no_diagnostic = _system_diagnostics(
+        tracker_state="Changes Requested",
+        exact_current_candidate=True,
+        checks=(),
+    )
+    human = _matching_envelopes([_envelope()])
+    diagnostic = _system_diagnostics(
+        tracker_state="Changes Requested",
+        exact_current_candidate=True,
+        checks=({"name": "test", "status": "COMPLETED", "conclusion": "FAILURE"},),
+    )
+
+    assert no_diagnostic == ()
+    assert "state/input relationship is inconsistent and fails closed" in flowed
+    assert human and diagnostic
+    assert "or both may form the remediation set" in flowed
+    assert "Freeze that bounded set" in flowed
+
+
+def test_atlas_069m_rework_updates_same_pr_and_ci_pending_still_stops() -> None:
+    remediation = _read(WORKFLOW_PATH)[
+        _read(WORKFLOW_PATH).index("## Changes Requested remediation input") : _read(
+            WORKFLOW_PATH
+        ).index("## How to move the ticket")
+    ]
+    flowed = " ".join(remediation.split())
+    pr_open = _route_for("PR Open")
+
+    assert "push the same ticket branch, update the same PR" in flowed
+    assert "Never create a replacement PR for rework" in flowed
+    assert "preserve or correct the exact closing line" in flowed
+    assert "move the ticket to `CI Pending` and stop in the same turn" in pr_open
+    assert "Do not poll CI" in pr_open
+
+
+def test_atlas_069m_native_gh_path_has_no_patched_connector_dependency() -> None:
+    remediation = _read(WORKFLOW_PATH)[
+        _read(WORKFLOW_PATH).index("## Changes Requested remediation input") : _read(
+            WORKFLOW_PATH
+        ).index("## How to move the ticket")
+    ]
+    assert "native `gh`" in remediation
+    for forbidden_dependency in (
+        "must use a `mcp__codex_apps__github_",
+        "must use a plugin `.app.json` patch",
+        "export `GITHUB_TOKEN`",
+        "export `GH_TOKEN`",
+        "scrape GitHub HTML",
+    ):
+        assert forbidden_dependency not in remediation
+
+
+def test_atlas_069m_design_document_records_the_bounded_contract() -> None:
+    doc = _read(SYMPHONY_DOC)
+    section = doc[doc.index("### Issue-bound publication and remediation resume") :]
+    flowed = " ".join(section.split())
+
+    assert "exactly one standalone `Closes <issue.identifier>` line" in flowed
+    assert "existing Atlas trust predicate" in flowed
+    assert "atlas:remediation:v1" in section
+    assert "at most 4,000 characters" in flowed
+    assert "transition is the classification authority" in flowed
+    assert "does not independently prove Atlas `IMPLEMENTATION_FAILURE`" in flowed
+    assert "does not alter the `CI Pending` stop contract" in flowed

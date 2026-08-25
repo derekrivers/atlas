@@ -175,9 +175,12 @@ prompt template. The prompt instructs the agent to:
    and explicit test. A selected-check failure prevents publication. The
    complete local sweep runs only for the named `full-sweep` conservative
    profile or an explicit operator instruction.
-4. Publish the unchanged validated candidate once, record the exact commands
-   and results, move through `PR Open` to `CI Pending`, and stop in the same
-   turn. The agent does not poll CI or wait for review.
+4. Publish the unchanged validated candidate once in one issue-bound PR whose
+   body contains exactly one standalone `Closes <Linear issue identifier>`
+   line, read the repository/PR/branch/base/head/body back, record the exact
+   commands and results, move through `PR Open` to `CI Pending`, and stop in the
+   same turn. The Atlas key remains independently required in the PR title. The
+   agent does not poll CI or wait for review.
 5. Never mark its own work `Done`. `Done` requires Atlas verification
    (system-tier evidence per ADR-0008) plus any required human approval.
 6. On blockers or ambiguity, comment on the issue and move it to
@@ -191,6 +194,70 @@ CI-pending exit. The system-tier reconciler alone moves a passing exact head to
 `Review Required` or a definite implementation failure to `Changes Requested`.
 Because `CI Pending` is not active, the explicit transition ends Symphony
 ownership without relying on silence or another turn.
+
+### Issue-bound publication and remediation resume
+
+Normal Symphony publication is bound to the dispatched Linear issue, not only
+to the Atlas key carried by its title. The published PR body contains exactly
+one standalone `Closes <issue.identifier>` line. Publication readback through
+the authenticated native `gh` CLI must reproduce the exact repository, PR
+number, same-repository head branch, literal `main` base, frozen validated head
+and closing line before `PR Open`. Missing, wrong, duplicate or malformed
+closing identity is a metadata failure: it blocks the transition but does not
+require a code/head change. Rework updates the same branch and PR and preserves
+or corrects that relationship; it never creates a replacement PR.
+
+On a `Changes Requested` resume, remediation resolution precedes the agent-owned
+move to `In Progress`. One bounded brokered Linear GraphQL read returns exact
+issue identity/state plus comment and attachment nodes and each connection's
+pagination completeness. `hasNextPage: true`, malformed connection data or
+identity movement fails closed. The issue-bound publication deliberately uses
+the existing Atlas trust predicate: a GitHub attachment has a canonical HTTPS
+owner/repository/PR URL; URL and metadata identities agree; metadata records
+numeric-string GitHub PR/repository ids, `linkKind: closes`, `targetBranch:
+main` and `open` or `draft`; and exactly one complete publication identity
+remains. Title and branch prose are never publication authority.
+
+Human semantic review arrives only through one current-candidate Linear
+comment with this versioned envelope:
+
+```text
+atlas:remediation:v1
+source: human-review
+ticket: ATLAS-N
+issue: ATL-N
+repository: owner/repo
+pr: N
+head: <40-character lowercase contributor SHA>
+
+<bounded semantic remediation text>
+```
+
+The header is exact and ordered, every identity must match, and remediation
+prose is non-empty and at most 4,000 characters. Old-head and mismatched
+envelopes are history. More than one matching envelope is ambiguous and fails
+closed. Arbitrary comments are not semantic-review input, and the agent never
+authors an operator envelope.
+
+The system-CI route preserves the existing authority boundary. Only the trusted
+system-tier reconciler owns `CI Pending → Changes Requested`; that observed
+state transition is the classification authority. A raw provider failure does
+not independently prove Atlas `IMPLEMENTATION_FAILURE` and Symphony does not
+reimplement `CIHandoffAssessment`. After exact issue/publication/head
+correlation, the resumed agent may make one read-only native-`gh` inspection of
+an already-completed current-head failure solely for bounded repair diagnostics.
+Pending, old-head, cancelled, timed-out, stale, neutral, skipped, missing,
+malformed or indeterminate observations are not implementation instructions,
+and the agent never waits, reruns or polls. An inconsistent state/diagnostic
+pair fails closed.
+
+One valid human envelope, one coherent system diagnostic under that trusted
+state invariant, or their union is frozen for the attempt before `In Progress`.
+No source, incomplete identity, or ambiguity produces one concise blocker,
+`Needs Human`, and a stop. The agent does not reread inputs during
+implementation; a later semantic decision requires another governed
+`Review Required → Changes Requested` cycle. This adds no new workflow-state
+owner and does not alter the `CI Pending` stop contract.
 
 ### Mainline freshness discipline
 
@@ -644,6 +711,7 @@ Per the Symphony spec, implementations must document their trust posture:
   issues — the reference point the 100,000-char pin sits well under. The
   overflow rule above (truncation-with-marker) encodes the finding.
 - Exact follow-up comment schema for `atlas:proposed-follow-up`.
-- Whether `Changes Requested` re-dispatch should require a fresh pack
-  render (current position: no — same pack, feedback arrives via PR
-  review comments the agent reads).
+- A `Changes Requested` re-dispatch retains the same pack; current semantic
+  input arrives only through the versioned Linear remediation envelope above,
+  while system-CI repair uses the trusted state plus bounded current-head
+  diagnostic contract.
