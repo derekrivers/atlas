@@ -10,9 +10,11 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import PurePosixPath
+from types import MappingProxyType
 from typing import Any, Literal, Self, TypeAlias
 from uuid import UUID
 
@@ -21,6 +23,7 @@ from pydantic import (
     ConfigDict,
     Field,
     StrictInt,
+    field_serializer,
     field_validator,
     model_validator,
 )
@@ -352,7 +355,7 @@ class RuntimeTransportEvent(BaseModel):
     peer_role_id: str | None = Field(
         default=None, min_length=1, max_length=MAX_RUNTIME_IDENTITY_LENGTH
     )
-    bounded_metadata: dict[str, RuntimeMetadataValue]
+    bounded_metadata: Mapping[str, RuntimeMetadataValue]
     payload_digest: str | None = None
 
     @field_validator("product_scope", mode="before")
@@ -462,6 +465,19 @@ class RuntimeTransportEvent(BaseModel):
     ) -> dict[str, RuntimeMetadataValue]:
         return _canonical_metadata(value)
 
+    @field_validator("bounded_metadata")
+    @classmethod
+    def _bounded_metadata_is_immutable(
+        cls, value: Mapping[str, RuntimeMetadataValue]
+    ) -> Mapping[str, RuntimeMetadataValue]:
+        return MappingProxyType(dict(value))
+
+    @field_serializer("bounded_metadata")
+    def _serialize_bounded_metadata(
+        self, value: Mapping[str, RuntimeMetadataValue]
+    ) -> dict[str, RuntimeMetadataValue]:
+        return dict(value)
+
     @field_validator("observed_at")
     @classmethod
     def _observed_at_is_utc(cls, value: datetime) -> datetime:
@@ -541,7 +557,7 @@ class RuntimeEvent(BaseModel):
     peer_role_id: str | None = Field(
         default=None, min_length=1, max_length=MAX_RUNTIME_IDENTITY_LENGTH
     )
-    bounded_metadata: dict[str, RuntimeMetadataValue]
+    bounded_metadata: Mapping[str, RuntimeMetadataValue]
     payload_digest: str | None = None
 
     @field_validator("external_issue_id", mode="before")
@@ -633,6 +649,19 @@ class RuntimeEvent(BaseModel):
         cls, value: Any
     ) -> dict[str, RuntimeMetadataValue]:
         return _canonical_metadata(value)
+
+    @field_validator("bounded_metadata")
+    @classmethod
+    def _bounded_metadata_is_immutable(
+        cls, value: Mapping[str, RuntimeMetadataValue]
+    ) -> Mapping[str, RuntimeMetadataValue]:
+        return MappingProxyType(dict(value))
+
+    @field_serializer("bounded_metadata")
+    def _serialize_bounded_metadata(
+        self, value: Mapping[str, RuntimeMetadataValue]
+    ) -> dict[str, RuntimeMetadataValue]:
+        return dict(value)
 
     @field_validator("observed_at")
     @classmethod

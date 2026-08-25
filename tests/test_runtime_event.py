@@ -178,12 +178,34 @@ def test_envelopes_preserve_exact_source_and_atlas_identity_surfaces() -> None:
 
 def test_envelopes_are_deeply_immutable_and_reject_extra_fields() -> None:
     raw_paths = ["b.py", "a.py"]
-    source = transport(touched_paths=raw_paths)
+    raw_metadata: dict[str, Any] = {
+        "raw_method_name": "item/completed",
+        "handoff_ids": ["handoff-b", "handoff-a"],
+    }
+    source = transport(touched_paths=raw_paths, bounded_metadata=raw_metadata)
+    event = canonical(touched_paths=raw_paths, bounded_metadata=raw_metadata)
+    transport_fingerprint = source.transport_fingerprint
+    canonical_fingerprint = event.canonical_fingerprint
     raw_paths.append("later.py")
+    raw_metadata["raw_method_name"] = "item/changed"
+    raw_metadata["handoff_ids"].append("handoff-later")
     assert source.touched_paths == ("a.py", "b.py")
+    expected_metadata = {
+        "handoff_ids": ("handoff-a", "handoff-b"),
+        "raw_method_name": "item/completed",
+    }
+    assert source.bounded_metadata == expected_metadata
+    assert event.bounded_metadata == expected_metadata
+    assert source.transport_fingerprint == transport_fingerprint
+    assert event.canonical_fingerprint == canonical_fingerprint
 
     with pytest.raises(ValidationError, match="frozen"):
         source.operation_kind = "provider_call"
+    for envelope in (source, event):
+        with pytest.raises(TypeError):
+            envelope.bounded_metadata["raw_method_name"] = (  # type: ignore[index]
+                "item/changed"
+            )
     with pytest.raises(ValidationError, match="extra_forbidden"):
         transport(product_id=PRODUCT_ID)
     with pytest.raises(ValidationError, match="extra_forbidden"):
@@ -550,6 +572,7 @@ def test_contract_module_is_isolated_without_activation_or_export() -> None:
 
     assert imported_roots == {
         "__future__",
+        "collections",
         "datetime",
         "enum",
         "hashlib",
@@ -557,6 +580,7 @@ def test_contract_module_is_isolated_without_activation_or_export() -> None:
         "pathlib",
         "pydantic",
         "re",
+        "types",
         "typing",
         "uuid",
     }
