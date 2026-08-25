@@ -20,6 +20,7 @@ from atlas.verification.validation_plan import (
     FULL_SWEEP_COMMANDS,
     MAX_CHANGED_PATHS,
     REGISTRY_VERSION,
+    ProtectedSurfaceReason,
     ValidationPlan,
     ValidationRegistry,
     calculate_validation_plan,
@@ -114,7 +115,12 @@ def _plan(
         ("schema", "atlas/core/models/ticket.py", None),
         ("generated-client", "README.md", "generated-client"),
         ("ui", "apps/operator-ui/src/lib/staleness.ts", None),
-        ("browser", "apps/operator-ui/src/lib/staleness.ts", None),
+        (
+            "browser",
+            "apps/operator-ui/tests/component/operator-shell.browser.test.tsx",
+            None,
+        ),
+        ("skill-contract", ".codex/skills/linear/SKILL.md", None),
         ("full-sweep", "atlas/verification/validation_registry_v1.json", None),
     ],
 )
@@ -141,6 +147,7 @@ def test_atlas_254_ac1_combined_surfaces_follow_registry_order(
         "apps/operator-ui/src/lib/staleness.ts",
         "docs/atlas/evidence-pipeline.md",
         "atlas/github/normaliser.py",
+        "tests/test_cli.py",
     )
 
     assert plan.profiles == (
@@ -148,7 +155,6 @@ def test_atlas_254_ac1_combined_surfaces_follow_registry_order(
         "static",
         "documentation",
         "ui",
-        "browser",
     )
     assert not plan.full_sweep
 
@@ -167,6 +173,8 @@ def test_atlas_254_ac2_cli_emits_bounded_json_and_human_plans(
         "atlas/github/normaliser.py",
         "--ticket-requirement",
         "documentation",
+        "--ticket-test",
+        "tests/test_cli.py",
     ]
     assert main([*common, "--json"], git_runner=runner) == 0
     json_output = capsys.readouterr().out
@@ -175,13 +183,15 @@ def test_atlas_254_ac2_cli_emits_bounded_json_and_human_plans(
     assert payload["head"] == HEAD
     assert payload["diff_verification"] == "verified"
     assert payload["profiles"] == ["python", "static", "documentation"]
+    assert payload["commands"][0] == "uv run pytest tests/test_cli.py"
+    assert "uv run pytest" not in payload["commands"]
     assert len(json_output.encode()) < 256_000
 
     assert main(common, git_runner=runner) == 0
     human_output = capsys.readouterr().out
     assert "Complete local sweep: no" in human_output
     assert "Commands (run in order):" in human_output
-    assert "uv run pytest" in human_output
+    assert "uv run pytest tests/test_cli.py" in human_output
 
 
 def test_atlas_254_ac2_cli_fails_closed_on_diff_mismatch_and_keeps_rename_source(
@@ -342,7 +352,7 @@ def test_atlas_254_ac3_cli_proves_explicit_ticket_test_exists_at_head(
     "case",
     [
         "unknown-path",
-        "protected-path",
+        "shared-policy-path",
         "ambiguous-base",
         "git-diff-unavailable",
         "registry-version-drift",
@@ -355,7 +365,7 @@ def test_atlas_254_ac4_uncertain_or_protected_inputs_select_complete_sweep(
 ) -> None:
     if case == "unknown-path":
         plan = _plan(registry, "unregistered/surface.xyz")
-    elif case == "protected-path":
+    elif case == "shared-policy-path":
         plan = _plan(registry, ".github/workflows/ci.yml")
     elif case == "ambiguous-base":
         plan = _plan(registry, "README.md", base="origin/main")
@@ -389,8 +399,9 @@ def test_atlas_254_ac4_uncertain_or_protected_inputs_select_complete_sweep(
     assert plan.full_sweep
     assert "full-sweep" in plan.profiles
     assert plan.commands == FULL_SWEEP_COMMANDS
-    assert plan.fallback_reasons
-    if case == "protected-path":
+    if case != "shared-policy-path":
+        assert plan.fallback_reasons
+    if case == "shared-policy-path":
         assert plan.protected_surface_reasons
 
 
@@ -411,6 +422,189 @@ def test_atlas_254_ac4_validation_policy_implementation_is_protected(
     assert any(
         reason.path == path and reason.lane == "validation-policy"
         for reason in plan.protected_surface_reasons
+    )
+
+
+def test_atlas_072m_python_implementation_uses_only_focused_ticket_tests(
+    registry: ValidationRegistry,
+) -> None:
+    plan = _plan(
+        registry,
+        "atlas/github/normaliser.py",
+        tests=("tests/test_cli.py", "tests/test_cli.py"),
+    )
+
+    assert plan.test_targets == ("tests/test_cli.py",)
+    assert plan.commands[0] == "uv run pytest tests/test_cli.py"
+    assert "uv run pytest" not in plan.commands
+    assert not plan.full_sweep
+
+
+def test_atlas_072m_changed_python_test_is_an_automatic_exact_target(
+    registry: ValidationRegistry,
+) -> None:
+    plan = _plan(registry, "tests/test_validation_plan.py")
+
+    assert plan.test_targets == ("tests/test_validation_plan.py",)
+    assert plan.commands[0] == "uv run pytest tests/test_validation_plan.py"
+    assert not plan.full_sweep
+
+
+def test_atlas_072m_python_without_provable_test_target_fails_closed(
+    registry: ValidationRegistry,
+) -> None:
+    plan = _plan(registry, "atlas/github/normaliser.py")
+
+    assert plan.full_sweep
+    assert any(
+        reason.code == "missing_python_test_target" for reason in plan.fallback_reasons
+    )
+
+
+def test_atlas_072m_unrelated_registry_test_does_not_cover_python_source(
+    registry: ValidationRegistry,
+) -> None:
+    plan = _plan(
+        registry,
+        "atlas/github/normaliser.py",
+        ".codex/skills/linear/SKILL.md",
+    )
+
+    assert plan.full_sweep
+    assert any(
+        reason.code == "missing_python_test_target" for reason in plan.fallback_reasons
+    )
+
+
+def test_atlas_072m_docs_only_stays_documentation_only(
+    registry: ValidationRegistry,
+) -> None:
+    plan = _plan(registry, "docs/runbooks/local-development.md")
+
+    assert plan.profiles == ("documentation",)
+    assert plan.commands == ("uv run python -m atlas.tools.doc_linter",)
+    assert not plan.full_sweep
+
+
+def test_atlas_072m_linear_skill_markdown_uses_its_contract_test(
+    registry: ValidationRegistry,
+) -> None:
+    plan = _plan(registry, ".codex/skills/linear/SKILL.md")
+
+    assert plan.profiles == ("skill-contract",)
+    assert plan.commands == ("uv run pytest tests/test_skill_linear.py",)
+    assert not plan.full_sweep
+
+
+def test_atlas_072m_workflow_protection_is_metadata_not_validation_breadth(
+    registry: ValidationRegistry,
+) -> None:
+    plan = _plan(registry, "WORKFLOW.md")
+
+    assert plan.profiles == ("documentation", "workflow-contract")
+    assert plan.commands == (
+        "uv run python -m atlas.tools.doc_linter",
+        "uv run pytest tests/test_workflow_contract.py",
+    )
+    assert plan.protected_surface_reasons == (
+        ProtectedSurfaceReason(
+            lane="workflow-policy",
+            path="WORKFLOW.md",
+            rule_id="workflow-policy",
+            detail="Workflow policy is a protected cross-cutting surface.",
+        ),
+    )
+    assert not plan.full_sweep
+
+
+def test_atlas_072m_migration_keeps_database_lane_and_focused_schema_tests(
+    registry: ValidationRegistry,
+) -> None:
+    migration = "atlas/storage/migrations/versions/0034_planned_ci_pending_recovery.py"
+    plan = _plan(registry, migration)
+
+    assert plan.profiles == ("python", "static", "schema")
+    assert (
+        "uv run pytest tests/test_schemas_export.py tests/test_storage_schema.py"
+        in plan.commands
+    )
+    assert not any("operator-ui" in command for command in plan.commands)
+    assert plan.protected_surface_reasons[0].lane == "database-schema"
+    assert plan.protected_surface_reasons[0].path == migration
+    assert not plan.full_sweep
+
+
+def test_atlas_072m_ui_source_and_e2e_ticket_test_are_cheap_plus_exact(
+    registry: ValidationRegistry,
+) -> None:
+    target = "apps/operator-ui/tests/e2e/app-shell.spec.ts"
+    plan = _plan(
+        registry,
+        "apps/operator-ui/src/App.tsx",
+        tests=(target,),
+    )
+
+    assert plan.profiles == ("ui", "browser")
+    assert plan.test_targets == (target,)
+    assert plan.commands == (
+        "npm --prefix apps/operator-ui ci",
+        "npm --prefix apps/operator-ui run lint",
+        "npm --prefix apps/operator-ui run typecheck",
+        "npm --prefix apps/operator-ui run build:bundle",
+        "apps/operator-ui/node_modules/.bin/playwright install chromium",
+        "cd apps/operator-ui && ./node_modules/.bin/playwright test "
+        "--config playwright.config.ts tests/e2e/app-shell.spec.ts",
+    )
+    assert not any(
+        command.endswith(("test:browser", "test:e2e", "test:a11y"))
+        for command in plan.commands
+    )
+    assert not plan.full_sweep
+
+
+def test_atlas_072m_browser_config_without_exact_target_fails_closed(
+    registry: ValidationRegistry,
+) -> None:
+    plan = _plan(registry, "apps/operator-ui/playwright.config.ts")
+
+    assert plan.full_sweep
+    assert any(
+        reason.code == "missing_browser_test_target" for reason in plan.fallback_reasons
+    )
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "atlas/orchestration/validation_plan_cli.py",
+        "atlas/verification/validation_plan.py",
+        "atlas/verification/validation_registry_v1.json",
+        ".github/workflows/ci.yml",
+        "apps/operator-ui/package-lock.json",
+        "pyproject.toml",
+        "uv.lock",
+    ],
+)
+def test_atlas_072m_policy_and_shared_dependency_changes_keep_full_sweep(
+    registry: ValidationRegistry,
+    path: str,
+) -> None:
+    plan = _plan(registry, path)
+
+    assert plan.full_sweep
+    assert plan.commands == FULL_SWEEP_COMMANDS
+
+
+def test_atlas_072m_explicit_full_sweep_requirement_is_authoritative(
+    registry: ValidationRegistry,
+) -> None:
+    plan = _plan(registry, "README.md", requirements=("full-sweep",))
+
+    assert plan.full_sweep
+    assert plan.commands == FULL_SWEEP_COMMANDS
+    assert any(
+        reason.source_kind == "ticket_requirement" and reason.source == "full-sweep"
+        for reason in plan.reasons
     )
 
 
@@ -510,9 +704,14 @@ def test_plan_calculation_has_no_mutating_or_external_boundary(
     monkeypatch.setattr(Path, "write_bytes", forbidden)
     monkeypatch.setattr(Path, "touch", forbidden)
     monkeypatch.setattr(Path, "unlink", forbidden)
-    plan = _plan(registry, "atlas/github/normaliser.py")
+    plan = _plan(
+        registry,
+        "atlas/github/normaliser.py",
+        tests=("tests/test_cli.py",),
+    )
 
     assert plan.profiles == ("python", "static")
+    assert plan.commands[0] == "uv run pytest tests/test_cli.py"
     assert not plan.full_sweep
 
 

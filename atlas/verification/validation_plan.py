@@ -10,12 +10,13 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import shlex
 from dataclasses import dataclass
 from typing import Any, Final, cast
 
 REGISTRY_VERSION: Final = "validation-registry/v1"
 REGISTRY_SHA256: Final = (
-    "20a87c19d2c3fe44e7bb47c2bb9778b784f1f4596a56145f59b6bf76541123be"
+    "ef9f09308ba999d51a22bd52ef1f7333c6faa3437b06efaa56ba345b9a7a7c3a"
 )
 MAX_CHANGED_PATHS: Final = 256
 MAX_TICKET_REQUIREMENTS: Final = 32
@@ -292,7 +293,7 @@ def _parse_registry(document: object) -> ValidationRegistry:
             cast(dict[str, Any], profile_value).get("commands"),
             field=f"profiles.{name}.commands",
         )
-        if not commands or any(
+        if (not commands and name != "python") or any(
             not command or len(command) > 200 for command in commands
         ):
             raise ValueError(f"registry profile {name} has invalid commands")
@@ -432,6 +433,106 @@ def runner_profiles_for_test_path(path: str) -> tuple[str, ...] | None:
 
 def _profile_order_key(registry: ValidationRegistry, profile: str) -> int:
     return registry.profile_order.index(profile)
+
+
+def _quoted_targets(paths: tuple[str, ...]) -> str:
+    return " ".join(shlex.quote(path) for path in paths)
+
+
+def _ui_targets(paths: tuple[str, ...]) -> tuple[str, ...]:
+    prefix = "apps/operator-ui/"
+    return tuple(path.removeprefix(prefix) for path in paths)
+
+
+def _target_commands(profile: str, test_targets: tuple[str, ...]) -> tuple[str, ...]:
+    """Render exact runner commands for deterministic changed/ticket tests."""
+
+    python_targets = tuple(
+        path
+        for path in test_targets
+        if runner_profiles_for_test_path(path) == ("python",)
+    )
+    acceptance_targets = tuple(
+        path
+        for path in test_targets
+        if path.startswith("apps/operator-ui/tests/acceptance/")
+    )
+    component_targets = tuple(
+        path
+        for path in test_targets
+        if path.startswith("apps/operator-ui/tests/component/")
+    )
+    e2e_targets = tuple(
+        path for path in test_targets if path.startswith("apps/operator-ui/tests/e2e/")
+    )
+    if profile == "python" and python_targets:
+        return (f"uv run pytest {_quoted_targets(python_targets)}",)
+    if profile == "ui" and acceptance_targets:
+        return (
+            "cd apps/operator-ui && ./node_modules/.bin/vitest run "
+            "--config vitest.config.ts "
+            f"{_quoted_targets(_ui_targets(acceptance_targets))}",
+        )
+    if profile == "browser":
+        commands: list[str] = []
+        if component_targets:
+            commands.append(
+                "cd apps/operator-ui && ./node_modules/.bin/vitest run "
+                "--config vitest.browser.config.ts "
+                f"{_quoted_targets(_ui_targets(component_targets))}"
+            )
+        if e2e_targets:
+            commands.append(
+                "cd apps/operator-ui && ./node_modules/.bin/playwright test "
+                "--config playwright.config.ts "
+                f"{_quoted_targets(_ui_targets(e2e_targets))}"
+            )
+        return tuple(commands)
+    return ()
+
+
+def _path_has_registry_focused_python_tests(
+    registry: ValidationRegistry, path: str
+) -> bool:
+    return any(
+        command.startswith("uv run pytest ")
+        for rule in registry.path_rules
+        if rule.matches(path)
+        for profile in rule.profiles
+        if profile != "python"
+        for command in registry.profile(profile).commands
+    )
+
+
+def _deduplicate_commands(commands: tuple[str, ...]) -> tuple[str, ...]:
+    """Deduplicate commands and coalesce safe focused Pytest file targets."""
+
+    focused_pytest_targets = tuple(
+        sorted(
+            {
+                target
+                for command in commands
+                if command.startswith("uv run pytest ")
+                for target in shlex.split(command)[3:]
+            }
+        )
+    )
+    focused_pytest_command = (
+        f"uv run pytest {_quoted_targets(focused_pytest_targets)}"
+        if focused_pytest_targets
+        else None
+    )
+    result: list[str] = []
+    emitted_focused_pytest = False
+    for command in commands:
+        if command.startswith("uv run pytest "):
+            if not emitted_focused_pytest and focused_pytest_command is not None:
+                result.append(focused_pytest_command)
+                emitted_focused_pytest = True
+            continue
+        if command not in result:
+            result.append(command)
+    return tuple(result)
 
 
 def _safe_fallback_plan(
@@ -766,11 +867,52 @@ def calculate_validation_plan(
                 )
             )
 
-    if protected:
+    python_targets = tuple(
+        target
+        for target in sorted(test_targets)
+        if runner_profiles_for_test_path(target) == ("python",)
+    )
+    browser_targets = tuple(
+        target
+        for target in sorted(test_targets)
+        if runner_profiles_for_test_path(target) == ("browser",)
+    )
+    python_requirement_selected = any(
+        "python" in requirement_profiles
+        for requirement in requirements
+        if (requirement_profiles := registry.requirement_profiles(requirement))
+        is not None
+    )
+    uncovered_python_paths = tuple(
+        path
+        for path in normalised_paths
+        if runner_profiles_for_test_path(path) is None
+        and any(
+            "python" in rule.profiles
+            for rule in registry.path_rules
+            if rule.matches(path)
+        )
+        and not _path_has_registry_focused_python_tests(registry, path)
+    )
+    if (
+        "python" in selected
+        and "full-sweep" not in selected
+        and not python_targets
+        and (python_requirement_selected or uncovered_python_paths)
+    ):
         fallbacks.add(
             FallbackReason(
-                "protected_surface",
-                "Protected cross-cutting changes require the complete local sweep.",
+                "missing_python_test_target",
+                "Python implementation changed without a deterministic focused "
+                "Python test target.",
+            )
+        )
+    if "browser" in selected and "full-sweep" not in selected and not browser_targets:
+        fallbacks.add(
+            FallbackReason(
+                "missing_browser_test_target",
+                "Browser-system validation was selected without a deterministic "
+                "component or end-to-end test target.",
             )
         )
     if fallbacks or "full-sweep" in selected:
@@ -784,11 +926,15 @@ def calculate_validation_plan(
     if full_sweep:
         commands = FULL_SWEEP_COMMANDS
     else:
-        commands = tuple(
-            dict.fromkeys(
+        ordered_targets = tuple(sorted(test_targets))
+        commands = _deduplicate_commands(
+            tuple(
                 command
                 for profile in ordered_profiles
-                for command in registry.profile(profile).commands
+                for command in (
+                    *registry.profile(profile).commands,
+                    *_target_commands(profile, ordered_targets),
+                )
             )
         )
     ordered_reasons = tuple(
