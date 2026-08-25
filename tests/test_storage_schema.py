@@ -464,6 +464,30 @@ DOCUMENTED_COLUMNS: dict[str, dict[str, tuple[bool, str | None]]] = {
         "created_by_type": (NN, None),
         "created_by_id": (NN, None),
     },
+    # §5.19 reusable evidence-backed local mirror recovery proof.
+    "planned_ci_pending_recoveries": {
+        "id": (NN, None),
+        "schema_version": (NN, None),
+        "product_id": (NN, None),
+        "ticket_id": (NN, None),
+        "ticket_key": (NN, None),
+        "linear_issue_id": (NN, None),
+        "linear_project_id": (NN, None),
+        "observed_linear_state_id": (NN, None),
+        "source_local_status": (NN, None),
+        "recovered_local_status": (NN, None),
+        "admission_run_id": (NN, None),
+        "pm_sync_receipt_id": (NN, None),
+        "publication_attachment_id": (NN, None),
+        "publication_repository_owner": (NN, None),
+        "publication_repository_name": (NN, None),
+        "publication_pr_number": (NN, None),
+        "board_fingerprint": (NN, None),
+        "board_issue_count": (NN, None),
+        "observed_at": (NN, None),
+        "created_by_type": (NN, None),
+        "created_by_id": (NN, None),
+    },
     # Phase-15 single-write admission coordination state.
     "admission_leases": {
         "product_id": (NN, None),
@@ -575,6 +599,12 @@ DOCUMENTED_FOREIGN_KEYS: dict[str, dict[str, str]] = {
         "historical_debt_item_id": "debt_items",
         "policy_id": "delivery_admission_policy_revisions",
     },
+    "planned_ci_pending_recoveries": {
+        "product_id": "products",
+        "ticket_id": "tickets",
+        "admission_run_id": "admission_runs",
+        "pm_sync_receipt_id": "pm_sync_receipts",
+    },
     "admission_leases": {"product_id": "products"},
     "admission_eligibility": {
         "ticket_id": "tickets",
@@ -613,6 +643,11 @@ DOCUMENTED_UNIQUES: dict[str, list[list[str]]] = {
         ["admission_run_id"],
         ["blocker_ticket_id"],
         ["pm_sync_receipt_id"],
+    ],
+    "planned_ci_pending_recoveries": [
+        ["admission_run_id"],
+        ["pm_sync_receipt_id"],
+        ["ticket_id"],
     ],
     "admission_leases": [],
     "admission_eligibility": [],
@@ -938,7 +973,7 @@ def test_pm_sync_receipt_migration_preserves_ticket_definition_cursors(
 def test_alembic_upgrades_fresh_db_and_matches_metadata(tmp_path: Path) -> None:
     url = f"sqlite:///{tmp_path}/migrated.db"
     config = _alembic_config(url)
-    assert ScriptDirectory.from_config(config).get_heads() == ["0033"]
+    assert ScriptDirectory.from_config(config).get_heads() == ["0034"]
     command.upgrade(config, "head")
 
     engine = sa.create_engine(url)
@@ -949,6 +984,7 @@ def test_alembic_upgrades_fresh_db_and_matches_metadata(tmp_path: Path) -> None:
             "admission_write_fences",
             "ci_handoff_reconciliations",
             "ci_handoff_write_fences",
+            "planned_ci_pending_recoveries",
         } <= set(sa.inspect(connection).get_table_names())
         context = MigrationContext.configure(connection)
         diff = compare_metadata(context, Base.metadata)
@@ -1484,12 +1520,67 @@ def test_atlas_280_bootstrap_receipt_migration_compiles_for_postgresql() -> None
     )
 
 
+def test_planned_ci_pending_recovery_migration_installs_and_removes_guards(
+    tmp_path: Path,
+) -> None:
+    url = f"sqlite:///{tmp_path}/planned-ci-pending-recovery.db"
+    config = _alembic_config(url)
+    command.upgrade(config, "0033")
+    engine = sa.create_engine(url)
+    with engine.connect() as connection:
+        assert (
+            "planned_ci_pending_recoveries"
+            not in sa.inspect(connection).get_table_names()
+        )
+
+    command.upgrade(config, "0034")
+    with engine.connect() as connection:
+        inspector = sa.inspect(connection)
+        assert "planned_ci_pending_recoveries" in inspector.get_table_names()
+        trigger_names = {
+            row[0]
+            for row in connection.execute(
+                sa.text(
+                    "SELECT name FROM sqlite_master WHERE type = 'trigger' "
+                    "AND name LIKE 'planned_ci_pending_recoveries_no_%'"
+                )
+            )
+        }
+    assert trigger_names == {
+        "planned_ci_pending_recoveries_no_update",
+        "planned_ci_pending_recoveries_no_delete",
+    }
+
+    command.downgrade(config, "0033")
+    with engine.connect() as connection:
+        assert (
+            "planned_ci_pending_recoveries"
+            not in sa.inspect(connection).get_table_names()
+        )
+
+
+def test_planned_ci_pending_recovery_migration_compiles_for_postgresql() -> None:
+    output = StringIO()
+    config = Config(str(REPO_ROOT / "alembic.ini"), output_buffer=output)
+    config.set_main_option(
+        "script_location", str(REPO_ROOT / "atlas" / "storage" / "migrations")
+    )
+    config.set_main_option("sqlalchemy.url", "postgresql://atlas:atlas@localhost/atlas")
+
+    command.upgrade(config, "0033:0034", sql=True)
+
+    migration_sql = output.getvalue()
+    assert "-- Running upgrade 0033 -> 0034" in migration_sql
+    assert "CREATE TABLE planned_ci_pending_recoveries" in migration_sql
+    assert "CREATE TRIGGER planned_ci_pending_recoveries_append_only" in migration_sql
+
+
 def test_acceptance_evidence_receipt_outcomes_migrate_without_losing_guards(
     tmp_path: Path,
 ) -> None:
     url = f"sqlite:///{tmp_path}/acceptance-evidence-outcomes.db"
     config = _alembic_config(url)
-    assert ScriptDirectory.from_config(config).get_heads() == ["0033"]
+    assert ScriptDirectory.from_config(config).get_heads() == ["0034"]
     command.upgrade(config, "head")
 
     engine = sa.create_engine(url)

@@ -296,6 +296,12 @@ def _board_payload(issues: Iterable[LinearIssue]) -> list[dict[str, str | None]]
     ]
 
 
+def linear_board_fingerprint(issues: Iterable[LinearIssue]) -> str:
+    """Fingerprint only the bounded issue/state identities in a board pull."""
+
+    return _canonical_hash(_board_payload(issues))
+
+
 def _policy_payload(policy: DeliveryAdmissionPolicyRevision) -> dict[str, object]:
     return {
         "id": str(policy.id),
@@ -971,7 +977,7 @@ def build_delivery_snapshot(
         policy_fingerprint=delivery_policy_fingerprint(policy),
         integration_budget=policy.integration_budget,
         status_map_fingerprint=_canonical_hash(status_map.snapshot()),
-        fetched_board_fingerprint=_canonical_hash(_board_payload(issues)),
+        fetched_board_fingerprint=linear_board_fingerprint(issues),
         fetched_board_issue_count=len(issues),
         atlas_store_revision=delivery_store_revision(product_id, product_tickets),
         atlas_graph_revision=delivery_graph_revision(graph),

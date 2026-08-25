@@ -1,0 +1,146 @@
+{
+  "description": "Immutable evidence for one direct, local-only mirror catch-up.",
+  "properties": {
+    "admission_run_id": {
+      "format": "uuid",
+      "title": "Admission Run Id",
+      "type": "string"
+    },
+    "board_fingerprint": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Board Fingerprint",
+      "type": "string"
+    },
+    "board_issue_count": {
+      "maximum": 2147483647,
+      "minimum": 1,
+      "title": "Board Issue Count",
+      "type": "integer"
+    },
+    "created_by_id": {
+      "const": "pm-engine:planned-ci-pending-recovery",
+      "default": "pm-engine:planned-ci-pending-recovery",
+      "title": "Created By Id",
+      "type": "string"
+    },
+    "created_by_type": {
+      "const": "system",
+      "default": "system",
+      "title": "Created By Type",
+      "type": "string"
+    },
+    "id": {
+      "format": "uuid",
+      "title": "Id",
+      "type": "string"
+    },
+    "linear_issue_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Linear Issue Id",
+      "type": "string"
+    },
+    "linear_project_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Linear Project Id",
+      "type": "string"
+    },
+    "observed_at": {
+      "format": "date-time",
+      "title": "Observed At",
+      "type": "string"
+    },
+    "observed_linear_state_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Observed Linear State Id",
+      "type": "string"
+    },
+    "pm_sync_receipt_id": {
+      "format": "uuid",
+      "title": "Pm Sync Receipt Id",
+      "type": "string"
+    },
+    "product_id": {
+      "format": "uuid",
+      "title": "Product Id",
+      "type": "string"
+    },
+    "publication_attachment_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Publication Attachment Id",
+      "type": "string"
+    },
+    "publication_pr_number": {
+      "maximum": 2147483647,
+      "minimum": 1,
+      "title": "Publication Pr Number",
+      "type": "integer"
+    },
+    "publication_repository_name": {
+      "maxLength": 128,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_.-]+$",
+      "title": "Publication Repository Name",
+      "type": "string"
+    },
+    "publication_repository_owner": {
+      "maxLength": 128,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_.-]+$",
+      "title": "Publication Repository Owner",
+      "type": "string"
+    },
+    "recovered_local_status": {
+      "const": "ci_pending",
+      "default": "ci_pending",
+      "title": "Recovered Local Status",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "planned-ci-pending-recovery-v1",
+      "default": "planned-ci-pending-recovery-v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "source_local_status": {
+      "const": "planned",
+      "default": "planned",
+      "title": "Source Local Status",
+      "type": "string"
+    },
+    "ticket_id": {
+      "format": "uuid",
+      "title": "Ticket Id",
+      "type": "string"
+    },
+    "ticket_key": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Ticket Key",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "product_id",
+    "ticket_id",
+    "ticket_key",
+    "linear_issue_id",
+    "linear_project_id",
+    "observed_linear_state_id",
+    "admission_run_id",
+    "pm_sync_receipt_id",
+    "publication_attachment_id",
+    "publication_repository_owner",
+    "publication_repository_name",
+    "publication_pr_number",
+    "board_fingerprint",
+    "board_issue_count",
+    "observed_at"
+  ],
+  "title": "PlannedCIPendingRecovery",
+  "type": "object"
+}

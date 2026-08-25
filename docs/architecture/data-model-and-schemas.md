@@ -1806,6 +1806,64 @@ CREATE TABLE atlas_280_bootstrap_recovery_receipts (
 );
 ```
 
+## 5.19 Governed Planned-to-CI-Pending Mirror Recovery
+
+`PlannedCIPendingRecovery` is the reusable, system-authored audit proof for the
+one sanctioned local catch-up from `planned` directly to an already observed
+external `ci_pending`. It is not a generic transition permission. Eligibility
+requires exactly one immutable `AdmissionRun` whose selected ticket UUID, Atlas
+key, product and external Linear UUID all identify the stored ticket; exactly
+one correlated successful `PmSyncReceipt` with `admitted = promoted = 1` and no
+stale or indeterminate outcome; a complete unique board observation; and one
+complete coherent GitHub publication attached to that exact Linear issue.
+Active admission or CI-handoff write fences and conflicting pre-dispatch
+transition history refuse recovery.
+
+The deterministic record id is derived from the admission run, PM receipt,
+ticket and Linear issue, observed Linear state, issue-bound publication and
+board fingerprint. The row stores only those bounded identities and the
+observation timestamp. It contains no provider payload, issue or PR body,
+branch/title inference, credential, token, transcript or CI result. The ticket
+compare-and-set, direct `planned -> ci_pending` transition and recovery insert
+commit in one transaction. The transition has
+`pm-engine:planned-ci-pending-recovery` provenance; the same actor is fixed on
+the audit row. Unique ticket/admission/receipt constraints plus the
+deterministic identity make replay a no-op, while database triggers reject
+update and delete.
+
+Recovery also stamps the already observed Linear state id and the real direct
+`ci_pending` entry time. It does not synthesize `ready_for_agent`,
+`in_progress` or `pr_open` transitions or timestamps, create an `AgentRun`,
+write Linear, classify CI, or alter historical `DebtItem` rows. The existing
+CI-handoff reconciler independently re-resolves publication and exact-head
+system evidence before it can own a later `ci_pending` exit.
+
+```sql
+CREATE TABLE planned_ci_pending_recoveries (
+    id UUID PRIMARY KEY,
+    schema_version TEXT NOT NULL,
+    product_id UUID NOT NULL REFERENCES products(id),
+    ticket_id UUID NOT NULL UNIQUE REFERENCES tickets(id),
+    ticket_key TEXT NOT NULL,
+    linear_issue_id TEXT NOT NULL,
+    linear_project_id TEXT NOT NULL,
+    observed_linear_state_id TEXT NOT NULL,
+    source_local_status TEXT NOT NULL,
+    recovered_local_status TEXT NOT NULL,
+    admission_run_id UUID NOT NULL UNIQUE REFERENCES admission_runs(id),
+    pm_sync_receipt_id UUID NOT NULL UNIQUE REFERENCES pm_sync_receipts(id),
+    publication_attachment_id TEXT NOT NULL,
+    publication_repository_owner TEXT NOT NULL,
+    publication_repository_name TEXT NOT NULL,
+    publication_pr_number INTEGER NOT NULL,
+    board_fingerprint TEXT NOT NULL,
+    board_issue_count INTEGER NOT NULL,
+    observed_at TIMESTAMPTZ NOT NULL,
+    created_by_type TEXT NOT NULL,
+    created_by_id TEXT NOT NULL
+);
+```
+
 ---
 
 ## 5.13 Lesson Disposition Result Snapshot

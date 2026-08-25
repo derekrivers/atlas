@@ -41,6 +41,9 @@ from atlas.core.models.operator_action_receipt import (
     OperatorActionResultCode,
 )
 from atlas.core.models.plan_run import PlanRun, PlanRunStatus
+from atlas.core.models.planned_ci_pending_recovery import (
+    PlannedCIPendingRecovery,
+)
 from atlas.core.models.pm_sync_receipt import (
     SUCCESSFUL_PM_SYNC_RESULTS,
     PmSyncReceipt,
@@ -96,6 +99,7 @@ __all__ = [
     "OperatorActionResultCode",
     "PlanRun",
     "PlanRunStatus",
+    "PlannedCIPendingRecovery",
     "PmSyncReceipt",
     "PmSyncReceiptResult",
     "Product",
