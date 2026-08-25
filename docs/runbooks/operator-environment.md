@@ -163,9 +163,10 @@ and retention design exists.
 
 ## Database
 
-- The store is a single SQLite file at
-  `~/projects/atlas/.atlas/atlas.db`. There is no `ATLAS_DB` override set
-  by default; `--db` on a command targets a different file.
+- The managed operational store is the single SQLite file at
+  `/root/atlas/.atlas/atlas.db`. `ATLAS_DATABASE_URL`, `--db` and service
+  configuration can target a different store, so establish the effective
+  identity rather than inferring it from the checkout.
 - **The CLI does not print which database it used.** A report and a raw
   `sqlite3` query can therefore silently address different assumptions
   about state — an anomaly count was chased across three wrong theories
@@ -181,6 +182,29 @@ and retention design exists.
   for the lock instead of failing instantly. UUIDs are stored dashless in
   the WHERE clause; confirm the id with `SELECT quote(id) …` first. (A
   supported `atlas lessons edit` command is a carry-forward.)
+
+## Managed PM runtime
+
+The production PM scheduler is the recurring `atlas-pm-sync.service`. Its
+executable is an immutable accepted release beneath
+`/root/atlas-runtime/pm-sync/<exact-git-sha>`; the mutable `/root/atlas`
+checkout is not the long-lived service executable. The service and
+`atlas pm sync --once` contend for the same nonblocking writer ownership on the
+canonical SQLite file. A one-shot command normally refuses with `PM writer
+already active` while the managed service is running; it is not a way to canary
+or supplement the recurring daemon.
+
+Deployment, migration, service activation, natural-cadence canary, deployment
+receipt and rollback/incident boundaries are owned only by
+`docs/runbooks/pm-runtime-deployment.md`. Acceptance does not perform those
+operations. The local observational receipts live beneath
+`.atlas/pm-runtime-deployments/`; they contain no secrets and grant no database,
+admission, policy, ticket-state or rollback authority.
+
+While PM is active, never unlink, replace, restore or recreate the canonical
+database path. Writer ownership follows the opened inode. All backup, migration,
+restore or replacement work requires the managed service stopped, no remaining
+PM process and successful proof that ownership has been released.
 
 ## Minting: apply writes to two places
 
@@ -215,8 +239,9 @@ until you commit it.
 
 ## Board operation
 
-- Status is operator-owned (ADR-0006). Dragging a card to Done is a manual
-  act no `atlas` command performs; `atlas pm sync --once` records it after.
+- Operator decisions remain operator-owned (ADR-0006), but verified completion
+  is reconciled by the managed PM cadence. Never drag a card to Done manually;
+  that bypasses the completion gate.
 - A ticket in **Needs Human** is invisible to the dispatcher and to the
   sync's repair/push passes. Prefer the stub's `depends_on`
   front-matter to hold a dependent ticket: it names sibling stubs in
@@ -240,8 +265,9 @@ until you commit it.
   `uv run python scripts/close_ticket.py <pr>` (ATLAS-040M). It pulls
   evidence, hands over to interactive `confirm`, pauses for the
   manual merge, independently verifies the merge with GitHub before
-  running `verify`, ticks twice, and reports each ticket's status
-  read from the store. Run it only after CI is green on the final
+  running `verify`, then observes each ticket's status read-only until the
+  managed PM cadence completes it. It does not deploy, migrate, orchestrate
+  the service or run an independent PM tick. Run it only after CI is green on the final
   head: evidence is commit-pinned, so updating a branch invalidates
   evidence pulled at the old SHA.
 

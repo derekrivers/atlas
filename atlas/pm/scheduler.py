@@ -65,6 +65,7 @@ from atlas.learning import LessonModelClient
 from atlas.linear.client import LinearClient, LinearRateLimitError
 from atlas.linear.ownership import LinearStatusMap
 from atlas.pm.sync import SyncResult, sync_tick
+from atlas.pm.writer_ownership import pm_writer_ownership
 from atlas.storage.db import Database
 from atlas.storage.repositories import TicketRepo, TickFailureRepo
 
@@ -258,51 +259,58 @@ def run_scheduler(
     off at the full cap. The wait goes through the SAME interruptible sleep, so
     shutdown still wakes it; any other crash keeps the base cadence."""
 
-    shutdown = shutdown if shutdown is not None else threading.Event()
-    interruptible_sleep = sleep if sleep is not None else shutdown.wait
-    failures = TickFailureRepo(config.db)
-    last_result: SyncResult | None = None
+    # Ownership begins before TickFailureRepo construction or any tick/mutation
+    # seam and spans the complete recurring/one-shot invocation, including
+    # cadence sleep and rate-limit backoff.  Contention therefore escapes as a
+    # typed precondition refusal, never as tick-crash evidence.
+    with pm_writer_ownership(config.db):
+        shutdown = shutdown if shutdown is not None else threading.Event()
+        interruptible_sleep = sleep if sleep is not None else shutdown.wait
+        failures = TickFailureRepo(config.db)
+        last_result: SyncResult | None = None
 
-    def remember_result(result: SyncResult) -> None:
-        nonlocal last_result
-        last_result = result
+        def remember_result(result: SyncResult) -> None:
+            nonlocal last_result
+            last_result = result
 
-    logger.info(
-        "pm-scheduler: starting (%s)",
-        "single tick (--once)" if once else f"interval {interval}s",
-    )
-    while True:
-        crash = run_tick(
-            config,
-            failures,
-            now=now(),
-            completion_clock=now,
-            result_sink=remember_result,
+        logger.info(
+            "pm-scheduler: starting (%s)",
+            "single tick (--once)" if once else f"interval {interval}s",
         )
-        if once:
-            return last_result
-        if shutdown.is_set():
-            # The signal arrived during the tick we just finished: stop now,
-            # after the in-flight tick, never mid-write.
-            logger.info("pm-scheduler: shutdown signalled; stopping after this tick")
-            return last_result
-        wait = interval
-        if isinstance(crash, LinearRateLimitError):
-            reset = crash.reset_after_seconds
-            wait = (
-                RATE_LIMIT_MAX_BACKOFF_SECONDS
-                if reset is None
-                else min(max(reset, interval), RATE_LIMIT_MAX_BACKOFF_SECONDS)
+        while True:
+            crash = run_tick(
+                config,
+                failures,
+                now=now(),
+                completion_clock=now,
+                result_sink=remember_result,
             )
-            logger.warning(
-                "pm-scheduler: tick was rate-limited by Linear; backing off %ss "
-                "(reset %s, interval %ss, cap %ss)",
-                wait,
-                "unknown" if reset is None else f"{reset}s",
-                interval,
-                RATE_LIMIT_MAX_BACKOFF_SECONDS,
-            )
-        if interruptible_sleep(wait):
-            # Woken early by the shutdown signal: stop without another tick.
-            logger.info("pm-scheduler: shutdown signalled during sleep; stopping")
-            return last_result
+            if once:
+                return last_result
+            if shutdown.is_set():
+                # The signal arrived during the tick we just finished: stop now,
+                # after the in-flight tick, never mid-write.
+                logger.info(
+                    "pm-scheduler: shutdown signalled; stopping after this tick"
+                )
+                return last_result
+            wait = interval
+            if isinstance(crash, LinearRateLimitError):
+                reset = crash.reset_after_seconds
+                wait = (
+                    RATE_LIMIT_MAX_BACKOFF_SECONDS
+                    if reset is None
+                    else min(max(reset, interval), RATE_LIMIT_MAX_BACKOFF_SECONDS)
+                )
+                logger.warning(
+                    "pm-scheduler: tick was rate-limited by Linear; backing off %ss "
+                    "(reset %s, interval %ss, cap %ss)",
+                    wait,
+                    "unknown" if reset is None else f"{reset}s",
+                    interval,
+                    RATE_LIMIT_MAX_BACKOFF_SECONDS,
+                )
+            if interruptible_sleep(wait):
+                # Woken early by the shutdown signal: stop without another tick.
+                logger.info("pm-scheduler: shutdown signalled during sleep; stopping")
+                return last_result

@@ -170,6 +170,7 @@ from atlas.planning.staged import StagedProposalGenerator, TemplateStagedGenerat
 from atlas.planning.stub_integrity import PlanningBatchIntegrityError
 from atlas.pm import (
     DEFAULT_INTERVAL_SECONDS,
+    PMWriterOwnershipError,
     SyncDecisionClassification,
     SyncResult,
     build_delivery_report,
@@ -1302,24 +1303,23 @@ def _pm_sync(args: argparse.Namespace, resolved_db: Database) -> int:
     map is a clean EXIT_PRECONDITION, mirroring `plan`'s missing-key handling;
     otherwise shutdown stops cleanly after the current tick and returns EXIT_OK."""
 
+    shutdown = threading.Event()
     try:
         assert_schema_at_head(resolved_db)
         config = build_tick_config(args, resolved_db)
+        _install_shutdown_handlers(shutdown)
+        result = run_scheduler(
+            config,
+            interval=args.interval,
+            once=args.once or args.repair_packs,
+            shutdown=shutdown,
+        )
     except PM_SYNC_CONFIG_ERRORS as error:
         print(error, file=sys.stderr)
         return EXIT_PRECONDITION
-    except SchemaDriftError as error:
+    except (SchemaDriftError, PMWriterOwnershipError) as error:
         print(error, file=sys.stderr)
         return EXIT_PRECONDITION
-
-    shutdown = threading.Event()
-    _install_shutdown_handlers(shutdown)
-    result = run_scheduler(
-        config,
-        interval=args.interval,
-        once=args.once or args.repair_packs,
-        shutdown=shutdown,
-    )
     if args.repair_packs:
         print(
             _format_repair_pack_result(

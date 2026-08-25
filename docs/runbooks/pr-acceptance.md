@@ -129,8 +129,10 @@ ingestion is not a separate operator precondition. An AgentRun, ticket/PR title,
 branch guess or GitHub rollup is never required or used for identity. A
 confirmed handoff write or target-fence reconciliation ends the tick before
 admission or completion can write another workflow state. In operator-attended
-diagnosis, `atlas pm sync --once -v` prints the bounded result; the durable
-reconciliation row and Linear transition remain the authority.
+diagnosis, inspect the latest managed PM receipt and bounded service journal
+window; a competing `atlas pm sync --once -v` refuses while the recurring writer
+owns the store. The durable reconciliation row and Linear transition remain the
+authority.
 
 Linear's `PR opened -> In Progress` GitHub workflow automation caused the
 ATLAS-261/262 reactivation incident and was disabled by the operator on 17
@@ -326,7 +328,8 @@ write.
 
 Deployment is not acceptance. Schema migration, code checkout or pull, service
 orchestration, and manual `atlas pm sync --once` are not acceptance steps. They
-belong to separately governed operator procedures. Never drag a card to Done
+belong to the separately governed
+`docs/runbooks/pm-runtime-deployment.md` procedure. Never drag a card to Done
 manually: doing so bypasses the completion gate and creates an integrity anomaly.
 
 ## 9. Silence discipline
