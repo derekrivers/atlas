@@ -83,25 +83,67 @@ deployment receipt.
 
 ## 2. Prepare the target release before downtime
 
-The release directory must not already exist. Materialise only the exact target,
-then install from the committed lockfile:
+The release directory must not already exist. Resolve `origin` from
+`/root/atlas`, but never echo, retain or pass through a credential-bearing URL.
+The supported origin is canonical credential-free GitHub HTTPS. This bounded
+check emits only that safe canonical form and fails closed for userinfo,
+passwords/tokens, ports, query/fragment data, non-GitHub hosts, non-HTTPS
+schemes, malformed paths or a failed Git read:
 
 ```bash
+pm_origin_url=$(python3 - <<'PY'
+import re
+import subprocess
+from urllib.parse import urlsplit
+
+result = subprocess.run(
+    ["git", "-C", "/root/atlas", "remote", "get-url", "origin"],
+    check=False,
+    capture_output=True,
+    text=True,
+)
+if result.returncode:
+    raise SystemExit("cannot resolve the authoritative Atlas origin")
+raw = result.stdout.strip()
+parsed = urlsplit(raw)
+if (
+    parsed.scheme != "https"
+    or parsed.netloc != "github.com"
+    or parsed.query
+    or parsed.fragment
+):
+    raise SystemExit("origin is not credential-free canonical GitHub HTTPS")
+parts = parsed.path.removeprefix("/").removesuffix(".git").split("/")
+if len(parts) != 2 or not all(
+    re.fullmatch(r"[A-Za-z0-9_.-]+", part) for part in parts
+):
+    raise SystemExit("origin repository identity is malformed")
+print(f"https://github.com/{parts[0]}/{parts[1]}.git")
+PY
+)
 test ! -e "$pm_target_dir"
 mkdir -p "$pm_release_root"
-git clone --no-local --no-checkout /root/atlas "$pm_target_dir"
+git clone --no-checkout "$pm_origin_url" "$pm_target_dir"
+git -C "$pm_target_dir" fetch --no-tags origin main
+test "$(git -C "$pm_target_dir" rev-parse origin/main)" = \
+  "$(git -C /root/atlas rev-parse origin/main)"
+git -C "$pm_target_dir" cat-file -e "$pm_target_sha^{commit}"
 git -C "$pm_target_dir" checkout --detach "$pm_target_sha"
+test ! -e "$pm_target_dir/.git/objects/info/alternates"
 (cd "$pm_target_dir" && uv sync --locked)
 test "$(git -C "$pm_target_dir" rev-parse HEAD)" = "$pm_target_sha"
 test -z "$(git -C "$pm_target_dir" status --porcelain --untracked-files=no)"
 ```
 
-Require the directory name, Git HEAD and expected SHA to agree. Require
-`uv.lock` to be committed at that head and the PM command launcher to be
-`$pm_target_dir/.venv/bin/atlas`. Do not point the service at `/root/atlas`, a
-branch, or an unpinned worktree. Apply operator-owned permissions that prevent
-the service identity from modifying tracked release content; do not modify the
-release after it receives live authority.
+The independent target repository must contain the exact fetched upstream-main
+identity before checkout and must not use a shared-object alternates file whose
+long-lived validity depends on `/root/atlas`. Require the directory name, Git
+HEAD and expected SHA to agree. Require `uv.lock` to be committed at that head
+and the PM command launcher to be `$pm_target_dir/.venv/bin/atlas`. Do not pull,
+switch or update `/root/atlas` local `main`; clone a mutable ticket branch; or
+point the service at a branch or unpinned worktree. Apply operator-owned
+permissions that prevent the service identity from modifying tracked release
+content; do not modify the release after it receives live authority.
 
 Calculate and record the single exact target Alembic head before downtime:
 
