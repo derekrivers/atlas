@@ -146,6 +146,35 @@ When diagnosing a broken loop, first locate **which boundary failed**. Do not
 start by changing code or dragging a Linear card until the owner of the missing
 edge is known.
 
+### 3.1 Repository Codex skill layer
+
+Atlas exposes small, composable Codex skills under `.codex/skills/` so a fresh
+agent can discover and sequence the governed workflows above. The authority
+order remains:
+
+```text
+canonical ADRs / documents / runbooks
+        ↓
+deterministic Atlas CLI
+        ↓
+repository Codex skills
+        ↓
+GitHub / Linear / Symphony
+```
+
+Skills are procedural adapters, not policy authorities. They point to current
+canonical sources, gather bounded context, compose existing commands and tools,
+and enforce already-defined stop conditions. They do not replace runbooks,
+reimplement deterministic CLI behavior, or grant lifecycle, operator, merge or
+acceptance authority. If a skill conflicts with current canonical repository
+authority, the repository authority wins and the skill is defective.
+
+The supported set is `linear`, `atlas-investigate`, `atlas-validation`,
+`atlas-ticket-planning`, `atlas-ticket-remediation`, `atlas-pr-review`,
+`atlas-pr-acceptance`, and `atlas-planning-apply`. Each skill remains narrow;
+review and remediation reuse `atlas-validation`, remediation reuses `linear`,
+and acceptance begins with `atlas-pr-review`.
+
 ## 4. Turning a phase into governed work
 
 Design ratification, batch decomposition, dependency declaration, stub
