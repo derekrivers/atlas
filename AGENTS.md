@@ -22,6 +22,10 @@ needs:
   `docs/runbooks/operational-practice.md`
 - Operator environment / credentials / runtime facts →
   `docs/runbooks/operator-environment.md`
+- Symphony-dispatched agent lifecycle →
+  `docs/runbooks/symphony-agent-execution.md`
+- Symphony service/runtime operation →
+  `docs/runbooks/symphony-runtime-operation.md`
 - Symptom-driven diagnosis → `docs/runbooks/troubleshooting.md`
 - Review and acceptance → `docs/runbooks/review-doctrine.md`,
   `docs/runbooks/reviewer-session.md`, `docs/runbooks/pr-acceptance.md`

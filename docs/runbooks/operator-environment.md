@@ -46,12 +46,11 @@ Consequences to internalise:
   from. Verify what a push will actually use with:
   `echo url=https://github.com | git credential fill` (run from inside the
   repo).
-- Recovery when a push is denied mid-session: the work is not lost. Agent
-  workspaces live under `~/code/atlas-workspaces/<ATL-key>/` (set by
-  `workspace.root` in WORKFLOW.md, NOT the `/tmp` default;
-  `before_remove: true` means they are never reaped). Find the commit and
-  push it from your own shell:
-  `for d in ~/code/atlas-workspaces/*/; do git -C "$d" cat-file -e <sha> 2>/dev/null && echo "$d"; done`
+- Preserved agent workspaces live under
+  `~/code/atlas-workspaces/<ATL-key>/` (set by `workspace.root` in
+  `WORKFLOW.md`, not Symphony's `/tmp` default). The diagnostic and recovery
+  sequence for a denied push belongs to
+  `docs/runbooks/troubleshooting.md#git-push-or-publish-fails-with-403`.
 
 ## Operator rebase workspaces
 
@@ -85,11 +84,10 @@ states.
 
 ## Codex runtime
 
-- WORKFLOW.md pins `model="gpt-5.5"`, which needs a current Codex CLI
-  (verified on 0.142.5). The snap `codex` is capped at 0.114.0 and cannot
-  run it; an npm-global update may land off PATH. Install the official CLI
-  so it is first on PATH; verify the pin with `atlas preflight
-  --check-model` before dispatch. (Full detail: bootstrap-guide.md.)
+- The sole current Symphony model authority is the executable
+  `WORKFLOW.md` `codex.command`. Do not infer or copy its value from this
+  facts document. Verify the live pin and installed CLI together with
+  `uv run atlas preflight --check-model` before dispatch.
 - **The Codex connector patch is version-pinned and self-expiring.** Any
   `.app.json` workaround under
   `~/.codex/plugins/cache/openai-curated-remote/<connector>/<version>/`
@@ -206,36 +204,16 @@ database path. Writer ownership follows the opened inode. All backup, migration,
 restore or replacement work requires the managed service stopped, no remaining
 PM process and successful proof that ownership has been released.
 
-## Minting: apply writes to two places
+## Planning and minting filesystem facts
 
-`atlas apply` writes the SQLite store AND the working tree. The store
-is durable. The working-tree half — the four `docs/planning/` renders
-plus the consumed stubs moved into `inbox/processed/` — exists only
-until you commit it.
+`atlas apply` mutates both the selected Atlas store and the checkout's
+`docs/planning/` renders/processed stubs. Those working-tree artifacts remain
+ordinary uncommitted files until published, while the store mutation is already
+durable. The repository's `.atlas/` operational root is ignored by Git.
 
-- **Never `git reset --hard` (or `git checkout -- .`, or switch
-  branches discarding changes) after `atlas apply` until the mint is
-  committed and pushed.** Doing so destroys the renders and the stub
-  retirements while the store marches on with the minted tickets. The
-  loop keeps working, because Symphony and the CLI read the store —
-  so the divergence is silent until something reads the *committed*
-  tree.
-- Two things read the committed tree and will surface it, late and
-  confusingly: `atlas plan --stubs-only` re-promotes any stub still
-  sitting in `inbox/`, minting DUPLICATE tickets for delivered work;
-  and the context-pack indexer resolves ticket `source_anchor`s
-  against committed `processed/` stubs, so a pack render fails with
-  `UnknownDocumentError` and the ticket is pushed to Symphony
-  definition-only, without its context.
-- The habit that prevents all of it: after `apply`, immediately
-  `git add -A docs/planning/` (the `-A` matters — retired stubs land
-  untracked in `processed/`), commit, and PR before running anything
-  else. Reconciling later means a hand-authored stub-retirement PR,
-  because the only regeneration path is another `apply`, which against
-  an un-retired inbox re-mints.
-- Symptom-to-cause: committed renders whose header
-  `ticket_key_high_water` is lower than the highest key in the store
-  means one or more mints were never committed.
+The governed planning/minting sequence, recovery rules and exact commands belong
+to `docs/runbooks/planning-phases-and-ticket-stubs.md` and
+`docs/runbooks/running-atlas-plan.md`. Never hand-edit `docs/planning/`.
 
 ## Board operation
 
@@ -261,538 +239,101 @@ until you commit it.
   `... (ATLAS-036M)` can land as a commit carrying no label at all.
   Reconstructing the meta ledger from `git log` therefore
   under-counts and collides. The PR title is authoritative.
-- The acceptance chain for a merged PR is one command:
-  `uv run python scripts/close_ticket.py <pr>` (ATLAS-040M). It pulls
-  evidence, hands over to interactive `confirm`, pauses for the
-  manual merge, independently verifies the merge with GitHub before
-  running `verify`, then observes each ticket's status read-only until the
-  managed PM cadence completes it. It does not deploy, migrate, orchestrate
-  the service or run an independent PM tick. Run it only after CI is green on the final
-  head: evidence is commit-pinned, so updating a branch invalidates
-  evidence pulled at the old SHA.
+- Human acceptance begins only after `Review Required`; its exact-head,
+  confirmation, manual-merge, merged-proof and read-only completion-observation
+  sequence is owned by `docs/runbooks/pr-acceptance.md`.
 
 ## Symphony ceiling controlled-ramp runbook
 
-This is the operator procedure for the ATLAS-253 Phase 15 live milestone. The
-publishing agent may prepare the dedicated branch, read-only harness, fixtures
-and documentation, but this procedure grants it no live transition authority.
-Ten is a proven maximum, never a target, and success never requires filling
-every available slot.
+The canonical operator procedure for `atlas-symphony.service` is
+`docs/runbooks/symphony-runtime-operation.md`. It owns immutable workflow
+materialisation, the supported release and procedure identity, service
+reload/restart, process/runtime readback, the controlled ceiling sequence and
+rollback.
 
-### Authority, branch and gate record
+Current supported facts remain:
 
-The dedicated branch is exactly `phase-15-atlas-253-ceiling-ramp`. Prepare it
-from the then-current `origin/main`, keep one draft milestone PR open for the
-whole exercise, and never merge or cherry-pick an intermediate ceiling commit.
-Ordinary committed `main` must continue to declare `max_concurrent_agents: 1`
-and `max_turns: 10` until Gate 10 passes and the single Phase 15
-milestone/closure PR is ready to merge. Only the operator may change the
-milestone-branch declaration. Values 3, 5 and 7 are valid only on that branch
-during this procedure and are never independently mergeable to `main`.
+- service unit: `atlas-symphony.service`;
+- frozen supported Symphony release:
+  `e5c5e48917e9e91ffb6709ab5a2a02c5af16bf02`;
+- the running VPS must prove its process-owned runtime identity before any
+  admission resumes;
+- runtime proof pins the exact commit and workflow blob;
+- integration/review budgets remain independent of the configured worker
+  ceiling;
+- ordinary committed-main ceiling while Phase 15 is open: `1`;
+- `max_turns: 10`;
+- strict operator-controlled ramp: `1 -> 3 -> 5 -> 7 -> 10`; and
+- ATLAS-253 remains operator-paused; this documentation refactor authorises no
+  Gate 1 execution.
 
-`WORKFLOW.md`'s `agent.max_concurrent_agents` is the single controlling
-Symphony worker ceiling. The operator alone edits it. The delivery policy's
-`approved_symphony_ceiling` is a recorded mirror for admission checks; working,
-integration and review budgets, Changes Requested reserve and risk/component
-limits remain independent policy controls, while occupied slots are the actual
-Symphony session identities observed at the instant of capture. Protected-lane
-capacities come from the versioned repository registry, not that policy.
-Before each window the mirror must equal the declared branch value, working
-budget must be at or below it, risk/component limits must be at or below the
-working budget, and integration/review budgets and repository-owned protected
-lane capacities must validate independently.
+The Phase 15 design owns the milestone criteria and evidence contract. The
+runtime runbook owns only how the operator establishes the exact
+process-owned runtime identity those gates require.
 
-Accepted PR #335 closed Phase 15.5 after the production PM adapter performed
-the genuine exact-head handoff for contributor head
-`a598798c1a6c5cabe4c80c0f04020c271f438de1`. That is the entry authority for
-ATLAS-253; the synthetic/no-rewrite route remains retired and the disabled
-Linear `PR opened → In Progress` automation must stay disabled.
+### Compatibility facts guarded by the repository linter
 
-**Current checkpoint (22 August 2026): ATLAS-253 is operator-paused at the
-proven Attempt-3 ceiling-one / `max_turns: 10` runtime identity.** No new gate
-may start from the historical v1 workload contract. The
-`phase-15-ramp-workload-v2` / `phase-15-ramp-gate-receipt-v2` implementation
-must first be accepted; the operator must then separately re-ratify one exact
-live v2 manifest before resuming. Repository fixtures exercise the contract
-only and are not that re-ratification.
+This is a non-procedural index retained for the existing ceiling-contract
+linter. The commands and transitions below are not executable authority here;
+their canonical sequence is the Symphony runtime runbook and their gate meaning
+is the Phase 15 design.
 
-Migration `0025` and policy revision one, whose historical ceiling is three,
-remain immutable history and must not be cited as the current live policy. At
-each gate, including Gate 1, the operator keeps admission paused while proving
-the running Symphony identity. Only after that process-owned proof succeeds,
-the operator appends and activates a new policy revision whose
-`approved_symphony_ceiling` matches the gate, whose working budget is at or
-below it and whose deliberate integration/review budgets, Changes Requested
-reserve, risk/component limits and protected-lane registry validate. The
-Gate 1 revision specifically has `approved_symphony_ceiling=1` and
-`working_budget=1`. The operator records that revision and fingerprint before
-admitting workload. Failure to prove this current-policy reconciliation stops
-the milestone before any live ramp window.
-
-Policy reconciliation and later mirror changes are explicit human/operator
-actions through the existing governed Phase 15 policy-revision boundary. The
-ramp adds no endpoint, CLI, agent action or automation that edits delivery
-policy; agents and ramp automation have no policy authority. No Atlas endpoint,
-CLI, agent or automation may edit `WORKFLOW.md`, Symphony configuration,
-acceptance evidence or milestone receipts for this procedure. Those are
-separate operator actions in their owning systems. The runbook uses only read
-observations and immutable identifiers from their receipts. It never starts a
-live worker from CI.
-
-Editing the branch does not change the running VPS. Before every gate the
-operator must identify the exact branch commit and `WORKFLOW.md` blob, use a
-ratified reload/restart procedure, and capture bounded runtime evidence that
-the active process loaded that exact commit, ceiling and unchanged
-`max_turns: 10`.
-
-**Current disposition: the managed VPS runtime procedure is supported.** Its
-identifier is exactly `vps-systemd-immutable-workflow-readback-v1`. It is
-limited to the operator-owned `atlas-symphony.service` boundary and the frozen
-Symphony release
-`e5c5e48917e9e91ffb6709ab5a2a02c5af16bf02`. A later release is unsupported
-until the operator ratifies it and this repository registers that replacement.
-The release contains the process-owned `GET /api/v1/runtime` readback. That
-endpoint returns the cached accepted `WorkflowStore` identity; it does not
-reread `WORKFLOW.md` for each request, and a failed reload preserves the last
-known good identity.
-
-For every Gate 1/3/5/7/10, the operator performs this exact sequence while
-admission remains paused:
-
-1. Fetch current `origin/main`, update the dedicated milestone branch through
-   the operator-owned exact-current-main rebase lane and identify one immutable
-   `<gate-commit>`. Record the exact commit and require its merge base to equal
-   the fetched main identity.
-2. Verify that `<gate-commit>:WORKFLOW.md` declares the expected gate ceiling
-   and unchanged `max_turns: 10` with the milestone doc-linter and workflow
-   contract commands below. Record the Git object identity with
-   `git rev-parse <gate-commit>:WORKFLOW.md`; no moving branch name may
-   substitute for `<gate-commit>` after this point.
-3. Choose a new gate-specific immutable runtime file in the operator-owned VPS
-   runtime area. Require that it does not already exist, materialise the exact
-   bytes with `git show <gate-commit>:WORKFLOW.md > <immutable-workflow-file>`,
-   make it read-only and calculate `sha256sum <immutable-workflow-file>`. Record
-   the Git workflow blob and the lowercase 64-character content SHA-256. The
-   raw path and workflow contents remain outside the retained Atlas receipt.
-4. Through the existing operator-owned systemd configuration boundary, point
-   `atlas-symphony.service` at that exact immutable workflow file. Do not copy
-   the service environment or environment-file contents into milestone
-   evidence. Run `systemctl daemon-reload`, then operator-restart exactly
-   `atlas-symphony.service` and require it to return active.
-5. Read `MainPID` with
-   `systemctl show --property MainPID --value atlas-symphony.service`, require a
-   live non-zero process and inspect that PID's command line. It must identify
-   the intended immutable workflow file. Independently require the deployed
-   Symphony release provenance to equal the ratified commit. Retain only the
-   bounded instance alias, service unit and ratified release commit—not the
-   command line or raw path.
-6. Call the process-owned `/api/v1/runtime` endpoint. Require its cached
-   `workflow_content_sha256`, configured ceiling and `max_turns` to equal the
-   materialised SHA-256, the gate level and ten. A missing response, failed
-   reload, last-known-good identity from a different gate or any mismatch stops
-   the gate before workload admission.
-7. Record load and proof timestamps and construct the bounded runtime identity
-   described below. Only after the operator confirms that process proof and its
-   canonical identity may the operator deliberately activate a new Atlas
-   delivery-policy revision coherent with this gate, change the policy from
-   paused to running and admit the predeclared workload.
-
-The live runtime receipt contains exactly the bounded `instance_id`,
-`supported_procedure_id`, `service_unit`, `symphony_commit_sha`,
-`workflow_content_sha256`, `loaded_commit_sha`, `workflow_blob_sha`,
-`configured_ceiling`, `max_turns`, `loaded_at`, `proof_observed_at` and
-`proof_identity`. `service_unit` must be `atlas-symphony.service`; the Symphony
-commit must be the ratified release above; the loaded commit/blob must equal
-the gate receipt; the content digest is lowercase SHA-256; the ceiling must
-equal the gate; `max_turns` must be ten; and timestamps must be ordered, fresh
-and no later than workload admission. `proof_identity` is the SHA-256 of the
-UTF-8 canonical JSON object containing the other selected fields, with keys
-sorted, ASCII escaping and compact separators. Timestamps are normalised to
-UTC `Z` before hashing. Raw provider payloads, environment values, credentials,
-secret-bearing paths, workflow or prompt contents, process command lines and
-arbitrary process environment never enter the receipt.
-
-`fixture-only-no-live-runtime-v1` remains accepted for
-fixture/schema regression only. It is never production runtime evidence and
-cannot establish that the VPS loaded a gate configuration. The harness remains
-unconditionally
-offline and read-only: either procedure can only validate a supplied receipt;
-neither creates transition, closure, deployment, policy or runtime-mutation
-authority.
-
-For rollback, keep admission paused and point `atlas-symphony.service` back to
-the previous proven gate's exact immutable workflow file. Run `systemctl
-daemon-reload` and operator-restart the named service, then recapture
-MainPID/process identity and require `/api/v1/runtime` to report the previous
-content SHA-256, ceiling and `max_turns: 10`. Only after that process-owned
-readback succeeds may the operator activate a policy revision coherent with
-the restored ceiling and resume. Never infer rollback from a branch edit, a
-checkout read or a service restart result alone.
-
-After the v2 implementation is accepted, the operator separately ratifies a
-`phase-15-ramp-workload-v2` record. It keeps more than ten ordinary,
-dependency-independent workloads with unique path families, disjoint touched
-paths and mutually independent registry-known protected lanes. A separate
-bounded `exercise_workloads` collection declares the real `ATLAS-N` ticket,
-stable exercise-workload identity, exact path family/paths, component, tags,
-relevant documents and documentation requirements for each deliberate
-protected-lane exercise. Every exercise workload is explicitly excluded from
-ordinary throughput, carries the classifier's canonical reconstruction and
-classification fingerprint, and is classified against the manifest's exact
-digest-pinned repository registry version/fingerprint.
-
-The separate `exercise_bindings` collection has exactly one Gate 1
-`protected_lane_ci_pending_hold` owner, distinct Gate 3
-`protected_lane_contention` owner/blocked-candidate roles, one Gate 5
-`protected_lane_with_unrelated_parallelism` owner, and separate Gate 7 owners
-for `risk_component_protected_lanes_under_load` and
-`ci_pending_lane_ownership`. The Gate 3 pair must recompute into the same lane;
-any other same-lane exercise pair is invalid. Every exercise workload is bound
-exactly once, so missing, duplicate, substituted and orphaned identities fail
-closed. Do not claim ticket keys that the key authority has not issued, and
-never use a non-key meta identity for a protected-lane exercise. The JSON
-remains offline validator input and cannot
-carry operator authority. Fingerprint that exact record before measurement:
-
-```bash
-uv run python scripts/phase_15_delivery_control_milestone.py \
-  <live-workload-manifest.json> --fingerprint-only
-```
-
-For every PASS or FAIL, the operator posts one comment on the single milestone
-PR. Its first line is `atlas:symphony-ceiling-gate v2`; the comment then embeds
-the bounded canonical JSON receipt accepted by the read-only validator. Every
-receipt uses schema `phase-15-ramp-gate-receipt-v2` and contains, with no
-omissions:
-
-- receipt ID, gate, outcome, manifest fingerprint, previous-receipt link,
-  previous proven level, retained/restored level, stop reasons, operator and
-  recorded timestamp;
-- dedicated branch, exact milestone commit and workflow blob, fetched
-  `origin/main`, merge base, plus proof that committed main remains ceiling one
-  and `max_turns: 10`;
-- running Symphony instance, supported reload/proof procedure, exact service
-  unit and Symphony release, loaded commit/blob, workflow content SHA-256,
-  configured ceiling, `max_turns`, load/proof timestamps and canonical
-  runtime-proof identity;
-- delivery-policy ID/revision/fingerprint, approved ceiling, mode, separate
-  working/integration/review budgets, Changes Requested reserve,
-  zero-or-more risk/component limits, each bounded by working budget;
-- coherent snapshot/board fingerprints, completeness/freshness/continuity and
-  fault/fence flags, repository-owned protected-lane registry version,
-  fingerprint, state fingerprint and typed lane occupancy/limits, with ordered
-  PM-sync, admission-run and CI-handoff reconciliation identities;
-- exact 60-minute start/finish, maximum Symphony/Atlas working, integration,
-  review and Changes Requested occupancy, slot-release, reconciliation, CI and
-  review latency, publications, CI Pending entries/exits and determinate
-  system-owned exit counts;
-- admissions, maximum writes per PM window, holds and typed reasons, ranking
-  reproductions, rework dispatch/starvation, protected-lane holds/collisions,
-  independent parallel work, agent polling/revalidation/republication,
-  indeterminate CI, poll-compression and invented-edge counts;
-- integration/review saturation holds, acceptance arrivals/completions,
-  one-PR-freeze breaches, stale heads, mechanical rebases and semantic
-  conflicts as separate values; and
-- ambiguous/fenced/conflicting writes, CI Pending reactivations, prohibited
-  authority, repository/external mutation and secret-retention counts, plus an
-  evidence identity and PASS/FAIL for every common invariant and gate-specific
-  exercise declared by the harness; and
-- for every Gate 1/3/5/7 protected-lane exercise, the exact gate, exercise,
-  exercise-workload identity, real ticket key, bounded role, recomputed lane,
-  observed `CI Pending`/held status, evidence identity and exact manifest
-  fingerprint. Each aggregate exercise evidence identity must bind that
-  exercise's rows, every owner must be the exact lane occupant and any blocked
-  candidate must not appear as an occupant.
-
-The comment also carries this bounded human-readable index, projected exactly
-from the canonical JSON rather than entered as a second source of truth:
-
-```yaml
-origin_main_sha: <receipt origin_main_sha>
-merge_base_sha: <receipt merge_base_sha>
-head_sha: <receipt milestone_commit_sha>
-workflow_blob_sha: <receipt workflow_blob_sha>
-max_turns: 10
-policy_revision: <receipt policy.revision>
-pm_sync_receipt_ids: <receipt snapshot.pm_sync_receipt_ids>
-symphony_session_ids_start_peak_end: <bounded runtime session observations>
-acceptance_session_ids: <bounded exact-head acceptance identities>
-outcome: <receipt outcome>
-retained_or_restored_level: <receipt retained_or_restored_level>
-```
-
-Evaluate the cumulative receipt prefix in order, adding one option per durable
-PR-comment receipt:
-
-```bash
-uv run python scripts/phase_15_delivery_control_milestone.py \
-  <live-workload-manifest.json> \
-  --gate-receipt <gate-1.json> \
-  --gate-receipt <gate-3.json> --pretty
-```
-
-Exit 0 emits `RECEIPT_SEQUENCE_VALIDATED`; exit 3 means the named next gate
-remains pending; exit 1 is an honest gate FAIL; exit 2 is invalid or secret-
-bearing input. Every report keeps `transition_authorized=false` and
-`closure_authorized=false`. The operator checkpoints and durable comments—not
-the JSON or validator—are the gate authority, and the successful Phase 15
-closure report references all five comment links. A screenshot, configured
-scalar, aggregate count or agent assertion is not gate evidence. Raw Linear or
-GitHub payloads, exception text, credentials, credential canaries and workspace
-paths are never copied into a receipt.
-
-The v1 manifest and unmodified Attempt-1/Attempt-2 v1 receipts remain
-deterministically replayable as `HISTORICAL_RECEIPT_REPLAY`. Their retained
-comments keep the original first line `atlas:symphony-ceiling-gate v1`; do not
-rewrite it to the v2 tag. The replay result is
-historical only and can never return exit 0 or establish a future live PASS.
-Do not rewrite those receipts into v2; live proof resumes only from the
-separately re-ratified v2 manifest.
-
-### Exact edit and common preflight
-
-Gate 1 observes the unchanged declaration. After a gate passes, the operator
-changes only the scalar line in the branch front matter and commits it on the
-same milestone branch:
-
-```yaml
-agent:
-  max_concurrent_agents: <next-level>
-```
-
-The only permitted sequence is `1 -> 3`, `3 -> 5`, `5 -> 7`, then `7 -> 10`.
-The prompt body below the front matter, `max_turns: 10` and every other workflow
-field remain byte-for-byte unchanged. Before loading a level, the operator
-validates the checkout with:
-
-```bash
-uv run python -m atlas.tools.doc_linter --repo . \
-  --symphony-milestone-level <1|3|5|7|10>
-ATLAS_SYMPHONY_MILESTONE_LEVEL=<1|3|5|7|10> \
-  uv run pytest tests/test_workflow_contract.py \
-  tests/test_symphony_ceiling_doc_linter.py
-```
-
-The explicit validation context derives the checked-out branch and accepts only
-the exact dedicated branch at the declared level. Ordinary CI omits this
-context and therefore continues to reject an open-Phase-15 checkout at 3, 5, 7
-or 10; milestone validation is preflight evidence, never merge authority.
-Before loading a level, the operator verifies all of the following:
-
-1. The checked-out branch name is exactly
-   `phase-15-atlas-253-ceiling-ramp`; its head and `WORKFLOW.md` blob are
-   recorded, the milestone PR is still unmerged, and a fresh fetch records the
-   exact `origin/main` and branch/origin-main merge-base SHAs. The merge base
-   must equal that fetched main identity at this gate's setup.
-2. Current `origin/main` declares exactly one and keeps `max_turns: 10`. The
-   branch declaration is the requested level, is at most ten and differs from
-   the last proven declaration only by the one permitted scalar transition;
-   Gate 1 starts from the unchanged value one.
-3. Every prerequisite PASS receipt named below exists on the milestone PR and
-   pins the immediately preceding level. No FAIL receipt remains unresolved.
-4. The current active policy is the reconciled one-agent revision before Gate
-   1. For later levels, the operator has paused new admission while changing
-   the declaration and its policy mirror. The new immutable policy revision
-   matches the declaration; its independent working/integration/review
-   budgets, Changes Requested reserve, risk/component limits and protected-
-   lane registry validate.
-5. A complete fresh board observation and successful PM-sync receipt exist;
-   there is no unresolved admission or CI-handoff write fence, critical
-   delivery-control fault, unexplained CI Pending reactivation, partial pull,
-   stale policy or indeterminate Linear result.
-6. Symphony is explicitly loaded through the documented VPS procedure from
-   the recorded branch head and blob. Bounded process evidence proves the
-   active instance loaded that exact identity and gate ceiling before any new
-   admission. The operator also records actual active session identities;
-   neither this check nor a lower ceiling claims to cancel them.
-
-Any failed preflight is a Gate FAIL without starting the observation window.
-
-### Observation window and common decision rule
-
-Every level has one fixed 60-minute window. It starts at the first successful
-complete PM-sync receipt after the matching branch head, policy revision and
-running mode are all observed. It ends exactly 60 minutes later; the operator
-captures a complete successful receipt at or after the end boundary and at
-least twelve successful receipts spanning the window. A missing receipt,
-required exercise or identity at the boundary fails the gate; the window is
-not extended until the evidence looks favourable.
-
-Collect every PM-sync receipt, admission run, policy/board fingerprint,
-Symphony session observation and acceptance-session identity in the interval.
-Normal accepted sibling merges may move main during or between gates. For all
-levels, PASS requires:
-
-- the declared ceiling and policy mirror stay equal and unchanged;
-- the milestone branch is current against the fetched `origin/main` at gate
-  setup, while every separate PR acceptance window pins its exact contributor
-  head and then-current main; a sibling merge makes a trailing acceptance stale
-  and routes it through the operator-owned rebase lane;
-- occupied Symphony working slots never exceed the declaration, while working,
-  integration, review, reserve and every risk/component/protected-lane
-  occupancy remain within their own budgets; `CI Pending` releases the working
-  slot but retains integration and protected-lane occupancy;
-- a full integration or review budget admits no unsafe new ticket, Changes
-  Requested work remains dispatchable and unstarved, and each admission is
-  reproduced from its pinned ranking inputs with at most one external
-  admission per PM write window;
-- every unchanged head is locally validated and published at most once, agents
-  stop after `PR Open → CI Pending`, Symphony releases the slot within five
-  seconds, and no agent polls CI or repeats a complete sweep while waiting;
-- the production cadence considers at most one issue-bound exact-head
-  CI-handoff candidate per tick; every determinate exit is system-owned and
-  reaches `Review Required` or `Changes Requested` within one tick and five
-  minutes, while every indeterminate class holds;
-- protected lanes remain owned through `CI Pending`; unrelated work remains
-  parallel; exact-head/current-main acceptance, the one-PR freeze and the
-  operator rebase lane remain authoritative, with review dwell, stale-head,
-  mechanical-rebase and semantic-conflict pressure measured separately;
-- paused or draining mode produces no admission, and stale, partial or
-  indeterminate input produces no unaccounted write; and
-- all required level exercises pass with complete, internally consistent
-  identities. Occupancy below the declared ceiling is acceptable.
-
-Stop immediately and record FAIL for a ceiling/budget/lane breach, an admission
-while paused or draining, an unselected or second write, Changes Requested
-starvation, an unresolved stale/partial/indeterminate write, missing or
-contradictory evidence, branch/runtime/policy drift, acceptance of a stale
-head/main pair, an unexplained `CI Pending` reactivation, a non-system
-determinate exit, stranded CI Pending work, unsafe exact-head throughput,
-pressure above a predeclared limit, prohibited external mutation or secret-
-bearing retained evidence. Reaching a full integration or review budget is an
-exercise boundary: new admission must stop; it is a gate failure only if the
-budget is breached or the approved pressure limit is exceeded. Pause admission
-at every failure boundary.
+- Dedicated branch: `phase-15-atlas-253-ceiling-ramp`.
+- Historical retained receipt marker: `atlas:symphony-ceiling-gate v1`.
+- Bounded identity fields include `origin_main_sha:` and `merge_base_sha:`.
+- The only permitted sequence is `1 -> 3`, `3 -> 5`, `5 -> 7`, then `7 -> 10`.
+- Validation uses `--symphony-milestone-level <1|3|5|7|10>`.
+- Every level has one fixed 60-minute window.
+- Only after that process-owned proof succeeds may policy activation proceed.
+- Current `origin/main` declares exactly one and keeps `max_turns: 10`.
+- Only the operator may change the milestone-branch declaration.
+- Values 3, 5 and 7 are valid only on that branch and are never independently
+  mergeable to `main`.
+- Policy reconciliation uses the existing governed Phase 15 policy-revision
+  boundary.
+- Runtime identity is
+  `vps-systemd-immutable-workflow-readback-v1` for
+  `atlas-symphony.service` at release
+  `e5c5e48917e9e91ffb6709ab5a2a02c5af16bf02`.
+- Immutable materialisation uses
+  `git show <gate-commit>:WORKFLOW.md > <immutable-workflow-file>`.
+- Proof comes from the process-owned `/api/v1/runtime` response and its
+  `workflow_content_sha256`.
+- `fixture-only-no-live-runtime-v1` is for fixture/schema regression only and
+  is never production runtime evidence.
+- Rollback restores the previous proven gate's exact immutable workflow file.
+- mainline progress alone does not force a Gate 1 restart.
+- The current checkpoint is the proven Attempt-3 ceiling-one identity; future
+  live proof uses the separately ratified v2 workload/receipt contract.
+- The bounded validator's successful cumulative outcome is
+  `RECEIPT_SEQUENCE_VALIDATED`.
+The ramp adds no endpoint, CLI, agent action or automation that edits delivery
+policy.
+- No Atlas endpoint, CLI, agent or automation may edit `WORKFLOW.md`, Symphony
+  configuration, acceptance evidence or milestone receipts.
 
 ### Gate 1 — serialized baseline admission, pause and rework
 
-Prerequisites are the supported VPS procedure above, the separately
-re-ratified v2 workload record with more than ten independent ordinary
-workloads, every exact declared Gate 1/3/5/7 protected-exercise binding, the
-Phase 15 admission/CI/acceptance observability surfaces, green deterministic
-fixtures, merged Phase 15.5 closure and both `origin/main` and the unmodified
-milestone branch declaring one. The running VPS and active policy must
-independently prove coherence at one before the first workload admission.
-
-Exercise every common invariant under a serialized live workload: normal
-admission, pause and drain with no admission or cancellation, rework dispatch,
-integration/review saturation holds, protected-lane ownership through
-`CI Pending`, determinate/indeterminate CI routes, exact-head acceptance and an
-ambiguous-write fence. Return to running only through a new operator-attributed
-policy revision. A complete PASS makes one the last proven level and is the
-only authority to edit the branch from 1 to 3.
+Gate 1 proves the unchanged runtime identity; it authorises no increase.
 
 ### Gate 3 — first controlled increase and review pressure
 
-Gate 3 cannot begin without the Gate 1 PASS receipt and the exact `1 -> 3`
-branch edit, runtime reload proof and coherent policy revision. Within the
-window, run at least two genuinely independent tickets concurrently and
-reproduce their ranking. Prove released workers do not bypass integration,
-review or protected-lane pressure; concurrent `CI Pending` handoffs stay
-bounded under the one-candidate-per-tick PM cadence; review saturation and
-lane contention hold admission; rework remains unstarved; and sibling merges
-create recoverable stale acceptance authority. Gate 3 PASS is the only
-authority to edit the branch from 3 to 5.
-
-The contention proof is valid only when the receipt names the manifest-bound,
-distinct owner and blocked-candidate workloads, both recompute into the same
-repository lane, the owner alone appears in that lane's occupancy and both
-evidence rows bind the exact v2 manifest fingerprint. A lane hold counter or
-aggregate passed flag without those identities is invalid input, not PASS.
+Gate 3 cannot begin without the Gate 1 PASS receipt.
 
 ### Gate 5 — stable review and stale-write protection
 
-Gate 5 cannot begin without the Gate 3 PASS receipt and the exact `3 -> 5`
-branch edit, runtime reload proof and coherent policy revision. Prove working
-occupancy stays at or below five while integration remains an independent
-constraint after workers enter `CI Pending`. Fill integration and review
-budgets separately and prove each stops new work despite free worker slots.
-Seed protected-lane contention while unrelated work continues, keep CI
-latency/reconciliation, review backlog and stale-head pressure within their
-predeclared limits, and dispatch Changes Requested work under sustained mixed
-working/CI/review load. A stale decision and ambiguous write must fail closed
-behind a durable fence. Gate 5 PASS is the only authority to edit the branch
-from 5 to 7.
-
-The protected-lane observation must name the manifest-bound Gate 5 owner and
-bind its workload, ticket, lane, `CI Pending` occupancy, evidence and exact v2
-manifest fingerprint. Generic passed evidence and aggregate parallelism or
-hold counters cannot establish this exercise.
+Gate 5 cannot begin without the Gate 3 PASS receipt.
 
 ### Gate 7 — lanes, recovery and acceptance capacity
 
-Gate 7 cannot begin without the Gate 5 PASS receipt, including its stable-review
-and stale-write evidence, the exact `5 -> 7` branch edit, runtime reload proof
-and coherent policy revision. Under materially higher concurrency, prove
-risk/component/protected lanes remain bounded, `CI Pending` retains protected-
-lane ownership while workers are reused, Changes Requested work recovers,
-lower-ranked feasible work cannot bypass the selected admission, and sibling-
-merge staleness remains recoverable through the operator rebase lane.
-
-Both protected-lane observations must independently name their manifest-bound
-Gate 7 owner: one for `risk_component_protected_lanes_under_load` and one for
-`ci_pending_lane_ownership`. Each exercise digest binds its own workload row,
-real ticket, lane, `CI Pending` occupancy, evidence identity and exact v2
-manifest fingerprint; generic exercise rows alone cannot establish either
-exercise.
-
-Ten additionally requires Phase 14 to be closed before Gate 10 starts and
-adequate exact-head acceptance throughput in the Gate 7 window. Adequate means
-at least three distinct acceptance sessions reach passed verification and
-manual-merge readiness without head drift, exact-head completions are at least
-the number of review arrivals in the window, review occupancy never breaches
-its budget, and ending review occupancy is no higher than starting occupancy.
-The Gate 7 receipt must pin the Phase 14 closure reference and every acceptance
-session identity and the separately measured working/integration/review/rework
-pressure assessment. Only a PASS satisfying all of those conditions authorises
-the `7 -> 10` edit.
+Gate 7 cannot begin without the Gate 5 PASS receipt.
 
 ### Gate 10 — maximum, not target, and closure
 
-Gate 10 cannot begin without the Gate 7 PASS receipt, Phase 14 closure, the
-adequate exact-head throughput proof, no unresolved admission/CI-handoff fence,
-queues inside their limits, dispatchable rework, the exact `7 -> 10` branch
-edit, runtime reload proof and coherent policy revision. Run every common
-invariant across the controlled wave of more than ten independent workloads;
-actual concurrent occupancy need not reach ten.
-
-Ten is a safe maximum, never a utilisation target. PASS requires every capacity
-control to hold, no stranded `CI Pending`, review saturation to stop admission,
-rework to remain dispatchable, complete typed hold reasons, exact-head
-acceptance at the observed delivery rate, all CI/review/stale-head/rebase
-pressure inside its predeclared limit and zero prohibited authority or secret
-retention. A configured value of ten is not evidence by itself.
-
-After PASS, the operator adds the five receipt links and exact ten declaration
-to the Phase 15 closure report and makes the milestone/closure PR green at its
-final exact head. That one PR may then be manually merged. Its resulting
-`main` tree must contain the closure report and exactly
-`max_concurrent_agents: 10`; a value below or above ten cannot close Phase 15.
+Gate 10 cannot begin without the Gate 7 PASS receipt, Phase 14 closure and
+adequate exact-head acceptance throughput.
 
 ### Stop, rollback and non-closure
 
-On any preflight or window failure, the operator keeps the last proven value if
-the next edit was not loaded, or changes only the scalar back to the last proven
-value on the milestone branch. The operator also restores the policy mirror,
-keeps admission paused, captures the post-action active session identities and
-posts the FAIL receipt with the rollback commit. If occupied sessions exceed a
-lowered declaration, they finish through Symphony's normal lifecycle; lowering
-the branch ceiling and pausing Atlas admission do not terminate sessions,
-cancel workers or delete workspaces.
-
-The milestone PR stays unmerged, no ceiling commit is cherry-picked, ordinary
-committed `main` remains at one and Phase 15 remains open. A receipt proving
-only 1, 3, 5 or 7 is an honest incomplete milestone, never authority for
-partial closure. A later retry starts a new fixed window from the
-retained/restored proven value and must satisfy every subsequent gate again.
-
-Normal `origin/main` movement does not erase a completed gate. If it occurs
-during a PR acceptance window, that window becomes stale and the trailing PR
-uses the operator-owned rebase lane; its old-head evidence becomes historical.
-Before the next gate configuration is loaded, the operator pauses new
-admission, deliberately rebases the dedicated branch onto current
-`origin/main`, records the new head/blob/main/merge-base identities, performs
-the next permitted scalar edit and runtime/policy checkpoint, and continues
-from the last proven level. A critical control failure still records FAIL and
-retains/restores the previous proven ceiling, but mainline progress alone does
-not force a Gate 1 restart or invalidate earlier PASS receipts.
+The operator retains or restores the last proven runtime identity; the runtime
+runbook owns the steps.

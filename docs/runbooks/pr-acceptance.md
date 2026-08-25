@@ -1,8 +1,8 @@
 # Runbook: Agent PR Acceptance
 
-Destination: `docs/runbooks/pr-acceptance.md`. The operator's acceptance
-protocol from the moment an agent PR lands to the moment the board says
-Done. Gospel: deviations are findings, not improvisations. If it
+Destination: `docs/runbooks/pr-acceptance.md`. The operator's human acceptance
+protocol from `Review Required` through manual merge, merged proof and read-only
+observation of managed completion. Gospel: deviations are findings, not improvisations. If it
 conflicts with an ADR or the verification engine, the repository wins and
 this document is fixed in the same session.
 
@@ -19,6 +19,8 @@ implementation failure to `Changes Requested`. This runbook begins at Review
 Required. Acceptance and final completion remain later claims: neither a
 shorter valid local plan nor the CI handoff weakens or replaces any CI job,
 human gate, exact-head check, manual merge or merged-proof requirement.
+Phase 15.5 established that upstream handoff authority; this acceptance runbook
+still begins only after the resulting `Review Required` boundary.
 
 ## The spine
 
@@ -88,87 +90,13 @@ moves the head after evidence is pulled restarts the spine from evidence.
   `Changes Requested` is used only when implementation or other semantic
   remediation must return to Symphony.
 
-## 0.5. CI-pending handoff
-
-After publication, the agent moves `PR Open → CI Pending`, releases its working
-slot and stops. Atlas, not the agent or browser, consumes the required
-system-tier evidence at the exact PR head. A complete passed set moves the card
-once to `Review Required`; a complete determinate implementation failure moves
-it once to `Changes Requested`. Pending, missing, infrastructure, stale,
-malformed or contradictory evidence leaves the card in `CI Pending` with a
-typed reconciliation reason.
-
-Do not drag a CI-pending card into review or rework and do not use GitHub's
-rollup, a local command exit or an agent message as a substitute. If a Linear
-write response is ambiguous, the durable fence requires a later complete board
-observation to prove whether the source or target state won; that observation
-does not retry the write. A changed head invalidates the recorded authority and
-starts the evidence chain again for the new commit. The handoff considers only
-evidence belonging to the ticket's product and exact publication pull (and,
-when explicitly ticket-scoped, that ticket). If the scoped evidence changes the
-selected check results in the final pre-write window, Atlas records
-`evidence_changed`, leaves the card in `CI Pending` and lets the next tick
-classify the new set.
-
-The trusted reconciler is reached through the normal one-shot and recurring PM
-cadence. After the complete project pull, the local mirror may catch up into
-`CI Pending` from a Symphony-active predecessor when the polling interval
-missed transient `In Progress`/`PR Open` states. The append-only transition
-records that actual direct observation with
-`pm-engine:linear-poll-compression`; it never invents the missed states or
-writes Linear. After AgentRun reconstruction, the adapter considers at most one
-locally `CI Pending` ticket in stable key order. The issue-bound Linear GitHub
-attachment must provide exactly one repository/PR publication whose canonical
-URL and metadata agree. `trusted_publication_unavailable` and
-`trusted_publication_ambiguous` hold before a GitHub call. The adapter then runs
-the normal `drive_evidence_pull` path for that exact publication, resolves the
-full head, persists product-scoped system-tier evidence and passes only the
-complete observed evidence-id set to reconciliation. Provider or malformed
-source failure holds as `system_evidence_ingestion_failed`; normal evidence
-ingestion is not a separate operator precondition. An AgentRun, ticket/PR title,
-branch guess or GitHub rollup is never required or used for identity. A
-confirmed handoff write or target-fence reconciliation ends the tick before
-admission or completion can write another workflow state. In operator-attended
-diagnosis, inspect the latest managed PM receipt and bounded service journal
-window; a competing `atlas pm sync --once -v` refuses while the recurring writer
-owns the store. The durable reconciliation row and Linear transition remain the
-authority.
-
-Linear's `PR opened -> In Progress` GitHub workflow automation caused the
-ATLAS-261/262 reactivation incident and was disabled by the operator on 17
-August 2026. Keep it disabled. The integration may link the PR and expose
-evidence, but it must not mutate Atlas-owned workflow state. The accepted
-ATL-437 live authority window established the continuing rule: any direct
-`CI Pending -> In Progress`, `CI
-Pending -> PR Open`, or other Symphony-active reactivation is an immediate
-delivery-control gate FAIL unless an authorised `Changes Requested -> In
-Progress` semantic-remediation path occurred first. Do not repair such a
-transition by dragging the issue back; retain its exact timestamps and owner
-evidence and stop the active ramp gate.
-
-ATLAS-263's publishing agent stops at `CI Pending`, so the live receipt is
-necessarily completed afterward by the system reconciler/operator without a
-candidate-head change. It must show slot release within five seconds, exactly
-one system-owned determinate exit within one reconciliation tick and five
-minutes, zero agent CI polls and zero unexpected reactivation. A seeded replay
-is test evidence only and cannot substitute for ATL-437's actual issue and PR
-history.
-
-The first ATL-437 head completed CI but failed this production reachability
-condition because no supported PM caller invoked the service; retain that head
-and its checks as historical evidence. The remediated head
-`a598798c1a6c5cabe4c80c0f04020c271f438de1` then passed: the production adapter
-appended the genuine reconciliation and alone performed the corresponding
-authorised Linear exit for exact-head PR #335. That accepted merge closed Phase
-15.5 and released ATLAS-253, while preserving this same handoff contract at
-every Phase 15 gate.
-
 ## 1. Review (reviewer-tier, not the gate)
 
-Fresh-clone the PR head, review per `review-doctrine.md`, run the full
-gate sweep locally (`ruff check`, `ruff format --check`, `mypy`,
-`lint-imports`, `pytest` with `ATLAS_LIVE_TESTS=0`, `doc_linter`). Scope
-rules bind: an unexpected file surface is flag-and-route; a reversal of a
+Fresh-clone the PR head and review per `review-doctrine.md`. Recalculate the
+repository-owned `atlas validation-plan` for the exact candidate and run every
+selected command and explicit test; run the complete `full-sweep` profile only
+when that deterministic plan selects it or the operator explicitly requires it.
+Scope rules bind: an unexpected file surface is flag-and-route; a reversal of a
 recorded gate assumption must be recorded in the same change; a
 cross-ticket reference introduced without a dependency edge is a finding.
 Review is input to the operator, not the acceptance gate.
@@ -332,32 +260,6 @@ belong to the separately governed
 `docs/runbooks/pm-runtime-deployment.md` procedure. Never drag a card to Done
 manually: doing so bypasses the completion gate and creates an integrity anomaly.
 
-## 9. Silence discipline
-
-One-shot commands report their result on stdout as of ATLAS-170/178, but
-INFO logging is off by default. For any command: silence + expected board
-state = success; any WARNING is the only voice the system has; never infer
-success from silence alone — verify on the observable (board header,
-`atlas pm report`, `atlas lessons show`). Use `-v` for INFO.
-
-## Appendix — planning-side ordering (until the planning runbook carries it)
-
-1. **Apply artifacts commit before the next sync.** `atlas apply` dirties
-   the tree (renders + stub retirement); a sync against the dirty tree
-   degrades every embed (ADR-0006 committed-only). Sequence: stub commit →
-   plan → apply → **commit apply artifacts** → PR/merge → sync.
-2. **Never reset an apply commit.** Apply advances three surfaces (repo,
-   store, Linear); git rewind touches one. A packaging mistake is fixed by
-   recovering or reconstructing the commit, never by retrying the apply —
-   retry mints a duplicate key.
-3. **The apply-commit message carries the real PlanRun UUID** — the
-   provenance pointer from repo history to the store. Never a placeholder.
-4. **A cross-ticket reference in an AC must be backed by a dependency
-   edge.** Otherwise the scheduler can dispatch both tickets in parallel
-   and duplicate-deliver (the ATLAS-102/104 class). Stub-minted tickets
-   cannot currently declare edges — hold the dependent in Needs Human by
-   hand until this is fixed.
-
 ## One-line rules earned by incident
 
 - The verdict is the gate; review and CI are its inputs.
@@ -374,7 +276,5 @@ success from silence alone — verify on the observable (board header,
 - Changes Requested is only for semantic remediation that must return to
   Symphony.
 - Done is a gated system transition; never drag it manually.
-- Upgrade the schema after a migration-carrying merge, before the sync.
 - Needs Human is pull-invisible: repair and push passes cannot see a
   ticket parked there.
-- Silence is not success; the observable is.

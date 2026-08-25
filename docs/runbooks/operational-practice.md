@@ -13,8 +13,12 @@ specialist document owns a behaviour, that document wins. In particular:
 - `docs/atlas/planning-engine-specification.md` and
   `docs/runbooks/planning-phases-and-ticket-stubs.md` own planning and minting
   contracts;
-- `WORKFLOW.md` and `docs/atlas/symphony-integration.md` own dispatched-agent
-  behaviour and state-edge ownership;
+- `WORKFLOW.md` owns executable Symphony configuration and the fail-closed
+  dispatch spine;
+- `docs/runbooks/symphony-agent-execution.md` owns the detailed
+  Symphony-dispatched agent lifecycle;
+- `docs/runbooks/symphony-runtime-operation.md` owns operator control of
+  `atlas-symphony.service`;
 - `docs/runbooks/pr-acceptance.md` owns the acceptance sequence;
 - `docs/runbooks/pm-runtime-deployment.md` owns managed PM release deployment,
   migration, activation, natural-cadence canary and rollback/incident conduct;
@@ -142,151 +146,32 @@ When diagnosing a broken loop, first locate **which boundary failed**. Do not
 start by changing code or dragging a Linear card until the owner of the missing
 edge is known.
 
-## 4. Turning a phase into tickets
+## 4. Turning a phase into governed work
 
-### 4.1 Ratify the design before minting
+Design ratification, batch decomposition, dependency declaration, stub
+contracts and mint/apply mechanics are specialist planning procedures. Use:
 
-Ticket minting is intentionally downstream of design decisions. Before writing
-or approving a phase batch:
+- `docs/runbooks/planning-phases-and-ticket-stubs.md` for phase packages,
+  dependency-aware stubs, batch manifests and the planning gate; and
+- `docs/runbooks/running-atlas-plan.md` for exact plan/apply prerequisites,
+  commands, outcomes and recovery.
 
-- identify every decision the phase requires;
-- resolve operator-owned choices explicitly rather than hiding them in an
-  implementation note;
-- distinguish a true prerequisite from a preferred human ordering;
-- identify live milestones and any authority they must *not* grant; and
-- make the canonical phase/design document capable of anchoring every ticket.
-
-If a ticket still contains a major unresolved architectural decision, the
-planning is not finished. Either resolve the decision before minting or make the
-ratification gate itself the bounded work; do not make an execution ticket
-silently invent programme architecture.
-
-### 4.2 Decompose for one delivery lane
-
-A good Atlas ticket is independently reviewable, has one coherent objective,
-and can reach a stable PR without repeatedly rediscovering programme design.
-Use the schema limits as ceilings, not targets: up to seven acceptance criteria
-is permitted, but a ticket does not become better by filling the allowance.
-
-The practical decomposition test is:
-
-- one main behavioural change or contract family;
-- a bounded set of production surfaces;
-- deterministic tests that can falsify the behaviour;
-- explicit non-goals and prohibited mutations;
-- documentation owned by the same behaviour; and
-- dependencies that express real technical prerequisites.
-
-Repeated tickets taking around an hour or more of agent wall time, especially
-when much of that time is broad validation, conflict recovery, or repeated
-context reconstruction, are a **planning smell**. Investigate whether the ticket
-combines separable contracts before increasing agent turns or weakening
-validation. Do not split work merely to reduce a stopwatch number; split where
-there is a genuine independent review/authority boundary.
-
-### 4.3 Review the batch as a system
-
-Before the planning-input PR is accepted, inspect the whole phase batch rather
-than each stub in isolation:
-
-- Does every intended capability appear exactly once?
-- Are sibling dependencies backward-only and acyclic?
-- Are there genuine parallel lanes, or did the batch accidentally serialize
-  independent work?
-- Do protected/cross-cutting surfaces have a deliberate integration position?
-- Are milestone tickets held behind the prerequisites that actually prove their
-  entry conditions?
-- Could two stubs independently attempt to establish the same schema, policy,
-  runtime, or authority?
-- Is any ticket so broad that its acceptance criteria describe multiple
-  independently shippable behaviours?
-
-The detailed stub and manifest contracts remain in
-`planning-phases-and-ticket-stubs.md`.
-
-## 5. Minting tickets safely
-
-For an approved committed phase batch, the operator continuation is:
-
-```bash
-uv run atlas plan --stubs-only
-uv run atlas apply
-```
-
-Treat the `plan` output as a gate, not as ceremony. Before confirming `apply`,
-check at least:
-
-- expected ADD count equals the approved stub count;
-- no unexpected MODIFY, PROPOSE_ARCHIVE, or CONFLICT appears;
-- titles/objectives correspond to the intended stubs;
-- dependency edges match the ratified DAG; and
-- the PlanRun was derived from the committed batch you intended to mint.
-
-`atlas apply` is a two-sided operation: it mutates the operational store **and**
-writes/moves working-tree planning artifacts. Immediately after a successful
-apply, before doing unrelated work:
-
-```bash
-git status --short
-head -n 6 docs/planning/tickets.yaml
-```
-
-Verify all of the following:
-
-- the ticket high-water advanced by the number of minted tickets;
-- minted keys form the expected monotonic range;
-- dependencies resolve to those keys correctly;
-- the four apply-owned planning renders changed together;
-- every consumed stub moved from `docs/planning/inbox/` to
-  `docs/planning/inbox/processed/`;
-- the consumed batch manifest moved with them; and
-- no unrelated file changed.
-
-Then immediately stage the whole planning tree, including deletes and new
-processed files:
-
-```bash
-git add -A docs/planning/
-```
-
-Commit and publish the apply artifacts before resetting, switching away, or
-running another mint. **Never discard the working tree after apply.** The store
-has already advanced; losing the renders/retirements creates a silent split
-between operational state and committed planning history and can later cause
-re-minting or broken context anchors.
-
-### 5.1 Minting into Atlas is not yet publishing into Linear
-
-`atlas apply` assigns Atlas keys and persists the backlog. First-sync PM work is
-a separate boundary: PM sync creates the Linear issue for a pushable minted
-ticket, stores its `external_linear_id`, pushes the Atlas-owned definition (with
-an embedded Context Pack when rendering succeeds), and asserts the mapped
-create-time workflow state.
-
-After a mint/apply-artifact merge, observe the next managed PM receipt and the
-resulting board/store mapping rather than assuming Linear is now correct. Do not
-run a competing one-shot against the canonical store; it will refuse while the
-managed recurring writer owns the database. A successful Atlas mint plus a
-failed Linear create/state assertion is a sync incident, not grounds to re-run
-`atlas apply`.
+At this cross-cutting level, preserve three boundaries: design decisions precede
+ticket minting; dependencies express genuine technical prerequisites; and
+`atlas apply` mutates both the store and its generated working-tree renders.
+A successful mint is not by itself proof that Linear publication succeeded.
+Observe the managed PM receipt and resulting store/board identity through the PM
+owner rather than starting a competing writer.
 
 ## 6. Executing and reviewing tickets
 
 ### 6.1 Execution agents
 
 The ticket description and embedded Context Pack are the execution contract.
-Symphony agents own the active implementation lifecycle defined in
-`WORKFLOW.md`; they do not own ticket authoring, final review, merge, or Done.
-
-Before each candidate publication the agent must establish exact repository
-identity, rebase against current `origin/main` as the workflow requires,
-calculate `atlas validation-plan` from the exact base/head and complete changed
-path set, and run every selected command/explicit test. Local validation is
-agent-tier confidence only.
-
-After one successful publication the agent moves through `PR Open` to
-`CI Pending` and stops. `CI Pending` is intentionally not a Symphony-active
-state.
+`WORKFLOW.md` establishes the executable routes and fail-closed spine; the
+complete implementation, validation, publication and remediation procedure is
+`docs/runbooks/symphony-agent-execution.md`. Symphony agents do not own ticket
+authoring, final review, merge, Done, CI classification or runtime operation.
 
 ### 6.2 Review the branch, not the completion message
 

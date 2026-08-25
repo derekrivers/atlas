@@ -160,34 +160,18 @@ Rules (the three ATLAS-164 gate rulings):
 
 ## Workflow contract
 
-Atlas ships the repo-owned `WORKFLOW.md` Symphony loads. Its front matter
-carries the tracker config and state lists above; its body is the per-issue
-prompt template. The prompt instructs the agent to:
+Atlas ships the repo-owned `WORKFLOW.md` Symphony loads. Its front matter owns
+executable tracker states, hooks, worker limits and the Codex command. Its body
+must establish the rendered issue/context identity and enough fail-closed
+routing authority to require the detailed canonical lifecycle at
+`docs/runbooks/symphony-agent-execution.md` before code or state mutation.
 
-1. Read the embedded Atlas context pack in the issue description and treat
-   its constraints, non-goals, and definition of done as binding.
-2. Move the issue to `In Progress`, create the ticket branch from current
-   `origin/main`, verify the exact repository/branch identity, and implement the
-   bounded scope.
-3. Rebase the candidate onto current `origin/main`, calculate the deterministic
-   `atlas validation-plan` from exact base/head identities, every changed path,
-   ticket requirement and explicit test file, and run every selected command
-   and explicit test. A selected-check failure prevents publication. The
-   complete local sweep runs only for the named `full-sweep` conservative
-   profile or an explicit operator instruction.
-4. Publish the unchanged validated candidate once in one issue-bound PR whose
-   body contains exactly one standalone `Closes <Linear issue identifier>`
-   line, read the repository/PR/branch/base/head/body back, record the exact
-   commands and results, move through `PR Open` to `CI Pending`, and stop in the
-   same turn. The Atlas key remains independently required in the PR title. The
-   agent does not poll CI or wait for review.
-5. Never mark its own work `Done`. `Done` requires Atlas verification
-   (system-tier evidence per ADR-0008) plus any required human approval.
-6. On blockers or ambiguity, comment on the issue and move it to
-   `Needs Human` rather than improvising outside the pack's scope.
-7. File follow-up observations as issue comments tagged `atlas:proposed-
-   follow-up`; the PM Engine converts them into plan proposals (ADR-0007)
-   — agents never create tickets directly.
+The executable spine preserves these architectural invariants: `CI Pending` is
+not an active agent route; agents never merge or mark Done; one ticket uses one
+branch and PR; every normal PR is issue-bound; Changes Requested input is
+resolved before In Progress; and missing or conflicting detailed doctrine fails
+closed. The execution runbook owns the commands, parsing, validation sequence,
+publication readback, remediation resolution and same-PR rework procedure.
 
 The agent owns `ready_for_agent → in_progress → pr_open → ci_pending` and no
 CI-pending exit. The system-tier reconciler alone moves a passing exact head to
@@ -197,177 +181,64 @@ ownership without relying on silence or another turn.
 
 ### Issue-bound publication and remediation resume
 
-Normal Symphony publication is bound to the dispatched Linear issue, not only
-to the Atlas key carried by its title. The published PR body contains exactly
-one standalone `Closes <issue.identifier>` line. Publication readback through
-the authenticated native `gh` CLI must reproduce the exact repository, PR
-number, same-repository head branch, literal `main` base, frozen validated head
-and closing line before `PR Open`. Missing, wrong, duplicate or malformed
-closing identity is a metadata failure: it blocks the transition but does not
-require a code/head change. Rework updates the same branch and PR and preserves
-or corrects that relationship; it never creates a replacement PR.
+Normal Symphony publication is correlated to the dispatched Linear issue, not
+only to the Atlas key in its title. Every normal PR contains exactly one
+standalone `Closes <issue.identifier>` line and publication readback
+must prove the frozen same-repository head. Changes Requested preserves the
+same workspace, branch and PR.
 
-On a `Changes Requested` resume, remediation resolution precedes the agent-owned
-move to `In Progress`. One bounded brokered Linear GraphQL read returns exact
-issue identity/state plus comment and attachment nodes and each connection's
-pagination completeness. `hasNextPage: true`, malformed connection data or
-identity movement fails closed. The issue-bound publication deliberately uses
-the existing Atlas trust predicate: a GitHub attachment has a canonical HTTPS
-owner/repository/PR URL; URL and metadata identities agree; metadata records
-numeric-string GitHub PR/repository ids, `linkKind: closes`, `targetBranch:
-main` and `open` or `draft`; and exactly one complete publication identity
-remains. Title and branch prose are never publication authority.
-
-Human semantic review arrives only through one current-candidate Linear
-comment with this versioned envelope:
-
-```text
-atlas:remediation:v1
-source: human-review
-ticket: ATLAS-N
-issue: ATL-N
-repository: owner/repo
-pr: N
-head: <40-character lowercase contributor SHA>
-
-<bounded semantic remediation text>
-```
-
-The header is exact and ordered, every identity must match, and remediation
-prose is non-empty and at most 4,000 characters. Old-head and mismatched
-envelopes are history. More than one matching envelope is ambiguous and fails
-closed. Arbitrary comments are not semantic-review input, and the agent never
-authors an operator envelope.
-
-The system-CI route preserves the existing authority boundary. Only the trusted
-system-tier reconciler owns `CI Pending → Changes Requested`; that observed
-state transition is the classification authority. A raw provider failure does
-not independently prove Atlas `IMPLEMENTATION_FAILURE` and Symphony does not
-reimplement `CIHandoffAssessment`. After exact issue/publication/head
-correlation, the resumed agent may make one read-only native-`gh` inspection of
-an already-completed current-head failure solely for bounded repair diagnostics.
-Pending, old-head, cancelled, timed-out, stale, neutral, skipped, missing,
-malformed or indeterminate observations are not implementation instructions,
-and the agent never waits, reruns or polls. An inconsistent state/diagnostic
-pair fails closed.
-
-One valid human envelope, one coherent system diagnostic under that trusted
-state invariant, or their union is frozen for the attempt before `In Progress`.
-No source, incomplete identity, or ambiguity produces one concise blocker,
-`Needs Human`, and a stop. The agent does not reread inputs during
-implementation; a later semantic decision requires another governed
-`Review Required → Changes Requested` cycle. This adds no new workflow-state
-owner and does not alter the `CI Pending` stop contract.
+The architecture separates human semantic input, system-CI classification and
+provider diagnostics. Human review uses the versioned
+`atlas:remediation:v1` current-candidate envelope. Only the system-tier
+`CI Pending → Changes Requested` transition is classification authority; a raw
+provider failure does not independently prove Atlas
+`IMPLEMENTATION_FAILURE`. Bounded diagnostics can guide repair only after
+issue, publication and head correlation. This does not create a new state-edge
+writer and does not alter the `CI Pending` stop contract. Exact trust predicates,
+envelope parsing, failure routing and freeze semantics live in the execution
+runbook.
 
 ### Mainline freshness discipline
 
-Symphony's `hooks.before_run` fetches `origin/main` before every attempt,
-including `Changes Requested` resumes. That keeps the local ref current while
-leaving conflict resolution in the Atlas-owned contract body, where the agent
-can apply judgement.
+`hooks.before_run` fetches `origin/main` before every attempt, including a
+Changes Requested resume. The execution contract then requires
+`git fetch origin main && git rebase origin/main` before candidate publication,
+followed by validation of the frozen result. ADR-0008 fixes that order so
+system-tier CI attaches to the head current against main at handoff. After CI
+Pending, mechanical staleness belongs to the Phase 12 operator lane while
+semantic remediation returns through Changes Requested; any head movement makes
+old validation and acceptance evidence historical.
 
-The contract requires exact workspace-root, `origin`, symbolic-branch, PR-base,
-PR-head and head-SHA checks. It requires the agent to run
-`git fetch origin main && git rebase origin/main` immediately before opening
-the PR and before every push. That successful current-main rebase precedes
-deterministic scoped validation and the one publication for the candidate.
-Conflicts that touch only files inside the context pack's scope are resolved by
-the agent and noted in the PR description. Any conflict touching a file outside
-that scope is a blocker: the agent comments on Linear and moves the ticket to
-`Needs Human`.
-
-ADR-0008 fixes the ordering: rebase precedes push precedes CI, so
-system-tier evidence pins to the final head that is current against
-`origin/main` at handoff. Agents keep ATLAS-168's pre-handoff discipline:
-rebase before PR and before every push, then validate the frozen head before
-publication and the `CI Pending` handoff. The agent never rebases after entering
-`CI Pending`. If the reconciler later moves the candidate to `Review Required`
-and a sibling PR makes the verdict stale, the operator uses the Phase 12
-operator-owned rebase lane for mechanical staleness; that lane leaves the
-ticket in `Review Required`. `Changes Requested` is reserved for implementation
-or other semantic remediation that must return to Symphony. Any route that
-changes the head commit makes the prior local plan/results, CI evidence, review
-evidence and confirmations historical only; validation, evidence, human
-confirmations, manual approval and verification restart at the new exact head.
-
-`hooks.after_create` performs a full clone, not `git clone --depth 1`. A
-depth-1 clone can lack the merge base after a later fetch, which makes
-`git rebase origin/main` fail fatally. The repository is small enough that the
-full clone is the deterministic choice. The rejected alternative was to keep
-`--depth 1` and fetch `--unshallow` in the sync step; that adds moving parts
-with no current payoff. The recorded evidence trail for the motivating
-conflict class is the Phase 8 closure report §5 carry-forward, "WORKFLOW:
-rebase-onto-fresh-main-before-PR (the #188 conflict class)".
-
-GitHub merge queue or auto-merge branch update is the platform-level answer if
-agent-side rebasing stops scaling, but it is deferred from v1.
+The full clone in `hooks.after_create` is deliberate: depth-1 clone can lack
+the merge base after a later fetch. The Phase 8 closure report §5 records the
+motivating “#188 conflict class”. GitHub merge queue remains the platform-scale
+alternative and is deferred from v1. Detailed agent commands and conflict
+routing belong to the execution runbook.
 
 ### Symphony ceiling ownership
 
-`WORKFLOW.md`'s `agent.max_concurrent_agents` is the single controlling
-Symphony worker ceiling. Symphony reads that declaration; the operator alone
-may authorise and perform a live transition. A repository edit is not runtime
-proof: before each gate the operator must reload/restart the supported VPS
-deployment on the exact milestone commit and capture bounded process evidence
-that it loaded that commit, workflow blob, gate ceiling and unchanged
-`max_turns: 10`. A deployment without a deterministic supported identity proof
-stops before expanded admission. The active delivery policy's
-`approved_symphony_ceiling` is an
-admission-side recorded mirror that must equal the live declaration before a
-live gate starts. It is not a second ceiling and changing it does not configure
-Symphony. Historical migration `0025` and policy revision one remain immutable
-at three; they are not the current live ceiling. At every gate, the operator
-keeps admission paused until the running runtime identity is proven, then
-appends and activates a coherent policy revision before workload admission.
+`WORKFLOW.md.agent.max_concurrent_agents` is the single configured Symphony
+worker ceiling. It is not a second ceiling, delivery-policy budget or
+observed-slot count. The operator alone changes it. Ordinary committed `main` remains at one
+while Phase 15 is open, `max_turns: 10` is outside the ramp, and intermediate
+values 3, 5 and 7 exist only on the milestone branch.
 
-The registered live boundary is
-`vps-systemd-immutable-workflow-readback-v1`: the operator materialises the
-exact milestone commit's workflow bytes into a gate-specific immutable file,
-points `atlas-symphony.service` at it, restarts the service and proves the
-MainPID command identity plus the cached process-owned `GET /api/v1/runtime`
-content SHA-256, ceiling and turn limit. Bounded receipts also pin the frozen
-Symphony release, exact Git commit/blob and ordered timestamps. Rollback
-restores the prior exact immutable workflow identity and requires the same
-process readback before resuming. The offline validator accepts that bounded
-identity but never grants transition, closure, deployment, policy or runtime
-mutation authority; its fixture procedure remains non-production schema
-regression only.
+Historical migration `0025` and policy revision one remain immutable; their
+former value is not current runtime authority.
 
-Atlas working, integration and review budgets, Changes Requested reserve,
-risk/component limits and protected repository lanes are independent admission
-limits. A `CI Pending` ticket releases its Symphony working slot while retaining
-integration and applicable protected-lane occupancy. Actual occupied working
-slots are the Symphony sessions observed at a point in time. A budget can be
-lower than the declared ceiling, and occupied slots can be lower than both;
-none is a request or target to fill capacity. Actual occupied slots remain
-runtime facts and are never inferred from the configured ceiling, Atlas policy
-or queue counts. Ordinary committed `main` declares one until the controlled
-Phase 15 milestone proves ten and the single closure change lands exactly
-`max_concurrent_agents: 10`. Values 3, 5 and 7
-are confined to the pinned milestone branch. `max_turns: 10` is not part of the
-concurrency ramp and remains unchanged without a separate operator ruling.
+A repository edit is not runtime proof. The supported design requires an exact
+immutable workflow materialisation, `atlas-symphony.service` restart, bounded
+process identity and process-owned runtime readback before a coherent policy
+mirror can be activated. The canonical operator commands, runtime receipt and
+rollback sequence live in
+`docs/runbooks/symphony-runtime-operation.md`. The milestone acceptance criteria
+and evidence contract remain in `docs/atlas/multi-agent-delivery-control.md`.
+Neither document grants agents or automation live-transition authority.
 
-The publishing agent may prepare the dedicated branch, read-only validator,
-fixtures and documentation. Every live boundary remains exclusively an
-operator checkpoint. Policy reconciliation remains
-an explicit human/operator action through the existing governed Phase 15
-policy-revision boundary; the ramp adds no policy endpoint, CLI, agent action
-or automation. It also provides no Atlas endpoint, CLI, agent or automation
-path to edit `WORKFLOW.md`, Symphony configuration, acceptance evidence or
-milestone receipts. The operator performs those separate governed actions in
-their owning systems and the runbook observes their immutable identities.
-Symphony remains the scheduler and session owner; lowering its branch ceiling
-or pausing Atlas admission does not terminate an active session.
-
-Each gate configuration preflight pins the fetched `origin/main` commit, an
-equal branch merge base, the milestone head and workflow blob. Each workload's
-acceptance window separately pins its exact contributor head and current main.
-Normal sibling merges can advance main between or during gates; a trailing
-stale PR follows the operator-owned rebase lane and restarts acceptance only
-for its new head. Before the next gate the operator rebases the milestone
-branch and records new setup identities. Earlier PASS receipts remain valid
-historical prerequisites for their completed gates and never authorise a new
-head by themselves.
+Atlas working/integration/review budgets, Changes Requested reserve,
+risk/component limits and protected lanes remain independent admission limits.
+Actual occupied slots are observed Symphony sessions. A budget or occupancy may
+be below the configured ceiling; none is a target to fill.
 
 ### Exact-head PR integration assessment
 
@@ -523,76 +394,13 @@ one-PR freeze.
 
 ### Operator-owned PR rebase lane
 
-`atlas pr rebase` is the operator-owned lane for a mechanically stale PR after
-handoff to `Review Required`. It is not a Symphony implementation resume and it
-does not change Linear or Atlas ticket status. The lane starts only when
-`prepare` reuses the exact-head assessment above and sees an open, non-draft,
-same-repository PR targeting `main` with a determinate stale state:
-`behind`, `diverged`, or `conflicted`. `current` is a named no-op;
-`indeterminate` and ineligible PRs are named refusals. The PR title/body must
-resolve to at least one existing `ATLAS-NN` ticket, and every ticket in that
-close-set must already be `review_required`.
-
-The command surface is:
-
-```bash
-uv run atlas pr rebase prepare --pr <N> --repo <owner>/<repo>
-uv run atlas pr rebase continue --workspace <path>
-uv run atlas pr rebase publish --workspace <path>
-uv run atlas pr rebase abort --workspace <path>
-```
-
-`prepare` creates a detached linked worktree under
-`.atlas/rebase-workspaces/` at the assessed original PR head, writes an atomic
-versioned manifest, fetches the pinned base/head objects, and runs
-`git -c rerere.enabled=false -c rerere.autoupdate=false rebase
-<pinned-base-sha>` inside that worktree. The operator's primary checkout
-branch, index, tracked files, and local branch refs are not checked out, reset,
-or rewritten. A clean rebase records `ready_to_publish`. A conflict records
-`conflicts_pending`, prints the exact
-`git diff --name-only --diff-filter=U` paths, and leaves the stopped rebase for
-the operator. `continue` refuses while unresolved entries remain, then runs the
-same rerere-disabled `git rebase --continue` non-interactively after the
-operator has staged the resolution; a later conflict records another conflict
-set.
-
-`publish` is the only remote-write boundary. Before pushing it refetches the
-live PR snapshot, independently resolves the current base branch head, resolves
-`git remote get-url --push --all origin`, refuses unless there is exactly one
-push destination whose repository identity matches the manifest repo slug, and
-refetches remote `main`/head refs. It then requires the live head SHA, current
-base SHA, branch, repository identity, open state, draft flag, local `origin`
-identity, and remote refs to match the manifest's pinned values. Fresh
-mergeability is diagnostic only at this point: the identity and exact SHA pins
-govern the safety gate. Immediately before the remote write, the manifest
-records `lease_push_pending` with the expected old head, rebased head, and
-sanitized `origin` repository identity. The push argv uses the captured
-validated destination and the explicit expected-value lease form:
-
-```bash
-git push --force-with-lease=refs/heads/<branch>:<original-head-sha> \
-  <validated-origin-push-url> <rebased-head-sha>:refs/heads/<branch>
-```
-
-Bare `--force`, implicit `--force-with-lease`, GitHub Update branch, merge
-commits, fork PRs, and automatic conflict resolution remain out of scope. After
-a successful push the manifest first records `push_succeeded_unverified`; bounded
-GitHub refetches must then report the exact rebased head and the shared
-assessment must report `current` with the pinned `main` SHA. If an interruption
-leaves the manifest at `lease_push_pending`, rerunning `publish` reconciles
-`origin`: old head means the lease push may proceed, rebased head is recovered
-as `push_succeeded_unverified`, and any other head is refused without another
-push. Only after verification is a receipt written under
-`.atlas/rebase-receipts/` and the managed worktree removed. Rerunning `publish`
-from `push_succeeded_unverified` verifies and cleans up without repeating the
-old-head lease push.
-
-`abort` accepts only a canonical path beneath `.atlas/rebase-workspaces/` whose
-manifest matches this repository and the requested workspace. It aborts an
-in-progress rebase when present and removes that named linked worktree through
-Git. Traversal, symlink escape, missing or foreign manifests, the primary
-worktree, `lease_push_pending`, any manifest recording a successful push, and
-already-published receipts are refused without deletion.
+Phase 12's `atlas pr rebase` lane handles a mechanically stale
+`Review Required` PR without returning it to Symphony or changing ticket state.
+It uses a managed worktree, rerere-disabled operator conflict resolution,
+pinned old-head lease publication and exact post-push readback. Semantic
+conflicts are not eligible for this lane. The architecture boundary is that the
+operator owns this action and the new head restarts acceptance; the exact
+procedure is owned by `docs/runbooks/pr-acceptance.md`.
 
 ### GitHub write-access probe
 
@@ -701,7 +509,7 @@ Per the Symphony spec, implementations must document their trust posture:
   defaults for a single-operator trusted environment; revisit alongside
   ADR-0009 before any hosted deployment.
 
-## Open items (resolve before Phase 8 starts, not before Phase 5)
+## Resolved design notes
 
 - ~~Linear description size limit in practice.~~ Resolved at the ATLAS-164
   gate: Linear publishes NO description size limit for the GraphQL API
@@ -710,8 +518,7 @@ Per the Symphony spec, implementations must document their trust posture:
   anywhere is the 250,000-character message-body cap for email-created
   issues — the reference point the 100,000-char pin sits well under. The
   overflow rule above (truncation-with-marker) encodes the finding.
-- Exact follow-up comment schema for `atlas:proposed-follow-up`.
-- A `Changes Requested` re-dispatch retains the same pack; current semantic
-  input arrives only through the versioned Linear remediation envelope above,
-  while system-CI repair uses the trusted state plus bounded current-head
-  diagnostic contract.
+- Follow-up comments and `Changes Requested` input semantics are resolved.
+  Their exact agent-facing contracts are owned by
+  `docs/runbooks/symphony-agent-execution.md`; this document retains only the
+  architectural state and authority boundaries.
