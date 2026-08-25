@@ -27,13 +27,14 @@ from scripts.phase_15_delivery_control_milestone import (
     LIVE_SYMPHONY_COMMIT_SHA,
     MAX_MANIFEST_BYTES,
     MAX_REPORT_BYTES,
+    calculate_v3_manifest_fingerprint,
     evaluate_ramp,
     main,
     validate_manifest,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
-MANIFEST = ROOT / "tests" / "fixtures" / "phase_15" / "ramp_workload_seed_v2.json"
+V2_MANIFEST = ROOT / "tests" / "fixtures" / "phase_15" / "ramp_workload_seed_v2.json"
 HISTORICAL_MANIFEST = (
     ROOT / "tests" / "fixtures" / "phase_15" / "ramp_workload_seed_v1.json"
 )
@@ -53,7 +54,144 @@ REQUIRED_DOCS = (
 
 
 def _manifest() -> dict[str, Any]:
-    return cast(dict[str, Any], json.loads(MANIFEST.read_text(encoding="utf-8")))
+    v2 = _v2_manifest()
+    exercise_roles = {
+        (1, "protected_lane_ci_pending_hold", "owner"): (
+            "gate_1_protected_lane_ci_pending_hold_owner",
+            "workflow-configuration",
+        ),
+        (3, "protected_lane_contention", "blocked_candidate"): (
+            "gate_3_protected_lane_contention_blocked_candidate",
+            "operator-admission-hotspot",
+        ),
+        (3, "protected_lane_contention", "owner"): (
+            "gate_3_protected_lane_contention_owner",
+            "operator-admission-hotspot",
+        ),
+        (5, "protected_lane_with_unrelated_parallelism", "owner"): (
+            "gate_5_protected_lane_with_unrelated_parallelism_owner",
+            "planning-state",
+        ),
+        (7, "ci_pending_lane_ownership", "owner"): (
+            "gate_7_ci_pending_lane_ownership_owner",
+            "generated-contracts",
+        ),
+        (7, "risk_component_protected_lanes_under_load", "owner"): (
+            "gate_7_risk_component_protected_lanes_under_load_owner",
+            "database-migrations",
+        ),
+    }
+    classifier_tag_by_lane = {
+        "workflow-configuration": "workflow",
+        "operator-admission-hotspot": "admission",
+        "planning-state": "planning",
+        "database-migrations": "migration",
+        "generated-contracts": "openapi",
+    }
+    exercise_identity = {
+        "ATLAS-8": ("ATL-8", "b3200846-8d4f-400e-9ba5-dc4ac323131b"),
+        "ATLAS-14": ("ATL-14", "963b7803-a4e2-4e2a-97b3-2e06db2daa87"),
+        "ATLAS-234": ("ATL-411", "0b327c05-8033-4d26-b9ed-23300807ec12"),
+        "ATLAS-250": ("ATL-423", "52576e67-0181-473f-983d-3d7d41341c82"),
+        "ATLAS-251": ("ATL-420", "76bee4d4-adc6-441c-8832-2279307c5d60"),
+        "ATLAS-252": ("ATL-409", "54c55367-392e-4832-a568-ca2650063573"),
+    }
+    binding_by_workload = {
+        binding["exercise_workload_id"]: binding for binding in v2["exercise_bindings"]
+    }
+    workloads: list[dict[str, Any]] = []
+    for index, workload in enumerate(v2["workloads"]):
+        material = {
+            "workload_id": workload["workload_id"],
+            "atlas_key": f"ATLAS-{264 + index}",
+            "linear_identifier": f"ATL-{500 + index}",
+            "linear_uuid": f"00000000-0000-4000-8000-{index + 1:012d}",
+            "risk": ("low", "medium", "high", "critical")[index % 4],
+            "production_paths": workload["touched_paths"],
+            "test_paths": [f"tests/ramp/family-{index + 1:02d}/test_contract.py"],
+            "path_family": workload["touched_path_family"],
+            "independent": True,
+            "dependency_identities": [],
+            "protected_lane_classification": workload["protected_lanes"],
+            "workload_role": "ordinary",
+            "earliest_permitted_gate": 1,
+            "excluded_from_throughput": False,
+        }
+        material["native_workload_fingerprint"] = hashlib.sha256(
+            json.dumps(material, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
+        workloads.append(material)
+    exercise_workloads: list[dict[str, Any]] = []
+    for index, workload in enumerate(v2["exercise_workloads"]):
+        binding = binding_by_workload[workload["exercise_workload_id"]]
+        role, expected_lane = exercise_roles[
+            (binding["gate_level"], binding["exercise_id"], binding["role"])
+        ]
+        linear_identifier, linear_uuid = exercise_identity[workload["ticket_key"]]
+        exercise_workload = {
+            "exercise_workload_id": workload["exercise_workload_id"],
+            "atlas_key": workload["ticket_key"],
+            "linear_identifier": linear_identifier,
+            "linear_uuid": linear_uuid,
+            "objective": (
+                f"Schema fixture only for {role}; future live identity requires "
+                "separate operator ratification"
+            ),
+            "production_paths": workload["touched_paths"],
+            "test_paths": [f"tests/ramp/exercise-{index + 1}/test_contract.py"],
+            "path_family": workload["touched_path_family"],
+            "classifier_inputs": {
+                "atlas_key": workload["ticket_key"],
+                "component": f"schema-fixture-{index + 1}",
+                "tags": [classifier_tag_by_lane[expected_lane]],
+                "relevant_docs": [],
+                "documentation_requirements": [],
+            },
+            "protected_lane_classification": workload["classification"],
+            "reconstructed_protected_lanes": [expected_lane],
+            "classifier_fingerprint": workload["classification_fingerprint"],
+            "dependency_identities": [],
+            "exercise_role": role,
+            "earliest_permitted_gate": binding["gate_level"],
+            "excluded_from_throughput": True,
+        }
+        _recompute_v3_exercise_workload(exercise_workload)
+        exercise_workloads.append(exercise_workload)
+    manifest = {
+        **{
+            key: value
+            for key, value in v2.items()
+            if key
+            not in {
+                "schema_version",
+                "milestone_branch",
+                "workloads",
+                "exercise_workloads",
+            }
+        },
+        "schema_version": "phase-15-ramp-workload-v3",
+        "governing_origin_main_sha": "1" * 40,
+        "milestone_branch": "phase-15-atlas-253-ceiling-ramp",
+        "milestone_head_sha": "1" * 40,
+        "milestone_base_sha": "1" * 40,
+        "workloads": workloads,
+        "exercise_workloads": exercise_workloads,
+        "throughput_numerator": [workload["atlas_key"] for workload in workloads],
+        "explicit_exclusions": [
+            {
+                "atlas_key": workload["atlas_key"],
+                "reason": "protected-lane-exercise",
+            }
+            for workload in exercise_workloads
+        ],
+        "manifest_fingerprint": "0" * 64,
+    }
+    manifest["manifest_fingerprint"] = calculate_v3_manifest_fingerprint(manifest)
+    return manifest
+
+
+def _v2_manifest() -> dict[str, Any]:
+    return cast(dict[str, Any], json.loads(V2_MANIFEST.read_text(encoding="utf-8")))
 
 
 def _historical_manifest() -> dict[str, Any]:
@@ -85,6 +223,25 @@ def _recompute_exercise_workload(workload: dict[str, Any]) -> None:
     workload["classification_fingerprint"] = classification.fingerprint
 
 
+def _recompute_v3_exercise_workload(workload: dict[str, Any]) -> None:
+    inputs = workload["classifier_inputs"]
+    classification = classify_protected_lane_inputs(
+        ProtectedLaneClassifierInput(
+            ticket_key=inputs["atlas_key"],
+            component=inputs["component"],
+            tags=tuple(inputs["tags"]),
+            relevant_docs=tuple(inputs["relevant_docs"]),
+            documentation_requirements=tuple(inputs["documentation_requirements"]),
+        ),
+        DEFAULT_PROTECTED_LANE_REGISTRY,
+    )
+    workload["protected_lane_classification"] = json.loads(
+        classification.canonical_bytes()
+    )
+    workload["reconstructed_protected_lanes"] = list(classification.lanes)
+    workload["classifier_fingerprint"] = classification.fingerprint
+
+
 def _use_live_runtime(receipt: dict[str, Any]) -> dict[str, Any]:
     runtime = cast(dict[str, Any], receipt["runtime_configuration"])
     runtime.update(
@@ -114,7 +271,9 @@ def _receipt(
 ) -> dict[str, Any]:
     selected_manifest = validate_manifest(manifest)
     manifest_fingerprint = cast(str, selected_manifest["manifest_fingerprint"])
-    is_v2 = selected_manifest["schema_version"] == "phase-15-ramp-workload-v2"
+    uses_protected_exercises = selected_manifest["schema_version"] != (
+        "phase-15-ramp-workload-v1"
+    )
     started = datetime(2026, 8, 23, 1 + (index * 2), tzinfo=UTC)
     finished = started + timedelta(hours=1)
     publication_count = max(2, gate)
@@ -189,7 +348,7 @@ def _receipt(
         for offset, name in enumerate(GATE_EXERCISES[gate])
     }
     protected_lane_exercise_evidence: list[dict[str, Any]] = []
-    if is_v2:
+    if uses_protected_exercises:
         workloads = {
             workload["exercise_workload_id"]: workload
             for workload in cast(
@@ -205,13 +364,19 @@ def _receipt(
         ]
         for binding_offset, binding in enumerate(bindings):
             workload = workloads[binding["exercise_workload_id"]]
-            lane = workload["classification"]["matches"][0]["lane"]
+            classification = cast(
+                dict[str, Any],
+                workload.get(
+                    "protected_lane_classification", workload.get("classification")
+                ),
+            )
+            lane = classification["matches"][0]["lane"]
             protected_lane_exercise_evidence.append(
                 {
                     "gate_level": gate,
                     "exercise_id": binding["exercise_id"],
                     "exercise_workload_id": binding["exercise_workload_id"],
-                    "ticket_key": workload["ticket_key"],
+                    "ticket_key": workload.get("atlas_key", workload.get("ticket_key")),
                     "role": binding["role"],
                     "protected_lane": lane,
                     "observed_status": (
@@ -246,7 +411,7 @@ def _receipt(
                     sort_keys=True,
                 ).encode()
             ).hexdigest()
-    if is_v2 and protected_lane_exercise_evidence:
+    if uses_protected_exercises and protected_lane_exercise_evidence:
         lane_occupancy = [
             {
                 "lane": evidence["protected_lane"],
@@ -260,7 +425,7 @@ def _receipt(
             for evidence in protected_lane_exercise_evidence
             if evidence["role"] == "owner"
         ]
-    elif is_v2:
+    elif uses_protected_exercises:
         lane_occupancy = [
             {
                 "lane": "operator-admission-hotspot",
@@ -281,11 +446,22 @@ def _receipt(
             }
         ]
     level_token = f"{gate:x}"
-    origin_main = f"{index + 1:x}" * 40
+    origin_main = (
+        cast(str, selected_manifest["governing_origin_main_sha"])
+        if index == 0
+        and selected_manifest["schema_version"] == "phase-15-ramp-workload-v3"
+        else f"{index + 1:x}" * 40
+    )
+    milestone_commit = (
+        cast(str, selected_manifest["milestone_head_sha"])
+        if index == 0
+        and selected_manifest["schema_version"] == "phase-15-ramp-workload-v3"
+        else level_token * 40
+    )
     receipt: dict[str, Any] = {
         "schema_version": (
             "phase-15-ramp-gate-receipt-v2"
-            if is_v2
+            if uses_protected_exercises
             else "phase-15-ramp-gate-receipt-v1"
         ),
         "receipt_id": f"seed-gate-{gate}",
@@ -300,7 +476,7 @@ def _receipt(
             gate if outcome == "PASS" else (1 if index == 0 else GATE_LEVELS[index - 1])
         ),
         "branch": "phase-15-atlas-253-ceiling-ramp",
-        "milestone_commit_sha": level_token * 40,
+        "milestone_commit_sha": milestone_commit,
         "origin_main_sha": origin_main,
         "merge_base_sha": origin_main,
         "workflow_blob_sha": f"{index + 10:x}" * 40,
@@ -312,7 +488,7 @@ def _receipt(
         "runtime_configuration": {
             "instance_id": "seeded-symphony-vps",
             "supported_procedure_id": FIXTURE_RUNTIME_PROCEDURE,
-            "loaded_commit_sha": level_token * 40,
+            "loaded_commit_sha": milestone_commit,
             "workflow_blob_sha": f"{index + 10:x}" * 40,
             "configured_ceiling": gate,
             "max_turns": 10,
@@ -346,7 +522,7 @@ def _receipt(
             "protected_lane_registry_version": "protected-integration-lanes/v1",
             "protected_lane_registry_fingerprint": (
                 selected_manifest["protected_lane_registry_fingerprint"]
-                if is_v2
+                if uses_protected_exercises
                 else _identity(5000 + index)
             ),
             "protected_lane_state_fingerprint": _identity(5100 + index),
@@ -362,7 +538,7 @@ def _receipt(
         "operator_identity": "human/operator:seeded-validator",
         "recorded_at": _timestamp(finished + timedelta(minutes=1)),
     }
-    if is_v2:
+    if uses_protected_exercises:
         receipt["protected_lane_exercise_evidence"] = protected_lane_exercise_evidence
     return receipt
 
@@ -374,7 +550,7 @@ def _receipts(manifest: dict[str, Any]) -> list[dict[str, Any]]:
     ]
 
 
-def test_predeclared_manifest_has_more_than_ten_independent_workloads() -> None:
+def test_v3_schema_fixture_has_complete_ordinary_and_exercise_contract() -> None:
     selected = validate_manifest(_manifest())
     workloads = cast(list[dict[str, Any]], selected["workloads"])
     exercise_workloads = cast(list[dict[str, Any]], selected["exercise_workloads"])
@@ -382,22 +558,25 @@ def test_predeclared_manifest_has_more_than_ten_independent_workloads() -> None:
     assert selected["validation_scope"] == "offline-read-only"
     assert len(workloads) == 11
     assert all(workload["independent"] is True for workload in workloads)
-    assert all(workload["dependency_ids"] == [] for workload in workloads)
-    assert len({workload["workload_identity"] for workload in workloads}) == 11
+    assert all(workload["dependency_identities"] == [] for workload in workloads)
+    assert (
+        len({workload["native_workload_fingerprint"] for workload in workloads}) == 11
+    )
     assert (
         len(
             {
                 path
                 for workload in workloads
-                for path in cast(list[str], workload["touched_paths"])
+                for name in ("production_paths", "test_paths")
+                for path in cast(list[str], workload[name])
             }
         )
-        == 11
+        == 22
     )
     ordinary_lanes = [
         lane
         for workload in workloads
-        for lane in cast(list[str], workload["protected_lanes"])
+        for lane in cast(list[str], workload["protected_lane_classification"])
     ]
     assert len(ordinary_lanes) == len(set(ordinary_lanes))
     assert selected["protected_lane_registry_version"] == (
@@ -410,7 +589,7 @@ def test_predeclared_manifest_has_more_than_ten_independent_workloads() -> None:
     assert all(
         workload["excluded_from_throughput"] is True for workload in exercise_workloads
     )
-    assert {workload["ticket_key"] for workload in exercise_workloads} == {
+    assert {workload["atlas_key"] for workload in exercise_workloads} == {
         "ATLAS-250",
         "ATLAS-251",
         "ATLAS-252",
@@ -418,6 +597,25 @@ def test_predeclared_manifest_has_more_than_ten_independent_workloads() -> None:
         "ATLAS-14",
         "ATLAS-234",
     }
+    assert {
+        workload["exercise_role"]: workload["reconstructed_protected_lanes"][0]
+        for workload in exercise_workloads
+    } == {
+        "gate_1_protected_lane_ci_pending_hold_owner": "workflow-configuration",
+        "gate_3_protected_lane_contention_blocked_candidate": (
+            "operator-admission-hotspot"
+        ),
+        "gate_3_protected_lane_contention_owner": "operator-admission-hotspot",
+        "gate_5_protected_lane_with_unrelated_parallelism_owner": "planning-state",
+        "gate_7_ci_pending_lane_ownership_owner": "generated-contracts",
+        "gate_7_risk_component_protected_lanes_under_load_owner": (
+            "database-migrations"
+        ),
+    }
+    assert all(
+        workload["objective"].startswith("Schema fixture only")
+        for workload in exercise_workloads
+    )
     assert selected["phase_15_5_release"] == {
         "issue": "ATL-437",
         "state": "Done",
@@ -449,13 +647,15 @@ def test_complete_sequence_is_validation_only_and_never_live_authority() -> None
     assert report["decision"] == "RECEIPT_SEQUENCE_VALIDATED"
     assert report["closure_authorized"] is False
     assert report["transition_authorized"] is False
+    assert report["manifest_authority"] == "live-freeze-authoritative-v3"
+    assert report["live_freeze_authoritative"] is True
     assert report["gate_sequence"] == [1, 3, 5, 7, 10]
     assert report["last_validated_pass_receipt_level"] == 10
     assert len(retained.encode()) <= MAX_REPORT_BYTES
 
 
 def test_v2_manifest_and_receipt_fingerprints_ignore_order() -> None:
-    manifest = _manifest()
+    manifest = _v2_manifest()
     baseline = validate_manifest(manifest)
     reordered = copy.deepcopy(manifest)
     reordered["workloads"].reverse()
@@ -532,6 +732,220 @@ def test_v1_attempt_records_replay_deterministically_as_historical_only() -> Non
     assert complete["historical_result"] == "RECEIPT_SEQUENCE_VALIDATED"
 
 
+def test_v2_remains_deterministic_schema_valid_history_not_live_freeze_authority() -> (
+    None
+):
+    manifest = _v2_manifest()
+    first, first_passed = evaluate_ramp(manifest, _receipts(manifest))
+    second, second_passed = evaluate_ramp(manifest, _receipts(manifest))
+
+    assert first == second
+    assert first_passed is second_passed is False
+    assert first["decision"] == "HISTORICAL_SCHEMA_VALIDATION"
+    assert first["historical_result"] == "RECEIPT_SEQUENCE_VALIDATED"
+    assert first["manifest_authority"] == "historical-schema-valid-v2"
+    assert first["live_freeze_authoritative"] is False
+    assert first["transition_authorized"] is False
+    assert first["closure_authorized"] is False
+
+
+def test_v3_canonical_fingerprints_ignore_semantically_unordered_collections() -> None:
+    manifest = _manifest()
+    baseline = validate_manifest(manifest)
+    reordered = copy.deepcopy(manifest)
+    reordered["workloads"].reverse()
+    reordered["exercise_catalog"].reverse()
+    reordered["exercise_workloads"].reverse()
+    reordered["exercise_bindings"].reverse()
+    reordered["throughput_numerator"].reverse()
+    reordered["explicit_exclusions"].reverse()
+    for workload in reordered["workloads"]:
+        workload["production_paths"].reverse()
+        workload["test_paths"].reverse()
+        workload["protected_lane_classification"].reverse()
+    for workload in reordered["exercise_workloads"]:
+        workload["production_paths"].reverse()
+        workload["test_paths"].reverse()
+        workload["classifier_inputs"]["tags"].reverse()
+        workload["classifier_inputs"]["relevant_docs"].reverse()
+        workload["classifier_inputs"]["documentation_requirements"].reverse()
+        workload["reconstructed_protected_lanes"].reverse()
+    reordered["manifest_fingerprint"] = calculate_v3_manifest_fingerprint(reordered)
+
+    selected = validate_manifest(reordered)
+
+    assert selected["manifest_fingerprint"] == baseline["manifest_fingerprint"]
+    assert [
+        workload["native_workload_fingerprint"]
+        for workload in cast(list[dict[str, Any]], selected["workloads"])
+    ] == [
+        workload["native_workload_fingerprint"]
+        for workload in cast(list[dict[str, Any]], baseline["workloads"])
+    ]
+
+
+@pytest.mark.parametrize(
+    ("case", "message"),
+    (
+        ("wrong_schema", "unsupported"),
+        ("malformed_sha", "40-character digest"),
+        ("branch", "dedicated branch"),
+        ("base_contradiction", "contradicts governing"),
+        ("duplicate_atlas", "duplicate Atlas or Linear"),
+        ("duplicate_linear_identifier", "duplicate Atlas or Linear"),
+        ("duplicate_linear_uuid", "duplicate Atlas or Linear"),
+        ("missing_linear_identifier", "exact required fields"),
+        ("missing_linear_uuid", "exact required fields"),
+        ("native_fingerprint", "native workload fingerprint drifted"),
+        ("dependency_contradiction", "dependency-independent declaration"),
+        ("dependency_identity_mismatch", "contradict workload authority"),
+        ("independence_contradiction", "required workload independence"),
+        ("classifier_reconstruction", "classifier reconstruction mismatch"),
+        ("protected_lane_fingerprint", "registry fingerprint drifted"),
+        ("ordinary_role", "ordinary workload role"),
+        ("ordinary_earliest_gate", "ordinary role requires"),
+        ("exercise_role", "six required roles"),
+        ("earliest_gate", "earliest gate contradicts"),
+        ("throughput_numerator", "excluded exercise or omission"),
+        ("wrong_role_lane", "wrong protected lane"),
+        ("missing_role", "six required roles"),
+        ("same_ticket_roles", "duplicate Atlas or Linear"),
+        ("manifest_fingerprint", "canonical fingerprint drifted"),
+        ("unknown_field", "exact required fields"),
+    ),
+)
+def test_v3_authority_manifest_fail_closed(case: str, message: str) -> None:
+    manifest = _manifest()
+    workloads = manifest["workloads"]
+    exercises = manifest["exercise_workloads"]
+    if case == "wrong_schema":
+        manifest["schema_version"] = "phase-15-ramp-workload-v4"
+    elif case == "malformed_sha":
+        manifest["milestone_head_sha"] = "f" * 39
+    elif case == "branch":
+        manifest["milestone_branch"] = "phase-15-wrong-branch"
+    elif case == "base_contradiction":
+        manifest["milestone_base_sha"] = "2" * 40
+    elif case == "duplicate_atlas":
+        workloads[1]["atlas_key"] = workloads[0]["atlas_key"]
+    elif case == "duplicate_linear_identifier":
+        workloads[1]["linear_identifier"] = workloads[0]["linear_identifier"]
+    elif case == "duplicate_linear_uuid":
+        workloads[1]["linear_uuid"] = workloads[0]["linear_uuid"]
+    elif case == "missing_linear_identifier":
+        workloads[0].pop("linear_identifier")
+    elif case == "missing_linear_uuid":
+        workloads[0].pop("linear_uuid")
+    elif case == "native_fingerprint":
+        workloads[0]["native_workload_fingerprint"] = "f" * 64
+    elif case == "dependency_contradiction":
+        workloads[0]["dependency_identities"] = [
+            {
+                "atlas_key": "ATLAS-999",
+                "linear_identifier": "ATL-999",
+                "linear_uuid": "00000000-0000-4000-8000-000000000999",
+            }
+        ]
+    elif case == "dependency_identity_mismatch":
+        exercises[0]["dependency_identities"] = [
+            {
+                "atlas_key": workloads[0]["atlas_key"],
+                "linear_identifier": "ATL-999",
+                "linear_uuid": "00000000-0000-4000-8000-000000000999",
+            }
+        ]
+    elif case == "independence_contradiction":
+        workloads[0]["independent"] = False
+    elif case == "classifier_reconstruction":
+        exercises[0]["protected_lane_classification"]["matches"][0]["lane"] = (
+            "database-migrations"
+        )
+    elif case == "protected_lane_fingerprint":
+        manifest["protected_lane_registry_fingerprint"] = "f" * 64
+    elif case == "ordinary_role":
+        workloads[0]["workload_role"] = "exercise"
+    elif case == "ordinary_earliest_gate":
+        workloads[0]["earliest_permitted_gate"] = 3
+    elif case == "exercise_role":
+        exercises[0]["exercise_role"] = "ordinary"
+    elif case == "earliest_gate":
+        exercises[0]["earliest_permitted_gate"] = 10
+    elif case == "throughput_numerator":
+        manifest["throughput_numerator"][0] = exercises[0]["atlas_key"]
+    elif case == "wrong_role_lane":
+        exercises[0]["classifier_inputs"].update(
+            {
+                "component": "atlas.storage",
+                "tags": ["migration"],
+                "relevant_docs": [],
+                "documentation_requirements": [],
+            }
+        )
+        _recompute_v3_exercise_workload(exercises[0])
+    elif case == "missing_role":
+        exercises.pop()
+    elif case == "same_ticket_roles":
+        exercises[1]["atlas_key"] = exercises[0]["atlas_key"]
+    elif case == "manifest_fingerprint":
+        manifest["manifest_fingerprint"] = "f" * 64
+    elif case == "unknown_field":
+        manifest["repository_lookup"] = "forbidden"
+    else:  # pragma: no cover - parametrisation is closed above
+        raise AssertionError(case)
+
+    with pytest.raises(ValueError, match=message):
+        validate_manifest(manifest)
+
+
+@pytest.mark.parametrize(
+    ("exercise_role", "historical_lane_tag"),
+    (
+        (
+            "gate_5_protected_lane_with_unrelated_parallelism_owner",
+            "migration",
+        ),
+        ("gate_7_ci_pending_lane_ownership_owner", "planning"),
+        (
+            "gate_7_risk_component_protected_lanes_under_load_owner",
+            "openapi",
+        ),
+    ),
+)
+def test_v3_corrected_roles_reject_historical_fixture_lane_allocation(
+    exercise_role: str, historical_lane_tag: str
+) -> None:
+    manifest = _manifest()
+    exercise = next(
+        workload
+        for workload in manifest["exercise_workloads"]
+        if workload["exercise_role"] == exercise_role
+    )
+    exercise["classifier_inputs"].update(
+        {
+            "component": "schema-fixture-historical-allocation",
+            "tags": [historical_lane_tag],
+            "relevant_docs": [],
+            "documentation_requirements": [],
+        }
+    )
+    _recompute_v3_exercise_workload(exercise)
+
+    with pytest.raises(
+        ValueError, match="exercise role binds the wrong protected lane"
+    ):
+        validate_manifest(manifest)
+
+
+def test_v3_gate_one_receipt_must_match_frozen_repository_identity() -> None:
+    manifest = _manifest()
+    receipt = _receipts(manifest)[0]
+    receipt["milestone_commit_sha"] = "f" * 40
+    receipt["runtime_configuration"]["loaded_commit_sha"] = "f" * 40
+
+    with pytest.raises(ValueError, match="repository-authoritative v3 freeze"):
+        evaluate_ramp(manifest, [receipt])
+
+
 def test_self_declared_operator_authority_is_rejected() -> None:
     manifest = _manifest()
     manifest["authority"] = "live-operator"
@@ -564,7 +978,7 @@ def test_self_declared_operator_authority_is_rejected() -> None:
 def test_v2_manifest_registry_classification_and_identity_drift_fail_closed(
     case: str, message: str
 ) -> None:
-    manifest = _manifest()
+    manifest = _v2_manifest()
     exercise_workloads = manifest["exercise_workloads"]
     if case == "unknown_lane":
         manifest["workloads"][0]["protected_lanes"] = ["invented-lane"]
@@ -724,7 +1138,7 @@ def test_protected_lane_limits_and_state_are_snapshot_owned() -> None:
 def test_v2_receipt_protected_exercise_bindings_fail_closed(
     case: str, message: str
 ) -> None:
-    manifest = _manifest()
+    manifest = _v2_manifest()
     receipts = _receipts(manifest)
     receipt = receipts[1] if case.startswith("duplicate_") else receipts[0]
     evidence = receipt["protected_lane_exercise_evidence"]
@@ -800,7 +1214,7 @@ def test_later_protected_exercises_reject_generic_evidence_without_bound_workloa
 def test_post_ratification_workload_substitution_changes_and_invalidates_identity() -> (
     None
 ):
-    manifest = _manifest()
+    manifest = _v2_manifest()
     receipts = _receipts(manifest)
     original = validate_manifest(manifest)["manifest_fingerprint"]
     substituted = copy.deepcopy(manifest)
@@ -831,7 +1245,7 @@ def test_post_ratification_workload_substitution_changes_and_invalidates_identit
 def test_every_exercise_workload_identity_input_participates_in_manifest_fingerprint(
     field: str,
 ) -> None:
-    baseline_manifest = _manifest()
+    baseline_manifest = _v2_manifest()
     baseline = validate_manifest(baseline_manifest)["manifest_fingerprint"]
     changed_manifest = copy.deepcopy(baseline_manifest)
     workload = changed_manifest["exercise_workloads"][0]
@@ -1074,8 +1488,8 @@ def test_harness_has_no_mutation_or_network_authority(
     assert historical_report["authority_spies"] == report["authority_spies"]
 
     invalid = _manifest()
-    invalid["exercise_workloads"][0]["ticket_key"] = "META-GATE-1"
-    with pytest.raises(ValueError, match="real ATLAS key"):
+    invalid["exercise_workloads"][0]["atlas_key"] = "META-GATE-1"
+    with pytest.raises(ValueError, match="real Atlas ticket key"):
         evaluate_ramp(invalid, [])
 
     source = (ROOT / "scripts" / "phase_15_delivery_control_milestone.py").read_text(
@@ -1094,7 +1508,7 @@ def test_harness_has_no_mutation_or_network_authority(
 
 
 def test_required_docs_and_seed_fixture_are_present_and_bounded() -> None:
-    assert MANIFEST.stat().st_size < MAX_MANIFEST_BYTES
+    assert V2_MANIFEST.stat().st_size < MAX_MANIFEST_BYTES
     assert HISTORICAL_MANIFEST.stat().st_size < MAX_MANIFEST_BYTES
     assert all(path.is_file() for path in REQUIRED_DOCS)
     workflow = (ROOT / "WORKFLOW.md").read_text(encoding="utf-8")
@@ -1107,7 +1521,7 @@ def test_required_docs_and_seed_fixture_are_present_and_bounded() -> None:
     phase_15_5 = (ROOT / "docs" / "closure" / "phase-15.5-closure-report.md").read_text(
         encoding="utf-8"
     )
-    v2_contract_docs = [
+    workload_contract_docs = [
         (ROOT / relative).read_text(encoding="utf-8")
         for relative in (
             "docs/runbooks/operator-environment.md",
@@ -1129,8 +1543,9 @@ def test_required_docs_and_seed_fixture_are_present_and_bounded() -> None:
     assert "fixture/schema regression only" in runbook
     assert "Gate 1 is BLOCKED" not in runbook
     assert "RECEIPT_SEQUENCE_VALIDATED" in runbook
-    assert all("Attempt-3" in document for document in v2_contract_docs)
-    assert all("v2" in document for document in v2_contract_docs)
+    assert all("Attempt-3" in document for document in workload_contract_docs)
+    assert all("v2" in document for document in workload_contract_docs)
+    assert all("v3" in document for document in workload_contract_docs)
     assert "scripts/phase_15_delivery_control_milestone.py" in delivery_control
     assert "Phase 15.5 is CLOSED" in phase_15_5
     assert not (ROOT / "docs" / "closure" / "phase-15-closure-report.md").exists()
@@ -1139,9 +1554,9 @@ def test_required_docs_and_seed_fixture_are_present_and_bounded() -> None:
 def test_manifest_fingerprint_cli_is_deterministic(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    assert main([str(MANIFEST), "--fingerprint-only"]) == 0
+    assert main([str(V2_MANIFEST), "--fingerprint-only"]) == 0
     first = capsys.readouterr().out.strip()
-    assert main([str(MANIFEST), "--fingerprint-only"]) == 0
+    assert main([str(V2_MANIFEST), "--fingerprint-only"]) == 0
     second = capsys.readouterr().out.strip()
 
     assert first == second

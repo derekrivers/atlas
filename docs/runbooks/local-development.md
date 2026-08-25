@@ -309,14 +309,14 @@ confirmed write.
 
 The read-only ramp validator consumes a predeclared workload manifest and a
 durable receipt prefix. Live proof requires
-`phase-15-ramp-workload-v2`/`phase-15-ramp-gate-receipt-v2`. The contract-valid
-repository fixture `tests/fixtures/phase_15/ramp_workload_seed_v2.json` keeps
-eleven ordinary independent workloads and separately binds real fixture ticket
-identities to every protected-lane exercise: the Gate 1 owner, Gate 3 same-lane
-owner/blocked candidate, Gate 5 owner and both Gate 7 owners. All are classified
-through the digest-pinned repository classifier. The fixture is deterministic
-schema evidence only, never a live manifest or ratification. Validate and
-fingerprint v2:
+`phase-15-ramp-workload-v3` with the existing
+`phase-15-ramp-gate-receipt-v2` receipt contract. V3 binds exact repository,
+Atlas/Linear, dependency, path, risk, role, gate, throughput and classifier
+authority before checking its declared canonical manifest fingerprint. The
+retained `tests/fixtures/phase_15/ramp_workload_seed_v2.json` remains
+deterministic historical/schema evidence only; it is never a live manifest or
+ratification. Validate historical v2 and the focused v3 construction/failure
+matrix:
 
 ```bash
 uv run python scripts/phase_15_delivery_control_milestone.py \
@@ -355,9 +355,10 @@ load, process readback and rollback sequence is in
 and is never production runtime evidence.
 
 ATLAS-253 remains operator-paused at the proven Attempt-3 ceiling-one /
-`max_turns: 10` identity. No new Gate 1 observation may begin until this v2
-implementation is accepted and the operator separately re-ratifies the exact
-live v2 manifest; running the fixture commands above does neither.
+`max_turns: 10` identity. No new Gate 1 observation may begin until the v3
+repository-authority implementation is accepted and the operator separately
+re-ratifies the exact live v3 manifest; running the fixture commands above does
+neither.
 
 ## Before you publish and hand off
 
