@@ -24,7 +24,7 @@ human gate, exact-head check, manual merge or merged-proof requirement.
 
 **review → exact-head current → freeze → evidence → confirm → verify PASSED →
 exact-head still current → merge at the verdict commit → verify merged proof →
-schema upgrade → sync twice → Done.**
+observe managed PM completion → Done.**
 
 The single binding invariant: the verdict pins to the PR head commit, that
 head must contain the exact current `main` snapshot admitted at the start of
@@ -315,25 +315,21 @@ Run verification after GitHub reports the PR merged. This records the
 system-tier `PR_MERGED` evidence at the verdict commit. Without that proof the
 completion service must refuse Done.
 
-## 8. Migration parity — before the next sync
+## 8. Observe managed PM completion
 
-After updating local `main`, run `uv run alembic upgrade head` before the next
-`atlas pm sync` (unconditionally is safe). The store
-is a different surface from the code; a merged migration is not an applied
-one. Skipping this crashes the next tick with `OperationalError: no such
-column …` (and, on write paths, discards LLM spend). ATLAS-174's guard now
-fails these fast with a named error, but the discipline is still to
-upgrade.
+After merged-proof verification, the acceptance driver waits read-only for the
+Atlas store to report every real PR-linked ticket as Done. The managed recurring
+PM service owns ordinary post-merge reconciliation; acceptance neither invokes
+an independent PM writer nor changes ticket state itself. A timeout truthfully
+reports the final observed statuses as incomplete and performs no compensating
+write.
 
-## 9. Gated completion and reconciliation
+Deployment is not acceptance. Schema migration, code checkout or pull, service
+orchestration, and manual `atlas pm sync --once` are not acceptance steps. They
+belong to separately governed operator procedures. Never drag a card to Done
+manually: doing so bypasses the completion gate and creates an integrity anomaly.
 
-Run `uv run atlas pm sync --once -v` twice. The first tick may move the Linear
-card from Review Required to Done only when the persisted verdict is PASSED and
-the matching system-tier `PR_MERGED` evidence exists. The second tick pulls
-that Linear state back into Atlas. Never drag a card to Done manually: doing so
-bypasses the completion gate and creates an integrity anomaly.
-
-## 10. Silence discipline
+## 9. Silence discipline
 
 One-shot commands report their result on stdout as of ATLAS-170/178, but
 INFO logging is off by default. For any command: silence + expected board

@@ -126,8 +126,15 @@ exact-head evidence + confirmation + verification
         ↓
 manual merge
         ↓
-post-merge sync / completion evidence
+merged-proof verification
+        ↓
+read-only observation of managed PM completion
 ```
+
+Acceptance does not deploy code or schemas and does not orchestrate the PM
+scheduler. After merged-proof verification, the managed recurring PM cadence
+owns ordinary reconciliation while the acceptance driver only observes Atlas
+store status; manual `atlas pm sync --once` is not an acceptance step.
 
 When diagnosing a broken loop, first locate **which boundary failed**. Do not
 start by changing code or dragging a Linear card until the owner of the missing
