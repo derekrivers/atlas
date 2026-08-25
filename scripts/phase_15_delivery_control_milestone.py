@@ -79,19 +79,19 @@ _V3_EXERCISE_ROLES: Mapping[str, tuple[int, str, str, str]] = {
         5,
         "protected_lane_with_unrelated_parallelism",
         "owner",
-        "database-migrations",
+        "planning-state",
     ),
     "gate_7_ci_pending_lane_ownership_owner": (
         7,
         "ci_pending_lane_ownership",
         "owner",
-        "planning-state",
+        "generated-contracts",
     ),
     "gate_7_risk_component_protected_lanes_under_load_owner": (
         7,
         "risk_component_protected_lanes_under_load",
         "owner",
-        "generated-contracts",
+        "database-migrations",
     ),
 }
 

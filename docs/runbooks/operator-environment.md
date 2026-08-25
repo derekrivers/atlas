@@ -303,8 +303,9 @@ is the Phase 15 design.
   is never production runtime evidence.
 - Rollback restores the previous proven gate's exact immutable workflow file.
 - mainline progress alone does not force a Gate 1 restart.
-- The current checkpoint is the proven Attempt-3 ceiling-one identity; future
-  live proof uses the separately ratified v2 workload/receipt contract.
+- The current checkpoint is the proven Attempt-3 ceiling-one identity; v2 is
+  historical/schema evidence only, and future live proof uses the separately
+  ratified v3 workload/receipt contract.
 - The bounded validator's successful cumulative outcome is
   `RECEIPT_SEQUENCE_VALIDATED`.
 The ramp adds no endpoint, CLI, agent action or automation that edits delivery

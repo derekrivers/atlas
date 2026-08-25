@@ -70,16 +70,23 @@ def _manifest() -> dict[str, Any]:
         ),
         (5, "protected_lane_with_unrelated_parallelism", "owner"): (
             "gate_5_protected_lane_with_unrelated_parallelism_owner",
-            "database-migrations",
+            "planning-state",
         ),
         (7, "ci_pending_lane_ownership", "owner"): (
             "gate_7_ci_pending_lane_ownership_owner",
-            "planning-state",
+            "generated-contracts",
         ),
         (7, "risk_component_protected_lanes_under_load", "owner"): (
             "gate_7_risk_component_protected_lanes_under_load_owner",
-            "generated-contracts",
+            "database-migrations",
         ),
+    }
+    classifier_tag_by_lane = {
+        "workflow-configuration": "workflow",
+        "operator-admission-hotspot": "admission",
+        "planning-state": "planning",
+        "database-migrations": "migration",
+        "generated-contracts": "openapi",
     }
     exercise_identity = {
         "ATLAS-8": ("ATL-8", "b3200846-8d4f-400e-9ba5-dc4ac323131b"),
@@ -120,36 +127,36 @@ def _manifest() -> dict[str, Any]:
         role, expected_lane = exercise_roles[
             (binding["gate_level"], binding["exercise_id"], binding["role"])
         ]
-        assert workload["classification"]["matches"][0]["lane"] == expected_lane
         linear_identifier, linear_uuid = exercise_identity[workload["ticket_key"]]
-        exercise_workloads.append(
-            {
-                "exercise_workload_id": workload["exercise_workload_id"],
+        exercise_workload = {
+            "exercise_workload_id": workload["exercise_workload_id"],
+            "atlas_key": workload["ticket_key"],
+            "linear_identifier": linear_identifier,
+            "linear_uuid": linear_uuid,
+            "objective": (
+                f"Schema fixture only for {role}; future live identity requires "
+                "separate operator ratification"
+            ),
+            "production_paths": workload["touched_paths"],
+            "test_paths": [f"tests/ramp/exercise-{index + 1}/test_contract.py"],
+            "path_family": workload["touched_path_family"],
+            "classifier_inputs": {
                 "atlas_key": workload["ticket_key"],
-                "linear_identifier": linear_identifier,
-                "linear_uuid": linear_uuid,
-                "objective": f"Seeded objective for {role}",
-                "production_paths": workload["touched_paths"],
-                "test_paths": [f"tests/ramp/exercise-{index + 1}/test_contract.py"],
-                "path_family": workload["touched_path_family"],
-                "classifier_inputs": {
-                    "atlas_key": workload["ticket_key"],
-                    "component": workload["component"],
-                    "tags": workload["tags"],
-                    "relevant_docs": workload["relevant_docs"],
-                    "documentation_requirements": workload[
-                        "documentation_requirements"
-                    ],
-                },
-                "protected_lane_classification": workload["classification"],
-                "reconstructed_protected_lanes": [expected_lane],
-                "classifier_fingerprint": workload["classification_fingerprint"],
-                "dependency_identities": [],
-                "exercise_role": role,
-                "earliest_permitted_gate": binding["gate_level"],
-                "excluded_from_throughput": True,
-            }
-        )
+                "component": f"schema-fixture-{index + 1}",
+                "tags": [classifier_tag_by_lane[expected_lane]],
+                "relevant_docs": [],
+                "documentation_requirements": [],
+            },
+            "protected_lane_classification": workload["classification"],
+            "reconstructed_protected_lanes": [expected_lane],
+            "classifier_fingerprint": workload["classification_fingerprint"],
+            "dependency_identities": [],
+            "exercise_role": role,
+            "earliest_permitted_gate": binding["gate_level"],
+            "excluded_from_throughput": True,
+        }
+        _recompute_v3_exercise_workload(exercise_workload)
+        exercise_workloads.append(exercise_workload)
     manifest = {
         **{
             key: value
@@ -543,7 +550,7 @@ def _receipts(manifest: dict[str, Any]) -> list[dict[str, Any]]:
     ]
 
 
-def test_predeclared_manifest_has_more_than_ten_independent_workloads() -> None:
+def test_v3_schema_fixture_has_complete_ordinary_and_exercise_contract() -> None:
     selected = validate_manifest(_manifest())
     workloads = cast(list[dict[str, Any]], selected["workloads"])
     exercise_workloads = cast(list[dict[str, Any]], selected["exercise_workloads"])
@@ -590,6 +597,25 @@ def test_predeclared_manifest_has_more_than_ten_independent_workloads() -> None:
         "ATLAS-14",
         "ATLAS-234",
     }
+    assert {
+        workload["exercise_role"]: workload["reconstructed_protected_lanes"][0]
+        for workload in exercise_workloads
+    } == {
+        "gate_1_protected_lane_ci_pending_hold_owner": "workflow-configuration",
+        "gate_3_protected_lane_contention_blocked_candidate": (
+            "operator-admission-hotspot"
+        ),
+        "gate_3_protected_lane_contention_owner": "operator-admission-hotspot",
+        "gate_5_protected_lane_with_unrelated_parallelism_owner": "planning-state",
+        "gate_7_ci_pending_lane_ownership_owner": "generated-contracts",
+        "gate_7_risk_component_protected_lanes_under_load_owner": (
+            "database-migrations"
+        ),
+    }
+    assert all(
+        workload["objective"].startswith("Schema fixture only")
+        for workload in exercise_workloads
+    )
     assert selected["phase_15_5_release"] == {
         "issue": "ATL-437",
         "state": "Done",
@@ -868,6 +894,45 @@ def test_v3_authority_manifest_fail_closed(case: str, message: str) -> None:
         raise AssertionError(case)
 
     with pytest.raises(ValueError, match=message):
+        validate_manifest(manifest)
+
+
+@pytest.mark.parametrize(
+    ("exercise_role", "historical_lane_tag"),
+    (
+        (
+            "gate_5_protected_lane_with_unrelated_parallelism_owner",
+            "migration",
+        ),
+        ("gate_7_ci_pending_lane_ownership_owner", "planning"),
+        (
+            "gate_7_risk_component_protected_lanes_under_load_owner",
+            "openapi",
+        ),
+    ),
+)
+def test_v3_corrected_roles_reject_historical_fixture_lane_allocation(
+    exercise_role: str, historical_lane_tag: str
+) -> None:
+    manifest = _manifest()
+    exercise = next(
+        workload
+        for workload in manifest["exercise_workloads"]
+        if workload["exercise_role"] == exercise_role
+    )
+    exercise["classifier_inputs"].update(
+        {
+            "component": "schema-fixture-historical-allocation",
+            "tags": [historical_lane_tag],
+            "relevant_docs": [],
+            "documentation_requirements": [],
+        }
+    )
+    _recompute_v3_exercise_workload(exercise)
+
+    with pytest.raises(
+        ValueError, match="exercise role binds the wrong protected lane"
+    ):
         validate_manifest(manifest)
 
 
