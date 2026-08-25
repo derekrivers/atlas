@@ -211,6 +211,32 @@ identity movement.
 Do **not** manually drag `CI Pending` into `Review Required` or
 `Changes Requested`. The trusted reconciler owns determinate exits.
 
+### Local mirror remains Planned while Linear is CI Pending
+
+This can be a legitimate governed-admission poll-compression race, but the
+board state alone is not repair authority. Run the supported cadence:
+
+```bash
+uv run atlas pm sync --once -v
+```
+
+The dedicated recovery predicate requires one exact system-authored successful
+AdmissionRun selection, one uniquely correlated successful PM receipt with
+`admitted = promoted = 1` and no stale/indeterminate outcome, the exact ticket
+and external Linear UUID/product joins, a complete unique board pull, one
+coherent issue-bound GitHub publication, compatible pre-dispatch history and no
+active admission or CI-handoff fence. If any element is missing, duplicated,
+contradictory or mismatched, Atlas leaves the mirror at `Planned` and retains
+the `OUT_OF_OWNERSHIP_TRANSITION` anomaly. Do not reconstruct intermediate
+states, delete the debt, create an AgentRun, or move Linear by hand.
+
+On success, inspect `planned_ci_pending_recoveries` and the ticket transition
+history. There must be exactly one direct `planned -> ci_pending` transition
+with `pm-engine:planned-ci-pending-recovery` provenance and one bounded recovery
+row for the same deterministic identity. Existing debt remains historical.
+The recovery performs no Linear write and is not CI success; a later supported
+PM cadence independently runs the existing CI-handoff reconciler.
+
 ### One-time ATLAS-280/ATLAS-281 bootstrap exception
 
 The ATLAS-280 local-`Planned`/external-`CI Pending` incident has one
@@ -232,9 +258,9 @@ invoke CI reconciliation, change policy or lanes, or affect Symphony.
 
 After a separately authorised successful apply, run no embedded follow-on
 action from the bootstrap command. A later normal PM cadence owns the
-`CI Pending` evidence classification and safe exit. ATLAS-281 remains the owner
-of the reusable governed recovery contract; this bootstrap exists solely
-because that repair ticket was blocked by the incident it must repair.
+`CI Pending` evidence classification and safe exit. The fixed command remains
+historical incident machinery and is never retargeted; normal reusable recovery
+uses the evidence-backed predicate described above.
 
 ## CI Pending unexpectedly reactivates into Symphony work
 

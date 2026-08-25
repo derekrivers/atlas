@@ -647,6 +647,56 @@ class Atlas280BootstrapRecoveryReceiptRow(Base):
     created_by_id: Mapped[str] = mapped_column(sa.Text)
 
 
+class PlannedCIPendingRecoveryRow(Base):
+    """Append-only proof of one governed local mirror recovery."""
+
+    __tablename__ = "planned_ci_pending_recoveries"
+    __table_args__ = (
+        sa.UniqueConstraint("ticket_id"),
+        sa.UniqueConstraint("admission_run_id"),
+        sa.UniqueConstraint("pm_sync_receipt_id"),
+        sa.CheckConstraint(
+            "schema_version = 'planned-ci-pending-recovery-v1'",
+            name="planned_ci_pending_recoveries_schema_version",
+        ),
+        sa.CheckConstraint(
+            "source_local_status = 'planned' AND recovered_local_status = 'ci_pending'",
+            name="planned_ci_pending_recoveries_status_edge",
+        ),
+        sa.CheckConstraint(
+            "created_by_type = 'system' AND "
+            "created_by_id = 'pm-engine:planned-ci-pending-recovery'",
+            name="planned_ci_pending_recoveries_authority",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(sa.Uuid, primary_key=True)
+    schema_version: Mapped[str] = mapped_column(sa.Text)
+    product_id: Mapped[UUID] = mapped_column(sa.Uuid, sa.ForeignKey("products.id"))
+    ticket_id: Mapped[UUID] = mapped_column(sa.Uuid, sa.ForeignKey("tickets.id"))
+    ticket_key: Mapped[str] = mapped_column(sa.Text)
+    linear_issue_id: Mapped[str] = mapped_column(sa.Text)
+    linear_project_id: Mapped[str] = mapped_column(sa.Text)
+    observed_linear_state_id: Mapped[str] = mapped_column(sa.Text)
+    source_local_status: Mapped[str] = mapped_column(sa.Text)
+    recovered_local_status: Mapped[str] = mapped_column(sa.Text)
+    admission_run_id: Mapped[UUID] = mapped_column(
+        sa.Uuid, sa.ForeignKey("admission_runs.id")
+    )
+    pm_sync_receipt_id: Mapped[UUID] = mapped_column(
+        sa.Uuid, sa.ForeignKey("pm_sync_receipts.id")
+    )
+    publication_attachment_id: Mapped[str] = mapped_column(sa.Text)
+    publication_repository_owner: Mapped[str] = mapped_column(sa.Text)
+    publication_repository_name: Mapped[str] = mapped_column(sa.Text)
+    publication_pr_number: Mapped[int] = mapped_column(sa.Integer)
+    board_fingerprint: Mapped[str] = mapped_column(sa.Text)
+    board_issue_count: Mapped[int] = mapped_column(sa.Integer)
+    observed_at: Mapped[datetime] = mapped_column(UTCDateTime())
+    created_by_type: Mapped[str] = mapped_column(sa.Text)
+    created_by_id: Mapped[str] = mapped_column(sa.Text)
+
+
 class AdmissionLeaseRow(Base):
     """One expiring, product-scoped owner of the PM admission write lane."""
 
@@ -1015,6 +1065,7 @@ _APPEND_ONLY_TABLES = (
     cast(sa.Table, LessonDispositionResultSnapshotRow.__table__),
     cast(sa.Table, OperatorActionKeyRow.__table__),
     cast(sa.Table, OperatorActionReceiptRow.__table__),
+    cast(sa.Table, PlannedCIPendingRecoveryRow.__table__),
 )
 
 for _append_only_table in _APPEND_ONLY_TABLES:

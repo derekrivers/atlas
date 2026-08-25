@@ -147,6 +147,8 @@ from atlas.pm.ci_handoff_adapter import (
     reconcile_one_ci_handoff,
 )
 from atlas.pm.completion import complete_verified
+from atlas.pm.delivery_snapshot import LinearBoardPull, linear_board_fingerprint
+from atlas.pm.planned_ci_pending_recovery import recover_planned_ci_pending
 from atlas.pm.protected_lanes import (
     ProtectedLaneRegistryLoadResult,
     load_packaged_protected_lane_registry,
@@ -607,17 +609,7 @@ def _fetched_board_fingerprint(issues: list[LinearIssue]) -> str:
     without storing raw Linear payload material.
     """
 
-    payload = [
-        {
-            "id": issue.id,
-            "identifier": issue.identifier,
-            "state_id": issue.state_id,
-            "state_name": issue.state_name,
-            "state_type": issue.state_type,
-        }
-        for issue in sorted(issues, key=lambda item: item.id)
-    ]
-    return _canonical_hash(payload)
+    return linear_board_fingerprint(issues)
 
 
 def _validate_fetched_board(issues: list[LinearIssue]) -> None:
@@ -1285,6 +1277,8 @@ def _pull(
     db: Database,
     debt: DebtItemRepo,
     issues_by_id: Mapping[str, LinearIssue],
+    board_pull: LinearBoardPull,
+    project_id: str,
     status_map: LinearStatusMap,
     result: SyncResult,
     now: datetime,
@@ -1326,10 +1320,34 @@ def _pull(
     # tick, and recurrence stays meaningful. A re-occurrence (unmapped -> mapped
     # -> the same unmapped id) is a genuine new transition because the
     # intervening mapped pull moved the signal.
+    mapped = status_from_issue(issue, status_map)
     transitioned = issue.state_id != ticket.last_observed_linear_state_id
+    if ticket.status is TicketStatus.PLANNED and mapped is TicketStatus.CI_PENDING:
+        recovery = recover_planned_ci_pending(
+            db=db,
+            ticket=ticket,
+            status_map=status_map,
+            board=board_pull,
+            project_id=project_id,
+            now=now,
+        )
+        if recovery.recovered:
+            updated = tickets.get_by_key(ticket.key)
+            if updated is None:  # pragma: no cover - atomic FK/CAS invariant
+                raise RuntimeError("recovered ticket disappeared")
+            if recovery.changed:
+                result.status_pulled += 1
+            else:
+                result.status_unchanged += 1
+            logger.info(
+                "linear-sync: evidence-backed recovery caught %s up directly "
+                "from planned to ci_pending; recovery=%s",
+                ticket.key,
+                None if recovery.recovery is None else recovery.recovery.id,
+            )
+            return updated
     if transitioned:
         tickets.mark_linear_state_observed(ticket.key, issue.state_id)
-    mapped = status_from_issue(issue, status_map)
     if mapped is None:
         # Unmapped Linear state: never guessed. Count every observation; append
         # one DebtItem only on the transition into the unmapped state (the
@@ -1989,6 +2007,11 @@ def _sync_tick_impl(
     if receipt_context is not None:
         receipt_context.fetched_issues = fetched_issues
     _validate_fetched_board(fetched_issues)
+    board_pull = LinearBoardPull(
+        issues=tuple(fetched_issues),
+        complete=bool(getattr(fetched_issues, "complete", True)),
+        pagination_gaps=tuple(getattr(fetched_issues, "pagination_gaps", ())),
+    )
     issues_by_id: dict[str, LinearIssue] = {issue.id: issue for issue in fetched_issues}
     # Pull all joined tickets first, then reconstruct AgentRuns from the local
     # transition/evidence store plus the already-fetched board descriptions
@@ -2002,6 +2025,8 @@ def _sync_tick_impl(
             db,
             debt,
             issues_by_id,
+            board_pull,
+            project_id,
             status_map,
             result,
             now,

@@ -351,14 +351,57 @@ After a confirmed CI-handoff mutation or target-fence reconciliation, the sync
 body returns immediately. Admission, verified completion and anomaly routing
 therefore cannot perform a second workflow mutation in the same tick.
 
+### Evidence-backed Planned-to-CI-Pending mirror recovery
+
+The generic pull still rejects `planned -> ci_pending`, and `planned` is not a
+member of `CI_PENDING_POLL_COMPRESSION_SOURCES`. Before recording or
+deduplicating that ownership anomaly, a separate predicate may recover the
+local mirror only from a complete project observation and a uniquely
+reconstructed governed delivery chain. Exactly one system-authored successful
+`AdmissionRun` must select the stored ticket UUID and key, its product and
+admitted decision's external Linear UUID must match the ticket, and exactly one
+PM receipt joined by the run's exact evaluation/tick-start instant must be a
+successful result with `admitted = promoted = 1`, `stale = 0` and
+`indeterminate = 0`.
+
+The observed board must contain one exact issue join at `ci_pending` and one
+complete coherent GitHub attachment identity under the canonical issue-bound
+publication-equivalence contract: live open/draft `main` PR, closes linkage,
+and agreeing canonical URL/metadata. Titles, branches, descriptions, body text,
+approximate timestamps and operator assertions are not inputs. Existing
+AgentRuns are optional corroboration; the absence of a dispatch transition is
+expected in this poll-compression shape and never causes Atlas to fabricate a
+run. Duplicate/mismatched runs or receipts, missing/ambiguous publication,
+incomplete/duplicate board identity, non-pre-dispatch local history, or either
+active write fence refuses recovery and leaves the ordinary
+`OUT_OF_OWNERSHIP_TRANSITION` behaviour in force.
+
+On acceptance, `PlannedCIPendingRecoveryRepo` revalidates all durable local
+inputs and compare-and-sets the ticket in the same transaction that appends the
+single direct `planned -> ci_pending` transition and bounded immutable recovery
+record. That record pins the admission run, PM receipt, ticket, product,
+external issue, observed state, publication attachment/repository/PR, board
+fingerprint/count and deterministic recovery identity. It stores no provider
+payload, issue/PR body, secret or CI result. The transaction stamps only the
+real `ci_pending` entry time and observed-state cursor; it creates no missed
+state/timestamp, `AgentRun` or Linear write. A prior deduplicated anomaly and
+all historical debt remain unchanged, and replay inserts nothing.
+
+Recovery is mirror catch-up, not CI authority. AgentRun reconstruction still
+runs afterward and creates no row without an `in_progress` transition. The
+existing production CI-handoff adapter must independently re-resolve the
+issue-bound publication, exact contributor head, complete current board,
+policy/snapshot and system-tier checks before ATLAS-256 can write a later
+`ci_pending -> review_required|changes_requested` edge.
+
 ### One-time ATLAS-280/ATLAS-281 bootstrap exception
 
 The explicit operator bootstrap exception for ATLAS-280/ATL-456 and
 ATLAS-281/ATL-457 is an incident-bound local-mirror repair, not generic PM
-authority or precedent. It exists only because the ticket that owns the
-reusable governed repair, ATLAS-281, is itself blocked by ATLAS-280's local
-`Planned`/external `CI Pending` mismatch. ATLAS-281 remains responsible for the
-reusable recovery contract.
+authority or precedent. It was introduced because the ticket that owns the
+reusable governed repair, ATLAS-281, was itself blocked by ATLAS-280's local
+`Planned`/external `CI Pending` mismatch. The reusable recovery contract is the
+separate normal-cadence predicate above; it does not call this bootstrap seam.
 
 The standalone bootstrap executable accepts no ticket identity. Its read-only
 check reconstructs the fixed tickets, admission run and PM receipt, issue-bound
@@ -371,10 +414,10 @@ policy, lane, Symphony or other ticket state.
 
 This exception does not add `planned` to
 `CI_PENDING_POLL_COMPRESSION_SOURCES`, redefine an incomplete snapshot as
-complete, or widen any normal state owner. After a later authorised live apply,
-only a subsequent normal PM cadence may invoke ATLAS-256's CI reconciler for a
-`CI Pending` exit. Live use requires fresh operator authorisation after the
-implementation is reviewed, merged and validated by CI.
+complete, or widen any normal state owner. It remains fixed historical incident
+machinery; the reusable predicate above does not call or retarget it. After an
+authorised bootstrap apply, only a subsequent normal PM cadence may invoke
+ATLAS-256's CI reconciler for a `CI Pending` exit.
 
 ## Sync loop
 
@@ -405,7 +448,12 @@ Pull-based, consistent with ADR-0008 (no webhooks before hosting):
    were compressed between polls. The one direct append-only transition keeps
    the actual source and poll-compression provenance. It creates no missing
    state rows, makes no Linear write and grants no CI-exit authority. Other
-   entries and every exit still fail closed as ownership anomalies.
+   entries and every exit still fail closed as ownership anomalies. A local
+   `planned` source is considered only by the separate governed recovery
+   predicate above. Its exact admission/receipt/publication/history/fence proof
+   commits one direct local transition plus immutable audit row atomically; a
+   failed proof follows the same deduplicated anomaly path and a prior observed
+   state id does not suppress later proof-backed reconsideration.
 
    Immediately after the pull, reconstruct `AgentRun` rows from local
    observations (ATLAS-166): each `in_progress` entry in the

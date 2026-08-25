@@ -122,7 +122,7 @@ def _full_sha(value: str | None) -> str | None:
     return value.lower()
 
 
-def _publication_for_candidate(
+def resolve_issue_bound_publication(
     candidate: Ticket, initial_issues: list[LinearIssue]
 ) -> tuple[LinearGitHubPublication | None, CIHandoffAdapterReason | None]:
     """Resolve one exact issue-bound GitHub publication from the board pull."""
@@ -180,7 +180,7 @@ def reconcile_one_ci_handoff(
             candidate_count=0,
         )
     candidate = candidates[0]
-    publication, publication_reason = _publication_for_candidate(
+    publication, publication_reason = resolve_issue_bound_publication(
         candidate, initial_issues
     )
     if publication is None:

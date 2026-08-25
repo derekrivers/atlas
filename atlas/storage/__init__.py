@@ -29,6 +29,12 @@ from atlas.storage.delivery_control_snapshot import (
     DeliveryControlSourceSnapshot,
 )
 from atlas.storage.maintenance import clear_all_data
+from atlas.storage.planned_ci_pending_recovery import (
+    PlannedCIPendingRecoveryApplyRecord,
+    PlannedCIPendingRecoveryRepo,
+    PlannedCIPendingRecoveryStorageCode,
+    PlannedCIPendingRecoveryStorageError,
+)
 from atlas.storage.repositories import (
     RAW_PAYLOAD_CAP_BYTES,
     AcceptanceSessionCreateRecord,
@@ -107,6 +113,10 @@ __all__ = [
     "OperatorActionReceiptRepo",
     "PlanRunRepo",
     "PlanRunStateError",
+    "PlannedCIPendingRecoveryApplyRecord",
+    "PlannedCIPendingRecoveryRepo",
+    "PlannedCIPendingRecoveryStorageCode",
+    "PlannedCIPendingRecoveryStorageError",
     "PmSyncReceiptRepo",
     "ProductRepo",
     "Reservation",

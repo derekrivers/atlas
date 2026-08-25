@@ -206,15 +206,25 @@ therefore idempotent, and concurrent owners, lease loss or identity movement
 produce zero mutations. A new head restarts the lifecycle with new evidence;
 previous records remain history.
 
-The one-time ATLAS-280/ATLAS-281 bootstrap exception does not alter this
-ownership model. Its fixed executable can only repair ATLAS-280's local mirror
-from `Planned` to the already-observed external `CI Pending`, with an atomic
-append-only incident receipt; it cannot reconcile CI or write Linear. The
-exception exists because ATLAS-281, which owns the reusable governed recovery,
-is blocked by that exact mismatch. It is not a reusable poll-compression source
-or protected-lane bypass, and live execution requires separate post-merge
-operator authorisation. Normal PM cadence and ATLAS-256 remain the sole owners
-of any later `CI Pending` exit.
+A separate evidence-backed recovery predicate handles the governed-admission
+race without altering this ownership model. It considers only a local
+`Planned` ticket whose exact joined Linear issue is observed at `CI Pending` in
+a complete unique board pull. Recovery requires exactly one system-authored
+successful `AdmissionRun` selection for that ticket UUID/key/product/external
+UUID, one uniquely correlated successful PM receipt proving
+`admitted = promoted = 1` with no stale or indeterminate outcome, one complete
+coherent issue-bound GitHub publication, compatible pre-dispatch history and no
+active admission or CI-handoff fence. Missing, duplicate, contradictory or
+mismatched proof leaves the existing out-of-ownership anomaly path unchanged.
+
+An accepted decision atomically appends one direct local
+`Planned -> CI Pending` transition and one bounded immutable recovery record.
+It preserves earlier `OUT_OF_OWNERSHIP_TRANSITION` debt, creates no intermediate
+state/timestamp or `AgentRun`, and performs no Linear write. `Planned` remains
+absent from `CI_PENDING_POLL_COMPRESSION_SOURCES`; this is a dedicated proof
+predicate, not a protected-lane or owner bypass. The fixed ATLAS-280 bootstrap
+receipt remains append-only incident history and is not reused by the normal
+path. Only a later normal ATLAS-256 evaluation may own a `CI Pending` exit.
 
 ### Production cadence adapter
 
@@ -228,9 +238,10 @@ retained as a failed production-reachability sample; the live window restarts
 at the remediated final head.
 
 Both recurring and `--once` PM modes now share the same adapter. After the
-complete project pull, authorised status reconciliation and AgentRun
-reconstruction, it sorts only locally `CI Pending` tickets by stable ticket key
-and considers the first one. The latest append-only transition into
+complete project pull, authorised status reconciliation (including the
+dedicated evidence-backed local recovery above) and AgentRun reconstruction,
+it sorts only locally `CI Pending` tickets by stable ticket key and considers
+the first one. The latest append-only transition into
 `ci_pending` bounds the delivery episode even when the poll-compressed source
 is `ready_for_agent` or `in_progress` and no AgentRun could be reconstructed.
 The same complete board observation carries the issue-bound Linear GitHub

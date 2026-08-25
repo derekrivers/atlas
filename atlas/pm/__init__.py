@@ -66,6 +66,14 @@ from atlas.pm.delivery_snapshot import (
     delivery_graph_revision,
     delivery_policy_fingerprint,
     delivery_store_revision,
+    linear_board_fingerprint,
+)
+from atlas.pm.planned_ci_pending_recovery import (
+    PlannedCIPendingRecoveryEvaluation,
+    PlannedCIPendingRecoveryReason,
+    PlannedCIPendingRecoveryResult,
+    evaluate_planned_ci_pending_recovery,
+    recover_planned_ci_pending,
 )
 from atlas.pm.promotion import promote_ready
 from atlas.pm.protected_lanes import (
@@ -147,6 +155,9 @@ __all__ = [
     "MalformedLinearPullError",
     "OccupancyBreach",
     "OccupancyDimension",
+    "PlannedCIPendingRecoveryEvaluation",
+    "PlannedCIPendingRecoveryReason",
+    "PlannedCIPendingRecoveryResult",
     "ProtectedLane",
     "ProtectedLaneClassification",
     "ProtectedLaneClassificationCode",
@@ -177,6 +188,8 @@ __all__ = [
     "delivery_policy_fingerprint",
     "delivery_store_revision",
     "evaluate_admission",
+    "evaluate_planned_ci_pending_recovery",
+    "linear_board_fingerprint",
     "load_packaged_protected_lane_registry",
     "load_protected_lane_registry_bytes",
     "parse_protected_lane_registry",
@@ -184,6 +197,7 @@ __all__ = [
     "reconcile_ci_handoff",
     "reconcile_one_ci_handoff",
     "reconstruct_agent_runs",
+    "recover_planned_ci_pending",
     "render_markdown",
     "report_json",
     "run_scheduler",
