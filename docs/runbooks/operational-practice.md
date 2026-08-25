@@ -120,7 +120,7 @@ Atlas store + committed planning renders
         ↓
 PM sync publishes definitions/state to Linear
         ↓
-Symphony executes one ticket
+Symphony executes one ticket through `atlas-ticket-execution`
         ↓
 agent validates exact candidate and publishes once
         ↓
@@ -153,7 +153,7 @@ agent can discover and sequence the governed workflows above. The authority
 order remains:
 
 ```text
-canonical ADRs / documents / runbooks
+canonical ADRs / documents / runbooks / WORKFLOW.md
         ↓
 deterministic Atlas CLI
         ↓
@@ -170,10 +170,11 @@ acceptance authority. If a skill conflicts with current canonical repository
 authority, the repository authority wins and the skill is defective.
 
 The supported set is `linear`, `atlas-investigate`, `atlas-validation`,
-`atlas-ticket-planning`, `atlas-ticket-remediation`, `atlas-pr-review`,
-`atlas-pr-acceptance`, and `atlas-planning-apply`. Each skill remains narrow;
-review and remediation reuse `atlas-validation`, remediation reuses `linear`,
-and acceptance begins with `atlas-pr-review`.
+`atlas-ticket-planning`, `atlas-planning-apply`, `atlas-ticket-execution`,
+`atlas-ticket-remediation`, `atlas-pr-review`, and `atlas-pr-acceptance`. Each
+skill remains narrow: ordinary ticket execution and remediation reuse `linear`
+and `atlas-validation`, review reuses `atlas-validation`, and acceptance begins
+with `atlas-pr-review`.
 
 ## 4. Turning a phase into governed work
 
@@ -199,8 +200,11 @@ owner rather than starting a competing writer.
 The ticket description and embedded Context Pack are the execution contract.
 `WORKFLOW.md` establishes the executable routes and fail-closed spine; the
 complete implementation, validation, publication and remediation procedure is
-`docs/runbooks/symphony-agent-execution.md`. Symphony agents do not own ticket
-authoring, final review, merge, Done, CI classification or runtime operation.
+`docs/runbooks/symphony-agent-execution.md`. Ordinary dispatch loads
+`atlas-ticket-execution`; semantic `Changes Requested` work loads
+`atlas-ticket-remediation`. Both are procedural adapters beneath those
+authorities. Symphony agents do not own ticket authoring, final review, merge,
+Done, CI classification or runtime operation.
 
 ### 6.2 Review the branch, not the completion message
 

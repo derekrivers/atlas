@@ -33,6 +33,24 @@ needs:
   retired, number not reused)
 - Day-one setup → `docs/atlas/bootstrap-guide.md`
 
+## Repository Codex skills
+
+Repository skills under `.codex/skills/` are procedural adapters beneath the
+canonical documents and deterministic Atlas CLI. They aid navigation and
+execution but never override repository authority.
+
+| Task or capability | Procedural skill |
+| --- | --- |
+| Current-state or repository investigation | `atlas-investigate` |
+| Candidate validation | `atlas-validation` |
+| Ratified design or phase decomposition | `atlas-ticket-planning` |
+| Operator planning plan/apply | `atlas-planning-apply` |
+| Ordinary dispatched ticket implementation | `atlas-ticket-execution` |
+| `Changes Requested` remediation | `atlas-ticket-remediation` |
+| PR semantic review | `atlas-pr-review` |
+| PR acceptance | `atlas-pr-acceptance` |
+| Bounded Linear operations | `linear` |
+
 ## Rules
 
 - Treat `docs/atlas/atlas-master-plan.md` as the single canonical master

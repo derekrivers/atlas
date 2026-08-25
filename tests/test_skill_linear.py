@@ -19,18 +19,41 @@ import yaml
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SKILL_PATH = REPO_ROOT / ".codex" / "skills" / "linear" / "SKILL.md"
 SKILLS_ROOT = REPO_ROOT / ".codex" / "skills"
+WORKFLOW_PATH = REPO_ROOT / "WORKFLOW.md"
+EXECUTION_RUNBOOK_PATH = REPO_ROOT / "docs" / "runbooks" / "symphony-agent-execution.md"
+AGENTS_PATH = REPO_ROOT / "AGENTS.md"
 
 REQUIRED_SKILLS = (
     "linear",
     "atlas-investigate",
     "atlas-validation",
     "atlas-ticket-planning",
+    "atlas-planning-apply",
+    "atlas-ticket-execution",
     "atlas-ticket-remediation",
     "atlas-pr-review",
     "atlas-pr-acceptance",
-    "atlas-planning-apply",
 )
 ATLAS_WORKFLOW_SKILLS = REQUIRED_SKILLS[1:]
+
+SYMPHONY_STATE_SKILL_ROUTES = (
+    ("Ready for Agent", "atlas-ticket-execution"),
+    ("In Progress", "atlas-ticket-execution"),
+    ("PR Open", "atlas-ticket-execution"),
+    ("Changes Requested", "atlas-ticket-remediation"),
+)
+
+AGENT_TASK_SKILL_ROUTES = (
+    ("Current-state or repository investigation", "atlas-investigate"),
+    ("Candidate validation", "atlas-validation"),
+    ("Ratified design or phase decomposition", "atlas-ticket-planning"),
+    ("Operator planning plan/apply", "atlas-planning-apply"),
+    ("Ordinary dispatched ticket implementation", "atlas-ticket-execution"),
+    ("Changes Requested remediation", "atlas-ticket-remediation"),
+    ("PR semantic review", "atlas-pr-review"),
+    ("PR acceptance", "atlas-pr-acceptance"),
+    ("Bounded Linear operations", "linear"),
+)
 
 AUTHORITY_CONTRACT = (
     "Read the current canonical authority and follow it. This skill owns "
@@ -57,6 +80,21 @@ REQUIRED_AUTHORITY_REFERENCES = {
         "docs/atlas/planning-engine-specification.md",
         "docs/decisions/0007-generative-planning-with-deterministic-reconciliation.md",
     ),
+    "atlas-planning-apply": (
+        "docs/runbooks/running-atlas-plan.md",
+        "docs/runbooks/planning-phases-and-ticket-stubs.md",
+        "docs/atlas/planning-engine-specification.md",
+        "docs/decisions/0006-source-of-truth-hierarchy.md",
+        "docs/decisions/0007-generative-planning-with-deterministic-reconciliation.md",
+        "uv run atlas plan --stubs-only",
+        "uv run atlas apply",
+    ),
+    "atlas-ticket-execution": (
+        "WORKFLOW.md",
+        "docs/runbooks/symphony-agent-execution.md",
+        "docs/runbooks/operational-practice.md",
+        "docs/decisions/0008-ci-sourced-evidence-with-trust-tiers.md",
+    ),
     "atlas-ticket-remediation": (
         "docs/runbooks/symphony-agent-execution.md",
         "WORKFLOW.md",
@@ -72,25 +110,17 @@ REQUIRED_AUTHORITY_REFERENCES = {
         "docs/atlas/symphony-integration.md",
         "docs/decisions/0009-single-operator-governance.md",
     ),
-    "atlas-planning-apply": (
-        "docs/runbooks/running-atlas-plan.md",
-        "docs/runbooks/planning-phases-and-ticket-stubs.md",
-        "docs/atlas/planning-engine-specification.md",
-        "docs/decisions/0006-source-of-truth-hierarchy.md",
-        "docs/decisions/0007-generative-planning-with-deterministic-reconciliation.md",
-        "uv run atlas plan --stubs-only",
-        "uv run atlas apply",
-    ),
 }
 
 EXPECTED_COMPOSITION = {
     "atlas-investigate": (),
     "atlas-validation": (),
     "atlas-ticket-planning": ("atlas-planning-apply",),
+    "atlas-planning-apply": (),
+    "atlas-ticket-execution": ("linear", "atlas-validation"),
     "atlas-ticket-remediation": ("linear", "atlas-validation"),
     "atlas-pr-review": ("atlas-validation",),
     "atlas-pr-acceptance": ("atlas-pr-review",),
-    "atlas-planning-apply": (),
 }
 
 _FRONT_MATTER_RE = re.compile(r"\A---\n(?P<front>.*?)\n---\n(?P<body>.*)\Z", re.DOTALL)
@@ -107,6 +137,19 @@ def _split(skill_name: str = "linear") -> tuple[dict[str, object], str]:
 
 def _normalized(text: str) -> str:
     return " ".join(text.split())
+
+
+def _markdown_h2_section(path: Path, heading: str) -> str:
+    text = path.read_text(encoding="utf-8")
+    marker = f"## {heading}\n"
+    assert text.count(marker) == 1, f"{path} must contain one {marker.strip()!r}"
+    start = text.index(marker) + len(marker)
+    end = text.find("\n## ", start)
+    return text[start:] if end == -1 else text[start:end]
+
+
+def _backticked_route_rows(section: str) -> tuple[tuple[str, str], ...]:
+    return tuple(re.findall(r"^\| `([^`]+)` \| `([^`]+)` \|$", section, re.MULTILINE))
 
 
 # --- Composable Atlas skill inventory and authority --------------------------
@@ -151,6 +194,51 @@ def test_atlas_skills_declare_only_the_approved_composition_edges() -> None:
             candidate for candidate in REQUIRED_SKILLS if f"`{candidate}`" in body
         }
         assert referenced_skills == set(targets)
+
+
+def test_workflow_prompt_routes_active_states_to_exact_procedural_skills() -> None:
+    text = WORKFLOW_PATH.read_text(encoding="utf-8")
+    section = _markdown_h2_section(WORKFLOW_PATH, "Procedural skill routing")
+
+    assert (
+        text.index("## Canonical execution doctrine")
+        < text.index("## Procedural skill routing")
+        < text.index("## Executable lifecycle spine")
+    )
+    assert _backticked_route_rows(section) == SYMPHONY_STATE_SKILL_ROUTES
+    assert "cannot override `WORKFLOW.md` or the\nexecution runbook" in section
+    assert "`CI Pending` is not an active route and has no procedural skill" in section
+
+
+def test_execution_runbook_routes_initial_and_remediation_work_exactly() -> None:
+    section = _markdown_h2_section(EXECUTION_RUNBOOK_PATH, "Procedural skill routing")
+
+    assert _backticked_route_rows(section) == SYMPHONY_STATE_SKILL_ROUTES
+    assert (
+        "Ordinary initial ticket execution therefore uses `atlas-ticket-execution`"
+        in section
+    )
+    assert (
+        "semantic `Changes Requested` remediation uses `atlas-ticket-remediation`"
+        in section
+    )
+    assert "`atlas-ticket-execution` composes `linear`" in section
+    assert "and `atlas-validation` after candidate freeze" in section
+    assert "`atlas-ticket-remediation` composes the same two skills" in section
+    assert "`CI Pending` is not an active skill route" in section
+
+
+def test_agents_exposes_the_complete_repository_skill_map() -> None:
+    section = _markdown_h2_section(AGENTS_PATH, "Repository Codex skills")
+    rows = tuple(
+        (task.replace("`", ""), skill)
+        for task, skill in re.findall(
+            r"^\| ([^|]+?) \| `([^`]+)` \|$", section, re.MULTILINE
+        )
+    )
+
+    assert rows == AGENT_TASK_SKILL_ROUTES
+    assert "procedural adapters beneath the\ncanonical documents" in section
 
 
 # --- AC1.1: the skill exists with the right name ------------------------------

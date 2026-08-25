@@ -17,6 +17,30 @@ the executable spine, fail closed without code, publication, or state mutation.
 This procedure grants no merge, Done, CI-classification, acceptance, ticket
 authoring, PM deployment, or Symphony-runtime authority.
 
+## Procedural skill routing
+
+This runbook owns the lifecycle behavior. Repository skills package that
+behavior as procedural adapters and cannot override this runbook or
+`WORKFLOW.md`.
+
+| Dispatched state | Required procedural skill |
+| --- | --- |
+| `Ready for Agent` | `atlas-ticket-execution` |
+| `In Progress` | `atlas-ticket-execution` |
+| `PR Open` | `atlas-ticket-execution` |
+| `Changes Requested` | `atlas-ticket-remediation` |
+
+Ordinary initial ticket execution therefore uses `atlas-ticket-execution`;
+semantic `Changes Requested` remediation uses `atlas-ticket-remediation`.
+`CI Pending` is not an active skill route.
+
+Both workflow adapters compose narrower capabilities without transferring
+lifecycle authority: `atlas-ticket-execution` composes `linear` for bounded
+Linear operations and `atlas-validation` after candidate freeze;
+`atlas-ticket-remediation` composes the same two skills for its separate
+remediation route. Neither `linear` nor `atlas-validation` is an independent
+lifecycle authority.
+
 ## Named design gaps
 
 Some tickets name design gaps for you to resolve — decisions the
@@ -270,4 +294,3 @@ atlas:proposed-follow-up
 ```
 
 Work only in the provided repository checkout. Do not touch any other path.
-
