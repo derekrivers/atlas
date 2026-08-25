@@ -158,6 +158,10 @@ Runbooks (`docs/runbooks/`):
   fresh-session truth establishment, authority map, phase/ticket
   decomposition, mint/apply/Linear handoffs, review practice, diagnosis and
   durable knowledge capture
+- `docs/runbooks/pm-runtime-deployment.md` — operator-owned deployment of one
+  exact accepted release into the single-host managed PM runtime: quiescence,
+  SQLite-safe backup, target migration, pinned activation, natural-cadence
+  canary, bounded receipt and rollback/incident boundary
 - `docs/runbooks/troubleshooting.md` — symptom-driven recovery for dispatch,
   Symphony/Codex, Git credentials, plan/apply, mint/render drift, PM sync,
   CI Pending, acceptance staleness, database identity and live runtime gates

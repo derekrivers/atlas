@@ -16,6 +16,8 @@ specialist document owns a behaviour, that document wins. In particular:
 - `WORKFLOW.md` and `docs/atlas/symphony-integration.md` own dispatched-agent
   behaviour and state-edge ownership;
 - `docs/runbooks/pr-acceptance.md` owns the acceptance sequence;
+- `docs/runbooks/pm-runtime-deployment.md` owns managed PM release deployment,
+  migration, activation, natural-cadence canary and rollback/incident conduct;
 - `docs/runbooks/operator-environment.md` owns environment-specific facts and
   credential hazards; and
 - `docs/runbooks/troubleshooting.md` owns symptom-specific recovery guidance.
@@ -261,16 +263,12 @@ ticket, stores its `external_linear_id`, pushes the Atlas-owned definition (with
 an embedded Context Pack when rendering succeeds), and asserts the mapped
 create-time workflow state.
 
-After a mint/apply-artifact merge, verify the next PM sync rather than assuming
-the Linear board is now correct:
-
-```bash
-uv run atlas pm sync --once -v
-```
-
-Check the resulting board/store mapping before dispatching the new batch. A
-successful Atlas mint plus a failed Linear create/state assertion is a sync
-incident, not grounds to re-run `atlas apply`.
+After a mint/apply-artifact merge, observe the next managed PM receipt and the
+resulting board/store mapping rather than assuming Linear is now correct. Do not
+run a competing one-shot against the canonical store; it will refuse while the
+managed recurring writer owns the database. A successful Atlas mint plus a
+failed Linear create/state assertion is a sync incident, not grounds to re-run
+`atlas apply`.
 
 ## 6. Executing and reviewing tickets
 
@@ -384,7 +382,7 @@ first routing questions are:
 | Ticket will not dispatch | tracker state, dependencies/readiness, admission hold reasons, preflight, Symphony active-state contract |
 | Agent active but no PR | Symphony event/error signature, Codex reachability/version, workspace identity, Git write credential |
 | Push returns 403 | distinguish operator env token from agent/on-disk git credential; inspect the actual credential path |
-| PR sits in CI Pending | exact publication identity, complete required checks, `atlas pm sync --once -v`, CI-handoff reconciliation/hold reason |
+| PR sits in CI Pending | exact publication identity, complete required checks, latest managed PM receipt/journal window, CI-handoff reconciliation/hold reason |
 | CI Pending returns to active work unexpectedly | preserve transition timestamps; check for out-of-ownership automation/integration writes; do not drag it back first |
 | Review Required PR becomes stale after sibling merge | exact-head status, then operator rebase lane |
 | Atlas report disagrees with raw query | prove both commands used the same database and regenerate the report |

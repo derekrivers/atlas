@@ -122,6 +122,12 @@ from atlas.pm.sync import (
     sync_result_is_empty,
     sync_tick,
 )
+from atlas.pm.writer_ownership import (
+    PMWriterAlreadyActiveError,
+    PMWriterOwnershipError,
+    PMWriterOwnershipUnavailableError,
+    PMWriterOwnershipUnsupportedError,
+)
 
 __all__ = [
     "ADMISSION_LEASE_TTL",
@@ -155,6 +161,10 @@ __all__ = [
     "MalformedLinearPullError",
     "OccupancyBreach",
     "OccupancyDimension",
+    "PMWriterAlreadyActiveError",
+    "PMWriterOwnershipError",
+    "PMWriterOwnershipUnavailableError",
+    "PMWriterOwnershipUnsupportedError",
     "PlannedCIPendingRecoveryEvaluation",
     "PlannedCIPendingRecoveryReason",
     "PlannedCIPendingRecoveryResult",
