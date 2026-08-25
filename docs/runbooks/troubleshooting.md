@@ -85,9 +85,23 @@ the agent/operator git credential used by `git push`. They can disagree.
 - for Symphony, use the workflow's non-mutating write-access probe/preflight
   before starting expensive work.
 
-A publish failure does not mean the implementation disappeared. Preserved
-Symphony workspaces may contain the validated commit; follow the recovery path
-in `operator-environment.md` rather than restarting from scratch.
+A publish failure does not mean the implementation disappeared. Symphony
+workspaces are preserved beneath `~/code/atlas-workspaces/<ATL-key>/`. Record
+the failed commit SHA from the session, then locate it without modifying any
+workspace:
+
+```bash
+for workspace in ~/code/atlas-workspaces/*/; do
+  git -C "$workspace" cat-file -e <sha> 2>/dev/null && printf '%s\n' "$workspace"
+done
+```
+
+Inspect the matching workspace's repository, remote, branch, status and commit
+before doing anything else. Correct the failing credential channel, repeat the
+non-mutating dry-run push against the intended same-repository branch, then
+resume the canonical publication procedure from that preserved workspace. Do
+not reclone, recreate the implementation, change the PR identity or copy a
+commit into an unrelated checkout merely because the original push failed.
 
 ## The `atlas` command shows unfamiliar flags
 

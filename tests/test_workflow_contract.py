@@ -41,8 +41,13 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 WORKFLOW_PATH = REPO_ROOT / "WORKFLOW.md"
 SYMPHONY_DOC = REPO_ROOT / "docs" / "atlas" / "symphony-integration.md"
 LINEAR_SKILL = REPO_ROOT / ".codex" / "skills" / "linear" / "SKILL.md"
+MANIFEST_DOC = REPO_ROOT / "docs" / "MANIFEST.md"
+INTERACTIVE_PROMPT = REPO_ROOT / "docs" / "runbooks" / "agent-ticket-prompt.md"
+EXECUTION_RUNBOOK = REPO_ROOT / "docs" / "runbooks" / "symphony-agent-execution.md"
+RUNTIME_RUNBOOK = REPO_ROOT / "docs" / "runbooks" / "symphony-runtime-operation.md"
+PM_RUNTIME_RUNBOOK = REPO_ROOT / "docs" / "runbooks" / "pm-runtime-deployment.md"
+ACCEPTANCE_RUNBOOK = REPO_ROOT / "docs" / "runbooks" / "pr-acceptance.md"
 DELIVERY_CONTROL_DOC = REPO_ROOT / "docs" / "atlas" / "multi-agent-delivery-control.md"
-OPERATOR_ENVIRONMENT_DOC = REPO_ROOT / "docs" / "runbooks" / "operator-environment.md"
 PHASE_15_CLOSURE_DOC = REPO_ROOT / "docs" / "closure" / "phase-15-closure-report.md"
 
 _FRONT_MATTER_RE = re.compile(r"\A---\n(?P<front>.*?)\n---\n(?P<body>.*)\Z", re.DOTALL)
@@ -259,8 +264,7 @@ def test_ac7_workspace_clones_atlas_with_operator_slug() -> None:
 
 
 def _integration_section() -> str:
-    _, body = _split()
-    flowed = " ".join(body.split())
+    flowed = " ".join(_read(EXECUTION_RUNBOOK).split())
     start = flowed.index("## Integration discipline")
     end = flowed.index("## How to move the ticket")
     return flowed[start:end]
@@ -371,10 +375,11 @@ def test_atlas_168_contract_pins_adr0008_ordering() -> None:
 
 def test_atlas_168_symphony_doc_records_design_rationale() -> None:
     doc = _read(SYMPHONY_DOC)
+    flowed = " ".join(doc.split())
     assert "### Mainline freshness discipline" in doc
     assert "hooks.before_run" in doc
     assert "git fetch origin main && git rebase origin/main" in doc
-    assert "depth-1 clone can lack the merge base" in doc
+    assert "depth-1 clone can lack the merge base" in flowed
     assert "Phase 8 closure report §5" in doc
     assert "#188 conflict class" in doc
     assert "GitHub merge queue" in doc
@@ -437,20 +442,23 @@ def test_canonical_contract_marker_present() -> None:
 
 # --- Smoke A finding T1: the codex model requirement (C6) ---------------------
 
-_INSTALL_URL = "https://chatgpt.com/codex/install.sh"
 
-
-def test_ac1_codex_model_requirement_documented_in_raw_text() -> None:
-    # The requirement note lives as a YAML `#` comment adjacent to codex.command.
-    # It MUST be asserted against the RAW file, not _split()'s parsed mapping:
-    # yaml.safe_load strips comments, so a parsed-dict assertion would pass
-    # vacuously or never find the note. The version/URL strings below appear
-    # ONLY in the note (not in the command), so they evidence it directly.
+def test_current_codex_model_authority_is_only_the_live_workflow_command() -> None:
+    front, _ = _split()
     raw = _read(WORKFLOW_PATH)
-    assert 'model="gpt-5.6-sol"' in raw  # the pinned model is named
-    assert "0.142.5" in raw  # the known-good Codex CLI version
-    assert "0.114.0" in raw  # the snap cap that cannot run the pin
-    assert _INSTALL_URL in raw  # how to obtain a working CLI
+    model = _parse_model(front["codex"]["command"])
+
+    assert model is not None
+    assert raw.count(f'model="{model}"') == 1
+    for narrative in (
+        SYMPHONY_DOC,
+        EXECUTION_RUNBOOK,
+        RUNTIME_RUNBOOK,
+        INTERACTIVE_PROMPT,
+        REPO_ROOT / "docs" / "atlas" / "bootstrap-guide.md",
+        REPO_ROOT / "docs" / "runbooks" / "operator-environment.md",
+    ):
+        assert not re.search(r'model="gpt-[^"]+"', _read(narrative))
 
 
 def test_ac6_pinned_model_parseable_from_live_command() -> None:
@@ -517,11 +525,7 @@ def test_empty_description_blocker_unchanged() -> None:
 
 
 def test_pr_title_instruction_uses_embedded_atlas_key_not_identifier() -> None:
-    _, body = _split()
-    flowed = " ".join(body.split())
-    start = flowed.index("`In Progress` — implement against the pack")
-    end = flowed.index("`PR Open` —", start)
-    bullet = flowed[start:end]
+    bullet = _route_for("In Progress")
     # the PR-title source is no longer Linear's identifier ...
     assert "{{ issue.identifier }}" not in bullet
     # ... it is the Atlas key embedded at the start of the title.
@@ -558,10 +562,7 @@ def test_pack_reword_scope_confined_to_body() -> None:
 
 
 def _ceiling_runbook() -> str:
-    document = _read(OPERATOR_ENVIRONMENT_DOC)
-    heading = "## Symphony ceiling controlled-ramp runbook"
-    assert heading in document
-    return document[document.index(heading) :]
+    return _read(RUNTIME_RUNBOOK)
 
 
 def test_atlas_252_ac1_one_operator_ceiling_is_distinct_from_budgets_and_slots() -> (
@@ -593,31 +594,10 @@ def test_atlas_252_ac2_runbook_pins_branch_edit_window_receipt_and_gate_order() 
     assert "max_concurrent_agents: <next-level>" in runbook
     assert "`1 -> 3`, `3 -> 5`, `5 -> 7`, then `7 -> 10`" in runbook
     assert "one fixed 60-minute window" in runbook
-    assert "atlas:symphony-ceiling-gate v1" in runbook
-    for field in (
-        "origin_main_sha:",
-        "merge_base_sha:",
-        "head_sha:",
-        "workflow_blob_sha:",
-        "max_turns: 10",
-        "policy_revision:",
-        "pm_sync_receipt_ids:",
-        "symphony_session_ids_start_peak_end:",
-        "acceptance_session_ids:",
-        "outcome:",
-        "retained_or_restored_level:",
-    ):
-        assert field in runbook
-
-    headings = [
-        "### Gate 1 — serialized baseline admission, pause and rework",
-        "### Gate 3 — first controlled increase and review pressure",
-        "### Gate 5 — stable review and stale-write protection",
-        "### Gate 7 — lanes, recovery and acceptance capacity",
-        "### Gate 10 — maximum, not target, and closure",
-    ]
-    assert [runbook.index(heading) for heading in headings] == sorted(
-        runbook.index(heading) for heading in headings
+    assert "atlas-symphony.service" in runbook
+    gates = ["**Gate 1", "**Gate 3", "**Gate 5", "**Gate 7", "**Gate 10"]
+    assert [runbook.index(gate) for gate in gates] == sorted(
+        runbook.index(gate) for gate in gates
     )
 
 
@@ -625,33 +605,28 @@ def test_atlas_252_ac3_higher_levels_require_preceding_exact_evidence() -> None:
     runbook = _ceiling_runbook()
     flowed = " ".join(runbook.split())
     assert "Gate 3 cannot begin without the Gate 1 PASS receipt" in flowed
-    assert "serialized baseline admission, pause and rework" in flowed
+    assert "Gate 1 performs no ceiling increase" in flowed
     assert "Gate 5 cannot begin without the Gate 3 PASS receipt" in flowed
-    assert "first controlled increase and review pressure" in flowed
     assert "Gate 7 cannot begin without the Gate 5 PASS receipt" in flowed
-    assert "stable-review and stale-write evidence" in flowed
     assert (
         "Gate 10 cannot begin without the Gate 7 PASS receipt, Phase 14 closure"
         in flowed
     )
-    assert "at least three distinct acceptance sessions" in flowed
-    assert "exact-head completions are at least" in flowed
 
 
 def test_atlas_252_ac4_failure_rolls_back_without_terminating_or_closing() -> None:
     runbook = _ceiling_runbook()
-    stop = runbook[runbook.index("### Stop, rollback and non-closure") :]
+    stop = runbook[runbook.index("## 5. Stop, rollback and non-closure") :]
     flowed = " ".join(stop.split())
-    assert "back to the last proven value" in flowed
-    assert "posts the FAIL receipt with the rollback commit" in flowed
-    assert "do not terminate sessions" in flowed
+    assert "Restore the last proven immutable workflow" in flowed
+    assert "FAIL receipt" in flowed
+    assert "rollback commit" in flowed
+    assert "Do not terminate sessions" in flowed
     assert "cancel workers or delete workspaces" in flowed
     assert "milestone PR stays unmerged" in flowed
     assert "Phase 15 remains open" in flowed
-    assert "Normal `origin/main` movement does not erase a completed gate" in flowed
+    assert "ordinary `origin/main` movement does not erase" in flowed
     assert "operator-owned rebase lane" in flowed
-    assert "does not force a Gate 1 restart" in flowed
-    assert "invalidate earlier PASS receipts" in flowed
 
 
 def test_atlas_252_ac5_open_phase_is_one_and_closure_can_only_be_exactly_ten() -> None:
@@ -670,31 +645,25 @@ def test_atlas_252_ac6_runbook_exposes_no_atlas_or_agent_mutation_path() -> None
     runbook = _ceiling_runbook()
     flowed = " ".join(runbook.split())
     assert (
-        "The ramp adds no endpoint, CLI, agent action or automation that edits "
-        "delivery policy" in flowed
-    )
-    assert "existing governed Phase 15 policy-revision boundary" in flowed
-    assert (
-        "No Atlas endpoint, CLI, agent or automation may edit `WORKFLOW.md`, "
-        "Symphony configuration, acceptance evidence or milestone receipts" in flowed
+        "No endpoint, CLI, agent, CI job or automation gains authority to edit "
+        "the workflow, runtime, policy, acceptance evidence or milestone receipts"
+        in flowed
     )
     assert not re.search(
         r"(?im)^\s*(?:POST|PUT|PATCH|DELETE)\s+/|linear_graphql",
         runbook,
     )
     assert "process-owned `/api/v1/runtime`" in flowed
-    assert "never starts a live worker from CI" in flowed
+    assert "Reading or editing this documentation authorises no live gate" in flowed
 
 
 def test_atlas_252_ac7_reconciles_current_policy_without_rewriting_history() -> None:
     runbook = " ".join(_ceiling_runbook().split())
     delivery = " ".join(_read(DELIVERY_CONTROL_DOC).split())
 
-    assert "Migration `0025` and policy revision one" in runbook
-    assert "remain immutable history" in runbook
-    assert "must not be cited as the current live policy" in runbook
-    assert "approved_symphony_ceiling=1" in runbook
-    assert "working_budget=1" in runbook
+    assert "admission-side mirror, not a second Symphony ceiling" in runbook
+    assert "Admission remains paused while a new runtime identity" in runbook
+    assert "activate a policy revision coherent with the restored ceiling" in runbook
     assert "Before any Phase 15 milestone activity" in delivery
     assert "move the active pointer to that revision" in delivery
 
@@ -702,9 +671,9 @@ def test_atlas_252_ac7_reconciles_current_policy_without_rewriting_history() -> 
 def test_atlas_252_ac8_intermediate_values_are_milestone_branch_only() -> None:
     runbook = " ".join(_ceiling_runbook().split())
 
-    assert "Values 3, 5 and 7 are valid only on that branch" in runbook
+    assert "Values 3, 5 and 7 are milestone-branch-only" in runbook
     assert "never independently mergeable to `main`" in runbook
-    assert "ordinary committed `main` remains at one" in runbook
+    assert "committed-main ceiling remains `1`" in runbook
 
 
 def test_atlas_252_ac9_milestone_validation_is_explicit_and_branch_pinned() -> None:
@@ -723,8 +692,17 @@ def test_atlas_252_ac9_milestone_validation_is_explicit_and_branch_pinned() -> N
 
 
 def _routing_section() -> str:
-    _, body = _split()
+    body = _read(EXECUTION_RUNBOOK)
     return body[body.index("## How to move the ticket") : body.index("## Hard limits")]
+
+
+def _remediation_section() -> str:
+    body = _read(EXECUTION_RUNBOOK)
+    return body[
+        body.index("## Changes Requested remediation input") : body.index(
+            "## How to move the ticket"
+        )
+    ]
 
 
 def _route_for(state: str) -> str:
@@ -1057,12 +1035,14 @@ def _system_diagnostics(
 
 def test_atlas_069m_normal_publication_requires_exact_linear_closing_line() -> None:
     _, body = _split()
+    execution = _read(EXECUTION_RUNBOOK)
     in_progress = _route_for("In Progress")
 
     assert body.count("Closes {{ issue.identifier }}") == 1
-    assert "Linear issue identifier, not the Atlas key" in body
+    assert "Closes <issue.identifier>" in execution
+    assert "Linear issue identifier, not the Atlas key" in execution
     assert "Atlas ticket key embedded at the start" in in_progress
-    assert "{{ issue.identifier }}" not in in_progress
+    assert "<issue.identifier>" not in in_progress
     assert _publication_is_exact(_publication())
 
 
@@ -1099,9 +1079,9 @@ def test_atlas_069m_publication_readback_refuses_wrong_or_stale_identity(
 
 def test_atlas_069m_linear_read_is_bounded_and_attachment_trust_matches_atlas() -> None:
     skill = _read(LINEAR_SKILL)
-    workflow = _read(WORKFLOW_PATH)
+    execution = _read(EXECUTION_RUNBOOK)
     flowed_skill = " ".join(skill.split())
-    flowed_workflow = " ".join(workflow.split())
+    flowed_execution = " ".join(execution.split())
 
     for marker in (
         "comments(first: 250)",
@@ -1121,9 +1101,11 @@ def test_atlas_069m_linear_read_is_bounded_and_attachment_trust_matches_atlas() 
         "metadata GitHub PR `id` and repository `repoId` are numeric strings"
         in flowed_skill
     )
-    assert "hasNextPage: true" in workflow
-    assert "multiple distinct publications" in flowed_workflow
-    assert "Never infer the publication from title or branch prose" in flowed_workflow
+    assert "hasNextPage: true" in execution
+    assert "multiple distinct publications" in flowed_execution
+    assert "Never infer the publication from title or branch prose" in flowed_execution
+    assert "docs/runbooks/symphony-agent-execution.md" in skill
+    assert "The canonical lifecycle decisions" in skill
 
 
 def test_atlas_069m_current_head_human_envelope_is_accepted_and_bounded() -> None:
@@ -1155,11 +1137,7 @@ def test_atlas_069m_multiple_matching_human_envelopes_fail_closed() -> None:
     matches = _matching_envelopes(comments)
     assert len(matches) == 2
     route = _route_for("Changes Requested")
-    remediation = _read(WORKFLOW_PATH)[
-        _read(WORKFLOW_PATH).index("## Changes Requested remediation input") : _read(
-            WORKFLOW_PATH
-        ).index("## How to move the ticket")
-    ]
+    remediation = _remediation_section()
     flowed = " ".join(remediation.split())
     assert "More than one matching current-head envelope is ambiguous" in flowed
     assert "move the issue to `Needs Human`, and stop" in flowed
@@ -1168,11 +1146,7 @@ def test_atlas_069m_multiple_matching_human_envelopes_fail_closed() -> None:
 
 def test_atlas_069m_raw_failure_is_diagnostic_not_classification_authority() -> None:
     failure = ({"name": "test", "status": "COMPLETED", "conclusion": "FAILURE"},)
-    remediation = _read(WORKFLOW_PATH)[
-        _read(WORKFLOW_PATH).index("## Changes Requested remediation input") : _read(
-            WORKFLOW_PATH
-        ).index("## How to move the ticket")
-    ]
+    remediation = _remediation_section()
     flowed = " ".join(remediation.split())
 
     assert (
@@ -1222,11 +1196,7 @@ def test_atlas_069m_non_failure_ci_observations_are_not_system_instructions(
 def test_atlas_069m_inconsistent_system_route_fails_closed_and_union_is_frozen() -> (
     None
 ):
-    remediation = _read(WORKFLOW_PATH)[
-        _read(WORKFLOW_PATH).index("## Changes Requested remediation input") : _read(
-            WORKFLOW_PATH
-        ).index("## How to move the ticket")
-    ]
+    remediation = _remediation_section()
     flowed = " ".join(remediation.split())
     no_diagnostic = _system_diagnostics(
         tracker_state="Changes Requested",
@@ -1248,11 +1218,7 @@ def test_atlas_069m_inconsistent_system_route_fails_closed_and_union_is_frozen()
 
 
 def test_atlas_069m_rework_updates_same_pr_and_ci_pending_still_stops() -> None:
-    remediation = _read(WORKFLOW_PATH)[
-        _read(WORKFLOW_PATH).index("## Changes Requested remediation input") : _read(
-            WORKFLOW_PATH
-        ).index("## How to move the ticket")
-    ]
+    remediation = _remediation_section()
     flowed = " ".join(remediation.split())
     pr_open = _route_for("PR Open")
 
@@ -1264,11 +1230,7 @@ def test_atlas_069m_rework_updates_same_pr_and_ci_pending_still_stops() -> None:
 
 
 def test_atlas_069m_native_gh_path_has_no_patched_connector_dependency() -> None:
-    remediation = _read(WORKFLOW_PATH)[
-        _read(WORKFLOW_PATH).index("## Changes Requested remediation input") : _read(
-            WORKFLOW_PATH
-        ).index("## How to move the ticket")
-    ]
+    remediation = _remediation_section()
     assert "native `gh`" in remediation
     for forbidden_dependency in (
         "must use a `mcp__codex_apps__github_",
@@ -1286,9 +1248,124 @@ def test_atlas_069m_design_document_records_the_bounded_contract() -> None:
     flowed = " ".join(section.split())
 
     assert "exactly one standalone `Closes <issue.identifier>` line" in flowed
-    assert "existing Atlas trust predicate" in flowed
+    assert "frozen same-repository head" in flowed
     assert "atlas:remediation:v1" in section
-    assert "at most 4,000 characters" in flowed
-    assert "transition is the classification authority" in flowed
+    assert "classification authority" in flowed
     assert "does not independently prove Atlas `IMPLEMENTATION_FAILURE`" in flowed
     assert "does not alter the `CI Pending` stop contract" in flowed
+
+
+# --- ATLAS-070M: canonical execution/runtime ownership ------------------------
+
+
+def test_atlas_070m_workflow_requires_execution_runbook_fail_closed() -> None:
+    _, body = _split()
+    flowed = " ".join(body.split())
+
+    assert "docs/runbooks/symphony-agent-execution.md" in body
+    assert body.index("docs/runbooks/symphony-agent-execution.md") < body.index(
+        "## Executable lifecycle spine"
+    )
+    assert "Before changing code, publishing, or moving the ticket" in flowed
+    assert "fail closed" in flowed
+    assert "do not change code, publish, or mutate tracker state" in flowed
+
+
+def test_atlas_070m_new_runbooks_exist_and_manifest_owns_them() -> None:
+    manifest = _read(MANIFEST_DOC)
+
+    for runbook in (EXECUTION_RUNBOOK, RUNTIME_RUNBOOK):
+        assert runbook.is_file()
+        assert str(runbook.relative_to(REPO_ROOT)) in manifest
+
+
+def test_atlas_070m_interactive_prompt_disclaims_symphony_authority() -> None:
+    prompt = _read(INTERACTIVE_PROMPT)
+    heading = prompt[: prompt.index("## The prompt")]
+
+    assert "INTERACTIVE / HAND-DISPATCHED AGENT MODE" in heading
+    assert "NOT the Symphony autonomous execution contract" in heading
+    assert "docs/runbooks/symphony-agent-execution.md" in heading
+
+
+def test_atlas_070m_acceptance_begins_at_human_boundary() -> None:
+    acceptance = _read(ACCEPTANCE_RUNBOOK)
+    flowed = " ".join(acceptance.split())
+
+    assert "This runbook begins at Review Required" in flowed
+    assert "Silence is not success; the observable is." not in acceptance
+    assert "## 0.5. CI-pending handoff" not in acceptance
+    assert "## Appendix — planning-side ordering" not in acceptance
+    assert "Deployment is not acceptance" in acceptance
+    assert "docs/runbooks/pm-runtime-deployment.md" in acceptance
+    assert not re.search(
+        r"(?m)^\s*(?:uv run )?(?:atlas pm sync|alembic|systemctl)\b",
+        acceptance,
+    )
+
+
+def test_atlas_070m_architecture_does_not_defer_owned_agent_contracts() -> None:
+    doc = _read(SYMPHONY_DOC)
+    resolved = doc[doc.index("## Resolved design notes") :]
+
+    assert "## Deferred design items" not in doc
+    assert "Exact follow-up comment schema" not in doc
+    assert (
+        "Follow-up comments and `Changes Requested` input semantics are resolved"
+        in resolved
+    )
+    assert "docs/runbooks/symphony-agent-execution.md" in resolved
+
+
+def test_atlas_070m_runtime_service_owners_are_disjoint() -> None:
+    pm_runtime = _read(PM_RUNTIME_RUNBOOK)
+    symphony_runtime = _read(RUNTIME_RUNBOOK)
+
+    assert "atlas-pm-sync.service" in pm_runtime
+    assert "atlas-symphony.service" not in pm_runtime
+    assert "atlas-symphony.service" in symphony_runtime
+    assert "does not own `atlas-pm-sync.service`" in symphony_runtime
+
+
+def test_atlas_070m_execution_owner_preserves_publication_and_remediation() -> None:
+    execution = " ".join(_read(EXECUTION_RUNBOOK).split())
+
+    for marker in (
+        "one successful publication per candidate head",
+        "Closes <issue.identifier>",
+        "atlas:remediation:v1",
+        "transition is the classification authority",
+        "Freeze that bounded set",
+        "push the same ticket branch, update the same PR",
+        "move the ticket to `CI Pending` and stop in the same turn",
+        "Never mark your own work `Done`",
+        "never merge the PR",
+    ):
+        assert marker in execution
+
+
+def test_atlas_070m_linear_skill_keeps_mechanics_not_lifecycle_authority() -> None:
+    skill = _read(LINEAR_SKILL)
+
+    assert "query RemediationContext" in skill
+    assert "pageInfo { hasNextPage endCursor }" in skill
+    assert "mutation MoveIssueToState" in skill
+    assert "mutation CreateComment" in skill
+    assert "docs/runbooks/symphony-agent-execution.md" in skill
+    assert "atlas:remediation:v1\nsource: human-review" not in skill
+    assert "Freeze one valid human envelope" not in skill
+
+
+def test_atlas_070m_runtime_runbook_owns_exact_service_readback_and_ramp() -> None:
+    runtime = " ".join(_read(RUNTIME_RUNBOOK).split())
+
+    for marker in (
+        "git show <gate-commit>:WORKFLOW.md > <immutable-workflow-file>",
+        "systemctl daemon-reload",
+        "GET /api/v1/runtime",
+        "workflow_content_sha256",
+        "1 -> 3 -> 5 -> 7 -> 10",
+        "Gate 1 performs no ceiling increase",
+        "Restore the last proven immutable workflow",
+    ):
+        assert marker in runtime

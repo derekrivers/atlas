@@ -2,9 +2,9 @@
 
 ## Purpose
 
-This guide explains exactly what to do next now that the core Atlas documents exist.
+This historical bootstrap guide records how to establish the Atlas foundation and why its systems were introduced in that order. For current operation, use `docs/MANIFEST.md` and the owning runbooks.
 
-You now have the strategic and technical foundation for Atlas:
+At the time of initial bootstrap, the strategic and technical foundation was:
 
 - atlas-master-plan.md
 - system-specification.md
@@ -12,23 +12,23 @@ You now have the strategic and technical foundation for Atlas:
 - implementation-roadmap.md
 - data-model-and-schemas.md
 
-The next objective is not to build a product yet.
-
-The next objective is to bootstrap Atlas itself.
-
-Atlas must first become capable of reading its own documentation, generating a backlog, producing dependency-aware tickets, and creating execution-ready context packs.
+The bootstrap objective was to make Atlas capable of reading its own
+documentation, generating a backlog, producing dependency-aware tickets and
+creating execution-ready context packs before product work began. Those stages
+are delivered; the sections below preserve their setup rationale and starter
+shapes, not the current delivery programme.
 
 ---
 
-# 1. The Immediate Goal
+# 1. Historical first goal
 
-The first milestone is:
+The first milestone was:
 
 > Atlas can read its own docs and generate a structured dependency-aware backlog.
 
-This is the first proof that Atlas is becoming a real harness rather than just a document set.
+This proved Atlas could become a real harness rather than remain a document set.
 
-The first working commands should be:
+The intended first working commands were:
 
 ```bash
 atlas plan    # LLM proposal -> validation gates -> reconciled diff
@@ -46,17 +46,13 @@ docs/planning/roadmap.mmd
 
 `atlas plan` never writes them (ADR-0007).
 
-Do not start with Symphony.
-
-Do not start with Linear automation.
-
-Do not start with product features.
-
-Start with a local planning CLI.
+The historical sequencing rule was to start with the local planning CLI, then
+introduce Linear, Symphony and product work only after their prerequisites.
+Current operational ordering comes from `AGENTS.md` and the owning runbooks.
 
 ---
 
-# 2. Recommended Build Order
+# 2. Historical recommended build order
 
 The correct build order is:
 
@@ -348,46 +344,19 @@ No Linear or Symphony automation should be introduced until the local planning C
 Docs → Planning Engine → Dependency Graph → Linear → Context Pack → Symphony → PR → Evidence → Verification → Learning
 ```
 
-### Codex model requirement (preflight C6)
+### Current Codex model authority
 
-`WORKFLOW.md`'s `codex.command` pins `model="gpt-5.5"`. That pin carries an
-implicit CLI-version and account-entitlement requirement documented nowhere and,
-before `atlas preflight --check-model`, checked nowhere — the failure mode it
-guards against is a model the operator's Codex cannot run, which does **not**
-error loudly: Codex swallows the rejection into a clean-looking empty turn and
-the dispatched agent burns its whole turn budget doing nothing (the ATL-224
-Smoke A failure).
+This bootstrap guide does not pin a current model or CLI version. The sole
+current Symphony model authority is the executable `codex.command` in
+`WORKFLOW.md`. Operators verify that exact pin and the installed Codex runtime
+with:
 
-- **CLI version.** `gpt-5.5` requires a current Codex CLI — verified working on
-  **0.142.5** (known-good, not a bisected minimum). The snap `codex` package is
-  **capped at 0.114.0** and cannot run `gpt-5.5` (it fails asking for a newer
-  Codex). Install the official CLI so it takes precedence on `PATH`:
-
-  ```
-  curl -fsSL https://chatgpt.com/codex/install.sh | sh
-  ```
-
-- **PATH hazard.** The official installer places `codex` on `PATH` ahead of
-  snap's. If `PATH` order ever regresses (new machine, CI, a changed profile,
-  an npm-global update that lands elsewhere) the snap 0.114.0 resurfaces and the
-  silent-empty-turn failure returns — which is exactly what C6 catches.
-
-- **Entitlement.** Model availability also depends on auth mode: some `*-codex`
-  models are unavailable on a ChatGPT-account login and require API-key auth.
-
-**Verify before dispatch:**
-
-```
-atlas preflight --check-model
+```bash
+uv run atlas preflight --check-model
 ```
 
-C6 parses the pinned model out of `codex.command`, probes it with a computed
-prompt (so a prompt-echo cannot fake a pass), and reports: **pass** when the
-model answers; **EXIT_RECORDED_FAILURE** with the runner's raw error verbatim
-when the model is present but rejected (upgrade CLI / request entitlement /
-wrong model name); **EXIT_PRECONDITION (skip)** when the check cannot run at all
-(no `codex` binary, unauthenticated, timeout, or an unparseable `codex.command`).
-It is opt-in — plain `atlas preflight` (C1–C5) stays offline and fast.
+Historical empty-turn incidents motivated C6, but their former model/version
+combination is not current operational guidance.
 
 ---
 
@@ -640,61 +609,28 @@ Phase 2 milestone.
 
 ---
 
-# 12. When to Add Linear
+# 12. Linear integration — delivered stage
 
-Add Linear only after:
-
-- tickets.yaml exists
-- dependencies.yaml exists
-- dependency graph can identify ready tickets
-- ticket schema is stable
-
-Then build:
-
-```bash
-atlas linear sync
-```
-
-This command should:
-
-- Create missing tickets in Linear.
-- Update existing tickets.
-- Apply labels.
-- Preserve dependencies.
-- Avoid overwriting human edits unless explicitly allowed.
+Linear integration was deliberately sequenced after stable tickets,
+dependencies and readiness. It is now delivered. Current PM/Linear ownership
+and operation live in `docs/atlas/pm-engine-and-linear-sync.md`,
+`docs/runbooks/operational-practice.md` and
+`docs/runbooks/pm-runtime-deployment.md`; this historical bootstrap section is
+not an executable sync procedure.
 
 ---
 
-# 13. When to Add Symphony
+# 13. Symphony integration — delivered stage
 
-Add Symphony only after:
-
-- context packs exist
-- tickets can be marked Ready for Agent
-- evidence schema exists
-- verification rules exist
-
-Then build:
-
-```bash
-atlas execute ATLAS-42
-```
-
-Flow:
-
-```text
-Ticket
-→ Context Pack
-→ Symphony
-→ PR
-→ Evidence
-→ Verification
-→ Knowledge Update
-```
+Symphony integration was deliberately sequenced after context packs, readiness,
+evidence and verification. It is now delivered. Current architecture is in
+`docs/atlas/symphony-integration.md`; dispatched-agent execution and runtime
+operation are owned by `docs/runbooks/symphony-agent-execution.md` and
+`docs/runbooks/symphony-runtime-operation.md`.
 
 ---
 
-# 14. When to Start Product Work
+# 14. Historical product-work threshold
 
 Start product work only after the Atlas harness MVP exists.
 
@@ -708,7 +644,7 @@ Minimum required harness capabilities:
 
 ---
 
-# 15. Practical Day-One Checklist
+# 15. Historical day-one checklist
 
 Do this first:
 
@@ -734,26 +670,17 @@ git commit -m "Bootstrap Atlas harness documentation and planning foundation"
 
 ---
 
-# 16. What Not To Do Yet
+# 16. Historical sequencing constraints
 
-Do not yet:
-
-- Build product features or UI.
-- Integrate Symphony.
-- Automate Linear.
-- Add Neo4j.
-- Add vector database.
-- Add complex worker orchestration.
-
-Those come later.
-
-The first thing to prove is:
-
-> Atlas can convert its own documentation into structured work.
+During initial bootstrap, product features, Linear automation and Symphony were
+held until the local harness existed. Those integrations are now delivered, so
+this section records build-order rationale rather than a current prohibition.
+The still-active ordering rules live in `AGENTS.md` and the current programme
+documents.
 
 ---
 
-# 17. The First Real Milestone
+# 17. Historical first real milestone
 
 The first meaningful milestone is the plan/apply loop:
 

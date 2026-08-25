@@ -28,9 +28,9 @@ Strategy and specification (`docs/atlas/`):
   and milestone outcomes through the Atlas-managing-Atlas capstone
 - `agentic-engineering-programme-design.md` — cumulative programme architecture horizon and research/design authority for Phases 16–22; while Phase 15 remains open it supplies the controlled Phase-16 overlap rulings without yet triggering full horizon supersession
 - `bootstrap-guide.md` — day-one bootstrap guide
-- `symphony-integration.md` — delivered Phase 8 and Phase 12 integration
-  design (state mapping, pack delivery, exact-head assessment,
-  operator-owned rebase lane, acceptance freshness and retry seam)
+- `symphony-integration.md` — delivered Phase 8, Phase 12 and Phase 15.5
+  architecture: state mapping, context delivery, authority boundaries,
+  exact-head rationale and retry/evidence seams
 
 Phase design documents (one per engine; phase-readiness rule below):
 
@@ -137,8 +137,15 @@ Prompts and tools:
 
 Runbooks (`docs/runbooks/`):
 
-- `docs/runbooks/agent-ticket-prompt.md` — reusable agent ticket prompt
-  (required reading, plan gate, scope and definition-of-done rules)
+- `docs/runbooks/agent-ticket-prompt.md` — interactive/hand-dispatched agent
+  template (plan gate, scope and definition-of-done rules); not Symphony's
+  autonomous execution contract
+- `docs/runbooks/symphony-agent-execution.md` — canonical detailed lifecycle
+  for Symphony-dispatched agents: routing, freshness, deterministic validation,
+  issue-bound publication, remediation, CI Pending stop and hard limits
+- `docs/runbooks/symphony-runtime-operation.md` — canonical operator procedure
+  for immutable `atlas-symphony.service` activation, exact runtime readback,
+  controlled ceiling transitions and rollback
 - `docs/runbooks/review-doctrine.md` — review contract for gate
   presentations and completion reports (gate and close checklists,
   verdict forms, reviewer conduct)
@@ -165,14 +172,13 @@ Runbooks (`docs/runbooks/`):
 - `docs/runbooks/troubleshooting.md` — symptom-driven recovery for dispatch,
   Symphony/Codex, Git credentials, plan/apply, mint/render drift, PM sync,
   CI Pending, acceptance staleness, database identity and live runtime gates
-- `docs/runbooks/pr-acceptance.md` — operator acceptance protocol from
-  agent PR to board Done: the spine (evidence/confirm/verify/merge), Done
-  is a hand motion, migration parity, silence discipline, planning-side
-  ordering.
+- `docs/runbooks/pr-acceptance.md` — human acceptance from Review Required:
+  exact-head evidence, confirmation, verification, manual merge, merged proof
+  and read-only managed-PM completion observation
 - `docs/runbooks/operator-environment.md` — local-environment facts Atlas
   depends on but does not control: the two GitHub credential channels, the
-  Codex runtime and version-pinned connector patch, the database path and
-  edit-then-promote SQL hazards, board-operation rules.
+  Codex runtime and version-pinned connector patch, service/runtime identities,
+  the database path and edit-then-promote SQL hazards.
 
 Phase closure reports (`docs/closure/`):
 

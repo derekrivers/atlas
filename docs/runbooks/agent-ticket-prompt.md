@@ -1,7 +1,15 @@
-# Atlas — Agent Ticket Prompt (Claude Code / VS Code)
+# Atlas — Interactive Agent Ticket Prompt
 
-Reusable prompt for instructing a coding agent to pick up one roadmap
-ticket. Replace everything in `{curly braces}`. One ticket per session.
+> **INTERACTIVE / HAND-DISPATCHED AGENT MODE**
+>
+> This template is **NOT the Symphony autonomous execution contract**.
+> Symphony-dispatched agents follow
+> `docs/runbooks/symphony-agent-execution.md` through the executable
+> `WORKFLOW.md` spine.
+
+Reusable prompt for a human to hand-dispatch one ticket in Claude Code, VS Code
+or another interactive session. Replace everything in `{curly braces}`. One
+ticket per session.
 
 ---
 
@@ -10,6 +18,9 @@ ticket. Replace everything in `{curly braces}`. One ticket per session.
 ```text
 Read CLAUDE.md and AGENTS.md in the repository root now, and follow
 AGENTS.md for everything in this session.
+
+This is interactive / hand-dispatched agent mode. It is not the Symphony
+autonomous execution contract.
 
 ## Task
 
@@ -84,21 +95,13 @@ The scoped local result is agent-tier confidence, not repository completion.
 Do not claim completion without complete system-tier CI evidence at the
 accepted identity — an agent saying "done" is not done (ADR-0008).
 
-## Publication and CI handoff
+## Interactive publication boundary
 
-- A failed selected command or explicit test prevents publication. Fix it
-  within scope and recalculate the plan after any head change; all old-head
-  results are historical only.
-- Immediately before the one candidate publication, verify the exact workspace
-  root, `origin`, symbolic ticket branch and intended same-repository PR head;
-  run `git fetch origin main && git rebase origin/main`, then validate the
-  frozen candidate head.
-- Publish that validated head once. Record the exact base/head, selected
-  profiles, commands and results, and explicit test results in the PR.
-- In the Symphony workflow, move through `PR Open` to `CI Pending` and stop in
-  the same turn. Do not poll CI or wait for review. Only the system-tier
-  reconciler may move CI Pending to Review Required or Changes Requested; the
-  latter resumes the preserved workspace for semantic remediation.
+Publish only when the operator explicitly authorises publication for this
+hand-dispatched session and every selected validation check passes. Record the
+exact base/head, changed paths and results. Do not imitate Symphony tracker
+transitions from this template; if the work is Symphony-dispatched, stop and
+use `docs/runbooks/symphony-agent-execution.md`.
 ```
 
 ---
@@ -161,11 +164,10 @@ turn.
 - It exits non-zero on each seeded bad fixture: an ADR missing its
   Rationale section, a MANIFEST entry pointing at a missing file, a
   legacy name in an active doc, a hand-edited planning file
-- `uv run pytest` passes; linter behaviour covered by tests including
-  the negative fixtures
-- `uv run ruff check .`, `uv run ruff format --check .`, and
-  `uv run mypy atlas tests` pass; `uv run pre-commit run --all-files`
-  passes
+- Linter behaviour is covered by tests including the negative fixtures.
+- Calculate the exact `atlas validation-plan` for the frozen candidate and
+  run every selected command and explicit test target; run a complete sweep
+  only if the plan selects `full-sweep` or the operator explicitly requires it.
 - Completion report mapping each criterion to its evidence
 ```
 
@@ -340,9 +342,9 @@ Rules of the variant:
   named failure; flag-and-route (a separate gated change) is the rule.
   (Origin: PR #156, where operator-directed script additions rode an
   approved one-bullet diff and reopened the PR.)
-- Roadmap keys are illustrative seeds until `atlas apply` exists; once
-  the planner is live, paste the rendered ticket (objective, acceptance
-  criteria, context pack) in place of the hand-filled sections above.
+- For current work, use the minted ticket definition and embedded/rendered
+  Context Pack as authority. The hand-filled example above is historical
+  scaffolding, not a source of ticket identity.
 - Hand-dispatched work never claims a forward key. Either mint first
   (inbox stub -> `atlas apply` -> use the assigned key) or label the PR
   with the non-key meta convention (`ATLAS-00xM`). A number used ahead of
