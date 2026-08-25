@@ -5,7 +5,7 @@ from __future__ import annotations
 import importlib.util
 import json
 from argparse import Namespace
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from subprocess import CompletedProcess
 from types import SimpleNamespace
@@ -81,6 +81,8 @@ def args(**overrides: object) -> Namespace:
         "pr": 248,
         "repo": "acme/atlas",
         "operator": "operator",
+        "completion_timeout_seconds": 300.0,
+        "completion_poll_seconds": 5.0,
     }
     values.update(overrides)
     return Namespace(**values)
@@ -184,6 +186,31 @@ class AssessmentSequence:
         if isinstance(result, GitHubAPIError):
             raise result
         return result
+
+
+class FakeClock:
+    def __init__(self) -> None:
+        self.now = 0.0
+        self.sleeps: list[float] = []
+
+    def monotonic(self) -> float:
+        return self.now
+
+    def sleep(self, seconds: float) -> None:
+        self.sleeps.append(seconds)
+        self.now += seconds
+
+
+class StatusSequence:
+    def __init__(self, *observations: list[tuple[str, str]]) -> None:
+        self.observations = list(observations)
+        self.calls: list[tuple[str, ...]] = []
+
+    def __call__(self, keys: Sequence[str]) -> list[tuple[str, str]]:
+        self.calls.append(tuple(keys))
+        if len(self.observations) > 1:
+            return self.observations.pop(0)
+        return self.observations[0]
 
 
 def assert_no_acceptance_actions(runner: Runner, pauses: list[str]) -> None:
@@ -544,7 +571,7 @@ def test_nonzero_step_aborts_and_names_resume_command(
     assert ("git", "checkout", "main") not in [call[0] for call in runner.calls]
 
 
-def test_chain_order_and_sync_output_is_compact(
+def test_pre_merge_order_is_preserved_and_post_merge_tail_is_observational(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     runner = Runner()
@@ -566,16 +593,14 @@ def test_chain_order_and_sync_output_is_compact(
         "confirm",
         "verify",
         "verify",
-        "checkout",
-        "pull",
-        "alembic",
-        "pm",
-        "pm",
     ]
     output = capsys.readouterr().out
-    assert "many skip lines" not in output
-    assert "Tick 1: pm sync: completed=1" in output
-    assert "Tick 2: pm sync: completed=1" in output
+    assert output.index("Pull evidence") < output.index("Confirm acceptance")
+    assert output.index("Confirm acceptance") < output.index("Verify frozen PR head")
+    assert output.index("Verify frozen PR head") < output.index("MERGE GATE")
+    assert output.index("MERGE GATE") < output.index("Verify merged PR")
+    assert "Closure complete: all PR-linked tickets are done." in output
+    assert_no_post_merge_actions(runner)
 
 
 def test_non_passing_pre_merge_verdict_blocks_merge(
@@ -992,10 +1017,141 @@ def test_final_status_is_read_and_non_done_is_failure(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     runner = Runner()
-    assert drive(runner, statuses=[("ATLAS-200", "review_required")]) == 1
+    clock = FakeClock()
+    code = close_ticket.drive(
+        args(completion_timeout_seconds=10.0, completion_poll_seconds=4.0),
+        environ={"GITHUB_TOKEN": "secret"},
+        run_command=runner,
+        pause=lambda _: "",
+        resolve_assessment=AssessmentSequence(),
+        resolve_context=lambda _repo, _pr: merged(),
+        read_statuses=lambda _keys: [("ATLAS-200", "review_required")],
+        monotonic=clock.monotonic,
+        sleep=clock.sleep,
+    )
+    assert code == 1
     captured = capsys.readouterr()
     assert "ATLAS-200: review_required" in captured.out
-    assert "Closure incomplete" in captured.err
+    assert "post-merge PM completion is still pending after 10 seconds" in captured.err
+    assert clock.sleeps == [4.0, 4.0, 2.0]
+    assert_no_post_merge_actions(runner)
+
+
+def test_read_only_observations_complete_when_managed_cadence_reports_done() -> None:
+    runner = Runner()
+    clock = FakeClock()
+    statuses = StatusSequence(
+        [("ATLAS-200", "review_required")],
+        [("ATLAS-200", "done")],
+    )
+
+    code = close_ticket.drive(
+        args(completion_timeout_seconds=20.0, completion_poll_seconds=5.0),
+        environ={"GITHUB_TOKEN": "secret"},
+        run_command=runner,
+        pause=lambda _: "",
+        resolve_assessment=AssessmentSequence(),
+        resolve_context=lambda _repo, _pr: merged(),
+        read_statuses=statuses,
+        monotonic=clock.monotonic,
+        sleep=clock.sleep,
+    )
+
+    assert code == 0
+    assert statuses.calls == [("ATLAS-200",), ("ATLAS-200",)]
+    assert clock.sleeps == [5.0]
+    assert_no_post_merge_actions(runner)
+
+
+def test_multiple_pr_linked_tickets_all_must_reach_done() -> None:
+    runner = Runner()
+    clock = FakeClock()
+    statuses = StatusSequence(
+        [("ATLAS-200", "done"), ("ATLAS-201", "review_required")],
+        [("ATLAS-200", "done"), ("ATLAS-201", "done")],
+    )
+    context = merged()
+    context.pull_request["body"] = "Also closes ATLAS-201"
+
+    code = close_ticket.drive(
+        args(completion_timeout_seconds=20.0, completion_poll_seconds=5.0),
+        environ={"GITHUB_TOKEN": "secret"},
+        run_command=runner,
+        pause=lambda _: "",
+        resolve_assessment=AssessmentSequence(),
+        resolve_context=lambda _repo, _pr: context,
+        read_statuses=statuses,
+        monotonic=clock.monotonic,
+        sleep=clock.sleep,
+    )
+
+    assert code == 0
+    assert statuses.calls == [
+        ("ATLAS-200", "ATLAS-201"),
+        ("ATLAS-200", "ATLAS-201"),
+    ]
+    assert clock.sleeps == [5.0]
+    assert_no_post_merge_actions(runner)
+
+
+def test_keyless_meta_pr_behavior_remains_incomplete_without_status_poll(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    runner = Runner()
+    context = merged()
+    context.pull_request["title"] = "ATLAS-067M - Meta maintenance"
+    status_reads: list[tuple[str, ...]] = []
+
+    def read_statuses(keys: Sequence[str]) -> list[tuple[str, str]]:
+        status_reads.append(tuple(keys))
+        return []
+
+    code = close_ticket.drive(
+        args(),
+        environ={"GITHUB_TOKEN": "secret"},
+        run_command=runner,
+        pause=lambda _: "",
+        resolve_assessment=AssessmentSequence(),
+        resolve_context=lambda _repo, _pr: context,
+        read_statuses=read_statuses,
+    )
+
+    assert code == 1
+    assert status_reads == []
+    assert "PR names no Atlas ticket" in capsys.readouterr().err
+    assert_no_post_merge_actions(runner)
+
+
+@pytest.mark.parametrize("value", ["0", "-1", "nan", "inf", "-inf", "text"])
+@pytest.mark.parametrize(
+    "option", ["--completion-timeout-seconds", "--completion-poll-seconds"]
+)
+def test_invalid_completion_observation_arguments_fail_during_parsing(
+    option: str,
+    value: str,
+) -> None:
+    with pytest.raises(SystemExit) as error:
+        close_ticket.build_parser().parse_args(["248", option, value])
+
+    assert error.value.code == 2
+
+
+def test_completion_observation_argument_defaults_and_positive_floats() -> None:
+    defaults = close_ticket.build_parser().parse_args(["248"])
+    overridden = close_ticket.build_parser().parse_args(
+        [
+            "248",
+            "--completion-timeout-seconds",
+            "0.25",
+            "--completion-poll-seconds",
+            "0.01",
+        ]
+    )
+
+    assert defaults.completion_timeout_seconds == 300.0
+    assert defaults.completion_poll_seconds == 5.0
+    assert overridden.completion_timeout_seconds == 0.25
+    assert overridden.completion_poll_seconds == 0.01
 
 
 def test_rerun_keeps_confirm_and_defers_exact_head_deduplication() -> None:

@@ -1,20 +1,22 @@
-"""Drive the acceptance chain for one pull request (ATLAS-040M).
+"""Drive the acceptance chain for one pull request (ATLAS-040M/067M).
 
 The merge remains an operator action. This script first proves the PR head is
 current with main, then requires evidence, human confirmations, a PASSED
 verification at that exact head, and a second live freshness check before it
 pauses for the merge. After the operator merges, it independently verifies
-GitHub's merged state, records the merged proof, upgrades the local schema, and
-runs the two synchronization ticks needed to establish Done in Atlas.
+GitHub's merged state, records the merged proof, and observes the Atlas store
+until the managed PM cadence establishes Done.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import subprocess
 import sys
+import time
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any, NamedTuple
@@ -35,6 +37,8 @@ from atlas.verification import parse_close_set
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 OPERATOR_ENV = "ATLAS_OPERATOR_ID"
+DEFAULT_COMPLETION_TIMEOUT_SECONDS = 300.0
+DEFAULT_COMPLETION_POLL_SECONDS = 5.0
 Command = tuple[str, ...]
 RunCommand = Callable[..., subprocess.CompletedProcess[str]]
 ResolveAssessment = Callable[[str, int], PRIntegrationAssessment]
@@ -151,18 +155,6 @@ def _run_step(
             f"{label} failed with exit code {result.returncode}.\nResume with: {resume}"
         )
     return result
-
-
-def _summarise_sync(tick: int, result: subprocess.CompletedProcess[str]) -> None:
-    lines = [
-        line.strip()
-        for line in (result.stdout or "").splitlines()
-        if line.strip() and ("pm sync:" in line or "transition" in line.lower())
-    ]
-    summary = lines[-1] if lines else "completed successfully"
-    print(f"Tick {tick}: {summary}")
-    if result.stderr:
-        print(result.stderr, end="", file=sys.stderr)
 
 
 def _require_passed_verdict(result: subprocess.CompletedProcess[str]) -> str:
@@ -439,6 +431,37 @@ def _ticket_statuses(keys: Sequence[str]) -> list[tuple[str, str]]:
     return statuses
 
 
+def _positive_finite_seconds(value: str) -> float:
+    try:
+        seconds = float(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError("must be a numeric value") from error
+    if not math.isfinite(seconds) or seconds <= 0:
+        raise argparse.ArgumentTypeError("must be finite and greater than zero")
+    return seconds
+
+
+def _observe_managed_completion(
+    keys: Sequence[str],
+    *,
+    timeout_seconds: float,
+    poll_seconds: float,
+    read_statuses: Callable[[Sequence[str]], list[tuple[str, str]]],
+    monotonic: Callable[[], float],
+    sleep: Callable[[float], None],
+) -> tuple[bool, list[tuple[str, str]]]:
+    deadline = monotonic() + timeout_seconds
+    while True:
+        statuses = read_statuses(keys)
+        if statuses and all(status == "done" for _, status in statuses):
+            return True, statuses
+
+        remaining = deadline - monotonic()
+        if remaining <= 0:
+            return False, statuses
+        sleep(min(poll_seconds, remaining))
+
+
 def drive(
     args: argparse.Namespace,
     *,
@@ -448,6 +471,8 @@ def drive(
     resolve_assessment: ResolveAssessment = _assess_current_head,
     resolve_context: Callable[[str, int], Any] = _merged_context,
     read_statuses: Callable[[Sequence[str]], list[tuple[str, str]]] = _ticket_statuses,
+    monotonic: Callable[[], float] = time.monotonic,
+    sleep: Callable[[float], None] = time.sleep,
 ) -> int:
     try:
         repo, operator = _preflight(
@@ -472,8 +497,6 @@ def drive(
     )
     verify = ("uv", "run", "atlas", "verify", *common)
     verify_json = (*verify, "--json")
-    migrate = ("uv", "run", "alembic", "upgrade", "head")
-    sync = ("uv", "run", "atlas", "pm", "sync", "--once", "-v")
 
     try:
         initial_freshness = _require_initial_current(
@@ -482,21 +505,21 @@ def drive(
             resolve_assessment=resolve_assessment,
         )
         _run_step(
-            "1/9",
+            "1/4",
             "Pull evidence",
             evidence,
             resume=_command_text(evidence),
             run_command=run_command,
         )
         _run_step(
-            "2/9",
+            "2/4",
             "Confirm acceptance (interactive)",
             confirm,
             resume=_command_text(confirm),
             run_command=run_command,
         )
         pre_merge = _run_step(
-            "3/9",
+            "3/4",
             "Verify frozen PR head",
             verify_json,
             resume=_command_text(verify_json),
@@ -541,53 +564,12 @@ def drive(
         print(f"Merge verified by GitHub at head {context.head_commit}.")
 
         _run_step(
-            "4/9",
+            "4/4",
             "Verify merged PR",
             verify,
             resume=_command_text(verify),
             run_command=run_command,
         )
-        checkout = ("git", "checkout", "main")
-        pull = ("git", "pull")
-        _run_step(
-            "5/9",
-            "Checkout main",
-            checkout,
-            resume="git checkout main && git pull",
-            run_command=run_command,
-        )
-        _run_step(
-            "6/9",
-            "Pull main",
-            pull,
-            resume="git pull",
-            run_command=run_command,
-        )
-        _run_step(
-            "7/9",
-            "Upgrade database schema",
-            migrate,
-            resume=_command_text(migrate),
-            run_command=run_command,
-        )
-        first = _run_step(
-            "8/9",
-            "PM sync tick 1",
-            sync,
-            resume=_command_text(sync),
-            run_command=run_command,
-            capture=True,
-        )
-        _summarise_sync(1, first)
-        second = _run_step(
-            "9/9",
-            "PM sync tick 2",
-            sync,
-            resume=_command_text(sync),
-            run_command=run_command,
-            capture=True,
-        )
-        _summarise_sync(2, second)
     except (GitHubAPIError, MissingGitHubTokenError, RuntimeError) as error:
         print(error, file=sys.stderr)
         return 1
@@ -604,7 +586,14 @@ def drive(
         )
         return 1
     try:
-        statuses = read_statuses(keys)
+        complete, statuses = _observe_managed_completion(
+            keys,
+            timeout_seconds=args.completion_timeout_seconds,
+            poll_seconds=args.completion_poll_seconds,
+            read_statuses=read_statuses,
+            monotonic=monotonic,
+            sleep=sleep,
+        )
     except OperationalError:
         print(
             "Closure incomplete: ticket status could not be read because the "
@@ -616,14 +605,14 @@ def drive(
     print("\n=== FINAL STATUS (read from Atlas store) ===")
     for key, status in statuses:
         print(f"{key}: {status}")
-    if not statuses or any(status != "done" for _, status in statuses):
+    if not complete:
         print(
-            "Closure incomplete: one or more tickets are not done after two sync "
-            "ticks.",
+            "Closure incomplete: post-merge PM completion is still pending after "
+            f"{args.completion_timeout_seconds:g} seconds.",
             file=sys.stderr,
         )
         return 1
-    print("Closure complete: all PR-linked tickets are done after two sync ticks.")
+    print("Closure complete: all PR-linked tickets are done.")
     return 0
 
 
@@ -639,6 +628,18 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--operator",
         help=f"operator identity (default: ${OPERATOR_ENV})",
+    )
+    parser.add_argument(
+        "--completion-timeout-seconds",
+        type=_positive_finite_seconds,
+        default=DEFAULT_COMPLETION_TIMEOUT_SECONDS,
+        help="read-only completion observation window (default: 300)",
+    )
+    parser.add_argument(
+        "--completion-poll-seconds",
+        type=_positive_finite_seconds,
+        default=DEFAULT_COMPLETION_POLL_SECONDS,
+        help="read-only completion polling interval (default: 5)",
     )
     return parser
 
