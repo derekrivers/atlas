@@ -517,6 +517,25 @@ def test_atlas_072m_workflow_protection_is_metadata_not_validation_breadth(
     assert not plan.full_sweep
 
 
+def test_atlas_072m_generated_client_protection_describes_integration_boundary(
+    registry: ValidationRegistry,
+) -> None:
+    path = "atlas/tools/operator_ui_openapi.py"
+    plan = _plan(registry, path, tests=("tests/test_validation_plan.py",))
+
+    assert plan.protected_surface_reasons == (
+        ProtectedSurfaceReason(
+            lane="generated-contracts",
+            path=path,
+            rule_id="generated-client",
+            detail=(
+                "Generated-client surfaces are a protected generated-contract boundary."
+            ),
+        ),
+    )
+    assert not plan.full_sweep
+
+
 def test_atlas_072m_migration_keeps_database_lane_and_focused_schema_tests(
     registry: ValidationRegistry,
 ) -> None:

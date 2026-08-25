@@ -293,7 +293,7 @@
         "apps/operator-ui/src/api/atlas-openapi.ts",
         "atlas/tools/operator_ui_openapi.py"
       ],
-      "reason": "Generated-client surfaces require complete local validation."
+      "reason": "Generated-client surfaces are a protected generated-contract boundary."
     },
     {
       "id": "workflow-policy",
