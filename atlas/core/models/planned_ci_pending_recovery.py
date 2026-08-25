@@ -75,21 +75,25 @@ class PlannedCIPendingRecovery(BaseModel):
 
 
 def admission_run_correlates(run: AdmissionRun, ticket: Ticket) -> bool:
-    """Whether any bounded selection identity relates ``run`` to ``ticket``."""
+    """Whether a selecting ``ADMIT`` identity relates ``run`` to ``ticket``.
+
+    A candidate-only ``HOLD`` is ordinary admission history, not competing
+    proof that the ticket was selected.  Identity collisions on an actual
+    selection remain correlated so the unique-selection check fails closed.
+    """
 
     external_linear_id = ticket.external_linear_id
-    return bool(
-        run.selected_ticket_id == ticket.id
-        or run.selected_ticket_key == ticket.key
-        or any(
+    return any(
+        decision.decision is AdmissionDecisionType.ADMIT
+        and (
             decision.ticket_id == ticket.id
             or decision.ticket_key == ticket.key
             or (
                 external_linear_id is not None
                 and decision.external_linear_id == external_linear_id
             )
-            for decision in run.decisions
         )
+        for decision in run.decisions
     )
 
 

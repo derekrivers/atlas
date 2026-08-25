@@ -72,6 +72,10 @@ from atlas.storage import (
     TicketRepo,
     TicketStatusTransitionRepo,
 )
+from atlas.storage.planned_ci_pending_recovery import (
+    PlannedCIPendingRecoveryStorageCode,
+    PlannedCIPendingRecoveryStorageError,
+)
 from atlas.storage.tables import (
     AdmissionWriteFenceRow,
     CIHandoffReconciliationRow,
@@ -115,6 +119,7 @@ def _admission_run(
     selected_ticket_key: str | None = None,
     external_linear_id: str | None = None,
     decision: AdmissionDecisionType = AdmissionDecisionType.ADMIT,
+    evaluated_at: Any = ADMITTED_AT,
     created_by_type: ActorType = ActorType.SYSTEM,
     created_by_id: str = "atlas.pm.admission",
 ) -> AdmissionRun:
@@ -134,8 +139,8 @@ def _admission_run(
         policy_revision=policy.revision,
         policy_fingerprint="a" * 64,
         snapshot_fingerprint="b" * 64,
-        snapshot_observed_at=ADMITTED_AT,
-        evaluated_at=ADMITTED_AT,
+        snapshot_observed_at=evaluated_at,
+        evaluated_at=evaluated_at,
         selected_ticket_id=(
             decision_ticket_id if decision is AdmissionDecisionType.ADMIT else None
         ),
@@ -337,6 +342,76 @@ def test_atlas_280_shaped_recovery_reconsiders_deduped_anomaly_and_is_idempotent
     assert AgentRunRepo(db).list_for_ticket(ticket.id) == []
     assert client.state_writes == []
     assert TicketStatus.PLANNED not in CI_PENDING_POLL_COMPRESSION_SOURCES
+
+
+@pytest.mark.parametrize("hold_count", [1, 3])
+def test_prior_candidate_holds_do_not_poison_unique_admission_proof(
+    db: Database,
+    hold_count: int,
+) -> None:
+    client = RecordingClient()
+    ticket = _seed_ticket(db, client)
+    for offset in range(hold_count, 0, -1):
+        AdmissionRunRepo(db).record(
+            _admission_run(
+                db,
+                ticket,
+                decision=AdmissionDecisionType.HOLD,
+                evaluated_at=ADMITTED_AT - timedelta(minutes=offset),
+            )
+        )
+    admitted, _receipt = _seed_proof(db, client, ticket)
+
+    result = _sync(db, client)
+
+    stored = TicketRepo(db).get_by_key(ticket.key)
+    assert stored is not None and stored.status is TicketStatus.CI_PENDING
+    assert result.status_pulled == 1
+    [recovery] = PlannedCIPendingRecoveryRepo(db).list()
+    assert recovery.admission_run_id == admitted.id
+
+
+@pytest.mark.parametrize("case", ["second_exact_selection", "external_id_collision"])
+def test_multiple_or_conflicting_selecting_admission_runs_fail_closed(
+    db: Database,
+    case: str,
+) -> None:
+    client = RecordingClient()
+    ticket = _seed_ticket(db, client)
+    _seed_proof(db, client, ticket)
+    if case == "second_exact_selection":
+        conflicting = _admission_run(
+            db,
+            ticket,
+            evaluated_at=ADMITTED_AT + timedelta(minutes=1),
+        )
+    else:
+        other = TicketRepo(db).add(
+            ticket.model_copy(
+                update={
+                    "id": uuid4(),
+                    "key": "ATLAS-999",
+                    "external_linear_id": None,
+                    "linear_synced_at": ticket.updated_at,
+                }
+            )
+        )
+        conflicting = _admission_run(
+            db,
+            ticket,
+            selected_ticket_id=other.id,
+            selected_ticket_key=other.key,
+            external_linear_id=ticket.external_linear_id,
+            evaluated_at=ADMITTED_AT + timedelta(minutes=1),
+        )
+    AdmissionRunRepo(db).record(conflicting)
+
+    result = _sync(db, client)
+
+    stored = TicketRepo(db).get_by_key(ticket.key)
+    assert stored is not None and stored.status is TicketStatus.PLANNED, case
+    assert result.status_pulled == 0, case
+    assert PlannedCIPendingRecoveryRepo(db).list() == [], case
 
 
 @pytest.mark.parametrize(
@@ -642,6 +717,72 @@ def test_recovery_state_transition_and_evidence_insert_are_atomic(
     [historical_transition] = TicketStatusTransitionRepo(db).list_for_ticket(ticket.id)
     assert historical_transition.from_status == TicketStatus.BACKLOG.value
     assert historical_transition.to_status == TicketStatus.PLANNED.value
+    assert PlannedCIPendingRecoveryRepo(db).list() == []
+
+
+def test_atomic_revalidation_ignores_candidate_hold_added_after_evaluation(
+    db: Database,
+) -> None:
+    client = RecordingClient()
+    ticket = _seed_ticket(db, client)
+    _seed_proof(db, client, ticket)
+    evaluation = evaluate_planned_ci_pending_recovery(
+        db=db,
+        ticket=ticket,
+        status_map=status_map(),
+        board=_current_board(client),
+        project_id=PROJECT_ID,
+        now=RECOVERED_AT,
+    )
+    assert evaluation.recovery is not None
+    AdmissionRunRepo(db).record(
+        _admission_run(
+            db,
+            ticket,
+            decision=AdmissionDecisionType.HOLD,
+            evaluated_at=ADMITTED_AT - timedelta(minutes=1),
+        )
+    )
+
+    applied = PlannedCIPendingRecoveryRepo(db).apply(evaluation.recovery)
+
+    assert applied.changed is True
+    stored = TicketRepo(db).get_by_key(ticket.key)
+    assert stored is not None and stored.status is TicketStatus.CI_PENDING
+
+
+def test_atomic_revalidation_refuses_selection_added_after_evaluation(
+    db: Database,
+) -> None:
+    client = RecordingClient()
+    ticket = _seed_ticket(db, client)
+    _seed_proof(db, client, ticket)
+    evaluation = evaluate_planned_ci_pending_recovery(
+        db=db,
+        ticket=ticket,
+        status_map=status_map(),
+        board=_current_board(client),
+        project_id=PROJECT_ID,
+        now=RECOVERED_AT,
+    )
+    assert evaluation.recovery is not None
+    AdmissionRunRepo(db).record(
+        _admission_run(
+            db,
+            ticket,
+            evaluated_at=ADMITTED_AT + timedelta(minutes=1),
+        )
+    )
+
+    with pytest.raises(PlannedCIPendingRecoveryStorageError) as exc_info:
+        PlannedCIPendingRecoveryRepo(db).apply(evaluation.recovery)
+
+    assert (
+        exc_info.value.code
+        is PlannedCIPendingRecoveryStorageCode.ADMISSION_EVIDENCE_MOVED
+    )
+    stored = TicketRepo(db).get_by_key(ticket.key)
+    assert stored is not None and stored.status is TicketStatus.PLANNED
     assert PlannedCIPendingRecoveryRepo(db).list() == []
 
 
