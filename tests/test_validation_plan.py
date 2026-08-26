@@ -486,14 +486,87 @@ def test_atlas_072m_docs_only_stays_documentation_only(
     assert not plan.full_sweep
 
 
-def test_atlas_072m_linear_skill_markdown_uses_its_contract_test(
+def test_atlas_077m_current_repository_skills_use_one_focused_contract_rule(
     registry: ValidationRegistry,
 ) -> None:
-    plan = _plan(registry, ".codex/skills/linear/SKILL.md")
+    skill_paths = tuple(
+        path.relative_to(REPO_ROOT).as_posix()
+        for path in sorted((REPO_ROOT / ".codex" / "skills").rglob("SKILL.md"))
+    )
+
+    assert skill_paths
+    for skill_path in skill_paths:
+        plan = _plan(registry, skill_path)
+
+        assert plan.profiles == ("skill-contract",)
+        assert plan.commands == ("uv run pytest tests/test_skill_linear.py",)
+        assert not plan.fallback_reasons
+        assert not plan.full_sweep
+        assert {
+            reason.rule_id
+            for reason in plan.reasons
+            if reason.source_kind == "changed_path" and reason.source == skill_path
+        } == {"repository-skill-contract"}
+
+
+def test_atlas_077m_future_skill_entrypoint_is_structurally_classified(
+    registry: ValidationRegistry,
+) -> None:
+    skill_path = ".codex/skills/example-future-skill/SKILL.md"
+    plan = _plan(registry, skill_path)
 
     assert plan.profiles == ("skill-contract",)
     assert plan.commands == ("uv run pytest tests/test_skill_linear.py",)
+    assert plan.fallback_reasons == ()
     assert not plan.full_sweep
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        ".codex/skills/example-future-skill/README.md",
+        ".codex/skills/example-future-skill/reference.txt",
+        "unregistered/surface.xyz",
+    ],
+)
+def test_atlas_077m_unsupported_skill_files_and_unknown_paths_fail_closed(
+    registry: ValidationRegistry,
+    path: str,
+) -> None:
+    plan = _plan(registry, path)
+
+    assert plan.full_sweep
+    assert any(reason.code == "unknown_path" for reason in plan.fallback_reasons)
+
+
+def test_atlas_077m_atlas_074m_shaped_diff_stays_focused(
+    registry: ValidationRegistry,
+) -> None:
+    skill_path = ".codex/skills/atlas-ticket-execution/SKILL.md"
+    plan = _plan(
+        registry,
+        skill_path,
+        "WORKFLOW.md",
+        "docs/runbooks/symphony-agent-execution.md",
+        "tests/test_skill_linear.py",
+        requirements=("skill-contract", "workflow-contract"),
+        tests=("tests/test_skill_linear.py", "tests/test_workflow_contract.py"),
+    )
+
+    assert plan.profiles == (
+        "python",
+        "static",
+        "documentation",
+        "skill-contract",
+        "workflow-contract",
+    )
+    assert not any(reason.code == "unknown_path" for reason in plan.fallback_reasons)
+    assert not plan.full_sweep
+    assert {
+        reason.rule_id
+        for reason in plan.reasons
+        if reason.source_kind == "changed_path" and reason.source == skill_path
+    } == {"repository-skill-contract"}
 
 
 def test_atlas_072m_workflow_protection_is_metadata_not_validation_breadth(
