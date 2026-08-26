@@ -7,10 +7,10 @@
 **Date:** 20 August 2026.
 **Phase:** 16 — Agent Runtime and Integration Safety.
 **Architecture horizon:** `Atlas Agentic Engineering Programme Design v4 — Cumulative Research Edition`, including completed Experiments E and F.
-**Current Atlas baseline:** `derekrivers/atlas` `main` at `563d96a4b189d8d43fd57f7569d87513a6c6163f`.
+**Atlas baseline at ratification:** `derekrivers/atlas` `main` at `563d96a4b189d8d43fd57f7569d87513a6c6163f`.
 **Pinned Symphony feasibility baseline:** `derekrivers/symphony-1` `e5c5e48917e9e91ffb6709ab5a2a02c5af16bf02`.
 **Pinned Codex feasibility baseline:** `codex-cli 0.147.0`; generated app-server protocol fingerprint `35a2fe7f243d088c41a8151628232e2785abf2bfc341dd4b1c7bb789b1b5e226`.
-**Current operating disposition:** Phase 15.5 closed; ATLAS-253 open and paused before real workload admission; ordinary Atlas `main` remains Symphony ceiling one while Phase 15 is open.
+**Operating disposition at ratification:** Phase 15.5 closed; ATLAS-253 open and paused before real workload admission; ordinary Atlas `main` remains Symphony ceiling one while Phase 15 is open.
 **Canonical repository location:** `docs/atlas/phase-16-agent-runtime-and-integration-safety.md`.
 **Ticket identity rule:** all `P16-*`, `R16-*`, `M16-*` identifiers in this document are design slice identifiers only. Real `ATLAS-N` keys are minted later through `atlas plan` / operator review / `atlas apply`.
 
