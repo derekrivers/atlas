@@ -120,12 +120,11 @@
       "reason": "Root documentation changed."
     },
     {
-      "id": "linear-skill-contract",
-      "exact": [
-        ".codex/skills/linear/SKILL.md"
-      ],
+      "id": "repository-skill-contract",
+      "prefix": ".codex/skills/",
+      "suffixes": ["/SKILL.md"],
       "profiles": ["skill-contract"],
-      "reason": "Vendored Linear skill documentation changed."
+      "reason": "Repository Codex skill entrypoint changed."
     },
     {
       "id": "database-migrations",
