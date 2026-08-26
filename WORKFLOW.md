@@ -148,6 +148,22 @@ reporting. If it is missing, unreadable, ambiguous, or materially inconsistent
 with this executable spine, fail closed: do not change code, publish, or mutate
 tracker state.
 
+## Procedural skill routing
+
+After reading the canonical runbook above, load the procedural adapter selected
+by the current rendered state:
+
+| Current state | Required procedural skill |
+| --- | --- |
+| `Ready for Agent` | `atlas-ticket-execution` |
+| `In Progress` | `atlas-ticket-execution` |
+| `PR Open` | `atlas-ticket-execution` |
+| `Changes Requested` | `atlas-ticket-remediation` |
+
+These skills package the procedure; they cannot override `WORKFLOW.md` or the
+execution runbook. The ordinary execution skill must not handle `Changes
+Requested`. `CI Pending` is not an active route and has no procedural skill.
+
 ## Executable lifecycle spine
 
 The rendered issue identifier, title, state and description above establish the
