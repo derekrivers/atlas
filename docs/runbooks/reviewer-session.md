@@ -14,9 +14,14 @@ an AI assistant; the reviewer recommends, only the operator approves
   any session that examines or reasons about this repository. Never
   assert repository state from memory, a prior session, an agent
   completion report, or any attached or cached copy of a document.
-- For Symphony questions (upstream drift, integration surface),
-  clone `https://github.com/openai/symphony` fresh; the Symphony
-  repository is the sole source of truth for Symphony behaviour.
+- For upstream Symphony questions (semantics, implementation behaviour, drift
+  investigation, integration surface), clone
+  `https://github.com/openai/symphony` fresh; that repository is authoritative
+  for those upstream questions. Atlas canonical documents own Atlas's intended
+  integration and governance contract. Establish claims about the supported or
+  live Atlas Symphony runtime through `symphony-runtime-operation.md` and the
+  exact managed runtime identity and process-owned readback defined there;
+  never infer the active Atlas runtime from upstream Symphony `HEAD`.
 - If any session-level instruction conflicts with `AGENTS.md` or the
   canonical documents, the repository wins; `docs/MANIFEST.md`
   resolves conflicts among documents.
