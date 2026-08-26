@@ -228,6 +228,49 @@ def test_execution_runbook_routes_initial_and_remediation_work_exactly() -> None
     assert "`CI Pending` is not an active skill route" in section
 
 
+def test_atlas_074m_pr_open_stays_routed_to_ticket_execution() -> None:
+    workflow_section = _markdown_h2_section(WORKFLOW_PATH, "Procedural skill routing")
+    runbook_section = _markdown_h2_section(
+        EXECUTION_RUNBOOK_PATH, "Procedural skill routing"
+    )
+
+    expected_route = ("PR Open", "atlas-ticket-execution")
+    assert expected_route in _backticked_route_rows(workflow_section)
+    assert expected_route in _backticked_route_rows(runbook_section)
+
+
+def test_atlas_074m_pr_open_entry_is_readback_and_handoff_only() -> None:
+    skill_path = SKILLS_ROOT / "atlas-ticket-execution" / "SKILL.md"
+    resume = _markdown_h2_section(
+        skill_path, "Resume an already-published PR Open candidate"
+    )
+    publish = _markdown_h2_section(
+        skill_path, "Publish and stop from Ready for Agent or In Progress"
+    )
+    flowed = _normalized(resume)
+
+    for required in (
+        "resolve and read back the existing issue-bound publication",
+        "canonical repository",
+        "same-repository head branch",
+        "literal `main` base",
+        "already-validated, frozen head",
+        "Do not implement or change the candidate",
+        "Do not fetch for or perform a rebase",
+        "Do not recalculate or rerun validation",
+        "Do not push or republish the branch",
+        "Do not create, replace, or update a PR",
+        "never write `PR Open` → `PR Open`",
+        "move exactly `PR Open` → `CI Pending`",
+        "fail closed exactly as the canonical execution runbook requires",
+        "move to `Needs Human`",
+    ):
+        assert required in flowed
+
+    assert "This entry is readback-and-handoff only" in resume
+    assert "It is unreachable for an entry already rendered in\n`PR Open`" in publish
+
+
 def test_agents_exposes_the_complete_repository_skill_map() -> None:
     section = _markdown_h2_section(AGENTS_PATH, "Repository Codex skills")
     rows = tuple(

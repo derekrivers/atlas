@@ -45,8 +45,35 @@ this skill does not handle `Changes Requested`.
 For a `Ready for Agent` entry, use `linear` to resolve the governed state UUID,
 move to `In Progress`, create the ticket branch from the fetched exact
 `origin/main`, verify its identities, and begin. An `In Progress` entry resumes
-the bounded implementation. A `PR Open` entry performs only the publication
-readback and handoff below.
+the bounded implementation. A `PR Open` entry must follow only the dedicated
+readback-and-handoff section below; it must not continue into implementation,
+candidate preparation, validation, or publication.
+
+## Resume an already-published PR Open candidate
+
+When the rendered current state is already `PR Open`, resolve and read back the
+existing issue-bound publication using the execution runbook's trusted
+publication predicate and authenticated native `gh` path. Require the rendered
+issue, canonical repository, single existing PR, same-repository head branch,
+literal `main` base, and full contributor head to agree with the assigned
+workspace and its already-validated, frozen head.
+
+This entry is readback-and-handoff only:
+
+- Do not implement or change the candidate.
+- Do not fetch for or perform a rebase.
+- Do not recalculate or rerun validation.
+- Do not push or republish the branch.
+- Do not create, replace, or update a PR.
+- Do not transition to `PR Open` again; never write `PR Open` → `PR Open`.
+
+If every required identity and publication fact is coherent, use `linear` to
+resolve the governed `CI Pending` state UUID, move exactly `PR Open` →
+`CI Pending`, and stop in the same turn. If any identity or evidence is missing,
+incomplete, ambiguous, or inconsistent, fail closed exactly as the canonical
+execution runbook requires: post one bounded blocker comment, move to
+`Needs Human`, and stop without implementation, repository mutation,
+publication mutation, or a handoff transition.
 
 ## Implement and freeze one candidate
 
@@ -65,7 +92,12 @@ readback and handoff below.
   replace, narrow, or supplement validation commands. A failed selected command
   or explicit test prevents publication and leaves the ticket `In Progress`.
 
-## Publish and stop
+## Publish and stop from Ready for Agent or In Progress
+
+This section applies only to a candidate that arrived through `Ready for Agent`
+or `In Progress`, completed the implementation path above, and passed the exact
+frozen validation plan. It is unreachable for an entry already rendered in
+`PR Open`.
 
 After the exact frozen candidate passes its selected plan:
 
