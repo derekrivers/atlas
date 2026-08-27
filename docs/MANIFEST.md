@@ -27,6 +27,9 @@ Strategy and specification (`docs/atlas/`):
   after Phase 12: bounded authority progression, dependencies, planning gates
   and milestone outcomes through the Atlas-managing-Atlas capstone
 - `agentic-engineering-programme-design.md` — cumulative programme architecture horizon and research/design authority for Phases 16–22; while Phase 15 remains open it supplies the controlled Phase-16 overlap rulings without yet triggering full horizon supersession
+- `knowledge-context-consolidation.md` — dedicated canonical design authority
+  for deterministic authority selection, planner/context projections,
+  measurement, semantic freshness and preservation-first consolidation
 - `bootstrap-guide.md` — day-one bootstrap guide
 - `symphony-integration.md` — delivered Phase 8, Phase 12 and Phase 15.5
   architecture: state mapping, context delivery, authority boundaries,

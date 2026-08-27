@@ -161,6 +161,11 @@ It includes:
 
 The Knowledge System ensures Atlas does not depend on any model remembering previous work.
 
+`docs/atlas/knowledge-context-consolidation.md` owns the dedicated programme
+for keeping growing knowledge deterministic, authority-complete, measurable
+and fresh without deleting history or turning generated projections into a
+second source of truth.
+
 ---
 
 ## 8. Planning Engine
