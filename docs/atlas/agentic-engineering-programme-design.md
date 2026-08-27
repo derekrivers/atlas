@@ -21,6 +21,17 @@
 
 **Dedicated Phase 16 design incorporation:** 20 August 2026. The completed multi-pass dedicated Phase 16 design, `Atlas Phase 16 — Agent Runtime and Integration Safety`, is now incorporated into this cumulative horizon at programme-decision level. Its working artifact SHA-256 is `f00fd36e8492dfdebedee2cad163ce6a5706333990616c442555be24b7c9a43e`; at incorporation time, its intended repository destination after operator acceptance was `docs/atlas/phase-16-agent-runtime-and-integration-safety.md`, where it subsequently landed as the canonical design. The dedicated design resolves the remaining Phase 16 architecture choices around repository ownership, runtime transport identity, work-shape versus production topology, effect-policy execution, ticket-size discipline, ATLAS-253 overlap and evidence-only milestones. This incorporation does **not** itself activate Phase 16 runtime authority, restart Symphony, change the Phase 15 ramp, mint tickets or substitute for explicit operator acceptance of the dedicated design.
 
+**Knowledge & Context Consolidation incorporation:** 27 August 2026. The
+operator-ratified `docs/atlas/knowledge-context-consolidation.md` is the
+dedicated canonical design authority for authority selection, planner and
+current-state projections, measurement, semantic freshness and
+preservation-first programme consolidation. This cumulative document remains
+at its current path and its body/history are not migrated by adoption; the
+dedicated design owns that new programme's detailed architecture and sequence.
+The programme does not block the ATLAS-253 live ramp unless a separately
+ratified dependency emerges, and adoption adds no implementation or runtime
+authority.
+
 
 
 ---
@@ -298,6 +309,17 @@ The horizon now records the following programme decisions explicitly:
 This cumulative horizon owns programme-wide intent, authority boundaries, research-derived rulings, phase gates and the binding architectural conclusions above.
 
 The dedicated Phase 16 design owns detailed Phase 16 protocol/model shapes, sequencing, repository-specific implementation tracks, failure precedence, rollout mechanics and decomposition. The horizon intentionally does **not** copy the entire dedicated design. Future changes to detailed implementation that preserve these programme invariants belong in the dedicated design; changes to authority, trust, phase sequencing, repository ownership, topology activation, effect non-bypassability, interface semantics or human/operator control must return to this horizon/ADR-level review.
+
+## 0.8 Knowledge & Context Consolidation ownership rule
+
+`docs/atlas/knowledge-context-consolidation.md` owns the detailed Knowledge &
+Context Consolidation architecture, rejected approaches, invariants and wave
+ordering. This cumulative programme document remains the compatibility and
+preservation baseline during the v1 migration; its research, experiments,
+decisions, supersession history, threat model, metrics and references are not
+deleted, moved or silently reinterpreted to reduce planner context. Any future
+programme-document split follows the dedicated design's selection/resolution
+infrastructure and preservation gates rather than this incorporation record.
 
 # 0A. Architecture review findings and corrections
 
