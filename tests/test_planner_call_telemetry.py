@@ -12,24 +12,26 @@ from pydantic import ValidationError
 
 from atlas.core.models import (
     MeasurementAvailability,
+    PlannerLogicalCall,
+    PlannerPhysicalTransportAttempt,
+    PlanningExecution,
+    PlanningExecutionOutcome,
+    PlanRun,
+    PlanRunStatus,
+)
+from atlas.core.models.planner_call_telemetry import (
     OptionalTimingValue,
     PlannerExecutionParameters,
     PlannerIdentity,
     PlannerInputIdentity,
-    PlannerLogicalCall,
     PlannerLogicalCallIdentity,
     PlannerPayloadSize,
     PlannerPhysicalAttemptIdentity,
-    PlannerPhysicalTransportAttempt,
     PlannerPostResponseDisposition,
     PlannerPromptSegmentSize,
     PlannerPromptTemplateIdentity,
     PlannerProviderUsage,
-    PlanningExecution,
     PlanningExecutionIdentity,
-    PlanningExecutionOutcome,
-    PlanRun,
-    PlanRunStatus,
     ProviderUsageValue,
 )
 

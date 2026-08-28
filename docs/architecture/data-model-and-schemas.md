@@ -919,8 +919,10 @@ CREATE TABLE plan_runs (
 
 Planner request evidence has its own identity hierarchy. It does not widen or
 replace `PlanRun`, and this contract release adds no table or repository. The
-models live in `atlas.core.models.planner_call_telemetry` and are exported
-through the `atlas.core.models` package. Their schema versions are:
+models live in `atlas.core.models.planner_call_telemetry`. The four primary
+contracts are exported through the `atlas.core.models` package and the
+repository-owned canonical JSON Schema exporter; supporting value objects are
+nested in those schemas. Their schema versions are:
 
 | Contract | Schema version |
 | --- | --- |

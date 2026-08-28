@@ -1,0 +1,328 @@
+{
+  "$defs": {
+    "MeasurementAvailability": {
+      "description": "Whether Atlas measured one optional timing value.",
+      "enum": [
+        "measured",
+        "unsupported",
+        "unavailable"
+      ],
+      "title": "MeasurementAvailability",
+      "type": "string"
+    },
+    "OptionalTimingValue": {
+      "additionalProperties": false,
+      "description": "One optional millisecond timing with explicit missing semantics.",
+      "properties": {
+        "availability": {
+          "$ref": "#/$defs/MeasurementAvailability",
+          "default": "unavailable"
+        },
+        "value_ms": {
+          "anyOf": [
+            {
+              "maximum": 9223372036854775807,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Value Ms"
+        }
+      },
+      "title": "OptionalTimingValue",
+      "type": "object"
+    },
+    "PlannerLogicalCallIdentity": {
+      "additionalProperties": false,
+      "description": "Composite logical-call identity beneath one execution and stage.",
+      "properties": {
+        "execution": {
+          "$ref": "#/$defs/PlanningExecutionIdentity"
+        },
+        "logical_attempt_no": {
+          "maximum": 9223372036854775807,
+          "minimum": 1,
+          "title": "Logical Attempt No",
+          "type": "integer"
+        },
+        "stage": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Stage",
+          "type": "string"
+        }
+      },
+      "required": [
+        "execution",
+        "stage",
+        "logical_attempt_no"
+      ],
+      "title": "PlannerLogicalCallIdentity",
+      "type": "object"
+    },
+    "PlannerPayloadSize": {
+      "additionalProperties": false,
+      "description": "Exact UTF-8 byte and Unicode character counts for one payload.",
+      "properties": {
+        "byte_count": {
+          "maximum": 9223372036854775807,
+          "minimum": 0,
+          "title": "Byte Count",
+          "type": "integer"
+        },
+        "character_count": {
+          "maximum": 9223372036854775807,
+          "minimum": 0,
+          "title": "Character Count",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "byte_count",
+        "character_count"
+      ],
+      "title": "PlannerPayloadSize",
+      "type": "object"
+    },
+    "PlannerPhysicalAttemptIdentity": {
+      "additionalProperties": false,
+      "description": "Composite physical-attempt identity beneath one logical call.",
+      "properties": {
+        "logical_call": {
+          "$ref": "#/$defs/PlannerLogicalCallIdentity"
+        },
+        "physical_attempt_no": {
+          "maximum": 9223372036854775807,
+          "minimum": 1,
+          "title": "Physical Attempt No",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "logical_call",
+        "physical_attempt_no"
+      ],
+      "title": "PlannerPhysicalAttemptIdentity",
+      "type": "object"
+    },
+    "PlannerPostResponseDisposition": {
+      "additionalProperties": false,
+      "description": "Parse, schema, and gate outcomes for one provider response.",
+      "properties": {
+        "gate": {
+          "$ref": "#/$defs/PlannerProcessingDisposition",
+          "default": "not_reached"
+        },
+        "parse": {
+          "$ref": "#/$defs/PlannerProcessingDisposition",
+          "default": "not_reached"
+        },
+        "schema_validation": {
+          "$ref": "#/$defs/PlannerProcessingDisposition",
+          "default": "not_reached"
+        }
+      },
+      "title": "PlannerPostResponseDisposition",
+      "type": "object"
+    },
+    "PlannerProcessingDisposition": {
+      "description": "Outcome of a post-response processing boundary.",
+      "enum": [
+        "not_reached",
+        "passed",
+        "failed",
+        "not_applicable"
+      ],
+      "title": "PlannerProcessingDisposition",
+      "type": "string"
+    },
+    "PlannerProviderUsage": {
+      "additionalProperties": false,
+      "description": "Closed provider usage families; every absent family stays explicit.",
+      "properties": {
+        "cache_creation_input_tokens": {
+          "$ref": "#/$defs/ProviderUsageValue"
+        },
+        "cache_read_input_tokens": {
+          "$ref": "#/$defs/ProviderUsageValue"
+        },
+        "input_tokens": {
+          "$ref": "#/$defs/ProviderUsageValue"
+        },
+        "output_tokens": {
+          "$ref": "#/$defs/ProviderUsageValue"
+        },
+        "reasoning_tokens": {
+          "$ref": "#/$defs/ProviderUsageValue"
+        }
+      },
+      "title": "PlannerProviderUsage",
+      "type": "object"
+    },
+    "PlannerRetryCategory": {
+      "description": "Bounded reason a failed physical request may lead to another attempt.",
+      "enum": [
+        "none",
+        "connection",
+        "timeout",
+        "rate_limit",
+        "provider_overloaded",
+        "provider_error",
+        "unknown"
+      ],
+      "title": "PlannerRetryCategory",
+      "type": "string"
+    },
+    "PlannerTransportDisposition": {
+      "description": "Terminal transport result for one physical provider request.",
+      "enum": [
+        "succeeded",
+        "failed"
+      ],
+      "title": "PlannerTransportDisposition",
+      "type": "string"
+    },
+    "PlanningExecutionIdentity": {
+      "additionalProperties": false,
+      "description": "Durable identity created only after deterministic preflight succeeds.",
+      "properties": {
+        "execution_id": {
+          "format": "uuid",
+          "title": "Execution Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "execution_id"
+      ],
+      "title": "PlanningExecutionIdentity",
+      "type": "object"
+    },
+    "ProviderEvidenceAvailability": {
+      "description": "Whether a provider supplied one exact usage value.",
+      "enum": [
+        "reported",
+        "unsupported",
+        "unavailable"
+      ],
+      "title": "ProviderEvidenceAvailability",
+      "type": "string"
+    },
+    "ProviderUsageValue": {
+      "additionalProperties": false,
+      "description": "One honest provider token value; missing never means zero.",
+      "properties": {
+        "availability": {
+          "$ref": "#/$defs/ProviderEvidenceAvailability",
+          "default": "unavailable"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "maximum": 9223372036854775807,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Value"
+        }
+      },
+      "title": "ProviderUsageValue",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Bounded terminal evidence for one physical provider request.",
+  "properties": {
+    "identity": {
+      "$ref": "#/$defs/PlannerPhysicalAttemptIdentity"
+    },
+    "output_size": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/PlannerPayloadSize"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "processing": {
+      "$ref": "#/$defs/PlannerPostResponseDisposition"
+    },
+    "provider_usage": {
+      "$ref": "#/$defs/PlannerProviderUsage"
+    },
+    "resulting_plan_run_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Resulting Plan Run Id"
+    },
+    "retry_category": {
+      "$ref": "#/$defs/PlannerRetryCategory"
+    },
+    "schema_version": {
+      "const": "planner-physical-transport-attempt/v1",
+      "default": "planner-physical-transport-attempt/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "started_at": {
+      "format": "date-time",
+      "title": "Started At",
+      "type": "string"
+    },
+    "stop_reason": {
+      "anyOf": [
+        {
+          "maxLength": 256,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Stop Reason"
+    },
+    "time_to_first_token": {
+      "$ref": "#/$defs/OptionalTimingValue"
+    },
+    "transport_disposition": {
+      "$ref": "#/$defs/PlannerTransportDisposition"
+    },
+    "wall_latency_ms": {
+      "maximum": 9223372036854775807,
+      "minimum": 0,
+      "title": "Wall Latency Ms",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "identity",
+    "started_at",
+    "transport_disposition",
+    "wall_latency_ms",
+    "retry_category"
+  ],
+  "title": "PlannerPhysicalTransportAttempt",
+  "type": "object"
+}
