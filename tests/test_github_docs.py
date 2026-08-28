@@ -55,9 +55,9 @@ def test_normalise_pr_files_with_docs_change_pins_triple_and_lists_paths() -> No
     # docs_paths are exactly the docs/ filenames, sorted -- nothing else
     assert docs.docs_paths == ("docs/guide.md", "docs/index.md")
 
-    # the synthesised pin triple = (f"docs:{head_sha}", head_sha, hash-of-subset)
+    # the v2 pin permits append-only recovery beside a legacy docs:<head> row.
     expected_subset = {"files": [_file("docs/guide.md"), _file("docs/index.md")]}
-    assert docs.external_run_id == f"docs:{HEAD_SHA}"
+    assert docs.external_run_id == f"docs:v2:{HEAD_SHA}"
     assert docs.commit_sha == HEAD_SHA
     assert docs.payload_hash == payload_hash(expected_subset)
     # raw_payload carries the docs subset only (not the excluded files)
@@ -125,7 +125,7 @@ def test_recorded_pr_files_normalise_to_the_docs_subset() -> None:
     assert docs.status == EvidenceStatus.PASSED
     assert docs.docs_paths == FIXTURE_DOCS_PATHS
     # the synthesised pin is over the head SHA, deterministic over the subset
-    assert docs.external_run_id == f"docs:{HEAD_SHA}"
+    assert docs.external_run_id == f"docs:v2:{HEAD_SHA}"
     assert docs.commit_sha == HEAD_SHA
     assert docs.dedup_key == (docs.external_run_id, docs.payload_hash)
 

@@ -13,7 +13,10 @@ from atlas.core.models.ci_handoff_reconciliation import (
     CIHandoffReason,
 )
 from atlas.core.trust import evidence_tier
-from atlas.verification.documentation_check import evaluate_documentation_check
+from atlas.verification.documentation_check import (
+    documentation_path_authority,
+    evaluate_documentation_check,
+)
 from atlas.verification.machine_checks import (
     MACHINE_CHECK_EVIDENCE,
     MACHINE_CHECK_TYPES,
@@ -165,9 +168,7 @@ def _documentation_result(
             if all_system
             else CIHandoffClassification.MISSING
         )
-    elif any(
-        not isinstance(record.raw_payload.get("files"), list) for record in at_head
-    ):
+    elif documentation_path_authority(at_head).malformed:
         classification = CIHandoffClassification.MALFORMED
     else:
         classification = CIHandoffClassification.MISSING

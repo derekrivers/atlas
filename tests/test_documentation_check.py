@@ -42,6 +42,7 @@ def make_docs_evidence(
     *,
     filenames: list[str] | None = None,
     raw_payload: dict[str, Any] | None = None,
+    docs_paths: tuple[str, ...] | None = None,
     created_by_type: ActorType = ActorType.SYSTEM,
     commit_sha: str | None = HEAD,
     created_at: datetime = NOW,
@@ -56,6 +57,11 @@ def make_docs_evidence(
     if raw_payload is None:
         files = [{"filename": name} for name in (filenames or [])]
         raw_payload = {"files": files}
+    external_run_id = (
+        f"docs:v2:{commit_sha}"
+        if docs_paths is not None and commit_sha is not None
+        else None
+    )
     return Evidence(
         id=id or uuid4(),
         product_id=uuid4(),
@@ -63,7 +69,10 @@ def make_docs_evidence(
         status=ES.PASSED,  # DOCUMENTATION_UPDATE is always PASSED-by-presence
         summary="docs updated",
         commit_sha=commit_sha,
+        external_run_id=external_run_id,
+        payload_hash="a" * 64 if external_run_id is not None else None,
         raw_payload=raw_payload,
+        docs_paths=docs_paths,
         created_by_type=created_by_type,
         created_by_id="github-actions"
         if created_by_type == ActorType.SYSTEM
@@ -85,6 +94,42 @@ def test_system_doc_covering_required_path_passes() -> None:
     assert result.check_type == VerificationCheckType.DOCUMENTATION
 
 
+def test_structured_paths_remain_authority_when_raw_payload_is_capped() -> None:
+    record = make_docs_evidence(
+        docs_paths=(REQUIRED,),
+        raw_payload={
+            "_truncated": True,
+            "_original_bytes": 70000,
+            "_payload_hash": "a" * 64,
+            "_source_uri": None,
+        },
+    )
+
+    result = evaluate_documentation_check(
+        [REQUIRED], head_commit=HEAD, evidence=[record]
+    )
+
+    assert result.status is ES.PASSED
+    assert result.evidence_id == record.id
+
+
+def test_structured_v2_projection_excludes_capped_legacy_history() -> None:
+    legacy = make_docs_evidence(
+        raw_payload={"_truncated": True, "_original_bytes": 70000}
+    )
+    structured = make_docs_evidence(
+        docs_paths=(REQUIRED,),
+        raw_payload={"_truncated": True, "_original_bytes": 70000},
+    )
+
+    result = evaluate_documentation_check(
+        [REQUIRED], head_commit=HEAD, evidence=[legacy, structured]
+    )
+
+    assert result.status is ES.PASSED
+    assert result.evidence_id == structured.id
+
+
 # --- AC2: a record covering only NON-required paths -> PENDING.
 def test_system_doc_covering_only_non_required_path_is_pending() -> None:
     record = make_docs_evidence(filenames=[OTHER_PATH])
@@ -94,6 +139,16 @@ def test_system_doc_covering_only_non_required_path_is_pending() -> None:
 
     # wrong answer: PASSED — the required doc was not touched, only an unrelated one.
     assert result.status == ES.PENDING
+    assert result.evidence_id is None
+
+
+def test_structured_path_matching_remains_exact() -> None:
+    record = make_docs_evidence(docs_paths=(OTHER_PATH,))
+    result = evaluate_documentation_check(
+        [REQUIRED], head_commit=HEAD, evidence=[record]
+    )
+
+    assert result.status is ES.PENDING
     assert result.evidence_id is None
 
 
@@ -202,6 +257,30 @@ def test_malformed_payload_contributes_no_coverage_and_is_pending(
 
     # wrong answer: PASSED (coverage read from a malformed payload) or a raise.
     assert result.status == ES.PENDING
+    assert result.evidence_id is None
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"docs_paths": None},
+        {"docs_paths": ()},
+        {"docs_paths": ("../docs/verification-engine.md",)},
+        {"docs_paths": (REQUIRED, REQUIRED)},
+        {"external_run_id": f"docs:v2:{OTHER}"},
+    ],
+)
+def test_malformed_structured_projection_never_raises_or_passes(
+    changes: dict[str, Any],
+) -> None:
+    valid = make_docs_evidence(docs_paths=(REQUIRED,))
+    malformed = valid.model_copy(update=changes)
+
+    result = evaluate_documentation_check(
+        [REQUIRED], head_commit=HEAD, evidence=[malformed]
+    )
+
+    assert result.status is ES.PENDING
     assert result.evidence_id is None
 
 

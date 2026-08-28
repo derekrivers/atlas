@@ -52,8 +52,21 @@ For each required check on ticket T with PR head commit C:
   machine checks to PENDING. Agent-tier evidence is ignored entirely.
   BUILD/COVERAGE evidence is ingested but is not a v1
   `VerificationCheckType`.
-- **documentation:** a DOCUMENTATION_UPDATE record for C covering at least
-  one path named in `documentation_requirements`.
+- **documentation:** a system-tier DOCUMENTATION_UPDATE record for C covering
+  at least one path named in `documentation_requirements`. New-format
+  `docs:v2:<C>` evidence takes its bounded structured `docs_paths` projection as
+  authority. The projection must be a non-empty sorted unique set of at most
+  256 canonical repository-relative `docs/` paths, each at most 240 characters,
+  and the versioned identity must agree exactly with C. When any structured
+  observation exists at C, legacy observations at that head are excluded from
+  path authority; this lets a valid append-only recovery record coexist with a
+  previously capped legacy row. Only when no structured observation exists may
+  a legacy small record fall back to a wholly valid retained
+  `raw_payload["files"][*]["filename"]` projection. A capped legacy row,
+  malformed projection, contradictory version/head identity, empty path set or
+  unavailable path form proves nothing. Required-path matching remains exact;
+  no prefix, glob, truncation or inferred coverage is permitted. In findings
+  mode (empty requirements), a valid non-empty projection is still required.
 - **acceptance_criteria (v1, honest):** operator-confirmed.
   `atlas verify <KEY>` presents each criterion as a checklist; the
   operator's confirmations are recorded as human-tier evidence per
@@ -128,7 +141,11 @@ every deciding failed record has GitHub conclusion `failure`; one failure
 alongside a missing, pending or uncertain member remains held. Provider
 timeout/cancellation, old-head records, missing source ordering, tied
 contradictory observations and unknown conclusions never become a code-failure
-verdict.
+verdict. Documentation classification uses the same structured-first path
+authority as the documentation evaluator: a valid current-head v2 projection
+is not malformed merely because its own raw payload, or a legacy row beside it,
+was capped. Selected malformed or unavailable structured/legacy path evidence
+retains the typed fail-closed hold.
 
 This projection returns a bounded assessment and performs no write. The PM
 handoff operation owns the separately fenced `ci_pending → review_required` or

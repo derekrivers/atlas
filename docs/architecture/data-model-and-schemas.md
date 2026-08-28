@@ -663,6 +663,9 @@ class Evidence(BaseModel):
     payload_hash: Optional[str] = None    # SHA-256 of raw payload at ingestion
     source_uri: Optional[str] = None
     raw_payload: dict = Field(default_factory=dict)
+    docs_paths: Optional[tuple[str, ...]] = Field(
+        default=None, min_length=1, max_length=256
+    ) # each path canonical, under docs/, sorted/unique, max 240 chars
     created_by_type: ActorType
     created_by_id: str
     created_at: datetime
@@ -686,11 +689,24 @@ CREATE TABLE evidence (
     payload_hash TEXT,
     source_uri TEXT,
     raw_payload JSONB NOT NULL DEFAULT '{}',
+    docs_paths JSONB, -- nullable: legacy/unavailable; bounded by the model
     created_by_type TEXT NOT NULL,
     created_by_id TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL
 );
 ```
+
+`docs_paths` is the retention-independent projection for new-format
+DOCUMENTATION_UPDATE evidence. Null preserves historical records without a
+backfill. A non-null value is valid only for DOCUMENTATION_UPDATE, must contain
+1–256 sorted unique canonical repository-relative paths under `docs/`, and each
+path is limited to 240 characters. Its source identity is exactly
+`docs:v2:<commit_sha>`; this versioned identity permits one append-only recovery
+observation beside an unchanged legacy `docs:<commit_sha>` row while subsequent
+identical v2 pulls continue to deduplicate by `(external_run_id, payload_hash)`.
+The full upstream documentation subset still determines `payload_hash`, and
+the 64KB `raw_payload` cap does not alter `docs_paths`. No migration backfills,
+updates or reinterprets historical Evidence rows.
 
 ---
 

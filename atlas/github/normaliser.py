@@ -316,8 +316,8 @@ class NormalisedDocs:
 
         Same contract as :attr:`NormalisedCheck.dedup_key`: re-polling the same
         head SHA's unchanged file list yields the same ``(external_run_id,
-        payload_hash)``; a new commit (new ``docs:<sha>`` id) or an edited file
-        set (new ``payload_hash``) yields a new key.
+        payload_hash)``; a new commit (new ``docs:v2:<sha>`` id) or an edited
+        file set (new ``payload_hash``) yields a new key.
         """
         return (self.external_run_id, self.payload_hash)
 
@@ -336,8 +336,9 @@ def normalise_pr_files(
 
     * ``docs_paths`` -- the touched ``docs/`` filenames, sorted (deterministic);
     * ``commit_sha`` -- the polled ``head_sha`` (the files endpoint omits it);
-    * ``external_run_id`` -- the synthesised ``f"docs:{head_sha}"`` (there is no
-      GitHub run id for a file list; this pins the record to the head SHA);
+    * ``external_run_id`` -- the synthesised ``f"docs:v2:{head_sha}"`` (there is
+      no GitHub run id for a file list; this pins the structured record to the
+      head SHA while allowing one append-only recovery after a legacy pull);
     * ``payload_hash`` -- the deterministic hash of the ``docs/`` subset only, so
       an unrelated non-docs file changing does not churn the docs record;
     * ``source_uri`` -- ``None`` (a file list has no single browser URL);
@@ -354,7 +355,7 @@ def normalise_pr_files(
     return NormalisedDocs(
         status=EvidenceStatus.PASSED,
         docs_paths=tuple(sorted(str(file["filename"]) for file in docs_files)),
-        external_run_id=f"docs:{head_sha}",
+        external_run_id=f"docs:v2:{head_sha}",
         commit_sha=head_sha,
         payload_hash=payload_hash(subset),
         source_uri=None,
