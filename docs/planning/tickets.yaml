@@ -1,7 +1,7 @@
 # Render written only by `atlas apply` (ADR-0006/0007); do not hand-edit.
-# plan_run_id: 75bb371e-109f-486d-b5a3-5e9a2e9f6045
+# plan_run_id: 657ed256-2221-4461-968c-563363105cde
 # prompt_version: stubs-only
-# ticket_key_high_water: 281
+# ticket_key_high_water: 289
 # epic_key_high_water: 13
 tickets:
 - id: 06701bee-33ed-44e6-b735-52dfd7c5edc8
@@ -12191,7 +12191,7 @@ tickets:
   title: Phase 16 runtime transport and canonical event envelope contracts
   objective: Define the bounded RuntimeTransportEvent and RuntimeEvent contracts that separate Symphony-owned source identity from Atlas-owned canonical ticket/product identity.
   context: Experiment E and the dedicated design establish that Symphony knows runtime/issue identity but must not open Atlas storage to invent product/ticket UUIDs. Section 9 therefore separates the source transport envelope from the canonical Atlas event. This ticket defines only those envelopes and canonical fingerprint primitives; import, duplicate reconciliation and persistence are later composition work.
-  status: review_required
+  status: done
   ticket_type: feature
   risk_level: high
   priority: 50
@@ -12227,16 +12227,16 @@ tickets:
   - contract
   component: runtime-event-contract
   linear_synced_at: '2026-08-20T09:08:00.028884Z'
-  last_observed_linear_state_id: cf16f7da-6193-4dbf-b8fd-fa75dc9a16d7
-  status_entered_at: '2026-08-20T14:34:06.675383Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-08-26T09:47:36.855228Z'
   review_cycle_count: 0
-  lesson_extraction_attempted_at: null
+  lesson_extraction_attempted_at: '2026-08-26T09:47:36.855228Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-02-runtime-event-envelopes.md#phase-16-runtime-transport-and-canonical-event-envelope-contracts
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-08-20T09:08:00.028884Z'
   updated_at: '2026-08-20T09:08:00.028884Z'
-  completed_at: null
+  completed_at: '2026-08-26T09:47:36.855228Z'
 - id: 8dbf9625-bfe7-4341-93a3-8eb66120b875
   product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
   epic_id: 4d034c8b-0752-4089-8ff9-2fd43f51c6f4
@@ -12990,7 +12990,7 @@ tickets:
   title: Phase 15 ramp v2 exercise-workload evidence binding
   objective: Make the ATLAS-253 milestone validator fail closed unless deliberate protected-lane exercises are bound to predeclared real exercise workloads classified against the pinned repository protected-lane registry, while preserving the >10 independent ordinary workload pool and the validator's offline/read-only, non-authoritative semantics.
   context: 'The current phase-15-ramp-workload-v1 contract accepts arbitrary manifest lane strings and lets a receipt claim protected-lane occupancy and passed exercise evidence for undeclared identities such as META-GATE-*. The stock fixture can therefore validate a complete gate sequence without binding a protected-lane owner or blocked candidate to any pre-ratified real workload. This is a harness/contract defect, not merely a bad live manifest. This bounded repair is an implementation prerequisite to resuming ATLAS-253: the milestone remains operator-paused at the proven Attempt-3 ceiling 1 / turns 10 identity until the repair is accepted and its live v2 contract is separately re-ratified. The ticket does not perform that re-ratification or any live exercise.'
-  status: planned
+  status: done
   ticket_type: infrastructure
   risk_level: critical
   priority: 50
@@ -13043,16 +13043,16 @@ tickets:
   - evidence-binding
   component: delivery-control
   linear_synced_at: '2026-08-22T12:05:25.489697Z'
-  last_observed_linear_state_id: 85cdfa65-b990-41cc-a4ea-0071868ba27f
-  status_entered_at: null
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-08-23T09:05:27.558731Z'
   review_cycle_count: 0
-  lesson_extraction_attempted_at: null
+  lesson_extraction_attempted_at: '2026-08-23T09:05:27.558731Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-01-phase-15-ramp-v2-exercise-workload-evidence-binding.md#phase-15-ramp-v2-exercise-workload-evidence-binding
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-08-22T12:05:25.489697Z'
   updated_at: '2026-08-22T12:05:25.489697Z'
-  completed_at: null
+  completed_at: '2026-08-23T09:05:27.558731Z'
 - id: fc932a13-b0c3-41f5-801d-98b62597aeb9
   product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
   epic_id: e0d47d14-bbd1-4d5d-96bc-f9e7adfeb3cf
@@ -13060,7 +13060,7 @@ tickets:
   title: Evidence-backed Planned-to-CI-Pending mirror recovery after governed admission
   objective: Allow Atlas to recover its local ticket mirror from Planned directly to CI Pending only when durable system-owned evidence uniquely proves that Atlas previously admitted that exact ticket and the same Linear issue subsequently published the exact issue-bound PR, while preserving the existing fail-closed ownership rules and CI-handoff authority.
   context: The ATLAS-280 live run exposed a legitimate poll-compression race. Atlas selected and admitted the ticket through the governed revision-16 admission path, whose confirmed Ready for Agent write intentionally left the local mirror at Planned for the next pull. Symphony claimed the same Linear issue and reached publication and CI Pending before another PM pull observed any intermediate state. Generic pull then correctly rejected Planned to CI Pending as out of ownership. Atlas retains the exact successful AdmissionRun, its uniquely correlated successful PM receipt and the coherent issue-bound GitHub publication, but no sanctioned predicate can currently use that chain. DebtItem 26bfc848f7a94287be73c7c2de12ed44 is correct append-only historical evidence. ATLAS-253 remains paused and this ticket grants no live recovery, milestone, policy, runtime or tracker mutation by itself.
-  status: planned
+  status: done
   ticket_type: infrastructure
   risk_level: critical
   priority: 50
@@ -13102,7 +13102,7 @@ tickets:
   definition_of_done:
   - All seven acceptance criteria have focused deterministic evidence; the dedicated recovery remains exact, local-only, immutable, idempotent and fail-closed; existing poll compression and ATLAS-256 exit authority remain unchanged; canonical documentation is coherent; repository-selected validation passes; and ATLAS-253 remains paused.
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: 4b24c888-7e10-4b75-8f97-b60cdc0893ea
   external_github_issue_id: null
   tags:
   - phase-15
@@ -13111,14 +13111,453 @@ tickets:
   - mirror-recovery
   - admission-evidence
   component: delivery-control
-  linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  linear_synced_at: '2026-08-22T15:37:53.748722Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-08-25T11:57:55.508715Z'
   review_cycle_count: 0
-  lesson_extraction_attempted_at: null
+  lesson_extraction_attempted_at: '2026-08-25T11:57:55.508715Z'
   source_anchor: docs/planning/inbox/processed/inbox-stub-01-planned-ci-pending-mirror-recovery.md#evidence-backed-planned-to-ci-pending-mirror-recovery-after-governed-admission
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-08-22T15:37:53.748722Z'
   updated_at: '2026-08-22T15:37:53.748722Z'
+  completed_at: '2026-08-25T11:57:55.508715Z'
+- id: a817381e-c631-464c-84b5-c68580bc0656
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 5bd967eb-98c0-42a6-bec3-042a34145078
+  key: ATLAS-282
+  title: Planner call telemetry and PlanningExecution identity contracts
+  objective: Define the bounded provider-neutral execution, logical-call and physical-attempt contracts that let Atlas describe every planner provider request without retaining prompt contents, fabricating a PlanRun or inventing unavailable provider data.
+  context: Wave 1 begins with measurement. Today PlannerClient returns only text, transport retries are hidden inside the Anthropic adapter, and PlanRun is legally created only after provider output exists. A request that exhausts transport retries therefore has no durable evidence owner. This ticket defines a separate PlanningExecution identity after deterministic preflight freezes the exact inputs and planner identity, while preserving the existing PlanRun lifecycle and apply semantics.
+  status: planned
+  ticket_type: feature
+  risk_level: high
+  priority: 50
+  relevant_docs:
+  - docs/atlas/knowledge-context-consolidation.md
+  - docs/atlas/planning-engine-specification.md
+  - docs/architecture/data-model-and-schemas.md
+  acceptance_criteria:
+  - Immutable, versioned execution/logical-call/physical-attempt/outcome contracts represent PlanningExecution identity, stage, logical attempt, physical transport attempt, provider/model, prompt/template version, exact input identity, prompt byte/character count, named segment sizes, output size, provider usage families, stop reason, wall latency, optional time-to-first-token, retry category and parse/schema/gate disposition.
+  - Provider-specific usage fields are optional with an explicit unsupported or unavailable representation; missing cache, reasoning, timing or token values are never converted to zero or estimated.
+  - After deterministic planning preflight succeeds and exact input hashes, planner identity, prompt/template identity and execution parameters are frozen, one durable PlanningExecution identity exists before the first physical provider request; failures before that boundary create neither an execution nor physical-attempt evidence.
+  - PlanningExecution is not applyable, may remain visibly non-terminal after interruption, records a terminal failed outcome when execution ends before a PlanRun may legally exist, and records the exact optional resulting PlanRun identity when one is produced.
+  - The existing PlanRun proposed/applied/rejected/failed vocabulary, post-output insertion contract, immutable provenance fields and atlas apply eligibility are unchanged; provider failure before raw output continues to create no PlanRun.
+  - Contract serialization and fingerprints are deterministic and exclude raw prompts, raw provider payloads, credentials, secret-derived hashes and mutable pricing data.
+  - PlanningExecution, logical-call and physical-transport-attempt identities are structurally distinct, reject invalid or contradictory hierarchy/numbering, and allow every physical request to link to a PlanRun only when the execution produced that exact PlanRun.
+  non_goals:
+  - No Anthropic SDK extraction, retry-loop change, database migration, persistence wiring, CLI/reporting surface, provider pricing, caching optimisation, planner-context reduction or automatic interruption recovery/abandonment policy.
+  - No pre-call PlanRun, new PlanRun running state, nullable PlanRun provenance, or change to atlas apply eligibility.
+  - No raw prompt body, raw response envelope, credential, cookie, environment dump or process command line in any durable contract.
+  implementation_notes:
+  - Expected production envelope is a provider-neutral core PlanningExecution/planner-call telemetry model family, with focused tests and the owning planning/data-model documentation; exact class/table names follow established Atlas conventions.
+  - 'One primary concept: the execution/evidence identity hierarchy. Persistence and provider interpretation remain separate tickets, and PlanRun stays unchanged.'
+  test_requirements:
+  - Focused tests in tests/test_planner_call_telemetry.py cover execution/logical/physical hierarchy, complete and sparse provider evidence, deterministic fingerprints, optional resulting PlanRun identity, invalid attempt identities and secret/raw-content exclusion.
+  - Focused model tests cover the post-preflight execution boundary, terminal failure without PlanRun, terminal linkage to one exact PlanRun and honest non-terminal interruption; PlanRun regression tests prove its enum, required fields and apply/reject/fail finalisation rules are unchanged.
+  documentation_requirements:
+  - docs/atlas/planning-engine-specification.md
+  - docs/architecture/data-model-and-schemas.md
+  definition_of_done:
+  - The contract is exported only through established core-model conventions, focused tests pass, canonical docs distinguish durable pre-call PlanningExecution from optional post-output PlanRun linkage, and no provider/storage/report integration or PlanRun semantic change is present.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - knowledge-context-wave-1
+  - planning
+  - telemetry
+  - contract
+  component: planning-telemetry-contract
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/atlas/knowledge-context-consolidation.md#5-planner-call-telemetry
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-28T06:41:21.183797Z'
+  updated_at: '2026-08-28T06:41:21.183797Z'
+  completed_at: null
+- id: b25cc7c7-ec67-4575-ba7b-2052a9a43335
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 5bd967eb-98c0-42a6-bec3-042a34145078
+  key: ATLAS-283
+  title: Structured planner-call orchestration and logical-attempt identity
+  objective: Route single-call and staged planning through the telemetry request/result contract so every logical planner call belongs to one durable PlanningExecution and has deterministic stage, template, input and prompt-size identity before it reaches a provider.
+  context: The current PlannerClient.generate(prompt) seam cannot distinguish execution, stage or logical retry, while staged projection retries are labelled outside the provider adapter. This ticket changes the planner-facing seam and call sites only, preserving generated proposal behavior while propagating the post-preflight PlanningExecution identity and making logical calls and prompt segments explicit.
+  status: planned
+  ticket_type: feature
+  risk_level: high
+  priority: 50
+  relevant_docs:
+  - docs/atlas/knowledge-context-consolidation.md
+  - docs/atlas/planning-engine-specification.md
+  - docs/atlas/planning-large-corpora.md
+  acceptance_criteria:
+  - Every single-call and staged provider invocation receives the durable PlanningExecution identity, exact stage, zero-based logical attempt, prompt/template version and deterministic exact-input fingerprint.
+  - Prompt byte/character totals and named document, anchor, backlog, schema and dynamic-stage segment sizes are measured from the actual rendered inputs without retaining segment contents in telemetry.
+  - Directed stage retries increment logical-attempt identity while leaving physical-transport attempt numbering to the provider boundary; ordinary stages retain one logical attempt.
+  - Existing fake PlannerClient tests prove proposal bytes, stage ordering, retry eligibility, truncation classification and progress output remain behaviorally unchanged apart from the typed seam.
+  - Unknown stage/template/input identity fails before a provider call rather than emitting incomplete telemetry.
+  non_goals:
+  - No Anthropic usage extraction, physical transport retry observation, database write, PlanRun repository or lifecycle change, report command, provider pricing or registry work.
+  implementation_notes:
+  - Expected paths include atlas/planning/client.py, atlas/planning/pipeline.py, atlas/planning/staged.py, atlas/planning/renderer.py and their focused tests.
+  - 'One integration seam: planner orchestration to provider-neutral call contracts. Do not add storage or SDK-specific behavior.'
+  test_requirements:
+  - Update focused planning client, pipeline, staged-generation and staged-retry tests to assert exact logical-call identities and segment counts for single-call, ordinary staged and directed-retry cases.
+  - A fake-provider test proves no prompt or document content is copied into the telemetry request/result record.
+  documentation_requirements:
+  - docs/atlas/planning-engine-specification.md
+  - docs/atlas/planning-large-corpora.md
+  definition_of_done:
+  - All planner call sites use the structured seam, logical retries are independently observable in tests, current proposal/retry behavior is preserved, and no persistence or provider-specific metric claim is made.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - knowledge-context-wave-1
+  - planning
+  - telemetry
+  - orchestration
+  component: planner-call-orchestration
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/atlas/knowledge-context-consolidation.md#5-planner-call-telemetry
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-28T06:41:21.183797Z'
+  updated_at: '2026-08-28T06:41:21.183797Z'
+  completed_at: null
+- id: f957c3da-c77f-4938-9cac-5f10ad6df4af
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 5bd967eb-98c0-42a6-bec3-042a34145078
+  key: ATLAS-284
+  title: Anthropic usage, latency, stop and physical-retry capture
+  objective: Project bounded evidence from each physical Anthropic request into the provider-neutral telemetry contract, including transport failures, without retaining raw provider payloads.
+  context: AnthropicPlannerClient currently returns assembled text and retries transport errors internally up to three times. The final message already exposes stop_reason and provider usage, but those facts and failed physical attempts are discarded. This ticket owns only the SDK boundary and its deterministic projection.
+  status: planned
+  ticket_type: feature
+  risk_level: high
+  priority: 50
+  relevant_docs:
+  - docs/atlas/knowledge-context-consolidation.md
+  - docs/atlas/planning-engine-specification.md
+  acceptance_criteria:
+  - Each actual Anthropic stream attempt emits exactly one physical-attempt observation under the exact PlanningExecution and logical-call identities, with provider/model, physical attempt number, wall latency, output size, stop reason or bounded transport-failure category.
+  - Provider-reported input/output, cache-creation/cache-read and reasoning/thinking token fields are retained when the installed SDK exposes them and remain explicitly unavailable when absent.
+  - Time to first token is measured only when the SDK stream provides a reliable event boundary; otherwise the field remains unsupported rather than approximated from total latency.
+  - A transient transport retry produces separate failed and succeeding physical-attempt observations under one logical attempt; truncation remains non-retryable and retains its stop reason.
+  - Raw provider responses, content blocks, prompts, exception bodies that may contain secrets and credentials never enter the telemetry record or its fingerprint.
+  - Existing output-text assembly, retry count/backoff and ModelCallError/TruncatedOutputError behavior remain compatible for callers.
+  non_goals:
+  - No pipeline logical-retry wiring, database schema/repository, parse or gate classification, reporting CLI, cost calculation, pricing table, caching change or provider beyond Anthropic.
+  implementation_notes:
+  - Expected production surface is atlas/planning/client.py plus tests/test_planner_client.py; a small provider projection helper is permitted if it keeps SDK-specific interpretation isolated.
+  - 'One architectural seam: Anthropic SDK response/retry projection.'
+  test_requirements:
+  - Extend tests/test_planner_client.py with SDK fakes for complete usage, sparse usage, cache/reasoning fields, transport failure then success, exhausted retries, truncation and optional TTFT support.
+  - Tests assert exact attempt counts and prove raw prompt/provider payload/secret values are absent from emitted telemetry and exception-safe representations.
+  documentation_requirements:
+  - docs/atlas/planning-engine-specification.md
+  definition_of_done:
+  - Focused provider tests pass for successful, sparse, retrying and truncated streams; physical retries are visible and distinct from logical retries; no store or report integration is included.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - knowledge-context-wave-1
+  - planning
+  - anthropic
+  - telemetry
+  component: anthropic-planner-adapter
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/atlas/knowledge-context-consolidation.md#5-planner-call-telemetry
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-28T06:41:21.183797Z'
+  updated_at: '2026-08-28T06:41:21.183797Z'
+  completed_at: null
+- id: d31d028f-10ae-4c4c-9550-afeb2a4ef392
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 5bd967eb-98c0-42a6-bec3-042a34145078
+  key: ATLAS-285
+  title: Planner-call telemetry storage and repository lifecycle
+  objective: Add the database schema and repository contracts that retain one durable PlanningExecution and one bounded record per physical planner request, with optional linkage to the exact resulting PlanRun.
+  context: Wave-1 provider evidence needs an honest pre-provider owner separate from PlanRun and from generation_stages, whose current meaning is post-output logical model-call provenance. Dedicated execution and physical-attempt storage preserves incomplete, failed and successful evidence without overloading PlanRun JSON, changing apply eligibility or fabricating missing values.
+  status: planned
+  ticket_type: feature
+  risk_level: high
+  priority: 50
+  relevant_docs:
+  - docs/atlas/knowledge-context-consolidation.md
+  - docs/atlas/planning-engine-specification.md
+  - docs/architecture/data-model-and-schemas.md
+  acceptance_criteria:
+  - An Alembic migration, ORM rows and repositories persist one uniquely identified PlanningExecution plus physical attempts linked through exact execution, stage, logical-call and physical-attempt identities without changing generation_stages semantics.
+  - PlanningExecution stores the frozen planning-input hashes and planner/prompt execution identity needed at the post-preflight boundary, supports exactly one terminal result, and may honestly remain non-terminal after process interruption.
+  - The terminal execution result carries a nullable foreign key to exactly one resulting PlanRun only when that PlanRun legally exists; a provider failure before raw output remains a failed execution with no fabricated PlanRun.
+  - Nullable provider usage, cache, reasoning, stop, TTFT and retry fields round-trip unchanged; unavailable values remain null or an explicit bounded unsupported status rather than zero.
+  - Repository writes are idempotent for the same execution/physical-attempt identity, reject conflicting replays, and permit one monotonic outcome finalisation for downstream parse/schema/gate disposition.
+  - Database constraints reject duplicate attempt identities, invalid hierarchy/attempt numbers, negative sizes/timings/tokens and orphan optional PlanRun references; existing PlanRun schema, transitions and apply selection are unchanged.
+  - Storage schema/export pins and canonical data-model documentation are updated consistently for SQLite and PostgreSQL contracts.
+  non_goals:
+  - No provider SDK call, planner pipeline wiring, report CLI, pricing/cost table, raw prompt/provider payload persistence, registry provenance column, pre-call PlanRun, new PlanRun state, Atlas apply behavior change or automatic abandonment/recovery policy.
+  implementation_notes:
+  - Expected paths include a new core model, atlas/storage/tables.py, atlas/storage/repositories.py, one linear Alembic revision after current head, storage exports, focused tests and docs/architecture/data-model-and-schemas.md.
+  - This ticket owns the database-migrations protected lane; exact class/table/status naming follows existing Atlas conventions without altering PlanRun.
+  test_requirements:
+  - Focused repository and storage-schema tests cover execution/attempt complete and sparse round trips, terminal success/failure, optional exact PlanRun linkage, honest non-terminal interruption, duplicate/conflicting replays, invalid numeric bounds, FK behavior and migration upgrade.
+  - Schema drift/export tests prove all governed model/table surfaces remain synchronized.
+  documentation_requirements:
+  - docs/atlas/planning-engine-specification.md
+  - docs/architecture/data-model-and-schemas.md
+  definition_of_done:
+  - The migration reaches one new head, schema/repository tests pass, physical attempts have a bounded PlanningExecution-owned home with optional exact PlanRun linkage, generation_stages remains a logical-call record, and no planner/provider/report integration or PlanRun semantic change is claimed.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - knowledge-context-wave-1
+  - planning
+  - telemetry
+  - database
+  component: planning-telemetry-storage
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/atlas/knowledge-context-consolidation.md#5-planner-call-telemetry
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-28T06:41:21.183797Z'
+  updated_at: '2026-08-28T06:41:21.183797Z'
+  completed_at: null
+- id: 8f4e88f4-216f-45ea-b2e9-482b31d1246e
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 5bd967eb-98c0-42a6-bec3-042a34145078
+  key: ATLAS-286
+  title: Persist planner calls and correlate parse, schema and gate outcomes
+  objective: Wire structured planner/provider observations into the telemetry repository so every attempted physical request is retained against its durable PlanningExecution and, when legally produced, correlated to the exact PlanRun and downstream outcome.
+  context: The contract, orchestration, provider projection and store are independently testable foundations. This ticket composes them at the planning pipeline boundary, establishing PlanningExecution only after deterministic preflight freezes exact inputs and planner identity, then correlating failures before raw output and outcomes discovered after stage parsing or whole-proposal gates without changing PlanRun rules.
+  status: planned
+  ticket_type: feature
+  risk_level: high
+  priority: 50
+  relevant_docs:
+  - docs/atlas/knowledge-context-consolidation.md
+  - docs/atlas/planning-engine-specification.md
+  - docs/runbooks/running-atlas-plan.md
+  acceptance_criteria:
+  - One durable PlanningExecution is established after deterministic preflight succeeds and before the first physical request, and every observable completed or failed physical attempt is persisted with exact execution/stage/logical/physical identity.
+  - Exhausted transport failures after execution begins terminally record the failed PlanningExecution and its bounded telemetry without creating a PlanRun; dirty input, missing product and other pre-execution failures create neither execution nor call rows.
+  - When existing parsing, gates and reconciliation legally produce a PlanRun, the PlanningExecution terminal result links its exact PlanRun ID; proposed/applied/rejected/failed semantics and atlas apply selection remain unchanged.
+  - Stage parse/schema outcomes finalize only the calls that produced that stage output; whole-proposal gate outcomes are correlated without pretending a gate failure was caused by one physical attempt.
+  - Successful single-call, staged and directed-logical-retry plans retain all physical calls, preserve current proposal/diff behavior and leave stubs-only runs with zero model-call and physical-attempt rows.
+  - Process interruption may leave an honestly non-terminal execution or attempt; repository failures cannot silently drop observed attempts or fabricate a proposed PlanRun, and no automatic abandonment/recovery policy is introduced.
+  - Persisted records exclude raw prompts, raw SDK payloads, response bodies, credentials and pricing.
+  non_goals:
+  - No read/report CLI, cost conversion, provider cache optimisation, context narrowing, Document Role Registry, apply, Linear or runtime mutation.
+  implementation_notes:
+  - Expected paths are atlas/planning/pipeline.py, atlas/planning/staged.py, the telemetry repository integration seam and focused pipeline/staged tests.
+  - 'One primary integration seam: planner execution to durable per-call evidence. Do not add presentation/report code.'
+  test_requirements:
+  - Pipeline integration tests cover single-call success, staged success, logical retry, physical retry, truncation, parse failure, gate failure, exhausted transport failure and stubs-only zero-call behavior.
+  - Transaction/fault tests prove no false proposed state or silent call loss across repository failures and prove secret/raw-content exclusion.
+  documentation_requirements:
+  - docs/atlas/planning-engine-specification.md
+  - docs/runbooks/running-atlas-plan.md
+  definition_of_done:
+  - All model-backed planner paths retain exact PlanningExecution-owned physical-call evidence and honest downstream/optional PlanRun outcomes, failure semantics are documented and tested, stubs-only remains zero-call, and no reporting or optimisation is implemented.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - knowledge-context-wave-1
+  - planning
+  - telemetry
+  - persistence
+  component: planning-telemetry-pipeline
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/atlas/knowledge-context-consolidation.md#5-planner-call-telemetry
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-28T06:41:21.183797Z'
+  updated_at: '2026-08-28T06:41:21.183797Z'
+  completed_at: null
+- id: 28a12ffc-0c55-40e9-908f-c23fded13f33
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 5bd967eb-98c0-42a6-bec3-042a34145078
+  key: ATLAS-287
+  title: Read-only planner request economics report
+  objective: Expose deterministic bounded summaries of persisted planner-call telemetry by PlanningExecution, optional resulting PlanRun, stage and attempt without embedding provider pricing or revealing prompt contents.
+  context: Wave 1 becomes useful when the operator can answer how many physical requests ran, which stages consumed reported tokens, whether provider cache usage occurred, where retries or latency accumulated and whether an execution produced a PlanRun. The report consumes only stored observations and must not infer unavailable provider values or treat absence of a PlanRun as missing telemetry.
+  status: planned
+  ticket_type: feature
+  risk_level: medium
+  priority: 50
+  relevant_docs:
+  - docs/atlas/knowledge-context-consolidation.md
+  - docs/runbooks/running-atlas-plan.md
+  acceptance_criteria:
+  - A read-only CLI/report surface selects an exact PlanningExecution, an exact resulting PlanRun, or a bounded recent execution set and reports physical-call counts grouped by stage, logical attempt and transport attempt.
+  - Aggregates retain provider-reported input/output/cache/reasoning token totals, wall latency, optional TTFT, retries, stop reasons, output sizes and parse/schema/gate dispositions without treating unavailable values as zero.
+  - Human-readable and canonical JSON output are deterministic for the same stored rows, with stable ordering and explicit schema/version identity.
+  - The report distinguishes logical retries from physical transport retries and shows non-terminal or failed executions with no PlanRun as honest first-class outcomes, alongside executions linked to proposed, failed, rejected or applied PlanRuns.
+  - No prompt text, provider payload, secret, raw exception body or unbounded output is displayed.
+  - Monetary cost is omitted unless an operator supplies a separately versioned price input in a future ticket; current provider prices are not embedded as timeless authority.
+  non_goals:
+  - No mutation, pricing registry, billing claim, cache optimisation, planner selection change, Document Role Registry, API/UI, Linear, Symphony or apply behavior.
+  implementation_notes:
+  - Expected paths include a small planning report/query module, atlas/cli.py or a focused CLI adapter, tests/test_planner_telemetry_report.py and docs/runbooks/running-atlas-plan.md.
+  - One presentation seam over already-persisted records.
+  test_requirements:
+  - Focused CLI/report tests cover complete and sparse telemetry, logical versus physical retries, non-terminal and failed execution without PlanRun, exact resulting-PlanRun lookup, deterministic JSON ordering, bounded selection and secret/raw-content exclusion.
+  - A mutation guard proves the command performs no database, repository, Git, network or external-system write.
+  documentation_requirements:
+  - docs/runbooks/running-atlas-plan.md
+  definition_of_done:
+  - The operator can reconstruct physical-call economics for an exact PlanningExecution and any resulting PlanRun from deterministic bounded output, optional fields and missing PlanRun outcomes remain honest, all focused tests pass, and no pricing or mutation authority is introduced.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - knowledge-context-wave-1
+  - planning
+  - telemetry
+  - reporting
+  component: planning-telemetry-reporting
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/atlas/knowledge-context-consolidation.md#5-planner-call-telemetry
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-28T06:41:21.183797Z'
+  updated_at: '2026-08-28T06:41:21.183797Z'
+  completed_at: null
+- id: 01a5b39a-e63e-4544-8e42-cd2aeebcb17a
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 5bd967eb-98c0-42a6-bec3-042a34145078
+  key: ATLAS-288
+  title: Document Role Registry contract and compatibility inventory
+  objective: Define the deterministic registry schema/loader and commit a reviewed inventory that can represent Atlas document participation while exactly describing today's static planner corpus.
+  context: Today's ingestion policy is implicit in four root paths and broad globs, including the nested docs/atlas/playbooks path because fnmatch crosses directories. Wave 1 must make roles explicit without narrowing any corpus, anchor or context behavior. The refreshed corpus is 38 committed documents; active and processed planning stubs remain lifecycle inputs rather than permanent static registry entries.
+  status: planned
+  ticket_type: feature
+  risk_level: high
+  priority: 50
+  relevant_docs:
+  - docs/atlas/knowledge-context-consolidation.md
+  - docs/atlas/planning-engine-specification.md
+  - docs/atlas/context-renderer.md
+  acceptance_criteria:
+  - A versioned schema and loader represent authority_class, planner_profiles, new_anchor_allowed, anchor_resolution, context_resolution, historical_only and owner for each governed static document, with closed bounded values and named validation errors.
+  - A committed compatibility inventory lists exactly the current 38-document static planner corpus in its current deterministic order, including accepted ADR filtering and the nested docs/atlas/playbooks/linear-sync.md path.
+  - Every compatibility entry participates in the compatibility planner profile and preserves today's new-anchor, legacy-anchor and Context Renderer eligibility; no document is marked preservation-only or removed in Wave 1.
+  - Registry version, canonical bytes and SHA-256 digest are deterministic, insensitive only to schema-declared set ordering, and change for any material role/path/order change.
+  - Duplicate paths, ambiguous owners/profiles, contradictory historical/new-anchor settings, unsafe paths, unknown fields and unsupported schema versions fail closed.
+  - The contract explicitly separates the static governed inventory from active inbox stubs and processed durable-stub anchors, whose existing lifecycle enumeration remains supported and uncatalogued per-file.
+  non_goals:
+  - No planner, anchor or Context Renderer consumption; no PlanRun provenance; no corpus reduction; no programme-document move; no active/preservation split; no semantic freshness or current-state projection.
+  implementation_notes:
+  - Expected paths are a small atlas/planning document-role contract/loader module, one packaged versioned registry data file and focused tests/test_document_role_registry.py.
+  - The registry serialization/location is the bounded implementation decision owned here; prefer repository conventions for packaged deterministic registries.
+  test_requirements:
+  - Focused tests cover valid load, all field vocabularies, deterministic canonical bytes/digest, material-change sensitivity, duplicate/contradictory entries and the exact reviewed 38-path ordered inventory.
+  - Tests prove registry parsing performs no Git, filesystem write, database, network, model or external-system mutation.
+  documentation_requirements:
+  - docs/atlas/planning-engine-specification.md
+  definition_of_done:
+  - The schema and reviewed compatibility inventory are deterministic and fully tested, all 38 current static inputs are represented once in current order, and no runtime consumer or behavior change is included.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - knowledge-context-wave-1
+  - planning
+  - document-authority
+  - registry
+  component: document-role-registry
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/atlas/knowledge-context-consolidation.md#8-compatibility-mode-first
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-28T06:41:21.183797Z'
+  updated_at: '2026-08-28T06:41:21.183797Z'
+  completed_at: null
+- id: d8f7c1a1-4e20-43e7-b9b4-48aeed90777f
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 5bd967eb-98c0-42a6-bec3-042a34145078
+  key: ATLAS-289
+  title: Closed-world Document Role Registry linter and compatibility proof
+  objective: Add deterministic validation that proves the registry inventory equals today's governed planner corpus and fails closed when a governed planning document is uncatalogued.
+  context: A reviewed registry file is insufficient if future broad-glob additions can enter planning silently or if inventory order drifts. This ticket gives compatibility mode a repository-owned linter/equivalence surface before any planner consumer changes.
+  status: planned
+  ticket_type: infrastructure
+  risk_level: high
+  priority: 50
+  relevant_docs:
+  - docs/atlas/knowledge-context-consolidation.md
+  - docs/atlas/planning-engine-specification.md
+  - docs/runbooks/local-development.md
+  acceptance_criteria:
+  - The repository documentation/planning linter compares the registry compatibility inventory with the legacy committed corpus enumerator and requires exact path-set and order equality.
+  - Adding or moving an otherwise governed root, accepted ADR, docs/atlas or docs/domain Markdown document without a registry entry fails with the exact uncatalogued path before any model call.
+  - Removing, duplicating or reordering an entry, changing accepted-ADR participation, or omitting the currently nested playbook path produces a named deterministic failure.
+  - The compatibility proof records the registry version/digest and verifies current static document blob bytes/identities, valid new-anchor choices and participation flags are unchanged.
+  - Active inbox and processed stubs are checked through their existing lifecycle/integrity rules and are not falsely required as permanent static registry entries.
+  - The linter is read-only, network-free and deterministic from one Git HEAD.
+  non_goals:
+  - No planner/context runtime selection, PlanRun schema, database migration, corpus narrowing, anchor algorithm change, programme split, semantic freshness or automatic registry rewrite.
+  implementation_notes:
+  - Expected paths include atlas/tools/doc_linter.py or a focused registry linter adapter, the document-role loader and tests/test_document_role_linter.py plus existing doc-linter contract tests.
+  - 'One seam: closed-world validation. It may compare to legacy enumeration but must not yet replace production selection.'
+  test_requirements:
+  - Table-driven linter tests seed uncatalogued, missing, duplicate, reordered, nested and ADR-status cases and prove each failure names the exact cause.
+  - A golden compatibility test pins the current path order, document identities and anchor-choice equivalence at a fixture HEAD without hard-coding current blob SHAs as timeless authority.
+  documentation_requirements:
+  - docs/atlas/planning-engine-specification.md
+  - docs/runbooks/local-development.md
+  definition_of_done:
+  - The normal repository linter proves exact compatibility and rejects an uncatalogued governed document, all seeded defects bite, and planner/context behavior remains unchanged.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - knowledge-context-wave-1
+  - planning
+  - document-authority
+  - lint
+  component: document-role-registry-linter
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/atlas/knowledge-context-consolidation.md#8-compatibility-mode-first
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-28T06:41:21.183797Z'
+  updated_at: '2026-08-28T06:41:21.183797Z'
   completed_at: null

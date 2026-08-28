@@ -1,0 +1,31 @@
+schema_version: 1
+repository: derekrivers/atlas
+base_commit: dd1ba7d6ffa649cfac226848b60d56dcc6224b6d
+repository_files:
+  - docs/planning/inbox/inbox-stub-01-planner-call-telemetry-contract.md
+  - docs/planning/inbox/inbox-stub-02-structured-planner-call-orchestration.md
+  - docs/planning/inbox/inbox-stub-03-anthropic-physical-request-capture.md
+  - docs/planning/inbox/inbox-stub-04-planner-call-telemetry-storage.md
+  - docs/planning/inbox/inbox-stub-05-persist-planner-call-outcomes.md
+  - docs/planning/inbox/inbox-stub-06-planner-economics-report.md
+  - docs/planning/inbox/inbox-stub-07-document-role-registry-contract-inventory.md
+  - docs/planning/inbox/inbox-stub-08-document-role-registry-linter.md
+  - docs/planning/inbox/planning-batch-knowledge-context-wave-1.yaml
+future_document_paths: []
+stubs:
+  - path: docs/planning/inbox/inbox-stub-01-planner-call-telemetry-contract.md
+    phase: knowledge-context-wave-1
+  - path: docs/planning/inbox/inbox-stub-02-structured-planner-call-orchestration.md
+    phase: knowledge-context-wave-1
+  - path: docs/planning/inbox/inbox-stub-03-anthropic-physical-request-capture.md
+    phase: knowledge-context-wave-1
+  - path: docs/planning/inbox/inbox-stub-04-planner-call-telemetry-storage.md
+    phase: knowledge-context-wave-1
+  - path: docs/planning/inbox/inbox-stub-05-persist-planner-call-outcomes.md
+    phase: knowledge-context-wave-1
+  - path: docs/planning/inbox/inbox-stub-06-planner-economics-report.md
+    phase: knowledge-context-wave-1
+  - path: docs/planning/inbox/inbox-stub-07-document-role-registry-contract-inventory.md
+    phase: knowledge-context-wave-1
+  - path: docs/planning/inbox/inbox-stub-08-document-role-registry-linter.md
+    phase: knowledge-context-wave-1
