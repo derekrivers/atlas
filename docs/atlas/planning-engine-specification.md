@@ -420,6 +420,70 @@ exactly one finalising transition to `applied`, `rejected`, or `failed` is
 permitted, setting only `approved_by`, `applied_at`, and `failure_reason`.
 All other fields are immutable after insert, and rows are never deleted.
 
+## 6.1 PlanningExecution and planner-call telemetry
+
+Generative planning has a provider-call evidence identity that is separate
+from `PlanRun`. The immutable, provider-neutral contracts are exported from
+`atlas.core.models` as `PlanningExecution`, `PlannerLogicalCall`,
+`PlannerPhysicalTransportAttempt`, and `PlanningExecutionOutcome`. This is a
+contract boundary only: provider adaptation, retry orchestration, persistence,
+reporting, pricing, and recovery policy are separate capabilities.
+
+The durable boundary is after deterministic planning preflight has succeeded.
+At that point Atlas has frozen the product, exact named input digests, planner
+provider/model, bounded execution parameters, and exact versioned template
+artifacts. One `PlanningExecutionIdentity` may then be created before the first
+physical provider request. A failure before all of those facts are frozen
+creates neither a `PlanningExecution` nor physical-attempt evidence.
+
+The hierarchy is structural rather than an ambiguous pair of integers:
+
+- an execution is identified by its execution UUID;
+- a logical call is identified by execution, stage, and a one-based logical
+  attempt number; and
+- a physical request is identified by that complete logical-call identity and
+  a one-based physical transport-attempt number.
+
+Logical attempt numbers are contiguous within a stage. Physical attempt
+numbers are contiguous within a logical call, and at most one successful
+physical attempt exists for a logical call; when present, it is the final
+physical attempt. Nested contracts must repeat the exact parent identity,
+planner and parameters, use one of the templates frozen by the execution, and
+preserve the algorithm and digest of any selected preflight input. A stage may
+select a narrower input subset or add exact derived inputs. Contradictory
+hierarchy, input identity, or numbering is invalid.
+
+Each logical call records prompt byte and character counts plus bounded named
+segment counts, never prompt text. Each physical attempt records transport
+disposition, wall latency, explicit optional time-to-first-token evidence,
+retry category, optional output size, stop reason, provider usage families,
+and parse/schema/gate disposition. Provider usage values are one of
+`reported(value)`, `unsupported`, or `unavailable`; optional timing is one of
+`measured(value)`, `unsupported`, or `unavailable`. Missing values remain
+`null` and are never replaced with zero or an estimate.
+
+`PlanningExecution.outcome` is optional. `None` is a visible, honest
+non-terminal execution, including after interruption; this contract defines no
+automatic abandonment or recovery rule. A terminal `failed` outcome before
+raw output records no `PlanRun`. Once raw output exists, the existing
+post-output insertion rule still requires the exact resulting `PlanRun`
+identity, including when parsing, schema validation, or a gate fails. A
+terminal `completed` outcome also names that exact `PlanRun`. A physical
+attempt may link to a `PlanRun` only when its execution outcome produced that
+same identity.
+
+`PlanningExecution` is not applyable and has no proposed/applied/rejected
+vocabulary. Section 6 and `data-model-and-schemas.md` section 3.10 remain
+unchanged: provider failure before raw output creates no `PlanRun`, and only a
+proposed `PlanRun` is eligible for `atlas apply`.
+
+All four primary contracts have deterministic canonical JSON and SHA-256
+fingerprints. They contain only bounded typed fields: no raw prompt, raw
+provider payload, response envelope, credential, cookie, environment, process
+command line, secret-derived hash, arbitrary metadata, or mutable pricing
+data. Exact input and template digests are admitted only through their named,
+non-secret identity fields.
+
 ## 7. Acceptance tests (milestone 1)
 
 The milestone is met when all of the following pass against the seeded
