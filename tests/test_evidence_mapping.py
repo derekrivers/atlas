@@ -316,7 +316,7 @@ def _docs(
     return NormalisedDocs(
         status=EvidenceStatus.PASSED,
         docs_paths=paths,
-        external_run_id="docs:" + "c" * 40,
+        external_run_id="docs:v2:" + "c" * 40,
         commit_sha="c" * 40,
         payload_hash="sha256:" + "d" * 64,
         source_uri=None,
@@ -339,12 +339,15 @@ def test_docs_maps_to_system_tier_documentation_update_and_round_trips(
     assert evidence.commit_sha == docs.commit_sha
     assert evidence.external_run_id == docs.external_run_id
     assert evidence.payload_hash == docs.payload_hash
+    assert evidence.source_uri == docs.source_uri
+    assert evidence.raw_payload == docs.raw_payload
+    assert evidence.docs_paths == docs.docs_paths
     assert evidence.created_at == NOW
     # the summary names the path count
     assert "2 path(s)" in evidence.summary
 
     # round-trips through the ATLAS-61 system-tier pinning guard and back: proves
-    # the synthesised docs:<sha> pin satisfies the guard.
+    # the synthesised docs:v2:<sha> pin satisfies the guard.
     repo = EvidenceRepo(db)
     assert repo.add(evidence) == evidence
     assert repo.get(evidence.id) == evidence
@@ -363,6 +366,37 @@ def test_ingest_docs_persists_the_one_record(db: Database) -> None:
     assert {e.evidence_type for e in persisted} == {EvidenceType.DOCUMENTATION_UPDATE}
     assert len(persisted) == 1
     assert len(repo.list()) == 1
+
+
+def test_docs_v2_appends_once_beside_legacy_identity_then_deduplicates(
+    db: Database,
+) -> None:
+    repo = EvidenceRepo(db)
+    docs = _docs(paths=("docs/atlas/evidence-pipeline.md",))
+    legacy = Evidence(
+        id=uuid4(),
+        product_id=uuid4(),
+        evidence_type=EvidenceType.DOCUMENTATION_UPDATE,
+        status=EvidenceStatus.PASSED,
+        summary="legacy capped docs observation",
+        commit_sha=docs.commit_sha,
+        external_run_id=f"docs:{docs.commit_sha}",
+        payload_hash=docs.payload_hash,
+        raw_payload={"_truncated": True},
+        created_by_type=ActorType.SYSTEM,
+        created_by_id=GITHUB_ACTIONS_ACTOR_ID,
+        created_at=NOW,
+    )
+    repo.add(legacy)
+
+    [fresh] = ingest_docs(docs, repo=repo, product_id=legacy.product_id, now=NOW)
+    repeated = ingest_docs(docs, repo=repo, product_id=legacy.product_id, now=NOW)
+
+    assert fresh.external_run_id == f"docs:v2:{docs.commit_sha}"
+    assert fresh.docs_paths == docs.docs_paths
+    assert repeated == []
+    assert {record.id for record in repo.list()} == {legacy.id, fresh.id}
+    assert repo.get(legacy.id) == legacy
 
 
 def test_ingest_docs_none_persists_nothing(db: Database) -> None:

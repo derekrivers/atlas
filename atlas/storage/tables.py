@@ -260,6 +260,7 @@ class EvidenceRow(Base):
     raw_payload: Mapped[dict[str, Any]] = mapped_column(
         JSONB, server_default=_EMPTY_DICT
     )
+    docs_paths: Mapped[list[str] | None] = mapped_column(JSONB)
     created_by_type: Mapped[str] = mapped_column(sa.Text)
     created_by_id: Mapped[str] = mapped_column(sa.Text)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime())

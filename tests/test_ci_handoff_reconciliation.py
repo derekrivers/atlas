@@ -102,6 +102,33 @@ def ci_evidence(
     )
 
 
+def documentation_evidence(
+    ticket: Any,
+    *,
+    docs_paths: tuple[str, ...] | None,
+    raw_payload: dict[str, Any],
+    suffix: str,
+) -> Evidence:
+    external_run_id = (
+        f"docs:v2:{HEAD}" if docs_paths is not None else f"docs:{HEAD}:{suffix}"
+    )
+    return Evidence(
+        id=uuid4(),
+        product_id=ticket.product_id,
+        evidence_type=EvidenceType.DOCUMENTATION_UPDATE,
+        status=EvidenceStatus.PASSED,
+        summary="documentation update",
+        commit_sha=HEAD,
+        external_run_id=external_run_id,
+        payload_hash=(suffix * 64)[:64],
+        raw_payload=raw_payload,
+        docs_paths=docs_paths,
+        created_by_type=ActorType.SYSTEM,
+        created_by_id="github-actions",
+        created_at=NOW,
+    )
+
+
 def seed_ci_pending(db: Database, client: RecordingClient) -> Any:
     return seed_ticket(
         db,
@@ -323,6 +350,93 @@ def test_ac1_classifier_excludes_foreign_product_and_ticket_evidence(
 
     assert excluded.classification is CIHandoffClassification.MISSING
     assert matching.classification is CIHandoffClassification.PASSED
+
+
+def test_documentation_structured_projection_passes_beside_capped_legacy_history(
+    db: Database,
+) -> None:
+    client = RecordingClient()
+    base_ticket = seed_ci_pending(db, client)
+    required = "docs/atlas/evidence-pipeline.md"
+    ticket = base_ticket.model_copy(update={"documentation_requirements": [required]})
+    legacy = documentation_evidence(
+        ticket,
+        docs_paths=None,
+        raw_payload={"_truncated": True, "_original_bytes": 70000},
+        suffix="3",
+    )
+    structured = documentation_evidence(
+        ticket,
+        docs_paths=(required,),
+        raw_payload={"_truncated": True, "_original_bytes": 70000},
+        suffix="4",
+    )
+    evidence = [
+        ci_evidence(ticket, EvidenceType.TEST_RESULT, suffix="1"),
+        ci_evidence(ticket, EvidenceType.LINT_RESULT, suffix="2"),
+        legacy,
+        structured,
+    ]
+
+    assessment = evaluate_ci_handoff(ticket, head_commit=HEAD, evidence=evidence)
+
+    assert assessment.classification is CIHandoffClassification.PASSED
+    documentation = next(
+        check
+        for check in assessment.check_results
+        if check.check_type.value == "documentation"
+    )
+    assert documentation.classification is CIHandoffClassification.PASSED
+    assert documentation.evidence_ids == (structured.id,)
+
+
+@pytest.mark.parametrize("kind", ["legacy-capped", "structured-malformed"])
+def test_malformed_documentation_projection_retains_typed_fail_closed_hold(
+    db: Database,
+    kind: str,
+) -> None:
+    client = RecordingClient()
+    base_ticket = seed_ci_pending(db, client)
+    required = "docs/atlas/evidence-pipeline.md"
+    ticket = base_ticket.model_copy(update={"documentation_requirements": [required]})
+    record = documentation_evidence(
+        ticket,
+        docs_paths=(required,) if kind == "structured-malformed" else None,
+        raw_payload={"_truncated": True, "_original_bytes": 70000},
+        suffix="3",
+    )
+    if kind == "structured-malformed":
+        record = record.model_copy(update={"docs_paths": ("../docs/bad.md",)})
+    evidence = [
+        ci_evidence(ticket, EvidenceType.TEST_RESULT, suffix="1"),
+        ci_evidence(ticket, EvidenceType.LINT_RESULT, suffix="2"),
+        record,
+    ]
+
+    assessment = evaluate_ci_handoff(ticket, head_commit=HEAD, evidence=evidence)
+
+    assert assessment.classification is CIHandoffClassification.MALFORMED
+    assert assessment.reason.value == "malformed_evidence"
+
+
+def test_absent_documentation_projection_remains_missing_and_fail_closed(
+    db: Database,
+) -> None:
+    client = RecordingClient()
+    ticket = seed_ci_pending(db, client).model_copy(
+        update={"documentation_requirements": ["docs/atlas/evidence-pipeline.md"]}
+    )
+    assessment = evaluate_ci_handoff(
+        ticket,
+        head_commit=HEAD,
+        evidence=[
+            ci_evidence(ticket, EvidenceType.TEST_RESULT, suffix="1"),
+            ci_evidence(ticket, EvidenceType.LINT_RESULT, suffix="2"),
+        ],
+    )
+
+    assert assessment.classification is CIHandoffClassification.MISSING
+    assert assessment.reason.value == "required_checks_missing"
 
 
 def test_ac1_reconciler_holds_when_only_another_product_passed_same_head(

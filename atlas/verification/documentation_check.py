@@ -12,11 +12,11 @@ machine evaluator it gates on system-tier, commit-pinned evidence — an agent's
 claim that it "updated the docs" can NEVER satisfy the check (ADR-0008).
 
 The rule (verification-engine.md): a DOCUMENTATION_UPDATE record for ``C``
-covering at least one path named in ``documentation_requirements``. The only
-producer of DOCUMENTATION_UPDATE is the system-tier CI mapper (ATLAS-66), which
-records the touched ``docs/`` paths as ``raw_payload["files"][*]["filename"]``
-and is always PASSED-by-presence; there is NO structured ``docs_paths`` field
-on Evidence, so ``raw_payload`` is the only source of covered paths. Two modes:
+covering at least one path named in ``documentation_requirements``. New-format
+``docs:v2:<head>`` evidence uses the bounded structured ``docs_paths`` field as
+authority. Legacy evidence may fall back to a valid retained
+``raw_payload["files"]`` projection; a capped legacy row has neither form and
+cannot prove coverage. Two modes:
 
 - ``documentation_requirements`` NON-EMPTY: PASSED iff some covered filename
   equals (after str/strip normalisation) some required path; the deciding
@@ -44,14 +44,9 @@ composition tickets' (ATLAS-76/77). ``atlas.verification`` stays below
 
 Following the machine evaluator, invalidity and absence are DATA, not
 exceptions: the evaluator NEVER raises, for any input — empty evidence, empty
-requirements, a record with ``commit_sha=None``, or a malformed/again-capped
-``raw_payload``. A record that cannot prove coverage simply does not.
-
-Known limitation (follow-up, NOT implemented here): the 64KB ``raw_payload``
-retention cap (ATLAS-69) replaces an oversized record's payload with a
-self-describing marker that carries no ``"files"`` key, so a very large doc PR
-can leave coverage unconfirmable -> PENDING. A structured, cap-exempt
-``docs_paths`` field on Evidence is a possible later enhancement.
+requirements, a record with ``commit_sha=None``, malformed structured paths,
+or a capped legacy ``raw_payload``. A record that cannot prove coverage simply
+does not.
 """
 
 from __future__ import annotations
@@ -62,6 +57,7 @@ from uuid import UUID
 
 from atlas.core.enums import EvidenceStatus
 from atlas.core.models import Evidence, EvidenceType, VerificationCheckType
+from atlas.core.models.evidence import canonical_documentation_paths
 from atlas.core.trust import evidence_tier
 
 # Tier names are compared inline as string literals against
@@ -96,6 +92,48 @@ class DocumentationEvaluation:
     status: EvidenceStatus
     evidence_id: UUID | None
     reason: str
+
+
+@dataclass(frozen=True)
+class DocumentationPathAuthority:
+    """Validated records selected by the versioned projection precedence."""
+
+    records: tuple[tuple[Evidence, frozenset[str]], ...]
+    malformed: bool
+    structured: bool
+
+
+def documentation_path_authority(
+    records: Sequence[Evidence],
+) -> DocumentationPathAuthority:
+    """Resolve one fail-closed docs-path authority set without raising.
+
+    The presence of any structured/v2 record makes structured evidence
+    authoritative and excludes legacy rows at that head.  This is what permits
+    append-only recovery beside an already-capped legacy observation without
+    letting the unavailable historical payload poison the fresh record.  Any
+    malformed record in the selected authority set invalidates that set.
+    """
+
+    candidates = tuple(
+        record
+        for record in records
+        if record.evidence_type is EvidenceType.DOCUMENTATION_UPDATE
+    )
+    structured = tuple(record for record in candidates if _is_structured(record))
+    selected = structured or candidates
+    projected = tuple((record, _project_paths(record)) for record in selected)
+    malformed = any(paths is None for _, paths in projected)
+    valid = (
+        ()
+        if malformed
+        else tuple((record, paths) for record, paths in projected if paths is not None)
+    )
+    return DocumentationPathAuthority(
+        records=valid,
+        malformed=malformed,
+        structured=bool(structured),
+    )
 
 
 def evaluate_documentation_check(
@@ -145,13 +183,17 @@ def evaluate_documentation_check(
         and e.commit_sha == head_commit
         and evidence_tier(e.created_by_type) == "system"
     ]
+    authority = documentation_path_authority(candidates)
     required = _normalise_required(documentation_requirements)
 
     if not required:
         # Empty-requirements existence mode (D6): presence of any system-tier
         # doc record at C is the signal; absence is PENDING, never FAILED.
-        if candidates:
-            latest = max(candidates, key=lambda e: (e.created_at, e.id))
+        if authority.records:
+            latest = max(
+                (record for record, _paths in authority.records),
+                key=lambda e: (e.created_at, e.id),
+            )
             return DocumentationEvaluation(
                 check_type=VerificationCheckType.DOCUMENTATION,
                 status=EvidenceStatus.PASSED,
@@ -169,7 +211,7 @@ def evaluate_documentation_check(
             reason=_pending_reason_empty(head_commit, evidence),
         )
 
-    matching = [c for c in candidates if _covered_paths(c) & required]
+    matching = [record for record, paths in authority.records if paths & required]
     if matching:
         latest = max(matching, key=lambda e: (e.created_at, e.id))
         return DocumentationEvaluation(
@@ -202,30 +244,40 @@ def _normalise_required(documentation_requirements: Sequence[str]) -> set[str]:
     return {s for s in (str(r).strip() for r in documentation_requirements) if s}
 
 
-def _covered_paths(evidence: Evidence) -> set[str]:
-    """The doc paths a record proves it touched, read from ``raw_payload`` (D5).
+def _is_structured(evidence: Evidence) -> bool:
+    return evidence.docs_paths is not None or (
+        isinstance(evidence.external_run_id, str)
+        and evidence.external_run_id.startswith("docs:v2:")
+    )
 
-    The touched paths are ``raw_payload["files"][*]["filename"]`` — the shape the
-    ATLAS-66 mapper produces. DEFENSIVE and never raising: a missing/non-list
-    ``"files"`` (including a retention-cap marker payload, ATLAS-69, which has no
-    ``"files"`` key), a file entry that is not a mapping, or one lacking a string
-    ``"filename"`` all contribute no path. Filenames are str/stripped and blanks
-    dropped, matching :func:`_normalise_required` so equality is exact.
-    """
+
+def _project_paths(evidence: Evidence) -> frozenset[str] | None:
+    """Project strict structured paths or the supported legacy raw fallback."""
+
+    if _is_structured(evidence):
+        canonical = canonical_documentation_paths(evidence.docs_paths)
+        expected_identity = (
+            None if evidence.commit_sha is None else f"docs:v2:{evidence.commit_sha}"
+        )
+        if canonical is None or evidence.external_run_id != expected_identity:
+            return None
+        return frozenset(canonical)
+
     files = evidence.raw_payload.get("files")
-    if not isinstance(files, list):
-        return set()
-    paths: set[str] = set()
+    if not isinstance(files, list) or not files:
+        return None
+    legacy_paths: list[str] = []
     for entry in files:
         if not isinstance(entry, Mapping):
-            continue
+            return None
         filename = entry.get("filename")
         if not isinstance(filename, str):
-            continue
-        normalised = filename.strip()
-        if normalised:
-            paths.add(normalised)
-    return paths
+            return None
+        legacy_paths.append(filename)
+    if len(legacy_paths) != len(set(legacy_paths)):
+        return None
+    canonical = canonical_documentation_paths(tuple(sorted(legacy_paths)))
+    return None if canonical is None else frozenset(canonical)
 
 
 def _has_agent_doc_at_head(head_commit: str, evidence: Sequence[Evidence]) -> bool:

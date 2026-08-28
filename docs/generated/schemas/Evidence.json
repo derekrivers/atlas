@@ -79,6 +79,25 @@
     "created_by_type": {
       "$ref": "#/$defs/ActorType"
     },
+    "docs_paths": {
+      "anyOf": [
+        {
+          "items": {
+            "maxLength": 240,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 256,
+          "minItems": 1,
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Docs Paths"
+    },
     "evidence_type": {
       "$ref": "#/$defs/EvidenceType"
     },

@@ -198,8 +198,9 @@ def map_docs_to_evidence(
     of a ``docs/`` change is the signal (ATLAS-66 only normalises a docs change
     when there is one; the no-change case is ``None``, never a FAILED record).
     The commit-pin triple (``commit_sha``/``external_run_id``/``payload_hash``)
-    is copied straight from ``docs`` -- the synthesised ``docs:<head_sha>`` id and
-    head-SHA pin satisfy ATLAS-61's system-tier guard.
+    is copied straight from ``docs`` -- the synthesised ``docs:v2:<head_sha>``
+    id and head-SHA pin satisfy ATLAS-61's system-tier guard.  The structured
+    docs-path projection is copied independently from the retained raw payload.
 
     Attribution stays SYSTEM/``github-actions`` (D4), as for the check and review
     mappers: the GitHub poller is the ingesting actor for all system-tier
@@ -218,6 +219,7 @@ def map_docs_to_evidence(
         payload_hash=docs.payload_hash,
         source_uri=docs.source_uri,
         raw_payload=docs.raw_payload,
+        docs_paths=docs.docs_paths,
         created_by_type=ActorType.SYSTEM,
         created_by_id=GITHUB_ACTIONS_ACTOR_ID,
         created_at=now,

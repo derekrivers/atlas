@@ -64,8 +64,22 @@ recorded in `raw_payload`.
 
 Documentation evidence: Atlas inspects the PR file list; changes under
 `docs/` produce a DOCUMENTATION_UPDATE record (PASSED) listing the touched
-paths. Tickets with documentation requirements and no such record will
-fail verification (Phase 7) — the evidence layer only records.
+paths. New observations persist that exact projection in nullable
+`Evidence.docs_paths`, independently of `raw_payload`, as a sorted unique tuple
+of 1–256 canonical repository-relative `docs/` paths whose individual lengths
+do not exceed 240 characters. Invalid, empty, duplicate, unsorted, non-`docs/`,
+absolute, traversal, backslash or control-character paths are rejected rather
+than truncated or normalised into guessed coverage.
+
+The structured source identity is `docs:v2:<head_sha>`. Its version separates a
+fresh observation from the legacy `docs:<head_sha>` identity, so an unchanged
+head whose old row was already capped can append one recovery record. The
+unchanged `(external_run_id, payload_hash)` dedup contract then makes repeated
+identical v2 pulls idempotent. `payload_hash` remains the hash of the canonical
+full upstream documentation subset before retention; commit, source, product
+and system-actor pins are unchanged. Historical rows are never backfilled or
+rewritten. Tickets with documentation requirements and no proving record fail
+verification (Phase 7) — the evidence layer only records.
 
 ## Tier and pinning enforcement
 
@@ -191,8 +205,12 @@ operator-rebase path remains authoritative.
 
 `raw_payload` is capped at 64KB; a larger payload is replaced by a compact
 marker containing its original byte count, full payload hash, and `source_uri`
-for retrieval from GitHub. Evidence rows are never deleted; a retention review
-is a Phase 10+ concern.
+for retrieval from GitHub. The cap does not alter the separately bounded
+`docs_paths` projection, so a large documentation payload can retain exact path
+coverage without retaining patch bodies. A legacy small DOCUMENTATION_UPDATE
+may still expose paths through a valid retained `raw_payload["files"]`; a
+legacy capped row with neither form remains unprovable. Evidence rows are never
+deleted or rewritten; a retention review is a Phase 10+ concern.
 
 ## CLI
 

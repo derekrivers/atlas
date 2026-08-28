@@ -18,6 +18,11 @@ from pydantic import ValidationError
 import atlas.core.enums
 from atlas.core.enums import ActorType, EvidenceStatus
 from atlas.core.models import Evidence, EvidenceType
+from atlas.core.models.evidence import (
+    MAX_DOCUMENTATION_PATH_LENGTH,
+    MAX_DOCUMENTATION_PATHS,
+    DocumentationPath,
+)
 
 REQUIRED = object()  # sentinel: field has no default
 LIST_FACTORY = object()  # sentinel: default_factory=list
@@ -39,6 +44,7 @@ DOCUMENTED_FIELDS: dict[str, tuple[Any, Any]] = {
     "payload_hash": (str | None, None),
     "source_uri": (str | None, None),
     "raw_payload": (dict[str, Any], DICT_FACTORY),
+    "docs_paths": (tuple[DocumentationPath, ...] | None, None),
     "created_by_type": (ActorType, REQUIRED),
     "created_by_id": (str, REQUIRED),
     "created_at": (datetime, REQUIRED),
@@ -156,6 +162,61 @@ def test_raw_payload_defaults_to_empty_independent_dict() -> None:
     assert first.raw_payload == {}
     first.raw_payload["run"] = 1
     assert second.raw_payload == {}
+
+
+def test_structured_documentation_paths_are_nullable_bounded_and_canonical() -> None:
+    head = "c" * 40
+    record = Evidence(
+        **evidence_kwargs()
+        | {
+            "evidence_type": "documentation_update",
+            "commit_sha": head,
+            "external_run_id": f"docs:v2:{head}",
+            "docs_paths": (
+                "docs/architecture/data-model-and-schemas.md",
+                "docs/atlas/evidence-pipeline.md",
+            ),
+        }
+    )
+    assert record.docs_paths == (
+        "docs/architecture/data-model-and-schemas.md",
+        "docs/atlas/evidence-pipeline.md",
+    )
+    schema = Evidence.model_json_schema()["properties"]["docs_paths"]["anyOf"][0]
+    assert schema["minItems"] == 1
+    assert schema["maxItems"] == MAX_DOCUMENTATION_PATHS
+    assert schema["items"]["maxLength"] == MAX_DOCUMENTATION_PATH_LENGTH
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"docs_paths": ()},
+        {"docs_paths": ("docs/z.md", "docs/a.md")},
+        {"docs_paths": ("docs/a.md", "docs/a.md")},
+        {"docs_paths": ("../docs/a.md",)},
+        {"docs_paths": ("docs/../a.md",)},
+        {"docs_paths": ("docs\\a.md",)},
+        {"docs_paths": ("docs/",)},
+        {"docs_paths": ("docs/" + "a" * MAX_DOCUMENTATION_PATH_LENGTH,)},
+        {"docs_paths": tuple(f"docs/{index}.md" for index in range(257))},
+        {"evidence_type": "test_result", "docs_paths": ("docs/a.md",)},
+        {"external_run_id": "docs:v2:" + "d" * 40},
+        {"docs_paths": None},
+    ],
+)
+def test_invalid_or_contradictory_structured_documentation_paths_fail_closed(
+    changes: dict[str, Any],
+) -> None:
+    head = "c" * 40
+    base = evidence_kwargs() | {
+        "evidence_type": "documentation_update",
+        "commit_sha": head,
+        "external_run_id": f"docs:v2:{head}",
+        "docs_paths": ("docs/a.md",),
+    }
+    with pytest.raises(ValidationError):
+        Evidence(**base | changes)
 
 
 def test_shared_enum_identity() -> None:

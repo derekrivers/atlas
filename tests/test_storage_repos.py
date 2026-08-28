@@ -15,6 +15,7 @@ from test_evidence_model import evidence_kwargs
 from test_plan_run_model import plan_run_kwargs
 
 from atlas.core.models import Evidence, PlanRun, PlanRunStatus
+from atlas.github import payload_hash
 from atlas.storage import (
     RAW_PAYLOAD_CAP_BYTES,
     Database,
@@ -268,6 +269,64 @@ def test_decision_boundary_at_cap_stored_one_over_truncated(db: Database) -> Non
     )
     assert repo.add(over_record).raw_payload["_truncated"] is True
     assert _stored(repo, over_record.id).raw_payload != over_cap
+
+
+def test_oversized_documentation_payload_keeps_structured_paths_and_legacy_row(
+    db: Database,
+) -> None:
+    repo = EvidenceRepo(db)
+    head = "d" * 40
+    path = "docs/atlas/evidence-pipeline.md"
+    payload = {
+        "files": [
+            {
+                "filename": path,
+                "status": "modified",
+                "patch": "x" * (RAW_PAYLOAD_CAP_BYTES + 4096),
+            }
+        ]
+    }
+    assert _measure(payload) > RAW_PAYLOAD_CAP_BYTES
+    digest = payload_hash(payload)
+    product_id = uuid4()
+    legacy = Evidence(
+        **evidence_kwargs()
+        | {
+            "id": uuid4(),
+            "product_id": product_id,
+            "evidence_type": "documentation_update",
+            "commit_sha": head,
+            "external_run_id": f"docs:{head}",
+            "payload_hash": digest,
+            "raw_payload": payload,
+        }
+    )
+    legacy_stored = repo.add(legacy)
+    legacy_marker = legacy_stored.raw_payload.copy()
+
+    structured = Evidence(
+        **evidence_kwargs()
+        | {
+            "id": uuid4(),
+            "product_id": product_id,
+            "evidence_type": "documentation_update",
+            "commit_sha": head,
+            "external_run_id": f"docs:v2:{head}",
+            "payload_hash": digest,
+            "raw_payload": payload,
+            "docs_paths": (path,),
+        }
+    )
+    stored = repo.add(structured)
+
+    assert stored.raw_payload["_truncated"] is True
+    assert stored.payload_hash == digest
+    assert stored.docs_paths == (path,)
+    assert _stored(repo, structured.id).docs_paths == (path,)
+    assert _stored(repo, legacy.id).raw_payload == legacy_marker
+    assert _stored(repo, legacy.id).docs_paths is None
+    assert repo.add(structured.model_copy(update={"id": uuid4()})) == stored
+    assert repo.count() == 2
 
 
 # --- finalise-once (ADR-0007, knowledge-core) -------------------------------

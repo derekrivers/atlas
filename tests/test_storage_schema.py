@@ -172,6 +172,7 @@ DOCUMENTED_COLUMNS: dict[str, dict[str, tuple[bool, str | None]]] = {
         "payload_hash": (True, None),
         "source_uri": (True, None),
         "raw_payload": (NN, "'{}'"),
+        "docs_paths": (True, None),
         "created_by_type": (NN, None),
         "created_by_id": (NN, None),
         "created_at": (NN, None),
@@ -973,7 +974,7 @@ def test_pm_sync_receipt_migration_preserves_ticket_definition_cursors(
 def test_alembic_upgrades_fresh_db_and_matches_metadata(tmp_path: Path) -> None:
     url = f"sqlite:///{tmp_path}/migrated.db"
     config = _alembic_config(url)
-    assert ScriptDirectory.from_config(config).get_heads() == ["0034"]
+    assert ScriptDirectory.from_config(config).get_heads() == ["0035"]
     command.upgrade(config, "head")
 
     engine = sa.create_engine(url)
@@ -989,6 +990,81 @@ def test_alembic_upgrades_fresh_db_and_matches_metadata(tmp_path: Path) -> None:
         context = MigrationContext.configure(connection)
         diff = compare_metadata(context, Base.metadata)
     assert diff == [], f"migration drifts from ORM metadata: {diff}"
+
+
+def test_evidence_docs_paths_migration_preserves_historical_rows(
+    tmp_path: Path,
+) -> None:
+    url = f"sqlite:///{tmp_path}/evidence-docs-paths-upgrade.db"
+    config = _alembic_config(url)
+    command.upgrade(config, "0034")
+
+    product_id = UUID("11111111-1111-4111-8111-111111111111")
+    evidence_id = UUID("22222222-2222-4222-8222-222222222222")
+    observed_at = datetime(2026, 8, 20, 9, tzinfo=UTC)
+    marker = {
+        "_truncated": True,
+        "_original_bytes": 70000,
+        "_payload_hash": "a" * 64,
+        "_source_uri": None,
+    }
+    engine = sa.create_engine(url)
+    metadata = sa.MetaData()
+    products = sa.Table("products", metadata, autoload_with=engine)
+    evidence = sa.Table("evidence", metadata, autoload_with=engine)
+    with engine.begin() as connection:
+        connection.execute(
+            products.insert().values(
+                id=product_id.hex,
+                key="ATLAS",
+                name="Atlas",
+                description="Atlas product",
+                vision="Repeatable work",
+                status="active",
+                goals=[],
+                non_goals=[],
+                constraints=[],
+                created_by_type="human",
+                created_by_id="operator",
+                created_at=observed_at,
+                updated_at=observed_at,
+            )
+        )
+        connection.execute(
+            evidence.insert().values(
+                id=evidence_id.hex,
+                product_id=product_id.hex,
+                evidence_type="documentation_update",
+                status="passed",
+                summary="legacy capped observation",
+                commit_sha="c" * 40,
+                external_run_id="docs:" + "c" * 40,
+                payload_hash="a" * 64,
+                raw_payload=marker,
+                created_by_type="system",
+                created_by_id="github-actions",
+                created_at=observed_at,
+            )
+        )
+
+    command.upgrade(config, "head")
+
+    upgraded = sa.Table("evidence", sa.MetaData(), autoload_with=engine)
+    with engine.connect() as connection:
+        row = (
+            connection.execute(sa.select(upgraded).where(upgraded.c.id == evidence_id))
+            .mappings()
+            .one()
+        )
+    assert row["docs_paths"] is None
+    assert row["raw_payload"] == marker
+    assert _uuid_text(row["id"]) == str(evidence_id)
+
+    command.downgrade(config, "0034")
+    with engine.connect() as connection:
+        assert "docs_paths" not in {
+            column["name"] for column in sa.inspect(connection).get_columns("evidence")
+        }
 
 
 def test_admission_coordination_upgrades_existing_0028_without_metadata_drift(
@@ -1580,7 +1656,7 @@ def test_acceptance_evidence_receipt_outcomes_migrate_without_losing_guards(
 ) -> None:
     url = f"sqlite:///{tmp_path}/acceptance-evidence-outcomes.db"
     config = _alembic_config(url)
-    assert ScriptDirectory.from_config(config).get_heads() == ["0034"]
+    assert ScriptDirectory.from_config(config).get_heads() == ["0035"]
     command.upgrade(config, "head")
 
     engine = sa.create_engine(url)
