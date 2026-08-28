@@ -12,12 +12,19 @@ from pydantic import ValidationError
 
 from atlas.core.models import (
     MeasurementAvailability,
+    PlannerDigestAlgorithm,
     PlannerLogicalCall,
     PlannerPhysicalTransportAttempt,
+    PlannerProcessingDisposition,
+    PlannerRetryCategory,
+    PlannerTransportDisposition,
     PlanningExecution,
+    PlanningExecutionFailureStage,
     PlanningExecutionOutcome,
+    PlanningExecutionOutcomeStatus,
     PlanRun,
     PlanRunStatus,
+    ProviderEvidenceAvailability,
 )
 from atlas.core.models.planner_call_telemetry import (
     OptionalTimingValue,
@@ -56,18 +63,20 @@ def parameters() -> PlannerExecutionParameters:
     )
 
 
-def source_inputs(*, reverse: bool = False, uppercase: bool = False) -> list[Any]:
+def source_inputs(
+    *, reverse: bool = False, uppercase: bool = False
+) -> list[PlannerInputIdentity]:
     digest_a = "A" * 64 if uppercase else "a" * 64
     digest_b = "B" * 40 if uppercase else "b" * 40
     values = [
         PlannerInputIdentity(
             name="docs/atlas/planning-engine-specification.md",
-            algorithm="sha256",
+            algorithm=PlannerDigestAlgorithm.SHA256,
             digest=digest_a,
         ),
         PlannerInputIdentity(
             name="docs/architecture/data-model-and-schemas.md",
-            algorithm="git_sha1",
+            algorithm=PlannerDigestAlgorithm.GIT_SHA1,
             digest=digest_b,
         ),
     ]
@@ -108,21 +117,33 @@ def attempt(
         started_at = started_at.astimezone(timezone(timedelta(hours=2)))
     usage = (
         PlannerProviderUsage(
-            input_tokens=ProviderUsageValue(availability="reported", value=1200),
-            output_tokens=ProviderUsageValue(availability="reported", value=340),
+            input_tokens=ProviderUsageValue(
+                availability=ProviderEvidenceAvailability.REPORTED, value=1200
+            ),
+            output_tokens=ProviderUsageValue(
+                availability=ProviderEvidenceAvailability.REPORTED, value=340
+            ),
             cache_creation_input_tokens=ProviderUsageValue(
-                availability="reported", value=1000
+                availability=ProviderEvidenceAvailability.REPORTED, value=1000
             ),
             cache_read_input_tokens=ProviderUsageValue(
-                availability="reported", value=200
+                availability=ProviderEvidenceAvailability.REPORTED, value=200
             ),
-            reasoning_tokens=ProviderUsageValue(availability="unsupported"),
+            reasoning_tokens=ProviderUsageValue(
+                availability=ProviderEvidenceAvailability.UNSUPPORTED
+            ),
         )
         if complete_usage
         else PlannerProviderUsage(
-            cache_creation_input_tokens=ProviderUsageValue(availability="unsupported"),
-            cache_read_input_tokens=ProviderUsageValue(availability="unavailable"),
-            reasoning_tokens=ProviderUsageValue(availability="unsupported"),
+            cache_creation_input_tokens=ProviderUsageValue(
+                availability=ProviderEvidenceAvailability.UNSUPPORTED
+            ),
+            cache_read_input_tokens=ProviderUsageValue(
+                availability=ProviderEvidenceAvailability.UNAVAILABLE
+            ),
+            reasoning_tokens=ProviderUsageValue(
+                availability=ProviderEvidenceAvailability.UNSUPPORTED
+            ),
         )
     )
     return PlannerPhysicalTransportAttempt(
@@ -131,14 +152,22 @@ def attempt(
             physical_attempt_no=number,
         ),
         started_at=started_at,
-        transport_disposition="succeeded" if succeeded else "failed",
+        transport_disposition=(
+            PlannerTransportDisposition.SUCCEEDED
+            if succeeded
+            else PlannerTransportDisposition.FAILED
+        ),
         wall_latency_ms=250 if succeeded else 80,
         time_to_first_token=(
-            OptionalTimingValue(availability="measured", value_ms=45)
+            OptionalTimingValue(
+                availability=MeasurementAvailability.MEASURED, value_ms=45
+            )
             if succeeded
-            else OptionalTimingValue(availability="unavailable")
+            else OptionalTimingValue(availability=MeasurementAvailability.UNAVAILABLE)
         ),
-        retry_category="none" if succeeded else "connection",
+        retry_category=(
+            PlannerRetryCategory.NONE if succeeded else PlannerRetryCategory.CONNECTION
+        ),
         output_size=(
             PlannerPayloadSize(byte_count=420, character_count=410)
             if succeeded
@@ -148,7 +177,9 @@ def attempt(
         stop_reason="end_turn" if succeeded else None,
         processing=(
             PlannerPostResponseDisposition(
-                parse="passed", schema_validation="passed", gate="passed"
+                parse=PlannerProcessingDisposition.PASSED,
+                schema_validation=PlannerProcessingDisposition.PASSED,
+                gate=PlannerProcessingDisposition.PASSED,
             )
             if succeeded
             else PlannerPostResponseDisposition()
@@ -160,7 +191,7 @@ def attempt(
 def logical_call(
     *,
     physical_attempts: list[PlannerPhysicalTransportAttempt] | None = None,
-    input_identities: list[Any] | None = None,
+    input_identities: list[PlannerInputIdentity] | None = None,
     prompt_segments: list[PlannerPromptSegmentSize] | None = None,
     selected_template: PlannerPromptTemplateIdentity | None = None,
     identity: PlannerLogicalCallIdentity | None = None,
@@ -170,18 +201,20 @@ def logical_call(
         planner=planner(),
         template=selected_template or template(),
         execution_parameters=parameters(),
-        input_identities=input_identities or source_inputs(),
+        input_identities=tuple(input_identities or source_inputs()),
         prompt_size=PlannerPayloadSize(byte_count=2100, character_count=2000),
-        prompt_segments=prompt_segments
-        or [
-            PlannerPromptSegmentSize(
-                name="documents", byte_count=1500, character_count=1450
-            ),
-            PlannerPromptSegmentSize(
-                name="instructions", byte_count=500, character_count=450
-            ),
-        ],
-        physical_attempts=physical_attempts or [],
+        prompt_segments=tuple(
+            prompt_segments
+            or [
+                PlannerPromptSegmentSize(
+                    name="documents", byte_count=1500, character_count=1450
+                ),
+                PlannerPromptSegmentSize(
+                    name="instructions", byte_count=500, character_count=450
+                ),
+            ]
+        ),
+        physical_attempts=tuple(physical_attempts or []),
     )
 
 
@@ -189,7 +222,7 @@ def execution(
     *,
     calls: list[PlannerLogicalCall] | None = None,
     outcome: PlanningExecutionOutcome | None = None,
-    inputs: list[Any] | None = None,
+    inputs: list[PlannerInputIdentity] | None = None,
     templates: list[PlannerPromptTemplateIdentity] | None = None,
     preflight_completed_at: datetime = PREFLIGHT_AT,
     created_at: datetime = CREATED_AT,
@@ -201,21 +234,27 @@ def execution(
         created_at=created_at,
         planner=planner(),
         execution_parameters=parameters(),
-        input_identities=inputs or source_inputs(),
-        prompt_templates=templates or [template()],
-        logical_calls=calls or [],
+        input_identities=tuple(inputs or source_inputs()),
+        prompt_templates=tuple(templates or [template()]),
+        logical_calls=tuple(calls or []),
         outcome=outcome,
     )
 
 
 def completed_outcome(
-    *, plan_run_id: UUID = PLAN_RUN_ID, status: str = "completed"
+    *,
+    plan_run_id: UUID = PLAN_RUN_ID,
+    status: PlanningExecutionOutcomeStatus = PlanningExecutionOutcomeStatus.COMPLETED,
 ) -> PlanningExecutionOutcome:
     return PlanningExecutionOutcome(
         status=status,
         completed_at=CREATED_AT + timedelta(seconds=10),
         raw_output_observed=True,
-        failure_stage=None if status == "completed" else "parse",
+        failure_stage=(
+            None
+            if status is PlanningExecutionOutcomeStatus.COMPLETED
+            else PlanningExecutionFailureStage.PARSE
+        ),
         resulting_plan_run_id=plan_run_id,
     )
 
@@ -270,11 +309,15 @@ def test_sparse_provider_evidence_never_fabricates_zero() -> None:
     }
 
     with pytest.raises(ValidationError, match="reported_usage_requires_value"):
-        ProviderUsageValue(availability="reported")
+        ProviderUsageValue(availability=ProviderEvidenceAvailability.REPORTED)
     with pytest.raises(ValidationError, match="missing_usage_cannot_have_value"):
-        ProviderUsageValue(availability="unsupported", value=0)
+        ProviderUsageValue(
+            availability=ProviderEvidenceAvailability.UNSUPPORTED, value=0
+        )
     with pytest.raises(ValidationError, match="missing_timing_cannot_have_value"):
-        OptionalTimingValue(availability="unavailable", value_ms=0)
+        OptionalTimingValue(
+            availability=MeasurementAvailability.UNAVAILABLE, value_ms=0
+        )
 
 
 def test_contract_serialization_and_fingerprints_are_deterministic() -> None:
@@ -325,14 +368,16 @@ def test_contract_serialization_and_fingerprints_are_deterministic() -> None:
 
 def test_post_preflight_identity_boundary_is_explicit_and_ordered() -> None:
     with pytest.raises(ValidationError, match="preflight_completed_at"):
-        PlanningExecution(
-            identity=PlanningExecutionIdentity(execution_id=EXECUTION_ID),
-            product_id=PRODUCT_ID,
-            created_at=CREATED_AT,
-            planner=planner(),
-            execution_parameters=parameters(),
-            input_identities=source_inputs(),
-            prompt_templates=[template()],
+        PlanningExecution.model_validate(
+            {
+                "identity": PlanningExecutionIdentity(execution_id=EXECUTION_ID),
+                "product_id": PRODUCT_ID,
+                "created_at": CREATED_AT,
+                "planner": planner(),
+                "execution_parameters": parameters(),
+                "input_identities": source_inputs(),
+                "prompt_templates": [template()],
+            }
         )
     with pytest.raises(ValidationError, match="execution_precedes_preflight"):
         execution(
@@ -357,7 +402,7 @@ def test_post_preflight_identity_boundary_is_explicit_and_ordered() -> None:
 
     contradictory_input = PlannerInputIdentity(
         name=source_inputs()[0].name,
-        algorithm="sha256",
+        algorithm=PlannerDigestAlgorithm.SHA256,
         digest="f" * 64,
     )
     with pytest.raises(ValidationError, match="call_input_identity_mismatch"):
@@ -366,10 +411,10 @@ def test_post_preflight_identity_boundary_is_explicit_and_ordered() -> None:
 
 def test_terminal_failure_before_raw_output_has_no_plan_run() -> None:
     failed = PlanningExecutionOutcome(
-        status="failed",
+        status=PlanningExecutionOutcomeStatus.FAILED,
         completed_at=CREATED_AT + timedelta(seconds=5),
         raw_output_observed=False,
-        failure_stage="provider_before_output",
+        failure_stage=PlanningExecutionFailureStage.PROVIDER_BEFORE_OUTPUT,
         resulting_plan_run_id=None,
     )
     observed = execution(
@@ -381,16 +426,16 @@ def test_terminal_failure_before_raw_output_has_no_plan_run() -> None:
 
     with pytest.raises(ValidationError, match="post_output_plan_run_mismatch"):
         PlanningExecutionOutcome(
-            status="failed",
+            status=PlanningExecutionOutcomeStatus.FAILED,
             completed_at=CREATED_AT + timedelta(seconds=5),
             raw_output_observed=False,
-            failure_stage="provider_before_output",
+            failure_stage=PlanningExecutionFailureStage.PROVIDER_BEFORE_OUTPUT,
             resulting_plan_run_id=PLAN_RUN_ID,
         )
 
 
 def test_terminal_post_output_failure_links_one_exact_plan_run() -> None:
-    failed = completed_outcome(status="failed")
+    failed = completed_outcome(status=PlanningExecutionOutcomeStatus.FAILED)
     observed = execution(
         calls=[
             logical_call(
@@ -478,22 +523,21 @@ def test_raw_content_credentials_secret_hashes_and_pricing_are_excluded() -> Non
         assert forbidden_fields.isdisjoint(contract_type.model_fields)
 
     with pytest.raises(ValidationError, match="extra_forbidden") as prompt_error:
-        PlannerPhysicalTransportAttempt(
-            **attempt(1).model_dump(),
-            raw_provider_payload={"secret": "do-not-retain"},
+        PlannerPhysicalTransportAttempt.model_validate(
+            attempt(1).model_dump()
+            | {"raw_provider_payload": {"secret": "do-not-retain"}}
         )
     assert "do-not-retain" not in str(prompt_error.value)
 
     with pytest.raises(ValidationError, match="input_name_sensitive"):
         PlannerInputIdentity(
             name="credential-hash",
-            algorithm="sha256",
+            algorithm=PlannerDigestAlgorithm.SHA256,
             digest="d" * 64,
         )
     with pytest.raises(ValidationError, match="extra_forbidden"):
-        PlannerExecutionParameters(
-            streaming=True,
-            api_key="do-not-retain",
+        PlannerExecutionParameters.model_validate(
+            {"streaming": True, "api_key": "do-not-retain"}
         )
 
     encoded = execution().canonical_bytes().decode("ascii")
