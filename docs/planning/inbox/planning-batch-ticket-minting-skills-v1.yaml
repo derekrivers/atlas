@@ -1,0 +1,47 @@
+schema_version: 1
+repository: derekrivers/atlas
+base_commit: 86353d3df5098d9eca373f78c70cb08e37f68869
+repository_files:
+- docs/planning/inbox/inbox-stub-01-ticket-minting-lifecycle-authority.md
+- docs/planning/inbox/inbox-stub-02-planning-intake-isolation.md
+- docs/planning/inbox/inbox-stub-03-bounded-linear-operator-adapter.md
+- docs/planning/inbox/inbox-stub-04-session-aware-linear-skill.md
+- docs/planning/inbox/inbox-stub-05-planning-inbox-read-only-validation.md
+- docs/planning/inbox/inbox-stub-06-ticket-planning-skill-fast-path.md
+- docs/planning/inbox/inbox-stub-07-pm-publication-only-seam.md
+- docs/planning/inbox/inbox-stub-08-pm-ticket-sync-skill.md
+- docs/planning/inbox/inbox-stub-09-governed-planning-artifact-publication-skill.md
+- docs/planning/inbox/inbox-stub-10-planning-apply-governed-publication-handoff.md
+- docs/planning/inbox/inbox-stub-11-ticket-lifecycle-orchestration-skill.md
+- docs/planning/inbox/inbox-stub-12-ticket-skill-routing-contracts.md
+- docs/planning/inbox/inbox-stub-13-ticket-minting-end-to-end-proof.md
+- docs/planning/inbox/planning-batch-ticket-minting-skills-v1.yaml
+future_document_paths:
+- docs/closure/ticket-minting-skill-proof.md
+stubs:
+- path: docs/planning/inbox/inbox-stub-01-ticket-minting-lifecycle-authority.md
+  phase: ticket-minting-skills-v1
+- path: docs/planning/inbox/inbox-stub-02-planning-intake-isolation.md
+  phase: ticket-minting-skills-v1
+- path: docs/planning/inbox/inbox-stub-03-bounded-linear-operator-adapter.md
+  phase: ticket-minting-skills-v1
+- path: docs/planning/inbox/inbox-stub-04-session-aware-linear-skill.md
+  phase: ticket-minting-skills-v1
+- path: docs/planning/inbox/inbox-stub-05-planning-inbox-read-only-validation.md
+  phase: ticket-minting-skills-v1
+- path: docs/planning/inbox/inbox-stub-06-ticket-planning-skill-fast-path.md
+  phase: ticket-minting-skills-v1
+- path: docs/planning/inbox/inbox-stub-07-pm-publication-only-seam.md
+  phase: ticket-minting-skills-v1
+- path: docs/planning/inbox/inbox-stub-08-pm-ticket-sync-skill.md
+  phase: ticket-minting-skills-v1
+- path: docs/planning/inbox/inbox-stub-09-governed-planning-artifact-publication-skill.md
+  phase: ticket-minting-skills-v1
+- path: docs/planning/inbox/inbox-stub-10-planning-apply-governed-publication-handoff.md
+  phase: ticket-minting-skills-v1
+- path: docs/planning/inbox/inbox-stub-11-ticket-lifecycle-orchestration-skill.md
+  phase: ticket-minting-skills-v1
+- path: docs/planning/inbox/inbox-stub-12-ticket-skill-routing-contracts.md
+  phase: ticket-minting-skills-v1
+- path: docs/planning/inbox/inbox-stub-13-ticket-minting-end-to-end-proof.md
+  phase: ticket-minting-skills-v1
