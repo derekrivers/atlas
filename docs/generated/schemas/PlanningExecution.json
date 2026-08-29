@@ -594,7 +594,7 @@
     },
     "PlanningExecutionOutcome": {
       "additionalProperties": false,
-      "description": "Terminal execution outcome and optional exact resulting PlanRun link.",
+      "description": "Terminal execution outcome and independently optional PlanRun link.",
       "properties": {
         "completed_at": {
           "format": "date-time",
@@ -610,9 +610,11 @@
               "type": "null"
             }
           ],
-          "default": null
+          "default": null,
+          "description": "Terminal failure boundary, when status is failed."
         },
         "raw_output_observed": {
+          "description": "Whether any physical call in the execution returned raw output.",
           "title": "Raw Output Observed",
           "type": "boolean"
         },
@@ -627,6 +629,7 @@
             }
           ],
           "default": null,
+          "description": "Exact PlanRun produced by this execution, when one legally exists.",
           "title": "Resulting Plan Run Id"
         },
         "schema_version": {

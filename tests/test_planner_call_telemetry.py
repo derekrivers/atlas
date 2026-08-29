@@ -434,6 +434,45 @@ def test_terminal_failure_before_raw_output_has_no_plan_run() -> None:
         )
 
 
+def test_later_provider_failure_after_earlier_output_has_no_plan_run() -> None:
+    earlier_identity = logical_identity(logical_attempt_no=1)
+    later_identity = logical_identity(logical_attempt_no=2)
+    earlier_call = logical_call(
+        identity=earlier_identity,
+        physical_attempts=[
+            attempt(1, logical=earlier_identity, succeeded=True),
+        ],
+    )
+    later_call = logical_call(
+        identity=later_identity,
+        physical_attempts=[
+            attempt(1, logical=later_identity),
+            attempt(2, logical=later_identity),
+        ],
+    )
+    failed = PlanningExecutionOutcome(
+        status=PlanningExecutionOutcomeStatus.FAILED,
+        completed_at=CREATED_AT + timedelta(seconds=10),
+        raw_output_observed=True,
+        failure_stage=PlanningExecutionFailureStage.PROVIDER_BEFORE_OUTPUT,
+        resulting_plan_run_id=None,
+    )
+
+    observed = execution(calls=[earlier_call, later_call], outcome=failed)
+
+    assert observed.outcome is not None
+    assert observed.outcome.raw_output_observed is True
+    assert observed.outcome.resulting_plan_run_id is None
+    assert (
+        observed.logical_calls[0].physical_attempts[0].transport_disposition
+        is PlannerTransportDisposition.SUCCEEDED
+    )
+    assert all(
+        item.transport_disposition is PlannerTransportDisposition.FAILED
+        for item in observed.logical_calls[1].physical_attempts
+    )
+
+
 def test_terminal_post_output_failure_links_one_exact_plan_run() -> None:
     failed = completed_outcome(status=PlanningExecutionOutcomeStatus.FAILED)
     observed = execution(

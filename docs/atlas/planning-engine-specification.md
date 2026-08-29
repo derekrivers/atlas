@@ -464,13 +464,16 @@ and parse/schema/gate disposition. Provider usage values are one of
 
 `PlanningExecution.outcome` is optional. `None` is a visible, honest
 non-terminal execution, including after interruption; this contract defines no
-automatic abandonment or recovery rule. A terminal `failed` outcome before
-raw output records no `PlanRun`. Once raw output exists, the existing
-post-output insertion rule still requires the exact resulting `PlanRun`
-identity, including when parsing, schema validation, or a gate fails. A
-terminal `completed` outcome also names that exact `PlanRun`. A physical
-attempt may link to a `PlanRun` only when its execution outcome produced that
-same identity.
+automatic abandonment or recovery rule. `raw_output_observed` records whether
+any physical call in the execution returned output; it does not assert that the
+execution produced a `PlanRun`. A terminal provider failure before any output
+records neither, while a later provider request that exhausts retries may end
+`failed` with `raw_output_observed: true` and no `PlanRun` after an earlier call
+returned output. The existing post-output insertion rule still requires the
+exact resulting `PlanRun` identity when parsing, schema validation, or a gate
+fails, and a terminal `completed` outcome also names that exact `PlanRun`. A
+physical attempt may link to a `PlanRun` only when its execution outcome
+produced that same identity.
 
 `PlanningExecution` is not applyable and has no proposed/applied/rejected
 vocabulary. Section 6 and `data-model-and-schemas.md` section 3.10 remain

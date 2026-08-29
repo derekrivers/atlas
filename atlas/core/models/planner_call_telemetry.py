@@ -598,16 +598,26 @@ class PlannerLogicalCall(_CanonicalContract):
 
 
 class PlanningExecutionOutcome(_CanonicalContract):
-    """Terminal execution outcome and optional exact resulting PlanRun link."""
+    """Terminal execution outcome and independently optional PlanRun link."""
 
     schema_version: Literal["planning-execution-outcome/v1"] = (
         PLANNING_EXECUTION_OUTCOME_SCHEMA_VERSION
     )
     status: PlanningExecutionOutcomeStatus
     completed_at: datetime
-    raw_output_observed: bool
-    failure_stage: PlanningExecutionFailureStage | None = None
-    resulting_plan_run_id: UUID | None = None
+    raw_output_observed: bool = Field(
+        description="Whether any physical call in the execution returned raw output."
+    )
+    failure_stage: PlanningExecutionFailureStage | None = Field(
+        default=None,
+        description="Terminal failure boundary, when status is failed.",
+    )
+    resulting_plan_run_id: UUID | None = Field(
+        default=None,
+        description=(
+            "Exact PlanRun produced by this execution, when one legally exists."
+        ),
+    )
 
     @field_validator("completed_at", mode="after")
     @classmethod
@@ -634,13 +644,19 @@ class PlanningExecutionOutcome(_CanonicalContract):
 
         if self.failure_stage is None:
             raise ValueError("planner_telemetry_failed_outcome_requires_stage")
-        if self.raw_output_observed != (self.resulting_plan_run_id is not None):
+        if not self.raw_output_observed and self.resulting_plan_run_id is not None:
             raise ValueError("planner_telemetry_post_output_plan_run_mismatch")
         if (
             self.failure_stage is PlanningExecutionFailureStage.PROVIDER_BEFORE_OUTPUT
-            and self.raw_output_observed
+            and self.resulting_plan_run_id is not None
         ):
             raise ValueError("planner_telemetry_provider_pre_output_has_plan_run")
+        if (
+            self.failure_stage
+            is not PlanningExecutionFailureStage.PROVIDER_BEFORE_OUTPUT
+            and self.raw_output_observed != (self.resulting_plan_run_id is not None)
+        ):
+            raise ValueError("planner_telemetry_post_output_plan_run_mismatch")
         return self
 
 

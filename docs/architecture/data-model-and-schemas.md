@@ -1034,9 +1034,16 @@ stage, and an optional `resulting_plan_run_id`.
 | Execution outcome | Raw output observed | Resulting PlanRun |
 | --- | --- | --- |
 | non-terminal (`outcome: null`) | not asserted | none asserted |
-| terminal provider/pre-output failure | no | forbidden |
-| terminal post-output failure | yes | required, exact identity |
+| terminal provider failure with no earlier output | no | forbidden |
+| terminal provider failure after earlier output | yes | forbidden |
+| terminal parse/schema/gate failure | yes | required, exact identity |
 | terminal completion | yes | required, exact identity |
+
+`raw_output_observed` is execution-wide evidence, not shorthand for PlanRun
+creation. A successful earlier physical call followed by a later provider
+request that exhausts transport retries therefore records the observed output
+honestly while ending `failed` with no resulting `PlanRun`. Parse, schema, and
+gate failures remain post-output PlanRun outcomes and retain the exact link.
 
 An attempt-level PlanRun link is legal only when it equals the execution
 outcome's exact resulting identity. The execution is never an apply input and
