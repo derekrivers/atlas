@@ -370,13 +370,15 @@ def render_planner_prompt(
     *,
     version: str | None = None,
     prompts_dir: Path | None = None,
-    stage: str = "single",
+    stage: str | None = None,
 ) -> RenderedPrompt:
     """Render a released planner template; every failure is typed.
 
     ``variables`` must supply exactly the template's declared
     variables — missing and undeclared names both fail before
-    rendering (fail closed in both directions).
+    rendering (fail closed in both directions). When no provider-call stage is
+    supplied, the released template's declared base stage is authoritative;
+    single-call templates without a stage declaration resolve to ``single``.
     """
     directory = prompts_dir or PROMPTS_DIR
     resolved = version or current_release(directory)
@@ -388,7 +390,8 @@ def render_planner_prompt(
         template_sha256=hashlib.sha256(raw.encode("utf-8")).hexdigest(),
         declared_stage=declared_stage,
     )
-    template = artifact.identity(stage)
+    resolved_stage = stage if stage is not None else declared_stage or "single"
+    template = artifact.identity(resolved_stage)
 
     missing = sorted(set(declared) - set(variables))
     if missing:
