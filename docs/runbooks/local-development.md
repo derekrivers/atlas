@@ -62,9 +62,15 @@ mismatched diff proof. Changed test files and proven explicit ticket test files
 appear in `test_targets` even when a broader profile command contains them.
 Unknown or invalid paths, an omitted or mismatched diff, Git discovery failure,
 an unprovable ticket test, ambiguous identities,
-registry-version/digest drift, input over the documented bounds and protected
-cross-cutting surfaces select `full-sweep` with explicit fallback reasons. A
-caller must not replace that fallback with a narrower manual plan.
+registry-version/digest drift and input over the documented bounds select
+`full-sweep` with explicit fallback reasons. Protected-surface metadata records
+cross-cutting or governed significance, but protection alone does not determine
+validation breadth. Breadth comes from explicit registry path rules, ticket
+requirements and conservative fallback conditions. Specific shared-policy and
+validation-policy surfaces intentionally select `full-sweep`; classified
+planning artifacts remain protected while using focused documentation
+validation, and unknown planning paths continue to fail closed. A caller must
+not replace a selected full sweep with a narrower manual plan.
 
 The named `full-sweep` profile is the conservative local path. Run it only when
 the deterministic plan selects it or the operator explicitly instructs it; do

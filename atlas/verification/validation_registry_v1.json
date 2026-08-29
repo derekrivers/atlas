@@ -107,6 +107,13 @@
       "reason": "Canonical or supporting documentation changed."
     },
     {
+      "id": "planning-artifacts",
+      "prefix": "docs/planning/",
+      "suffixes": [".yaml", ".mmd"],
+      "profiles": ["documentation"],
+      "reason": "Governed planning input or machine-written planning render changed."
+    },
+    {
       "id": "root-documentation",
       "exact": [
         "AGENTS.md",
