@@ -1,0 +1,276 @@
+# ATLAS-082M experimental measurement only.
+# This workflow is deliberately branch-scoped and is not validation authority,
+# a required status, or a replacement for the canonical CI matrix.
+name: Parallel full-sweep probe
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  parallel-full-sweep-probe:
+    if: ${{ github.head_ref == 'atlas-082m-parallel-full-sweep-probe' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/operator-ui/package-lock.json
+
+      - run: uv sync --locked
+
+      - name: Run exact full sweep in three conservative lanes
+        shell: bash
+        run: |
+          set -uo pipefail
+
+          # PR #371 observed serial full-sweep wall time:
+          # 19:56:56Z -> 20:25:49Z = 1,733 seconds.
+          readonly BASELINE_SECONDS=1733
+          readonly RESULT_DIR="${RUNNER_TEMP}/atlas-parallel-sweep"
+          mkdir -p "${RESULT_DIR}"
+
+          run_timed() {
+            local lane="$1"
+            local result_file="$2"
+            shift 2
+
+            local started finished elapsed rc
+
+            started="$(date +%s)"
+            echo "[probe][${lane}] START $*"
+
+            "$@"
+            rc=$?
+
+            finished="$(date +%s)"
+            elapsed=$((finished - started))
+
+            printf '%s\t%s\t%s\t%s\n' \
+              "${lane}" "${rc}" "${elapsed}" "$*" >> "${result_file}"
+
+            echo "[probe][${lane}] END rc=${rc} seconds=${elapsed} $*"
+            return "${rc}"
+          }
+
+          python_lane() {
+            local rc=0
+
+            run_timed \
+              python \
+              "${RESULT_DIR}/python.tsv" \
+              uv run pytest || rc=$?
+
+            printf '%s\n' "${rc}" > "${RESULT_DIR}/python.rc"
+          }
+
+          static_lane() {
+            local rc=0
+
+            run_timed \
+              static \
+              "${RESULT_DIR}/static.tsv" \
+              uv run ruff check . || rc=$?
+
+            if [[ "${rc}" -eq 0 ]]; then
+              run_timed \
+                static \
+                "${RESULT_DIR}/static.tsv" \
+                uv run ruff format --check . || rc=$?
+            fi
+
+            if [[ "${rc}" -eq 0 ]]; then
+              run_timed \
+                static \
+                "${RESULT_DIR}/static.tsv" \
+                uv run mypy atlas tests || rc=$?
+            fi
+
+            if [[ "${rc}" -eq 0 ]]; then
+              run_timed \
+                static \
+                "${RESULT_DIR}/static.tsv" \
+                uv run python -m atlas.tools.doc_linter || rc=$?
+            fi
+
+            if [[ "${rc}" -eq 0 ]]; then
+              run_timed \
+                static \
+                "${RESULT_DIR}/static.tsv" \
+                uv run lint-imports || rc=$?
+            fi
+
+            printf '%s\n' "${rc}" > "${RESULT_DIR}/static.rc"
+          }
+
+          ui_lane() {
+            local rc=0
+
+            run_timed \
+              ui \
+              "${RESULT_DIR}/ui.tsv" \
+              ./apps/operator-ui/scripts/ci.sh || rc=$?
+
+            if [[ "${rc}" -eq 0 ]]; then
+              run_timed \
+                ui \
+                "${RESULT_DIR}/ui.tsv" \
+                ./apps/operator-ui/scripts/ci-e2e.sh || rc=$?
+            fi
+
+            printf '%s\n' "${rc}" > "${RESULT_DIR}/ui.rc"
+          }
+
+          wall_started="$(date +%s)"
+
+          python_lane > "${RESULT_DIR}/python.log" 2>&1 &
+          python_pid=$!
+
+          static_lane > "${RESULT_DIR}/static.log" 2>&1 &
+          static_pid=$!
+
+          ui_lane > "${RESULT_DIR}/ui.log" 2>&1 &
+          ui_pid=$!
+
+          wait "${python_pid}"
+          wait "${static_pid}"
+          wait "${ui_pid}"
+
+          wall_finished="$(date +%s)"
+          wall_seconds=$((wall_finished - wall_started))
+
+          echo "===== python lane ====="
+          cat "${RESULT_DIR}/python.log"
+
+          echo "===== static lane ====="
+          cat "${RESULT_DIR}/static.log"
+
+          echo "===== ui lane ====="
+          cat "${RESULT_DIR}/ui.log"
+
+          python_rc="$(cat "${RESULT_DIR}/python.rc")"
+          static_rc="$(cat "${RESULT_DIR}/static.rc")"
+          ui_rc="$(cat "${RESULT_DIR}/ui.rc")"
+
+          command_count="$(
+            cat "${RESULT_DIR}"/*.tsv | wc -l
+          )"
+
+          command_time_sum="$(
+            awk -F '\t' \
+              '{ total += $3 } END { print total + 0 }' \
+              "${RESULT_DIR}"/*.tsv
+          )"
+
+          overlap_seconds=$((command_time_sum - wall_seconds))
+          baseline_seconds_saved=$((BASELINE_SECONDS - wall_seconds))
+
+          overlap_percent="$(
+            awk \
+              -v saved="${overlap_seconds}" \
+              -v total="${command_time_sum}" \
+              'BEGIN {
+                if (total <= 0) print "0.00";
+                else printf "%.2f", saved * 100 / total
+              }'
+          )"
+
+          baseline_percent_saved="$(
+            awk \
+              -v saved="${baseline_seconds_saved}" \
+              -v baseline="${BASELINE_SECONDS}" \
+              'BEGIN {
+                printf "%.2f", saved * 100 / baseline
+              }'
+          )"
+
+          concurrency_factor="$(
+            awk \
+              -v total="${command_time_sum}" \
+              -v wall="${wall_seconds}" \
+              'BEGIN {
+                if (wall <= 0) print "0.000";
+                else printf "%.3f", total / wall
+              }'
+          )"
+
+          python_seconds="$(
+            awk -F '\t' '{ total += $3 } END { print total + 0 }' \
+              "${RESULT_DIR}/python.tsv"
+          )"
+
+          static_seconds="$(
+            awk -F '\t' '{ total += $3 } END { print total + 0 }' \
+              "${RESULT_DIR}/static.tsv"
+          )"
+
+          ui_seconds="$(
+            awk -F '\t' '{ total += $3 } END { print total + 0 }' \
+              "${RESULT_DIR}/ui.tsv"
+          )"
+
+          status=PASS
+
+          if [[ "${python_rc}" -ne 0 ||
+                "${static_rc}" -ne 0 ||
+                "${ui_rc}" -ne 0 ||
+                "${command_count}" -ne 8 ]]; then
+            status=FAIL
+          fi
+
+          {
+            echo "## ATLAS-082M parallel full-sweep probe"
+            echo
+            echo "Experimental timing evidence only; canonical CI remains authoritative."
+            echo
+            echo "### Result"
+            echo
+            echo "| Metric | Result |"
+            echo "| --- | ---: |"
+            echo "| Status | ${status} |"
+            echo "| Commands completed | ${command_count}/8 |"
+            echo "| Parallel wall time | ${wall_seconds}s |"
+            echo "| Python lane | ${python_seconds}s |"
+            echo "| Static/governance lane | ${static_seconds}s |"
+            echo "| UI + E2E/a11y lane | ${ui_seconds}s |"
+            echo "| Sum of observed command time | ${command_time_sum}s |"
+            echo "| Time overlapped | ${overlap_seconds}s (${overlap_percent}%) |"
+            echo "| Observed concurrency factor | ${concurrency_factor}x |"
+            echo "| PR #371 serial baseline | ${BASELINE_SECONDS}s |"
+            echo "| Saving vs PR #371 | ${baseline_seconds_saved}s (${baseline_percent_saved}%) |"
+            echo
+            echo "### Per-command timings"
+            echo
+            echo '| Lane | Exit | Seconds | Command |'
+            echo '| --- | ---: | ---: | --- |'
+
+            while IFS=$'\t' read -r lane rc seconds command; do
+              echo "| ${lane} | ${rc} | ${seconds} | \`${command}\` |"
+            done < <(
+              cat \
+                "${RESULT_DIR}/python.tsv" \
+                "${RESULT_DIR}/static.tsv" \
+                "${RESULT_DIR}/ui.tsv"
+            )
+          } | tee -a "${GITHUB_STEP_SUMMARY}"
+
+          if [[ "${status}" != PASS ]]; then
+            exit 1
+          fi
