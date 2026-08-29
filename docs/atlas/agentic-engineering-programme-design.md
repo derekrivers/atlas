@@ -32,6 +32,16 @@ The programme does not block the ATLAS-253 live ramp unless a separately
 ratified dependency emerges, and adoption adds no implementation or runtime
 authority.
 
+**ATLAS-084M post-review release incorporation:** 29 August 2026.
+`docs/atlas/post-review-release-orchestration.md` is the later canonical target
+authority for post-review release. Operator semantic review acceptance remains
+human. Permanent operator execution of mechanical post-review rebase and merge
+is superseded only in that future target by its bounded serial Release
+Controller; current production manual rebase and manual merge remain binding
+until separate implementation, proof and explicit activation. Phase 16
+`QueuePlan` remains advisory and cannot become release authority. This
+incorporation rewrites no Phase 15 or Phase 16 historical evidence or ruling.
+
 
 
 ---
