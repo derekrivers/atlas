@@ -42,7 +42,14 @@ shell filters, or model judgment.
 
 ## Execute the plan
 
-- Run every selected command in emitted order.
+- Execute the exact plan with `uv run atlas validation-run` using the same
+  base/head, changed paths, ticket requirements and ticket tests supplied to
+  `validation-plan`. The repository, not the agent, determines execution
+  groups.
+- Every selected command remains mandatory. Commands within a repository-owned
+  group run in their defined order; independent repository-owned groups may run
+  concurrently. The agent must not add, remove, merge, split or otherwise alter
+  those groups.
 - Run every explicit test target in emitted order, even when a broader command
   already contains it.
 - Never omit, replace, or narrow a selected command.

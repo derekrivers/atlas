@@ -410,6 +410,8 @@ def test_atlas_254_ac4_uncertain_or_protected_inputs_select_complete_sweep(
     [
         "atlas/verification/validation_plan.py",
         "atlas/orchestration/validation_plan_cli.py",
+        "atlas/verification/validation_execution.py",
+        "atlas/orchestration/validation_run_cli.py",
     ],
 )
 def test_atlas_254_ac4_validation_policy_implementation_is_protected(
@@ -669,6 +671,8 @@ def test_atlas_072m_browser_config_without_exact_target_fails_closed(
     "path",
     [
         "atlas/orchestration/validation_plan_cli.py",
+        "atlas/orchestration/validation_run_cli.py",
+        "atlas/verification/validation_execution.py",
         "atlas/verification/validation_plan.py",
         "atlas/verification/validation_registry_v1.json",
         ".github/workflows/ci.yml",

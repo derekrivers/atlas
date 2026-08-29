@@ -16,7 +16,7 @@ from typing import Any, Final, cast
 
 REGISTRY_VERSION: Final = "validation-registry/v1"
 REGISTRY_SHA256: Final = (
-    "119ee591ccd153155a4e675ad3941e0481514676d4c7c5f75b249beea1f21194"
+    "2d1d145a6cf823ec482668d8d1975ae6c3d3a54153f12e90a54868382de3f854"
 )
 MAX_CHANGED_PATHS: Final = 256
 MAX_TICKET_REQUIREMENTS: Final = 32

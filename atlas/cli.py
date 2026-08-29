@@ -119,7 +119,7 @@ from atlas.orchestration import (
     resolve_github_client,
     resolve_pr_context,
     run_verify,
-    validation_plan_cli,
+    validation_run_cli,
 )
 from atlas.orchestration.operator_security import (
     WRITABLE_BIND_HOST_ENV,
@@ -434,7 +434,7 @@ def build_parser() -> argparse.ArgumentParser:
     _add_preflight_parser(subcommands)
     _add_lessons_parser(subcommands)
     _add_api_parser(subcommands)
-    validation_plan_cli.add_parser(subcommands)
+    validation_run_cli.add_parsers(subcommands)
     return parser
 
 
@@ -2641,8 +2641,8 @@ def main(
         return _lessons_command(args, database=database, client=client)
     if args.command == "api":
         return _api_command(args)
-    if args.command == "validation-plan":
-        return validation_plan_cli.run_command(args, git_runner=git_runner)
+    if args.command in {"validation-plan", "validation-run"}:
+        return validation_run_cli.run_routed_command(args, git_runner=git_runner)
     return EXIT_PRECONDITION  # unreachable: subparser is required
 
 

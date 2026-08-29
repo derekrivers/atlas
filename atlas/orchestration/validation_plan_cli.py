@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Protocol
 
 from atlas.verification.validation_plan import (
+    ValidationPlan,
     ValidationRegistry,
     calculate_validation_plan,
     load_registry_bytes,
@@ -32,11 +33,9 @@ class GitRunner(Protocol):
     ) -> subprocess.CompletedProcess[str]: ...
 
 
-def add_parser(subcommands: argparse._SubParsersAction) -> None:  # type: ignore[type-arg]
-    parser = subcommands.add_parser(
-        "validation-plan",
-        help="Calculate bounded local checks from exact identities and diff paths",
-    )
+def add_plan_arguments(parser: argparse.ArgumentParser) -> None:
+    """Add the exact-candidate inputs shared by plan and execution CLIs."""
+
     parser.add_argument(
         "--base", required=True, help="exact full lowercase base Git object id"
     )
@@ -69,6 +68,14 @@ def add_parser(subcommands: argparse._SubParsersAction) -> None:  # type: ignore
         default=None,
         help="fail closed if the caller's registry version differs",
     )
+
+
+def add_parser(subcommands: argparse._SubParsersAction) -> None:  # type: ignore[type-arg]
+    parser = subcommands.add_parser(
+        "validation-plan",
+        help="Calculate bounded local checks from exact identities and diff paths",
+    )
+    add_plan_arguments(parser)
     parser.add_argument(
         "--json", action="store_true", help="emit canonical bounded JSON"
     )
@@ -203,12 +210,14 @@ def _unverified_ticket_tests(
     return tuple(unverified)
 
 
-def run_command(
+def build_plan(
     args: argparse.Namespace,
     *,
     git_runner: GitRunner | None = None,
     repo_root: Path | None = None,
-) -> int:
+) -> ValidationPlan:
+    """Build one plan using the CLI's read-only exact-diff proofs."""
+
     registry, registry_error = _packaged_registry()
     runner = git_runner or _run_git
     root = repo_root or Path.cwd()
@@ -245,7 +254,7 @@ def run_command(
         repo_root=root,
         git_runner=runner,
     )
-    plan = calculate_validation_plan(
+    return calculate_validation_plan(
         base=args.base,
         head=args.head,
         changed_paths=effective_paths,
@@ -257,6 +266,15 @@ def run_command(
         diff_verification=diff_verification,
         unverified_ticket_tests=unverified_tests,
     )
+
+
+def run_command(
+    args: argparse.Namespace,
+    *,
+    git_runner: GitRunner | None = None,
+    repo_root: Path | None = None,
+) -> int:
+    plan = build_plan(args, git_runner=git_runner, repo_root=repo_root)
     if args.json:
         sys.stdout.buffer.write(plan.json_bytes())
     else:
@@ -264,4 +282,4 @@ def run_command(
     return 0
 
 
-__all__ = ["GitRunner", "add_parser", "run_command"]
+__all__ = ["GitRunner", "add_parser", "add_plan_arguments", "build_plan", "run_command"]

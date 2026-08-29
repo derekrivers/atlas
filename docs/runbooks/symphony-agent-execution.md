@@ -115,10 +115,14 @@ new identity). Supply every changed path identity exactly once as
 ticket-declared test file. The CLI's own read-only diff verification is final
 authority; require its diff and test proofs to pass.
 Run every ordered command in the plan and every ticket-declared test file named
-by its test targets, in order. Run the `full-sweep` profile only when the plan
-selects it as the conservative fallback or the operator explicitly instructs
-it. Do not substitute a narrower command for a selected check, and do not add
-an unselected complete sweep as a handoff ritual.
+by its test targets. Execute the plan through the repository-owned
+`atlas validation-run` path: commands remain ordered within their deterministic
+group, while independent repository-defined full-sweep groups may run
+concurrently. The agent may not choose or alter that topology. Run the
+`full-sweep` profile only when the plan selects it as the conservative fallback
+or the operator explicitly instructs it. Do not substitute a narrower command
+for a selected check, and do not add an unselected complete sweep as a handoff
+ritual.
 
 A failed selected command or explicit test prevents publication: remain
 `In Progress`, fix only in-scope failures, and calculate a new plan for the new
