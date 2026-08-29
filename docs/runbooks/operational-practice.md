@@ -137,6 +137,11 @@ merged-proof verification
 read-only observation of managed PM completion
 ```
 
+This is the active runtime loop. The ratified target architecture in
+`docs/atlas/post-review-release-orchestration.md` introduces future
+`Review Required -> Awaiting Release` and serial Release Controller boundaries,
+but none is active until separately implemented and activated.
+
 Acceptance does not deploy code or schemas and does not orchestrate the PM
 scheduler. After merged-proof verification, the managed recurring PM cadence
 owns ordinary reconciliation while the acceptance driver only observes Atlas
