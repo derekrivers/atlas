@@ -93,7 +93,7 @@ def template(*, uppercase: bool = False) -> PlannerPromptTemplateIdentity:
 
 
 def logical_identity(
-    *, stage: str = "plan", logical_attempt_no: int = 1
+    *, stage: str = "plan", logical_attempt_no: int = 0
 ) -> PlannerLogicalCallIdentity:
     return PlannerLogicalCallIdentity(
         execution=PlanningExecutionIdentity(execution_id=EXECUTION_ID),
@@ -274,6 +274,7 @@ def test_complete_execution_logical_and_physical_hierarchy() -> None:
 
     call = observed.logical_calls[0]
     assert call.identity.execution == observed.identity
+    assert call.identity.logical_attempt_no == 0
     assert [item.identity.physical_attempt_no for item in call.physical_attempts] == [
         1,
         2,
@@ -435,8 +436,8 @@ def test_terminal_failure_before_raw_output_has_no_plan_run() -> None:
 
 
 def test_later_provider_failure_after_earlier_output_has_no_plan_run() -> None:
-    earlier_identity = logical_identity(logical_attempt_no=1)
-    later_identity = logical_identity(logical_attempt_no=2)
+    earlier_identity = logical_identity(logical_attempt_no=0)
+    later_identity = logical_identity(logical_attempt_no=1)
     earlier_call = logical_call(
         identity=earlier_identity,
         physical_attempts=[
@@ -524,7 +525,7 @@ def test_interrupted_execution_remains_honestly_non_terminal() -> None:
         ),
         (
             lambda: execution(
-                calls=[logical_call(identity=logical_identity(logical_attempt_no=2))]
+                calls=[logical_call(identity=logical_identity(logical_attempt_no=1))]
             ),
             "logical_attempts_not_contiguous",
         ),
@@ -535,6 +536,11 @@ def test_invalid_attempt_hierarchy_or_numbering_is_rejected(
 ) -> None:
     with pytest.raises(ValidationError, match=error):
         builder()
+
+
+def test_negative_logical_attempt_number_is_rejected() -> None:
+    with pytest.raises(ValidationError, match="greater_than_equal"):
+        logical_identity(logical_attempt_no=-1)
 
 
 def test_raw_content_credentials_secret_hashes_and_pricing_are_excluded() -> None:

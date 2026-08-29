@@ -267,7 +267,7 @@
         },
         "logical_attempt_no": {
           "maximum": 9223372036854775807,
-          "minimum": 1,
+          "minimum": 0,
           "title": "Logical Attempt No",
           "type": "integer"
         },

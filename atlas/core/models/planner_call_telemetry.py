@@ -209,7 +209,7 @@ class PlannerLogicalCallIdentity(_CanonicalContract):
 
     execution: PlanningExecutionIdentity
     stage: str = Field(min_length=1, max_length=MAX_STAGE_LENGTH)
-    logical_attempt_no: StrictInt = Field(ge=1, le=MAX_COUNTER)
+    logical_attempt_no: StrictInt = Field(ge=0, le=MAX_COUNTER)
 
     @field_validator("stage", mode="before")
     @classmethod
@@ -770,7 +770,7 @@ class PlanningExecution(_CanonicalContract):
                     successful_attempts.append(attempt)
 
         for numbers in numbers_by_stage.values():
-            if numbers != list(range(1, len(numbers) + 1)):
+            if numbers != list(range(len(numbers))):
                 raise ValueError("planner_telemetry_logical_attempts_not_contiguous")
 
         resulting_plan_run_id = (

@@ -439,13 +439,13 @@ creates neither a `PlanningExecution` nor physical-attempt evidence.
 The hierarchy is structural rather than an ambiguous pair of integers:
 
 - an execution is identified by its execution UUID;
-- a logical call is identified by execution, stage, and a one-based logical
+- a logical call is identified by execution, stage, and a zero-based logical
   attempt number; and
 - a physical request is identified by that complete logical-call identity and
   a one-based physical transport-attempt number.
 
-Logical attempt numbers are contiguous within a stage. Physical attempt
-numbers are contiguous within a logical call, and at most one successful
+Logical attempt numbers are contiguous `0..N-1` within a stage. Physical
+attempt numbers are contiguous within a logical call, and at most one successful
 physical attempt exists for a logical call; when present, it is the final
 physical attempt. Nested contracts must repeat the exact parent identity,
 planner and parameters, use one of the templates frozen by the execution, and

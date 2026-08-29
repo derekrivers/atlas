@@ -944,7 +944,7 @@ PlanningExecutionIdentity
 PlannerLogicalCallIdentity
   execution: PlanningExecutionIdentity
   stage: canonical string
-  logical_attempt_no: one-based integer
+  logical_attempt_no: zero-based integer
 
 PlannerPhysicalAttemptIdentity
   logical_call: PlannerLogicalCallIdentity
@@ -952,10 +952,10 @@ PlannerPhysicalAttemptIdentity
 ```
 
 This nesting makes the three identities structurally distinct. Logical
-attempts are contiguous per stage and physical attempts are contiguous per
-logical call. A child naming a different execution, stage, logical attempt, or
-parent is invalid. There is at most one successful physical transport attempt
-in a logical call and it must be final.
+attempts are contiguous `0..N-1` per stage and physical attempts are contiguous
+per logical call. A child naming a different execution, stage, logical attempt,
+or parent is invalid. There is at most one successful physical transport
+attempt in a logical call and it must be final.
 
 ## Post-preflight execution
 
