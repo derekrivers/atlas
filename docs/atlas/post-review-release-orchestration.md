@@ -40,6 +40,13 @@ Direct unminted maintenance/meta PRs, including `ATLAS-NNM` records such as
 this amendment, remain on that current manual path. They are not eligible for
 the v1 target Release Controller.
 
+The live GitHub repository observation on 29 August 2026 for this final rework
+found active ruleset `17514272` with
+`strict_required_status_checks_policy: false`. It therefore does not satisfy
+the v1 provider-enforced current-base prerequisite in section 11, and automatic
+release must remain disabled. This document changes no branch protection or
+ruleset setting.
+
 Implementation documents must cite an activation decision before describing
 any part of the target lifecycle as live. This amendment does not modify an
 Atlas store, planning render, ticket definition, Linear state, GitHub setting,
@@ -472,14 +479,23 @@ system-authored, deterministic and bound to one release attempt. Every
 required input must be present and every predicate must pass; unknown is
 failure for autonomous release.
 
+A successful proof establishes a **proved candidate** only. It proves that a
+local candidate may be published under the exact fence in section 8.3; it does
+not claim that the remote PR head moved and does not advance the episode's
+published-head authority. Proof, publication and remote authority are three
+separate facts.
+
 ### 8.1 Required identities
 
 The proof binds:
 
 - root active approval, episode, generation and receipt IDs;
 - `parent_authority_type` and `parent_authority_id`, where the parent is either
-  the root `ReviewApproval` or the immediately previous successful
-  `ReleaseEquivalenceProof`;
+  the root `ReviewApproval` at its already-published reviewed head or the
+  immediately previous successful `ReleaseEquivalenceProof` whose output has a
+  confirmed successful publication receipt;
+- the preceding publication receipt and fence identities when the parent is a
+  proof rather than the root approval;
 - repository, PR number and unchanged same-repository head-branch identity;
 - unchanged product/ticket identities and sorted close-set;
 - unchanged per-ticket and aggregate review-contract fingerprints;
@@ -494,22 +510,24 @@ The proof binds:
 - previous proof-chain fingerprint and resulting proof-chain fingerprint; and
 - proof creation time and terminal result.
 
-At any instant the episode has one `current_authorised_head`: the human-reviewed
-head when the chain is empty, otherwise the output candidate of the last
-successful proof rooted in the active approval. A failed or abandoned proof
-does not advance it.
+At any instant the episode has one `current_authorised_head`: the exact remote
+PR head confirmed as published under the active approval. It begins as the
+published human-reviewed head. It later changes only through the successful
+publication receipt in section 8.3. A proved candidate is recorded separately
+and has no published-head, CI-consumption or next-proof authority until that
+receipt commits.
 
 ### 8.2 Governed mechanical integration
 
 The Release Controller creates a clean, disposable, controller-owned workspace
 from independently fetched immutable refs. It disables rerere and automatic
-conflict reuse. Let `S` be the episode's current authorised head and `S_base`
-the integration base recorded by its parent authority. The controller requires
-the live PR head to equal `S`, pins the expected-old-head lease to `S`, and
-attempts a non-interactive rebase of the exact authorised series from
-`S_base..S` onto newly resolved live main `M`. The first proof has `S = H1` and
-`S_base = B`; each later proof uses the immediately preceding successful
-proof's output head and live-main base.
+conflict reuse. Let `S` be the episode's current authorised published head and
+`S_base` the integration base recorded by its parent authority. The controller
+requires the live PR head to equal `S`, pins the prospective expected-old-head
+lease to `S`, and attempts a non-interactive rebase of the exact authorised
+series from `S_base..S` onto newly resolved live main `M`. The first proof has
+`S = H1` and `S_base = B`; each later proof uses the output head and live-main
+base of the immediately preceding proof whose publication was confirmed.
 
 Autonomous integration is eligible only when the process completes without a
 conflict stop, edit, manual continuation, dropped commit, squash, fixup or
@@ -518,15 +536,53 @@ attempt; the controller never resolves it. The workspace transcript is bounded
 and secret-free, and the resulting object identities are recalculated from Git
 rather than trusted from process narration.
 
-Each successful proof advances `current_authorised_head` to its output. Main
-may move again before release, in which case a later proof chains from that
-head rather than attempting to return to `H1`. The expected-old-head
-force-with-lease always names the exact current authorised head. An
-unrecognised live-head movement, missing parent, superseded root approval or
-proof-chain fingerprint discontinuity breaks authority and fails closed. No
-system proof creates or refreshes human evidence.
+A successful proof appends its proved-candidate identity but leaves
+`current_authorised_head = S`. A failed, abandoned or merely locally successful
+attempt never changes published authority. Only after section 8.3 confirms
+remote publication may a later proof chain from the published output rather
+than return to `H1`. An unrecognised live-head movement, missing confirmed
+publication parent, superseded root approval or proof-chain fingerprint
+discontinuity breaks authority and fails closed. No system proof or publication
+receipt creates or refreshes human evidence.
 
-### 8.3 Equivalence predicates
+### 8.3 Durable publication fence and receipt
+
+Publication reuses the delivered Phase-12 `lease_push_pending` safety
+principle. Before any remote write, Atlas appends a durable publication-pending
+fence binding at least:
+
+```text
+episode and active root approval
+proved ReleaseEquivalenceProof
+repository, PR and exact head branch
+current_authorised_head = S
+expected_old_head = S
+proved candidate = H2
+candidate integration base = M
+captured validated push destination
+publication attempt and idempotency identities
+```
+
+The controller then performs only the exact force-with-lease transition
+`S -> H2` through the captured destination and independently reads back the
+remote PR head. The provider call's return value is not publication authority.
+Recovery is deterministic:
+
+| Reconciled remote observation | Required result |
+| --- | --- |
+| remote head equals `H2` | Append the successful publication receipt and atomically advance `current_authorised_head` to `H2`. Only then may fresh CI or a subsequent proof consume `H2` as published authority. |
+| remote head equals `S` after definite non-publication, or after an ambiguous call is reconciled to non-publication | Keep `H2` as a proved candidate and `current_authorised_head` as `S`. A bounded retry may use the same fence only while every bound identity and lease remains current. |
+| provider call or remote read is ambiguous | Hold under the publication-pending fence. Do not retry the write until an independent remote-head reconciliation resolves it to `S`, `H2` or an unexpected head. |
+| remote head equals neither `S` nor `H2` | The publication and proof chain are broken. Advance no authority; hold and route to `Needs Human`. |
+
+Same-key recovery that observes `H2` records the one successful receipt without
+repeating the push. A stale fence, changed episode/approval/proof, moved base or
+head, changed destination, or indeterminate remote identity authorises no
+retry. Publication receipts are append-only and name the fence, proof, old
+remote head, published head, independently observed remote identity and
+observation time.
+
+### 8.4 Equivalence predicates
 
 All of the following are mandatory:
 
@@ -577,14 +633,20 @@ reviewed path, even if a text merge would be clean or appear equivalent. A
 future wider equivalence family requires separate research, ratification and
 activation.
 
-### 8.4 Worked authority chain
+### 8.5 Worked authority chain
 
 ```text
 Approval A1 generation 1 @ human-reviewed H1 / delta
 main moves to M2
 Proof P1: parent A1, expected old head H1, H1 -> H2
+Fence F1: publication pending, expected H1, candidate H2
+remote readback == H2
+Receipt R1: H2 confirmed published; current_authorised_head H1 -> H2
 main moves to M3
-Proof P2: parent P1, expected old head H2, H2 -> H3
+Proof P2: parent P1 + receipt R1, expected old head H2, H2 -> H3
+Fence F2: publication pending, expected H2, candidate H3
+remote readback == H3
+Receipt R2: H3 confirmed published; current_authorised_head H2 -> H3
 fresh CI validates H3
 release gate may consume H3
 
@@ -592,12 +654,12 @@ new human review
 Approval A2 generation 2 supersedes A1
 ```
 
-When A2 commits, A1 and every proof rooted in A1, including P1 and P2, become
-historical atomically. The episode's active root and current authorised head
-are reset to A2's reviewed identity. Monotonic generation and explicit
-supersession mean A1/P1/P2 cannot resurrect if drift is later reversed or A2
-is revoked; another human review must append a new generation rooted in its
-own reviewed head.
+When A2 commits, A1 and every proof, fence and publication receipt rooted in
+A1, including P1/F1/R1 and P2/F2/R2, become historical atomically. The
+episode's active root and current authorised head are reset to A2's published
+reviewed identity. Monotonic generation and explicit supersession mean the old
+chain cannot resurrect if drift is later reversed or A2 is revoked; another
+human review must append a new generation rooted in its own reviewed head.
 
 ## 9. Fresh CI and exact-head boundary
 
@@ -606,8 +668,12 @@ Review authority and machine evidence have separate lifetimes.
 - Every release candidate must have the complete required system-tier CI set
   pinned to that exact candidate identity.
 - When integration mints `H2 != H1`, every CI result for `H1` is historical;
-  the controller publishes `H2` through the expected-old-head lease and waits
-  for a fresh complete required CI execution at `H2`.
+  the controller fences publication, publishes `H2` through the
+  expected-old-head lease, confirms the remote head and records the successful
+  receipt before waiting for a fresh complete required CI execution at `H2`.
+- CI that happens to start before Atlas records confirmed publication cannot be
+  consumed through the release episode until the receipt establishes `H2` as
+  `current_authorised_head`.
 - Agent-tier local results, old CI, prior verification and the equivalence
   proof cannot satisfy those checks.
 - An unchanged `H1` may consume its still-current complete exact-head CI only
@@ -646,10 +712,14 @@ Development, CI and review remain parallel. Release is JIT and serial:
 select one Awaiting Release approval
   -> integrate against live main
   -> prove equivalence and independence
+  -> append publication-pending fence
   -> publish with expected-old-head lease when needed
+  -> independently read remote head
+  -> record receipt and advance published authority
   -> obtain exact-candidate CI
   -> verify the exact release gate
-  -> merge the exact authorised head
+  -> prove provider-enforced current-base freshness
+  -> merge the exact authorised head with expected-head protection
   -> verify merged proof
   -> release the lease
 ```
@@ -701,9 +771,13 @@ The controller may only:
 - create/use the governed disposable integration workspace;
 - perform one non-interactive mechanical rebase;
 - compute and record the equivalence/interaction proof;
-- publish the exact result with an expected old-head lease;
+- append and reconcile the durable publication-pending fence;
+- publish the exact proved candidate with an expected old-head lease;
+- independently read back the remote PR head, append the successful publication
+  receipt and only then advance `current_authorised_head`;
 - observe fresh required CI;
 - invoke canonical exact-candidate release verification;
+- read and fingerprint the active provider current-base protection;
 - merge the exact expected authorised head; and
 - append release attempts, proofs, receipts and merged proof without altering
   historical approval generations.
@@ -713,11 +787,37 @@ ticket definitions or criteria, change CI or branch protection, weaken policy,
 change Symphony capacity, use unrestricted Linear mutation or infer human
 approval.
 
-## 11. Exact-candidate merge and race boundary
+## 11. Exact-candidate merge and provider current-base race boundary
+
+Automatic merge has two independent movement races. The provider's
+expected-head/SHA precondition protects the PR head. It does not pin the base
+branch SHA: `main` may move after Atlas reads `M` but before the merge request
+is applied. For GitHub v1, provider-enforced current-base freshness is therefore
+a binding activation capability, not optional defence in depth:
+
+```text
+protected main must require branches to be up to date before merging
+```
+
+On GitHub this means the applicable active required-status-check protection has
+strict current-base enforcement (`strict_required_status_checks_policy: true`)
+and the controller's merge channel cannot bypass it. Automatic release remains
+disabled while the provider permits a stale-base PR to merge. A future provider
+may replace this prerequisite only with an atomic expected-base merge primitive
+that supplies equivalent guarantees.
+
+Activation must prove the live protected-branch ruleset, controller credential
+and merge method enforce that capability. The activated policy stores a
+canonical fingerprint of the relevant provider protection, including repository
+and protected ref, ruleset/protection identity and revision, enforcement state,
+branch targeting, strict-current-base value, required status-check context/App
+identities, and applicable bypass actors/channel. At the final gate the
+controller independently re-reads and fingerprints the live protection and
+requires exact agreement with that activated fingerprint. Missing, stale,
+changed, bypassable or indeterminate protection refuses automatic merge.
 
 Automatic merge consumes only the candidate that passed the release gate. At
-the final mutation boundary the controller must atomically or immediately
-adjacently prove:
+the final mutation boundary the controller must prove:
 
 - its repository/protected-branch lease is current;
 - protected `main` still equals the proof's `M` and is an ancestor of the
@@ -730,23 +830,41 @@ adjacently prove:
   equivalence-proof chain are unchanged;
 - complete required system-tier CI and release verification pass at that exact
   candidate;
+- the live provider-protection fingerprint exactly equals the activated
+  fingerprint, requires current-base freshness and is not bypassable by the
+  controller's merge channel;
 - no head/base/provider identity read is indeterminate; and
 - the merge request carries the provider's expected-head/SHA precondition.
 
-Any intervening movement refuses the mutation. A successful provider response
-is not sufficient by itself: Atlas re-reads the PR and protected branch,
-records the provider merge commit and proves that the exact authorised head was
-consumed. Managed completion observes that merged proof before `Done`.
+These controls close different intervals. If the PR head moves, expected-head
+refuses the merge. If `main` moves from verified `M` to `M2`, strict provider
+current-base enforcement refuses `H2` as behind even if the PR head is still
+exactly `H2`. Atlas then reintegrates from the confirmed published authorised
+head, proves and publishes the next candidate, and obtains fresh exact-head CI
+before another merge attempt.
 
-Branch protection, provider rulesets and GitHub mergeability are defence in
-depth. They do not replace the Atlas lease, exact-head precondition,
-equivalence proof, CI evidence, verifier or merged-proof readback.
+Atlas's repository lease cannot make every `main` mutation channel
+non-bypassable: direct maintenance/meta PRs remain manually merged in v1. The
+provider prerequisite closes that independent base-movement race. It does not
+replace Atlas's exact-main ancestry/equivalence checks, complete exact-head CI,
+release verifier, expected-head precondition or merged-proof readback; every
+layer remains mandatory.
+
+A successful provider response is not sufficient by itself. Atlas re-reads the
+PR, protected branch and provider-protection fingerprint, records the provider
+merge commit and proves that the exact authorised head was consumed under the
+required protection. Any ambiguous response is reconciled before retry, and
+managed completion observes the merged proof before `Done`.
 
 ## 12. Failure routing
 
 | Observation | Route | Release meaning |
 | --- | --- | --- |
-| Clean non-interactive integration; complete equivalence/independence proof | continue at `Awaiting Release` | Mechanical authority remains valid. |
+| Clean non-interactive integration; complete equivalence/independence proof | record a proved candidate; continue at `Awaiting Release` without advancing `current_authorised_head` | Proof alone is not remote publication authority. |
+| Publication fence written; remote readback equals proved candidate `H2` | append successful publication receipt and atomically advance `current_authorised_head` to `H2` | Only confirmed remote publication creates published-head authority. |
+| Definite non-publication with remote still at expected old head `S` | keep proved candidate, fence and `current_authorised_head = S`; bounded retry only while every fence identity remains current | No remote movement occurred. |
+| Publication call timed out or provider/remote read is ambiguous | hold under the publication-pending fence and reconcile remote head before any retry | Never blind-retry a possibly successful push. |
+| Publication reconciliation finds remote head neither `S` nor `H2` | `Needs Human`; advance no authority | The publication/proof chain is broken by unrecognised movement. |
 | Ticket-contract/criteria/close-set drift while the already-published reviewed head remains concrete, unambiguous and exact-head CI-PASSED | `Review Required` | Approval is inactive; the CI-qualified published candidate requires a new human review generation. |
 | Ticket/approval drift without a concrete published exact-head CI-PASSED candidate | hold the release attempt or `Needs Human` when publication/provenance is unsafe | Drift never manufactures review readiness. |
 | Clean integration produces a concrete candidate but equivalence/interaction proof cannot authorise automatic release | safely publish under the bounded release path, obtain complete exact-head CI PASS, then `Review Required` | Human review sees a real CI-qualified candidate. |
@@ -758,6 +876,8 @@ equivalence proof, CI evidence, verifier or merged-proof readback.
 | CI pending, missing, cancelled, infrastructure-failed, malformed or provider-ambiguous | hold `Awaiting Release` | No failure or success is inferred; retry/reconcile under the release-attempt fence. |
 | Recognised main movement while the live PR head still equals `current_authorised_head` | hold and start the next chained JIT proof/rebase attempt | Prior release freshness is historical; no stale proof or CI is consumed. |
 | Unexpected/out-of-band PR-head movement | reconcile exact provenance, episode and CI; `Needs Human` if not recognised | Never infer review readiness from provider state or a green rollup. |
+| Provider current-base protection is missing, loose, stale, changed, bypassable or indeterminate | hold `Awaiting Release`; automatic merge disabled pending governed protection repair and activation proof | Atlas checks cannot substitute for provider enforcement of the final base race. |
+| `main` moves from final verified `M` to `M2` before merge and provider refuses behind `H2` | hold `Awaiting Release`; chain a new proof/publication from `H2`, then obtain fresh CI | Expected provider refusal closes the base-movement race. |
 | Expected-head merge refusal or ambiguous merge response | hold `Awaiting Release` and reconcile exact provider state before any retry | Never blind-retry a possible merge. |
 | Exact candidate passes all gates and merged proof verifies | managed completion may reach `Done` | Release is complete only after proof, not request submission. |
 
@@ -816,18 +936,22 @@ authority.
 Implement exact SHA-256 before/after path-state
 `ReviewedChangeManifest/v1`, the repeated-rebase parent/root proof chain,
 interaction coverage policy and clean non-interactive controller workspace.
-Prove the decision in shadow first. Same-reviewed-path upstream overlap,
-conflict, unsupported content and incomplete classification fail closed. No
-automatic merge.
+Prove the decision in shadow first. A successful shadow proof yields a proved
+candidate only and advances no published-head authority. Same-reviewed-path
+upstream overlap, conflict, unsupported content and incomplete classification
+fail closed. No automatic merge or publication.
 
 ### Slice D - Serial Release Controller and exact-head merge
 
 Add the one-candidate branch lease, deterministic selection from sole active
-approvals, current-authorised-head lease publication, fresh exact-candidate CI
-observation, the section-4 review-readiness routing invariant, release
-verification, provider expected-head merge, ambiguity fence, merged proof and
-routing matrix. Execution concurrency remains one and the controller remains
-disabled by default.
+approvals, Phase-12-shaped publication-pending fence, expected-old-head lease,
+independent remote readback, successful publication receipt and atomic
+`current_authorised_head` advancement. Add fresh exact-candidate CI observation,
+the section-4 review-readiness routing invariant, release verification,
+provider-protection fingerprint gate, strict current-base prerequisite,
+provider expected-head merge, ambiguity fence, merged proof and routing matrix.
+Execution concurrency remains one and the controller remains disabled by
+default.
 
 ### Slice E - Live safety proof and activation
 
@@ -836,12 +960,17 @@ and non-resurrection of its old proof chain; multi-ticket close-sets; path
 addition/rename/copy and scope-matrix drift; criteria/complete ticket-contract
 drift; dependency/interface uncertainty; conflict; CI implementation failure;
 CI infrastructure/provider ambiguity; out-of-band head movement; main movement
-during CI and immediately before merge; ambiguous merge response;
+during CI and immediately before merge; push timeout followed by remote heads
+at old, candidate and unexpected identities; ambiguous merge response;
 release-budget backpressure; and correct exclusion of maintenance/meta PRs
-against real provider/state boundaries. Only an explicit operator activation
-after this evidence may enable automatic release authority. Activation must
-name the deployed code, schema, policy, budget, credential/channel inventory,
-kill criteria and rollback.
+against real provider/state boundaries. The live merge-race test must perform
+the controller's final `main = M` check, advance `main` to `M2` through another
+permitted PR/meta merge, attempt to merge unchanged `H2`, and prove that the
+provider refuses it until reintegration and fresh exact-head CI. Only an
+explicit operator activation after this evidence may enable automatic release
+authority. Activation must name the deployed code, schema, policy, budget,
+provider-protection fingerprint, credential/channel inventory, kill criteria
+and rollback.
 
 The batch must not expand merely to mirror storage, API and UI layers. It may
 combine inseparable foundations only while each ticket retains one primary
@@ -861,15 +990,20 @@ Implementation and activation must preserve all of these conditions:
    repeated-rebase proof chain;
 6. exact before/after path-state equivalence, no upstream reviewed-path overlap
    and independent interaction proof before authority crosses a rebase;
-7. fresh system-tier CI for every rebased candidate;
-8. no `Review Required` without a concrete published unambiguous exact-head
+7. no proof, failed push or local candidate advances `current_authorised_head`;
+8. a durable publication-pending fence, independent remote readback and
+   successful receipt atomically precede published-head authority;
+9. fresh system-tier CI for every rebased and confirmed-published candidate;
+10. no `Review Required` without a concrete published unambiguous exact-head
    complete CI PASS;
-9. bounded release occupancy and serial JIT release against live main;
-10. a dedicated least-privilege controller, not generic PM mutation power;
-11. exact expected-head merge and merged-proof verification;
-12. typed fail-closed routing for drift, conflicts and uncertainty;
-13. v1 exclusion of direct unminted maintenance/meta PRs; and
-14. explicit activation after implementation evidence.
+11. bounded release occupancy and serial JIT release against live main;
+12. a dedicated least-privilege controller, not generic PM mutation power;
+13. provider-enforced current-base freshness plus exact expected-head merge and
+    merged-proof verification;
+14. typed fail-closed routing for drift, conflicts and uncertainty;
+15. v1 exclusion of direct unminted maintenance/meta PRs; and
+16. explicit activation after implementation evidence, including the live
+    protection fingerprint and base-movement refusal proof.
 
 Local validation of this design is agent-tier confidence only. Complete
 GitHub CI at the published exact head remains system-tier authority.
