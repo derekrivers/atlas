@@ -3,7 +3,8 @@ title: Governed planning artifact publication skill
 objective: Add a narrow `atlas-planning-publication` procedural skill that publishes exact planning-input candidates
   for human review and complete post-apply planning-artifact candidates after the Atlas store has advanced, without
   crossing approval, merge, PM, Linear or implementation boundaries.
-context: `atlas-ticket-planning` correctly stops at a validated planning-input commit and `atlas-planning-apply`
+context: >-
+  `atlas-ticket-planning` correctly stops at a validated planning-input commit and `atlas-planning-apply`
   correctly leaves apply-owned renders and retired inbox inputs in the working tree after store mutation. Repository
   publication at both boundaries is currently manual choreography. The pre-store candidate is safely reproducible
   from committed inputs, while post-store artifacts are coupled to an already-advanced store and must never be discarded,
