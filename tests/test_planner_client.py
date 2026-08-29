@@ -7,15 +7,29 @@ config inspection proves CI sets no key and runs no live call.
 
 from __future__ import annotations
 
+import hashlib
 import os
 import sys
 import time
 import types
 from pathlib import Path
+from uuid import UUID
 
 import httpx
 import pytest
 
+from atlas.core.models.planner_call_telemetry import (
+    PlannerDigestAlgorithm,
+    PlannerExecutionParameters,
+    PlannerIdentity,
+    PlannerInputIdentity,
+    PlannerLogicalCall,
+    PlannerLogicalCallIdentity,
+    PlannerPayloadSize,
+    PlannerPromptSegmentSize,
+    PlannerPromptTemplateIdentity,
+    PlanningExecutionIdentity,
+)
 from atlas.planning.client import (
     MAX_CALL_ATTEMPTS,
     MAX_TOKENS,
@@ -24,10 +38,90 @@ from atlas.planning.client import (
     AnthropicPlannerClient,
     MissingAPIKeyError,
     ModelCallError,
+    PlannerCallContractError,
+    PlannerCallRequest,
+    PlannerCallResult,
     TruncatedOutputError,
+    invoke_planner_call,
 )
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+
+
+def _structured_request(prompt: str) -> PlannerCallRequest:
+    empty_digest = hashlib.sha256(b"").hexdigest()
+    prompt_digest = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
+    sizes = {
+        "documents": PlannerPromptSegmentSize(
+            name="documents", byte_count=0, character_count=0
+        ),
+        "anchors": PlannerPromptSegmentSize(
+            name="anchors", byte_count=0, character_count=0
+        ),
+        "backlog": PlannerPromptSegmentSize(
+            name="backlog", byte_count=0, character_count=0
+        ),
+        "schema": PlannerPromptSegmentSize(
+            name="schema", byte_count=0, character_count=0
+        ),
+        "dynamic_stage": PlannerPromptSegmentSize(
+            name="dynamic_stage",
+            byte_count=len(prompt.encode("utf-8")),
+            character_count=len(prompt),
+        ),
+    }
+    identities = tuple(
+        PlannerInputIdentity(
+            name=name,
+            algorithm=PlannerDigestAlgorithm.SHA256,
+            digest=(
+                prompt_digest
+                if name in {"rendered_prompt", "dynamic_stage"}
+                else empty_digest
+            ),
+        )
+        for name in (
+            "rendered_prompt",
+            "documents",
+            "anchors",
+            "backlog",
+            "schema",
+            "dynamic_stage",
+        )
+    )
+    return PlannerCallRequest(
+        logical_call=PlannerLogicalCall(
+            identity=PlannerLogicalCallIdentity(
+                execution=PlanningExecutionIdentity(
+                    execution_id=UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+                ),
+                stage="single",
+                logical_attempt_no=0,
+            ),
+            planner=PlannerIdentity(provider="anthropic", model=MODEL_NAME),
+            template=PlannerPromptTemplateIdentity(
+                stage="single",
+                template_name="planner-v1.2.0.md.j2",
+                prompt_version="planner-v1.2.0",
+                template_sha256="a" * 64,
+            ),
+            execution_parameters=PlannerExecutionParameters(
+                temperature=TEMPERATURE,
+                max_output_tokens=MAX_TOKENS,
+                streaming=True,
+            ),
+            input_identities=identities,
+            prompt_size=PlannerPayloadSize(
+                byte_count=len(prompt.encode("utf-8")),
+                character_count=len(prompt),
+            ),
+            prompt_segments=tuple(sizes.values()),
+        )
+    )
+
+
+def _generate(client: AnthropicPlannerClient, prompt: str) -> PlannerCallResult:
+    return client.generate(prompt, _structured_request(prompt))
 
 
 def _stub_anthropic(
@@ -138,14 +232,62 @@ def test_generate_uses_pinned_model_and_params(
     recorder: dict[str, object] = {}
     _stub_anthropic(monkeypatch, recorder)
     client = AnthropicPlannerClient(api_key="sk-test-key")
+    request = _structured_request("hello")
 
-    out = client.generate("hello")
+    out = client.generate("hello", request)
 
-    assert out == '{"epics": []}'
+    assert out.raw_output == '{"epics": []}'
+    assert out.logical_call == request.logical_call
     assert recorder["model"] == MODEL_NAME
     assert recorder["max_tokens"] == MAX_TOKENS
     assert recorder["temperature"] == TEMPERATURE
     assert recorder["api_key"] == "sk-test-key"
+
+
+def test_unknown_or_mismatched_call_identity_fails_before_provider() -> None:
+    request = _structured_request("expected prompt")
+    calls = 0
+
+    class _Provider:
+        def generate(
+            self, prompt: str, request: PlannerCallRequest
+        ) -> PlannerCallResult:
+            nonlocal calls
+            calls += 1
+            return PlannerCallResult(
+                raw_output="unused", logical_call=request.logical_call
+            )
+
+    with pytest.raises(PlannerCallContractError, match="fingerprint"):
+        invoke_planner_call(_Provider(), prompt="altered! prompt", request=request)
+    assert calls == 0
+
+    incomplete = request.logical_call.model_copy(
+        update={
+            "input_identities": tuple(
+                item
+                for item in request.logical_call.input_identities
+                if item.name != "documents"
+            )
+        }
+    )
+    with pytest.raises(PlannerCallContractError, match="input identity"):
+        PlannerCallRequest(logical_call=incomplete)
+    assert calls == 0
+
+    unknown_stage = request.logical_call.model_copy(
+        update={
+            "identity": request.logical_call.identity.model_copy(
+                update={"stage": "mystery"}
+            ),
+            "template": request.logical_call.template.model_copy(
+                update={"stage": "mystery"}
+            ),
+        }
+    )
+    with pytest.raises(PlannerCallContractError, match="unknown planner call stage"):
+        PlannerCallRequest(logical_call=unknown_stage)
+    assert calls == 0
 
 
 def test_max_tokens_is_the_model_ceiling() -> None:
@@ -162,7 +304,7 @@ def test_truncation_raises_truncated_output_error(
     partial = '{"epics": [], "tickets": [{"title": "cut'
     _stub_anthropic(monkeypatch, recorder, text=partial, stop_reason="max_tokens")
     with pytest.raises(TruncatedOutputError) as caught:
-        AnthropicPlannerClient(api_key="sk-test").generate("hello")
+        _generate(AnthropicPlannerClient(api_key="sk-test"), "hello")
     assert caught.value.raw_output == partial
     assert caught.value.max_tokens == MAX_TOKENS
 
@@ -177,7 +319,7 @@ def test_reads_key_from_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-env-key")
     recorder: dict[str, object] = {}
     _stub_anthropic(monkeypatch, recorder)
-    AnthropicPlannerClient().generate("x")
+    _generate(AnthropicPlannerClient(), "x")
     assert recorder["api_key"] == "sk-env-key"
 
 
@@ -198,7 +340,7 @@ def test_sdk_failure_becomes_model_call_error(
     module.Anthropic = _Boom  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "anthropic", module)
     with pytest.raises(ModelCallError, match="model call failed"):
-        AnthropicPlannerClient(api_key="sk-test").generate("x")
+        _generate(AnthropicPlannerClient(api_key="sk-test"), "x")
 
 
 # --- transient connection retry (staged-path resilience) --------------------
@@ -216,9 +358,9 @@ def test_transient_transport_drop_is_retried_then_succeeds(
     )
     counter = _stub_anthropic_failing(monkeypatch, error=drop, fail_times=1)
 
-    out = AnthropicPlannerClient(api_key="sk-test").generate("x")
+    out = _generate(AnthropicPlannerClient(api_key="sk-test"), "x")
 
-    assert out == '{"epics": []}'
+    assert out.raw_output == '{"epics": []}'
     assert counter["calls"] == 2  # one failed attempt, one success
 
 
@@ -231,7 +373,7 @@ def test_anthropic_connection_error_is_retried(
         monkeypatch, error=_FakeAPIConnectionError("conn reset"), fail_times=1
     )
 
-    AnthropicPlannerClient(api_key="sk-test").generate("x")
+    _generate(AnthropicPlannerClient(api_key="sk-test"), "x")
 
     assert counter["calls"] == 2
 
@@ -249,7 +391,7 @@ def test_persistent_transport_drop_fails_after_max_attempts(
     )
 
     with pytest.raises(ModelCallError, match="after 3 attempts"):
-        AnthropicPlannerClient(api_key="sk-test").generate("x")
+        _generate(AnthropicPlannerClient(api_key="sk-test"), "x")
 
     assert counter["calls"] == MAX_CALL_ATTEMPTS
     # Backoff between attempts but not after the last failure.
@@ -270,7 +412,7 @@ def test_truncation_is_never_retried(monkeypatch: pytest.MonkeyPatch) -> None:
     _stub_anthropic(monkeypatch, recorder, text='{"cut', stop_reason="max_tokens")
 
     with pytest.raises(TruncatedOutputError):
-        AnthropicPlannerClient(api_key="sk-test").generate("x")
+        _generate(AnthropicPlannerClient(api_key="sk-test"), "x")
     assert slept is False
 
 
@@ -291,7 +433,9 @@ def test_ci_runs_no_live_call() -> None:
 )
 def test_live_smoke() -> None:  # pragma: no cover - operator-run only
     client = AnthropicPlannerClient()
+    prompt = 'Reply with the JSON object {"ok": true} and nothing else.'
     output = client.generate(
-        'Reply with the JSON object {"ok": true} and nothing else.'
+        prompt,
+        _structured_request(prompt),
     )
-    assert output.strip()
+    assert output.raw_output.strip()

@@ -212,6 +212,26 @@ stays legible, with the per-stage hashes recorded alongside. This is a §3.10
 **specified here, built by ATLAS-105** (model field + migration + schema regen +
 contract test). The single-call path is the degenerate one-stage list.
 
+Each provider invocation also has a provider-neutral logical-call record beneath
+one post-preflight `PlanningExecutionIdentity`. The canonical call stages are
+`epics`, `tickets.<environment-owned-epic-identity>`, and `dependencies`; the
+existing human-facing `generation_stages` labels remain byte-compatible. Ordinary
+stages use logical attempt `0`. A directed tickets correction keeps the same
+canonical stage and increments the logical attempt, so retries are independently
+observable without treating a transport retry as a new logical call. Physical
+attempt identity remains owned by the provider boundary.
+
+Before each call, the renderer measures the actual rendered prompt and the named
+`documents`, `anchors`, `backlog`, `schema`, and `dynamic_stage` inputs. The
+telemetry request contains only exact SHA-256 identities plus UTF-8 byte and
+Unicode-character counts; prompt and segment contents are passed transiently and
+are not copied into the telemetry request/result record. All staged template
+artifacts are resolved before the first provider invocation, while output-derived
+ticket/dependency inputs are fingerprinted when their exact logical call is
+rendered. An unknown stage, template, or input identity fails before that provider
+call. No storage, provider-usage interpretation, or PlanRun lifecycle change is
+introduced by this orchestration seam.
+
 ### 5.4 Truncation within a stage
 
 ATLAS-101's `stop_reason == max_tokens` detection applies per stage. Per-epic ticket

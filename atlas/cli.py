@@ -24,7 +24,7 @@ from collections import Counter
 from collections.abc import Callable, Iterable
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID, uuid4
 
 import networkx as nx
@@ -78,6 +78,7 @@ from atlas.github import (
 from atlas.learning import (
     DEFAULT_LESSON_SCHEDULER_INTERVAL_SECONDS,
     ExtractionTrigger,
+    LessonModelClient,
     LessonSchedulerConfig,
     LessonSchedulerResult,
     NoActiveLessonsForTagError,
@@ -143,7 +144,6 @@ from atlas.planning.apply import (
 from atlas.planning.client import (
     ANTHROPIC_IDENTITY,
     AnthropicPlannerClient,
-    ModelCallError,
     ModelIdentity,
     PlannerClient,
     PlannerClientError,
@@ -1020,7 +1020,7 @@ def _plan_command(
     except (
         DirtyInputError,
         PlanPreconditionError,
-        ModelCallError,
+        PlannerClientError,
         StubPromotionError,
         PlanningBatchIntegrityError,
     ) as error:
@@ -2222,7 +2222,7 @@ def _lessons_command(
     args: argparse.Namespace,
     *,
     database: Database | None,
-    client: PlannerClient | None,
+    client: LessonModelClient | None,
 ) -> int:
     """Route `atlas lessons` report, extraction, scheduler, and gate commands."""
     resolved_db = database if database is not None else Database(args.db)
@@ -2417,7 +2417,7 @@ def _lessons_extract_or_schedule(
     args: argparse.Namespace,
     resolved_db: Database,
     *,
-    client: PlannerClient | None,
+    client: LessonModelClient | None,
 ) -> int:
     """Route lesson extraction and the recurring extraction scheduler."""
     try:
@@ -2476,7 +2476,7 @@ def _lessons_playbook(
     args: argparse.Namespace,
     resolved_db: Database,
     *,
-    client: PlannerClient | None,
+    client: LessonModelClient | None,
 ) -> int:
     """Draft a playbook branch from ACTIVE lessons under one tag."""
 
@@ -2592,7 +2592,7 @@ def main(
     argv: list[str] | None = None,
     *,
     database: Database | None = None,
-    client: PlannerClient | None = None,
+    client: Any | None = None,
     identity: ModelIdentity | None = None,
     staged_generator: StagedProposalGenerator | None = None,
     github_client: GitHubClient | None = None,
