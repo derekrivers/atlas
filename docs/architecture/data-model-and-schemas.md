@@ -915,6 +915,151 @@ CREATE TABLE plan_runs (
 
 ---
 
+# 3.10.1 Planning Execution and Planner-Call Telemetry
+
+Planner request evidence has its own identity hierarchy. It does not widen or
+replace `PlanRun`, and this contract release adds no table or repository. The
+models live in `atlas.core.models.planner_call_telemetry`. The four primary
+contracts are exported through the `atlas.core.models` package and the
+repository-owned canonical JSON Schema exporter; supporting value objects are
+nested in those schemas. Their schema versions are:
+
+| Contract | Schema version |
+| --- | --- |
+| `PlanningExecution` | `planning-execution/v1` |
+| `PlannerLogicalCall` | `planner-logical-call/v1` |
+| `PlannerPhysicalTransportAttempt` | `planner-physical-transport-attempt/v1` |
+| `PlanningExecutionOutcome` | `planning-execution-outcome/v1` |
+
+All contracts and nested value objects are frozen, reject extra fields, use
+bounded tuples instead of mutable mappings, and expose canonical key-sorted
+JSON bytes plus a SHA-256 `fingerprint`.
+
+## Identity hierarchy
+
+```text
+PlanningExecutionIdentity
+  execution_id: UUID
+
+PlannerLogicalCallIdentity
+  execution: PlanningExecutionIdentity
+  stage: canonical string
+  logical_attempt_no: zero-based integer
+
+PlannerPhysicalAttemptIdentity
+  logical_call: PlannerLogicalCallIdentity
+  physical_attempt_no: one-based integer
+```
+
+This nesting makes the three identities structurally distinct. Logical
+attempts are contiguous `0..N-1` per stage and physical attempts are contiguous
+per logical call. A child naming a different execution, stage, logical attempt,
+or parent is invalid. There is at most one successful physical transport
+attempt in a logical call and it must be final.
+
+## Post-preflight execution
+
+`PlanningExecution` contains:
+
+```text
+schema_version
+identity
+product_id
+preflight_completed_at
+created_at
+planner                       # provider + model
+execution_parameters          # bounded provider-neutral settings
+input_identities              # exact named SHA-256 or Git-SHA-1 inputs
+prompt_templates              # stage/name/version/template SHA-256
+logical_calls
+outcome                       # optional PlanningExecutionOutcome
+```
+
+`created_at` cannot precede `preflight_completed_at`, and no physical attempt
+may precede `created_at`. Construction therefore represents the point after
+deterministic preflight has frozen product attribution, exact source inputs,
+planner identity, request settings, and template identities but before the
+first request. A preflight failure has no execution identity and no physical
+attempt contract.
+
+`PlannerExecutionParameters` is intentionally closed: temperature, maximum
+output tokens, top-p, top-k, seed, request timeout, and streaming mode. It is
+not an arbitrary provider mapping and cannot carry a credential or payload.
+Each logical call repeats the exact planner and parameters, references one
+frozen template, selects a non-empty exact set from the preflight inputs (and
+may add exact derived inputs), and records total prompt size and unique named
+segment sizes. A selected input whose name also exists in the preflight set
+must preserve that frozen algorithm and digest; stages need not receive every
+available input.
+
+## Physical attempt evidence
+
+`PlannerPhysicalTransportAttempt` contains:
+
+```text
+schema_version
+identity
+started_at
+transport_disposition         # succeeded | failed
+wall_latency_ms
+time_to_first_token           # measured | unsupported | unavailable
+retry_category                # bounded provider-neutral category
+output_size                   # optional byte + character counts
+provider_usage
+stop_reason
+processing                    # parse/schema-validation/gate disposition
+resulting_plan_run_id         # optional exact linkage
+```
+
+Provider usage is a closed set of input, output, cache-creation-input,
+cache-read-input, and reasoning token families. Every family serializes an
+availability of `reported`, `unsupported`, or `unavailable`; only `reported`
+may carry a non-negative integer value. Optional timing uses the analogous
+`measured`, `unsupported`, or `unavailable` contract. Missing cache,
+reasoning, timing, or token evidence remains explicitly absent, never zero and
+never estimated.
+
+Failed transport has no output size, stop reason, or post-response processing.
+Successful transport has an exact output size, no retry category, and may
+record the later parse, schema-validation, and gate dispositions. These
+dispositions are ordered: a failed or unreached earlier boundary leaves later
+boundaries `not_reached`.
+
+## Outcome and PlanRun boundary
+
+`PlanningExecutionOutcome` has terminal status `completed` or `failed`, a
+completion time, whether raw output was observed, an optional bounded failure
+stage, and an optional `resulting_plan_run_id`.
+
+| Execution outcome | Raw output observed | Resulting PlanRun |
+| --- | --- | --- |
+| non-terminal (`outcome: null`) | not asserted | none asserted |
+| terminal provider failure with no earlier output | no | forbidden |
+| terminal provider failure after earlier output | yes | forbidden |
+| terminal parse/schema/gate failure | yes | required, exact identity |
+| terminal completion | yes | required, exact identity |
+
+`raw_output_observed` is execution-wide evidence, not shorthand for PlanRun
+creation. A successful earlier physical call followed by a later provider
+request that exhausts transport retries therefore records the observed output
+honestly while ending `failed` with no resulting `PlanRun`. Parse, schema, and
+gate failures remain post-output PlanRun outcomes and retain the exact link.
+
+An attempt-level PlanRun link is legal only when it equals the execution
+outcome's exact resulting identity. The execution is never an apply input and
+has no `PlanRunStatus`. The existing `PlanRun` required provenance, four-value
+status vocabulary, post-output insertion, finalise-once rule, and apply
+eligibility remain exactly as defined in section 3.10.
+
+Canonical serialization contains no prompt body, provider response envelope,
+credential, cookie, environment, command line, mutable price, arbitrary
+metadata, or field for a secret-derived digest. Input and template hashes are
+accepted only as named deterministic planning identities; sensitive identity
+names are rejected. Provider interpretation and durable storage are separate
+contracts.
+
+---
+
 # 3.11 Planning Proposal Contract
 
 A proposal is the structured output of the planner (ADR-0007): the

@@ -1,0 +1,82 @@
+{
+  "$defs": {
+    "PlanningExecutionFailureStage": {
+      "description": "Bounded stage at which a terminal planning execution failed.",
+      "enum": [
+        "provider_before_output",
+        "output",
+        "parse",
+        "schema",
+        "gate",
+        "orchestration"
+      ],
+      "title": "PlanningExecutionFailureStage",
+      "type": "string"
+    },
+    "PlanningExecutionOutcomeStatus": {
+      "description": "Terminal vocabulary for execution, intentionally unrelated to apply.",
+      "enum": [
+        "completed",
+        "failed"
+      ],
+      "title": "PlanningExecutionOutcomeStatus",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Terminal execution outcome and independently optional PlanRun link.",
+  "properties": {
+    "completed_at": {
+      "format": "date-time",
+      "title": "Completed At",
+      "type": "string"
+    },
+    "failure_stage": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/PlanningExecutionFailureStage"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Terminal failure boundary, when status is failed."
+    },
+    "raw_output_observed": {
+      "description": "Whether any physical call in the execution returned raw output.",
+      "title": "Raw Output Observed",
+      "type": "boolean"
+    },
+    "resulting_plan_run_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Exact PlanRun produced by this execution, when one legally exists.",
+      "title": "Resulting Plan Run Id"
+    },
+    "schema_version": {
+      "const": "planning-execution-outcome/v1",
+      "default": "planning-execution-outcome/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "status": {
+      "$ref": "#/$defs/PlanningExecutionOutcomeStatus"
+    }
+  },
+  "required": [
+    "status",
+    "completed_at",
+    "raw_output_observed"
+  ],
+  "title": "PlanningExecutionOutcome",
+  "type": "object"
+}
