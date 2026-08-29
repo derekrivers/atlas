@@ -239,6 +239,8 @@
       "id": "validation-policy",
       "exact": [
         "atlas/orchestration/validation_plan_cli.py",
+        "atlas/orchestration/validation_run_cli.py",
+        "atlas/verification/validation_execution.py",
         "atlas/verification/validation_plan.py",
         "atlas/verification/validation_registry_v1.json"
       ],
@@ -342,6 +344,8 @@
       "lane": "validation-policy",
       "exact": [
         "atlas/orchestration/validation_plan_cli.py",
+        "atlas/orchestration/validation_run_cli.py",
+        "atlas/verification/validation_execution.py",
         "atlas/verification/validation_plan.py",
         "atlas/verification/validation_registry_v1.json"
       ],

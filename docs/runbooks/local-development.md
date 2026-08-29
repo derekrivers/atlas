@@ -54,10 +54,14 @@ Playwright's `.test`/`.spec` TypeScript forms under
 `apps/operator-ui/tests/e2e/`. A test-looking path outside those contracts
 cannot count as mandatory evidence and selects `full-sweep`.
 
-Run the emitted commands in order. Changed test files and proven explicit
-ticket test files appear in `test_targets` even when a broader profile command
-contains them. Unknown or invalid paths, an omitted or mismatched diff, Git discovery
-failure, an unprovable ticket test, ambiguous identities,
+Execute the exact plan with `atlas validation-run`, supplying the same
+base/head, changed paths, ticket requirements and ticket tests used for
+`validation-plan`. The runner re-calculates and proves the plan, requires the
+checked-out `HEAD` to equal the planned head, and refuses an unavailable or
+mismatched diff proof. Changed test files and proven explicit ticket test files
+appear in `test_targets` even when a broader profile command contains them.
+Unknown or invalid paths, an omitted or mismatched diff, Git discovery failure,
+an unprovable ticket test, ambiguous identities,
 registry-version/digest drift, input over the documented bounds and protected
 cross-cutting surfaces select `full-sweep` with explicit fallback reasons. A
 caller must not replace that fallback with a narrower manual plan.
@@ -65,9 +69,22 @@ caller must not replace that fallback with a narrower manual plan.
 The named `full-sweep` profile is the conservative local path. Run it only when
 the deterministic plan selects it or the operator explicitly instructs it; do
 not add it after a passing scoped plan as a publication ritual. Every selected
-command and explicit test target is mandatory. A failure prevents publication,
-and any fix that changes the head requires a new exact-identity plan; the prior
-plan and results become historical only.
+command and explicit test target is mandatory. For non-full-sweep plans the
+runner preserves the emitted serial order. For a full sweep, repository policy
+maps the eight commands into three concurrent lanes: `python`,
+`static-governance` and `operator-ui`. Commands remain serial in their lane and
+continue after an earlier lane-local failure so the aggregate retains complete
+diagnostic evidence. Any command failure, child-start or lane error, or missing,
+duplicate or unexpected result fails the aggregate. A failure prevents
+publication, and any fix that changes the head requires a new exact-identity
+plan; the prior plan and results become historical only.
+
+The full-sweep topology is a wall-clock optimisation for agent-tier local
+confidence only. It does not change the command inventory, command semantics,
+pytest or Playwright workers, or system-tier GitHub CI authority. The runner's
+human output and `--json` payload retain exact base/head identity, total and
+per-lane elapsed time, and per-command lane, timestamps, duration and exit
+status.
 
 ## The gates
 
@@ -372,8 +389,9 @@ A branch is ready for publication when, from a clean `uv sync --locked`:
    publication before the validation plan is calculated;
 3. its validation plan names the exact base and head and includes every changed
    path, ticket requirement and explicit ticket test;
-4. every ordered command and explicit test target in the emitted plan passes,
-   including the complete local sweep whenever `full-sweep` is selected;
+4. `atlas validation-run` executes every repository-owned group and every
+   explicit test target in the emitted plan passes, including the complete
+   local sweep whenever `full-sweep` is selected;
 5. the exact plan, commands and results are reported as agent-tier confidence,
    without claiming that scoped checks prove the complete repository result;
    and

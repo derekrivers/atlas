@@ -101,6 +101,26 @@ canonical compact JSON with `--json`, containing:
 - any protected-surface reason; and
 - whether the complete-sweep fallback is mandatory.
 
+`atlas validation-run` consumes the same exact-candidate inputs and repeats the
+planner's diff and ticket-test proofs before execution. Targeted plans retain
+their emitted serial order. A full sweep has exactly three repository-owned
+concurrent groups: `python` runs the unfiltered Pytest command;
+`static-governance` runs Ruff check, Ruff format check, mypy, the documentation
+linter and import contracts serially in that order; and `operator-ui` runs
+`apps/operator-ui/scripts/ci.sh` followed by
+`apps/operator-ui/scripts/ci-e2e.sh`. A bounded three-worker executor is the
+only concurrency authority. Agents cannot supply a topology or worker count.
+
+Every lane and every command continues independently after an observed failure
+to retain complete diagnostics. The aggregate succeeds only when the planned
+lane and command inventories match the observed evidence exactly and all eight
+commands exit zero. A child-start or lane error, non-zero exit, missing result,
+duplicate result or unexpected command fails closed. Evidence retains the exact
+base/head, aggregate wall time, per-lane elapsed time and per-command lane,
+timestamps, duration and exit status. This is solely an agent-tier wall-clock
+optimisation: command semantics, internal Pytest and Playwright parallelism,
+the GitHub CI matrix and system-tier authority are unchanged.
+
 Inputs and rendered fields have fixed count and length bounds. Input order,
 duplicates, clocks, UUIDs and model interpretation do not affect the plan;
 identical identities and changed-path sets serialize to identical bytes.
@@ -135,11 +155,12 @@ is not a default handoff ritual.
 
 Before publication the agent supplies the exact base/head, every changed path,
 ticket requirement and explicit test file to the deterministic planner, then
-runs every ordered command and explicit test target. A failed selected check
-blocks publication. The complete local sweep runs only when the named
-`full-sweep` conservative profile is selected or the operator explicitly
-instructs it; the agent neither narrows the plan nor adds a model-selected
-check. Any head change makes the prior plan and results historical only.
+executes the repository-owned groups and every explicit test target. A failed
+selected check blocks publication. The complete local sweep runs only when the
+named `full-sweep` conservative profile is selected or the operator explicitly
+instructs it; the agent neither narrows the plan, alters execution groups nor
+adds a model-selected check. Any head change makes the prior plan and results
+historical only.
 
 ## CI-pending lifecycle
 
