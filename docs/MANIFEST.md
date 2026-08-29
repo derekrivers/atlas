@@ -67,7 +67,15 @@ Phase design documents (one per engine; phase-readiness rule below):
 - `docs/atlas/parallel-delivery-efficiency-and-integration-control.md` — Phase
   15.5: scoped local confidence with CI authority, CI-pending slot release,
   protected integration lanes and no-rewrite exact-base acceptance
-- `docs/atlas/phase-16-agent-runtime-and-integration-safety.md` — Phase 16 dedicated design: runtime event/identity contracts, topology/interface ownership, outcomes, shadow trajectory safety, chaos, governed effects, PR interaction intelligence and the authority-neutral Track-A overlap
+- `docs/atlas/phase-16-agent-runtime-and-integration-safety.md` — Phase 16
+  dedicated design: runtime event/identity contracts, topology/interface
+  ownership, outcomes, shadow trajectory safety, chaos, governed effects, PR
+  interaction intelligence and the authority-neutral Track-A overlap
+- `docs/atlas/post-review-release-orchestration.md` — ratified target
+  architecture for one-action semantic review approval, future
+  `Awaiting Release`, deterministic rebase equivalence and a serial
+  least-privilege Release Controller; inactive until separately implemented
+  and activated
 
 Playbooks (generated canonical docs):
 

@@ -6,6 +6,11 @@ observation of managed completion. Gospel: deviations are findings, not improvis
 conflicts with an ADR or the verification engine, the repository wins and
 this document is fixed in the same session.
 
+This is the active production runbook. The ratified future replacement for
+post-review ceremony and mechanical release is
+`docs/atlas/post-review-release-orchestration.md`; it does not change this
+sequence until its implementation and activation stages land.
+
 Companion to `review-doctrine.md` (what is reviewed) and
 `reviewer-session.md` (how a reviewer session runs). This document is the
 acceptance *sequence*. The reviewer recommends; only the operator

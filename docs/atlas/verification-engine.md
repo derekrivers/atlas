@@ -4,6 +4,11 @@ Status: Active design document for Phase 7. Consumes the evidence pipeline
 (Phase 6); the VerificationCheck schema lives in `data-model-and-schemas.md`
 §5.
 
+Its exact-head human-evidence evaluators remain the active runtime contract.
+`post-review-release-orchestration.md` defines a future, separately activated
+`ReviewApproval` and release-proof boundary without fabricating new-head human
+evidence or weakening this engine's exact-candidate machine checks.
+
 ## Principle
 
 Verification answers one question: is the "no evidence = no completion"

@@ -4,6 +4,11 @@ Status: CLOSED. The controlled comparison and remediated ATLAS-263 production
 live-authority proof passed at the accepted PR #335 head, releasing ATLAS-253
 for Phase 15's separately governed live ceiling ramp.
 
+ATLAS-084M later ratified the target architecture in
+`post-review-release-orchestration.md`. Its supersession ledger preserves this
+phase's manual rebase/merge rulings as active runtime authority until a
+dedicated Release Controller is separately implemented, proven and activated.
+
 ## Problem and outcome
 
 Ten available workers do not create ten useful delivery lanes when every agent

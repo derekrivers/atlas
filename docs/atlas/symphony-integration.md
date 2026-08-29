@@ -8,6 +8,11 @@ out of the agent session. These contracts remain authoritative until
 superseded by a later canonical design. Companion to ADR-0006 (field
 ownership), ADR-0007 (planning), ADR-0008 (evidence).
 
+`post-review-release-orchestration.md` is that later target design for the
+post-review boundary, but is not active runtime authority: this document's
+state map, operator-owned rebase lane and manual-merge contract remain live
+until the target lifecycle is separately implemented and activated.
+
 ## Boundary
 
 Symphony is a scheduler and runner: it polls Linear, guarantees that every

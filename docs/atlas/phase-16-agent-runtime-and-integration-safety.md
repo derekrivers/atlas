@@ -14,6 +14,14 @@
 **Canonical repository location:** `docs/atlas/phase-16-agent-runtime-and-integration-safety.md`.
 **Ticket identity rule:** all `P16-*`, `R16-*`, `M16-*` identifiers in this document are design slice identifiers only. Real `ATLAS-N` keys are minted later through `atlas plan` / operator review / `atlas apply`.
 
+**Subsequent amendment:** ATLAS-084M ratified
+`post-review-release-orchestration.md` as the target authority for a future
+`Awaiting Release` state and dedicated serial Release Controller. That
+document's supersession ledger preserves this design's manual rebase/merge
+rulings as active runtime authority until separate implementation and
+activation. P16-D27 remains unchanged: `QueuePlan` is advisory and never
+becomes release authority.
+
 ---
 
 # 0. Design authority, preservation and source basis

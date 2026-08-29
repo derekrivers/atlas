@@ -6,6 +6,11 @@ by `docs/closure/phase-14-closure-report.md`. It consumes Phase 12's
 mainline-freshness guarantees and Phase 13's session, actor and action-receipt
 framework.
 
+This document remains the active runtime authority. The ratified target
+architecture in `post-review-release-orchestration.md` replaces its repeated
+post-review ceremony only after separately governed implementation and
+activation; no target-state `ReviewApproval` or release authority exists yet.
+
 ## Purpose and milestone
 
 Phase 14 turns the delivered review queue into an operator acceptance console.
