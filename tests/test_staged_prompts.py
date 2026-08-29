@@ -125,11 +125,14 @@ def test_staged_template_renders_deterministically(
     second = render_planner_prompt(variables(), version=version)
     assert first.text == second.text
     assert first.prompt_version == version
-    assert first.template.stage == {
-        EPICS_VERSION: "epics",
-        TICKETS_VERSION: "tickets",
-        DEPENDENCIES_VERSION: "dependencies",
-    }[version]
+    assert (
+        first.template.stage
+        == {
+            EPICS_VERSION: "epics",
+            TICKETS_VERSION: "tickets",
+            DEPENDENCIES_VERSION: "dependencies",
+        }[version]
+    )
 
 
 @pytest.mark.parametrize("version, variables", STAGES)
