@@ -488,6 +488,83 @@ def test_atlas_072m_docs_only_stays_documentation_only(
     assert not plan.full_sweep
 
 
+def test_planning_apply_artifacts_stay_focused_and_protected(
+    registry: ValidationRegistry,
+) -> None:
+    paths = (
+        "docs/planning/dependencies.yaml",
+        "docs/planning/epics.yaml",
+        "docs/planning/inbox/ATLAS-282-2.md",
+        "docs/planning/inbox/processed/ATLAS-282-2.md",
+        "docs/planning/roadmap.mmd",
+        "docs/planning/tickets.yaml",
+    )
+    plan = _plan(registry, *paths)
+
+    assert plan.profiles == ("documentation",)
+    assert plan.commands == ("uv run python -m atlas.tools.doc_linter",)
+    assert plan.fallback_reasons == ()
+    assert plan.full_sweep is False
+    assert not any(
+        prohibited in command
+        for command in plan.commands
+        for prohibited in (
+            "uv run pytest",
+            "operator-ui",
+            "playwright",
+            "test:e2e",
+            "test:a11y",
+            "test:browser",
+        )
+    )
+    assert {
+        reason.path
+        for reason in plan.protected_surface_reasons
+        if reason.lane == "planning-state"
+    } == set(paths)
+
+
+def test_planning_batch_inputs_deduplicate_to_documentation_only(
+    registry: ValidationRegistry,
+) -> None:
+    stub = "docs/planning/inbox/inbox-stub-01-example.md"
+    manifest = "docs/planning/inbox/planning-batch-example.yaml"
+    plan = _plan(registry, stub, manifest)
+
+    assert plan.profiles == ("documentation",)
+    assert plan.commands == ("uv run python -m atlas.tools.doc_linter",)
+    assert plan.fallback_reasons == ()
+    assert plan.full_sweep is False
+    rule_ids_by_path = {
+        reason.source: reason.rule_id
+        for reason in plan.reasons
+        if reason.source_kind == "changed_path"
+    }
+    assert rule_ids_by_path == {
+        stub: "documentation-tree",
+        manifest: "planning-artifacts",
+    }
+
+
+def test_unsupported_planning_format_still_fails_closed(
+    registry: ValidationRegistry,
+) -> None:
+    path = "docs/planning/unexpected.py"
+    plan = _plan(registry, path)
+
+    assert plan.full_sweep is True
+    assert plan.profiles == ("full-sweep",)
+    assert plan.commands == FULL_SWEEP_COMMANDS
+    assert any(
+        reason.code == "unknown_path" and path in reason.detail
+        for reason in plan.fallback_reasons
+    )
+    assert any(
+        reason.path == path and reason.lane == "planning-state"
+        for reason in plan.protected_surface_reasons
+    )
+
+
 def test_atlas_077m_current_repository_skills_use_one_focused_contract_rule(
     registry: ValidationRegistry,
 ) -> None:
