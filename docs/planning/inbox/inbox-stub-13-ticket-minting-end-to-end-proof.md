@@ -24,7 +24,6 @@ tags:
 - milestone
 - integration
 - efficiency
-source_anchor: docs/runbooks/planning-phases-and-ticket-stubs.md#operator-continuation
 relevant_docs:
 - AGENTS.md
 - docs/runbooks/planning-phases-and-ticket-stubs.md
@@ -47,18 +46,28 @@ acceptance_criteria:
   state with zero delivery-admission promotion.
 - The proof seeds an unrelated pending PM follow-up while the ordered batch is active and proves the pending input
   remains durable but does not enter the ordered batch's active-inbox integrity set.
-- A seeded malformed-batch case fails before mint/apply, and a seeded create-time Linear state assertion failure
-  retains the issue join key so a retry updates/reuses exactly one issue instead of creating a duplicate.
+- A seeded malformed-batch case fails before mint/apply; a separate seeded explicit `source_anchor` to a non-indexed
+  document fails the read-only planning preflight with the same Gate-4 semantics before `atlas plan --stubs-only`
+  and without creating a failed PlanRun; and a seeded create-time Linear state assertion failure retains the issue
+  join key so a retry updates/reuses exactly one issue instead of creating a duplicate.
 - A concise proof report demonstrates that both known planning-only candidates select focused `documentation` validation
   and that neither deterministic plan contains pytest, Playwright, browser/UI/E2E or an unselected full sweep; it
   also proves stubs-only minting performs no planner-provider/model call and records the exact planning-input/apply-artifact
   identities, selector inputs, commands/results, thirteen-ticket batch size, bounded external-call counts and observed
   agent-active/operator wall-clock, targeting a validated planning-input handoff for this actual thirteen-ticket
-  ratified batch in no more than 20 minutes excluding human review.
-- If the observational time target is missed, the milestone records the dominant delay with evidence and does not
-  declare the efficiency objective passed merely because functional tests are green. The proof exercises the bounded
-  non-Symphony Linear adapter/skill route for issue/state readback or authorised mechanics and proves no arbitrary
-  GraphQL, raw token or PM-owned issue-creation capability is exposed.
+  ratified batch in no more than 20 minutes excluding human review; if missed, it records the evidenced dominant delay
+  instead of passing on functional tests alone. The proof also exercises the bounded non-Symphony Linear adapter/skill
+  route and proves no arbitrary GraphQL, raw token or PM-owned issue-creation capability is exposed.
+- The final `docs/closure/ticket-minting-skill-proof.md` contains an `Observed findings and durable adaptations` ledger
+  for every unexpected failure in the real programme exercise, recording exact evidence/identity, lifecycle boundary,
+  root-cause classification, durable/transient status, owning Atlas adaptation, absorbing ticket/code/runbook/skill/lesson
+  and recurrence regression/proof. It accounts at minimum for PM follow-up/ordered-inbox contention, unnecessarily
+  broad governed-planning validation, invalid YAML front matter reaching the operator proposal gate, explicit anchors
+  outside the planner `AnchorIndex`, the missing governed planning-input/apply-artifact publication boundary,
+  apply-to-PM sequencing through repository publication, PM publication versus delivery admission, managed PM-writer
+  interaction with the future apply boundary and every further issue found before this batch mints; completion is
+  forbidden while any durable
+  observed finding lacks a disposition, while proven transient events create no manufactured implementation work.
 non_goals:
 - No live production Linear pollution or throwaway production Atlas keys solely for the test.
 - No weakening of PlanRun approval, apply integrity, PM writer ownership or CI evidence policy to meet the time
@@ -68,8 +77,8 @@ test_requirements:
   boundaries and in-memory/fake Linear clients.
 - Selector assertions cover both exact candidates, prove the focused `documentation` profile and command inventory
   for known planning paths, and fail if pytest, Playwright, browser/UI/E2E or an unselected `full-sweep` appears.
-- 'Seeded defects must bite: remove the batch coverage invariant and the malformed fixture must turn green only
-  if the test is broken.'
+- 'Seeded defects must bite: remove the batch coverage invariant or promoted-anchor Gate-4 check and the corresponding
+  malformed-batch or non-indexed explicit-source-anchor fixture must turn green only if the test is broken.'
 implementation_notes:
 - Use existing planning/apply test helpers and Linear fakes rather than building a second integration harness.
 - The wall-clock measurement is observational evidence in the proof report, not a flaky CI timing assertion.
@@ -80,7 +89,8 @@ definition_of_done:
   mechanics, deterministic validation selection for both exact candidates, minting/publication behavior and recovery
   without partial apply-artifact publication, admission leakage, lost follow-ups, arbitrary GraphQL or duplicate
   issue creation.
-- The proof report clearly passes or fails the <=20-minute preparation objective and names any remaining bottleneck.
+- The proof report clearly passes or fails the <=20-minute preparation objective, names any remaining bottleneck and
+  leaves no durable observed finding without an explicit absorbing adaptation and recurrence proof.
 ---
 
 # Ticket-minting end-to-end proof and efficiency milestone

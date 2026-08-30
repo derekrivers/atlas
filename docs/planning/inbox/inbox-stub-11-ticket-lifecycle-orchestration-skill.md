@@ -18,7 +18,6 @@ tags:
 - codex-skill
 - orchestration
 - routing
-source_anchor: AGENTS.md#repository-codex-skills
 relevant_docs:
 - AGENTS.md
 - docs/runbooks/planning-phases-and-ticket-stubs.md
@@ -47,8 +46,11 @@ acceptance_criteria:
   or ticket publication is needed.
 - The skill never routes directly to `linear`, `atlas-ticket-execution`, remediation, PR review or PR acceptance
   for ticket minting and never starts implementation work as a side effect.
-- The final report states the exact lifecycle boundary reached, artifacts/identities produced and the next specialist
-  skill/gate, making partial completion resumable rather than prompting ad-hoc repair.
+- A failed planning, validation, repository-publication, apply or PM-publication boundary routes first to bounded
+  diagnosis and explicit learning/disposition under the lifecycle authority; the router never defaults to `retry
+  until success`, and after correction resumes from the last legal boundary without replaying already-completed
+  stateful operations. The final report states that boundary, produced artifacts/identities, finding disposition
+  and next specialist skill/gate.
 non_goals:
 - No autonomous approval of PlanRuns, no bypass of operator gates, no manual repository-publication gap and no
   combined mega-command that hides intermediate evidence.

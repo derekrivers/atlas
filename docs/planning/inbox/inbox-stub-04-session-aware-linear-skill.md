@@ -17,7 +17,6 @@ tags:
 - linear
 - codex-skill
 - routing
-source_anchor: AGENTS.md#repository-codex-skills
 relevant_docs:
 - AGENTS.md
 - docs/runbooks/operator-environment.md

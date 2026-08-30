@@ -16,7 +16,6 @@ tags:
 - codex-skill
 - contracts
 - tests
-source_anchor: AGENTS.md#repository-codex-skills
 relevant_docs:
 - AGENTS.md
 - docs/runbooks/planning-phases-and-ticket-stubs.md
@@ -49,12 +48,15 @@ acceptance_criteria:
   or minting seams.
 - 'The contract-test structure remains maintainable: misleading Linear-only inventory naming is either cleanly refactored
   or clearly separated without duplicating skill inventory constants across test files.'
+- Focused structural assertions require the planning and lifecycle skills to retain the failure-classification,
+  explicit-disposition and resumable last-legal-boundary handoff; deleting any of those routing signals makes the
+  contract test fail without pinning large prose blocks.
 non_goals:
 - No PM runtime behavior, planning CLI behavior, external mutation, PlanRun or ticket implementation.
 - No broad rewrite of WORKFLOW/Symphony routing unrelated to ticket minting.
 test_requirements:
-- Run the focused repository skill-contract tests and the documentation linter; a deliberately removed composition/authority
-  line must make the focused test red.
+- Run the focused repository skill-contract tests and the documentation linter; a deliberately removed composition,
+  authority or failure-disposition handoff line must make the focused test red.
 - Do not require Playwright, UI E2E or unrelated Python suites for this static skill-routing candidate unless the
   repository validation selector independently selects them.
 implementation_notes:

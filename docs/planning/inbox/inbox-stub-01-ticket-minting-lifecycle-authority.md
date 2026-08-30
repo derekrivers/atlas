@@ -17,7 +17,6 @@ tags:
 - agent-skills
 - governance
 - pm-boundary
-source_anchor: AGENTS.md#repository-codex-skills
 relevant_docs:
 - AGENTS.md
 - docs/runbooks/planning-phases-and-ticket-stubs.md
@@ -30,19 +29,26 @@ acceptance_criteria:
   inputs, `atlas plan --stubs-only`, exact-proposal approval, `atlas apply`, apply-artifact publication, PM Linear
   publication/reconciliation and delivery admission, with the owner of every boundary named.
 - 'The contract distinguishes ticket publication from delivery admission: creating or updating a Linear issue and
-  asserting its mapped current Atlas state is not itself permission to promote that ticket to `ready_for_agent`.'
-- A mint-only or publish-only operator intent is defined to have no delivery-admission side effect; if the only
-  available runtime path could admit work under the active policy, the operation must fail closed or use a dedicated
-  publication-only seam.
+  asserting its mapped current Atlas state is not itself permission to promote that ticket to `ready_for_agent`;
+  a mint-only or publish-only intent has no admission side effect and fails closed or uses a publication-only seam
+  when the available runtime path could admit work.'
 - Atlas PM remains the authority for publishing newly minted Atlas tickets to Linear. Raw `linear_graphql` issue
   creation or workflow mutation is explicitly not a substitute for PM publication, join-key persistence or reconciliation.
 - 'Failure semantics are explicit: an applied PlanRun is never re-applied to repair a Linear incident; a retained
   `external_linear_id` is reused; create-time state assertion failure is recoverable without duplicate issue creation.'
-- The architecture explicitly permits a read-only planning-input validation command only as a wrapper over the existing
-  shared stub/batch integrity implementation; it may not duplicate parsing, reconciliation, key authority or apply
-  logic.
-- Skills remain procedural adapters beneath canonical repository authority; this ticket changes documentation/authority
-  only and activates no runtime, Linear or delivery-policy behavior.
+- Every unexpected stop in planning-input preparation, validation, plan, apply, repository publication or PM publication
+  receives an explicit disposition before retry or closure as an input/schema/preflight defect, skill/procedure defect,
+  runtime/code defect, governance/authority defect, operational recovery/troubleshooting finding, reusable Atlas
+  lesson, delivery/debt follow-up or proven transient external/system event requiring no product change; every durable
+  finding names the repository/Atlas surface that absorbs it, and `retry` alone is not a disposition.
+- When a pre-key failure exposes a defect in the still-unminted batch, the owning planned ticket is corrected before
+  minting instead of knowingly deferring an already-understood defect to a follow-up.
+- The architecture explicitly permits a read-only planning-input preflight only by reusing the existing shared
+  `validate_inbox_batch_integrity` implementation, the same planner input/processed-alias `AnchorIndex` construction,
+  the same deterministic stubs-only backlog-echo and `promote_inbox_stubs` primitives and the same existing applicable
+  proposal gates; it duplicates no parsing, anchor policy, gate policy, reconciliation, key authority or apply logic
+  and produces no reconciliation diff, PlanRun persistence or mutation; skills remain procedural adapters beneath
+  this authority, and this ticket activates no runtime, Linear or delivery-policy behavior.
 non_goals:
 - No new CLI, PM runtime path, Codex skill, Linear mutation, PlanRun, ticket key, delivery-policy change or production
   activation.

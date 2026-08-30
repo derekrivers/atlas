@@ -17,7 +17,6 @@ tags:
 - planning
 - pm-follow-up
 - intake
-source_anchor: docs/runbooks/planning-phases-and-ticket-stubs.md#atlas-owned-integrity-gate
 relevant_docs:
 - docs/runbooks/planning-phases-and-ticket-stubs.md
 - docs/atlas/planning-engine-specification.md
