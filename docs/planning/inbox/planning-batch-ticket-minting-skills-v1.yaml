@@ -16,6 +16,7 @@ repository_files:
 - docs/planning/inbox/inbox-stub-12-ticket-skill-routing-contracts.md
 - docs/planning/inbox/inbox-stub-13-ticket-minting-end-to-end-proof.md
 - docs/planning/inbox/planning-batch-ticket-minting-skills-v1.yaml
+- docs/runbooks/planning-phases-and-ticket-stubs.md
 future_document_paths:
 - docs/closure/ticket-minting-skill-proof.md
 stubs:

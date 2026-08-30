@@ -37,8 +37,10 @@ acceptance_criteria:
   the read-only inbox validator, calculates and runs the deterministic validation selector for the exact committed
   planning-input base/head/path set, then publishes that unchanged candidate through the governed planning-publication
   procedure to an isolated Git/PR boundary before any store mutation.
-- Stubs-only plan and apply against an isolated repository/database prove the expected minted key count, dependency
-  DAG, renders and processed-stub retirement; the post-apply publication mode then commits and publishes the complete
+- Stubs-only plan and apply against an isolated repository/database prove thirteen ticket ADDs for thirteen approved
+  stubs, twenty-four dependency ADDs for the exact approved DAG, thirty-seven aggregate ADD entries, zero MODIFY,
+  PROPOSE_ARCHIVE, CONFLICT or collapse and no unexpected added entity type before proving the expected minted key
+  count, renders and processed-stub retirement; the post-apply publication mode then commits and publishes the complete
   apply-owned planning tree only after a fresh deterministic validation plan passes for that new exact candidate,
   without discarding, recreating or partially selecting artifacts after the store advances.
 - The resulting isolated minted tickets are published through the PM publication-only seam using an in-memory/fake
@@ -68,6 +70,12 @@ acceptance_criteria:
   interaction with the future apply boundary and every further issue found before this batch mints; completion is
   forbidden while any durable
   observed finding lacks a disposition, while proven transient events create no manufactured implementation work.
+  The ledger specifically records PlanRun `bec35f96-aa4a-43ba-9324-40a510808d2b` as a semantically valid thirteen-ticket,
+  twenty-four-edge, thirty-seven-aggregate proposal stopped by a durable governance/procedural raw-count acceptance
+  defect absorbed by the canonical planning runbook and tickets 01, 10, 12 and 13. It also records the stopped attempt
+  to correct that authority while freezing the obsolete fourteen-path inventory as a durable planning-procedure/operator-
+  instruction finding, resolved by treating the manifest as the complete current governed overlay and permitting an
+  explicitly reviewed same-batch pre-key expansion while unrelated paths remain prohibited.
 non_goals:
 - No live production Linear pollution or throwaway production Atlas keys solely for the test.
 - No weakening of PlanRun approval, apply integrity, PM writer ownership or CI evidence policy to meet the time
@@ -79,6 +87,9 @@ test_requirements:
   for known planning paths, and fail if pytest, Playwright, browser/UI/E2E or an unselected `full-sweep` appears.
 - 'Seeded defects must bite: remove the batch coverage invariant or promoted-anchor Gate-4 check and the corresponding
   malformed-batch or non-indexed explicit-source-anchor fixture must turn green only if the test is broken.'
+- Type-qualified proposal-acceptance regression proves the valid thirteen-ticket/twenty-four-edge shape passes, an
+  unexpected fourteenth ticket fails, and every missing, extra or reversed dependency edge fails; aggregate ADD count
+  alone is never accepted as ticket-count authority.
 implementation_notes:
 - Use existing planning/apply test helpers and Linear fakes rather than building a second integration harness.
 - The wall-clock measurement is observational evidence in the proof report, not a flaky CI timing assertion.

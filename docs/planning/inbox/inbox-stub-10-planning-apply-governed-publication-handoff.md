@@ -38,6 +38,13 @@ acceptance_criteria:
   artifacts.
 - '`atlas-planning-apply` does not merge, infer publication approval, run PM sync or Linear mutation, or start ticket
   implementation; `atlas-planning-publication` owns repository publication and stops after publishing the PR.'
+- '`atlas-planning-apply` replaces its raw aggregate-ADD comparison with type-qualified proposal inspection: expected
+  ticket ADD count equals approved stub count, dependency ADDs exactly equal the approved DAG, aggregate ADD is not
+  compared directly with stub count, unexpected added entity types stop, and every existing MODIFY, archive, conflict,
+  collapse, provenance and integrity stop remains intact.'
+- The real thirteen-stub, twenty-four-edge batch is accepted as thirteen ticket ADDs plus twenty-four dependency ADDs
+  and thirty-seven aggregate ADD entries only when every typed entry matches the ratified batch; thirty-seven is not
+  a general allowance.
 non_goals:
 - No runtime code, PM CLI behavior, planning integrity logic, AGENTS routing table or lifecycle orchestration skill.
 - No repository merge, PM/Linear publication, delivery admission or ticket implementation.
