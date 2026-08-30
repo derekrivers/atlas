@@ -27,7 +27,9 @@ depends_on: []
 acceptance_criteria:
 - Canonical planning/PM documentation defines the lifecycle from operator-ratified intent through committed inbox
   inputs, `atlas plan --stubs-only`, exact-proposal approval, `atlas apply`, apply-artifact publication, PM Linear
-  publication/reconciliation and delivery admission, with the owner of every boundary named.
+  publication/reconciliation and delivery admission, with the owner of every boundary named; proposal acceptance
+  requires ticket ADD count to equal approved stub count, dependency ADDs to equal the approved graph and unexpected
+  added entity types to stop, while aggregate ADD remains informational composition rather than ticket-count authority.
 - 'The contract distinguishes ticket publication from delivery admission: creating or updating a Linear issue and
   asserting its mapped current Atlas state is not itself permission to promote that ticket to `ready_for_agent`;
   a mint-only or publish-only intent has no admission side effect and fails closed or uses a publication-only seam
@@ -42,7 +44,10 @@ acceptance_criteria:
   lesson, delivery/debt follow-up or proven transient external/system event requiring no product change; every durable
   finding names the repository/Atlas surface that absorbs it, and `retry` alone is not a disposition.
 - When a pre-key failure exposes a defect in the still-unminted batch, the owning planned ticket is corrected before
-  minting instead of knowingly deferring an already-understood defect to a follow-up.
+  minting instead of knowingly deferring an already-understood defect to a follow-up; when that correction genuinely
+  requires another canonical repository path in the same governed package, the manifest may expand only while the
+  original base remains valid, complete base-to-HEAD equality is re-proven and no unrelated path is absorbed merely
+  to make validation pass.
 - The architecture explicitly permits a read-only planning-input preflight only by reusing the existing shared
   `validate_inbox_batch_integrity` implementation, the same planner input/processed-alias `AnchorIndex` construction,
   the same deterministic stubs-only backlog-echo and `promote_inbox_stubs` primitives and the same existing applicable

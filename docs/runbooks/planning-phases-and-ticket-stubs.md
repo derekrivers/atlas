@@ -109,6 +109,14 @@ A moved base, additional commit, omitted overlay file or unlisted stub fails
 closed. Regenerate or rebase the planning batch; do not edit the manifest to
 hide unrelated movement.
 
+A durable pre-key finding may legitimately expand the governed planning
+package with a newly required canonical or repository path. When it does,
+retain the original base if it remains valid, add the path to
+`repository_files`, and re-prove equality with the complete new
+`base_commit..HEAD` overlay. Do not preserve an obsolete path inventory
+mechanically or re-pin the base merely to hide a same-batch correction;
+unrelated paths still fail closed.
+
 ### Interstitial phases and in-flight prerequisites
 
 An interstitial identifier such as `15.5` is a semantic phase label, not a
@@ -243,9 +251,20 @@ uv run atlas plan --stubs-only
 uv run atlas apply
 ```
 
-Inspect the diff before confirmation. Expected ADD count must match the
-approved stub count, and an unexpected MODIFY, PROPOSE_ARCHIVE or CONFLICT is a
-stop, not something to accept because the stubs themselves looked correct.
+Inspect the diff by entity type before confirmation. For an ordered stubs-only
+batch, the ticket ADD count must equal the approved stub count and the
+dependency ADD set must exactly equal the approved declared dependency graph.
+The aggregate `ADD` summary counts every added diff entry, including dependency
+edges, so it may exceed the number of stubs and must not be compared directly
+with the stub count. Any unexpected ticket, dependency, epic or other added
+entity type is a stop, as is any unexpected MODIFY, PROPOSE_ARCHIVE, CONFLICT,
+collapse, identity, provenance or integrity result.
+
+Expected typed counts come from the ratified batch, never from a fixed aggregate
+allowance. For example, this programme's thirteen approved stubs and twenty-four
+declared edges produce thirteen ticket ADDs plus twenty-four dependency ADDs —
+thirty-seven aggregate ADD entries — only when every typed entry matches the
+approved batch.
 
 Immediately after a successful apply, before unrelated work:
 

@@ -45,7 +45,8 @@ acceptance_criteria:
 - Tests pin the planning skill's read-only integrity command, frozen-head selector execution and fast-path stop,
   both planning-artifact publication modes and their exact-head validation, both supported `linear` session routes
   and the apply-to-publication handoff so future edits cannot silently reintroduce manual validation, publication
-  or minting seams.
+  or minting seams; maintainable structural assertions require `atlas-planning-apply` to distinguish ticket,
+  dependency and aggregate additions and fail if it regresses to comparing aggregate ADD count with stub count.
 - 'The contract-test structure remains maintainable: misleading Linear-only inventory naming is either cleanly refactored
   or clearly separated without duplicating skill inventory constants across test files.'
 - Focused structural assertions require the planning and lifecycle skills to retain the failure-classification,
@@ -57,6 +58,8 @@ non_goals:
 test_requirements:
 - Run the focused repository skill-contract tests and the documentation linter; a deliberately removed composition,
   authority or failure-disposition handoff line must make the focused test red.
+- A focused seeded contract must fail when ticket, dependency and aggregate ADD semantics collapse back into one raw
+  count comparison, without pinning a large prose block.
 - Do not require Playwright, UI E2E or unrelated Python suites for this static skill-routing candidate unless the
   repository validation selector independently selects them.
 implementation_notes:
