@@ -21,7 +21,6 @@ tags:
 - planning
 - publication
 - recovery
-source_anchor: docs/runbooks/planning-phases-and-ticket-stubs.md#validation-and-commit-boundary
 relevant_docs:
 - AGENTS.md
 - docs/runbooks/planning-phases-and-ticket-stubs.md

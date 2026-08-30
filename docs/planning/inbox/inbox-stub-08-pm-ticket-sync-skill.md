@@ -16,7 +16,6 @@ tags:
 - pm-engine
 - codex-skill
 - linear-sync
-source_anchor: AGENTS.md#repository-codex-skills
 relevant_docs:
 - AGENTS.md
 - docs/atlas/pm-engine-and-linear-sync.md

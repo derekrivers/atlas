@@ -17,7 +17,6 @@ tags:
 - codex-skill
 - handoff
 - publication
-source_anchor: AGENTS.md#repository-codex-skills
 relevant_docs:
 - AGENTS.md
 - docs/runbooks/planning-phases-and-ticket-stubs.md
