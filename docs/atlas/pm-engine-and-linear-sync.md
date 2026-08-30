@@ -11,6 +11,72 @@ ownership, converts agent follow-up comments into planning inputs, and
 detects delivery anomalies. It never executes work, never restarts agents,
 and never writes to `docs/planning/` (that is `atlas apply`'s monopoly).
 
+### Ticket publication is not delivery admission
+
+Planning, Linear publication and delivery admission are separate authority
+boundaries:
+
+1. After exact operator approval, `atlas apply` mints Atlas tickets and assigns
+   keys in the store. The complete apply-owned renders and inbox retirement are
+   committed, reviewed and merged before PM publication.
+2. Atlas PM is the sole authority for first publication of those minted tickets
+   to Linear and their subsequent PM-owned definition and state-edge
+   reconciliation. It creates or updates an issue, persists or reuses
+   `external_linear_id`, pushes the Atlas-owned definition and context, and on
+   first creation asserts the Linear state mapped to the ticket's current Atlas
+   status. The field and state-edge ownership tables below continue to govern
+   every later reconciliation edge.
+3. Delivery admission is a later, independent PM decision. Only the active
+   operator-owned policy, coherent snapshot, deterministic evaluator,
+   revalidation and write-fence protocol may authorise promotion of an existing
+   issue to `ready_for_agent`.
+
+Creating or updating an issue, persisting its join key, and asserting its
+mapped current Atlas state prove publication/reconciliation only. None is
+permission to promote the ticket to `ready_for_agent`. In particular, a
+create-time assertion of an already-current mapped state is not an admission
+decision.
+
+The ordinary sync tick contains both step 2's definition publication and step
+3's admission protocol. Therefore a mint-only or publish-only intent has no
+admission side effect: it MUST use a separately governed publication-only seam
+when one is available, and otherwise fail closed rather than invoke a runtime
+path that could admit work. This contract does not activate such a seam or
+change the current tick.
+
+Atlas PM publication cannot be replaced by raw `linear_graphql` issue creation
+or workflow mutation. Those calls do not own PM definition publication,
+`external_linear_id` persistence, state-map assertion, write fencing or later
+reconciliation, even if the resulting board issue appears correct.
+
+### Publication failure and recovery
+
+An applied `PlanRun` is final and MUST NOT be re-applied to repair a repository
+or Linear incident. Recovery starts from the minted Atlas ticket and the
+existing apply artifacts.
+
+Once Linear issue creation returns an id, PM retains that id as
+`external_linear_id`. A degraded create caused by context-pack render failure
+records no definition cursor, so the later definition retry updates that same
+issue. If the create-time mapped-state assertion fails, current runtime retains
+the join key but its existing-issue update path does not reassert workflow
+state. The event therefore remains an explicit held
+publication/reconciliation incident: do not re-run apply, create a replacement
+issue or treat the retained identity as delivery admission. Current main has no
+supported repair path for that assertion. Any separately delivered recovery
+MUST reuse and reconcile that exact issue under PM authority and satisfy the
+crash, fence and fresh-process requirements in
+`pm-resilience-and-retrospective-recovery.md` before activation. Retaining the
+identity makes non-duplicating recovery possible; it does not make that
+recovery active here.
+
+Every unexpected PM publication stop follows the disposition contract in
+`docs/runbooks/planning-phases-and-ticket-stubs.md`: classify it before retry or
+closure, retain bounded evidence, and name the PM code, operational runbook,
+governance document, Lesson or delivery/debt surface that absorbs any durable
+finding. A bare retry is not a disposition; only a proven transient external or
+system event may close with no product change.
+
 ## Field ownership
 
 | Field                      | Owner / direction              |
@@ -635,8 +701,12 @@ malformed-pull, cancelled and failed ticks keep their diagnostic receipts but
 do not advance freshness. `Ticket.linear_synced_at` remains only the
 definition-push cursor and is not a board freshness signal.
 
-Ticks are idempotent; a missed tick costs latency only. The scheduler is a
-plain loop (or cron) — no distributed job system.
+Ticks are idempotent only at seams whose prerequisites and ambiguous outcomes
+are durably reconstructable; a missed tick costs latency only there. The
+stronger recovery, eventual-convergence and health contract is owned by
+`pm-resilience-and-retrospective-recovery.md`; an unsafe or unreconstructable
+interruption may instead leave a durable blocker. The scheduler is a plain loop
+(or cron) — no distributed job system.
 
 **Step → ticket map.** Steps 1+2 (pull a mapped status; push owned
 definitions) are ATLAS-42 (`atlas/pm/sync.py`, `sync_tick`). Step 1's "log

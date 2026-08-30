@@ -21,6 +21,77 @@ the operator separately reviews `atlas plan --stubs-only` and confirms
 `atlas apply`. Only apply assigns keys, mutates the Atlas store, writes the four
 planning renders and retires the considered stubs and batch manifest.
 
+## Governed ticket-minting lifecycle
+
+Ticket minting is a sequence of authority handoffs. Completing one boundary
+never grants the next owner permission to act, and a procedural skill may
+assist an owner without acquiring that owner's authority.
+
+| Boundary | Owner | Permitted transition | Required stop |
+| --- | --- | --- | --- |
+| Ratified intent | Operator, through the owning canonical design or decision | Approved intent becomes the semantic source for one bounded planning package. | Stop while a material decision, ticket boundary or state-edge owner is unresolved. |
+| Planning-input preparation | Planning contributor | Create or correct the exact canonical files, ordered inbox stubs and batch manifest; validate and commit them without assigning keys. | Stop on any schema, exact-path, dependency, manifest or base-to-HEAD mismatch. A local planning agent stops after the input commit and cannot plan, apply or publish it. |
+| Planning-input repository admission | Repository reviewer recommends; operator admits | The reviewer issues a verdict on the exact committed planning package; only the operator may approve and merge it, making it eligible for the operator planning path. | Stop on an unratified semantic choice, incomplete manifest, validation failure, unexpected diff or stale base. A reviewer never acquires merge authority. |
+| Optional read-only preflight | Planning Engine | Inspect the committed package through the shared deterministic planning primitives described in `planning-engine-specification.md`; return diagnostics only. | Stop on any diagnostic. Preflight cannot produce a reconciliation diff, persist a `PlanRun`, assign a key, retire an input or mutate the store or working tree. |
+| Proposal construction | Planning Engine, invoked by the operator | `atlas plan --stubs-only` builds the deterministic backlog echo plus promoted stubs, runs the applicable gates and persists one `proposed` `PlanRun`. | Stop unless ticket ADD count equals approved stub count, dependency ADDs exactly equal the approved graph, and every other entity type and diff result is expected. Aggregate ADD is informational composition, not ticket-count authority. |
+| Exact-proposal approval | Operator | Review the complete typed proposal at its pinned inputs and either approve that exact proposal for apply or reject it. | Any unexpected ticket, dependency, epic, other entity type, MODIFY, PROPOSE_ARCHIVE, CONFLICT, collapse, identity, provenance or integrity result stops approval. |
+| Key assignment and apply | `atlas apply`, after explicit operator confirmation | Assign monotonic keys, atomically mutate the Atlas store, write the four planning renders and retire the considered stubs and manifest. | A stale, changed or rejected proposal stops. An already-applied `PlanRun` is never applied again, including to repair a later publication incident. If an active PM cadence observes the selected store and no governed quiescence spans apply through repository admission, stop before confirmation. |
+| Apply-artifact candidate publication | Repository contributor | Commit, validate and publish the complete apply-owned render and retirement change as one exact repository candidate. | Stop on an incomplete planning tree, unexpected repository diff or failed validation. Never discard the advanced-store artifacts or hand-edit their projection. |
+| Apply-artifact repository admission | Repository reviewer recommends; operator admits | The reviewer issues a verdict on the exact apply-artifact candidate; only the operator may approve and merge it under the normal repository controls. | Stop on failed review, changed identity or unpublished/unmerged apply artifacts; PM publication cannot start, and a reviewer never acquires merge authority. |
+| Linear publication and reconciliation | Atlas PM Engine, within the PM field and state-edge ownership table | On its governed cadence, create or update the Linear issue, persist/reuse `external_linear_id`, push Atlas-owned definition/context and assert the mapped current Atlas state on first creation. | Any missing or ambiguous join, failed create/update/assertion or reconciliation anomaly is a PM incident. Do not re-run apply and do not substitute raw Linear issue creation or workflow mutation. |
+| Delivery admission | Atlas PM Engine | Under the active operator-owned delivery policy, independently select at most one eligible ticket and promote its existing Linear issue to `ready_for_agent` through the lease, revalidation and write-fence protocol. | Publication, reconciliation or create-time assertion alone grants no admission. Mint-only or publish-only intent has no admission side effect: use a separately governed publication-only seam, or fail closed when the available runtime path could continue into admission. |
+
+The ordinary `atlas pm sync` tick currently contains both the publication pass
+and the later admission pass. It is therefore not permission-safe for a
+mint-only or publish-only instruction merely because publication occurs first.
+The operator either invokes a separately implemented publication-only seam or
+stops; procedure wording cannot narrow a runtime path that still has admission
+authority.
+
+Repository admission is an authority precondition, not an executable fence on
+the current managed cadence. `atlas apply` commits the store before its render
+and retirement artifacts can be reviewed and merged, so an active PM process
+watching that store could observe the minted tickets too early. No
+planning-specific quiescence-and-resume lane is active. The operator therefore
+MUST stop before confirming apply against a store observed by an active PM
+cadence; ad hoc service control and `atlas pm sync --once` are not substitutes.
+This ticket records the boundary and stop condition but activates no runtime
+fence, service operation or publication-only path.
+
+## Unexpected-stop disposition
+
+Before retry or closure, every unexpected stop in planning-input preparation,
+packaged validation, plan, apply, apply-artifact repository publication or PM
+publication receives one explicit disposition. `Retry` alone is not a
+disposition. Classify the stop as exactly the applicable kind below and record
+the evidence that supports that classification:
+
+- **input, schema or preflight defect** — correct the governed planning package
+  and name the stub, manifest or canonical input that absorbs the correction;
+- **skill or procedure defect** — correct the owning repository skill or
+  runbook through a separately governed change;
+- **runtime or code defect** — name the implementation and test surface that
+  owns the repair;
+- **governance or authority defect** — name the canonical design, runbook or
+  ADR that must be ratified before work resumes;
+- **operational recovery or troubleshooting finding** — name the owning
+  operational runbook or `docs/runbooks/troubleshooting.md` section;
+- **reusable Atlas lesson** — record it through the governed Lesson lifecycle,
+  remaining DRAFT until operator promotion;
+- **delivery or debt follow-up** — record the owning `DebtItem` or governed
+  follow-up planning input rather than creating a tracker ticket directly; or
+- **proven transient external or system event requiring no product change** —
+  retain the bounded provider/system evidence and explain why no durable Atlas
+  surface needs correction.
+
+Every durable finding names the repository or Atlas surface that will absorb
+it. If a pre-key failure exposes an understood defect in the still-unminted
+batch, correct the owning planned ticket before minting; do not knowingly mint
+the defect and defer it to a follow-up. If that correction genuinely needs an
+additional canonical repository path in the same package, the manifest may
+expand only under the original-base and complete base-to-HEAD equality rules
+below. Unrelated paths cannot be absorbed merely to make validation pass.
+
 ## Before the batch: ratify decisions and boundaries
 
 Do not use stub authoring to hide unresolved programme decisions. Before
@@ -288,16 +359,19 @@ tree can leave committed renders/stub retirement behind operational state and
 later cause duplicate promotion or broken context anchors.
 
 Minting into Atlas and publishing to Linear are separate boundaries. After the
-apply-artifact change is merged, verify the next PM sync:
+apply-artifact change is merged, the next PM action remains owned by the
+governed managed cadence and its runtime procedure. Do not run
+`atlas pm sync --once`: on the canonical store it normally contends with the
+managed writer, and when it can run it executes the same admission-capable tick
+rather than a publication-only seam. If the planning lifecycle stopped because
+no governed quiescence-and-resume lane exists, repository merge alone does not
+authorise ad hoc service control; retain the explicit governance/operational
+stop until that lane is separately delivered.
 
-```bash
-uv run atlas pm sync --once -v
-```
-
-First sync creates the Linear issue for a pushable minted ticket, records its
-`external_linear_id`, pushes the Atlas-owned definition/context and asserts the
-mapped create-time state. A failure there is a sync incident; do **not** re-run
-`atlas apply` to repair it.
+When the governed cadence is lawfully active, its first sync creates the Linear
+issue for a pushable minted ticket, records its `external_linear_id`, pushes the
+Atlas-owned definition/context and asserts the mapped create-time state. A
+failure there is a sync incident; do **not** re-run `atlas apply` to repair it.
 
 If Atlas reports an integrity failure, stop. Correct the planning inputs,
 regenerate the complete package against current main and repeat validation;

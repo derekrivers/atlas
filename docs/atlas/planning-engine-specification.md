@@ -208,6 +208,41 @@ the AT-5 staleness re-check holds identically. A gate failure (e.g. a `depends_o
 nonexistent ticket) records a `failed` run exactly as a generative gate
 failure would (§6).
 
+For an operator-ratified ordered batch, proposal acceptance is typed rather
+than inferred from the aggregate summary. The ticket ADD count must equal the
+approved stub count, dependency ADDs must equal the approved declared graph,
+and any unexpected added epic or other entity type stops. The aggregate ADD
+count is informational composition across all added entity types; it is never
+ticket-count authority. Any unexpected MODIFY, PROPOSE_ARCHIVE, CONFLICT,
+collapse, identity, provenance or integrity result also stops the exact-proposal
+approval gate. The operator owns that approval; successful deterministic
+construction does not approve its own output.
+
+### 2.1.1 Read-only planning-input preflight boundary
+
+The architecture permits a read-only preflight over committed planning inputs,
+but does not create a second planning implementation. Such a preflight MUST:
+
+1. call the existing shared `validate_inbox_batch_integrity` implementation;
+2. construct the `AnchorIndex` from the same planner inputs and active-stub
+   processed-path aliases used by the planner;
+3. construct the same deterministic stubs-only proposal by reusing the
+   verbatim keyed backlog echo and `promote_inbox_stubs` primitives; and
+4. run the same existing proposal gates that are applicable before
+   reconciliation.
+
+It MUST NOT duplicate inbox parsing, anchor or slug policy, gate policy,
+reconciliation, key authority or apply logic. It emits bounded diagnostics
+only: no reconciliation diff, `PlanRun` or other persistence, key allocation,
+inbox retirement, file write, store mutation or external call. Failure at any
+shared primitive is a failed preflight, not permission to fall through to
+`atlas plan` or to reinterpret the input independently.
+
+This is an architectural permission for a later separately delivered read-only
+surface. It adds no CLI or active runtime behavior here. Repository skills may
+compose that surface as procedural adapters, but remain below this
+specification and cannot reimplement or weaken it.
+
 ### 2.2 `atlas apply`
 
 1. Load the most recent `PlanRun` with `status: proposed`.
@@ -272,6 +307,18 @@ excludes `PROPOSE_ARCHIVE` items from the renders. A diff that touches a
 frozen ticket (`CONFLICT`) is refused (AT-4). `MODIFY` application is
 deferred to a follow-up; a diff containing `MODIFY` entries is refused
 rather than applied with invented semantics.
+
+Apply ends Planning Engine minting authority. After a successful apply, the
+complete generated renders and inbox retirement are repository artifacts that
+must be published under repository review before Atlas PM publishes the minted
+tickets to Linear. An applied `PlanRun` is final and is never re-applied to
+repair repository-publication, Linear-publication or reconciliation failure.
+Linear publication and delivery admission belong to the distinct PM boundaries
+defined in `pm-engine-and-linear-sync.md`; neither is an implied apply side
+effect. Repository admission is not an executable fence on the store mutation:
+if an active PM cadence observes the selected store and no separately governed
+quiescence spans apply through repository admission, the operator must stop
+before confirming apply. This specification activates no such runtime lane.
 
 ## 2.3 Anchor slug algorithm
 
