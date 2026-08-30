@@ -1,7 +1,7 @@
 # Render written only by `atlas apply` (ADR-0006/0007); do not hand-edit.
-# plan_run_id: e32472af-115e-458f-9807-0fce02938db4
+# plan_run_id: a47122df-3b5b-4184-a06a-85cda2e0034d
 # prompt_version: stubs-only
-# ticket_key_high_water: 290
+# ticket_key_high_water: 303
 # epic_key_high_water: 13
 tickets:
 - id: 06701bee-33ed-44e6-b735-52dfd7c5edc8
@@ -13129,7 +13129,7 @@ tickets:
   title: Planner call telemetry and PlanningExecution identity contracts
   objective: Define the bounded provider-neutral execution, logical-call and physical-attempt contracts that let Atlas describe every planner provider request without retaining prompt contents, fabricating a PlanRun or inventing unavailable provider data.
   context: Wave 1 begins with measurement. Today PlannerClient returns only text, transport retries are hidden inside the Anthropic adapter, and PlanRun is legally created only after provider output exists. A request that exhausts transport retries therefore has no durable evidence owner. This ticket defines a separate PlanningExecution identity after deterministic preflight freezes the exact inputs and planner identity, while preserving the existing PlanRun lifecycle and apply semantics.
-  status: ci_pending
+  status: done
   ticket_type: feature
   risk_level: high
   priority: 50
@@ -13170,16 +13170,16 @@ tickets:
   - contract
   component: planning-telemetry-contract
   linear_synced_at: '2026-08-28T06:41:21.183797Z'
-  last_observed_linear_state_id: 85cdfa65-b990-41cc-a4ea-0071868ba27f
-  status_entered_at: '2026-08-28T17:40:13.046328Z'
+  last_observed_linear_state_id: ca6f5cee-5796-4102-bab7-24f08732549d
+  status_entered_at: '2026-08-29T07:40:11.640424Z'
   review_cycle_count: 0
-  lesson_extraction_attempted_at: null
+  lesson_extraction_attempted_at: '2026-08-29T07:40:11.640424Z'
   source_anchor: docs/atlas/knowledge-context-consolidation.md#5-planner-call-telemetry
   created_by_type: agent
   created_by_id: planner
   created_at: '2026-08-28T06:41:21.183797Z'
   updated_at: '2026-08-28T06:41:21.183797Z'
-  completed_at: null
+  completed_at: '2026-08-29T07:40:11.640424Z'
 - id: b25cc7c7-ec67-4575-ba7b-2052a9a43335
   product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
   epic_id: 5bd967eb-98c0-42a6-bec3-042a34145078
@@ -13187,7 +13187,7 @@ tickets:
   title: Structured planner-call orchestration and logical-attempt identity
   objective: Route single-call and staged planning through the telemetry request/result contract so every logical planner call belongs to one durable PlanningExecution and has deterministic stage, template, input and prompt-size identity before it reaches a provider.
   context: The current PlannerClient.generate(prompt) seam cannot distinguish execution, stage or logical retry, while staged projection retries are labelled outside the provider adapter. This ticket changes the planner-facing seam and call sites only, preserving generated proposal behavior while propagating the post-preflight PlanningExecution identity and making logical calls and prompt segments explicit.
-  status: planned
+  status: needs_human_decision
   ticket_type: feature
   risk_level: high
   priority: 50
@@ -13224,8 +13224,8 @@ tickets:
   - orchestration
   component: planner-call-orchestration
   linear_synced_at: '2026-08-28T06:41:21.183797Z'
-  last_observed_linear_state_id: f95de64e-f351-4226-b4ec-a5bddbc6fd2d
-  status_entered_at: null
+  last_observed_linear_state_id: 311a3a97-c409-4cce-96ab-0a3bfc2a5541
+  status_entered_at: '2026-08-29T11:42:00.991348Z'
   review_cycle_count: 0
   lesson_extraction_attempted_at: null
   source_anchor: docs/atlas/knowledge-context-consolidation.md#5-planner-call-telemetry
@@ -13568,7 +13568,7 @@ tickets:
   title: Make documentation evidence path coverage survive raw-payload retention
   objective: Preserve exact documentation-path coverage as bounded structured system-tier evidence even when the upstream GitHub payload exceeds the raw-payload retention cap, including append-only recovery of already-capped observations.
   context: 'GitHub documentation normalisation already computes the exact changed docs paths, but DOCUMENTATION_UPDATE persists them only inside raw_payload["files"]. EvidenceRepo replaces payloads over 64KB with a retention marker that has no files list, so documentation verification cannot prove required-path coverage and CI handoff classifies exact-head evidence as malformed_evidence. PR #368 for ATLAS-282 is blocked in CI Pending by this defect, and its legacy docs:<head> observation already deduplicates unchanged pulls.'
-  status: planned
+  status: ci_pending
   ticket_type: bug
   risk_level: high
   priority: 50
@@ -13613,7 +13613,7 @@ tickets:
   - 'Focused model, migration/storage, mapping, evaluator, and CI-handoff regressions pass, including the greater-than-64KB PR #368 failure class.'
   - Canonical evidence, verification, and data-model documents describe the new projection, legacy compatibility, retention, and versioned recovery identity.
   estimated_effort: null
-  external_linear_id: null
+  external_linear_id: b5bedf07-9bfa-4b0b-b0cf-5de97e1f960f
   external_github_issue_id: null
   tags:
   - evidence
@@ -13623,8 +13623,8 @@ tickets:
   - append-only
   component: atlas.evidence
   linear_synced_at: null
-  last_observed_linear_state_id: null
-  status_entered_at: null
+  last_observed_linear_state_id: 85cdfa65-b990-41cc-a4ea-0071868ba27f
+  status_entered_at: '2026-08-28T20:08:43.862973Z'
   review_cycle_count: 0
   lesson_extraction_attempted_at: null
   source_anchor: docs/planning/inbox/processed/ATLAS-282-2.md#make-documentation-evidence-path-coverage-survive-raw-payload-retention
@@ -13632,4 +13632,784 @@ tickets:
   created_by_id: planner
   created_at: '2026-08-28T19:27:52.761650Z'
   updated_at: '2026-08-28T19:27:52.761650Z'
+  completed_at: null
+- id: 32f2cd42-bd17-4f94-9944-39a9933d78e9
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 4d034c8b-0752-4089-8ff9-2fd43f51c6f4
+  key: ATLAS-291
+  title: Governed ticket-minting lifecycle authority
+  objective: Ratify the exact Atlas authority boundaries for preparing, minting, publishing, reconciling and admitting new tickets so agent skills can compose the existing planning and PM machinery without bypassing operator gates or Linear ownership.
+  context: Atlas already separates local ticket planning, operator plan/apply, PM synchronisation and bounded Linear operations, but no canonical minting workflow currently joins those boundaries. The current PM tick also combines definition publication with delivery admission, so a mint-only instruction must not silently become permission to promote work.
+  status: planned
+  ticket_type: documentation
+  risk_level: high
+  priority: 50
+  relevant_docs:
+  - AGENTS.md
+  - docs/runbooks/planning-phases-and-ticket-stubs.md
+  - docs/atlas/planning-engine-specification.md
+  - docs/atlas/pm-engine-and-linear-sync.md
+  - docs/atlas/playbooks/linear-sync.md
+  acceptance_criteria:
+  - Canonical planning/PM documentation defines the lifecycle from operator-ratified intent through committed inbox inputs, `atlas plan --stubs-only`, exact-proposal approval, `atlas apply`, apply-artifact publication, PM Linear publication/reconciliation and delivery admission, with the owner of every boundary named; proposal acceptance requires ticket ADD count to equal approved stub count, dependency ADDs to equal the approved graph and unexpected added entity types to stop, while aggregate ADD remains informational composition rather than ticket-count authority.
+  - 'The contract distinguishes ticket publication from delivery admission: creating or updating a Linear issue and asserting its mapped current Atlas state is not itself permission to promote that ticket to `ready_for_agent`; a mint-only or publish-only intent has no admission side effect and fails closed or uses a publication-only seam when the available runtime path could admit work.'
+  - Atlas PM remains the authority for publishing newly minted Atlas tickets to Linear. Raw `linear_graphql` issue creation or workflow mutation is explicitly not a substitute for PM publication, join-key persistence or reconciliation.
+  - 'Failure semantics are explicit: an applied PlanRun is never re-applied to repair a Linear incident; a retained `external_linear_id` is reused; create-time state assertion failure is recoverable without duplicate issue creation.'
+  - Every unexpected stop in planning-input preparation, validation, plan, apply, repository publication or PM publication receives an explicit disposition before retry or closure as an input/schema/preflight defect, skill/procedure defect, runtime/code defect, governance/authority defect, operational recovery/troubleshooting finding, reusable Atlas lesson, delivery/debt follow-up or proven transient external/system event requiring no product change; every durable finding names the repository/Atlas surface that absorbs it, and `retry` alone is not a disposition.
+  - When a pre-key failure exposes a defect in the still-unminted batch, the owning planned ticket is corrected before minting instead of knowingly deferring an already-understood defect to a follow-up; when that correction genuinely requires another canonical repository path in the same governed package, the manifest may expand only while the original base remains valid, complete base-to-HEAD equality is re-proven and no unrelated path is absorbed merely to make validation pass.
+  - The architecture explicitly permits a read-only planning-input preflight only by reusing the existing shared `validate_inbox_batch_integrity` implementation, the same planner input/processed-alias `AnchorIndex` construction, the same deterministic stubs-only backlog-echo and `promote_inbox_stubs` primitives and the same existing applicable proposal gates; it duplicates no parsing, anchor policy, gate policy, reconciliation, key authority or apply logic and produces no reconciliation diff, PlanRun persistence or mutation; skills remain procedural adapters beneath this authority, and this ticket activates no runtime, Linear or delivery-policy behavior.
+  non_goals:
+  - No new CLI, PM runtime path, Codex skill, Linear mutation, PlanRun, ticket key, delivery-policy change or production activation.
+  - No rewrite of the general Symphony execution, PR review or PR acceptance lifecycle.
+  implementation_notes:
+  - Keep the change inside the existing planning and PM authority documents; do not create a second competing master workflow document.
+  - 'Document current behavior truthfully: the ordinary PM sync tick can include admission, while first-sync publication asserts the Linear state mapped to the ticket''s current Atlas status.'
+  test_requirements:
+  - Run `git diff --check` and `uv run python -m atlas.tools.doc_linter` over the exact documentation candidate.
+  - Review the changed canonical sections as an authority graph and prove they do not assign the same state edge or mutation boundary to two owners.
+  documentation_requirements:
+  - docs/runbooks/planning-phases-and-ticket-stubs.md
+  - docs/atlas/planning-engine-specification.md
+  - docs/atlas/pm-engine-and-linear-sync.md
+  definition_of_done:
+  - A fresh agent can identify the owner, allowed transition and stop condition for every minting boundary without relying on conversation history.
+  - No implementation or external-system mutation is included in the final diff.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - maintenance
+  - ticket-minting
+  - agent-skills
+  - governance
+  - pm-boundary
+  component: ticket-minting-governance
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/inbox-stub-01-ticket-minting-lifecycle-authority.md#governed-ticket-minting-lifecycle-authority
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-30T06:48:04.401326Z'
+  updated_at: '2026-08-30T06:48:04.401326Z'
+  completed_at: null
+- id: bf70761c-0ef7-45f3-a767-0f43d3e0ba78
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 5bd967eb-98c0-42a6-bec3-042a34145078
+  key: ATLAS-292
+  title: Planning intake isolation for asynchronous follow-ups
+  objective: Decouple PM-generated follow-up capture from the single active planning inbox so unrelated follow-ups can remain durably pending without blocking an operator-ratified ordered planning batch.
+  context: Today the PM sync follow-up producer writes unnumbered `ATLAS-N-n.md` stubs directly into `docs/planning/inbox/`, while Atlas intentionally rejects any ordered `inbox-stub-NN-*` batch that is mixed with an unnumbered follow-up. The first preparation run for this maintenance batch was correctly blocked by an untracked `ATLAS-282-3.md`, demonstrating that asynchronous follow-up capture can serialize or delay unrelated deliberate planning work.
+  status: planned
+  ticket_type: feature
+  risk_level: high
+  priority: 50
+  relevant_docs:
+  - docs/runbooks/planning-phases-and-ticket-stubs.md
+  - docs/atlas/planning-engine-specification.md
+  - docs/atlas/pm-engine-and-linear-sync.md
+  - docs/decisions/0007-generative-planning-with-deterministic-reconciliation.md
+  acceptance_criteria:
+  - PM-generated `atlas:proposed-follow-up` capture is persisted through an explicit pending-intake boundary that is not itself part of the active planning inbox consumed by plan/apply.
+  - The active `docs/planning/inbox/` remains one exact operator-selected planning intent, so existing ordered-batch manifest coverage/order and fail-closed integrity semantics do not need to be weakened.
+  - A bounded operator/CLI admission operation can promote selected pending follow-up inputs into the active inbox atomically and without creating a ticket, minting a key, persisting a PlanRun, changing Atlas ticket state or mutating Linear.
+  - Follow-up source-comment identity and deduplication remain durable across pending, admitted and processed locations; a PM sync retry cannot create duplicate pending/admitted stubs for the same Linear comment.
+  - An unrelated pending follow-up may coexist with an ordered planning batch without making the batch integrity guard fail, while two simultaneously active ordered batch manifests remain rejected.
+  - Legacy unnumbered follow-ups already present in the active inbox are handled by an explicit compatible operator path; the implementation never silently deletes, auto-processes or hides them.
+  - Focused deterministic tests prove capture/admission idempotency, pending-vs-active isolation, no-loss recovery and that the existing active-inbox batch integrity guard continues to reject genuinely mixed active inputs.
+  non_goals:
+  - No concurrent PlanRuns over multiple active batches, no weakening of exact manifest coverage, and no automatic approval/apply of pending follow-ups.
+  - No ticket implementation, Linear lifecycle mutation, delivery admission or general-purpose filesystem queue.
+  implementation_notes:
+  - Choose the pending storage/admission shape under the canonical planning authority; prefer one machine-owned intake mechanism over teaching agents to move files manually.
+  - Preserve the current rule that the active inbox is exact and fail-closed. Solve contention before the active-inbox boundary rather than by making mixed active inputs ambiguous.
+  test_requirements:
+  - Focused PM/planning tests seed an unrelated pending follow-up plus an active ordered batch and prove the ordered batch validates unchanged.
+  - Seeded duplicate source-comment and interrupted admission cases prove exactly-once pending/admitted identity without data loss.
+  documentation_requirements:
+  - docs/runbooks/planning-phases-and-ticket-stubs.md
+  - docs/atlas/planning-engine-specification.md
+  - docs/atlas/pm-engine-and-linear-sync.md
+  definition_of_done:
+  - A PM follow-up can be captured while an unrelated ordered maintenance batch is being prepared without blocking or contaminating that batch.
+  - No follow-up is silently lost, and the operator retains an explicit admission gate before it becomes active planning input.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - maintenance
+  - ticket-minting
+  - agent-skills
+  - planning
+  - pm-follow-up
+  - intake
+  component: planning-intake
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/inbox-stub-02-planning-intake-isolation.md#planning-intake-isolation-for-asynchronous-follow-ups
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-30T06:48:04.401326Z'
+  updated_at: '2026-08-30T06:48:04.401326Z'
+  completed_at: null
+- id: 7d505dcc-ad92-47ab-8673-cc2dc42e9a94
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 4d034c8b-0752-4089-8ff9-2fd43f51c6f4
+  key: ATLAS-293
+  title: Bounded Linear operator adapter outside Symphony
+  objective: Provide a repository-owned, credential-safe Linear access surface for operator/Codex sessions that are not Symphony-dispatched, covering the bounded issue reads, workflow-state resolution, comments and authorised lifecycle mutations needed by Atlas skills without exposing arbitrary GraphQL or PM-owned issue creation.
+  context: The distinct ATLAS-282 follow-up identified that `.codex/skills/linear` is currently usable only when Symphony injects its `linear_graphql` client. Operator-side Codex sessions therefore cannot follow the same repository skill without an unsupported/manual tool substitution. The solution must preserve Atlas lifecycle authority and must not turn operator access into a generic Linear mutation backdoor.
+  status: planned
+  ticket_type: feature
+  risk_level: high
+  priority: 50
+  relevant_docs:
+  - AGENTS.md
+  - docs/atlas/pm-engine-and-linear-sync.md
+  - docs/atlas/playbooks/linear-sync.md
+  - docs/runbooks/operator-environment.md
+  - docs/runbooks/symphony-agent-execution.md
+  acceptance_criteria:
+  - Atlas exposes a repository-owned non-Symphony Linear adapter/CLI that loads Linear credentials inside the trusted process boundary and never prints, returns or requires the agent to read the raw token.
+  - 'The surface is capability-bounded rather than arbitrary GraphQL: it supports narrow issue readback, team workflow-state resolution, bounded comment read/create and the lifecycle state-update primitive needed by canonical agent/operator procedures, with machine-readable results and named failures.'
+  - The adapter explicitly excludes Linear issue creation, Atlas-owned definition push, `external_linear_id` persistence and PM ticket publication; those remain owned by Atlas PM.
+  - Mutation calls require exact issue identity and current/target state evidence defined by the owning lifecycle procedure; a stale or ambiguous issue/state resolution fails closed instead of guessing by title.
+  - No arbitrary GraphQL document, mutation-name passthrough or introspection escape hatch is exposed to the calling agent; adding a new operation requires an explicit repository capability.
+  - Focused fake-client/CLI tests prove allowed reads/comments/state mutation, stale/ambiguous-state failure, credential non-disclosure and rejection of PM-owned issue-creation behavior without live Linear access.
+  non_goals:
+  - No replacement for Symphony's `linear_graphql` inside dispatched sessions and no removal of that tool in this ticket.
+  - No PM publication, delivery admission, ticket planning/apply, generic GraphQL console or Phase 16 non-bypassable effect-gateway claim.
+  implementation_notes:
+  - Prefer a small `atlas linear ...` operator-facing CLI/service family reusing existing `atlas.linear` DTO/client primitives; final command spelling should follow current CLI conventions.
+  - Keep semantic lifecycle authority in the canonical execution/PM runbooks; the adapter owns safe mechanics only.
+  test_requirements:
+  - Focused tests use injected/in-memory Linear boundaries only and assert zero raw-token exposure.
+  - A negative capability test proves issue creation/arbitrary GraphQL cannot be invoked through the adapter.
+  documentation_requirements:
+  - docs/runbooks/operator-environment.md
+  - docs/atlas/playbooks/linear-sync.md
+  definition_of_done:
+  - A non-Symphony Codex/operator session has a supported repository-owned Linear mechanics surface without arbitrary GraphQL access.
+  - PM-owned new-ticket publication remains mechanically outside the adapter.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - maintenance
+  - ticket-minting
+  - agent-skills
+  - linear
+  - operator-access
+  - adapter
+  component: linear-operator-adapter
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/inbox-stub-03-bounded-linear-operator-adapter.md#bounded-linear-operator-adapter-outside-symphony
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-30T06:48:04.401326Z'
+  updated_at: '2026-08-30T06:48:04.401326Z'
+  completed_at: null
+- id: 5de9187e-f255-4ef6-a3bb-36a64adcdb08
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 4d034c8b-0752-4089-8ff9-2fd43f51c6f4
+  key: ATLAS-294
+  title: Session-aware repository Linear skill
+  objective: Make `.codex/skills/linear` usable in both Symphony-dispatched and operator/Codex sessions by routing to the correct bounded mechanics surface for the current execution context while preserving one canonical lifecycle authority model.
+  context: The existing skill explicitly says to use Symphony's injected `linear_graphql` for every Linear read/write, which is correct inside Symphony but unusable outside it. Once the bounded operator adapter exists, the skill must select the available transport without duplicating lifecycle policy or granting broader mutation rights.
+  status: planned
+  ticket_type: documentation
+  risk_level: medium
+  priority: 50
+  relevant_docs:
+  - AGENTS.md
+  - docs/runbooks/operator-environment.md
+  - docs/runbooks/symphony-agent-execution.md
+  - docs/atlas/playbooks/linear-sync.md
+  acceptance_criteria:
+  - The `linear` skill explicitly distinguishes Symphony-dispatched sessions, where it uses injected `linear_graphql`, from non-Symphony operator/Codex sessions, where it uses the repository-owned bounded adapter.
+  - Both routes present the same semantic operations needed by the skill—narrow issue read, workflow-state resolution, bounded comment operations and lifecycle state mutation—without claiming identical transport syntax.
+  - The skill continues to defer lifecycle decisions to canonical runbooks and never converts transport availability into permission to choose a state transition.
+  - PM-owned new-ticket creation/publication is explicitly excluded from both generic skill routes and handed to Atlas PM / the dedicated PM ticket publication skill.
+  - If neither supported route is available, the skill fails closed with a clear capability-unavailable handoff rather than recommending raw tokens, ad-hoc curl/GraphQL or manual UI mutation.
+  - Static repository skill tests later in this batch can falsify removal of either context route, the PM publication exclusion or the canonical lifecycle-authority reference.
+  non_goals:
+  - No runtime adapter implementation, PM sync behavior, ticket planning/apply behavior or Symphony lifecycle redesign.
+  - No generic connected-app abstraction across services other than Linear.
+  implementation_notes:
+  - Expected production change is primarily `.codex/skills/linear/SKILL.md`; keep transport-specific command examples bounded and policy-neutral.
+  - Do not duplicate the operator adapter's implementation contract or the Symphony execution runbook's lifecycle decisions.
+  test_requirements:
+  - The later skill-contract ticket must pin the two execution-context routes and fail-closed no-transport behavior.
+  documentation_requirements: []
+  definition_of_done:
+  - A fresh agent can use the repository `linear` skill in either supported session type without inventing its own Linear access method.
+  - The same mutation-authority boundaries apply regardless of transport.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - maintenance
+  - ticket-minting
+  - agent-skills
+  - linear
+  - codex-skill
+  - routing
+  component: linear-skill-routing
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/inbox-stub-04-session-aware-linear-skill.md#session-aware-repository-linear-skill
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-30T06:48:04.401326Z'
+  updated_at: '2026-08-30T06:48:04.401326Z'
+  completed_at: null
+- id: eb83c947-c0cd-4e17-a83b-c8a57ad470a2
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 5bd967eb-98c0-42a6-bec3-042a34145078
+  key: ATLAS-295
+  title: Read-only planning inbox integrity command
+  objective: Expose a complete deterministic pre-PlanRun planning-input preflight through a fast read-only CLI so a planning agent can validate integrity, promoted source anchors and applicable proposal gates before the operator-owned plan/apply boundary.
+  context: The current `atlas-ticket-planning` skill can run diff checks and the documentation linter but leaves definitive batch-integrity and promoted-ticket gate validation behind `atlas plan --stubs-only` and `atlas apply`. That pushes manifest/dependency and source-anchor failures across the operator handoff and causes avoidable failed PlanRuns and repair loops. The preflight must reuse, not reimplement, the existing integrity, ingestion, promotion and gate machinery.
+  status: planned
+  ticket_type: feature
+  risk_level: medium
+  priority: 50
+  relevant_docs:
+  - docs/runbooks/planning-phases-and-ticket-stubs.md
+  - docs/atlas/planning-engine-specification.md
+  - docs/decisions/0007-generative-planning-with-deterministic-reconciliation.md
+  acceptance_criteria:
+  - A repository-owned CLI command validates the current committed planning inbox by invoking the same shared `validate_inbox_batch_integrity` contract used by stubs-only planning/apply, including exact-path, manifest/base coverage, active-inbox equality, dependency identity/order and cycle invariants.
+  - The command builds the same planner input `AnchorIndex`, including active-stub durable processed aliases, without introducing an independent YAML parser, AnchorIndex construction or anchor policy.
+  - The command constructs the stubs-only proposal in memory through the same deterministic backlog-echo and `promote_inbox_stubs` logic, with no second promotion engine or reconciliation implementation.
+  - The command runs the same applicable existing proposal gates over the promoted in-memory proposal, including Gate 4 source-anchor resolution, without duplicating gate implementation or policy.
+  - The preflight performs no provider/model call, reconciliation diff or persistence, PlanRun persistence, key assignment, store mutation, planning-render write, stub retirement or PM/Linear/GitHub/network mutation.
+  - The command reports deterministic failures before `atlas plan --stubs-only`, exposes concise human and machine-readable JSON results, follows existing CLI success/precondition conventions and fails closed on dirty, stale, malformed, incomplete or gate-invalid planning inputs rather than repairing them.
+  - Focused parity tests seed representative valid and invalid batches, including an explicit `source_anchor` to a non-indexed document, and prove the read-only preflight fails that case with the same Gate-4 semantics as `atlas plan --stubs-only` without creating a PlanRun.
+  non_goals:
+  - No persisted/operator proposal generation, reconciliation diff, key minting, apply confirmation, render write, inbox retirement or external publication; the in-memory echo/promotion exists only for read-only preflight.
+  - No broad validation framework or second phase-bundle schema.
+  implementation_notes:
+  - Prefer a thin command/service wrapper over the existing integrity, ingestion, durable-alias, backlog-echo, promotion and gate primitives; preserve one implementation of every invariant and policy.
+  - Choose the final CLI spelling consistently with existing Atlas top-level command conventions and document that exact spelling in the planning runbook.
+  test_requirements:
+  - Focused deterministic tests cover valid batches, every shared integrity failure family and promoted-ticket gate failures, including a non-indexed explicit source anchor, without network or model access.
+  - CLI tests prove read-only behavior by asserting no PlanRun, reconciliation, key, store, render or retirement mutation on both pass and fail paths and parity with the existing Gate-4 failure semantics.
+  documentation_requirements:
+  - docs/runbooks/planning-phases-and-ticket-stubs.md
+  - docs/atlas/planning-engine-specification.md
+  definition_of_done:
+  - A planning agent can validate a committed batch and its promoted-ticket anchors/gates locally without crossing into `atlas plan --stubs-only` or `atlas apply`.
+  - Seeded-defect parity tests prove the new command fails where the existing shared integrity and proposal gates fail, without creating a failed PlanRun.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - maintenance
+  - ticket-minting
+  - agent-skills
+  - planning
+  - validation
+  - cli
+  component: planning-inbox-validation
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/inbox-stub-05-planning-inbox-read-only-validation.md#read-only-planning-inbox-integrity-command
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-30T06:48:04.401326Z'
+  updated_at: '2026-08-30T06:48:04.401326Z'
+  completed_at: null
+- id: bede54d5-9872-463d-a214-c989a9a3370d
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 5bd967eb-98c0-42a6-bec3-042a34145078
+  key: ATLAS-296
+  title: Ticket-planning skill fast path
+  objective: Refine `atlas-ticket-planning` into a bounded one-pass batch-preparation procedure that uses the new read-only integrity surface and avoids broad repository exploration or irrelevant full-suite validation.
+  context: The planning skill has the correct authority boundary but still leaves room for an agent to spend large amounts of time reconstructing context or discovering integrity defects only after handoff. For ratified maintenance batches, the agent should consume the supplied decomposition, read the narrow authority set once, write the whole batch once, validate once and stop.
+  status: planned
+  ticket_type: documentation
+  risk_level: medium
+  priority: 50
+  relevant_docs:
+  - AGENTS.md
+  - docs/runbooks/planning-phases-and-ticket-stubs.md
+  - docs/atlas/planning-engine-specification.md
+  acceptance_criteria:
+  - '`atlas-ticket-planning` directs the agent to use the repository-owned complete read-only planning-input preflight after the complete planning-input commit and requires its integrity, deterministic promoted-ticket anchor and applicable proposal-gate results to pass before handoff.'
+  - For an operator-ratified decomposition, the skill instructs one bounded authority-read pass and one full-batch write/review pass; when real preparation/preflight evidence exposes a reusable durable workflow defect it classifies the finding under the lifecycle authority and updates the still-unminted batch when the owning authority/ticket is clear, while distinguishing transient environmental incidents that do not justify redesign.
+  - After the planning candidate is committed and frozen and the read-only inbox-integrity check passes, the skill composes `atlas-validation` with the exact base/head and complete changed-path set and executes exactly the repository-selected validation plan.
+  - Known governed planning stubs and batch manifests are expected to select the focused `documentation` profile, but the skill obeys the actual deterministic plan, including any selected conservative fallback, and fails closed rather than narrowing or bypassing a fallback, selected-command failure, diff-proof failure or head movement.
+  - The skill keeps `git diff --check`, complete manifest-listed diff review and the documentation linter, and explicitly prohibits manually adding an unselected full sweep, pytest, Playwright, browser/UI/E2E or any other ritual validation.
+  - 'The stop contract remains strict: no `atlas plan`, `atlas apply`, key assignment, Atlas-store mutation, PM sync, Linear mutation, push, PR or ticket implementation is performed by this skill.'
+  - The handoff report names exact base/head, manifest, ordered stub count, dependency summary, complete read-only preflight integrity/promotion/anchor/gate result, selected validation profile/commands/results, diff check and doc-linter result and every preparation/preflight finding with its durable-or-transient classification and explicit disposition, without dumping unrelated corpus content or treating retry alone as disposition.
+  non_goals:
+  - No change to plan/apply semantics, PM publication, Linear state ownership, delivery admission or implementation-agent validation.
+  - No manual validation-profile selection or removal of required canonical authority, integrity or repository-selected validation checks in the name of speed.
+  - No automatic batch redesign for every transient command or environmental failure.
+  implementation_notes:
+  - Expected production path is only `.codex/skills/atlas-ticket-planning/SKILL.md`; keep policy in canonical docs and procedure in the skill.
+  - Freeze the committed candidate before composing `atlas-validation`; optimise round trips and redundant reads, not correctness gates or repository-selected validation.
+  test_requirements:
+  - Repository skill-contract tests added later in this batch must assert the inbox validator, exact-head `atlas-validation` composition, selector authority, stop boundary and prohibition on unselected ritual checks.
+  documentation_requirements: []
+  definition_of_done:
+  - A fresh Codex agent can prepare this ratified thirteen-ticket maintenance batch without inventing extra workflow steps or running unrelated test suites.
+  - The skill still fails closed on unresolved authority or preflight defects, including promoted-ticket anchor or applicable proposal-gate failures, before any operator PlanRun is created.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - maintenance
+  - ticket-minting
+  - agent-skills
+  - planning
+  - codex-skill
+  - efficiency
+  component: ticket-planning-skill
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/inbox-stub-06-ticket-planning-skill-fast-path.md#ticket-planning-skill-fast-path
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-30T06:48:04.401326Z'
+  updated_at: '2026-08-30T06:48:04.401326Z'
+  completed_at: null
+- id: 50c31ee3-fbec-4a84-a07d-a119da0c8cde
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: e0d47d14-bbd1-4d5d-96bc-f9e7adfeb3cf
+  key: ATLAS-297
+  title: PM publication-only ticket seam
+  objective: Add a bounded PM-owned one-shot publication operation for explicitly named minted tickets that creates or updates their Linear representation without executing delivery admission or unrelated PM tick phases.
+  context: The ordinary PM sync tick correctly combines pull, push, admission, CI/recovery, follow-up and anomaly work. That is too broad for the narrower operator intent 'publish these newly minted tickets but do not admit work'. A safe minting workflow needs a PM-owned publication seam rather than raw Linear mutations or temporarily relying on the active admission policy being paused.
+  status: planned
+  ticket_type: feature
+  risk_level: high
+  priority: 50
+  relevant_docs:
+  - docs/atlas/pm-engine-and-linear-sync.md
+  - docs/atlas/playbooks/linear-sync.md
+  - docs/runbooks/planning-phases-and-ticket-stubs.md
+  - docs/decisions/0006-source-of-truth-hierarchy.md
+  acceptance_criteria:
+  - Atlas exposes a PM-owned one-shot publication command for one or more explicitly named ticket keys that reuses the normal definition render, context-pack embedding, Linear project/team scope, join-key persistence and create-time mapped-state assertion semantics.
+  - Publication-only execution does not run delivery admission/promotion, generic Linear status pull, CI-pending reconciliation/recovery, completion, follow-up comment ingestion, review-cycle routing, dwell/stale-block analysis or lesson extraction.
+  - An already joined unchanged ticket is idempotent; an update uses the existing `external_linear_id`; a degraded first create retains the join key; and a create-time state-assertion failure retains the join key so retry cannot create a duplicate issue.
+  - The command requires explicit ticket selection, current schema, valid PM writer ownership and team/project/status-map preconditions and fails closed before external mutation when those inputs are invalid.
+  - The result reports per-ticket created/updated/skipped/state-assertion outcomes and issue identities without claiming that delivery admission, a full PM tick or agent readiness occurred.
+  - In-memory Linear tests prove zero admission/state-pull/follow-up side effects and include seeded create-state failure plus retry evidence showing exactly one Linear issue is retained.
+  non_goals:
+  - No replacement for the recurring/full `atlas pm sync` loop, no delivery-policy mutation and no generic manual state mover.
+  - No change to Symphony dispatch, CI handoff, completion or review lifecycle.
+  implementation_notes:
+  - Prefer a service boundary that reuses the existing push semantics rather than calling private sync internals from argparse wiring.
+  - A suggested CLI shape is `atlas pm publish --ticket ATLAS-N [--ticket ATLAS-M ...]`; final spelling may follow established CLI conventions but must require explicit ticket keys.
+  test_requirements:
+  - Focused PM/CLI tests exercise multi-ticket publication, unchanged retry, changed-definition update, degraded embed, state-assertion failure and duplicate-prevention recovery.
+  - A negative test proves publication-only mode cannot invoke the admission service even when a running policy would otherwise admit a ready ticket.
+  documentation_requirements:
+  - docs/atlas/pm-engine-and-linear-sync.md
+  - docs/atlas/playbooks/linear-sync.md
+  - docs/runbooks/planning-phases-and-ticket-stubs.md
+  definition_of_done:
+  - An operator can publish a batch of newly minted tickets to their mapped Linear states with delivery admission mechanically unreachable from that invocation.
+  - Retry after any documented partial publication outcome does not mint a second Linear issue for a ticket whose join key was retained.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - maintenance
+  - ticket-minting
+  - agent-skills
+  - pm-engine
+  - linear-sync
+  - publication
+  component: pm-ticket-publication
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/atlas/pm-engine-and-linear-sync.md#boundary
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-30T06:48:04.401326Z'
+  updated_at: '2026-08-30T06:48:04.401326Z'
+  completed_at: null
+- id: 550f9822-0c14-448c-a8c0-de7950cb79b4
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: e0d47d14-bbd1-4d5d-96bc-f9e7adfeb3cf
+  key: ATLAS-298
+  title: PM ticket publication and sync skill
+  objective: Add a dedicated `atlas-pm-ticket-sync` Codex skill that owns the procedure for publishing minted tickets, verifying Atlas/Linear identity and choosing between publication-only and full policy-governed PM sync.
+  context: Current skills jump from planning apply to a generic `linear` skill even though Atlas PM owns ticket publication, `external_linear_id`, create-time state assertion and broader reconciliation. The new skill must make PM the normal path and make the side-effect difference between publication-only and full sync explicit.
+  status: planned
+  ticket_type: documentation
+  risk_level: high
+  priority: 50
+  relevant_docs:
+  - AGENTS.md
+  - docs/atlas/pm-engine-and-linear-sync.md
+  - docs/atlas/playbooks/linear-sync.md
+  - docs/runbooks/planning-phases-and-ticket-stubs.md
+  - docs/runbooks/operator-environment.md
+  acceptance_criteria:
+  - A new `.codex/skills/atlas-pm-ticket-sync/SKILL.md` follows the repository skill authority contract and names the canonical PM, planning-handoff, Linear-sync and operator-environment authorities it must read.
+  - For mint-only/publish-only intent, the skill uses the PM publication-only operation and never substitutes raw Linear issue creation or workflow mutation.
+  - For an explicitly requested full PM sync, the skill states that normal sync may execute delivery admission and other PM phases and therefore requires the exact runtime/database/policy preconditions owned by the PM runbooks rather than presenting it as a harmless publication command.
+  - The skill verifies each requested ticket's Atlas key/status, retained `external_linear_id` when present, publication result and mapped Linear state; bounded `linear` usage, if composed for readback, is read-only and may not repair PM-owned state by mutation.
+  - Recovery rules prohibit rerunning `atlas apply` after publication failure, prohibit duplicate issue creation when a join key exists, and route ambiguous/mismatched identity to diagnosis/reconciliation.
+  - The completion report distinguishes `published`, `full-sync-observed` and `admitted/ready` outcomes and never implies one from another.
+  non_goals:
+  - No planning decomposition, PlanRun approval/apply, ticket implementation, PR work or generic Symphony lifecycle mutation.
+  - No new PM runtime behavior beyond the publication seam delivered by its prerequisite.
+  implementation_notes:
+  - Expected new path is `.codex/skills/atlas-pm-ticket-sync/SKILL.md` only; canonical behavioral policy stays in existing PM/planning docs.
+  - Use exact Atlas CLI names and distinguish observed state from requested state in every example.
+  test_requirements:
+  - Repository skill-contract tests later in this batch must assert the skill's authority references, PM-first routing, read-only Linear composition and anti-apply/anti-duplicate rules.
+  documentation_requirements: []
+  definition_of_done:
+  - A fresh operator-side agent can publish/reconcile a minted ticket without guessing between PM and raw Linear operations.
+  - The skill fails closed rather than turning a mint-only instruction into admission or implementation authority.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - maintenance
+  - ticket-minting
+  - agent-skills
+  - pm-engine
+  - codex-skill
+  - linear-sync
+  component: pm-ticket-sync-skill
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/inbox-stub-08-pm-ticket-sync-skill.md#pm-ticket-publication-and-sync-skill
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-30T06:48:04.401326Z'
+  updated_at: '2026-08-30T06:48:04.401326Z'
+  completed_at: null
+- id: 3ad3252a-f6c9-4d59-87d3-3b5d7e06ef6a
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 4d034c8b-0752-4089-8ff9-2fd43f51c6f4
+  key: ATLAS-299
+  title: Governed planning artifact publication skill
+  objective: Add a narrow `atlas-planning-publication` procedural skill that publishes exact planning-input candidates for human review and complete post-apply planning-artifact candidates after the Atlas store has advanced, without crossing approval, merge, PM, Linear or implementation boundaries.
+  context: '`atlas-ticket-planning` correctly stops at a validated planning-input commit and `atlas-planning-apply` correctly leaves apply-owned renders and retired inbox inputs in the working tree after store mutation. Repository publication at both boundaries is currently manual choreography. The pre-store candidate is safely reproducible from committed inputs, while post-store artifacts are coupled to an already-advanced store and must never be discarded, partially committed or recreated by rerunning apply.'
+  status: planned
+  ticket_type: documentation
+  risk_level: high
+  priority: 50
+  relevant_docs:
+  - AGENTS.md
+  - docs/runbooks/planning-phases-and-ticket-stubs.md
+  - docs/runbooks/running-atlas-plan.md
+  - docs/runbooks/operational-practice.md
+  - docs/runbooks/operator-environment.md
+  - docs/atlas/pm-engine-and-linear-sync.md
+  acceptance_criteria:
+  - A new `.codex/skills/atlas-planning-publication/SKILL.md` follows the repository skill authority contract and exposes two explicit modes only—committed planning-input publication before store mutation and complete apply-artifact publication after an approved apply has advanced the store—and requires repository-selected exact-head validation before either mode may push or open a PR.
+  - Pre-store mode requires an exact committed planning-input head, current base identity, clean working tree and manifest-equal changed-path set. It may reuse still-current `atlas-ticket-planning` validation evidence only when that evidence pins the same exact base/head and complete path set; absent, stale or different-head evidence requires composing `atlas-validation` before the unchanged head is pushed and opened for review.
+  - Post-store mode requires the exact applied PlanRun/store handoff identity and the complete apply-owned planning working tree, including all renders, retired stubs, manifest movement, additions and deletions; it refuses unrelated, missing or partial paths, commits the complete set once, then calculates and runs fresh `atlas-validation` for that new exact apply-artifact head before push/PR publication and stop.
+  - Both modes verify repository/origin, base, branch, local/remote head, candidate path scope and clean publication prerequisites appropriate to that mode, execute every command selected by the deterministic plan without hand-selection or narrowing, then report the exact validated/published head and PR identity, stop, and name `atlas-pm-ticket-sync` only as the later continuation after human review and merge of the apply-artifact PR.
+  - Post-store interruption and recovery remain bound to the existing advanced store and preserved working tree; the skill never discards or partially commits apply artifacts, reconstructs them by hand or reruns `atlas apply`.
+  - The skill never merges, infers PlanRun or PR approval, runs plan/apply, PM sync or Linear mutation, starts ticket implementation, or substitutes publication for any human/operator gate.
+  - Static skill-contract and fake Git/GitHub tests prove both modes, exact-path and identity refusal, complete post-apply staging, no force/bare push, no merge and every prohibited cross-boundary action without external publication.
+  non_goals:
+  - No plan generation, apply execution, key minting, store mutation, PM/Linear publication, delivery admission, ticket implementation, semantic PR review or merge.
+  - No generic GitHub/PR skill and no recovery by resetting, deleting, stashing or regenerating apply-owned artifacts.
+  implementation_notes:
+  - Expected production path is `.codex/skills/atlas-planning-publication/SKILL.md`; keep planning/apply policy in canonical documents and publication procedure in the skill.
+  - Use explicit expected remote identities and ordinary non-force publication. The post-store mode may create the one complete apply-artifact commit but must not rewrite, split or selectively stage the apply-owned tree. Never hand-select, narrow or augment the repository-selected validation plan; obey any conservative fallback.
+  test_requirements:
+  - Repository skill-contract tests pin both publication modes, authority references, stop conditions and forbidden downstream operations, plus exact-head `atlas-validation` composition and current-evidence reuse rules.
+  - Focused fake-command tests cover clean pre-store publication, complete dirty post-store staging/commit publication, current/stale/missing validation evidence, local/remote/base races, unrelated or missing paths, interrupted retry and exact validated/published-head readback.
+  documentation_requirements: []
+  definition_of_done:
+  - A validated planning-input candidate and a complete post-apply planning-artifact candidate each have a governed, resumable repository-publication path with exact identity and changed-scope evidence.
+  - The post-store path makes the non-disposable store/tree coupling explicit and mechanically rejects partial or recreated publication.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - maintenance
+  - ticket-minting
+  - agent-skills
+  - codex-skill
+  - planning
+  - publication
+  - recovery
+  component: planning-publication-skill
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/inbox-stub-09-governed-planning-artifact-publication-skill.md#governed-planning-artifact-publication-skill
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-30T06:48:04.401326Z'
+  updated_at: '2026-08-30T06:48:04.401326Z'
+  completed_at: null
+- id: f9ea1421-d660-4e80-a7f9-0dd0bd36640c
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 4d034c8b-0752-4089-8ff9-2fd43f51c6f4
+  key: ATLAS-300
+  title: Planning-apply to governed publication handoff
+  objective: Make `atlas-planning-apply` hand its complete post-apply planning tree immediately to `atlas-planning-publication` post-store mode, deferring `atlas-pm-ticket-sync` until the exact apply-artifact PR has been reviewed and merged.
+  context: After an approved apply advances the Atlas store, its complete apply-owned planning tree is non-disposable and must be published as one exact repository candidate before PM publication begins. The current apply handoff points to PM too early and leaves the required apply-artifact publication boundary out of procedural order.
+  status: planned
+  ticket_type: documentation
+  risk_level: medium
+  priority: 50
+  relevant_docs:
+  - AGENTS.md
+  - docs/runbooks/planning-phases-and-ticket-stubs.md
+  - docs/runbooks/running-atlas-plan.md
+  - docs/atlas/pm-engine-and-linear-sync.md
+  acceptance_criteria:
+  - '`atlas-planning-apply` names `atlas-planning-publication` post-store mode as its immediate procedural continuation after an approved apply has advanced the store and the complete apply-owned planning tree and exact handoff identities have been preserved.'
+  - 'The governed sequence is explicit: approved apply → preserve the complete apply-owned planning tree → `atlas-planning-publication` → publish the exact apply-artifact PR and stop → human review and merge → `atlas-pm-ticket-sync`.'
+  - The handoff distinguishes an applied-but-not-yet-published batch as a valid, non-disposable intermediate state and reports the exact PlanRun, store, minted-key and planning-tree identities required by post-store publication.
+  - The apply skill explicitly prohibits skipping repository publication and proceeding directly from apply to PM, rerunning `atlas apply` to repair a publication or PM incident, and discarding or partially preserving apply-owned artifacts.
+  - '`atlas-planning-apply` does not merge, infer publication approval, run PM sync or Linear mutation, or start ticket implementation; `atlas-planning-publication` owns repository publication and stops after publishing the PR.'
+  - '`atlas-planning-apply` replaces its raw aggregate-ADD comparison with type-qualified proposal inspection: expected ticket ADD count equals approved stub count, dependency ADDs exactly equal the approved DAG, aggregate ADD is not compared directly with stub count, unexpected added entity types stop, and every existing MODIFY, archive, conflict, collapse, provenance and integrity stop remains intact.'
+  - The real thirteen-stub, twenty-four-edge batch is accepted as thirteen ticket ADDs plus twenty-four dependency ADDs and thirty-seven aggregate ADD entries only when every typed entry matches the ratified batch; thirty-seven is not a general allowance.
+  non_goals:
+  - No runtime code, PM CLI behavior, planning integrity logic, AGENTS routing table or lifecycle orchestration skill.
+  - No repository merge, PM/Linear publication, delivery admission or ticket implementation.
+  implementation_notes:
+  - Expected changed path is `.codex/skills/atlas-planning-apply/SKILL.md` only.
+  - Keep the handoff concise and preserve the standard canonical-authority disclaimer; publication and PM policy remain owned by their specialist skills and canonical documents.
+  test_requirements:
+  - Later repository skill-contract tests must detect removal of the immediate publication handoff, reintroduction of a direct apply-to-PM route or weakening of complete apply-artifact preservation.
+  documentation_requirements: []
+  definition_of_done:
+  - An operator following the apply skill reaches governed post-store repository publication before any PM continuation.
+  - The non-disposable apply-artifact boundary remains explicit and direct apply-to-PM routing is mechanically rejected.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - maintenance
+  - ticket-minting
+  - agent-skills
+  - codex-skill
+  - handoff
+  - publication
+  component: ticket-minting-handoffs
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/inbox-stub-10-planning-apply-governed-publication-handoff.md#planning-apply-to-governed-publication-handoff
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-30T06:48:04.401326Z'
+  updated_at: '2026-08-30T06:48:04.401326Z'
+  completed_at: null
+- id: bf5ce97a-f5d2-4dfa-a9cb-480897fc9630
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 4d034c8b-0752-4089-8ff9-2fd43f51c6f4
+  key: ATLAS-301
+  title: Ticket lifecycle orchestration skill
+  objective: Add a thin `atlas-ticket-lifecycle` skill that routes high-level operator intents across planning, governed repository publication, apply and PM publication skills while preserving every existing human approval and authority stop.
+  context: The specialist skills are intentionally narrow. Operators still need a deterministic entry point for phrases such as 'prepare and publish this planning batch', 'mint these tickets', 'publish the complete apply artifacts' or 'publish these minted tickets'. The orchestration skill should choose the specialist skill and stop boundary, not copy their policies or leave either repository-publication boundary to manual choreography.
+  status: planned
+  ticket_type: documentation
+  risk_level: medium
+  priority: 50
+  relevant_docs:
+  - AGENTS.md
+  - docs/runbooks/planning-phases-and-ticket-stubs.md
+  - docs/runbooks/running-atlas-plan.md
+  - docs/atlas/pm-engine-and-linear-sync.md
+  acceptance_criteria:
+  - A new `.codex/skills/atlas-ticket-lifecycle/SKILL.md` routes ratified decomposition/planning-input work to `atlas-ticket-planning`, exact committed/validated planning-input publication to `atlas-planning-publication`, exact approved plan/apply work to `atlas-planning-apply`, complete post-apply planning-artifact publication back to `atlas-planning-publication`, and minted-ticket publication/full-sync work to `atlas-pm-ticket-sync`.
+  - 'The skill is a composer only: it repeats no stub schema, PlanRun approval policy, PM state map, Linear GraphQL mutation recipe, validation selector or delivery-admission algorithm owned elsewhere.'
+  - A request to 'prepare' or 'draft' a batch stops at validated planning inputs unless repository publication is explicitly requested; publishing those inputs uses the pre-store planning-publication mode and still stops before plan/apply.
+  - A request to 'mint' cannot infer approval of an unseen PlanRun; exact-proposal approval remains a separate operator gate, and after apply the complete non-disposable planning artifacts use the post-store publication mode before any PM continuation.
+  - A request to 'publish' or 'sync' distinguishes planning-input publication, post-apply artifact publication, PM ticket publication-only and full PM sync; full sync may admit work and is never selected merely because repository or ticket publication is needed.
+  - The skill never routes directly to `linear`, `atlas-ticket-execution`, remediation, PR review or PR acceptance for ticket minting and never starts implementation work as a side effect.
+  - A failed planning, validation, repository-publication, apply or PM-publication boundary routes first to bounded diagnosis and explicit learning/disposition under the lifecycle authority; the router never defaults to `retry until success`, and after correction resumes from the last legal boundary without replaying already-completed stateful operations. The final report states that boundary, produced artifacts/identities, finding disposition and next specialist skill/gate.
+  non_goals:
+  - No autonomous approval of PlanRuns, no bypass of operator gates, no manual repository-publication gap and no combined mega-command that hides intermediate evidence.
+  - No changes to specialist skill policy beyond composition references.
+  implementation_notes:
+  - Expected new path is `.codex/skills/atlas-ticket-lifecycle/SKILL.md` only.
+  - Keep the skill short enough to act as a router; canonical documents and specialist skills remain the detailed authority/procedure.
+  test_requirements:
+  - Static skill-contract tests later in this batch must pin the exact allowed composition edges and forbidden direct routes.
+  documentation_requirements: []
+  definition_of_done:
+  - A fresh agent can classify a high-level ticket-minting request into the correct specialist operation, including both repository-publication boundaries, without manual operator choreography.
+  - Every existing approval, publication and delivery-admission boundary remains visible and independently stoppable.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - maintenance
+  - ticket-minting
+  - agent-skills
+  - codex-skill
+  - orchestration
+  - routing
+  component: ticket-lifecycle-skill
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/inbox-stub-11-ticket-lifecycle-orchestration-skill.md#ticket-lifecycle-orchestration-skill
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-30T06:48:04.401326Z'
+  updated_at: '2026-08-30T06:48:04.401326Z'
+  completed_at: null
+- id: b3df9bb1-aa02-4ce8-a9c2-6bf7561bee80
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 4d034c8b-0752-4089-8ff9-2fd43f51c6f4
+  key: ATLAS-302
+  title: Ticket-minting skill routing and composition contracts
+  objective: Mechanically register and pin the new ticket-minting skills, authority references, allowed composition edges and anti-bypass rules in `AGENTS.md` and repository static contract tests.
+  context: Atlas already has `tests/test_skill_linear.py`, which enumerates every required repository skill, its authority references, `AGENTS.md` routing and exact composition edges. The new skills should extend that executable contract rather than rely on prose discoverability.
+  status: planned
+  ticket_type: feature
+  risk_level: medium
+  priority: 50
+  relevant_docs:
+  - AGENTS.md
+  - docs/runbooks/planning-phases-and-ticket-stubs.md
+  - docs/atlas/pm-engine-and-linear-sync.md
+  acceptance_criteria:
+  - '`AGENTS.md#Repository Codex skills` lists the new governed planning-artifact publication, PM publication/sync and ticket-lifecycle orchestration capabilities with unambiguous task labels while preserving all existing skill routes.'
+  - Repository skill-contract tests require every current skill directory/front matter and pin canonical authority references for the new skills as strictly as existing Atlas skills.
+  - Exact composition assertions pin `atlas-ticket-planning -> atlas-validation`, `atlas-planning-publication -> atlas-validation` and `atlas-planning-apply -> atlas-planning-publication -> atlas-pm-ticket-sync`, and permit the intended planning -> planning-publication, lifecycle -> specialist and session-aware `linear` mechanics edges; unexpected skill cross-references fail the test.
+  - Negative assertions prove the lifecycle skill cannot route directly to raw Linear or implementation skills, the planning-publication skill cannot merge, infer approval, run plan/apply, partially publish post-apply artifacts or cross into PM/Linear/implementation work, neither planning skill can hand-select, narrow or augment deterministic validation, the PM skill cannot teach raw Linear issue creation, and the `linear` skill cannot fall back to arbitrary GraphQL/raw-token access outside Symphony.
+  - Tests pin the planning skill's read-only integrity command, frozen-head selector execution and fast-path stop, both planning-artifact publication modes and their exact-head validation, both supported `linear` session routes and the apply-to-publication handoff so future edits cannot silently reintroduce manual validation, publication or minting seams; maintainable structural assertions require `atlas-planning-apply` to distinguish ticket, dependency and aggregate additions and fail if it regresses to comparing aggregate ADD count with stub count.
+  - 'The contract-test structure remains maintainable: misleading Linear-only inventory naming is either cleanly refactored or clearly separated without duplicating skill inventory constants across test files.'
+  - Focused structural assertions require the planning and lifecycle skills to retain the failure-classification, explicit-disposition and resumable last-legal-boundary handoff; deleting any of those routing signals makes the contract test fail without pinning large prose blocks.
+  non_goals:
+  - No PM runtime behavior, planning CLI behavior, external mutation, PlanRun or ticket implementation.
+  - No broad rewrite of WORKFLOW/Symphony routing unrelated to ticket minting.
+  implementation_notes:
+  - Primary existing test surface is `tests/test_skill_linear.py`; refactor only as far as needed to keep one canonical required-skill/composition inventory.
+  - This ticket owns the `AGENTS.md` skill table update so earlier tickets do not overlap that routing surface.
+  test_requirements:
+  - Run the focused repository skill-contract tests and the documentation linter; a deliberately removed composition, authority or failure-disposition handoff line must make the focused test red.
+  - A focused seeded contract must fail when ticket, dependency and aggregate ADD semantics collapse back into one raw count comparison, without pinning a large prose block.
+  - Do not require Playwright, UI E2E or unrelated Python suites for this static skill-routing candidate unless the repository validation selector independently selects them.
+  documentation_requirements:
+  - AGENTS.md
+  definition_of_done:
+  - The repository mechanically rejects missing, misrouted or unexpectedly composed ticket-minting skills.
+  - The focused validation surface is small and deterministic and does not require UI/E2E execution by construction.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - maintenance
+  - ticket-minting
+  - agent-skills
+  - codex-skill
+  - contracts
+  - tests
+  component: skill-routing-contracts
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/inbox-stub-12-ticket-skill-routing-contracts.md#ticket-minting-skill-routing-and-composition-contracts
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-30T06:48:04.401326Z'
+  updated_at: '2026-08-30T06:48:04.401326Z'
+  completed_at: null
+- id: b968957f-3858-45e5-bc13-70df8e7d3673
+  product_id: 6363ff3f-22db-40b3-9a47-aeba5d0a7586
+  epic_id: 4d034c8b-0752-4089-8ff9-2fd43f51c6f4
+  key: ATLAS-303
+  title: Ticket-minting end-to-end proof and efficiency milestone
+  objective: Prove the refined workflow on the actual thirteen-ticket maintenance batch, including planning-input validation and publication, deterministic mint/apply in isolation, complete apply-artifact publication, PM publication without admission and resumable failure handling, and record whether the operator workflow is materially faster than the current multi-hour baseline.
+  context: The purpose of this maintenance programme is not merely to add Markdown skills. Atlas needs evidence that a realistic batch can be prepared and published without repeated context reconstruction, irrelevant test sweeps, manual Linear creation or duplicate-prone recovery. The proof should be deterministic in CI where possible and transparent about human/agent wall-clock observations where it is not. The initial preparation attempt was also blocked by an unrelated PM-generated active follow-up, so the proof must include pending-follow-up isolation as a first-class efficiency case. The proof must also exercise the repository Linear skill's non-Symphony route so operator-side publication/readback does not depend on Symphony injecting `linear_graphql`. The proof must exercise the governed planning-publication skill before store mutation and again over the non-disposable apply artifacts after the isolated Atlas store has advanced.
+  status: planned
+  ticket_type: feature
+  risk_level: high
+  priority: 50
+  relevant_docs:
+  - AGENTS.md
+  - docs/runbooks/planning-phases-and-ticket-stubs.md
+  - docs/atlas/planning-engine-specification.md
+  - docs/atlas/pm-engine-and-linear-sync.md
+  - docs/atlas/playbooks/linear-sync.md
+  acceptance_criteria:
+  - A deterministic integration fixture representing this exact thirteen-ticket ordered maintenance batch passes the read-only inbox validator, calculates and runs the deterministic validation selector for the exact committed planning-input base/head/path set, then publishes that unchanged candidate through the governed planning-publication procedure to an isolated Git/PR boundary before any store mutation.
+  - Stubs-only plan and apply against an isolated repository/database prove thirteen ticket ADDs for thirteen approved stubs, twenty-four dependency ADDs for the exact approved DAG, thirty-seven aggregate ADD entries, zero MODIFY, PROPOSE_ARCHIVE, CONFLICT or collapse and no unexpected added entity type before proving the expected minted key count, renders and processed-stub retirement; the post-apply publication mode then commits and publishes the complete apply-owned planning tree only after a fresh deterministic validation plan passes for that new exact candidate, without discarding, recreating or partially selecting artifacts after the store advances.
+  - The resulting isolated minted tickets are published through the PM publication-only seam using an in-memory/fake Linear boundary; every requested ticket receives exactly one external issue identity and the mapped create-time state with zero delivery-admission promotion.
+  - The proof seeds an unrelated pending PM follow-up while the ordered batch is active and proves the pending input remains durable but does not enter the ordered batch's active-inbox integrity set.
+  - A seeded malformed-batch case fails before mint/apply; a separate seeded explicit `source_anchor` to a non-indexed document fails the read-only planning preflight with the same Gate-4 semantics before `atlas plan --stubs-only` and without creating a failed PlanRun; and a seeded create-time Linear state assertion failure retains the issue join key so a retry updates/reuses exactly one issue instead of creating a duplicate.
+  - A concise proof report demonstrates that both known planning-only candidates select focused `documentation` validation and that neither deterministic plan contains pytest, Playwright, browser/UI/E2E or an unselected full sweep; it also proves stubs-only minting performs no planner-provider/model call and records the exact planning-input/apply-artifact identities, selector inputs, commands/results, thirteen-ticket batch size, bounded external-call counts and observed agent-active/operator wall-clock, targeting a validated planning-input handoff for this actual thirteen-ticket ratified batch in no more than 20 minutes excluding human review; if missed, it records the evidenced dominant delay instead of passing on functional tests alone. The proof also exercises the bounded non-Symphony Linear adapter/skill route and proves no arbitrary GraphQL, raw token or PM-owned issue-creation capability is exposed.
+  - The final `docs/closure/ticket-minting-skill-proof.md` contains an `Observed findings and durable adaptations` ledger for every unexpected failure in the real programme exercise, recording exact evidence/identity, lifecycle boundary, root-cause classification, durable/transient status, owning Atlas adaptation, absorbing ticket/code/runbook/skill/lesson and recurrence regression/proof. It accounts at minimum for PM follow-up/ordered-inbox contention, unnecessarily broad governed-planning validation, invalid YAML front matter reaching the operator proposal gate, explicit anchors outside the planner `AnchorIndex`, the missing governed planning-input/apply-artifact publication boundary, apply-to-PM sequencing through repository publication, PM publication versus delivery admission, managed PM-writer interaction with the future apply boundary and every further issue found before this batch mints; completion is forbidden while any durable observed finding lacks a disposition, while proven transient events create no manufactured implementation work. The ledger specifically records PlanRun `bec35f96-aa4a-43ba-9324-40a510808d2b` as a semantically valid thirteen-ticket, twenty-four-edge, thirty-seven-aggregate proposal stopped by a durable governance/procedural raw-count acceptance defect absorbed by the canonical planning runbook and tickets 01, 10, 12 and 13. It also records the stopped attempt to correct that authority while freezing the obsolete fourteen-path inventory as a durable planning-procedure/operator- instruction finding, resolved by treating the manifest as the complete current governed overlay and permitting an explicitly reviewed same-batch pre-key expansion while unrelated paths remain prohibited.
+  non_goals:
+  - No live production Linear pollution or throwaway production Atlas keys solely for the test.
+  - No weakening of PlanRun approval, apply integrity, PM writer ownership or CI evidence policy to meet the time target.
+  implementation_notes:
+  - Use existing planning/apply test helpers and Linear fakes rather than building a second integration harness.
+  - The wall-clock measurement is observational evidence in the proof report, not a flaky CI timing assertion.
+  test_requirements:
+  - Focused integration tests run entirely against temporary repository/database state, fake Git/GitHub publication boundaries and in-memory/fake Linear clients.
+  - Selector assertions cover both exact candidates, prove the focused `documentation` profile and command inventory for known planning paths, and fail if pytest, Playwright, browser/UI/E2E or an unselected `full-sweep` appears.
+  - 'Seeded defects must bite: remove the batch coverage invariant or promoted-anchor Gate-4 check and the corresponding malformed-batch or non-indexed explicit-source-anchor fixture must turn green only if the test is broken.'
+  - Type-qualified proposal-acceptance regression proves the valid thirteen-ticket/twenty-four-edge shape passes, an unexpected fourteenth ticket fails, and every missing, extra or reversed dependency edge fails; aggregate ADD count alone is never accepted as ticket-count authority.
+  documentation_requirements:
+  - docs/closure/ticket-minting-skill-proof.md
+  definition_of_done:
+  - Functional evidence proves intake isolation, both governed repository-publication boundaries, non-Symphony Linear mechanics, deterministic validation selection for both exact candidates, minting/publication behavior and recovery without partial apply-artifact publication, admission leakage, lost follow-ups, arbitrary GraphQL or duplicate issue creation.
+  - The proof report clearly passes or fails the <=20-minute preparation objective, names any remaining bottleneck and leaves no durable observed finding without an explicit absorbing adaptation and recurrence proof.
+  estimated_effort: null
+  external_linear_id: null
+  external_github_issue_id: null
+  tags:
+  - maintenance
+  - ticket-minting
+  - agent-skills
+  - milestone
+  - integration
+  - efficiency
+  component: ticket-minting-milestone
+  linear_synced_at: null
+  last_observed_linear_state_id: null
+  status_entered_at: null
+  review_cycle_count: 0
+  lesson_extraction_attempted_at: null
+  source_anchor: docs/planning/inbox/processed/inbox-stub-13-ticket-minting-end-to-end-proof.md#ticket-minting-end-to-end-proof-and-efficiency-milestone
+  created_by_type: agent
+  created_by_id: planner
+  created_at: '2026-08-30T06:48:04.401326Z'
+  updated_at: '2026-08-30T06:48:04.401326Z'
   completed_at: null
