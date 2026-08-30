@@ -102,7 +102,8 @@ def _doc_table_states() -> tuple[list[str], set[str]]:
     """(active Linear states in row order, terminal Linear states) parsed from
     the "State mapping" table in symphony-integration.md.
 
-    A table row is ``| atlas status | linear state | classification |``; active
+    A table row is ``| atlas status | lifecycle class | linear projection |
+    symphony classification |``; active
     rows are those whose classification cell starts with "active", terminal rows
     those whose cell is exactly "terminal". Handoff/not-fetched rows are neither.
     """
@@ -112,15 +113,20 @@ def _doc_table_states() -> tuple[list[str], set[str]]:
         if not line.startswith("|"):
             continue
         cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
-        if len(cells) != 3:
+        if len(cells) != 4:
             continue
-        _atlas, linear_state, classification = cells
-        if linear_state in ("Linear state", "") or set(linear_state) <= {"-", " "}:
+        _atlas, _lifecycle, linear_state, classification = cells
+        if linear_state in ("Linear projection", "") or set(linear_state) <= {
+            "-",
+            " ",
+        }:
             continue  # header / separator row
         if classification.startswith("active"):
             active.append(linear_state)
         elif classification == "terminal":
-            terminal.add(linear_state)
+            terminal.update(
+                state.strip() for state in re.split(r"\s+or\s+", linear_state)
+            )
     return active, terminal
 
 

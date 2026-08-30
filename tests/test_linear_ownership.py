@@ -23,7 +23,10 @@ from atlas.linear.client import (
 )
 from atlas.linear.ownership import (
     _ACCEPTED_TYPES,
+    EXTERNALLY_MIRRORED_STATUSES,
     OWNED_LINEAR_INPUT_KEYS,
+    TICKET_STATUS_LINEAR_CLASSIFICATION,
+    LinearLifecycleClassification,
     LinearStatusMap,
     LinearStatusMapError,
     definition_payload,
@@ -441,9 +444,7 @@ def test_validate_is_permissive_many_statuses_one_started_type() -> None:
 
 def test_accepted_types_pin_live_rejected_state_types_only() -> None:
     expected = {
-        TicketStatus.BACKLOG: frozenset({"backlog", "triage"}),
         TicketStatus.PLANNED: frozenset({"backlog", "unstarted", "triage"}),
-        TicketStatus.BLOCKED: frozenset({"backlog", "unstarted", "triage"}),
         TicketStatus.READY_FOR_AGENT: frozenset({"unstarted", "backlog"}),
         TicketStatus.IN_PROGRESS: frozenset({"started"}),
         TicketStatus.PR_OPEN: frozenset({"started"}),
@@ -457,6 +458,62 @@ def test_accepted_types_pin_live_rejected_state_types_only() -> None:
         ),
     }
     assert expected == _ACCEPTED_TYPES
+
+
+def test_every_ticket_status_has_one_explicit_linear_classification() -> None:
+    expected = {
+        TicketStatus.BACKLOG: (
+            LinearLifecycleClassification.ATLAS_INTERNAL_COMPATIBILITY
+        ),
+        TicketStatus.PLANNED: LinearLifecycleClassification.EXTERNALLY_MIRRORED,
+        TicketStatus.BLOCKED: LinearLifecycleClassification.DERIVED,
+        TicketStatus.READY_FOR_AGENT: (
+            LinearLifecycleClassification.EXTERNALLY_MIRRORED
+        ),
+        TicketStatus.IN_PROGRESS: LinearLifecycleClassification.EXTERNALLY_MIRRORED,
+        TicketStatus.PR_OPEN: LinearLifecycleClassification.EXTERNALLY_MIRRORED,
+        TicketStatus.CI_PENDING: LinearLifecycleClassification.EXTERNALLY_MIRRORED,
+        TicketStatus.REVIEW_REQUIRED: (
+            LinearLifecycleClassification.EXTERNALLY_MIRRORED
+        ),
+        TicketStatus.CHANGES_REQUESTED: (
+            LinearLifecycleClassification.EXTERNALLY_MIRRORED
+        ),
+        TicketStatus.NEEDS_HUMAN_DECISION: (
+            LinearLifecycleClassification.EXTERNALLY_MIRRORED
+        ),
+        TicketStatus.DONE: LinearLifecycleClassification.EXTERNALLY_MIRRORED,
+        TicketStatus.REJECTED: LinearLifecycleClassification.EXTERNALLY_MIRRORED,
+    }
+    assert dict(TICKET_STATUS_LINEAR_CLASSIFICATION) == expected
+    assert set(EXTERNALLY_MIRRORED_STATUSES) == {
+        status
+        for status, classification in expected.items()
+        if classification is LinearLifecycleClassification.EXTERNALLY_MIRRORED
+    }
+
+
+@pytest.mark.parametrize(
+    ("status", "classification"),
+    [
+        (TicketStatus.BACKLOG, "atlas_internal_compatibility"),
+        (TicketStatus.BLOCKED, "derived"),
+    ],
+)
+def test_non_mirrored_status_cannot_be_configured_as_a_linear_target(
+    status: TicketStatus, classification: str
+) -> None:
+    with pytest.raises(
+        LinearStatusMapError,
+        match=rf"{status.value!r} \({classification}\).*enum membership",
+    ):
+        LinearStatusMap({f"state-{status.value}": status})
+
+
+def test_non_mirrored_status_has_no_inverse_linear_target() -> None:
+    smap = LinearStatusMap({"state-planned": TicketStatus.PLANNED})
+    with pytest.raises(LinearStatusMapError, match="not externally mirrored"):
+        smap.state_id_for(TicketStatus.BLOCKED)
 
 
 def test_validate_accepts_live_rejected_state_types() -> None:

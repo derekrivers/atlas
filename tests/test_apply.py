@@ -41,6 +41,7 @@ from atlas.core.models import (
     Ticket,
     TicketDependency,
 )
+from atlas.core.models.ticket import TicketStatus
 from atlas.core.yaml_io import parse_document
 from atlas.dependencies import DanglingTargetError, GraphValidationFailed
 from atlas.planning.apply import (
@@ -899,6 +900,7 @@ def test_ac2_apply_materialises_the_promoted_ticket(tmp_path: Path) -> None:
     assert len(promoted) == 1
     ticket = promoted[0]
     assert ticket.key is not None and ticket.key.startswith("ATLAS-")
+    assert ticket.status is TicketStatus.PLANNED
     # Anchored to the epic the model proposed at new_epic:0.
     epics = EpicRepo(database).list()
     assert ticket.epic_id == epics[0].id

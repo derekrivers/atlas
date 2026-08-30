@@ -38,30 +38,45 @@ Atlas (evidence, verification,  ◄──CI/PR/status────  agent in work
 
 ## State mapping
 
-Atlas `TicketStatus` is the superset; Linear carries a projection of it;
-Symphony sees only Linear states via its `active_states` /
-`terminal_states` configuration.
+`TicketStatus` is persisted Atlas vocabulary, not a declaration of Linear
+workflow columns. Each value has exactly one classification below. Only an
+**externally mirrored** value participates in `LINEAR_STATE_MAP`; enum
+membership alone never creates or requires a Linear state. A dash means there
+is deliberately no Linear projection.
 
-| Atlas status        | Linear state      | Symphony classification    |
-| ------------------- | ----------------- | -------------------------- |
-| backlog             | Backlog           | not fetched                |
-| planned             | Planned           | not fetched                |
-| blocked             | Blocked           | not fetched                |
-| ready_for_agent     | Ready for Agent   | active (dispatchable)      |
-| in_progress         | In Progress       | active (running)           |
-| pr_open             | PR Open           | active (running)           |
-| ci_pending          | CI Pending        | handoff — neither active nor terminal |
-| review_required     | Review Required   | handoff — neither active nor terminal |
-| changes_requested   | Changes Requested | active (re-dispatchable)   |
-| needs_human_decision| Needs Human       | handoff — neither active nor terminal |
-| done                | Done              | terminal                   |
-| rejected            | Canceled          | terminal                   |
+| Atlas status | Lifecycle class | Linear projection | Symphony classification |
+| ------------ | --------------- | ----------------- | ----------------------- |
+| backlog | Atlas-internal / compatibility | — | not fetched |
+| planned | externally mirrored | Planned | not fetched |
+| blocked | derived dependency condition | — | not fetched |
+| ready_for_agent | externally mirrored | Ready for Agent | active (dispatchable) |
+| in_progress | externally mirrored | In Progress | active (running) |
+| pr_open | externally mirrored | PR Open | active (running) |
+| ci_pending | externally mirrored | CI Pending | handoff — neither active nor terminal |
+| review_required | externally mirrored | Review Required | handoff — neither active nor terminal |
+| changes_requested | externally mirrored | Changes Requested | active (re-dispatchable) |
+| needs_human_decision | externally mirrored | Needs Human | handoff — neither active nor terminal |
+| done | externally mirrored | Done | terminal |
+| rejected | externally mirrored | Canceled or Duplicate | terminal |
 
 Decisions encoded here:
 
+- **`blocked` is a graph result, not a lifecycle transition.** A planned ticket
+  whose dependency targets are unfinished remains `planned`; `blocked(graph,
+  key)` and the typed readiness reasons derive its operational condition. No
+  Linear `Blocked` state, duplicate flag or dependency-driven status write
+  exists. The retained `TicketStatus.BLOCKED` member is historical persisted
+  compatibility vocabulary only and is not externally mirrored.
+- **`backlog` is Atlas-internal compatibility vocabulary.** Governed apply
+  creates tickets in `planned`. A legacy backlog row may remain eligible under
+  the compatibility readiness rule, but it has no create-time Linear projection
+  and no Linear `Backlog` state is required.
+- **`Planned` is publication, not admission.** A newly applied ticket is first
+  published in its mapped `Planned` state. Only the later governed admission
+  edge to `Ready for Agent` authorises delivery.
 - **`Ready for Agent` is the only entry point to dispatch.** Atlas's PM
-  Engine is the only writer that moves a ticket into it (readiness rule:
-  dependencies done, criteria present, pack rendered).
+  Engine is the only writer that moves a ticket into it after dependency
+  readiness and the delivery-admission checks succeed.
 - **Handoff states stop work without cleanup.** Per the Symphony spec's
   reconciliation rules, a state that is neither active nor terminal causes
   the worker to terminate while the workspace is preserved — exactly right
@@ -454,8 +469,9 @@ handoff.
 
 To prevent races between the PM Engine and agents:
 
-- **Atlas PM Engine writes:** `backlog/planned/blocked → ready_for_agent`
-  (readiness), `ci_pending → review_required` or `ci_pending →
+- **Atlas PM Engine writes:** `planned → ready_for_agent` in the normal
+  lifecycle (a historical externally joined `backlog` row remains eligible by
+  the compatibility readiness rule), `ci_pending → review_required` or `ci_pending →
   changes_requested` (system-tier CI classification), `review_required → done` (post-verification),
   `review_required → changes_requested` (operator verdict relay), and any
   administrative archive/reject.

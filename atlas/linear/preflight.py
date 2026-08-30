@@ -64,6 +64,7 @@ _PROJECT_SLUG_PLACEHOLDER = "REPLACE_ME"
 # Linear state. Includes the two handoff states (`Review Required`,
 # `Needs Human`) that never appear in WORKFLOW.md's active/terminal lists.
 _WRITTEN_STATUSES: tuple[TicketStatus, ...] = (
+    TicketStatus.PLANNED,
     TicketStatus.READY_FOR_AGENT,
     TicketStatus.IN_PROGRESS,
     TicketStatus.PR_OPEN,
@@ -74,10 +75,11 @@ _WRITTEN_STATUSES: tuple[TicketStatus, ...] = (
     TicketStatus.DONE,
 )
 
-# Contract handoff names the prompt body transitions *into* but that appear in
-# neither `active_states` nor `terminal_states`; C1 must still require each as
-# an exact-cased Linear state, or the agent stalls silently at handoff.
-_HANDOFF_STATE_NAMES: tuple[str, ...] = (
+# Mirrored state names that appear in neither ``active_states`` nor
+# ``terminal_states``. C1 must still require Planned for create-time publication
+# and each handoff target with exact casing.
+_NON_ROUTED_MIRRORED_STATE_NAMES: tuple[str, ...] = (
+    "Planned",
     "CI Pending",
     "Review Required",
     "Needs Human",
@@ -186,7 +188,7 @@ def _load_front_matter(workflow_md_path: Path) -> dict[str, object]:
 
 def _contract_state_names(front_matter: dict[str, object]) -> list[str]:
     """The names C1 requires: ``active_states`` and ``terminal_states`` plus the
-    two handoff names, de-duplicated in first-seen order."""
+    non-routed mirrored names, de-duplicated in first-seen order."""
 
     tracker = front_matter.get("tracker")
     tracker = tracker if isinstance(tracker, dict) else {}
@@ -195,7 +197,7 @@ def _contract_state_names(front_matter: dict[str, object]) -> list[str]:
         value = tracker.get(key)
         if isinstance(value, list):
             names.extend(str(item) for item in value)
-    names.extend(_HANDOFF_STATE_NAMES)
+    names.extend(_NON_ROUTED_MIRRORED_STATE_NAMES)
     seen: set[str] = set()
     ordered: list[str] = []
     for name in names:

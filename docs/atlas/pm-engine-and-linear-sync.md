@@ -67,6 +67,17 @@ invert meaning) until that mapping is pinned (tracked in
 `docs/tech-debt/debt-register.md`). The sync therefore carries title +
 description (definition + embedded pack), and nothing else.
 
+**Status lifecycle classification.** `TicketStatus` is persisted Atlas
+vocabulary; membership does not imply a Linear workflow state. The executable
+authority is `TICKET_STATUS_LINEAR_CLASSIFICATION` in
+`atlas/linear/ownership.py`: `planned`, `ready_for_agent`, `in_progress`,
+`pr_open`, `ci_pending`, `review_required`, `changes_requested`,
+`needs_human_decision`, `done` and `rejected` are externally mirrored;
+dependency `blocked` is derived; and `backlog` is Atlas-internal compatibility
+vocabulary. `LinearStatusMap` rejects a configured Backlog or Blocked target at
+construction, before validation or any write. `rejected` intentionally remains
+many-to-one: both Linear `Canceled` and `Duplicate` map to it.
+
 **Status (Linear → Atlas).** `LinearStatusMap` is an operator-configured
 `dict[linear_state_id → TicketStatus]`, sourced from the JSON env var
 `LINEAR_STATE_MAP` (e.g. `{"<state-uuid>": "in_progress"}`). The stable
@@ -106,10 +117,11 @@ carries two same-named `Duplicate` states (one per team), so only a
 team-scoped read disambiguates them; the workspace-wide listing that
 preceded it could not.
 
-Atlas team states (ten; Linear `type` in parentheses):
+Atlas team states (eleven; Linear `type` in parentheses):
 
 | Linear state | State id (UUID) | Maps to | Rationale |
 | ------------ | --------------- | ------- | --------- |
+| Planned (unstarted) | `f95de64e-f351-4226-b4ec-a5bddbc6fd2d` | `planned` | the normal first-publication target for apply-created work; publication is not delivery admission |
 | Ready for Agent (unstarted) | `df1ebd92-7c41-4585-a15b-29b9e73f840f` | `ready_for_agent` | the step-3 promotion target; the PM Engine's one sanctioned outbound state write resolves to exactly this state |
 | In Progress (started) | `381b59b4-7ffe-4247-9cd8-6a11585203ea` | `in_progress` | an agent is actively working the ticket; dwell-horizoned |
 | PR Open (started) | `1ea72cdb-5f02-473f-8439-028e40d904f0` | `pr_open` | a PR is up; review-cycling counts arrivals into this state |
@@ -133,6 +145,9 @@ state, and Atlas accepts exactly those two live spellings for
 mappings while still rejecting `completed` or `started` states mapped to
 `rejected`; the sync tick itself does not run that validation and is
 unaffected.
+
+There is no Atlas-team `Backlog` or `Blocked` state. Neither is omitted from
+the map: both are deliberately non-mirrored under the classification above.
 
 Sibling team states (grouped): the workspace's second team carries nine
 workflow states, all intentionally unmapped — foreign team; its issues
@@ -213,10 +228,13 @@ An Atlas ticket in any working, CI-pending or review state without an
 reason. The builder does
 not infer Linear state or occupancy from Atlas state alone, so the observed
 count remains zero and admission fails closed. Backlog, planned and blocked are
-pre-delivery states that do not consume any occupancy budget and may
-legitimately precede issue creation; a missing id in those states is not a join
-gap. After an id exists, every non-terminal ticket still requires that exact id
-in the complete project pull.
+pre-delivery vocabulary that does not consume any occupancy budget. `planned`
+is the normal externally mirrored state and may legitimately precede its first
+publication tick; `backlog` is Atlas-internal compatibility vocabulary and
+dependency blockedness is derived even though the historical `blocked` enum
+member remains readable. A missing id in those states is not a join gap. After
+an id exists, every non-terminal ticket still requires that exact id in the
+complete project pull.
 
 The immutable snapshot pins product/project, policy id and revision, the
 byte-stable legacy policy fingerprint, an explicit canonical integration-budget
@@ -478,7 +496,10 @@ Pull-based, consistent with ADR-0008 (no webhooks before hosting):
 
 2. Push definition updates (title/priority/labels/description) for
    tickets whose Atlas `updated_at` is newer, only while the ticket is in
-   a pre-dispatch status or `Ready for Agent`. A successful full embed
+   the externally mirrored `planned` pre-dispatch state or `Ready for Agent`.
+   `backlog` and `blocked` are deliberately not `PUSHABLE_STATUSES`, so
+   definition publication cannot accidentally turn either enum member into a
+   requirement for a nonexistent Linear target. A successful full embed
    stamps `linear_synced_at` to the pushed `updated_at`. An enumerated
    context-pack render failure still pushes the definition-only payload
    and logs one `PACK_RENDER_FAILURE`, but does **not** stamp the cursor:
@@ -489,6 +510,9 @@ Pull-based, consistent with ADR-0008 (no webhooks before hosting):
    immediately after a successful `create_issue`, the PM Engine resolves the
    Linear workflow state mapped to the ticket's current Atlas status and asserts
    it via `LinearClient.set_state`; the update path never writes workflow state.
+   Because every pushable status is externally mirrored, this inverse lookup is
+   fail-closed and unique. In particular, apply-created work asserts `Planned`;
+   it does not assert `Ready for Agent` until the separate admission step.
    If that create-time assertion fails after the issue is created, the join key
    remains recorded and the tick logs/counts the failed assertion as an anomaly,
    so the issue is never orphaned.
@@ -798,8 +822,9 @@ workflow.
   post-creation status writer) only on a real status change, and a NULL entry
   time (unknown) is skipped, never breached. Recurrence is the same query-time
   `recurring(...)` predicate, never a stored counter.
-- Stale block (ATLAS-44): when a ticket sits in the `blocked` status but its
-  structural blockers have all cleared — i.e. `blocked(graph, key)` (the
+- Stale block (ATLAS-44, compatibility hygiene): when a historical ticket sits
+  in the retained `blocked` enum value but its structural blockers have all
+  cleared — i.e. `blocked(graph, key)` (the
   dependency-engine blocker analysis) is empty — the step-5 pass appends one
   `STALE_BLOCK` `DebtItem` (append-only, system-written) and the candidate
   surfaces in the delivery report. It is **report-only — like the out-of-ownership
@@ -810,9 +835,12 @@ workflow.
   knows only *structural* blockers (`DEPENDENCY_NOT_DONE` / `ADR_NOT_ACCEPTED` /
   `DANGLING_TARGET`), so a ticket may be `blocked` for a non-structural reason the
   graph cannot see — the engine reports the candidate and the operator decides
-  whether to move it. The inverse direction (a ticket structurally blocked but
-  not marked `blocked`) is **out of scope**: `is_ready` already refuses to promote
-  it, so it is not stranded. This is distinct from blocked-dwell ("blocked too
+  whether to move it. This detector does not make stored `blocked` the normal
+  dependency model: no production path writes it, no Linear state maps to it,
+  and a planned ticket with unfinished dependencies remains `planned`. The
+  inverse direction needs no stored transition: `is_ready` already refuses to
+  promote it and `blocked(graph, key)` derives the reasons. This is distinct
+  from blocked-dwell ("blocked too
   long while genuinely blocked"), which is deliberately not detected — `blocked`
   carries no dwell horizon. "Per episode" is enforced exactly as for dwell, by
   `Ticket.status_entered_at`: a row fires only when no `STALE_BLOCK` row exists

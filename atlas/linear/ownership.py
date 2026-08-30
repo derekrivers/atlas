@@ -19,6 +19,8 @@ import json
 import os
 import re
 from collections.abc import Callable, Iterable, Mapping
+from enum import StrEnum
+from types import MappingProxyType
 from typing import TYPE_CHECKING, NamedTuple
 
 from atlas.core.models.context_pack import ContextPack
@@ -34,6 +36,58 @@ class LinearStatusMapError(ValueError):
     """The configured Linear status map is missing, malformed, or
     contradicts the team's workflow states (ATLAS-41 D7/D8/D9; team-scoped
     since ATLAS-148)."""
+
+
+class LinearLifecycleClassification(StrEnum):
+    """Whether one Atlas ticket-status value participates in Linear mirroring.
+
+    ``TicketStatus`` is persisted Atlas vocabulary.  Enum membership alone does
+    not create or require a Linear workflow state; this classification is the
+    authoritative provider-boundary contract for that distinction.
+    """
+
+    EXTERNALLY_MIRRORED = "externally_mirrored"
+    DERIVED = "derived"
+    ATLAS_INTERNAL_COMPATIBILITY = "atlas_internal_compatibility"
+
+
+TICKET_STATUS_LINEAR_CLASSIFICATION: Mapping[
+    TicketStatus, LinearLifecycleClassification
+] = MappingProxyType(
+    {
+        TicketStatus.BACKLOG: (
+            LinearLifecycleClassification.ATLAS_INTERNAL_COMPATIBILITY
+        ),
+        TicketStatus.PLANNED: LinearLifecycleClassification.EXTERNALLY_MIRRORED,
+        TicketStatus.BLOCKED: LinearLifecycleClassification.DERIVED,
+        TicketStatus.READY_FOR_AGENT: (
+            LinearLifecycleClassification.EXTERNALLY_MIRRORED
+        ),
+        TicketStatus.IN_PROGRESS: LinearLifecycleClassification.EXTERNALLY_MIRRORED,
+        TicketStatus.PR_OPEN: LinearLifecycleClassification.EXTERNALLY_MIRRORED,
+        TicketStatus.CI_PENDING: LinearLifecycleClassification.EXTERNALLY_MIRRORED,
+        TicketStatus.REVIEW_REQUIRED: (
+            LinearLifecycleClassification.EXTERNALLY_MIRRORED
+        ),
+        TicketStatus.CHANGES_REQUESTED: (
+            LinearLifecycleClassification.EXTERNALLY_MIRRORED
+        ),
+        TicketStatus.DONE: LinearLifecycleClassification.EXTERNALLY_MIRRORED,
+        TicketStatus.REJECTED: LinearLifecycleClassification.EXTERNALLY_MIRRORED,
+        TicketStatus.NEEDS_HUMAN_DECISION: (
+            LinearLifecycleClassification.EXTERNALLY_MIRRORED
+        ),
+    }
+)
+
+EXTERNALLY_MIRRORED_STATUSES: frozenset[TicketStatus] = frozenset(
+    status
+    for status, classification in TICKET_STATUS_LINEAR_CLASSIFICATION.items()
+    if classification is LinearLifecycleClassification.EXTERNALLY_MIRRORED
+)
+
+if set(TICKET_STATUS_LINEAR_CLASSIFICATION) != set(TicketStatus):
+    raise RuntimeError("every TicketStatus must have a Linear lifecycle classification")
 
 
 # --- Definition direction: Atlas -> Linear ---------------------------------
@@ -263,9 +317,7 @@ def compose_embedded_description(
 # mapped to `done`). Many active statuses deliberately share `started`, so
 # the filter is a contradiction check, not a rigid 1:1 oracle.
 _ACCEPTED_TYPES: dict[TicketStatus, frozenset[str]] = {
-    TicketStatus.BACKLOG: frozenset({"backlog", "triage"}),
     TicketStatus.PLANNED: frozenset({"backlog", "unstarted", "triage"}),
-    TicketStatus.BLOCKED: frozenset({"backlog", "unstarted", "triage"}),
     TicketStatus.READY_FOR_AGENT: frozenset({"unstarted", "backlog"}),
     TicketStatus.IN_PROGRESS: frozenset({"started"}),
     TicketStatus.PR_OPEN: frozenset({"started"}),
@@ -279,6 +331,9 @@ _ACCEPTED_TYPES: dict[TicketStatus, frozenset[str]] = {
     ),
 }
 
+if set(_ACCEPTED_TYPES) != set(EXTERNALLY_MIRRORED_STATUSES):
+    raise RuntimeError("Linear type compatibility must cover mirrored statuses only")
+
 
 class LinearStatusMap:
     """An operator-configured ``dict[linear_state_id -> TicketStatus]``.
@@ -291,6 +346,24 @@ class LinearStatusMap:
     """
 
     def __init__(self, mapping: Mapping[str, TicketStatus]) -> None:
+        non_mirrored = sorted(
+            {
+                status
+                for status in mapping.values()
+                if status not in EXTERNALLY_MIRRORED_STATUSES
+            },
+            key=lambda status: status.value,
+        )
+        if non_mirrored:
+            details = ", ".join(
+                f"{status.value!r} "
+                f"({TICKET_STATUS_LINEAR_CLASSIFICATION[status].value})"
+                for status in non_mirrored
+            )
+            raise LinearStatusMapError(
+                f"{STATE_MAP_ENV} maps non-mirrored Atlas status(es): {details}; "
+                "TicketStatus enum membership does not imply a Linear workflow state"
+            )
         self._mapping: dict[str, TicketStatus] = dict(mapping)
 
     def __len__(self) -> int:
@@ -404,6 +477,14 @@ class LinearStatusMap:
         Ready-for-Agent state is configured and unique. Round-trip (D4): the id
         returned is exactly the one :meth:`status_for` maps back to ``status``,
         so ATLAS-42's next pull reads the promotion as ``status`` and no-ops."""
+
+        classification = TICKET_STATUS_LINEAR_CLASSIFICATION[status]
+        if classification is not LinearLifecycleClassification.EXTERNALLY_MIRRORED:
+            raise LinearStatusMapError(
+                f"Atlas status {status.value!r} is {classification.value!r}, not "
+                "externally mirrored; TicketStatus enum membership does not imply "
+                "a Linear workflow state"
+            )
 
         matches = sorted(
             state_id for state_id, mapped in self._mapping.items() if mapped == status
