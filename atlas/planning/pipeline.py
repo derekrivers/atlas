@@ -98,6 +98,7 @@ from atlas.planning.staged import (
     StageContext,
     StagedGenerationError,
     StagedProposalGenerator,
+    StageGateFailureError,
     StageRecord,
     StageTruncatedError,
     composite_prompt_hash,
@@ -439,6 +440,7 @@ def run_plan(
             product_key=product.key,
             documents=document_payload,
             valid_anchors=valid_anchors,
+            current_epic_keys=frozenset(epic_keys_by_id.values()),
             current_epics_seed=current_epics_seed,
             current_tickets_seed_by_epic=current_tickets_seed_by_epic,
             prompts_dir=prompts_dir,
@@ -880,6 +882,7 @@ def _generate_staged(
     product_key: str,
     documents: list[dict[str, str]],
     valid_anchors: list[dict[str, str]],
+    current_epic_keys: frozenset[str],
     current_epics_seed: str | None,
     current_tickets_seed_by_epic: dict[str, str | None],
     prompts_dir: Path | None,
@@ -893,7 +896,9 @@ def _generate_staged(
     select-from list the epics and tickets stages render. The two seed
     arguments (ATLAS-144) carry the current backlog the epics and per-epic
     tickets stages restate; both are ``None``/empty on a first run, so the
-    seeded templates render their empty-backlog branch (first-run parity)."""
+    seeded templates render their empty-backlog branch (first-run parity).
+    ``current_epic_keys`` binds Stage-1 echoes before they can influence a
+    provider-bound telemetry stage."""
     context = StageContext(
         execution_identity=execution_identity,
         planner_identity=planner_identity,
@@ -902,6 +907,7 @@ def _generate_staged(
         documents=documents,
         prompts_dir=prompts_dir,
         valid_anchors=valid_anchors,
+        current_epic_keys=current_epic_keys,
         current_epics_seed=current_epics_seed,
         current_tickets_seed_by_epic=current_tickets_seed_by_epic,
     )
@@ -927,6 +933,14 @@ def _generate_staged(
             prompt_hash=composite_prompt_hash(error.records),
             generation_stages=_stage_payload(error.records),
             failure_reason=reason,
+        )
+    except StageGateFailureError as error:
+        return _Generated(
+            raw_output=error.raw_output,
+            prompt_version=composite_prompt_version(error.records),
+            prompt_hash=composite_prompt_hash(error.records),
+            generation_stages=_stage_payload(error.records),
+            failure_reason=_gate_failure_reason(list(error.failures)),
         )
     except StagedGenerationError as error:
         reason = json.dumps(

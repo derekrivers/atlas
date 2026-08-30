@@ -554,6 +554,58 @@ def test_run_plan_staged_path_records_protocol_violation(tmp_path: Any) -> None:
     assert "out of range" in reason["error"]
 
 
+def test_run_plan_staged_records_invalid_epic_key_before_next_provider_call(
+    tmp_path: Any,
+) -> None:
+    repo = fixture_repo(tmp_path)
+    database = fresh_db(tmp_path)
+    invalid_epics_raw = json.dumps(
+        {
+            "epics": [_epic("Invented identity") | {"key": "NOT-AN-EPIC-KEY"}],
+            "planner_notes": [],
+        }
+    )
+    client = SequencedFakeClient([invalid_epics_raw])
+
+    result = run_plan(
+        repo_root=repo,
+        database=database,
+        client=client,
+        identity=FAKE_IDENTITY,
+        now=NOW,
+        staged_generator=TemplateStagedGenerator(),
+    )
+
+    assert result.status is PlanRunStatus.FAILED
+    assert result.failure_reason is not None
+    assert json.loads(result.failure_reason) == {
+        "stage": "gates",
+        "failures": [
+            {
+                "gate": 6,
+                "code": "GATE6_UNKNOWN_KEY",
+                "reason": (
+                    "epics key 'NOT-AN-EPIC-KEY' does not exist in the "
+                    "current backlog; the model never invents keys (ADR-0007)"
+                ),
+            }
+        ],
+    }
+    assert len(client.prompts) == 1
+    assert len(client.requests) == 1
+    assert (
+        result.plan_run.raw_output_hash
+        == hashlib.sha256(invalid_epics_raw.encode("utf-8")).hexdigest()
+    )
+    assert len(result.plan_run.generation_stages) == 1
+    assert result.plan_run.generation_stages[0]["stage"] == "epics"
+    assert result.plan_run.generation_stages[0]["raw_output_hash"] == (
+        result.plan_run.raw_output_hash
+    )
+    stored = PlanRunRepo(database).get(result.plan_run.id)
+    assert stored == result.plan_run
+
+
 # --- re-plan seeding (ATLAS-144): a non-empty backlog seeds and re-plans ------
 
 NEW_TICKET_TITLE = "New work"

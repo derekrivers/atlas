@@ -51,6 +51,7 @@ from atlas.planning.client import (
     TruncatedOutputError,
     invoke_planner_call,
 )
+from atlas.planning.gates import GateFailure, key_integrity_failures
 from atlas.planning.progress import (
     STAGE_ASSEMBLY,
     STAGE_DEPENDENCIES,
@@ -237,6 +238,32 @@ class StageOutputError(StagedGenerationError):
     """A stage's raw output was not valid JSON / not a valid projection, or
     the assembled references were inconsistent — the model broke the
     generation protocol."""
+
+
+class StageGateFailureError(StagedGenerationError):
+    """A staged output hit an existing proposal gate before the next call.
+
+    The raw output and completed stage records remain available to the
+    pipeline, while ``failures`` preserves the normal recorded gate-failure
+    shape instead of turning an untrusted output into a pre-provider contract
+    exception.
+    """
+
+    def __init__(
+        self,
+        *,
+        stage: str,
+        records: Sequence[StageRecord],
+        raw_output: str,
+        failures: Sequence[GateFailure],
+    ) -> None:
+        super().__init__(
+            stage=stage,
+            records=records,
+            raw_output=raw_output,
+            message="; ".join(failure.reason for failure in failures),
+        )
+        self.failures = tuple(failures)
 
 
 class StageProjectionError(StageOutputError):
@@ -465,7 +492,8 @@ class StageContext:
     empty map), so a first run renders the templates' empty-backlog branch and
     behaviour is unchanged (D-3). The model REFERENCES existing keys and never
     mints identity (ADR-0007); the reconciler remains the sole authority on
-    create/update/archive (D-2).
+    create/update/archive (D-2). ``current_epic_keys`` is the frozen set that
+    binds any Stage-1 echoed identity before it can name a tickets-stage call.
 
     ``valid_anchors`` (ATLAS-111) is the resolvable ``{anchor, heading}`` list
     the epics and tickets stages SELECT their ``source_anchor`` from — derived
@@ -481,6 +509,7 @@ class StageContext:
     documents: Sequence[Mapping[str, str]]
     prompts_dir: Path | None = None
     valid_anchors: Sequence[Mapping[str, str]] = ()
+    current_epic_keys: frozenset[str] = frozenset()
     current_epics_seed: str | None = None
     current_tickets_seed_by_epic: Mapping[str, str | None] = field(default_factory=dict)
 
@@ -555,6 +584,18 @@ class TemplateStagedGenerator:
             logical_attempt_no=0,
         )
         epics_output = self._parse(StageEpicsOutput, epics_raw, "epics", records)
+
+        key_failures = key_integrity_failures(
+            current_backlog_keys=context.current_epic_keys,
+            keyed_items=(("epics", (epic.key for epic in epics_output.epics)),),
+        )
+        if key_failures:
+            raise StageGateFailureError(
+                stage="epics",
+                records=records,
+                raw_output=epics_raw,
+                failures=key_failures,
+            )
 
         assembled_epics = [
             {

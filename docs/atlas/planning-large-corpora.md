@@ -228,9 +228,12 @@ Unicode-character counts; prompt and segment contents are passed transiently and
 are not copied into the telemetry request/result record. All staged template
 artifacts are resolved before the first provider invocation, while output-derived
 ticket/dependency inputs are fingerprinted when their exact logical call is
-rendered. An unknown stage, template, or input identity fails before that provider
-call. No storage, provider-usage interpretation, or PlanRun lifecycle change is
-introduced by this orchestration seam.
+rendered. Before an echoed Stage-1 epic key can form a tickets-stage identity, it
+is bound to the frozen current epic-key set; an unknown key records the existing
+Gate-6 failure shape and the Stage-1 raw-output hash without making another
+provider call. An unknown stage, template, or input identity otherwise fails
+before that provider call. No storage, provider-usage interpretation, or PlanRun
+lifecycle change is introduced by this orchestration seam.
 
 ### 5.4 Truncation within a stage
 

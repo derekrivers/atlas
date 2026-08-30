@@ -244,6 +244,53 @@ def test_generate_uses_pinned_model_and_params(
     assert recorder["api_key"] == "sk-test-key"
 
 
+@pytest.mark.parametrize("mismatch", ["provider", "model", "parameters"])
+def test_generate_rejects_identity_not_used_by_anthropic_before_provider(
+    monkeypatch: pytest.MonkeyPatch,
+    mismatch: str,
+) -> None:
+    recorder: dict[str, object] = {}
+    _stub_anthropic(monkeypatch, recorder)
+    client = AnthropicPlannerClient(api_key="sk-test-key")
+    request = _structured_request("hello")
+
+    if mismatch == "provider":
+        logical_call = request.logical_call.model_copy(
+            update={
+                "planner": request.logical_call.planner.model_copy(
+                    update={"provider": "not-anthropic"}
+                )
+            }
+        )
+        expected_error = "planner identity"
+    elif mismatch == "model":
+        logical_call = request.logical_call.model_copy(
+            update={
+                "planner": request.logical_call.planner.model_copy(
+                    update={"model": "different-model"}
+                )
+            }
+        )
+        expected_error = "planner identity"
+    else:
+        logical_call = request.logical_call.model_copy(
+            update={
+                "execution_parameters": (
+                    request.logical_call.execution_parameters.model_copy(
+                        update={"max_output_tokens": MAX_TOKENS - 1}
+                    )
+                )
+            }
+        )
+        expected_error = "execution parameters"
+
+    mismatched_request = PlannerCallRequest(logical_call=logical_call)
+    with pytest.raises(PlannerCallContractError, match=expected_error):
+        client.generate("hello", mismatched_request)
+
+    assert recorder == {}
+
+
 def test_unknown_or_mismatched_call_identity_fails_before_provider() -> None:
     request = _structured_request("expected prompt")
     calls = 0

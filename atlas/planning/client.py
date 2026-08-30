@@ -322,6 +322,18 @@ class AnthropicPlannerClient:
     ) -> str | PlannerCallResult:
         if request is not None:
             request.validate_prompt(prompt)
+            expected_planner, expected_parameters = planner_telemetry_identity(
+                self.identity
+            )
+            if request.logical_call.planner != expected_planner:
+                raise PlannerCallContractError(
+                    "planner identity does not match Anthropic provider settings"
+                )
+            if request.logical_call.execution_parameters != expected_parameters:
+                raise PlannerCallContractError(
+                    "planner execution parameters do not match Anthropic "
+                    "provider settings"
+                )
         raw_output = self._generate_raw(prompt)
         if request is None:
             return raw_output
