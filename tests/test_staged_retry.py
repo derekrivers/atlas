@@ -84,6 +84,22 @@ def test_tickets_stage_retries_a_graze_and_assembles_the_compliant_output() -> N
         "tickets:new_epic:0 (retry 1)",
         "dependencies",
     ]
+    calls = [request.logical_call for request in client.requests]
+    assert [call.identity.stage for call in calls] == [
+        "epics",
+        "tickets.new_epic.0",
+        "tickets.new_epic.0",
+        "dependencies",
+    ]
+    assert [call.identity.logical_attempt_no for call in calls] == [0, 0, 1, 0]
+    assert len({call.identity.execution.execution_id for call in calls}) == 1
+    assert all(call.physical_attempts == () for call in calls)
+
+    first_segments = {item.name: item for item in calls[1].prompt_segments}
+    retry_segments = {item.name: item for item in calls[2].prompt_segments}
+    for stable in ("documents", "anchors", "backlog", "schema"):
+        assert retry_segments[stable] == first_segments[stable]
+    assert retry_segments["dynamic_stage"] != first_segments["dynamic_stage"]
     # Each attempt hashed its own raw bytes (ATLAS-108 invariant): the grazing
     # attempt and the compliant attempt have different raw_output_hashes.
     graze_hash = result.stage_records[1].raw_output_hash

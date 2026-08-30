@@ -170,6 +170,49 @@ def test_happy_path_persists_proposed_plan_run(tmp_path: Path) -> None:
     assert run_row.proposal["tickets"][0]["title"] == "Build plan CLI"
 
 
+def test_single_call_receives_exact_content_free_logical_call_identity(
+    tmp_path: Path,
+) -> None:
+    repo = fixture_repo(tmp_path)
+    database = fresh_db(tmp_path)
+    client = FakePlannerClient(proposal_json())
+
+    result = run(repo, database, client)
+
+    assert len(client.requests) == 1
+    request = client.requests[0]
+    call = request.logical_call
+    assert call.identity.stage == "single"
+    assert call.identity.logical_attempt_no == 0
+    assert call.planner.provider == "fake"
+    assert call.planner.model == "fake-model-1"
+    assert call.template.prompt_version == result.plan_run.prompt_version
+    assert call.template.template_sha256
+    assert client.last_prompt is not None
+    assert call.prompt_size.byte_count == len(client.last_prompt.encode("utf-8"))
+    assert call.prompt_size.character_count == len(client.last_prompt)
+    assert {segment.name for segment in call.prompt_segments} == {
+        "documents",
+        "anchors",
+        "backlog",
+        "schema",
+        "dynamic_stage",
+    }
+    inputs = {item.name: item.digest for item in call.input_identities}
+    assert inputs["rendered_prompt"] == result.plan_run.prompt_hash
+
+    # The fake provider sees content only through the transient prompt. The
+    # telemetry request/result records contain bounded identities and counts,
+    # not copied prompt or document bodies.
+    assert PLAN_MD in client.last_prompt
+    request_telemetry = request.canonical_bytes()
+    result_telemetry = client.results[0].canonical_telemetry_bytes()
+    for content in (PLAN_MD, PRODUCT_MD, client.last_prompt):
+        encoded = content.encode("utf-8")
+        assert encoded not in request_telemetry
+        assert encoded not in result_telemetry
+
+
 def test_single_call_populates_degenerate_one_stage_list(tmp_path: Path) -> None:
     # ATLAS-105 gap 2: the single-call path populates generation_stages with a
     # one-element list, so the field's meaning is uniform — a reader always
@@ -464,9 +507,9 @@ def test_ac6_promotion_adds_no_model_call(tmp_path: Path) -> None:
             super().__init__(canned)
             self.calls = 0
 
-        def generate(self, prompt: str) -> str:
+        def generate(self, prompt: str, request: Any) -> Any:
             self.calls += 1
-            return super().generate(prompt)
+            return super().generate(prompt, request)
 
     repo = fixture_repo_with_inbox(tmp_path)
     database = fresh_db(tmp_path)

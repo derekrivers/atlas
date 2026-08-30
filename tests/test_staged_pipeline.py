@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
@@ -32,10 +33,20 @@ import atlas.planning.pipeline as pipeline_module
 from atlas import cli
 from atlas.core.anchors import AnchorIndex
 from atlas.core.models import Epic, PlanRunStatus, Ticket
-from atlas.planning.client import TruncatedOutputError
+from atlas.core.models.planner_call_telemetry import (
+    PlannerExecutionParameters,
+    PlannerIdentity,
+    PlanningExecutionIdentity,
+)
+from atlas.planning.client import (
+    PlannerCallRequest,
+    PlannerCallResult,
+    TruncatedOutputError,
+)
 from atlas.planning.ingestion import collect_input_documents
 from atlas.planning.pipeline import StagedReplanUnsupportedError, run_plan
 from atlas.planning.proposal import parse_proposal
+from atlas.planning.renderer import UnknownTemplateVersionError
 from atlas.planning.seed import render_backlog_yaml
 from atlas.planning.staged import (
     STAGE_DEPENDENCIES_VERSION,
@@ -49,6 +60,14 @@ from atlas.storage import EpicRepo, PlanRunRepo, TicketRepo
 
 ANCHOR_EPIC = "docs/atlas/plan.md#planning"
 ANCHOR_TICKET = "docs/atlas/plan.md#backlog"
+TEST_EXECUTION_IDENTITY = PlanningExecutionIdentity(execution_id=uuid4())
+TEST_PLANNER_IDENTITY = PlannerIdentity(provider="fake", model="fake-model-1")
+TEST_EXECUTION_PARAMETERS = PlannerExecutionParameters(
+    temperature=0,
+    max_output_tokens=1024,
+    streaming=False,
+)
+PROMPTS_DIR = Path(__file__).resolve().parent.parent / "atlas/planning/prompts"
 
 
 def _epic(title: str) -> dict[str, Any]:
@@ -145,14 +164,19 @@ class SequencedFakeClient:
         self._raise_on = raise_on
         self._raise_error = raise_error
         self.prompts: list[str] = []
+        self.requests: list[PlannerCallRequest] = []
 
-    def generate(self, prompt: str) -> str:
+    def generate(self, prompt: str, request: PlannerCallRequest) -> PlannerCallResult:
         index = len(self.prompts)
         self.prompts.append(prompt)
+        self.requests.append(request)
         if self._raise_on is not None and index == self._raise_on:
             assert self._raise_error is not None
             raise self._raise_error
-        return self._outputs[index]
+        return PlannerCallResult(
+            raw_output=self._outputs[index],
+            logical_call=request.logical_call,
+        )
 
 
 # --- the orchestrator assembles the §4.1 envelope (zero live calls) ----------
@@ -161,9 +185,10 @@ class SequencedFakeClient:
 def test_template_generator_assembles_section_4_1() -> None:
     client = SequencedFakeClient(worked_example_stage_outputs())
     generator = TemplateStagedGenerator()
+    context = _context()
     result = generator.generate(
         client=client,
-        context=_context(),
+        context=context,
     )
     proposal = parse_proposal(result.assembled_json)
     assert len(proposal.epics) == 2
@@ -188,6 +213,71 @@ def test_template_generator_assembles_section_4_1() -> None:
         f"staged[{STAGE_EPICS_VERSION}+{STAGE_TICKETS_VERSION}"
         f"+{STAGE_DEPENDENCIES_VERSION}]"
     )
+    # Every ordinary staged call belongs to the one durable execution, carries
+    # its exact canonical stage, and stays at logical attempt zero.
+    calls = [request.logical_call for request in client.requests]
+    assert [call.identity.execution for call in calls] == [
+        context.execution_identity
+    ] * 4
+    assert [call.identity.stage for call in calls] == [
+        "epics",
+        "tickets.new_epic.0",
+        "tickets.new_epic.1",
+        "dependencies",
+    ]
+    assert [call.identity.logical_attempt_no for call in calls] == [0, 0, 0, 0]
+    assert [call.template.prompt_version for call in calls] == [
+        STAGE_EPICS_VERSION,
+        STAGE_TICKETS_VERSION,
+        STAGE_TICKETS_VERSION,
+        STAGE_DEPENDENCIES_VERSION,
+    ]
+    for prompt, call in zip(client.prompts, calls, strict=True):
+        assert call.prompt_size.byte_count == len(prompt.encode("utf-8"))
+        assert call.prompt_size.character_count == len(prompt)
+        assert {segment.name for segment in call.prompt_segments} == {
+            "documents",
+            "anchors",
+            "backlog",
+            "schema",
+            "dynamic_stage",
+        }
+        prompt_identity = next(
+            item for item in call.input_identities if item.name == "rendered_prompt"
+        )
+        assert (
+            prompt_identity.digest == hashlib.sha256(prompt.encode("utf-8")).hexdigest()
+        )
+
+
+def test_staged_template_preflight_fails_before_any_provider_call(
+    tmp_path: Path,
+) -> None:
+    repo = fixture_repo(tmp_path)
+    database = fresh_db(tmp_path)
+    prompts_dir = tmp_path / "prompts"
+    prompts_dir.mkdir()
+    for version in (STAGE_EPICS_VERSION, STAGE_TICKETS_VERSION):
+        name = f"{version}.md.j2"
+        (prompts_dir / name).write_text(
+            (PROMPTS_DIR / name).read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
+    client = SequencedFakeClient(worked_example_stage_outputs())
+
+    with pytest.raises(UnknownTemplateVersionError, match=STAGE_DEPENDENCIES_VERSION):
+        run_plan(
+            repo_root=repo,
+            database=database,
+            client=client,
+            identity=FAKE_IDENTITY,
+            now=NOW,
+            staged_generator=TemplateStagedGenerator(),
+            prompts_dir=prompts_dir,
+        )
+
+    assert client.prompts == []
+    assert client.requests == []
 
 
 # --- ATLAS-108: fence-tolerant parsing on the staged path --------------------
@@ -239,6 +329,9 @@ def test_staged_hash_invariant_is_over_the_unstripped_stage_bytes() -> None:
 
 def _context() -> StageContext:
     return StageContext(
+        execution_identity=TEST_EXECUTION_IDENTITY,
+        planner_identity=TEST_PLANNER_IDENTITY,
+        execution_parameters=TEST_EXECUTION_PARAMETERS,
         product_key="ATLAS",
         documents=[
             {"path": "docs/atlas/plan.md", "sha": "sha-1", "content": "# Planning\n"}
@@ -345,7 +438,12 @@ def test_run_plan_staged_path_persists_generation_stages(tmp_path: Any) -> None:
         .generate(
             client=SequencedFakeClient(worked_example_stage_outputs()),
             context=StageContext(
-                product_key="ATLAS", documents=payload, valid_anchors=valid_anchors
+                execution_identity=TEST_EXECUTION_IDENTITY,
+                planner_identity=TEST_PLANNER_IDENTITY,
+                execution_parameters=TEST_EXECUTION_PARAMETERS,
+                product_key="ATLAS",
+                documents=payload,
+                valid_anchors=valid_anchors,
             ),
         )
         .stage_records
@@ -456,6 +554,58 @@ def test_run_plan_staged_path_records_protocol_violation(tmp_path: Any) -> None:
     assert "out of range" in reason["error"]
 
 
+def test_run_plan_staged_records_invalid_epic_key_before_next_provider_call(
+    tmp_path: Any,
+) -> None:
+    repo = fixture_repo(tmp_path)
+    database = fresh_db(tmp_path)
+    invalid_epics_raw = json.dumps(
+        {
+            "epics": [_epic("Invented identity") | {"key": "NOT-AN-EPIC-KEY"}],
+            "planner_notes": [],
+        }
+    )
+    client = SequencedFakeClient([invalid_epics_raw])
+
+    result = run_plan(
+        repo_root=repo,
+        database=database,
+        client=client,
+        identity=FAKE_IDENTITY,
+        now=NOW,
+        staged_generator=TemplateStagedGenerator(),
+    )
+
+    assert result.status is PlanRunStatus.FAILED
+    assert result.failure_reason is not None
+    assert json.loads(result.failure_reason) == {
+        "stage": "gates",
+        "failures": [
+            {
+                "gate": 6,
+                "code": "GATE6_UNKNOWN_KEY",
+                "reason": (
+                    "epics key 'NOT-AN-EPIC-KEY' does not exist in the "
+                    "current backlog; the model never invents keys (ADR-0007)"
+                ),
+            }
+        ],
+    }
+    assert len(client.prompts) == 1
+    assert len(client.requests) == 1
+    assert (
+        result.plan_run.raw_output_hash
+        == hashlib.sha256(invalid_epics_raw.encode("utf-8")).hexdigest()
+    )
+    assert len(result.plan_run.generation_stages) == 1
+    assert result.plan_run.generation_stages[0]["stage"] == "epics"
+    assert result.plan_run.generation_stages[0]["raw_output_hash"] == (
+        result.plan_run.raw_output_hash
+    )
+    stored = PlanRunRepo(database).get(result.plan_run.id)
+    assert stored == result.plan_run
+
+
 # --- re-plan seeding (ATLAS-144): a non-empty backlog seeds and re-plans ------
 
 NEW_TICKET_TITLE = "New work"
@@ -538,15 +688,22 @@ class SeedFollowingClient:
 
     def __init__(self) -> None:
         self.prompts: list[str] = []
+        self.requests: list[PlannerCallRequest] = []
         self._tickets_calls = 0
 
-    def generate(self, prompt: str) -> str:
+    def generate(self, prompt: str, request: PlannerCallRequest) -> PlannerCallResult:
         self.prompts.append(prompt)
+        self.requests.append(request)
         if "stage 1 of 3" in prompt:
-            return self._epics(prompt)
-        if "stage 2 of 3" in prompt:
-            return self._tickets(prompt)
-        return json.dumps({"dependencies": [], "planner_notes": []})
+            raw_output = self._epics(prompt)
+        elif "stage 2 of 3" in prompt:
+            raw_output = self._tickets(prompt)
+        else:
+            raw_output = json.dumps({"dependencies": [], "planner_notes": []})
+        return PlannerCallResult(
+            raw_output=raw_output,
+            logical_call=request.logical_call,
+        )
 
     @staticmethod
     def _seed(prompt: str) -> dict[str, Any]:
@@ -705,7 +862,12 @@ def test_seeded_first_run_renders_empty_seed_and_same_envelope(tmp_path: Any) ->
         .generate(
             client=SequencedFakeClient(worked_example_stage_outputs()),
             context=StageContext(
-                product_key="ATLAS", documents=payload, valid_anchors=valid_anchors
+                execution_identity=TEST_EXECUTION_IDENTITY,
+                planner_identity=TEST_PLANNER_IDENTITY,
+                execution_parameters=TEST_EXECUTION_PARAMETERS,
+                product_key="ATLAS",
+                documents=payload,
+                valid_anchors=valid_anchors,
             ),
         )
         .assembled_json

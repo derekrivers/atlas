@@ -1,8 +1,8 @@
 """Fake planner clients for pipeline/CLI tests (ATLAS-26 D2).
 
 Every pipeline and CLI test injects one of these; no test ever makes a
-real API call. The fakes satisfy the PlannerClient Protocol (generate
-only) and carry their own ModelIdentity for the CLI to record.
+real API call. The fakes satisfy the structured PlannerClient Protocol and
+carry their own ModelIdentity for the CLI to record.
 """
 
 from __future__ import annotations
@@ -10,6 +10,8 @@ from __future__ import annotations
 from atlas.planning.client import (
     ModelCallError,
     ModelIdentity,
+    PlannerCallRequest,
+    PlannerCallResult,
     TruncatedOutputError,
 )
 
@@ -26,16 +28,24 @@ class FakePlannerClient:
     def __init__(self, canned: str) -> None:
         self._canned = canned
         self.last_prompt: str | None = None
+        self.requests: list[PlannerCallRequest] = []
+        self.results: list[PlannerCallResult] = []
 
-    def generate(self, prompt: str) -> str:
+    def generate(self, prompt: str, request: PlannerCallRequest) -> PlannerCallResult:
         self.last_prompt = prompt
-        return self._canned
+        self.requests.append(request)
+        result = PlannerCallResult(
+            raw_output=self._canned,
+            logical_call=request.logical_call,
+        )
+        self.results.append(result)
+        return result
 
 
 class RaisingPlannerClient:
     """Simulates a model-call failure (network/timeout/API)."""
 
-    def generate(self, prompt: str) -> str:
+    def generate(self, prompt: str, request: PlannerCallRequest) -> PlannerCallResult:
         raise ModelCallError("simulated model call failure")
 
 
@@ -43,7 +53,7 @@ class MustNotBeCalledClient:
     """Proves a path performs zero generation calls (ATLAS-153): any
     generate() call is an immediate, attributable test failure."""
 
-    def generate(self, prompt: str) -> str:
+    def generate(self, prompt: str, request: PlannerCallRequest) -> PlannerCallResult:
         raise AssertionError(
             "PlannerClient.generate was called on a path that must not "
             "call the model (ATLAS-153)"
@@ -63,7 +73,7 @@ class TruncatingPlannerClient:
         self._partial = partial
         self._max_tokens = max_tokens
 
-    def generate(self, prompt: str) -> str:
+    def generate(self, prompt: str, request: PlannerCallRequest) -> PlannerCallResult:
         raise TruncatedOutputError(
             raw_output=self._partial, max_tokens=self._max_tokens
         )

@@ -14,7 +14,7 @@ current backlog's key set, and the AnchorIndex as parameters.
 
 from __future__ import annotations
 
-from collections.abc import Collection
+from collections.abc import Collection, Iterable, Sequence
 from dataclasses import dataclass
 
 import networkx as nx
@@ -30,6 +30,38 @@ class GateFailure:
     gate: int
     code: str
     reason: str
+
+
+def key_integrity_failures(
+    *,
+    current_backlog_keys: Collection[str],
+    keyed_items: Sequence[tuple[str, Iterable[str | None]]],
+) -> list[GateFailure]:
+    """Return Gate-6 failures for model-emitted keys absent from backlog.
+
+    Staged orchestration uses this same authority immediately after the epics
+    projection is observed, before an echoed epic key can influence the next
+    provider call's telemetry stage.  The full-proposal gate continues to use
+    the complete backlog key set for its existing aggregate pass.
+    """
+
+    backlog = set(current_backlog_keys)
+    failures: list[GateFailure] = []
+    for kind, keys in keyed_items:
+        for key in keys:
+            if key is not None and key not in backlog:
+                failures.append(
+                    GateFailure(
+                        gate=6,
+                        code="GATE6_UNKNOWN_KEY",
+                        reason=(
+                            f"{kind} key {key!r} does not exist in the "
+                            "current backlog; the model never invents keys "
+                            "(ADR-0007)"
+                        ),
+                    )
+                )
+    return failures
 
 
 def _ticket_node_ids(proposal: Proposal) -> list[str]:
@@ -157,24 +189,15 @@ def run_gates(
             )
 
     # Gate 6: key integrity — no model-minted keys (ADR-0007).
-    backlog = set(current_backlog_keys)
-    for kind, keys in (
-        ("tickets", (ticket.key for ticket in proposal.tickets)),
-        ("epics", (epic.key for epic in proposal.epics)),
-    ):
-        for key in keys:
-            if key is not None and key not in backlog:
-                failures.append(
-                    GateFailure(
-                        gate=6,
-                        code="GATE6_UNKNOWN_KEY",
-                        reason=(
-                            f"{kind} key {key!r} does not exist in the "
-                            "current backlog; the model never invents keys "
-                            "(ADR-0007)"
-                        ),
-                    )
-                )
+    failures.extend(
+        key_integrity_failures(
+            current_backlog_keys=current_backlog_keys,
+            keyed_items=(
+                ("tickets", (ticket.key for ticket in proposal.tickets)),
+                ("epics", (epic.key for epic in proposal.epics)),
+            ),
+        )
+    )
 
     # Gate 7: size guard — dependency count only; the 1-7 acceptance
     # criteria bound is the Proposal model's and fails as gate 1 (spec

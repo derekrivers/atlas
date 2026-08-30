@@ -47,7 +47,19 @@ from atlas.core.models import (
     Ticket,
 )
 from atlas.core.models.dependency import DependencyType
-from atlas.planning.client import ModelIdentity, PlannerClient, TruncatedOutputError
+from atlas.core.models.planner_call_telemetry import (
+    PlannerExecutionParameters,
+    PlannerIdentity,
+    PlanningExecutionIdentity,
+)
+from atlas.planning.client import (
+    ModelIdentity,
+    PlannerCallRequest,
+    PlannerClient,
+    TruncatedOutputError,
+    invoke_planner_call,
+    planner_telemetry_identity,
+)
 from atlas.planning.gates import GateFailure, run_gates
 from atlas.planning.ingestion import (
     collect_batch_manifest_documents,
@@ -73,12 +85,20 @@ from atlas.planning.reconciler import (
     PlanDiff,
     reconcile,
 )
-from atlas.planning.renderer import RenderedPrompt, render_planner_prompt
+from atlas.planning.renderer import (
+    RenderedPrompt,
+    render_planner_prompt,
+    resolve_prompt_template_artifact,
+)
 from atlas.planning.seed import render_backlog_yaml
 from atlas.planning.staged import (
+    STAGE_DEPENDENCIES_VERSION,
+    STAGE_EPICS_VERSION,
+    STAGE_TICKETS_VERSION,
     StageContext,
     StagedGenerationError,
     StagedProposalGenerator,
+    StageGateFailureError,
     StageRecord,
     StageTruncatedError,
     composite_prompt_hash,
@@ -329,20 +349,34 @@ def run_plan(
     # Derived from the same anchor_index gate 4 validates against, so the
     # prompt's list and the gate's validator cannot drift.
     valid_anchors = anchor_index.anchor_choices()
+    planner_identity, execution_parameters = planner_telemetry_identity(identity)
     if staged_generator is None:
+        backlog_yaml = render_backlog_yaml(
+            epics=epics,
+            tickets=tickets,
+            dependencies=dependencies,
+            projection="full",
+        )
+        next_key_hint = _next_key_hint(database)
+        # Freeze the exact selected template before minting the durable
+        # post-preflight execution identity or invoking a provider.
+        template = resolve_prompt_template_artifact(
+            prompts_dir=prompts_dir,
+            stage="single",
+        )
+        execution_identity = PlanningExecutionIdentity(execution_id=uuid4())
         generated = _generate_single_call(
             client=client,
+            execution_identity=execution_identity,
+            planner_identity=planner_identity,
+            execution_parameters=execution_parameters,
             product_key=product.key,
             documents=document_payload,
             valid_anchors=valid_anchors,
-            backlog_yaml=render_backlog_yaml(
-                epics=epics,
-                tickets=tickets,
-                dependencies=dependencies,
-                projection="full",
-            ),
+            backlog_yaml=backlog_yaml,
             frozen=frozen,
-            next_key_hint=_next_key_hint(database),
+            next_key_hint=next_key_hint,
+            prompt_version=template.prompt_version,
             prompts_dir=prompts_dir,
         )
     else:
@@ -373,17 +407,42 @@ def run_plan(
             seed_tickets_by_epic.setdefault(epic_keys_by_id[ticket.epic_id], []).append(
                 ticket
             )
+        # All released staged artifacts are resolved before the first call.
+        # Dynamic ticket-batch input identities are derived later, but an
+        # unknown template can never surface after an earlier provider call.
+        resolve_prompt_template_artifact(
+            version=STAGE_EPICS_VERSION,
+            prompts_dir=prompts_dir,
+            stage="epics",
+        )
+        resolve_prompt_template_artifact(
+            version=STAGE_TICKETS_VERSION,
+            prompts_dir=prompts_dir,
+            stage="tickets.preflight",
+        )
+        resolve_prompt_template_artifact(
+            version=STAGE_DEPENDENCIES_VERSION,
+            prompts_dir=prompts_dir,
+            stage="dependencies",
+        )
+        current_epics_seed = render_backlog_yaml(epics=epics, projection="epics")
+        current_tickets_seed_by_epic = {
+            key: render_backlog_yaml(tickets=epic_tickets, projection="tickets")
+            for key, epic_tickets in seed_tickets_by_epic.items()
+        }
+        execution_identity = PlanningExecutionIdentity(execution_id=uuid4())
         generated = _generate_staged(
             staged_generator,
             client=client,
+            execution_identity=execution_identity,
+            planner_identity=planner_identity,
+            execution_parameters=execution_parameters,
             product_key=product.key,
             documents=document_payload,
             valid_anchors=valid_anchors,
-            current_epics_seed=render_backlog_yaml(epics=epics, projection="epics"),
-            current_tickets_seed_by_epic={
-                key: render_backlog_yaml(tickets=epic_tickets, projection="tickets")
-                for key, epic_tickets in seed_tickets_by_epic.items()
-            },
+            current_epic_keys=frozenset(epic_keys_by_id.values()),
+            current_epics_seed=current_epics_seed,
+            current_tickets_seed_by_epic=current_tickets_seed_by_epic,
             prompts_dir=prompts_dir,
             on_progress=on_progress,
         )
@@ -726,12 +785,16 @@ def run_stubs_only_plan(
 def _generate_single_call(
     *,
     client: PlannerClient,
+    execution_identity: PlanningExecutionIdentity,
+    planner_identity: PlannerIdentity,
+    execution_parameters: PlannerExecutionParameters,
     product_key: str,
     documents: list[dict[str, str]],
     valid_anchors: list[dict[str, str]],
     backlog_yaml: str | None,
     frozen: list[str],
     next_key_hint: str,
+    prompt_version: str,
     prompts_dir: Path | None,
 ) -> _Generated:
     """The single-call generation path (ATLAS-26/101): render the versioned
@@ -748,10 +811,24 @@ def _generate_single_call(
             "next_key_hint": next_key_hint,
             "proposal_json_schema": json.dumps(Proposal.model_json_schema(), indent=2),
         },
+        version=prompt_version,
         prompts_dir=prompts_dir,
+        stage="single",
+    )
+    request = PlannerCallRequest(
+        logical_call=rendered.logical_call(
+            execution=execution_identity,
+            planner=planner_identity,
+            execution_parameters=execution_parameters,
+            logical_attempt_no=0,
+        )
     )
     try:
-        raw_output = client.generate(rendered.text)
+        raw_output = invoke_planner_call(
+            client,
+            prompt=rendered.text,
+            request=request,
+        ).raw_output
     except TruncatedOutputError as error:
         reason = json.dumps(
             {
@@ -799,9 +876,13 @@ def _generate_staged(
     staged_generator: StagedProposalGenerator,
     *,
     client: PlannerClient,
+    execution_identity: PlanningExecutionIdentity,
+    planner_identity: PlannerIdentity,
+    execution_parameters: PlannerExecutionParameters,
     product_key: str,
     documents: list[dict[str, str]],
     valid_anchors: list[dict[str, str]],
+    current_epic_keys: frozenset[str],
     current_epics_seed: str | None,
     current_tickets_seed_by_epic: dict[str, str | None],
     prompts_dir: Path | None,
@@ -815,12 +896,18 @@ def _generate_staged(
     select-from list the epics and tickets stages render. The two seed
     arguments (ATLAS-144) carry the current backlog the epics and per-epic
     tickets stages restate; both are ``None``/empty on a first run, so the
-    seeded templates render their empty-backlog branch (first-run parity)."""
+    seeded templates render their empty-backlog branch (first-run parity).
+    ``current_epic_keys`` binds Stage-1 echoes before they can influence a
+    provider-bound telemetry stage."""
     context = StageContext(
+        execution_identity=execution_identity,
+        planner_identity=planner_identity,
+        execution_parameters=execution_parameters,
         product_key=product_key,
         documents=documents,
         prompts_dir=prompts_dir,
         valid_anchors=valid_anchors,
+        current_epic_keys=current_epic_keys,
         current_epics_seed=current_epics_seed,
         current_tickets_seed_by_epic=current_tickets_seed_by_epic,
     )
@@ -846,6 +933,14 @@ def _generate_staged(
             prompt_hash=composite_prompt_hash(error.records),
             generation_stages=_stage_payload(error.records),
             failure_reason=reason,
+        )
+    except StageGateFailureError as error:
+        return _Generated(
+            raw_output=error.raw_output,
+            prompt_version=composite_prompt_version(error.records),
+            prompt_hash=composite_prompt_hash(error.records),
+            generation_stages=_stage_payload(error.records),
+            failure_reason=_gate_failure_reason(list(error.failures)),
         )
     except StagedGenerationError as error:
         reason = json.dumps(

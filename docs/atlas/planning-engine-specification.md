@@ -462,6 +462,44 @@ and parse/schema/gate disposition. Provider usage values are one of
 `measured(value)`, `unsupported`, or `unavailable`. Missing values remain
 `null` and are never replaced with zero or an estimate.
 
+The planner-facing seam passes transient prompt text separately from a typed
+telemetry request/result record. After product, corpus, anchor index, backlog,
+planner parameters, and every selected template artifact pass deterministic
+preflight, orchestration creates one `PlanningExecutionIdentity` and reuses it
+for every logical call in that planning execution. A provider invocation
+therefore receives a complete `PlannerLogicalCall` before transport begins:
+planner/model, execution parameters, exact template artifact SHA-256, rendered
+prompt SHA-256, prompt size, named segment identities and sizes, canonical
+stage, and zero-based logical attempt. The provider boundary may add physical
+attempts to the result record but may not change those orchestration-owned
+facts.
+
+The canonical orchestration stages are `single`, `epics`,
+`tickets.<environment-owned-epic-identity>`, and `dependencies`. A directed
+tickets-stage correction retains the same stage and increments only its
+logical attempt (`0`, `1`, ...); ordinary stages have logical attempt `0`.
+Legacy `PlanRun.generation_stages` labels remain unchanged for proposal
+provenance and presentation. Unknown/mismatched stage, template, prompt, or
+input facts fail before the provider is invoked. A non-null epic key emitted by
+Stage 1 is bound against the frozen current epic-key set before it can construct
+a tickets-stage identity; an unknown key follows the normal recorded Gate-6
+failure path with the Stage-1 raw-output hash and makes no subsequent provider
+call.
+
+Prompt measurement is derived from the actual values handed to the released
+template renderer. Every call records the total rendered prompt's exact UTF-8
+byte and Unicode-character counts and the named `documents`, `anchors`,
+`backlog`, `schema`, and `dynamic_stage` input segment sizes. SHA-256 identities
+cover those deterministic segment encodings and the complete rendered prompt.
+Only digests and counts enter the telemetry record: document bodies, prompt
+segments, and full prompt text remain transient. This seam does not persist a
+`PlanningExecution`, interpret provider-specific usage, or observe physical
+transport retries; those remain separate capabilities.
+
+The Anthropic adapter also binds each structured request's provider/model and
+execution parameters to its pinned invocation identity before transport. A
+mismatch raises the planner-call contract error without invoking the provider.
+
 `PlanningExecution.outcome` is optional. `None` is a visible, honest
 non-terminal execution, including after interruption; this contract defines no
 automatic abandonment or recovery rule. `raw_output_observed` records whether

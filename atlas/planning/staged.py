@@ -40,7 +40,18 @@ from typing import Protocol, TypeVar, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
-from atlas.planning.client import PlannerClient, TruncatedOutputError
+from atlas.core.models.planner_call_telemetry import (
+    PlannerExecutionParameters,
+    PlannerIdentity,
+    PlanningExecutionIdentity,
+)
+from atlas.planning.client import (
+    PlannerCallRequest,
+    PlannerClient,
+    TruncatedOutputError,
+    invoke_planner_call,
+)
+from atlas.planning.gates import GateFailure, key_integrity_failures
 from atlas.planning.progress import (
     STAGE_ASSEMBLY,
     STAGE_DEPENDENCIES,
@@ -227,6 +238,32 @@ class StageOutputError(StagedGenerationError):
     """A stage's raw output was not valid JSON / not a valid projection, or
     the assembled references were inconsistent — the model broke the
     generation protocol."""
+
+
+class StageGateFailureError(StagedGenerationError):
+    """A staged output hit an existing proposal gate before the next call.
+
+    The raw output and completed stage records remain available to the
+    pipeline, while ``failures`` preserves the normal recorded gate-failure
+    shape instead of turning an untrusted output into a pre-provider contract
+    exception.
+    """
+
+    def __init__(
+        self,
+        *,
+        stage: str,
+        records: Sequence[StageRecord],
+        raw_output: str,
+        failures: Sequence[GateFailure],
+    ) -> None:
+        super().__init__(
+            stage=stage,
+            records=records,
+            raw_output=raw_output,
+            message="; ".join(failure.reason for failure in failures),
+        )
+        self.failures = tuple(failures)
 
 
 class StageProjectionError(StageOutputError):
@@ -455,7 +492,8 @@ class StageContext:
     empty map), so a first run renders the templates' empty-backlog branch and
     behaviour is unchanged (D-3). The model REFERENCES existing keys and never
     mints identity (ADR-0007); the reconciler remains the sole authority on
-    create/update/archive (D-2).
+    create/update/archive (D-2). ``current_epic_keys`` is the frozen set that
+    binds any Stage-1 echoed identity before it can name a tickets-stage call.
 
     ``valid_anchors`` (ATLAS-111) is the resolvable ``{anchor, heading}`` list
     the epics and tickets stages SELECT their ``source_anchor`` from — derived
@@ -464,10 +502,14 @@ class StageContext:
     validator cannot drift. Defaults to empty for generator-only tests that do
     not exercise gate 4."""
 
+    execution_identity: PlanningExecutionIdentity
+    planner_identity: PlannerIdentity
+    execution_parameters: PlannerExecutionParameters
     product_key: str
     documents: Sequence[Mapping[str, str]]
     prompts_dir: Path | None = None
     valid_anchors: Sequence[Mapping[str, str]] = ()
+    current_epic_keys: frozenset[str] = frozenset()
     current_epics_seed: str | None = None
     current_tickets_seed_by_epic: Mapping[str, str | None] = field(default_factory=dict)
 
@@ -491,6 +533,12 @@ _StageModelT = TypeVar("_StageModelT", bound=BaseModel)
 
 def _projection_schema(model: type[BaseModel]) -> str:
     return json.dumps(model.model_json_schema(), indent=2)
+
+
+def _ticket_call_stage(epic_identity: str) -> str:
+    """Return the canonical telemetry stage for one environment-owned epic."""
+
+    return f"tickets.{epic_identity.casefold().replace(':', '.')}"
 
 
 class TemplateStagedGenerator:
@@ -525,9 +573,29 @@ class TemplateStagedGenerator:
             },
             version=STAGE_EPICS_VERSION,
             prompts_dir=context.prompts_dir,
+            stage="epics",
         )
-        epics_raw = self._call(client, epics_prompt, "epics", records)
+        epics_raw = self._call(
+            client,
+            epics_prompt,
+            "epics",
+            records,
+            context=context,
+            logical_attempt_no=0,
+        )
         epics_output = self._parse(StageEpicsOutput, epics_raw, "epics", records)
+
+        key_failures = key_integrity_failures(
+            current_backlog_keys=context.current_epic_keys,
+            keyed_items=(("epics", (epic.key for epic in epics_output.epics)),),
+        )
+        if key_failures:
+            raise StageGateFailureError(
+                stage="epics",
+                records=records,
+                raw_output=epics_raw,
+                failures=key_failures,
+            )
 
         assembled_epics = [
             {
@@ -545,6 +613,7 @@ class TemplateStagedGenerator:
         for index, epic in enumerate(epics_output.epics):
             identity = epic.key if epic.key is not None else f"new_epic:{index}"
             stage = f"tickets:{identity}"
+            logical_stage = _ticket_call_stage(identity)
 
             # This epic's existing tickets (ATLAS-144): its echoed-key identity
             # maps to the seed the pipeline rendered from the store; a NEW epic
@@ -557,6 +626,7 @@ class TemplateStagedGenerator:
                 epic: ProposalEpic = epic,
                 identity: str = identity,
                 epic_tickets_seed: str | None = epic_tickets_seed,
+                logical_stage: str = logical_stage,
             ) -> RenderedPrompt:
                 return render_planner_prompt(
                     {
@@ -576,6 +646,7 @@ class TemplateStagedGenerator:
                     },
                     version=STAGE_TICKETS_VERSION,
                     prompts_dir=context.prompts_dir,
+                    stage=logical_stage,
                 )
 
             tickets_output = self._call_stage_with_retry(
@@ -584,6 +655,7 @@ class TemplateStagedGenerator:
                 stage,
                 records,
                 _render_tickets,
+                context=context,
                 emit=emit,
                 index=index + 1,
                 total=len(epics_output.epics),
@@ -616,9 +688,15 @@ class TemplateStagedGenerator:
             },
             version=STAGE_DEPENDENCIES_VERSION,
             prompts_dir=context.prompts_dir,
+            stage="dependencies",
         )
         dependencies_raw = self._call(
-            client, dependencies_prompt, "dependencies", records
+            client,
+            dependencies_prompt,
+            "dependencies",
+            records,
+            context=context,
+            logical_attempt_no=0,
         )
         dependencies_output = self._parse(
             StageDependenciesOutput, dependencies_raw, "dependencies", records
@@ -662,6 +740,7 @@ class TemplateStagedGenerator:
         records: list[StageRecord],
         render: Callable[[str | None], RenderedPrompt],
         *,
+        context: StageContext,
         emit: ProgressCallback,
         index: int,
         total: int,
@@ -695,7 +774,14 @@ class TemplateStagedGenerator:
             label = stage if attempt == 0 else f"{stage} (retry {attempt})"
             correction = None if last_error is None else _correction_message(last_error)
             prompt = render(correction)
-            raw = self._call(client, prompt, label, records)
+            raw = self._call(
+                client,
+                prompt,
+                label,
+                records,
+                context=context,
+                logical_attempt_no=attempt,
+            )
             try:
                 return self._parse(model, raw, label, records)
             except StageProjectionError as error:
@@ -709,9 +795,24 @@ class TemplateStagedGenerator:
         prompt: RenderedPrompt,
         stage: str,
         records: list[StageRecord],
+        *,
+        context: StageContext,
+        logical_attempt_no: int,
     ) -> str:
+        request = PlannerCallRequest(
+            logical_call=prompt.logical_call(
+                execution=context.execution_identity,
+                planner=context.planner_identity,
+                execution_parameters=context.execution_parameters,
+                logical_attempt_no=logical_attempt_no,
+            )
+        )
         try:
-            raw = client.generate(prompt.text)
+            raw = invoke_planner_call(
+                client,
+                prompt=prompt.text,
+                request=request,
+            ).raw_output
         except TruncatedOutputError as error:
             records.append(
                 StageRecord(
