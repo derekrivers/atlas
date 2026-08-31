@@ -324,6 +324,8 @@ class PmRecoveryRepo:
                         closed_at=None,
                         closure_event_id=None,
                         closure_kind=None,
+                        replaces_episode_id=None,
+                        replacement_event_id=None,
                     )
                 )
                 session.flush()
@@ -355,7 +357,11 @@ class PmRecoveryRepo:
         closure_event_id = _bounded_identifier(
             closure_event_id, name="closure_event_id"
         )
+        current = self.get_episode(episode_id)
+        if current is None:
+            raise PmRecoveryStorageError(PmRecoveryStorageCode.EPISODE_NOT_FOUND)
         with self._db.session() as session, session.begin():
+            self._lock_sequence_counter(session, current.product_id)
             row = session.get(PmRecoveryEpisodeRow, episode_id)
             if row is None:
                 raise PmRecoveryStorageError(PmRecoveryStorageCode.EPISODE_NOT_FOUND)
@@ -427,6 +433,8 @@ class PmRecoveryRepo:
                     or old.closed_at != replaced
                     or old.closure_event_id != closure_event_id
                     or old.closure_kind != closure_kind.value
+                    or existing.replaces_episode_id != old.id
+                    or existing.replacement_event_id != closure_event_id
                 ):
                     raise PmRecoveryStorageError(
                         PmRecoveryStorageCode.EPISODE_CLOSURE_CONFLICT
@@ -490,6 +498,8 @@ class PmRecoveryRepo:
                     closed_at=None,
                     closure_event_id=None,
                     closure_kind=None,
+                    replaces_episode_id=old.id,
+                    replacement_event_id=closure_event_id,
                 )
             )
             session.flush()
@@ -754,7 +764,11 @@ class PmRecoveryRepo:
         superseded_by_event_id = _bounded_identifier(
             superseded_by_event_id, name="superseded_by_event_id"
         )
+        current = self.get_blocker(blocker_id)
+        if current is None:
+            raise PmRecoveryStorageError(PmRecoveryStorageCode.BLOCKER_NOT_FOUND)
         with self._db.session() as session, session.begin():
+            self._lock_sequence_counter(session, current.product_id)
             row = session.get(PmBlockerOccurrenceRow, blocker_id)
             if row is None:
                 raise PmRecoveryStorageError(PmRecoveryStorageCode.BLOCKER_NOT_FOUND)

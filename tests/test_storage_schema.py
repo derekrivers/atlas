@@ -514,6 +514,8 @@ DOCUMENTED_COLUMNS: dict[str, dict[str, tuple[bool, str | None]]] = {
         "closed_at": (True, None),
         "closure_event_id": (True, None),
         "closure_kind": (True, None),
+        "replaces_episode_id": (True, None),
+        "replacement_event_id": (True, None),
     },
     "pm_blocker_occurrences": {
         "id": (NN, None),
@@ -671,6 +673,7 @@ DOCUMENTED_FOREIGN_KEYS: dict[str, dict[str, str]] = {
     "pm_recovery_episodes": {
         "product_id": "products",
         "candidate_ticket_id": "tickets",
+        "replaces_episode_id": "pm_recovery_episodes",
     },
     "pm_blocker_occurrences": {
         "product_id": "products",
@@ -729,6 +732,7 @@ DOCUMENTED_UNIQUES: dict[str, list[list[str]]] = {
     "pm_recovery_episodes": [
         ["identity_fingerprint"],
         ["active_scope_fingerprint", "product_id"],
+        ["replaces_episode_id"],
         ["episode_created_sequence", "product_id"],
         ["last_evaluated_sequence", "product_id"],
     ],

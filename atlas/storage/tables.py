@@ -724,6 +724,7 @@ class PmRecoveryEpisodeRow(Base):
     __table_args__ = (
         sa.UniqueConstraint("identity_fingerprint"),
         sa.UniqueConstraint("product_id", "active_scope_fingerprint"),
+        sa.UniqueConstraint("replaces_episode_id"),
         sa.UniqueConstraint("product_id", "episode_created_sequence"),
         sa.UniqueConstraint("product_id", "last_evaluated_sequence"),
         sa.CheckConstraint(
@@ -739,7 +740,7 @@ class PmRecoveryEpisodeRow(Base):
         ),
         sa.CheckConstraint(
             "(candidate_ticket_id IS NULL AND candidate_ticket_key IS NULL) OR "
-            "(candidate_ticket_id IS NOT NULL AND "
+            "(candidate_ticket_id IS NOT NULL AND candidate_ticket_key IS NOT NULL AND "
             "length(candidate_ticket_key) BETWEEN 1 AND 128)",
             name="pm_recovery_episodes_candidate_pair",
         ),
@@ -753,6 +754,8 @@ class PmRecoveryEpisodeRow(Base):
             "(last_evaluated_sequence IS NULL AND last_evaluation_id IS NULL AND "
             "last_evaluation_fingerprint IS NULL AND last_evaluated_at IS NULL) OR "
             "(last_evaluated_sequence IS NOT NULL AND "
+            "last_evaluation_id IS NOT NULL AND "
+            "last_evaluation_fingerprint IS NOT NULL AND "
             "length(last_evaluation_id) BETWEEN 1 AND 128 AND "
             "length(last_evaluation_fingerprint) = 64 AND "
             "last_evaluated_at IS NOT NULL AND last_evaluated_at >= created_at)",
@@ -760,17 +763,28 @@ class PmRecoveryEpisodeRow(Base):
         ),
         sa.CheckConstraint(
             "(closed_at IS NULL AND closure_event_id IS NULL AND closure_kind IS NULL) "
-            "OR (closed_at IS NOT NULL AND length(closure_event_id) BETWEEN 1 AND 128 "
-            "AND closure_kind IN ('authoritative_lifecycle_entry', "
+            "OR (closed_at IS NOT NULL AND closure_event_id IS NOT NULL AND "
+            "length(closure_event_id) BETWEEN 1 AND 128 "
+            "AND closure_kind IS NOT NULL AND closure_kind IN "
+            "('authoritative_lifecycle_entry', "
             "'publication_replacement', 'recovery_completed') "
             "AND closed_at >= created_at AND "
             "(last_evaluated_at IS NULL OR closed_at >= last_evaluated_at))",
             name="pm_recovery_episodes_closure_fields",
         ),
         sa.CheckConstraint(
-            "(closed_at IS NULL AND length(active_scope_fingerprint) = 64) OR "
+            "(closed_at IS NULL AND active_scope_fingerprint IS NOT NULL AND "
+            "length(active_scope_fingerprint) = 64) OR "
             "(closed_at IS NOT NULL AND active_scope_fingerprint IS NULL)",
             name="pm_recovery_episodes_active_scope",
+        ),
+        sa.CheckConstraint(
+            "(replaces_episode_id IS NULL AND replacement_event_id IS NULL) OR "
+            "(replaces_episode_id IS NOT NULL AND "
+            "replacement_event_id IS NOT NULL AND "
+            "length(replacement_event_id) BETWEEN 1 AND 128 AND "
+            "replaces_episode_id <> id)",
+            name="pm_recovery_episodes_replacement_lineage",
         ),
         sa.Index(
             "ix_pm_recovery_episodes_active_operation",
@@ -815,6 +829,10 @@ class PmRecoveryEpisodeRow(Base):
     closed_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     closure_event_id: Mapped[str | None] = mapped_column(sa.Text)
     closure_kind: Mapped[str | None] = mapped_column(sa.Text)
+    replaces_episode_id: Mapped[UUID | None] = mapped_column(
+        sa.Uuid, sa.ForeignKey("pm_recovery_episodes.id")
+    )
+    replacement_event_id: Mapped[str | None] = mapped_column(sa.Text)
 
 
 class PmBlockerOccurrenceRow(Base):
@@ -853,7 +871,7 @@ class PmBlockerOccurrenceRow(Base):
         ),
         sa.CheckConstraint(
             "(candidate_ticket_id IS NULL AND candidate_ticket_key IS NULL) OR "
-            "(candidate_ticket_id IS NOT NULL AND "
+            "(candidate_ticket_id IS NOT NULL AND candidate_ticket_key IS NOT NULL AND "
             "length(candidate_ticket_key) BETWEEN 1 AND 128)",
             name="pm_blocker_occurrences_candidate_pair",
         ),
@@ -867,15 +885,20 @@ class PmBlockerOccurrenceRow(Base):
         sa.CheckConstraint(
             "(policy_namespace IS NULL AND policy_revision IS NULL AND "
             "policy_fingerprint IS NULL) OR "
-            "(length(policy_namespace) BETWEEN 1 AND 128 AND policy_revision > 0 "
+            "(policy_namespace IS NOT NULL AND policy_revision IS NOT NULL AND "
+            "policy_fingerprint IS NOT NULL AND "
+            "length(policy_namespace) BETWEEN 1 AND 128 AND policy_revision > 0 "
             "AND length(policy_fingerprint) = 64)",
             name="pm_blocker_occurrences_policy_fields",
         ),
         sa.CheckConstraint(
-            "(active_fingerprint = blocker_fingerprint AND superseded_at IS NULL "
+            "(active_fingerprint IS NOT NULL AND "
+            "active_fingerprint = blocker_fingerprint AND superseded_at IS NULL "
             "AND superseded_by_event_id IS NULL AND supersession_kind IS NULL) OR "
             "(active_fingerprint IS NULL AND superseded_at IS NOT NULL "
+            "AND superseded_by_event_id IS NOT NULL "
             "AND length(superseded_by_event_id) BETWEEN 1 AND 128 "
+            "AND supersession_kind IS NOT NULL "
             "AND supersession_kind IN ('progress', 'recovery') "
             "AND superseded_at >= latest_observed_at)",
             name="pm_blocker_occurrences_active_or_superseded",

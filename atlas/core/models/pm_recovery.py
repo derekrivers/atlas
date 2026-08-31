@@ -176,8 +176,12 @@ class PmRecoveryEpisode(PmRecoveryEpisodeIdentity):
         default=None, max_length=MAX_PM_RECOVERY_NAME_LENGTH
     )
     closure_kind: PmRecoveryEpisodeClosureKind | None = None
+    replaces_episode_id: UUID | None = None
+    replacement_event_id: str | None = Field(
+        default=None, max_length=MAX_PM_RECOVERY_NAME_LENGTH
+    )
 
-    @field_validator("last_evaluation_id", "closure_event_id")
+    @field_validator("last_evaluation_id", "closure_event_id", "replacement_event_id")
     @classmethod
     def _validate_optional_identifiers(
         cls, value: str | None, info: ValidationInfo
@@ -227,6 +231,13 @@ class PmRecoveryEpisode(PmRecoveryEpisodeIdentity):
                 self.last_evaluated_at, name="episode last_evaluated_at"
             ):
                 raise ValueError("episode closure precedes its last evaluation")
+        replacement_fields = (self.replaces_episode_id, self.replacement_event_id)
+        if any(value is None for value in replacement_fields) and any(
+            value is not None for value in replacement_fields
+        ):
+            raise ValueError("episode replacement lineage fields travel together")
+        if self.replaces_episode_id == self.id:
+            raise ValueError("an episode cannot replace itself")
         return self
 
     @property

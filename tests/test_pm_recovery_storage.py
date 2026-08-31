@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from itertools import pairwise
 from pathlib import Path
+from threading import Barrier
 from uuid import UUID, uuid4
 
 import pytest
@@ -617,6 +618,50 @@ def test_supersession_is_durable_idempotent_and_allows_a_later_occurrence(
     assert blockers[1].superseded_at is None
 
 
+def test_concurrent_contradictory_supersessions_have_one_winner(tmp_path: Path) -> None:
+    path = tmp_path / "concurrent-supersession.db"
+    seeded = _seed_store(path)
+    repo = PmRecoveryRepo(seeded.database)
+    episode = repo.establish_episode(_identity(seeded.candidate), created_at=NOW)
+    observed = repo.record_evaluation(
+        episode_id=episode.id,
+        expected_cursor_sequence=episode.fairness_cursor,
+        evaluation_id="evaluation-1",
+        evaluated_at=NOW + timedelta(seconds=1),
+        blocker=_blocker(),
+    )
+    assert observed.blocker is not None
+    blocker_id = observed.blocker.id
+    seeded.database.engine.dispose()
+    barrier = Barrier(2)
+
+    def supersede(event_id: str) -> tuple[str, object]:
+        database = Database(f"sqlite:///{path}")
+        try:
+            barrier.wait()
+            try:
+                result = PmRecoveryRepo(database).supersede_blocker(
+                    blocker_id=blocker_id,
+                    superseded_by_event_id=event_id,
+                    supersession_kind=PmBlockerSupersessionKind.PROGRESS,
+                    superseded_at=NOW + timedelta(seconds=2),
+                )
+                return ("changed", result.changed)
+            except PmRecoveryStorageError as error:
+                return ("error", error.code)
+        finally:
+            database.engine.dispose()
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        outcomes = list(pool.map(supersede, ("progress-a", "progress-b")))
+
+    assert outcomes.count(("changed", True)) == 1
+    assert (
+        outcomes.count(("error", PmRecoveryStorageCode.BLOCKER_SUPERSESSION_CONFLICT))
+        == 1
+    )
+
+
 def test_authoritative_replacement_is_atomic_and_replayable_after_restart(
     tmp_path: Path,
 ) -> None:
@@ -673,6 +718,8 @@ def test_authoritative_replacement_is_atomic_and_replayable_after_restart(
     assert replacement.changed is True
     assert replay.changed is False
     assert replacement.episode.episode_created_sequence == 3
+    assert replay.episode.replaces_episode_id == original.id
+    assert replay.episode.replacement_event_id == "publication-replacement-1"
     assert old is not None and old.closed_at == NOW + timedelta(seconds=2)
     assert old_blocker is not None
     assert old_blocker.superseded_by_event_id == "publication-replacement-1"
@@ -681,6 +728,157 @@ def test_authoritative_replacement_is_atomic_and_replayable_after_restart(
         new_observation.blocker.blocker_fingerprint
         != observed.blocker.blocker_fingerprint
     )
+
+
+def test_historical_episode_cannot_masquerade_as_replacement_replay(
+    tmp_path: Path,
+) -> None:
+    seeded = _seed_store(tmp_path / "replacement-lineage.db")
+    repo = PmRecoveryRepo(seeded.database)
+    historical_identity = _identity(
+        seeded.candidate, authoritative_episode_id="historical-successor"
+    )
+    historical = repo.establish_episode(historical_identity, created_at=NOW)
+    repo.close_episode(
+        episode_id=historical.id,
+        closure_event_id="historical-close",
+        closure_kind=PmRecoveryEpisodeClosureKind.RECOVERY_COMPLETED,
+        closed_at=NOW + timedelta(seconds=1),
+    )
+    predecessor_identity = _identity(
+        seeded.candidate, authoritative_episode_id="later-predecessor"
+    )
+    predecessor = repo.establish_episode(
+        predecessor_identity, created_at=NOW + timedelta(seconds=2)
+    )
+    repo.close_episode(
+        episode_id=predecessor.id,
+        closure_event_id="replacement-event",
+        closure_kind=PmRecoveryEpisodeClosureKind.PUBLICATION_REPLACEMENT,
+        closed_at=NOW + timedelta(seconds=3),
+    )
+
+    with pytest.raises(PmRecoveryStorageError) as conflict:
+        repo.replace_episode(
+            expected_episode_id=predecessor.id,
+            replacement=historical_identity,
+            closure_event_id="replacement-event",
+            closure_kind=PmRecoveryEpisodeClosureKind.PUBLICATION_REPLACEMENT,
+            replaced_at=NOW + timedelta(seconds=3),
+        )
+
+    assert conflict.value.code is PmRecoveryStorageCode.EPISODE_CLOSURE_CONFLICT
+
+
+def test_concurrent_competing_replacements_have_one_winner(tmp_path: Path) -> None:
+    path = tmp_path / "competing-replacements.db"
+    seeded = _seed_store(path)
+    original_identity = _identity(seeded.candidate)
+    original = PmRecoveryRepo(seeded.database).establish_episode(
+        original_identity, created_at=NOW
+    )
+    seeded.database.engine.dispose()
+    barrier = Barrier(2)
+    replacements = (
+        _identity(seeded.candidate, authoritative_episode_id="replacement-a"),
+        _identity(seeded.candidate, authoritative_episode_id="replacement-b"),
+    )
+
+    def replace(identity: PmRecoveryEpisodeIdentity) -> tuple[str, object]:
+        database = Database(f"sqlite:///{path}")
+        try:
+            barrier.wait()
+            try:
+                result = PmRecoveryRepo(database).replace_episode(
+                    expected_episode_id=original.id,
+                    replacement=identity,
+                    closure_event_id=f"event:{identity.authoritative_episode_id}",
+                    closure_kind=(PmRecoveryEpisodeClosureKind.PUBLICATION_REPLACEMENT),
+                    replaced_at=NOW + timedelta(seconds=1),
+                )
+                return ("changed", result.changed)
+            except PmRecoveryStorageError as error:
+                return ("error", error.code)
+        finally:
+            database.engine.dispose()
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        outcomes = list(pool.map(replace, replacements))
+
+    assert outcomes.count(("changed", True)) == 1
+    assert (
+        outcomes.count(("error", PmRecoveryStorageCode.EPISODE_CLOSURE_CONFLICT)) == 1
+    )
+    rebuilt = Database(f"sqlite:///{path}")
+    repo = PmRecoveryRepo(rebuilt)
+    assert repo.sequence_high_water(PRODUCT_ID) == 2
+    assert len(repo.list_active_episodes_ordered(PRODUCT_ID)) == 1
+    rebuilt.engine.dispose()
+
+
+def test_replacement_insert_failure_rolls_back_old_scope_blocker_and_counter(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "replacement-rollback.db"
+    seeded = _seed_store(path)
+    repo = PmRecoveryRepo(seeded.database)
+    original = repo.establish_episode(_identity(seeded.candidate), created_at=NOW)
+    observed = repo.record_evaluation(
+        episode_id=original.id,
+        expected_cursor_sequence=original.fairness_cursor,
+        evaluation_id="evaluation-1",
+        evaluated_at=NOW + timedelta(seconds=1),
+        blocker=_blocker(),
+    )
+    assert observed.blocker is not None
+    with seeded.database.engine.begin() as connection:
+        connection.execute(
+            sa.text(
+                "CREATE TRIGGER fail_pm_replacement_insert "
+                "BEFORE INSERT ON pm_recovery_episodes "
+                "BEGIN SELECT RAISE(ABORT, 'seeded replacement failure'); END"
+            )
+        )
+    replacement_identity = _identity(
+        seeded.candidate, authoritative_episode_id="replacement-after-failure"
+    )
+    with pytest.raises(sa.exc.IntegrityError):
+        repo.replace_episode(
+            expected_episode_id=original.id,
+            replacement=replacement_identity,
+            closure_event_id="replacement-event",
+            closure_kind=PmRecoveryEpisodeClosureKind.PUBLICATION_REPLACEMENT,
+            replaced_at=NOW + timedelta(seconds=2),
+        )
+    seeded.database.engine.dispose()
+
+    rebuilt = Database(f"sqlite:///{path}")
+    rebuilt_repo = PmRecoveryRepo(rebuilt)
+    stored_original = rebuilt_repo.get_episode(original.id)
+    stored_blocker = rebuilt_repo.get_blocker(observed.blocker.id)
+    assert stored_original is not None and stored_original.closed_at is None
+    assert stored_blocker is not None and stored_blocker.superseded_at is None
+    assert rebuilt_repo.sequence_high_water(PRODUCT_ID) == 2
+    with rebuilt.engine.begin() as connection:
+        connection.execute(sa.text("DROP TRIGGER fail_pm_replacement_insert"))
+    replacement = rebuilt_repo.replace_episode(
+        expected_episode_id=original.id,
+        replacement=replacement_identity,
+        closure_event_id="replacement-event",
+        closure_kind=PmRecoveryEpisodeClosureKind.PUBLICATION_REPLACEMENT,
+        replaced_at=NOW + timedelta(seconds=2),
+    )
+    with pytest.raises(PmRecoveryStorageError) as contradiction:
+        rebuilt_repo.replace_episode(
+            expected_episode_id=original.id,
+            replacement=replacement_identity,
+            closure_event_id="different-event",
+            closure_kind=PmRecoveryEpisodeClosureKind.PUBLICATION_REPLACEMENT,
+            replaced_at=NOW + timedelta(seconds=2),
+        )
+    assert replacement.episode.episode_created_sequence == 3
+    assert contradiction.value.code is PmRecoveryStorageCode.EPISODE_CLOSURE_CONFLICT
+    rebuilt.engine.dispose()
 
 
 def test_starvation_state_projects_deterministically_into_health_after_restart(
@@ -825,7 +1023,8 @@ def test_evaluation_cursor_and_blocker_roll_back_together_on_late_failure(
 
 
 def test_closed_episode_is_durable_and_cannot_be_evaluated(tmp_path: Path) -> None:
-    seeded = _seed_store(tmp_path / "closure.db")
+    path = tmp_path / "closure.db"
+    seeded = _seed_store(path)
     repo = PmRecoveryRepo(seeded.database)
     identity = _identity(seeded.candidate)
     episode = repo.establish_episode(identity, created_at=NOW)
@@ -843,6 +1042,9 @@ def test_closed_episode_is_durable_and_cannot_be_evaluated(tmp_path: Path) -> No
         closure_kind=PmRecoveryEpisodeClosureKind.PUBLICATION_REPLACEMENT,
         closed_at=NOW + timedelta(seconds=2),
     )
+    seeded.database.engine.dispose()
+    rebuilt = Database(f"sqlite:///{path}")
+    repo = PmRecoveryRepo(rebuilt)
     replay = repo.close_episode(
         episode_id=identity.episode_id,
         closure_event_id="publication-replaced-1",
@@ -865,6 +1067,103 @@ def test_closed_episode_is_durable_and_cannot_be_evaluated(tmp_path: Path) -> No
     retained = repo.get_blocker(observed.blocker.id)
     assert retained is not None
     assert retained.superseded_by_event_id == "publication-replaced-1"
+    rebuilt.engine.dispose()
+
+
+def test_concurrent_contradictory_closures_have_one_winner(tmp_path: Path) -> None:
+    path = tmp_path / "concurrent-close.db"
+    seeded = _seed_store(path)
+    episode = PmRecoveryRepo(seeded.database).establish_episode(
+        _identity(seeded.candidate), created_at=NOW
+    )
+    seeded.database.engine.dispose()
+    barrier = Barrier(2)
+
+    def close(event_id: str) -> tuple[str, object]:
+        database = Database(f"sqlite:///{path}")
+        try:
+            barrier.wait()
+            try:
+                result = PmRecoveryRepo(database).close_episode(
+                    episode_id=episode.id,
+                    closure_event_id=event_id,
+                    closure_kind=(PmRecoveryEpisodeClosureKind.PUBLICATION_REPLACEMENT),
+                    closed_at=NOW + timedelta(seconds=1),
+                )
+                return ("changed", result.changed)
+            except PmRecoveryStorageError as error:
+                return ("error", error.code)
+        finally:
+            database.engine.dispose()
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        outcomes = list(pool.map(close, ("closure-a", "closure-b")))
+
+    assert outcomes.count(("changed", True)) == 1
+    assert (
+        outcomes.count(("error", PmRecoveryStorageCode.EPISODE_CLOSURE_CONFLICT)) == 1
+    )
+
+
+def test_concurrent_close_and_evaluation_cannot_leave_an_active_blocker(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "close-versus-evaluation.db"
+    seeded = _seed_store(path)
+    episode = PmRecoveryRepo(seeded.database).establish_episode(
+        _identity(seeded.candidate), created_at=NOW
+    )
+    seeded.database.engine.dispose()
+    barrier = Barrier(2)
+
+    def close() -> tuple[str, object]:
+        database = Database(f"sqlite:///{path}")
+        try:
+            barrier.wait()
+            result = PmRecoveryRepo(database).close_episode(
+                episode_id=episode.id,
+                closure_event_id="close-race",
+                closure_kind=PmRecoveryEpisodeClosureKind.PUBLICATION_REPLACEMENT,
+                closed_at=NOW + timedelta(seconds=2),
+            )
+            return ("close", result.changed)
+        finally:
+            database.engine.dispose()
+
+    def evaluate() -> tuple[str, object]:
+        database = Database(f"sqlite:///{path}")
+        try:
+            barrier.wait()
+            try:
+                result = PmRecoveryRepo(database).record_evaluation(
+                    episode_id=episode.id,
+                    expected_cursor_sequence=episode.fairness_cursor,
+                    evaluation_id="evaluation-race",
+                    evaluated_at=NOW + timedelta(seconds=1),
+                    blocker=_blocker(),
+                )
+                return ("evaluation", result.changed)
+            except PmRecoveryStorageError as error:
+                return ("error", error.code)
+        finally:
+            database.engine.dispose()
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        close_future = pool.submit(close)
+        evaluation_future = pool.submit(evaluate)
+        outcomes = (close_future.result(), evaluation_future.result())
+
+    assert ("close", True) in outcomes
+    assert outcomes[1] in {
+        ("evaluation", True),
+        ("error", PmRecoveryStorageCode.EPISODE_CLOSED),
+    }
+    rebuilt = Database(f"sqlite:///{path}")
+    repo = PmRecoveryRepo(rebuilt)
+    stored = repo.get_episode(episode.id)
+    assert stored is not None and stored.closed_at is not None
+    assert repo.list_blockers(product_id=PRODUCT_ID, active_only=True) == []
+    rebuilt.engine.dispose()
 
 
 def test_sequence_maximum_and_exhaustion_are_typed_and_atomic(tmp_path: Path) -> None:
@@ -953,6 +1252,34 @@ def test_sqlite_constraints_bound_episode_and_starvation_rows(tmp_path: Path) ->
             .where(PmBlockerOccurrenceRow.id == evaluated.blocker.id)
             .values(code="RuntimeError: secret token")
         )
+    for episode_values in (
+        {"active_scope_fingerprint": None},
+        {"candidate_ticket_key": None},
+        {"closed_at": NOW + timedelta(seconds=2)},
+    ):
+        with (
+            pytest.raises(sa.exc.IntegrityError),
+            seeded.database.engine.begin() as connection,
+        ):
+            connection.execute(
+                sa.update(PmRecoveryEpisodeRow)
+                .where(PmRecoveryEpisodeRow.id == episode.id)
+                .values(**episode_values)
+            )
+    for blocker_values in (
+        {"active_fingerprint": None},
+        {"policy_revision": None},
+        {"candidate_ticket_key": None},
+    ):
+        with (
+            pytest.raises(sa.exc.IntegrityError),
+            seeded.database.engine.begin() as connection,
+        ):
+            connection.execute(
+                sa.update(PmBlockerOccurrenceRow)
+                .where(PmBlockerOccurrenceRow.id == evaluated.blocker.id)
+                .values(**blocker_values)
+            )
 
     indexes = {
         index["name"]
