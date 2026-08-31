@@ -807,31 +807,34 @@ def reconcile_ci_handoff(
                 reconciliation_id=recorded.id,
             )
 
-        try:
+        def exact_transition() -> LinearIssue:
             written = writer.transition(
                 issue_id,
                 observed_source=TicketStatus.CI_PENDING,
                 target=target,
             )
-        except Exception:
-            coordination.mark_indeterminate(
+            if written.id != issue_id or written.state_id != target_state_id:
+                raise CIHandoffWriteFenceError(
+                    "Linear returned a mismatched CI handoff write result"
+                )
+            return written
+
+        try:
+            coordination.execute_owned_call(
                 product_id=ticket.product_id,
+                owner_id=owner_id,
                 reconciliation_id=recorded.id,
-                observed_at=now,
+                observed_at=now + timedelta(seconds=lease_age),
+                call=exact_transition,
             )
+        except AdmissionLeaseLostError:
             return _result(
                 ticket,
-                classification=CIHandoffClassification.INDETERMINATE,
-                reason=CIHandoffReason.WRITE_INDETERMINATE,
+                classification=CIHandoffClassification.STALE,
+                reason=CIHandoffReason.LEASE_LOST,
                 reconciliation_id=recorded.id,
-                linear_mutations=1,
             )
-        if written.id != issue_id or written.state_id != target_state_id:
-            coordination.mark_indeterminate(
-                product_id=ticket.product_id,
-                reconciliation_id=recorded.id,
-                observed_at=now,
-            )
+        except Exception:
             return _result(
                 ticket,
                 classification=CIHandoffClassification.INDETERMINATE,

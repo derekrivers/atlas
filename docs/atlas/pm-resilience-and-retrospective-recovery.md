@@ -196,9 +196,13 @@ not ticket key, owns selection.
 
 The tick still permits at most one external workflow mutation. A confirmed
 mutation or any reconciliation attempt for an existing ambiguous write fence
-ends the tick. Existing fences are reconciled before generic pull handling,
-publication resolution, evidence evaluation or ordinary fair selection, even
-when the earlier local target commit means no `ci_pending` candidate remains.
+ends the tick. A fenced product is excluded from its ordinary candidate lane
+until recovery, but its fence and independent products' ordinary candidates
+share the durable cross-product cursor arbitration. When the fence wins, it is
+reconciled before generic pull handling, publication resolution or evidence
+evaluation, even when the earlier local target commit means no `ci_pending`
+candidate remains. A permanently unresolved product therefore cannot monopolise
+the global cadence.
 Evaluation fairness never creates a second writer, bypasses a lease, weakens a
 candidate predicate or converts an unbounded arrival model into a liveness
 claim.

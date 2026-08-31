@@ -2032,11 +2032,11 @@ def _sync_tick_impl(
         pagination_gaps=tuple(getattr(fetched_issues, "pagination_gaps", ())),
     )
     issues_by_id: dict[str, LinearIssue] = {issue.id: issue for issue in fetched_issues}
-    # A durable CI write fence is possible prior external mutation, so its
-    # named next-process owner runs before generic pull handling, publication
-    # discovery, fair selection, and every competing workflow writer. This
-    # remains reachable even when the prior target commit removed the final
-    # local CI-pending candidate.
+    # A durable CI write fence is possible prior external mutation. Its product
+    # is excluded from ordinary candidate work until the fence resolves, while
+    # the same durable cursor arbitration prevents that product from globally
+    # starving independent products. This remains reachable even when the
+    # prior target commit removed the final local CI-pending candidate.
     product_ids = {ticket.product_id for ticket in pull_board}
     product_ids.update(product.id for product in ProductRepo(db).list())
     fences = [
@@ -2044,6 +2044,7 @@ def _sync_tick_impl(
         for product_id in product_ids
         if (fence := CIHandoffCoordinationRepo(db).get_fence(product_id)) is not None
     ]
+    fenced_product_ids = frozenset(fence.product_id for fence in fences)
     if fences:
         # Every existing fence first resolves to a durable episode. Comparing
         # their product-local monotonic work cursors implements durable
@@ -2068,46 +2069,63 @@ def _sync_tick_impl(
             fence_options.append(
                 (candidate_episode.fairness_cursor, candidate_fence, candidate_ticket)
             )
-        _cursor, fence, fence_ticket = min(
+        fence_cursor, fence, fence_ticket = min(
             fence_options,
             key=lambda item: (item[0], str(item[1].product_id)),
         )
-        product_id = fence.product_id
-        handoff = reconcile_existing_ci_handoff_fence(
-            db=db,
-            tickets=tickets,
-            status_map=status_map,
-            initial_issues=fetched_issues,
-            product_id=product_id,
-            candidate_count=sum(
-                ticket.status is TicketStatus.CI_PENDING for ticket in pull_board
-            ),
-            now=now,
+        independent = (
+            select_fair_ci_handoff_candidate(
+                db=db,
+                tickets=tickets,
+                initial_issues=fetched_issues,
+                now=now,
+                excluded_product_ids=fenced_product_ids,
+            )
+            if github_client is not None
+            else FairCIHandoffSelection((), None, None)
         )
-        assert handoff is not None
-        _apply_ci_handoff_result(result, handoff)
-        episode = ensure_ci_handoff_episode(
-            db=db,
-            ticket=fence_ticket,
-            initial_issues=fetched_issues,
-            now=now,
+        independent_cursor = (
+            None if independent.episode is None else independent.episode.fairness_cursor
         )
-        record_fair_ci_handoff_evaluation(
-            db=db,
-            selection=FairCIHandoffSelection(
-                candidates=tuple(
-                    ticket
-                    for ticket in pull_board
-                    if ticket.product_id == product_id
+        if independent_cursor is None or independent_cursor >= fence_cursor:
+            product_id = fence.product_id
+            handoff = reconcile_existing_ci_handoff_fence(
+                db=db,
+                tickets=tickets,
+                status_map=status_map,
+                initial_issues=fetched_issues,
+                product_id=product_id,
+                candidate_count=sum(
+                    ticket.product_id == product_id
                     and ticket.status is TicketStatus.CI_PENDING
+                    for ticket in pull_board
                 ),
-                candidate=fence_ticket,
-                episode=episode,
-            ),
-            result=handoff,
-            now=now,
-        )
-        return result
+                now=now,
+            )
+            assert handoff is not None
+            _apply_ci_handoff_result(result, handoff)
+            episode = ensure_ci_handoff_episode(
+                db=db,
+                ticket=fence_ticket,
+                initial_issues=fetched_issues,
+                now=now,
+            )
+            record_fair_ci_handoff_evaluation(
+                db=db,
+                selection=FairCIHandoffSelection(
+                    candidates=tuple(
+                        ticket
+                        for ticket in pull_board
+                        if ticket.product_id == product_id
+                        and ticket.status is TicketStatus.CI_PENDING
+                    ),
+                    candidate=fence_ticket,
+                    episode=episode,
+                ),
+                result=handoff,
+                now=now,
+            )
+            return result
     # Pull all joined tickets first, then reconstruct AgentRuns from the local
     # transition/evidence store plus the already-fetched board descriptions
     # (ATLAS-166). The push pass runs after reconstruction so this step is
@@ -2152,6 +2170,7 @@ def _sync_tick_impl(
             tickets=tickets,
             initial_issues=fetched_issues,
             now=now,
+            excluded_product_ids=fenced_product_ids,
         )
         if selection.candidate is None:
             handoff = CIHandoffAdapterResult(

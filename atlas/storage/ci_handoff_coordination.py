@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import TypeVar
 from uuid import UUID
 
 import sqlalchemy as sa
@@ -19,6 +21,9 @@ from atlas.storage.tables import (
 
 class CIHandoffWriteFenceError(RuntimeError):
     """A CI handoff fence disappeared, collided or carried an unsafe target."""
+
+
+_T = TypeVar("_T")
 
 
 @dataclass(frozen=True)
@@ -138,6 +143,63 @@ class CIHandoffCoordinationRepo:
                 )
             row.state = "indeterminate"
             row.updated_at = observed
+
+    def execute_owned_call(
+        self,
+        *,
+        product_id: UUID,
+        owner_id: UUID,
+        reconciliation_id: UUID,
+        observed_at: datetime,
+        call: Callable[[], _T],
+    ) -> _T:
+        """Hold the lease and fence locks across one bounded provider call."""
+
+        observed = _aware(observed_at, name="CI handoff call observation time")
+        returned: list[_T] = []
+        failure: Exception | None = None
+        with self._db.session() as session, session.begin():
+            lease_lock = session.execute(
+                sa.update(AdmissionLeaseRow)
+                .where(
+                    AdmissionLeaseRow.product_id == product_id,
+                    AdmissionLeaseRow.owner_id == owner_id,
+                    AdmissionLeaseRow.expires_at > observed,
+                )
+                .values(owner_id=AdmissionLeaseRow.owner_id)
+            )
+            if getattr(lease_lock, "rowcount", 0) != 1:
+                raise AdmissionLeaseLostError(
+                    "PM write lease expired or was replaced before CI write"
+                )
+            fence_lock = session.execute(
+                sa.update(CIHandoffWriteFenceRow)
+                .where(
+                    CIHandoffWriteFenceRow.product_id == product_id,
+                    CIHandoffWriteFenceRow.reconciliation_id == reconciliation_id,
+                )
+                .values(state=CIHandoffWriteFenceRow.state)
+            )
+            if getattr(fence_lock, "rowcount", 0) != 1:
+                raise CIHandoffWriteFenceError(
+                    "CI handoff fence disappeared before the owned call"
+                )
+            try:
+                returned.append(call())
+            except Exception as exc:
+                row = session.get(CIHandoffWriteFenceRow, product_id)
+                if row is None or row.reconciliation_id != reconciliation_id:
+                    raise CIHandoffWriteFenceError(
+                        "CI handoff fence disappeared during the owned call"
+                    ) from exc
+                row.state = "indeterminate"
+                row.updated_at = observed
+                failure = exc
+        if failure is not None:
+            raise failure
+        if not returned:  # pragma: no cover - call either returns or raises
+            raise CIHandoffWriteFenceError("owned CI handoff call had no outcome")
+        return returned[0]
 
     def clear_fence(self, *, product_id: UUID, reconciliation_id: UUID) -> None:
         with self._db.session() as session, session.begin():

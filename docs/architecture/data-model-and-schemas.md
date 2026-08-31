@@ -1880,7 +1880,11 @@ delete.
 per product is committed before the sole external transition. Confirmed success
 or a complete fresh-board reconciliation deletes it; an ambiguous response may
 change only its state from `pending` to `indeterminate`. The unique
-reconciliation foreign key prevents one decision from owning two writes.
+reconciliation foreign key prevents one decision from owning two writes. The
+writer transaction locks both the exact live admission lease and this fence
+across the bounded provider call, so a replacement owner cannot reconcile
+source or remove the fence until the original call has returned or its process
+connection has ended.
 
 ```sql
 CREATE TABLE ci_handoff_reconciliations (

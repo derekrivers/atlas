@@ -226,9 +226,11 @@ assessment or its deciding evidence ids records a typed hold and requires a
 fresh tick. Each determinate decision is appended with the exact identity and
 bounded check results, and a durable fence is committed before the single
 Linear mutation. The owner rechecks its exact product lease and monotonic lease
-age after that fence commit and immediately before the call; lease replacement
-or passive TTL expiry leaves the fence to the next owner and the expired
-process performs zero mutations. A
+age after that fence commit, then holds transactional lease and fence locks
+across the bounded call. Replacement cannot clear the fence while the original
+call remains live; lease replacement or passive TTL expiry before the lock
+leaves the fence to the next owner and the expired process performs zero
+mutations. A
 transport-ambiguous mutation remains fenced until a fresh
 complete board observation proves source, target or external movement; that
 reconciliation tick never retries the write. Duplicate observations are
@@ -272,9 +274,11 @@ complete project pull, authorised status reconciliation (including the
 dedicated evidence-backed local recovery above) and AgentRun reconstruction,
 it reconciles durable recovery episodes for one finite snapshot of locally
 `CI Pending` tickets and considers the episode with the least product-global
-fairness cursor. The product-local cursor is also the durable cross-product
-work rank: every completed evaluation, including an unresolved-fence attempt,
-moves that episode behind currently lower-ranked independent products. Stable
+fairness cursor. A fenced product is excluded from ordinary selection, while
+its fence episode and independent products' ordinary candidates share the
+durable cross-product work rank. Every completed evaluation, including an
+unresolved-fence attempt, moves that episode behind currently lower-ranked
+independent work. Stable
 ticket order is used only for deterministic one-time bootstrap; every completed
 evaluation moves that episode to the durable sequence tail. The latest
 append-only transition into

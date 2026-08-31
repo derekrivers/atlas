@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeoutError
 from dataclasses import replace
 from datetime import timedelta
 from pathlib import Path
+from threading import Event
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -809,6 +812,64 @@ def test_unresolved_fence_rotates_to_independent_product_fence(db: Database) -> 
     assert client.state_writes == []
 
 
+def test_unresolved_fence_rotates_to_independent_ordinary_candidate(
+    db: Database,
+) -> None:
+    client = RecordingClient()
+    fenced = _seed_ci_pending(db, client, key="ATLAS-263")
+    second_product_id = UUID("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
+    healthy = _seed_ci_pending(
+        db,
+        client,
+        key="OTHER-263",
+        product_id=second_product_id,
+    )
+    owner_id = uuid4()
+    lease = AdmissionCoordinationRepo(db)
+    assert lease.try_acquire(
+        product_id=PRODUCT_ID,
+        owner_id=owner_id,
+        acquired_at=NOW,
+        ttl=timedelta(minutes=1),
+    )
+    assert fenced.external_linear_id is not None
+    CIHandoffCoordinationRepo(db).begin_write(
+        product_id=PRODUCT_ID,
+        owner_id=owner_id,
+        reconciliation_id=uuid4(),
+        ticket_id=fenced.id,
+        ticket_key=fenced.key,
+        issue_id=fenced.external_linear_id,
+        source_state_id=CI_PENDING_STATE.id,
+        target_state_id="state-review-required",
+        target_status=TicketStatus.REVIEW_REQUIRED,
+        created_at=NOW,
+    )
+    lease.release(product_id=PRODUCT_ID, owner_id=owner_id)
+    client._issues.pop(fenced.external_linear_id)
+
+    first = _run(db, client, _github(), now=NOW)
+    assert (
+        first.ci_handoff_decisions[0].reconciliation.reason
+        is CIHandoffReason.FENCE_STILL_UNRESOLVED
+    )
+    rebuilt = Database(str(db.engine.url))
+    second = _run(
+        rebuilt,
+        client,
+        _github(),
+        now=NOW + timedelta(seconds=1),
+    )
+    rebuilt.engine.dispose()
+
+    assert second.ci_handoff_decisions[0].ticket_key == healthy.key
+    assert second.ci_handoff_mutations == 1
+    assert client.state_writes == [
+        (healthy.external_linear_id, "state-review-required")
+    ]
+    assert CIHandoffCoordinationRepo(db).get_fence(PRODUCT_ID) is not None
+
+
 def test_replaced_lease_stops_zombie_writer_after_fence_persistence(
     db: Database,
 ) -> None:
@@ -879,6 +940,51 @@ def test_passively_expired_lease_stops_writer_after_fence_persistence(
     assert decision.ends_workflow_write_window
     assert client.state_writes == []
     assert CIHandoffCoordinationRepo(db).get_fence(PRODUCT_ID) is not None
+
+
+def test_fenced_call_lock_blocks_replacement_until_provider_call_finishes(
+    db: Database,
+) -> None:
+    entered_call = Event()
+    release_call = Event()
+    replacement_started = Event()
+
+    class BlockingClient(RecordingClient):
+        def set_state(self, issue_id: str, state_id: str) -> LinearIssue:
+            entered_call.set()
+            assert release_call.wait(timeout=5)
+            return super().set_state(issue_id, state_id)
+
+    client = BlockingClient()
+    ticket = _seed_ci_pending(db, client)
+    replacement_owner = uuid4()
+
+    def replace_owner() -> bool:
+        replacement_started.set()
+        return AdmissionCoordinationRepo(db).try_acquire(
+            product_id=PRODUCT_ID,
+            owner_id=replacement_owner,
+            acquired_at=NOW + timedelta(minutes=6),
+            ttl=timedelta(minutes=5),
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        handoff_future = pool.submit(_run, db, client, _github(), now=NOW)
+        assert entered_call.wait(timeout=5)
+        replacement_future = pool.submit(replace_owner)
+        assert replacement_started.wait(timeout=5)
+        with pytest.raises(FutureTimeoutError):
+            replacement_future.result(timeout=0.1)
+        release_call.set()
+        handoff = handoff_future.result(timeout=5)
+        assert replacement_future.result(timeout=5)
+
+    assert handoff.ci_handoff_mutations == 1
+    assert client.state_writes == [(ticket.external_linear_id, "state-review-required")]
+    assert CIHandoffCoordinationRepo(db).get_fence(PRODUCT_ID) is None
+    AdmissionCoordinationRepo(db).release(
+        product_id=PRODUCT_ID, owner_id=replacement_owner
+    )
 
 
 @pytest.mark.parametrize(

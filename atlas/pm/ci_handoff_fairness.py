@@ -141,6 +141,7 @@ def select_fair_ci_handoff_candidate(
     tickets: TicketRepo,
     initial_issues: list[LinearIssue],
     now: datetime,
+    excluded_product_ids: frozenset[UUID] = frozenset(),
 ) -> FairCIHandoffSelection:
     """Reconcile one finite eligible snapshot and select its least cursor."""
 
@@ -151,6 +152,7 @@ def select_fair_ci_handoff_candidate(
                 ticket
                 for ticket in all_tickets
                 if ticket.status is TicketStatus.CI_PENDING
+                and ticket.product_id not in excluded_product_ids
             ),
             key=lambda ticket: (natural_key(ticket.key), ticket.key, ticket.id),
         )
@@ -160,6 +162,8 @@ def select_fair_ci_handoff_candidate(
     # Lifecycle exit is authoritative even when the complete finite snapshot is
     # empty.  Retire every now-ineligible episode before returning no work.
     for product_id in {ticket.product_id for ticket in all_tickets}:
+        if product_id in excluded_product_ids:
+            continue
         for episode in _active_ci_episodes(repo, product_id):
             if episode.candidate_ticket_id not in candidates_by_id:
                 repo.close_episode(
