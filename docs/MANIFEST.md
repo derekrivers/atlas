@@ -43,6 +43,13 @@ Phase design documents (one per engine; phase-readiness rule below):
   critical path, validation
 - `docs/atlas/pm-engine-and-linear-sync.md` — Phase 4: sync loop, field
   ownership, follow-up inbox, anomaly detection
+- `docs/atlas/pm-resilience-and-retrospective-recovery.md` — specialist
+  authority for PM write-boundary recovery, eventual convergence,
+  retrospective authority, fairness and operational health; its target
+  retrospective edge remains inactive, current runtime ownership remains in
+  the owning transition/acceptance documents, and it resolves the older blanket
+  "missed tick costs latency only" claim without weakening ordinary Phase-4
+  ownership and trust boundaries
 - `docs/atlas/context-renderer.md` — Phase 5: retrieval rules, token
   budget, compression ladder, staleness
 - `docs/atlas/evidence-pipeline.md` — Phase 6: poller, job-name
