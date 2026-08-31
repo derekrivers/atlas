@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import tempfile
+from dataclasses import replace
 from datetime import timedelta
 from pathlib import Path
 from typing import Any
@@ -33,16 +34,19 @@ from atlas.core.models import (
 from atlas.evidence.pull import drive_evidence_pull
 from atlas.linear.client import LinearIssue, _github_publication_from_attachment
 from atlas.pm import CIHandoffHooks, sync_tick
+from atlas.pm.ci_handoff_adapter import CIHandoffAdapterReason
 from atlas.pm.sync import CI_PENDING_POLL_COMPRESSION_CREATED_BY
 from atlas.storage import (
     AgentRunRepo,
     CIHandoffReconciliationRepo,
     Database,
     EvidenceRepo,
+    PmRecoveryRepo,
     PmSyncReceiptRepo,
     TicketRepo,
     TicketStatusTransitionRepo,
 )
+from atlas.storage.ci_handoff_coordination import CIHandoffCoordinationRepo
 
 HEAD = "a" * 40
 OTHER_HEAD = "b" * 40
@@ -272,6 +276,7 @@ def _run(
     github: FakeGitHubClient,
     *,
     hooks: CIHandoffHooks | None = None,
+    now: Any = NOW,
 ) -> Any:
     return sync_tick(
         tickets=TicketRepo(db),
@@ -282,8 +287,8 @@ def _run(
         project_id=PROJECT_ID,
         inbox_dir=Path(tempfile.mkdtemp()),
         documents=lambda: [PACK_DOC],
-        now=NOW,
-        completion_clock=lambda: NOW + timedelta(seconds=1),
+        now=now,
+        completion_clock=lambda: now + timedelta(seconds=1),
         github_client=github,
         ci_handoff_hooks=hooks,
     )
@@ -467,6 +472,28 @@ def test_compressed_publication_ambiguity_holds_before_provider_calls(
     assert github.calls == []
 
 
+def test_two_distinct_attachments_for_same_pr_are_ambiguous(db: Database) -> None:
+    client = RecordingClient()
+    ticket = _seed_ci_pending(db, client)
+    assert ticket.external_linear_id is not None
+    issue = client.fetch_issue(ticket.external_linear_id)
+    assert issue is not None
+    [publication] = issue.github_publications
+    duplicate = replace(publication, attachment_id="github-publication-2")
+    client._issues[ticket.external_linear_id] = replace(
+        issue, github_publications=(publication, duplicate)
+    )
+    github = _github()
+
+    result = _run(db, client, github)
+
+    decision = result.ci_handoff_decisions[0]
+    assert decision.reason is CIHandoffAdapterReason.PUBLICATION_AMBIGUOUS
+    assert decision.reconciliation is None
+    assert client.state_writes == []
+    assert github.calls == []
+
+
 def test_compressed_stale_head_holds_after_exact_provider_revalidation(
     db: Database,
 ) -> None:
@@ -560,7 +587,7 @@ def test_duplicate_tick_does_not_repeat_publication_handoff_write(db: Database) 
     assert len(CIHandoffReconciliationRepo(db).list()) == 1
 
 
-def test_candidate_discovery_is_ci_pending_only_stable_and_one_per_tick(
+def test_candidate_discovery_bootstraps_stably_and_mutates_only_one_per_tick(
     db: Database,
 ) -> None:
     client = RecordingClient()
@@ -587,6 +614,129 @@ def test_candidate_discovery_is_ci_pending_only_stable_and_one_per_tick(
     assert stored_first.status is TicketStatus.REVIEW_REQUIRED
     assert stored_second.status is TicketStatus.CI_PENDING
     assert len(client.state_writes) == 1
+
+
+def test_poisoned_first_candidate_rotates_and_next_candidate_advances(
+    db: Database,
+) -> None:
+    client = RecordingClient()
+    first = _seed_ci_pending(db, client, key="ATLAS-263")
+    second = _seed_ci_pending(db, client, key="ATLAS-264")
+    assert first.external_linear_id is not None
+    first_issue = client.fetch_issue(first.external_linear_id)
+    assert first_issue is not None
+    # This is the DTO shape produced by the boundary for an inactive merged
+    # attachment: it is not usable as an ordinary live publication.
+    client._issues[first.external_linear_id] = replace(
+        first_issue,
+        github_publications=(),
+        github_publications_complete=False,
+    )
+    github = _github()
+
+    held = _run(db, client, github, now=NOW)
+    advanced = _run(db, client, github, now=NOW + timedelta(seconds=1))
+
+    assert held.ci_handoff_decisions[0].ticket_key == first.key
+    assert held.ci_handoff_held == 1
+    assert advanced.ci_handoff_decisions[0].ticket_key == second.key
+    assert advanced.ci_handoff_mutations == 1
+    assert client.state_writes == [(second.external_linear_id, "state-review-required")]
+    stored_first = TicketRepo(db).get_by_key(first.key)
+    stored_second = TicketRepo(db).get_by_key(second.key)
+    assert stored_first is not None and stored_first.status is TicketStatus.CI_PENDING
+    assert stored_second is not None
+    assert stored_second.status is TicketStatus.REVIEW_REQUIRED
+
+
+def test_post_commit_crash_fence_recovers_without_a_local_ci_candidate(
+    db: Database,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = RecordingClient()
+    ticket = _seed_ci_pending(db, client)
+    github = _github()
+    original_clear = CIHandoffCoordinationRepo.clear_fence
+    crashed = False
+
+    def crash_after_local_commit(
+        coordination: CIHandoffCoordinationRepo,
+        *,
+        product_id: UUID,
+        reconciliation_id: UUID,
+    ) -> None:
+        nonlocal crashed
+        if not crashed:
+            crashed = True
+            raise RuntimeError("seeded process death after local target commit")
+        original_clear(
+            coordination,
+            product_id=product_id,
+            reconciliation_id=reconciliation_id,
+        )
+
+    monkeypatch.setattr(
+        CIHandoffCoordinationRepo, "clear_fence", crash_after_local_commit
+    )
+    with pytest.raises(RuntimeError, match="seeded process death"):
+        _run(db, client, github, now=NOW)
+    stored = TicketRepo(db).get_by_key(ticket.key)
+    assert stored is not None and stored.status is TicketStatus.REVIEW_REQUIRED
+    assert CIHandoffCoordinationRepo(db).get_fence(PRODUCT_ID) is not None
+
+    recovered = _run(db, client, github, now=NOW + timedelta(seconds=1))
+
+    decision = recovered.ci_handoff_decisions[0]
+    assert decision.reconciliation is not None
+    assert decision.reconciliation.reason is CIHandoffReason.FENCE_RECONCILED_TARGET
+    assert decision.ends_workflow_write_window
+    assert CIHandoffCoordinationRepo(db).get_fence(PRODUCT_ID) is None
+    assert client.state_writes == [(ticket.external_linear_id, "state-review-required")]
+
+
+@pytest.mark.parametrize(
+    ("moved", "expected_reason"),
+    [
+        (False, CIHandoffReason.FENCE_RECONCILED_SOURCE),
+        (True, CIHandoffReason.FENCE_RECONCILED_MOVED),
+    ],
+)
+def test_indeterminate_fence_recovery_preempts_all_second_workflow_writes(
+    db: Database,
+    monkeypatch: pytest.MonkeyPatch,
+    moved: bool,
+    expected_reason: CIHandoffReason,
+) -> None:
+    from test_ci_handoff_reconciliation import AmbiguousNoWriteClient
+
+    client = AmbiguousNoWriteClient()
+    ticket = _seed_ci_pending(db, client)
+    github = _github()
+    first = _run(db, client, github, now=NOW)
+    assert first.ci_handoff_decisions[0].reconciliation is not None
+    assert (
+        first.ci_handoff_decisions[0].reconciliation.reason
+        is CIHandoffReason.WRITE_INDETERMINATE
+    )
+    if moved:
+        assert ticket.external_linear_id is not None
+        client.simulate_linear_state(ticket.external_linear_id, STARTED)
+
+    def forbidden(*args: Any, **kwargs: Any) -> Any:
+        raise AssertionError("a later workflow writer ran during fence recovery")
+
+    monkeypatch.setattr("atlas.pm.sync.admit_one_ready", forbidden)
+    monkeypatch.setattr("atlas.pm.sync.complete_verified", forbidden)
+    second = _run(db, client, github, now=NOW + timedelta(seconds=1))
+
+    decision = second.ci_handoff_decisions[0]
+    assert decision.reconciliation is not None
+    assert decision.reconciliation.reason is expected_reason
+    assert decision.ends_workflow_write_window
+    assert len(client.state_writes) == 1
+    assert CIHandoffCoordinationRepo(db).get_fence(PRODUCT_ID) is None
+    blockers = PmRecoveryRepo(db).list_blockers(product_id=PRODUCT_ID)
+    assert any(blocker.superseded_at is not None for blocker in blockers)
 
 
 @pytest.mark.parametrize(

@@ -145,8 +145,16 @@ from atlas.pm.admission_sync import (
 from atlas.pm.agent_runs import reconstruct_agent_runs
 from atlas.pm.ci_handoff import CIHandoffHooks
 from atlas.pm.ci_handoff_adapter import (
+    CIHandoffAdapterReason,
     CIHandoffAdapterResult,
-    reconcile_one_ci_handoff,
+    reconcile_ci_handoff_candidate,
+    reconcile_existing_ci_handoff_fence,
+)
+from atlas.pm.ci_handoff_fairness import (
+    FairCIHandoffSelection,
+    ensure_ci_handoff_episode,
+    record_fair_ci_handoff_evaluation,
+    select_fair_ci_handoff_candidate,
 )
 from atlas.pm.completion import complete_verified
 from atlas.pm.delivery_snapshot import LinearBoardPull, linear_board_fingerprint
@@ -155,6 +163,7 @@ from atlas.pm.protected_lanes import (
     ProtectedLaneRegistryLoadResult,
     load_packaged_protected_lane_registry,
 )
+from atlas.storage.ci_handoff_coordination import CIHandoffCoordinationRepo
 from atlas.storage.db import Database
 from atlas.storage.repositories import (
     ADRRepo,
@@ -2020,6 +2029,60 @@ def _sync_tick_impl(
         pagination_gaps=tuple(getattr(fetched_issues, "pagination_gaps", ())),
     )
     issues_by_id: dict[str, LinearIssue] = {issue.id: issue for issue in fetched_issues}
+    # A durable CI write fence is possible prior external mutation, so its
+    # named next-process owner runs before generic pull handling, publication
+    # discovery, fair selection, and every competing workflow writer. This
+    # remains reachable even when the prior target commit removed the final
+    # local CI-pending candidate.
+    product_ids = {ticket.product_id for ticket in pull_board}
+    product_ids.update(product.id for product in ProductRepo(db).list())
+    fences = [
+        fence
+        for product_id in product_ids
+        if (fence := CIHandoffCoordinationRepo(db).get_fence(product_id)) is not None
+    ]
+    if fences:
+        # At most one fence is reconciled in a tick. Oldest-first is stable and
+        # avoids converting an independently recoverable second product into an
+        # untyped global crash merely because two processes once stopped.
+        fence = min(fences, key=lambda item: (item.created_at, str(item.product_id)))
+        product_id = fence.product_id
+        handoff = reconcile_existing_ci_handoff_fence(
+            db=db,
+            tickets=tickets,
+            status_map=status_map,
+            initial_issues=fetched_issues,
+            product_id=product_id,
+            candidate_count=sum(
+                ticket.status is TicketStatus.CI_PENDING for ticket in pull_board
+            ),
+            now=now,
+        )
+        assert handoff is not None
+        _apply_ci_handoff_result(result, handoff)
+        fence_ticket = tickets.get_by_key(fence.ticket_key)
+        if fence_ticket is not None:
+            episode = ensure_ci_handoff_episode(
+                db=db,
+                ticket=fence_ticket,
+                initial_issues=fetched_issues,
+                now=now,
+            )
+            record_fair_ci_handoff_evaluation(
+                db=db,
+                selection=FairCIHandoffSelection(
+                    candidates=tuple(
+                        ticket
+                        for ticket in pull_board
+                        if ticket.status is TicketStatus.CI_PENDING
+                    ),
+                    candidate=fence_ticket,
+                    episode=episode,
+                ),
+                result=handoff,
+                now=now,
+            )
+        return result
     # Pull all joined tickets first, then reconstruct AgentRuns from the local
     # transition/evidence store plus the already-fetched board descriptions
     # (ATLAS-166). The push pass runs after reconstruction so this step is
@@ -2059,17 +2122,37 @@ def _sync_tick_impl(
     # confirmation of an earlier fenced target) ends the tick before
     # definition, admission, completion or anomaly writers.
     if github_client is not None:
-        handoff = reconcile_one_ci_handoff(
+        selection = select_fair_ci_handoff_candidate(
             db=db,
             tickets=tickets,
-            github=github_client,
-            linear=client,
-            status_map=status_map,
-            project_id=project_id,
             initial_issues=fetched_issues,
             now=now,
-            hooks=ci_handoff_hooks,
         )
+        if selection.candidate is None:
+            handoff = CIHandoffAdapterResult(
+                reason=CIHandoffAdapterReason.NO_CANDIDATE,
+                candidate_count=0,
+            )
+        else:
+            handoff = reconcile_ci_handoff_candidate(
+                db=db,
+                tickets=tickets,
+                github=github_client,
+                linear=client,
+                status_map=status_map,
+                project_id=project_id,
+                initial_issues=fetched_issues,
+                candidate=selection.candidate,
+                candidate_count=selection.candidate_count,
+                now=now,
+                hooks=ci_handoff_hooks,
+            )
+            record_fair_ci_handoff_evaluation(
+                db=db,
+                selection=selection,
+                result=handoff,
+                now=now,
+            )
         _apply_ci_handoff_result(result, handoff)
         if handoff.ends_workflow_write_window:
             return result

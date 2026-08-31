@@ -38,6 +38,7 @@ from atlas.storage import (
     AdmissionLeaseLostError,
     CIHandoffCoordinationRepo,
     CIHandoffReconciliationRepo,
+    CIHandoffWriteFenceError,
     Database,
     DeliveryAdmissionPolicyRepo,
     EvidenceRepo,
@@ -296,6 +297,60 @@ def _reconcile_fence(
         reason=CIHandoffReason.FENCE_RECONCILED_MOVED,
         reconciliation_id=fence.reconciliation_id,
     )
+
+
+def reconcile_ci_handoff_fence(
+    *,
+    db: Database,
+    tickets: TicketRepo,
+    status_map: LinearStatusMap,
+    initial_issues: list[LinearIssue],
+    product_id: UUID,
+    now: datetime,
+    uuid_factory: Callable[[], UUID] = uuid4,
+) -> CIHandoffResult | None:
+    """Reconcile one existing product fence before ordinary candidate work.
+
+    The fence already names the exact ticket and prior reconciliation.  Its
+    next-process owner therefore needs only a complete board observation and
+    the shared writer lease; publication discovery and CI evidence evaluation
+    must not gate recovery of a possibly completed external write.
+    """
+
+    if now.utcoffset() is None:
+        raise ValueError("CI handoff clock must be timezone-aware")
+    fence = CIHandoffCoordinationRepo(db).get_fence(product_id)
+    if fence is None:
+        return None
+    ticket = tickets.get_by_key(fence.ticket_key)
+    if ticket is None or ticket.id != fence.ticket_id:
+        raise CIHandoffWriteFenceError(
+            "CI handoff fence no longer resolves to its exact ticket"
+        )
+
+    lease = AdmissionCoordinationRepo(db)
+    owner_id = uuid_factory()
+    if not lease.try_acquire(
+        product_id=product_id,
+        owner_id=owner_id,
+        acquired_at=now,
+        ttl=CI_HANDOFF_LEASE_TTL,
+    ):
+        return _result(
+            ticket,
+            classification=CIHandoffClassification.INDETERMINATE,
+            reason=CIHandoffReason.LEASE_UNAVAILABLE,
+        )
+    try:
+        return _reconcile_fence(
+            db=db,
+            ticket=ticket,
+            status_map=status_map,
+            board_pull=_board_pull(initial_issues),
+            now=now,
+        )
+    finally:
+        lease.release(product_id=product_id, owner_id=owner_id)
 
 
 def reconcile_ci_handoff(

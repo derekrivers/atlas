@@ -2035,12 +2035,13 @@ CREATE TABLE planned_ci_pending_recoveries (
 
 ## 5.20 Durable PM Recovery, Fairness and Blocker State
 
-Migration `0036` installs four dormant operational tables for reconstructable
-PM recovery episodes, product-global fairness cursors and bounded blocker
-observations. This schema provides durable recovery memory and fairness state;
-it grants no new PM workflow authority. In particular, it does not change
-CI-handoff selection, activate retrospective completion or authorise any new
-external write.
+Migration `0036` installs four operational tables for reconstructable PM
+recovery episodes, product-global fairness cursors and bounded blocker
+observations. Migration `0037` extends only the closed blocker-code constraint
+for active ordinary CI-handoff diagnosis. The ordinary CI-handoff scheduler
+uses this state to choose which exact current candidate the existing adapter
+evaluates; the schema grants no new workflow authority, does not activate
+retrospective completion and authorises no new external write.
 
 `pm_recovery_sequence_counters` is the product-scoped serialization point and
 global sequence allocator. Every episode creation and evaluation consumes the
@@ -2091,9 +2092,12 @@ reconstruction.
 independently starved by one occurrence. The composite primary key fixes each
 ordinal, the per-occurrence UUID and key unique constraints prevent duplicate
 members, and the `1..128` ordinal bound caps the projection. `started_at`
-preserves starvation age across reconstruction. Clearing or superseding an
-occurrence is not inferred from silence; repository code explicitly manages
-the occurrence and its membership under the product serialization point.
+preserves starvation age across reconstruction. A committed exact evaluation
+atomically removes that selected candidate from older active starvation
+memberships without deleting or superseding the original occurrence. Clearing
+or superseding an occurrence is not inferred from silence; repository code
+explicitly manages the occurrence and its membership under the product
+serialization point.
 
 ```sql
 CREATE TABLE pm_recovery_sequence_counters (
@@ -2243,7 +2247,11 @@ CREATE TABLE pm_blocker_occurrences (
             'lease_unavailable',
             'provider_unavailable',
             'publication_ambiguous',
-            'publication_not_yet_complete'
+            'publication_not_yet_complete',
+            'ci_evidence_not_yet_complete',
+            'ci_evidence_ambiguous',
+            'authority_changed',
+            'write_fence_unresolved'
         )
     ),
     CONSTRAINT pm_blocker_occurrences_authority_kind CHECK (

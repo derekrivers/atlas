@@ -851,7 +851,9 @@ class PmBlockerOccurrenceRow(Base):
         ),
         sa.CheckConstraint(
             "code IN ('lease_unavailable', 'provider_unavailable', "
-            "'publication_ambiguous', 'publication_not_yet_complete')",
+            "'publication_ambiguous', 'publication_not_yet_complete', "
+            "'ci_evidence_not_yet_complete', 'ci_evidence_ambiguous', "
+            "'authority_changed', 'write_fence_unresolved')",
             name="pm_blocker_occurrences_code",
         ),
         sa.CheckConstraint(

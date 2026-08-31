@@ -1065,7 +1065,7 @@ def test_pm_sync_receipt_migration_preserves_ticket_definition_cursors(
 def test_alembic_upgrades_fresh_db_and_matches_metadata(tmp_path: Path) -> None:
     url = f"sqlite:///{tmp_path}/migrated.db"
     config = _alembic_config(url)
-    assert ScriptDirectory.from_config(config).get_heads() == ["0036"]
+    assert ScriptDirectory.from_config(config).get_heads() == ["0037"]
     command.upgrade(config, "head")
 
     engine = sa.create_engine(url)
@@ -1855,12 +1855,62 @@ def test_pm_recovery_migration_compiles_for_postgresql() -> None:
     )
 
 
+def test_pm_recovery_blocker_codes_upgrade_downgrade_and_compile(
+    tmp_path: Path,
+) -> None:
+    url = f"sqlite:///{tmp_path}/pm-recovery-blocker-codes.db"
+    config = _alembic_config(url)
+    command.upgrade(config, "0036")
+    engine = sa.create_engine(url)
+
+    command.upgrade(config, "0037")
+    with engine.connect() as connection:
+        constraint = next(
+            item
+            for item in sa.inspect(connection).get_check_constraints(
+                "pm_blocker_occurrences"
+            )
+            if item["name"] == "pm_blocker_occurrences_code"
+        )
+        assert "ci_evidence_not_yet_complete" in (constraint["sqltext"] or "")
+        assert "ci_evidence_ambiguous" in (constraint["sqltext"] or "")
+        assert "authority_changed" in (constraint["sqltext"] or "")
+        assert "write_fence_unresolved" in (constraint["sqltext"] or "")
+
+    command.downgrade(config, "0036")
+    with engine.connect() as connection:
+        constraint = next(
+            item
+            for item in sa.inspect(connection).get_check_constraints(
+                "pm_blocker_occurrences"
+            )
+            if item["name"] == "pm_blocker_occurrences_code"
+        )
+        sqltext = constraint["sqltext"] or ""
+        assert "publication_not_yet_complete" in sqltext
+        assert "ci_evidence_not_yet_complete" not in sqltext
+
+    output = StringIO()
+    postgres = Config(str(REPO_ROOT / "alembic.ini"), output_buffer=output)
+    postgres.set_main_option(
+        "script_location", str(REPO_ROOT / "atlas" / "storage" / "migrations")
+    )
+    postgres.set_main_option(
+        "sqlalchemy.url", "postgresql://atlas:atlas@localhost/atlas"
+    )
+    command.upgrade(postgres, "0036:0037", sql=True)
+    migration_sql = output.getvalue()
+    assert "-- Running upgrade 0036 -> 0037" in migration_sql
+    assert "DROP CONSTRAINT pm_blocker_occurrences_code" in migration_sql
+    assert "write_fence_unresolved" in migration_sql
+
+
 def test_acceptance_evidence_receipt_outcomes_migrate_without_losing_guards(
     tmp_path: Path,
 ) -> None:
     url = f"sqlite:///{tmp_path}/acceptance-evidence-outcomes.db"
     config = _alembic_config(url)
-    assert ScriptDirectory.from_config(config).get_heads() == ["0036"]
+    assert ScriptDirectory.from_config(config).get_heads() == ["0037"]
     command.upgrade(config, "head")
 
     engine = sa.create_engine(url)

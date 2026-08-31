@@ -756,6 +756,24 @@ class PmRecoveryRepo:
                     evaluated_at=evaluated,
                     observation=blocker,
                 )
+            if episode.candidate_ticket_id is not None:
+                # A committed exact evaluation proves this candidate is no
+                # longer currently starved by an older candidate. Clear only
+                # that mutable membership atomically with the cursor; retain
+                # the blocker occurrence and all of its historical diagnosis.
+                session.execute(
+                    sa.delete(PmBlockerStarvedCandidateRow).where(
+                        PmBlockerStarvedCandidateRow.ticket_id
+                        == episode.candidate_ticket_id,
+                        PmBlockerStarvedCandidateRow.blocker_occurrence_id.in_(
+                            sa.select(PmBlockerOccurrenceRow.id).where(
+                                PmBlockerOccurrenceRow.product_id == episode.product_id,
+                                PmBlockerOccurrenceRow.operation == episode.operation,
+                                PmBlockerOccurrenceRow.active_fingerprint.is_not(None),
+                            )
+                        ),
+                    )
+                )
             session.flush()
 
         stored_episode = self.get_episode(episode_id)

@@ -69,6 +69,10 @@ class PmBlockerCode(StrEnum):
     PUBLICATION_NOT_YET_COMPLETE = "publication_not_yet_complete"
     PROVIDER_UNAVAILABLE = "provider_unavailable"
     PUBLICATION_AMBIGUOUS = "publication_ambiguous"
+    CI_EVIDENCE_NOT_YET_COMPLETE = "ci_evidence_not_yet_complete"
+    CI_EVIDENCE_AMBIGUOUS = "ci_evidence_ambiguous"
+    AUTHORITY_CHANGED = "authority_changed"
+    WRITE_FENCE_UNRESOLVED = "write_fence_unresolved"
 
 
 class PmBlockerAuthorityKind(StrEnum):

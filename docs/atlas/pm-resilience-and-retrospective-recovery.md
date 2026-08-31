@@ -18,11 +18,12 @@ crash-after outcomes are durably reconstructable. It is not a subsystem-wide
 property. Every seam must prove the stronger contract here; otherwise a missed
 or interrupted tick may create a durable blocker and health must report it.
 
-This document defines the contracts and pure health calculus. The durable
-episode, product-global fairness and blocker substrate is available as dormant
-lower-layer storage, but no PM runtime path consumes it. This document does not
-change PM sync, add a CLI, mutate Linear or GitHub, operate the managed runtime,
-alter a production database, or recover a live ticket.
+This document defines the contracts and pure health calculus. The ordinary PM
+CI-handoff lane consumes the durable episode, product-global fairness and
+blocker substrate to schedule one exact current `ci_pending` candidate per
+tick. Retrospective merged-publication recovery remains inactive. This document
+does not add a recovery CLI, operate the managed runtime, alter a production
+database or recover a live ticket.
 
 ## Core invariants
 
@@ -178,8 +179,21 @@ arrive; it is therefore eventually selected. Episode identity changes only on
 an authoritative lifecycle entry or publication replacement, never on process
 restart.
 
+The active ordinary implementation derives a candidate episode from the latest
+append-only transition into `ci_pending` and the exact issue-bound publication
+attachment/repository/PR generation when one is available. A legacy row with no
+transition history uses its durable ticket UUID only for the one-time bootstrap;
+the first later real re-entry has a transition UUID and therefore a new episode.
+Missing, incomplete or ambiguous publication observations are blockers, never
+proof of replacement. The finite snapshot is established once per tick and
+bootstrap allocation is deterministic; after establishment the durable cursor,
+not ticket key, owns selection.
+
 The tick still permits at most one external workflow mutation. A confirmed
-mutation or reconciliation of an ambiguous target fence ends the tick.
+mutation or any reconciliation attempt for an existing ambiguous write fence
+ends the tick. Existing fences are reconciled before generic pull handling,
+publication resolution, evidence evaluation or ordinary fair selection, even
+when the earlier local target commit means no `ci_pending` candidate remains.
 Evaluation fairness never creates a second writer, bypasses a lease, weakens a
 candidate predicate or converts an unbounded arrival model into a liveness
 claim.
@@ -187,10 +201,10 @@ claim.
 ## Durable blocker observations
 
 An unsafe or incomplete action outcome that survives the current call must be
-representable as a bounded typed observation. The separately reviewed storage
-substrate persists this dormant shape without activating scheduling, recovery or
-workflow behavior. The durable shape must answer without raw provider payloads
-or exception text:
+representable as a bounded typed observation. The ordinary CI-handoff scheduler
+now persists this shape for publication, provider, evidence, authority, lease
+and fence holds without acquiring any new workflow authority. The durable shape
+must answer without raw provider payloads or exception text:
 
 - schema and policy revision/fingerprint;
 - operation and bounded reason code;
@@ -215,7 +229,7 @@ payloads. Historical anomaly, evidence, decision and transition records remain
 append-only. Progress supersedes an obsolete blocker explicitly; silence or a
 process restart does not clear it.
 
-The dormant storage substrate does not persist or infer
+The storage substrate does not persist or infer
 `progress_expected_since` or `convergence_expected_since`. Their writer and
 reset semantics are intentionally deferred to the health/diagnose integration
 unit. Until that contract is activated, an episode creation, evaluation,
