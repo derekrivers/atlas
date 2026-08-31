@@ -481,7 +481,7 @@ def test_lifecycle_exit_closes_episode_and_reentry_creates_a_new_one(
     tmp_path: Path,
 ) -> None:
     path = tmp_path / "lifecycle-reentry.db"
-    issues = _seed(path, ("ATLAS-290", "ATLAS-291"))
+    issues = _seed(path, ("ATLAS-290",))
     database = Database(f"sqlite:///{path}")
     tickets = TicketRepo(database)
     initial = select_fair_ci_handoff_candidate(
