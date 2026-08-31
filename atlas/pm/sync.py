@@ -2048,10 +2048,10 @@ def _sync_tick_impl(
     ]
     fenced_product_ids = frozenset(fence.product_id for fence in fences)
     if fences:
-        # Every existing fence first resolves to a durable episode. Comparing
-        # their product-local monotonic work cursors implements durable
-        # least-served rotation across products; creation time is never a
-        # permanently winning scheduler key.
+        # Every existing fence first resolves to a durable episode. Product-
+        # local monotonic cursors choose that product's representative; the
+        # durable observation-time rank below rotates representatives across
+        # products without comparing unrelated local counters.
         fence_options = []
         for candidate_fence in fences:
             candidate_ticket = tickets.get_by_key(candidate_fence.ticket_key)
