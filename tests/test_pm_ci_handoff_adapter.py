@@ -809,6 +809,55 @@ def test_unresolved_fence_rotates_to_independent_product_fence(db: Database) -> 
     assert client.state_writes == []
 
 
+def test_replaced_lease_stops_zombie_writer_after_fence_persistence(
+    db: Database,
+) -> None:
+    client = RecordingClient()
+    _seed_ci_pending(db, client)
+    replacement_owner = uuid4()
+
+    def replace_expired_owner() -> None:
+        assert AdmissionCoordinationRepo(db).try_acquire(
+            product_id=PRODUCT_ID,
+            owner_id=replacement_owner,
+            acquired_at=NOW + timedelta(minutes=6),
+            ttl=timedelta(minutes=5),
+        )
+
+    stopped = _run(
+        db,
+        client,
+        _github(),
+        hooks=CIHandoffHooks(after_fence_persisted=replace_expired_owner),
+        now=NOW,
+    )
+
+    decision = stopped.ci_handoff_decisions[0]
+    assert decision.reconciliation is not None
+    assert decision.reconciliation.reason is CIHandoffReason.LEASE_LOST
+    assert decision.ends_workflow_write_window
+    assert client.state_writes == []
+    assert CIHandoffCoordinationRepo(db).get_fence(PRODUCT_ID) is not None
+
+    AdmissionCoordinationRepo(db).release(
+        product_id=PRODUCT_ID, owner_id=replacement_owner
+    )
+    rebuilt = Database(str(db.engine.url))
+    recovered = _run(
+        rebuilt,
+        client,
+        _github(),
+        now=NOW + timedelta(minutes=6, seconds=1),
+    )
+    rebuilt.engine.dispose()
+    assert (
+        recovered.ci_handoff_decisions[0].reconciliation.reason
+        is CIHandoffReason.FENCE_RECONCILED_SOURCE
+    )
+    assert CIHandoffCoordinationRepo(db).get_fence(PRODUCT_ID) is None
+    assert client.state_writes == []
+
+
 @pytest.mark.parametrize(
     ("moved", "expected_reason"),
     [

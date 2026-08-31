@@ -2053,7 +2053,8 @@ state. PostgreSQL uses a row lock and SQLite uses its transaction-level writer
 serialization, so replay cannot reuse a committed sequence or expose a
 half-created logical state. Exhausting the signed 64-bit range fails closed.
 The latest evaluation fingerprint binds its expected cursor, caller evaluation
-identifier, observation time and complete optional blocker intent. Only that
+identifier, observation time, complete optional blocker intent, and the
+caller's explicit starvation-relief and obsolete-cause-supersession choices. Only that
 exact latest intent is an idempotent replay. Caller evaluation identifiers are
 not episode-global keys: a newly created blocker occurrence derives its UUID
 from the allocated global evaluation sequence, while replay resolves the exact
@@ -2084,7 +2085,9 @@ authority kind and identifier, and recovery episode. The separately nullable
 active. A recurring observation of the same active identity updates its
 bounded count, observation times, retry/capacity fields and optional policy
 tuple; a changed cause, authority or episode creates a distinct occurrence.
-Supersession clears the active fingerprint and atomically records a bounded
+For ordinary CI handoff, committing a changed active cause also supersedes
+every obsolete active cause in that episode inside the same evaluation
+transaction. Supersession clears the active fingerprint and atomically records a bounded
 `progress` or `recovery` event at or after the last observation. Occurrence
 identity, recurrence and supersession therefore survive complete process
 reconstruction.

@@ -62,6 +62,7 @@ class CIHandoffHooks:
     after_initial_snapshot: Callable[[], None] = _noop
     after_classification: Callable[[], None] = _noop
     after_revalidation: Callable[[], None] = _noop
+    after_fence_persisted: Callable[[], None] = _noop
 
 
 @dataclass(frozen=True)
@@ -779,6 +780,18 @@ def reconcile_ci_handoff(
                 created_at=now,
             )
         except AdmissionLeaseLostError:
+            return _result(
+                ticket,
+                classification=CIHandoffClassification.STALE,
+                reason=CIHandoffReason.LEASE_LOST,
+                reconciliation_id=recorded.id,
+            )
+
+        hooks.after_fence_persisted()
+        if not lease.is_owner(product_id=ticket.product_id, owner_id=owner_id):
+            # The durable fence remains for the replacement owner.  An expired
+            # process must never resume its external call after that owner can
+            # have observed source and begun recovery.
             return _result(
                 ticket,
                 classification=CIHandoffClassification.STALE,

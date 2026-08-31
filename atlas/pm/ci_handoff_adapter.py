@@ -27,7 +27,7 @@ from atlas.pm.ci_handoff import (
 from atlas.pm.ci_handoff import (
     reconcile_ci_handoff_fence as reconcile_domain_ci_handoff_fence,
 )
-from atlas.storage import Database, EvidenceRepo, TicketRepo
+from atlas.storage import CIHandoffCoordinationRepo, Database, EvidenceRepo, TicketRepo
 
 
 class CIHandoffAdapterReason(StrEnum):
@@ -243,6 +243,9 @@ def reconcile_ci_handoff_candidate(
         ticket_key=candidate.key,
         identity=identity,
         reconciliation=reconciliation,
+        fence_precedence=(
+            CIHandoffCoordinationRepo(db).get_fence(candidate.product_id) is not None
+        ),
     )
 
 

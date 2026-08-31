@@ -232,8 +232,10 @@ supersession. Recurrence of the same cause in the same authority/episode keeps
 one fingerprint; a changed reason, authority or episode changes it. Repeated
 observations update bounded current diagnostic state or append a new observation
 according to the owning storage contract; they must not grow unbounded duplicate
-payloads. Historical anomaly, evidence, decision and transition records remain
-append-only. Progress supersedes an obsolete blocker explicitly; silence or a
+payloads. The ordinary CI-handoff evaluator atomically supersedes the prior
+active cause when its committed current cause changes. Historical anomaly,
+evidence, decision and transition records remain append-only. Progress
+supersedes an obsolete blocker explicitly; silence or a
 process restart does not clear it.
 
 The storage substrate does not persist or infer

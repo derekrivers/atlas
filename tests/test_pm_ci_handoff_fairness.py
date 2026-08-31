@@ -576,3 +576,61 @@ def test_adapter_holds_persist_explicit_bounded_codes(
         product_id=PRODUCT_ID, active_only=True
     )
     assert blocker.code is expected
+
+
+def test_changed_blocker_cause_atomically_supersedes_obsolete_diagnosis(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "changed-cause.db"
+    issues = _seed(path, ("ATLAS-290",))
+    database = Database(f"sqlite:///{path}")
+    first = select_fair_ci_handoff_candidate(
+        db=database,
+        tickets=TicketRepo(database),
+        initial_issues=list(issues),
+        now=NOW,
+    )
+    record_fair_ci_handoff_evaluation(
+        db=database,
+        selection=first,
+        result=CIHandoffAdapterResult(
+            reason=CIHandoffAdapterReason.PUBLICATION_AMBIGUOUS,
+            candidate_count=1,
+            ticket_key="ATLAS-290",
+        ),
+        now=NOW,
+    )
+    [obsolete] = PmRecoveryRepo(database).list_blockers(
+        product_id=PRODUCT_ID, active_only=True
+    )
+
+    second = select_fair_ci_handoff_candidate(
+        db=database,
+        tickets=TicketRepo(database),
+        initial_issues=list(issues),
+        now=NOW + timedelta(seconds=1),
+    )
+    record_fair_ci_handoff_evaluation(
+        db=database,
+        selection=second,
+        result=CIHandoffAdapterResult(
+            reason=CIHandoffAdapterReason.RECONCILED,
+            candidate_count=1,
+            ticket_key="ATLAS-290",
+            reconciliation=CIHandoffResult(
+                classification=CIHandoffClassification.PENDING,
+                decision=CIHandoffDecision.HOLD,
+                reason=CIHandoffReason.REQUIRED_CHECKS_PENDING,
+                ticket_key="ATLAS-290",
+            ),
+        ),
+        now=NOW + timedelta(seconds=1),
+    )
+
+    retained = PmRecoveryRepo(database).get_blocker(obsolete.id)
+    assert retained is not None
+    assert retained.superseded_at == NOW + timedelta(seconds=1)
+    [active] = PmRecoveryRepo(database).list_blockers(
+        product_id=PRODUCT_ID, active_only=True
+    )
+    assert active.code is PmBlockerCode.CI_EVIDENCE_NOT_YET_COMPLETE

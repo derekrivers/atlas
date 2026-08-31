@@ -474,6 +474,7 @@ def record_fair_ci_handoff_evaluation(
             evaluated_at=now,
             blocker=blocker,
             relieve_starvation_for_candidate=True,
+            supersede_prior_blockers_for_episode=True,
         )
         .episode
     )

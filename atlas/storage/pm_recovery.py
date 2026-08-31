@@ -153,6 +153,7 @@ def _evaluation_fingerprint(
     evaluated_at: datetime,
     blocker: PmBlockerObservationIntent | None,
     relieve_starvation_for_candidate: bool,
+    supersede_prior_blockers_for_episode: bool,
 ) -> str:
     payload = {
         "episode_id": str(episode_id),
@@ -161,6 +162,7 @@ def _evaluation_fingerprint(
         "evaluated_at": evaluated_at.isoformat(),
         "evaluation_id": evaluation_id,
         "relieve_starvation_for_candidate": relieve_starvation_for_candidate,
+        "supersede_prior_blockers_for_episode": (supersede_prior_blockers_for_episode),
     }
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode()).hexdigest()
@@ -667,6 +669,7 @@ class PmRecoveryRepo:
         evaluated_at: datetime,
         blocker: PmBlockerObservationIntent | None = None,
         relieve_starvation_for_candidate: bool = False,
+        supersede_prior_blockers_for_episode: bool = False,
     ) -> PmRecoveryEvaluationRecord:
         """Move one episode to the product tail and record its blocker atomically."""
 
@@ -685,6 +688,7 @@ class PmRecoveryRepo:
             evaluated_at=evaluated,
             blocker=blocker,
             relieve_starvation_for_candidate=relieve_starvation_for_candidate,
+            supersede_prior_blockers_for_episode=(supersede_prior_blockers_for_episode),
         )
         blocker_id: UUID | None = None
         current = self.get_episode(episode_id)
@@ -762,6 +766,24 @@ class PmRecoveryRepo:
                     evaluated_at=evaluated,
                     observation=blocker,
                 )
+                if supersede_prior_blockers_for_episode:
+                    obsolete = list(
+                        session.scalars(
+                            sa.select(PmBlockerOccurrenceRow).where(
+                                PmBlockerOccurrenceRow.recovery_episode_id
+                                == episode.id,
+                                PmBlockerOccurrenceRow.active_fingerprint.is_not(None),
+                                PmBlockerOccurrenceRow.id != blocker_id,
+                            )
+                        )
+                    )
+                    for prior in obsolete:
+                        prior.active_fingerprint = None
+                        prior.superseded_at = evaluated
+                        prior.superseded_by_event_id = evaluation_id
+                        prior.supersession_kind = (
+                            PmBlockerSupersessionKind.PROGRESS.value
+                        )
             if (
                 relieve_starvation_for_candidate
                 and episode.candidate_ticket_id is not None
