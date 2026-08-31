@@ -24,7 +24,7 @@ from atlas.core.models import (
     CIHandoffReason,
     TicketStatus,
 )
-from atlas.core.models.pm_recovery import PmBlockerCode
+from atlas.core.models.pm_recovery import MAX_PM_STARVED_CANDIDATES, PmBlockerCode
 from atlas.linear.client import LinearIssue
 from atlas.pm.ci_handoff import CIHandoffResult
 from atlas.pm.ci_handoff_adapter import (
@@ -243,6 +243,118 @@ def test_selected_candidate_evaluation_clears_only_its_stale_starvation_membersh
     assert [item.ticket_key for item in first_blocker.starved_candidates] == [
         "ATLAS-292"
     ]
+    assert first_blocker.capacity_impact
+
+    third = select_fair_ci_handoff_candidate(
+        db=database,
+        tickets=TicketRepo(database),
+        initial_issues=list(issues),
+        now=NOW + timedelta(seconds=2),
+    )
+    record_fair_ci_handoff_evaluation(
+        db=database,
+        selection=third,
+        result=_held(),
+        now=NOW + timedelta(seconds=2),
+    )
+    fully_relieved = PmRecoveryRepo(database).get_blocker(blocker.id)
+    assert fully_relieved is not None
+    assert fully_relieved.starved_candidates == ()
+    assert not fully_relieved.capacity_impact
+
+
+def test_starvation_projection_is_bounded_before_storage_validation(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "bounded-starvation.db"
+    keys = tuple(f"ATLAS-{number}" for number in range(1000, 1130))
+    issues = _seed(path, keys)
+    database = Database(f"sqlite:///{path}")
+    selection = select_fair_ci_handoff_candidate(
+        db=database,
+        tickets=TicketRepo(database),
+        initial_issues=list(issues),
+        now=NOW,
+    )
+    assert selection.candidate is not None
+
+    record_fair_ci_handoff_evaluation(
+        db=database,
+        selection=selection,
+        result=_held(),
+        now=NOW,
+    )
+
+    [blocker] = PmRecoveryRepo(database).list_blockers(
+        product_id=PRODUCT_ID, active_only=True
+    )
+    assert len(blocker.starved_candidates) == MAX_PM_STARVED_CANDIDATES
+    assert blocker.starved_candidates_truncated
+    assert blocker.capacity_impact
+    expected = [ticket.key for ticket in selection.candidates[1:129]]
+    assert [item.ticket_key for item in blocker.starved_candidates] == expected
+    replay = select_fair_ci_handoff_candidate(
+        db=database,
+        tickets=TicketRepo(database),
+        initial_issues=list(issues),
+        now=NOW + timedelta(seconds=1),
+    )
+    assert replay.candidate is not None
+    assert replay.candidate.key == "ATLAS-1001"
+
+
+def test_cross_product_hold_advances_without_cross_product_starvation_members(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "cross-product.db"
+    database = Database(f"sqlite:///{path}")
+    database.create_all()
+    client = RecordingClient()
+    second_product_id = UUID("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
+    first_ticket = seed_ticket(
+        database,
+        client,
+        key="ATLAS-290",
+        product_id=PRODUCT_ID,
+        status=TicketStatus.CI_PENDING,
+        issue_state=CI_PENDING_STATE,
+        linear_synced_at=NOW,
+        status_entered_at=NOW,
+    )
+    second_ticket = seed_ticket(
+        database,
+        client,
+        key="OTHER-290",
+        product_id=second_product_id,
+        status=TicketStatus.CI_PENDING,
+        issue_state=CI_PENDING_STATE,
+        linear_synced_at=NOW,
+        status_entered_at=NOW,
+    )
+    issues = client.fetch_project_issues(PROJECT_ID)
+    first = select_fair_ci_handoff_candidate(
+        db=database,
+        tickets=TicketRepo(database),
+        initial_issues=issues,
+        now=NOW,
+    )
+    assert first.candidate == first_ticket
+    record_fair_ci_handoff_evaluation(
+        db=database, selection=first, result=_held(), now=NOW
+    )
+
+    [blocker] = PmRecoveryRepo(database).list_blockers(
+        product_id=PRODUCT_ID, active_only=True
+    )
+    assert blocker.starved_candidates == ()
+    assert not blocker.capacity_impact
+    second = select_fair_ci_handoff_candidate(
+        db=database,
+        tickets=TicketRepo(database),
+        initial_issues=issues,
+        now=NOW + timedelta(seconds=1),
+    )
+    assert second.candidate == second_ticket
 
 
 def test_publication_replacement_retires_old_episode_and_blocker(

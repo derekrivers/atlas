@@ -260,6 +260,11 @@
       "title": "Starved Candidates",
       "type": "array"
     },
+    "starved_candidates_truncated": {
+      "default": false,
+      "title": "Starved Candidates Truncated",
+      "type": "boolean"
+    },
     "superseded_at": {
       "anyOf": [
         {

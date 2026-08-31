@@ -268,9 +268,12 @@ complete project pull, authorised status reconciliation (including the
 dedicated evidence-backed local recovery above) and AgentRun reconstruction,
 it reconciles durable recovery episodes for one finite snapshot of locally
 `CI Pending` tickets and considers the episode with the least product-global
-fairness cursor. Stable ticket order is used only for deterministic one-time
-bootstrap; every completed evaluation moves that episode to the durable
-sequence tail. The latest append-only transition into
+fairness cursor. The product-local cursor is also the durable cross-product
+work rank: every completed evaluation, including an unresolved-fence attempt,
+moves that episode behind currently lower-ranked independent products. Stable
+ticket order is used only for deterministic one-time bootstrap; every completed
+evaluation moves that episode to the durable sequence tail. The latest
+append-only transition into
 `ci_pending` bounds the delivery episode even when the poll-compressed source
 is `ready_for_agent` or `in_progress` and no AgentRun could be reconstructed.
 The same complete board observation carries the issue-bound Linear GitHub

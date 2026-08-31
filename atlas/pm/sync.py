@@ -163,7 +163,10 @@ from atlas.pm.protected_lanes import (
     ProtectedLaneRegistryLoadResult,
     load_packaged_protected_lane_registry,
 )
-from atlas.storage.ci_handoff_coordination import CIHandoffCoordinationRepo
+from atlas.storage.ci_handoff_coordination import (
+    CIHandoffCoordinationRepo,
+    CIHandoffWriteFenceError,
+)
 from atlas.storage.db import Database
 from atlas.storage.repositories import (
     ADRRepo,
@@ -2042,10 +2045,33 @@ def _sync_tick_impl(
         if (fence := CIHandoffCoordinationRepo(db).get_fence(product_id)) is not None
     ]
     if fences:
-        # At most one fence is reconciled in a tick. Oldest-first is stable and
-        # avoids converting an independently recoverable second product into an
-        # untyped global crash merely because two processes once stopped.
-        fence = min(fences, key=lambda item: (item.created_at, str(item.product_id)))
+        # Every existing fence first resolves to a durable episode. Comparing
+        # their product-local monotonic work cursors implements durable
+        # least-served rotation across products; creation time is never a
+        # permanently winning scheduler key.
+        fence_options = []
+        for candidate_fence in fences:
+            candidate_ticket = tickets.get_by_key(candidate_fence.ticket_key)
+            if (
+                candidate_ticket is None
+                or candidate_ticket.id != candidate_fence.ticket_id
+            ):
+                raise CIHandoffWriteFenceError(
+                    "CI handoff fence no longer resolves to its exact ticket"
+                )
+            candidate_episode = ensure_ci_handoff_episode(
+                db=db,
+                ticket=candidate_ticket,
+                initial_issues=fetched_issues,
+                now=now,
+            )
+            fence_options.append(
+                (candidate_episode.fairness_cursor, candidate_fence, candidate_ticket)
+            )
+        _cursor, fence, fence_ticket = min(
+            fence_options,
+            key=lambda item: (item[0], str(item[1].product_id)),
+        )
         product_id = fence.product_id
         handoff = reconcile_existing_ci_handoff_fence(
             db=db,
@@ -2060,28 +2086,27 @@ def _sync_tick_impl(
         )
         assert handoff is not None
         _apply_ci_handoff_result(result, handoff)
-        fence_ticket = tickets.get_by_key(fence.ticket_key)
-        if fence_ticket is not None:
-            episode = ensure_ci_handoff_episode(
-                db=db,
-                ticket=fence_ticket,
-                initial_issues=fetched_issues,
-                now=now,
-            )
-            record_fair_ci_handoff_evaluation(
-                db=db,
-                selection=FairCIHandoffSelection(
-                    candidates=tuple(
-                        ticket
-                        for ticket in pull_board
-                        if ticket.status is TicketStatus.CI_PENDING
-                    ),
-                    candidate=fence_ticket,
-                    episode=episode,
+        episode = ensure_ci_handoff_episode(
+            db=db,
+            ticket=fence_ticket,
+            initial_issues=fetched_issues,
+            now=now,
+        )
+        record_fair_ci_handoff_evaluation(
+            db=db,
+            selection=FairCIHandoffSelection(
+                candidates=tuple(
+                    ticket
+                    for ticket in pull_board
+                    if ticket.product_id == product_id
+                    and ticket.status is TicketStatus.CI_PENDING
                 ),
-                result=handoff,
-                now=now,
-            )
+                candidate=fence_ticket,
+                episode=episode,
+            ),
+            result=handoff,
+            now=now,
+        )
         return result
     # Pull all joined tickets first, then reconstruct AgentRuns from the local
     # transition/evidence store plus the already-fetched board descriptions

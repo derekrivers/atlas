@@ -2037,8 +2037,9 @@ CREATE TABLE planned_ci_pending_recoveries (
 
 Migration `0036` installs four operational tables for reconstructable PM
 recovery episodes, product-global fairness cursors and bounded blocker
-observations. Migration `0037` extends only the closed blocker-code constraint
-for active ordinary CI-handoff diagnosis. The ordinary CI-handoff scheduler
+observations. Migration `0037` extends the closed blocker-code constraint and
+adds the explicit bounded-starvation truncation marker required by active
+ordinary CI-handoff diagnosis. The ordinary CI-handoff scheduler
 uses this state to choose which exact current candidate the existing adapter
 evaluates; the schema grants no new workflow authority, does not activate
 retrospective completion and authorises no new external write.
@@ -2092,7 +2093,11 @@ reconstruction.
 independently starved by one occurrence. The composite primary key fixes each
 ordinal, the per-occurrence UUID and key unique constraints prevent duplicate
 members, and the `1..128` ordinal bound caps the projection. `started_at`
-preserves starvation age across reconstruction. A committed exact evaluation
+preserves starvation age across reconstruction. A saturated 128-member
+projection sets `starved_candidates_truncated`; that durable bit proves the
+projection omitted at least one same-product member, retains capacity impact
+after the visible prefix drains, and clears only on a later complete blocker
+observation or explicit supersession. A committed exact evaluation
 atomically removes that selected candidate from older active starvation
 memberships without deleting or superseding the original occurrence. Clearing
 or superseding an occurrence is not inferred from silence; repository code
@@ -2230,6 +2235,7 @@ CREATE TABLE pm_blocker_occurrences (
     consecutive_observations BIGINT NOT NULL,
     next_safe_retry_at TIMESTAMPTZ,
     capacity_impact BOOLEAN NOT NULL DEFAULT FALSE,
+    starved_candidates_truncated BOOLEAN NOT NULL DEFAULT FALSE,
     policy_namespace TEXT,
     policy_revision BIGINT,
     policy_fingerprint TEXT,

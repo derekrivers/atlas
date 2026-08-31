@@ -31,12 +31,14 @@ from atlas.core.models import (
     TicketStatus,
     TicketStatusTransition,
 )
+from atlas.core.models.pm_recovery import PmBlockerCode
 from atlas.evidence.pull import drive_evidence_pull
 from atlas.linear.client import LinearIssue, _github_publication_from_attachment
 from atlas.pm import CIHandoffHooks, sync_tick
 from atlas.pm.ci_handoff_adapter import CIHandoffAdapterReason
 from atlas.pm.sync import CI_PENDING_POLL_COMPRESSION_CREATED_BY
 from atlas.storage import (
+    AdmissionCoordinationRepo,
     AgentRunRepo,
     CIHandoffReconciliationRepo,
     Database,
@@ -190,12 +192,13 @@ def _seed_ci_pending(
     client: RecordingClient,
     *,
     key: str = "ATLAS-263",
+    product_id: UUID = PRODUCT_ID,
 ) -> Ticket:
     ticket = seed_ticket(
         db,
         client,
         key=key,
-        product_id=PRODUCT_ID,
+        product_id=product_id,
         status=TicketStatus.CI_PENDING,
         issue_state=CI_PENDING_STATE,
         acceptance_criteria=["bounded transition"],
@@ -619,29 +622,49 @@ def test_candidate_discovery_bootstraps_stably_and_mutates_only_one_per_tick(
 def test_poisoned_first_candidate_rotates_and_next_candidate_advances(
     db: Database,
 ) -> None:
-    client = RecordingClient()
-    first = _seed_ci_pending(db, client, key="ATLAS-263")
-    second = _seed_ci_pending(db, client, key="ATLAS-264")
+    seed_client = RecordingClient()
+    first = _seed_ci_pending(db, seed_client, key="ATLAS-263")
+    second = _seed_ci_pending(db, seed_client, key="ATLAS-264")
     assert first.external_linear_id is not None
-    first_issue = client.fetch_issue(first.external_linear_id)
+    first_issue = seed_client.fetch_issue(first.external_linear_id)
     assert first_issue is not None
     # This is the DTO shape produced by the boundary for an inactive merged
     # attachment: it is not usable as an ordinary live publication.
-    client._issues[first.external_linear_id] = replace(
+    seed_client._issues[first.external_linear_id] = replace(
         first_issue,
         github_publications=(),
         github_publications_complete=False,
     )
-    github = _github()
+    authoritative_issues = seed_client.fetch_project_issues(PROJECT_ID)
 
-    held = _run(db, client, github, now=NOW)
-    advanced = _run(db, client, github, now=NOW + timedelta(seconds=1))
+    def rebuild_client() -> RecordingClient:
+        rebuilt = RecordingClient()
+        rebuilt._issues = {issue.id: replace(issue) for issue in authoritative_issues}
+        return rebuilt
+
+    first_db = Database(str(db.engine.url))
+    first_client = rebuild_client()
+    held = _run(first_db, first_client, _github(), now=NOW)
+    first_db.engine.dispose()
+
+    second_db = Database(str(db.engine.url))
+    second_client = rebuild_client()
+    advanced = _run(
+        second_db,
+        second_client,
+        _github(),
+        now=NOW + timedelta(seconds=1),
+    )
+    second_db.engine.dispose()
 
     assert held.ci_handoff_decisions[0].ticket_key == first.key
     assert held.ci_handoff_held == 1
     assert advanced.ci_handoff_decisions[0].ticket_key == second.key
     assert advanced.ci_handoff_mutations == 1
-    assert client.state_writes == [(second.external_linear_id, "state-review-required")]
+    assert first_client.state_writes == []
+    assert second_client.state_writes == [
+        (second.external_linear_id, "state-review-required")
+    ]
     stored_first = TicketRepo(db).get_by_key(first.key)
     stored_second = TicketRepo(db).get_by_key(second.key)
     assert stored_first is not None and stored_first.status is TicketStatus.CI_PENDING
@@ -683,8 +706,39 @@ def test_post_commit_crash_fence_recovers_without_a_local_ci_candidate(
     stored = TicketRepo(db).get_by_key(ticket.key)
     assert stored is not None and stored.status is TicketStatus.REVIEW_REQUIRED
     assert CIHandoffCoordinationRepo(db).get_fence(PRODUCT_ID) is not None
+    assert ticket.external_linear_id is not None
+    target_issue = client._issues.pop(ticket.external_linear_id)
 
-    recovered = _run(db, client, github, now=NOW + timedelta(seconds=1))
+    for offset in (1, 2):
+        rebuilt = Database(str(db.engine.url))
+        unresolved = _run(
+            rebuilt,
+            client,
+            github,
+            now=NOW + timedelta(seconds=offset),
+        )
+        rebuilt.engine.dispose()
+        decision = unresolved.ci_handoff_decisions[0]
+        assert decision.reconciliation is not None
+        assert decision.reconciliation.reason is CIHandoffReason.FENCE_STILL_UNRESOLVED
+        assert decision.ends_workflow_write_window
+        assert CIHandoffCoordinationRepo(db).get_fence(PRODUCT_ID) is not None
+        assert client.state_writes == [
+            (ticket.external_linear_id, "state-review-required")
+        ]
+        [episode] = PmRecoveryRepo(db).list_active_episodes_ordered(PRODUCT_ID)
+        assert episode.closed_at is None
+
+    [blocker] = PmRecoveryRepo(db).list_blockers(
+        product_id=PRODUCT_ID, active_only=True
+    )
+    assert blocker.code is PmBlockerCode.WRITE_FENCE_UNRESOLVED
+    assert blocker.consecutive_observations == 2
+    client._issues[ticket.external_linear_id] = target_issue
+
+    rebuilt = Database(str(db.engine.url))
+    recovered = _run(rebuilt, client, github, now=NOW + timedelta(seconds=3))
+    rebuilt.engine.dispose()
 
     decision = recovered.ci_handoff_decisions[0]
     assert decision.reconciliation is not None
@@ -692,6 +746,67 @@ def test_post_commit_crash_fence_recovers_without_a_local_ci_candidate(
     assert decision.ends_workflow_write_window
     assert CIHandoffCoordinationRepo(db).get_fence(PRODUCT_ID) is None
     assert client.state_writes == [(ticket.external_linear_id, "state-review-required")]
+
+
+def test_unresolved_fence_rotates_to_independent_product_fence(db: Database) -> None:
+    client = RecordingClient()
+    first = _seed_ci_pending(db, client, key="ATLAS-263")
+    second_product_id = UUID("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
+    second = _seed_ci_pending(
+        db,
+        client,
+        key="OTHER-263",
+        product_id=second_product_id,
+    )
+    owner_id = uuid4()
+    coordination = AdmissionCoordinationRepo(db)
+    for ticket in (first, second):
+        assert ticket.external_linear_id is not None
+        assert coordination.try_acquire(
+            product_id=ticket.product_id,
+            owner_id=owner_id,
+            acquired_at=NOW,
+            ttl=timedelta(minutes=1),
+        )
+        CIHandoffCoordinationRepo(db).begin_write(
+            product_id=ticket.product_id,
+            owner_id=owner_id,
+            reconciliation_id=uuid4(),
+            ticket_id=ticket.id,
+            ticket_key=ticket.key,
+            issue_id=ticket.external_linear_id,
+            source_state_id=CI_PENDING_STATE.id,
+            target_state_id="state-review-required",
+            target_status=TicketStatus.REVIEW_REQUIRED,
+            created_at=NOW,
+        )
+        coordination.release(product_id=ticket.product_id, owner_id=owner_id)
+
+    assert first.external_linear_id is not None
+    client._issues.pop(first.external_linear_id)
+    first_tick = _run(db, client, _github(), now=NOW)
+    assert (
+        first_tick.ci_handoff_decisions[0].reconciliation.reason
+        is CIHandoffReason.FENCE_STILL_UNRESOLVED
+    )
+    assert CIHandoffCoordinationRepo(db).get_fence(PRODUCT_ID) is not None
+    assert CIHandoffCoordinationRepo(db).get_fence(second_product_id) is not None
+
+    rebuilt = Database(str(db.engine.url))
+    second_tick = _run(
+        rebuilt,
+        client,
+        _github(),
+        now=NOW + timedelta(seconds=1),
+    )
+    rebuilt.engine.dispose()
+    assert (
+        second_tick.ci_handoff_decisions[0].reconciliation.reason
+        is CIHandoffReason.FENCE_RECONCILED_SOURCE
+    )
+    assert CIHandoffCoordinationRepo(db).get_fence(PRODUCT_ID) is not None
+    assert CIHandoffCoordinationRepo(db).get_fence(second_product_id) is None
+    assert client.state_writes == []
 
 
 @pytest.mark.parametrize(

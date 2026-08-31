@@ -11,6 +11,7 @@ from uuid import UUID
 from atlas.core.keys import natural_key
 from atlas.core.models import CIHandoffReason, Ticket, TicketStatus
 from atlas.core.models.pm_recovery import (
+    MAX_PM_STARVED_CANDIDATES,
     PmBlockerAuthorityKind,
     PmBlockerCode,
     PmBlockerKind,
@@ -344,11 +345,18 @@ def _blocker_intent(
         kind is not PmBlockerKind.UNRESOLVED_FENCE
         and code is not PmBlockerCode.LEASE_UNAVAILABLE
     ):
+        same_product = tuple(
+            ticket
+            for ticket in snapshot
+            if ticket.product_id == candidate.product_id and ticket.id != candidate.id
+        )
         starved = tuple(
             PmStarvedCandidateRef(ticket_id=ticket.id, ticket_key=ticket.key)
-            for ticket in snapshot
-            if ticket.id != candidate.id
+            for ticket in same_product[:MAX_PM_STARVED_CANDIDATES]
         )
+        starved_candidates_truncated = len(same_product) > len(starved)
+    else:
+        starved_candidates_truncated = False
     return PmBlockerObservationIntent(
         code=code,
         kind=kind,
@@ -361,6 +369,7 @@ def _blocker_intent(
         ),
         capacity_impact=bool(starved),
         starved_candidates=starved,
+        starved_candidates_truncated=starved_candidates_truncated,
         policy_namespace=CI_HANDOFF_BLOCKER_POLICY_NAMESPACE,
         policy_revision=CI_HANDOFF_BLOCKER_POLICY_REVISION,
         policy_fingerprint=CI_HANDOFF_BLOCKER_POLICY_FINGERPRINT,
@@ -422,7 +431,7 @@ def record_fair_ci_handoff_evaluation(
     episode = selection.episode
     if candidate is None or episode is None:
         raise CIHandoffFairnessError("cannot record an empty fairness selection")
-    reconciled_fence = bool(
+    resolved_fence = bool(
         result.reconciliation
         and result.reconciliation.reason
         in {
@@ -431,12 +440,24 @@ def record_fair_ci_handoff_evaluation(
             CIHandoffReason.FENCE_RECONCILED_MOVED,
         }
     )
+    fence_resolution_without_blocker = bool(
+        result.reconciliation
+        and result.reconciliation.reason
+        in {
+            CIHandoffReason.FENCE_RECONCILED_TARGET,
+            CIHandoffReason.FENCE_RECONCILED_SOURCE,
+        }
+    )
     authoritative_progress = bool(
         result.reconciliation
         and result.reconciliation.reason is CIHandoffReason.TICKET_NOT_CI_PENDING
     )
     blocker = None
-    if result.held and not reconciled_fence and not authoritative_progress:
+    if (
+        result.held
+        and not fence_resolution_without_blocker
+        and not authoritative_progress
+    ):
         blocker = _blocker_intent(
             db=db,
             candidate=candidate,
@@ -452,11 +473,12 @@ def record_fair_ci_handoff_evaluation(
             evaluation_id=_evaluation_id(episode, result, now),
             evaluated_at=now,
             blocker=blocker,
+            relieve_starvation_for_candidate=True,
         )
         .episode
     )
 
-    if reconciled_fence:
+    if resolved_fence:
         assert result.reconciliation is not None
         reconciliation_id = result.reconciliation.reconciliation_id
         assert reconciliation_id is not None
@@ -468,7 +490,14 @@ def record_fair_ci_handoff_evaluation(
         )
 
     current = TicketRepo(db).get_by_key(candidate.key)
-    if current is not None and current.status is not TicketStatus.CI_PENDING:
+    fence_remains = (
+        CIHandoffCoordinationRepo(db).get_fence(candidate.product_id) is not None
+    )
+    if (
+        current is not None
+        and current.status is not TicketStatus.CI_PENDING
+        and not fence_remains
+    ):
         PmRecoveryRepo(db).close_episode(
             episode_id=recorded.id,
             closure_event_id=(

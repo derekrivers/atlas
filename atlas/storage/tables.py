@@ -950,6 +950,9 @@ class PmBlockerOccurrenceRow(Base):
     capacity_impact: Mapped[bool] = mapped_column(
         sa.Boolean, nullable=False, server_default=sa.text("FALSE")
     )
+    starved_candidates_truncated: Mapped[bool] = mapped_column(
+        sa.Boolean, nullable=False, server_default=sa.text("FALSE")
+    )
     policy_namespace: Mapped[str | None] = mapped_column(sa.Text)
     policy_revision: Mapped[int | None] = mapped_column(sa.BigInteger)
     policy_fingerprint: Mapped[str | None] = mapped_column(sa.Text)

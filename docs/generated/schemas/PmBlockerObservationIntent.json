@@ -145,6 +145,11 @@
       "maxItems": 128,
       "title": "Starved Candidates",
       "type": "array"
+    },
+    "starved_candidates_truncated": {
+      "default": false,
+      "title": "Starved Candidates Truncated",
+      "type": "boolean"
     }
   },
   "required": [

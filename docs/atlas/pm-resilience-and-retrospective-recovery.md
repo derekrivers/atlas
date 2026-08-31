@@ -168,7 +168,12 @@ cursor is `last_evaluated_sequence` when present and otherwise
 `episode_created_sequence`; the natural ticket key is only the final tie-break
 for corrupt/equivalent legacy input, which health must also diagnose.
 
-Selection takes the least cursor from one finite eligible snapshot. A held
+Selection takes the least cursor from one finite eligible snapshot. Cursors
+are product-local monotonic work ranks: comparison across products is the
+durable outer scheduler, and product UUID is only its deterministic final tie.
+A fixed candidate or fence cursor can therefore have only finitely many lower
+work ranks ahead of it; an unresolved fence is moved behind every currently
+lower-ranked independent product after each attempt. A held
 evaluation moves that episode to the sequence tail rather than retaining first
 position. New episodes receive their creation cursor at the same global tail,
 so new arrivals cannot cut ahead of an older retry cursor. Under a functioning
@@ -215,7 +220,9 @@ must answer without raw provider payloads or exception text:
 - first and last observation times plus consecutive observation count;
 - next safe retry time;
 - whether delivery capacity is affected;
-- independently starved candidates and starvation start;
+- a deterministic same-product prefix of at most 128 independently starved
+  candidates and starvation start, plus an explicit truncation marker when
+  that prefix omits further members;
 - the exact lease/fence/intent identity when applicable; and
 - the later progress observation that supersedes the blocker.
 

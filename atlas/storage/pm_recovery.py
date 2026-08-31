@@ -152,6 +152,7 @@ def _evaluation_fingerprint(
     evaluation_id: str,
     evaluated_at: datetime,
     blocker: PmBlockerObservationIntent | None,
+    relieve_starvation_for_candidate: bool,
 ) -> str:
     payload = {
         "episode_id": str(episode_id),
@@ -159,6 +160,7 @@ def _evaluation_fingerprint(
         "blocker": None if blocker is None else blocker.model_dump(mode="json"),
         "evaluated_at": evaluated_at.isoformat(),
         "evaluation_id": evaluation_id,
+        "relieve_starvation_for_candidate": relieve_starvation_for_candidate,
     }
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode()).hexdigest()
@@ -593,6 +595,7 @@ class PmRecoveryRepo:
                 consecutive_observations=1,
                 next_safe_retry_at=observation.next_safe_retry_at,
                 capacity_impact=observation.capacity_impact,
+                starved_candidates_truncated=(observation.starved_candidates_truncated),
                 policy_namespace=observation.policy_namespace,
                 policy_revision=observation.policy_revision,
                 policy_fingerprint=observation.policy_fingerprint,
@@ -634,6 +637,7 @@ class PmRecoveryRepo:
             )
             row.next_safe_retry_at = observation.next_safe_retry_at
             row.capacity_impact = observation.capacity_impact
+            row.starved_candidates_truncated = observation.starved_candidates_truncated
             row.policy_namespace = observation.policy_namespace
             row.policy_revision = observation.policy_revision
             row.policy_fingerprint = observation.policy_fingerprint
@@ -662,6 +666,7 @@ class PmRecoveryRepo:
         evaluation_id: str,
         evaluated_at: datetime,
         blocker: PmBlockerObservationIntent | None = None,
+        relieve_starvation_for_candidate: bool = False,
     ) -> PmRecoveryEvaluationRecord:
         """Move one episode to the product tail and record its blocker atomically."""
 
@@ -679,6 +684,7 @@ class PmRecoveryRepo:
             evaluation_id=evaluation_id,
             evaluated_at=evaluated,
             blocker=blocker,
+            relieve_starvation_for_candidate=relieve_starvation_for_candidate,
         )
         blocker_id: UUID | None = None
         current = self.get_episode(episode_id)
@@ -756,11 +762,31 @@ class PmRecoveryRepo:
                     evaluated_at=evaluated,
                     observation=blocker,
                 )
-            if episode.candidate_ticket_id is not None:
+            if (
+                relieve_starvation_for_candidate
+                and episode.candidate_ticket_id is not None
+            ):
                 # A committed exact evaluation proves this candidate is no
                 # longer currently starved by an older candidate. Clear only
                 # that mutable membership atomically with the cursor; retain
                 # the blocker occurrence and all of its historical diagnosis.
+                affected_blocker_ids = list(
+                    session.scalars(
+                        sa.select(PmBlockerStarvedCandidateRow.blocker_occurrence_id)
+                        .join(
+                            PmBlockerOccurrenceRow,
+                            PmBlockerOccurrenceRow.id
+                            == PmBlockerStarvedCandidateRow.blocker_occurrence_id,
+                        )
+                        .where(
+                            PmBlockerStarvedCandidateRow.ticket_id
+                            == episode.candidate_ticket_id,
+                            PmBlockerOccurrenceRow.product_id == episode.product_id,
+                            PmBlockerOccurrenceRow.operation == episode.operation,
+                            PmBlockerOccurrenceRow.active_fingerprint.is_not(None),
+                        )
+                    )
+                )
                 session.execute(
                     sa.delete(PmBlockerStarvedCandidateRow).where(
                         PmBlockerStarvedCandidateRow.ticket_id
@@ -774,6 +800,23 @@ class PmRecoveryRepo:
                         ),
                     )
                 )
+                session.flush()
+                for affected_id in affected_blocker_ids:
+                    remaining = session.scalar(
+                        sa.select(sa.func.count())
+                        .select_from(PmBlockerStarvedCandidateRow)
+                        .where(
+                            PmBlockerStarvedCandidateRow.blocker_occurrence_id
+                            == affected_id
+                        )
+                    )
+                    if remaining == 0:
+                        affected = session.get(PmBlockerOccurrenceRow, affected_id)
+                        if (
+                            affected is not None
+                            and not affected.starved_candidates_truncated
+                        ):
+                            affected.capacity_impact = False
             session.flush()
 
         stored_episode = self.get_episode(episode_id)

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
+import sqlalchemy as sa
 from alembic import op
 
 revision: str = "0037"
@@ -35,7 +36,18 @@ def _replace_code_constraint(expression: str) -> None:
 
 def upgrade() -> None:
     _replace_code_constraint(_NEW_CODES)
+    with op.batch_alter_table("pm_blocker_occurrences") as batch:
+        batch.add_column(
+            sa.Column(
+                "starved_candidates_truncated",
+                sa.Boolean(),
+                nullable=False,
+                server_default=sa.text("FALSE"),
+            )
+        )
 
 
 def downgrade() -> None:
+    with op.batch_alter_table("pm_blocker_occurrences") as batch:
+        batch.drop_column("starved_candidates_truncated")
     _replace_code_constraint(_OLD_CODES)

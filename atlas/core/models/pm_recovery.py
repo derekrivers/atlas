@@ -398,6 +398,7 @@ class PmBlockerObservationIntent(BaseModel):
     starved_candidates: tuple[PmStarvedCandidateRef, ...] = Field(
         default=(), max_length=MAX_PM_STARVED_CANDIDATES
     )
+    starved_candidates_truncated: bool = False
     policy_namespace: str | None = Field(
         default=None, max_length=MAX_PM_RECOVERY_NAME_LENGTH
     )
@@ -449,6 +450,13 @@ class PmBlockerObservationIntent(BaseModel):
             and self.authority_kind is not PmBlockerAuthorityKind.FENCE
         ):
             raise ValueError("an unresolved fence must name a fence authority")
+        if self.starved_candidates_truncated and (
+            len(self.starved_candidates) != MAX_PM_STARVED_CANDIDATES
+            or not self.capacity_impact
+        ):
+            raise ValueError(
+                "truncated starvation requires a full projection and capacity impact"
+            )
         return self
 
     def canonical_bytes(self) -> bytes:
@@ -475,6 +483,7 @@ class DurablePmBlocker(PmBlockerIdentity):
     starved_candidates: tuple[PmStarvedCandidate, ...] = Field(
         default=(), max_length=MAX_PM_STARVED_CANDIDATES
     )
+    starved_candidates_truncated: bool = False
     policy_namespace: str | None = Field(
         default=None, max_length=MAX_PM_RECOVERY_NAME_LENGTH
     )
@@ -510,6 +519,13 @@ class DurablePmBlocker(PmBlockerIdentity):
             raise ValueError("latest blocker observation precedes first observation")
         if self.next_safe_retry_at is not None:
             _aware_utc(self.next_safe_retry_at, name="next_safe_retry_at")
+        if self.starved_candidates_truncated and (
+            len(self.starved_candidates) != MAX_PM_STARVED_CANDIDATES
+            or not self.capacity_impact
+        ):
+            raise ValueError(
+                "truncated starvation requires a full projection and capacity impact"
+            )
         policy = (
             self.policy_namespace,
             self.policy_revision,

@@ -538,6 +538,7 @@ DOCUMENTED_COLUMNS: dict[str, dict[str, tuple[bool, str | None]]] = {
         "consecutive_observations": (NN, None),
         "next_safe_retry_at": (True, None),
         "capacity_impact": (NN, "FALSE"),
+        "starved_candidates_truncated": (NN, "FALSE"),
         "policy_namespace": (True, None),
         "policy_revision": (True, None),
         "policy_fingerprint": (True, None),
@@ -1876,6 +1877,11 @@ def test_pm_recovery_blocker_codes_upgrade_downgrade_and_compile(
         assert "ci_evidence_ambiguous" in (constraint["sqltext"] or "")
         assert "authority_changed" in (constraint["sqltext"] or "")
         assert "write_fence_unresolved" in (constraint["sqltext"] or "")
+        columns = {
+            item["name"]
+            for item in sa.inspect(connection).get_columns("pm_blocker_occurrences")
+        }
+        assert "starved_candidates_truncated" in columns
 
     command.downgrade(config, "0036")
     with engine.connect() as connection:
@@ -1889,6 +1895,11 @@ def test_pm_recovery_blocker_codes_upgrade_downgrade_and_compile(
         sqltext = constraint["sqltext"] or ""
         assert "publication_not_yet_complete" in sqltext
         assert "ci_evidence_not_yet_complete" not in sqltext
+        columns = {
+            item["name"]
+            for item in sa.inspect(connection).get_columns("pm_blocker_occurrences")
+        }
+        assert "starved_candidates_truncated" not in columns
 
     output = StringIO()
     postgres = Config(str(REPO_ROOT / "alembic.ini"), output_buffer=output)
@@ -1903,6 +1914,7 @@ def test_pm_recovery_blocker_codes_upgrade_downgrade_and_compile(
     assert "-- Running upgrade 0036 -> 0037" in migration_sql
     assert "DROP CONSTRAINT pm_blocker_occurrences_code" in migration_sql
     assert "write_fence_unresolved" in migration_sql
+    assert "starved_candidates_truncated" in migration_sql
 
 
 def test_acceptance_evidence_receipt_outcomes_migrate_without_losing_guards(
