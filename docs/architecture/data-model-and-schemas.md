@@ -2050,6 +2050,13 @@ Repository mutations lock the product counter row before rereading mutable
 state. PostgreSQL uses a row lock and SQLite uses its transaction-level writer
 serialization, so replay cannot reuse a committed sequence or expose a
 half-created logical state. Exhausting the signed 64-bit range fails closed.
+The latest evaluation fingerprint binds its expected cursor, caller evaluation
+identifier, observation time and complete optional blocker intent. Only that
+exact latest intent is an idempotent replay. Caller evaluation identifiers are
+not episode-global keys: a newly created blocker occurrence derives its UUID
+from the allocated global evaluation sequence, while replay resolves the exact
+cause fingerprint, caller identifier and observation time. An older occurrence
+therefore cannot masquerade as the latest evaluation result.
 
 `pm_recovery_episodes.identity_fingerprint` is the unique full episode
 identity. `active_scope_fingerprint` is a separate structural identity used
@@ -2084,7 +2091,7 @@ reconstruction.
 independently starved by one occurrence. The composite primary key fixes each
 ordinal, the per-occurrence UUID and key unique constraints prevent duplicate
 members, and the `1..128` ordinal bound caps the projection. `started_at`
-preserves starvation age across reconstruction. Deleting or superseding an
+preserves starvation age across reconstruction. Clearing or superseding an
 occurrence is not inferred from silence; repository code explicitly manages
 the occurrence and its membership under the product serialization point.
 

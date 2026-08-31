@@ -519,6 +519,182 @@ def test_stale_evaluation_identity_cannot_reenter_after_a_later_evaluation(
     rebuilt.engine.dispose()
 
 
+def test_timestamp_regression_is_rejected_after_repository_reconstruction(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "evaluation-time-regression.db"
+    seeded = _seed_store(path)
+    seeded.database.engine.dispose()
+    built: list[tuple[RecoveryGeneration, Database, PmRecoveryRepo]] = []
+    with TemporalHarness(db_path=path, initial_time=NOW) as harness:
+        _register_recovery_generations(harness, built)
+        with harness.new_generation() as generation:
+            repo = _resource(generation).repository
+            episode = repo.establish_episode(
+                _identity(seeded.candidate), created_at=NOW
+            )
+            evaluated = repo.record_evaluation(
+                episode_id=episode.id,
+                expected_cursor_sequence=episode.fairness_cursor,
+                evaluation_id="evaluation-1",
+                evaluated_at=NOW + timedelta(seconds=2),
+                blocker=_blocker(),
+            )
+            assert evaluated.blocker is not None
+        with harness.new_generation() as generation:
+            repo = _resource(generation).repository
+            before_episode = repo.get_episode(episode.id)
+            before_blocker = repo.get_blocker(evaluated.blocker.id)
+            with pytest.raises(PmRecoveryStorageError) as regressed:
+                repo.record_evaluation(
+                    episode_id=episode.id,
+                    expected_cursor_sequence=evaluated.episode.fairness_cursor,
+                    evaluation_id="evaluation-2",
+                    evaluated_at=NOW + timedelta(seconds=2),
+                    blocker=_blocker(),
+                )
+            after_episode = repo.get_episode(episode.id)
+            after_blocker = repo.get_blocker(evaluated.blocker.id)
+            high_water = repo.sequence_high_water(PRODUCT_ID)
+
+    assert regressed.value.code is PmRecoveryStorageCode.EVALUATION_OUT_OF_ORDER
+    assert before_episode == after_episode == evaluated.episode
+    assert before_blocker == after_blocker == evaluated.blocker
+    assert high_water == evaluated.episode.last_evaluated_sequence == 2
+
+
+def test_contradictory_latest_evaluation_replay_fails_without_mutation(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "evaluation-replay-conflict.db"
+    seeded = _seed_store(path)
+    repo = PmRecoveryRepo(seeded.database)
+    episode = repo.establish_episode(_identity(seeded.candidate), created_at=NOW)
+    evaluated = repo.record_evaluation(
+        episode_id=episode.id,
+        expected_cursor_sequence=episode.fairness_cursor,
+        evaluation_id="evaluation-1",
+        evaluated_at=NOW + timedelta(seconds=1),
+        blocker=_blocker(seeded.starved),
+    )
+    assert evaluated.blocker is not None
+    seeded.database.engine.dispose()
+
+    rebuilt = Database(f"sqlite:///{path}")
+    rebuilt_repo = PmRecoveryRepo(rebuilt)
+    with pytest.raises(PmRecoveryStorageError) as conflict:
+        rebuilt_repo.record_evaluation(
+            episode_id=episode.id,
+            expected_cursor_sequence=episode.fairness_cursor,
+            evaluation_id="evaluation-1",
+            evaluated_at=NOW + timedelta(seconds=1),
+            blocker=_blocker(seeded.starved, code=PmBlockerCode.PUBLICATION_AMBIGUOUS),
+        )
+
+    assert conflict.value.code is PmRecoveryStorageCode.EVALUATION_REPLAY_CONFLICT
+    assert rebuilt_repo.sequence_high_water(PRODUCT_ID) == 2
+    assert rebuilt_repo.get_episode(episode.id) == evaluated.episode
+    assert rebuilt_repo.get_blocker(evaluated.blocker.id) == evaluated.blocker
+    assert len(rebuilt_repo.list_blockers(product_id=PRODUCT_ID)) == 1
+    rebuilt.engine.dispose()
+
+
+def test_reused_evaluation_id_replays_no_blocker_without_historical_leak(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "reused-evaluation-no-blocker.db"
+    seeded = _seed_store(path)
+    repo = PmRecoveryRepo(seeded.database)
+    episode = repo.establish_episode(_identity(seeded.candidate), created_at=NOW)
+    first = repo.record_evaluation(
+        episode_id=episode.id,
+        expected_cursor_sequence=episode.fairness_cursor,
+        evaluation_id="evaluation-X",
+        evaluated_at=NOW + timedelta(seconds=1),
+        blocker=_blocker(),
+    )
+    assert first.blocker is not None
+    intervening = repo.record_evaluation(
+        episode_id=episode.id,
+        expected_cursor_sequence=first.episode.fairness_cursor,
+        evaluation_id="evaluation-Y",
+        evaluated_at=NOW + timedelta(seconds=2),
+    )
+    reused = repo.record_evaluation(
+        episode_id=episode.id,
+        expected_cursor_sequence=intervening.episode.fairness_cursor,
+        evaluation_id="evaluation-X",
+        evaluated_at=NOW + timedelta(seconds=3),
+    )
+    seeded.database.engine.dispose()
+
+    rebuilt = Database(f"sqlite:///{path}")
+    replay = PmRecoveryRepo(rebuilt).record_evaluation(
+        episode_id=episode.id,
+        expected_cursor_sequence=intervening.episode.fairness_cursor,
+        evaluation_id="evaluation-X",
+        evaluated_at=NOW + timedelta(seconds=3),
+    )
+
+    assert reused.blocker is None
+    assert replay.blocker is None
+    assert replay.episode == reused.episode
+    assert replay.changed is False
+    rebuilt.engine.dispose()
+
+
+def test_reused_evaluation_id_cannot_collide_with_superseded_occurrence(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "reused-evaluation-superseded-blocker.db"
+    seeded = _seed_store(path)
+    repo = PmRecoveryRepo(seeded.database)
+    episode = repo.establish_episode(_identity(seeded.candidate), created_at=NOW)
+    first = repo.record_evaluation(
+        episode_id=episode.id,
+        expected_cursor_sequence=episode.fairness_cursor,
+        evaluation_id="evaluation-X",
+        evaluated_at=NOW + timedelta(seconds=1),
+        blocker=_blocker(),
+    )
+    assert first.blocker is not None
+    repo.supersede_blocker(
+        blocker_id=first.blocker.id,
+        superseded_by_event_id="progress-1",
+        supersession_kind=PmBlockerSupersessionKind.PROGRESS,
+        superseded_at=NOW + timedelta(seconds=2),
+    )
+    intervening = repo.record_evaluation(
+        episode_id=episode.id,
+        expected_cursor_sequence=first.episode.fairness_cursor,
+        evaluation_id="evaluation-Y",
+        evaluated_at=NOW + timedelta(seconds=3),
+    )
+    reused = repo.record_evaluation(
+        episode_id=episode.id,
+        expected_cursor_sequence=intervening.episode.fairness_cursor,
+        evaluation_id="evaluation-X",
+        evaluated_at=NOW + timedelta(seconds=4),
+        blocker=_blocker(),
+    )
+    assert reused.blocker is not None
+    seeded.database.engine.dispose()
+
+    rebuilt = Database(f"sqlite:///{path}")
+    replay = PmRecoveryRepo(rebuilt).record_evaluation(
+        episode_id=episode.id,
+        expected_cursor_sequence=intervening.episode.fairness_cursor,
+        evaluation_id="evaluation-X",
+        evaluated_at=NOW + timedelta(seconds=4),
+        blocker=_blocker(),
+    )
+
+    assert reused.blocker.id != first.blocker.id
+    assert replay.blocker == reused.blocker
+    assert replay.changed is False
+    rebuilt.engine.dispose()
+
+
 def test_authority_kind_is_part_of_stable_blocker_identity(tmp_path: Path) -> None:
     seeded = _seed_store(tmp_path / "authority-kind.db")
     repo = PmRecoveryRepo(seeded.database)
@@ -1255,7 +1431,11 @@ def test_sqlite_constraints_bound_episode_and_starvation_rows(tmp_path: Path) ->
     for episode_values in (
         {"active_scope_fingerprint": None},
         {"candidate_ticket_key": None},
-        {"closed_at": NOW + timedelta(seconds=2)},
+        {"last_evaluation_id": None},
+        {
+            "closed_at": NOW + timedelta(seconds=2),
+            "active_scope_fingerprint": None,
+        },
     ):
         with (
             pytest.raises(sa.exc.IntegrityError),
@@ -1280,6 +1460,25 @@ def test_sqlite_constraints_bound_episode_and_starvation_rows(tmp_path: Path) ->
                 .where(PmBlockerOccurrenceRow.id == evaluated.blocker.id)
                 .values(**blocker_values)
             )
+
+    replacement = repo.replace_episode(
+        expected_episode_id=episode.id,
+        replacement=_identity(
+            seeded.candidate, authoritative_episode_id="constraint-replacement"
+        ),
+        closure_event_id="constraint-replacement-event",
+        closure_kind=PmRecoveryEpisodeClosureKind.PUBLICATION_REPLACEMENT,
+        replaced_at=NOW + timedelta(seconds=2),
+    )
+    with (
+        pytest.raises(sa.exc.IntegrityError),
+        seeded.database.engine.begin() as connection,
+    ):
+        connection.execute(
+            sa.update(PmRecoveryEpisodeRow)
+            .where(PmRecoveryEpisodeRow.id == replacement.episode.id)
+            .values(replacement_event_id=None)
+        )
 
     indexes = {
         index["name"]

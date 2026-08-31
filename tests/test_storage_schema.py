@@ -1821,6 +1821,7 @@ def test_pm_recovery_migration_compiles_for_postgresql() -> None:
         "pm_recovery_episodes_identity_bounds",
         "pm_recovery_episodes_evaluation_fields",
         "pm_recovery_episodes_active_scope",
+        "pm_recovery_episodes_replacement_lineage",
         "pm_blocker_occurrences_code",
         "pm_blocker_occurrences_active_or_superseded",
         "pm_blocker_starved_candidates_ordinal_bounds",

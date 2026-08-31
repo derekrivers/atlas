@@ -164,6 +164,23 @@ def _evaluation_fingerprint(
     return hashlib.sha256(canonical.encode()).hexdigest()
 
 
+def _blocker_identity(
+    episode: PmRecoveryEpisodeRow,
+    observation: PmBlockerObservationIntent,
+) -> PmBlockerIdentity:
+    return PmBlockerIdentity(
+        product_id=episode.product_id,
+        operation=episode.operation,
+        code=observation.code,
+        kind=observation.kind,
+        authority_kind=observation.authority_kind,
+        authority_id=observation.authority_id,
+        recovery_episode_id=episode.id,
+        candidate_ticket_id=episode.candidate_ticket_id,
+        candidate_ticket_key=episode.candidate_ticket_key,
+    )
+
+
 def _episode_scope_fingerprint(identity: PmRecoveryEpisodeIdentity) -> str:
     payload = {
         "authority_id": identity.authority_id,
@@ -546,21 +563,12 @@ class PmRecoveryRepo:
         session: Session,
         *,
         episode: PmRecoveryEpisodeRow,
+        evaluation_sequence: int,
         evaluation_id: str,
         evaluated_at: datetime,
         observation: PmBlockerObservationIntent,
     ) -> UUID:
-        identity = PmBlockerIdentity(
-            product_id=episode.product_id,
-            operation=episode.operation,
-            code=observation.code,
-            kind=observation.kind,
-            authority_kind=observation.authority_kind,
-            authority_id=observation.authority_id,
-            recovery_episode_id=episode.id,
-            candidate_ticket_id=episode.candidate_ticket_id,
-            candidate_ticket_key=episode.candidate_ticket_key,
-        )
+        identity = _blocker_identity(episode, observation)
         fingerprint = identity.fingerprint
         row = session.scalar(
             sa.select(PmBlockerOccurrenceRow).where(
@@ -571,7 +579,7 @@ class PmRecoveryRepo:
         if row is None:
             occurrence_id = uuid5(
                 PM_BLOCKER_OCCURRENCE_NAMESPACE,
-                f"{episode.product_id}:{fingerprint}:{evaluation_id}",
+                f"{episode.product_id}:{fingerprint}:{evaluation_sequence}",
             )
             row = PmBlockerOccurrenceRow(
                 **identity.model_dump(mode="python"),
@@ -691,18 +699,32 @@ class PmRecoveryRepo:
                     raise PmRecoveryStorageError(
                         PmRecoveryStorageCode.EVALUATION_REPLAY_CONFLICT
                     )
-                replay_blocker = session.scalar(
-                    sa.select(PmBlockerOccurrenceRow).where(
-                        PmBlockerOccurrenceRow.recovery_episode_id == episode.id,
-                        PmBlockerOccurrenceRow.latest_evaluation_id == evaluation_id,
+                replay_blockers: list[PmBlockerOccurrenceRow] = []
+                if blocker is not None:
+                    replay_identity = _blocker_identity(episode, blocker)
+                    replay_blockers = list(
+                        session.scalars(
+                            sa.select(PmBlockerOccurrenceRow).where(
+                                PmBlockerOccurrenceRow.recovery_episode_id
+                                == episode.id,
+                                PmBlockerOccurrenceRow.blocker_fingerprint
+                                == replay_identity.fingerprint,
+                                PmBlockerOccurrenceRow.latest_evaluation_id
+                                == evaluation_id,
+                                PmBlockerOccurrenceRow.latest_observed_at == evaluated,
+                            )
+                        )
                     )
-                )
+                    if len(replay_blockers) != 1:
+                        raise PmRecoveryStorageError(
+                            PmRecoveryStorageCode.EVALUATION_REPLAY_CONFLICT
+                        )
                 return PmRecoveryEvaluationRecord(
                     episode=_episode_model(episode),
                     blocker=(
                         None
-                        if replay_blocker is None
-                        else _blocker_model(session, replay_blocker)
+                        if not replay_blockers
+                        else _blocker_model(session, replay_blockers[0])
                     ),
                     changed=False,
                 )
@@ -729,6 +751,7 @@ class PmRecoveryRepo:
                 blocker_id = self._observe_blocker(
                     session,
                     episode=episode,
+                    evaluation_sequence=sequence,
                     evaluation_id=evaluation_id,
                     evaluated_at=evaluated,
                     observation=blocker,
