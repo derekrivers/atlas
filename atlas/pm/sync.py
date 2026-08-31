@@ -152,6 +152,7 @@ from atlas.pm.ci_handoff_adapter import (
 )
 from atlas.pm.ci_handoff_fairness import (
     FairCIHandoffSelection,
+    cross_product_fairness_key,
     ensure_ci_handoff_episode,
     record_fair_ci_handoff_evaluation,
     select_fair_ci_handoff_candidate,
@@ -168,6 +169,7 @@ from atlas.storage.ci_handoff_coordination import (
     CIHandoffWriteFenceError,
 )
 from atlas.storage.db import Database
+from atlas.storage.pm_recovery import PmRecoveryRepo
 from atlas.storage.repositories import (
     ADRRepo,
     ContextPackRepo,
@@ -2066,12 +2068,13 @@ def _sync_tick_impl(
                 initial_issues=fetched_issues,
                 now=now,
             )
-            fence_options.append(
-                (candidate_episode.fairness_cursor, candidate_fence, candidate_ticket)
-            )
-        fence_cursor, fence, fence_ticket = min(
+            fence_options.append((candidate_episode, candidate_fence, candidate_ticket))
+        fence_episode, fence, fence_ticket = min(
             fence_options,
-            key=lambda item: (item[0], str(item[1].product_id)),
+            key=lambda item: (
+                cross_product_fairness_key(item[0]),
+                str(item[1].product_id),
+            ),
         )
         independent = (
             select_fair_ci_handoff_candidate(
@@ -2084,15 +2087,21 @@ def _sync_tick_impl(
             if github_client is not None
             else FairCIHandoffSelection((), None, None)
         )
-        independent_cursor = (
-            None if independent.episode is None else independent.episode.fairness_cursor
+        fence_rank = (*cross_product_fairness_key(fence_episode), 0)
+        independent_rank = (
+            None
+            if independent.episode is None
+            else (*cross_product_fairness_key(independent.episode), 1)
         )
-        if independent_cursor is None or independent_cursor >= fence_cursor:
+        if independent_rank is None or independent_rank >= fence_rank:
             product_id = fence.product_id
+            PmRecoveryRepo(db).require_sequence_capacity(product_id)
             handoff = reconcile_existing_ci_handoff_fence(
                 db=db,
                 tickets=tickets,
                 status_map=status_map,
+                linear=client,
+                project_id=project_id,
                 initial_issues=fetched_issues,
                 product_id=product_id,
                 candidate_count=sum(
@@ -2178,6 +2187,8 @@ def _sync_tick_impl(
                 candidate_count=0,
             )
         else:
+            assert selection.episode is not None
+            PmRecoveryRepo(db).require_sequence_capacity(selection.episode.product_id)
             handoff = reconcile_ci_handoff_candidate(
                 db=db,
                 tickets=tickets,

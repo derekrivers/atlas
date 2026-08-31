@@ -310,6 +310,8 @@ def reconcile_ci_handoff_fence(
     initial_issues: list[LinearIssue],
     product_id: UUID,
     now: datetime,
+    linear: LinearClient | None = None,
+    project_id: str | None = None,
     uuid_factory: Callable[[], UUID] = uuid4,
 ) -> CIHandoffResult | None:
     """Reconcile one existing product fence before ordinary candidate work.
@@ -345,11 +347,22 @@ def reconcile_ci_handoff_fence(
             reason=CIHandoffReason.LEASE_UNAVAILABLE,
         )
     try:
+        fresh_issues = initial_issues
+        if linear is not None and project_id is not None:
+            try:
+                fresh_issues = linear.fetch_project_issues(project_id)
+            except LinearAPIError:
+                return _result(
+                    ticket,
+                    classification=CIHandoffClassification.INDETERMINATE,
+                    reason=CIHandoffReason.FENCE_STILL_UNRESOLVED,
+                    reconciliation_id=fence.reconciliation_id,
+                )
         return _reconcile_fence(
             db=db,
             ticket=ticket,
             status_map=status_map,
-            board_pull=_board_pull(initial_issues),
+            board_pull=_board_pull(fresh_issues),
             now=now,
         )
     finally:

@@ -283,6 +283,12 @@ class PmRecoveryRepo:
             )
             return 0 if value is None else value
 
+    def require_sequence_capacity(self, product_id: UUID) -> None:
+        """Fail before provider work when no durable evaluation can commit."""
+
+        if self.sequence_high_water(product_id) >= 9_223_372_036_854_775_807:
+            raise PmRecoveryStorageError(PmRecoveryStorageCode.SEQUENCE_EXHAUSTED)
+
     def get_episode(self, episode_id: UUID) -> PmRecoveryEpisode | None:
         with self._db.session() as session:
             row = session.get(PmRecoveryEpisodeRow, episode_id)

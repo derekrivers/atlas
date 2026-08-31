@@ -2055,7 +2055,10 @@ later evaluation stores a strictly greater value in `last_evaluated_sequence`.
 Repository mutations lock the product counter row before rereading mutable
 state. PostgreSQL uses a row lock and SQLite uses its transaction-level writer
 serialization, so replay cannot reuse a committed sequence or expose a
-half-created logical state. Exhausting the signed 64-bit range fails closed.
+half-created logical state. Exhausting the signed 64-bit range fails closed;
+the production cadence preflights this capacity before publication, evidence,
+fence or provider workflow effects so it cannot create an externally visible
+action whose evaluation is known to be unrecordable.
 The latest evaluation fingerprint binds its expected cursor, caller evaluation
 identifier, observation time, complete optional blocker intent, and the
 caller's explicit starvation-relief and obsolete-cause-supersession choices. Only that
@@ -2064,6 +2067,13 @@ not episode-global keys: a newly created blocker occurrence derives its UUID
 from the allocated global evaluation sequence, while replay resolves the exact
 cause fingerprint, caller identifier and observation time. An older occurrence
 therefore cannot masquerade as the latest evaluation result.
+
+Sequence cursors are compared only within a product. Cross-product arbitration
+uses the selected episode's durable observation time: `last_evaluated_at` after
+an evaluation and otherwise `created_at`, with unevaluated work first at an
+equal instant and product UUID as the deterministic final tie. This keeps new
+products from repeatedly winning with an incomparable product-local sequence
+of one while preserving deterministic reconstruction.
 
 `pm_recovery_episodes.identity_fingerprint` is the unique full episode
 identity. `active_scope_fingerprint` is a separate structural identity used

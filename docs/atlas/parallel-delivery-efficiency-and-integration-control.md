@@ -276,9 +276,12 @@ it reconciles durable recovery episodes for one finite snapshot of locally
 `CI Pending` tickets and considers the episode with the least product-global
 fairness cursor. A fenced product is excluded from ordinary selection, while
 its fence episode and independent products' ordinary candidates share the
-durable cross-product work rank. Every completed evaluation, including an
-unresolved-fence attempt, moves that episode behind currently lower-ranked
-independent work. Stable
+durable cross-product observation-time rank. Within a product the least
+monotonic sequence cursor wins; across products the oldest durable
+`last_evaluated_at`, or `created_at` before a first evaluation, wins, with
+product UUID only as the final tie. Every completed evaluation, including an
+unresolved-fence attempt, moves that episode behind currently older independent
+work. Stable
 ticket order is used only for deterministic one-time bootstrap; every completed
 evaluation moves that episode to the durable sequence tail. The latest
 append-only transition into
@@ -317,6 +320,12 @@ leave the remaining read/definition work intact, but no second CI candidate is
 evaluated in that tick. `atlas pm sync --once -v` exposes one bounded
 secret-free adapter line plus integer evaluated/held/mutation counters; durable
 authority remains the append-only reconciliation, not console text.
+
+The cadence checks selected-product evaluation-sequence capacity before
+publication resolution, evidence refresh, fence reconciliation or any provider
+workflow effect. Fence recovery refreshes the complete project board only after
+the recovery owner acquires the product lease, so a stale discovery snapshot
+cannot clear or classify the authoritative fence.
 
 These states are deliberately different claims. `CI Pending` says only that a
 locally validated candidate was published and CI now owns classification.

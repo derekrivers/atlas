@@ -357,6 +357,65 @@ def test_cross_product_hold_advances_without_cross_product_starvation_members(
     assert second.candidate == second_ticket
 
 
+def test_new_product_cannot_cut_ahead_of_older_high_cursor_work(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "cross-product-new-arrival.db"
+    database = Database(f"sqlite:///{path}")
+    database.create_all()
+    client = RecordingClient()
+    older = seed_ticket(
+        database,
+        client,
+        key="ATLAS-290",
+        product_id=PRODUCT_ID,
+        status=TicketStatus.CI_PENDING,
+        issue_state=CI_PENDING_STATE,
+        linear_synced_at=NOW,
+        status_entered_at=NOW,
+    )
+    issues = client.fetch_project_issues(PROJECT_ID)
+    for offset in range(5):
+        selection = select_fair_ci_handoff_candidate(
+            db=database,
+            tickets=TicketRepo(database),
+            initial_issues=issues,
+            now=NOW + timedelta(seconds=offset),
+        )
+        assert selection.candidate == older
+        record_fair_ci_handoff_evaluation(
+            db=database,
+            selection=selection,
+            result=_held(),
+            now=NOW + timedelta(seconds=offset),
+        )
+
+    newcomer = seed_ticket(
+        database,
+        client,
+        key="OTHER-290",
+        product_id=UUID("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"),
+        status=TicketStatus.CI_PENDING,
+        issue_state=CI_PENDING_STATE,
+        linear_synced_at=NOW + timedelta(seconds=5),
+        status_entered_at=NOW + timedelta(seconds=5),
+    )
+    issue = client.fetch_issue(newcomer.external_linear_id or "")
+    assert issue is not None
+    issues.append(issue)
+
+    selected = select_fair_ci_handoff_candidate(
+        db=database,
+        tickets=TicketRepo(database),
+        initial_issues=issues,
+        now=NOW + timedelta(seconds=5),
+    )
+
+    assert selected.candidate == older
+    assert selected.episode is not None
+    assert selected.episode.fairness_cursor > 1
+
+
 def test_publication_replacement_retires_old_episode_and_blocker(
     tmp_path: Path,
 ) -> None:

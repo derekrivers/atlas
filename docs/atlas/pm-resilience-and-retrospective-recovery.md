@@ -169,20 +169,23 @@ cursor is `last_evaluated_sequence` when present and otherwise
 for corrupt/equivalent legacy input, which health must also diagnose.
 
 Selection takes the least cursor from one finite eligible snapshot. Cursors
-are product-local monotonic work ranks: comparison across products is the
-durable outer scheduler, and product UUID is only its deterministic final tie.
-A fixed candidate or fence cursor can therefore have only finitely many lower
-work ranks ahead of it; an unresolved fence is moved behind every currently
-lower-ranked independent product after each attempt. A held
+are product-local monotonic work ranks. Across products, the durable outer
+scheduler compares the oldest episode observation time: `last_evaluated_at`
+after an evaluation and otherwise `created_at`, with an unevaluated episode
+first at an equal instant and product UUID only as the deterministic final tie.
+A fixed candidate or fence rank can therefore have only finitely many older
+ranks ahead of it; an unresolved fence is moved behind every currently older
+independent product after each attempt. A held
 evaluation moves that episode to the sequence tail rather than retaining first
 position. New episodes receive their creation cursor at the same global tail,
-so new arrivals cannot cut ahead of an older retry cursor. Under a functioning
-cadence, coherent sequence allocation, a finite eligible snapshot, finite
-arrivals between ticks and no global prerequisite failure, every older cursor
-has only finitely many cursors ahead of it even when newer work continues to
-arrive; it is therefore eventually selected. Episode identity changes only on
-an authoritative lifecycle entry or publication replacement, never on process
-restart.
+while their outer rank is their later creation time, so new products and new
+episodes cannot cut ahead of an older observed retry. Under a functioning
+cadence, a coherent monotonic tick clock, coherent sequence allocation, a
+finite eligible snapshot, finite arrivals between ticks and no global
+prerequisite failure, every older rank has only finitely many ranks ahead of it
+even when newer work continues to arrive; it is therefore eventually selected.
+Episode identity changes only on an authoritative lifecycle entry or
+publication replacement, never on process restart.
 
 The active ordinary implementation derives a candidate episode from the latest
 append-only transition into `ci_pending` and the exact issue-bound publication
@@ -206,6 +209,14 @@ the global cadence.
 Evaluation fairness never creates a second writer, bypasses a lease, weakens a
 candidate predicate or converts an unbounded arrival model into a liveness
 claim.
+
+Before publication resolution, evidence refresh, fence reconciliation or any
+provider workflow call, the cadence checks that the selected product can still
+commit its next signed 64-bit evaluation sequence. Exhaustion therefore fails
+closed before an external effect rather than discovering an unrecordable
+evaluation afterward. A fence owner also refreshes the complete project board
+after acquiring its lease; the pre-lease pull is discovery input, not recovery
+authority.
 
 ## Durable blocker observations
 

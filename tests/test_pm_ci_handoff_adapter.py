@@ -13,12 +13,14 @@ from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
+import sqlalchemy as sa
 from github_fakes import FakeGitHubClient
 from test_models_validation import NOW
 from test_pm_sync import (
     CI_PENDING_STATE,
     PACK_DOC,
     PROJECT_ID,
+    REVIEW_REQUIRED_STATE,
     STARTED,
     TEAM_ID,
     RecordingClient,
@@ -39,6 +41,7 @@ from atlas.evidence.pull import drive_evidence_pull
 from atlas.linear.client import LinearIssue, _github_publication_from_attachment
 from atlas.pm import CIHandoffHooks, sync_tick
 from atlas.pm.ci_handoff_adapter import CIHandoffAdapterReason
+from atlas.pm.ci_handoff_fairness import select_fair_ci_handoff_candidate
 from atlas.pm.sync import CI_PENDING_POLL_COMPRESSION_CREATED_BY
 from atlas.storage import (
     AdmissionCoordinationRepo,
@@ -47,11 +50,14 @@ from atlas.storage import (
     Database,
     EvidenceRepo,
     PmRecoveryRepo,
+    PmRecoveryStorageCode,
+    PmRecoveryStorageError,
     PmSyncReceiptRepo,
     TicketRepo,
     TicketStatusTransitionRepo,
 )
 from atlas.storage.ci_handoff_coordination import CIHandoffCoordinationRepo
+from atlas.storage.tables import PmRecoverySequenceCounterRow
 
 HEAD = "a" * 40
 OTHER_HEAD = "b" * 40
@@ -985,6 +991,85 @@ def test_fenced_call_lock_blocks_replacement_until_provider_call_finishes(
     AdmissionCoordinationRepo(db).release(
         product_id=PRODUCT_ID, owner_id=replacement_owner
     )
+
+
+def test_sequence_exhaustion_fails_before_provider_or_workflow_effect(
+    db: Database,
+) -> None:
+    client = RecordingClient()
+    _seed_ci_pending(db, client)
+    select_fair_ci_handoff_candidate(
+        db=db,
+        tickets=TicketRepo(db),
+        initial_issues=client.fetch_project_issues(PROJECT_ID),
+        now=NOW,
+    )
+    with db.engine.begin() as connection:
+        connection.execute(
+            sa.update(PmRecoverySequenceCounterRow)
+            .where(PmRecoverySequenceCounterRow.product_id == PRODUCT_ID)
+            .values(high_water=9_223_372_036_854_775_807)
+        )
+    github = _github()
+
+    with pytest.raises(PmRecoveryStorageError) as exhausted:
+        _run(db, client, github, now=NOW + timedelta(seconds=1))
+
+    assert exhausted.value.code is PmRecoveryStorageCode.SEQUENCE_EXHAUSTED
+    assert github.calls == []
+    assert client.state_writes == []
+    assert CIHandoffCoordinationRepo(db).get_fence(PRODUCT_ID) is None
+
+
+def test_fence_recovery_refreshes_board_after_acquiring_lease(db: Database) -> None:
+    class AdvancingBoardClient(RecordingClient):
+        def __init__(self) -> None:
+            super().__init__()
+            self.project_pulls = 0
+            self.advance_issue_id: str | None = None
+
+        def fetch_project_issues(self, project_id: str) -> list[LinearIssue]:
+            self.project_pulls += 1
+            if self.project_pulls == 2:
+                assert self.advance_issue_id is not None
+                self.simulate_linear_state(self.advance_issue_id, REVIEW_REQUIRED_STATE)
+            return super().fetch_project_issues(project_id)
+
+    client = AdvancingBoardClient()
+    ticket = _seed_ci_pending(db, client)
+    assert ticket.external_linear_id is not None
+    client.advance_issue_id = ticket.external_linear_id
+    owner_id = uuid4()
+    lease = AdmissionCoordinationRepo(db)
+    assert lease.try_acquire(
+        product_id=PRODUCT_ID,
+        owner_id=owner_id,
+        acquired_at=NOW,
+        ttl=timedelta(minutes=1),
+    )
+    CIHandoffCoordinationRepo(db).begin_write(
+        product_id=PRODUCT_ID,
+        owner_id=owner_id,
+        reconciliation_id=uuid4(),
+        ticket_id=ticket.id,
+        ticket_key=ticket.key,
+        issue_id=ticket.external_linear_id,
+        source_state_id=CI_PENDING_STATE.id,
+        target_state_id="state-review-required",
+        target_status=TicketStatus.REVIEW_REQUIRED,
+        created_at=NOW,
+    )
+    lease.release(product_id=PRODUCT_ID, owner_id=owner_id)
+
+    recovered = _run(db, client, _github(), now=NOW)
+
+    assert client.project_pulls == 2
+    assert (
+        recovered.ci_handoff_decisions[0].reconciliation.reason
+        is CIHandoffReason.FENCE_RECONCILED_TARGET
+    )
+    assert client.state_writes == []
+    assert CIHandoffCoordinationRepo(db).get_fence(PRODUCT_ID) is None
 
 
 @pytest.mark.parametrize(

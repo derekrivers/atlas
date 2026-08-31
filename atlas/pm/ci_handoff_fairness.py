@@ -62,6 +62,14 @@ class FairCIHandoffSelection:
         return len(self.candidates)
 
 
+def cross_product_fairness_key(episode: PmRecoveryEpisode) -> tuple[datetime, int]:
+    """Globally comparable outer rank; local cursors order within a product."""
+
+    if episode.last_evaluated_at is None:
+        return (episode.created_at, 0)
+    return (episode.last_evaluated_at, 1)
+
+
 def _canonical_hash(payload: object) -> str:
     rendered = json.dumps(payload, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(rendered.encode()).hexdigest()
@@ -233,13 +241,24 @@ def select_fair_ci_handoff_candidate(
                 ).episode
         resolved.append((candidate, current))
 
+    product_representatives = []
+    for product_id in sorted(product_ids, key=str):
+        product_representatives.append(
+            min(
+                (item for item in resolved if item[0].product_id == product_id),
+                key=lambda item: (
+                    item[1].fairness_cursor,
+                    natural_key(item[0].key),
+                    item[0].key,
+                    item[1].id,
+                ),
+            )
+        )
     candidate, episode = min(
-        resolved,
+        product_representatives,
         key=lambda item: (
-            item[1].fairness_cursor,
-            natural_key(item[0].key),
-            item[0].key,
-            item[1].id,
+            cross_product_fairness_key(item[1]),
+            str(item[0].product_id),
         ),
     )
     return FairCIHandoffSelection(candidates, candidate, episode)
