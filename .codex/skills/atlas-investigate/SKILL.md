@@ -36,8 +36,11 @@ and runtime facts. Do not treat either as authority outside its stated scope.
    working-tree status using the commands in `operational-practice.md`.
 2. When freshness against `main` matters, fetch `origin/main` and record its
    exact SHA before reasoning about ancestry or staleness.
-3. Resolve the exact Atlas ticket key, Linear issue identifier, PR repository
-   and number, base and contributor head, and relevant CI run/check identities.
+3. Resolve either the exact canonical Atlas ticket key and Linear issue
+   identifier or the exact non-key maintenance meta-label and its collision
+   proof. Resolve the PR repository and number, base and contributor head, and
+   relevant CI run/check identities when they exist. A maintenance meta-label
+   never implies a Linear identity.
 4. Prove the database actually queried, including any `ATLAS_DATABASE_URL` or
    `--db` override. Never compare results from stores whose identities differ.
 5. For runtime claims, record the process/service, workflow, policy, and
@@ -67,8 +70,8 @@ applying `docs/MANIFEST.md`, stop and name the conflict.
 Return a concise result containing:
 
 - the question and investigated scope;
-- exact repository, ticket, PR, database, CI, and runtime identities that
-  matter;
+- exact repository, ticket or maintenance, PR, database, CI, and runtime
+  identities that matter;
 - observed facts, each tied to its source or command;
 - inferences, labeled explicitly and separated from observations;
 - unknown, stale, conflicting, or unavailable evidence; and

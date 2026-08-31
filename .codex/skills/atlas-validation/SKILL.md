@@ -16,7 +16,9 @@ authority, the repository authority wins and this skill is defective.
 ## Authorities
 
 Read `AGENTS.md`, `docs/runbooks/local-development.md`, and the applicable
-publication procedure in `docs/runbooks/symphony-agent-execution.md`. Read
+publication procedure: `docs/runbooks/symphony-agent-execution.md` for a
+canonical ticket, or `docs/runbooks/operational-practice.md` and
+`docs/runbooks/agent-ticket-prompt.md` for hand-dispatched maintenance. Read
 `docs/decisions/0008-ci-sourced-evidence-with-trust-tiers.md` for evidence
 authority.
 
@@ -31,8 +33,10 @@ shell filters, or model judgment.
 2. Enumerate the complete base-to-head changed-path identity set using the
    read-only, NUL-delimited Git command specified by the runbook. Include both
    old and new paths for renames and copies.
-3. Collect every explicit ticket validation requirement and every
-   ticket-declared test file from the current ticket contract.
+3. Collect every explicit validation requirement and declared test file from
+   the governing ticket or maintenance-unit contract. Supply them through the
+   CLI's `--ticket-requirement` and `--ticket-test` flags; those stable flag
+   names do not create a ticket identity.
 4. Invoke `uv run atlas validation-plan` with the exact base, head, every
    `--changed-path`, every `--ticket-requirement`, and every `--ticket-test`.
    Use `--json` when a typed record is useful.
@@ -65,8 +69,8 @@ for the new exact candidate.
 ## Report the evidence tier
 
 Record the exact base/head, complete changed paths, registry identity when
-reported, ticket inputs, selected profiles, ordered commands, explicit test
-targets, fallback reasons, and each result.
+reported, governing work-contract inputs, selected profiles, ordered commands,
+explicit test targets, fallback reasons, and each result.
 
 Implementation-agent results are agent-tier confidence. Reviewer-local results
 are reviewer-tier confidence. Complete CI at the accepted exact identity remains
