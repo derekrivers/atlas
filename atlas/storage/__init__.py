@@ -35,6 +35,13 @@ from atlas.storage.planned_ci_pending_recovery import (
     PlannedCIPendingRecoveryStorageCode,
     PlannedCIPendingRecoveryStorageError,
 )
+from atlas.storage.pm_recovery import (
+    PmRecoveryEvaluationRecord,
+    PmRecoveryMutationRecord,
+    PmRecoveryRepo,
+    PmRecoveryStorageCode,
+    PmRecoveryStorageError,
+)
 from atlas.storage.repositories import (
     RAW_PAYLOAD_CAP_BYTES,
     AcceptanceSessionCreateRecord,
@@ -117,6 +124,11 @@ __all__ = [
     "PlannedCIPendingRecoveryRepo",
     "PlannedCIPendingRecoveryStorageCode",
     "PlannedCIPendingRecoveryStorageError",
+    "PmRecoveryEvaluationRecord",
+    "PmRecoveryMutationRecord",
+    "PmRecoveryRepo",
+    "PmRecoveryStorageCode",
+    "PmRecoveryStorageError",
     "PmSyncReceiptRepo",
     "ProductRepo",
     "Reservation",

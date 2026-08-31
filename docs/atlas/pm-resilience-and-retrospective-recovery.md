@@ -18,9 +18,11 @@ crash-after outcomes are durably reconstructable. It is not a subsystem-wide
 property. Every seam must prove the stronger contract here; otherwise a missed
 or interrupted tick may create a durable blocker and health must report it.
 
-This change defines contracts and a pure health calculus. It does not connect
-new persistence, change PM sync, add a CLI, mutate Linear or GitHub, operate the
-managed runtime, alter a production database, or recover a live ticket.
+This document defines the contracts and pure health calculus. The durable
+episode, product-global fairness and blocker substrate is available as dormant
+lower-layer storage, but no PM runtime path consumes it. This document does not
+change PM sync, add a CLI, mutate Linear or GitHub, operate the managed runtime,
+alter a production database, or recover a live ticket.
 
 ## Core invariants
 
@@ -185,9 +187,10 @@ claim.
 ## Durable blocker observations
 
 An unsafe or incomplete action outcome that survives the current call must be
-representable as a bounded typed observation. Persistence is specified here but
-deferred to a separately reviewed schema/storage unit. The durable shape must
-answer without raw provider payloads or exception text:
+representable as a bounded typed observation. The separately reviewed storage
+substrate persists this dormant shape without activating scheduling, recovery or
+workflow behavior. The durable shape must answer without raw provider payloads
+or exception text:
 
 - schema and policy revision/fingerprint;
 - operation and bounded reason code;

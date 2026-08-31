@@ -698,6 +698,256 @@ class PlannedCIPendingRecoveryRow(Base):
     created_by_id: Mapped[str] = mapped_column(sa.Text)
 
 
+class PmRecoverySequenceCounterRow(Base):
+    """Sole product-global sequence authority for PM recovery fairness."""
+
+    __tablename__ = "pm_recovery_sequence_counters"
+    __table_args__ = (
+        sa.CheckConstraint(
+            "high_water >= 0 AND high_water < 9223372036854775807",
+            name="pm_recovery_sequence_counters_bounds",
+        ),
+    )
+
+    product_id: Mapped[UUID] = mapped_column(
+        sa.Uuid, sa.ForeignKey("products.id"), primary_key=True
+    )
+    high_water: Mapped[int] = mapped_column(
+        sa.BigInteger, nullable=False, server_default=sa.text("0")
+    )
+
+
+class PmRecoveryEpisodeRow(Base):
+    """Durable authoritative episode and its current fairness cursor."""
+
+    __tablename__ = "pm_recovery_episodes"
+    __table_args__ = (
+        sa.UniqueConstraint("identity_fingerprint"),
+        sa.UniqueConstraint("authoritative_episode_id"),
+        sa.UniqueConstraint("product_id", "episode_created_sequence"),
+        sa.UniqueConstraint("product_id", "last_evaluated_sequence"),
+        sa.CheckConstraint(
+            "schema_version = 'pm-recovery-episode-v1'",
+            name="pm_recovery_episodes_schema_version",
+        ),
+        sa.CheckConstraint(
+            "length(operation) BETWEEN 1 AND 128 AND "
+            "length(authority_id) BETWEEN 1 AND 128 AND "
+            "length(authoritative_episode_id) BETWEEN 1 AND 128",
+            name="pm_recovery_episodes_identity_bounds",
+        ),
+        sa.CheckConstraint(
+            "(candidate_ticket_id IS NULL AND candidate_ticket_key IS NULL) OR "
+            "(candidate_ticket_id IS NOT NULL AND "
+            "length(candidate_ticket_key) BETWEEN 1 AND 128)",
+            name="pm_recovery_episodes_candidate_pair",
+        ),
+        sa.CheckConstraint(
+            "episode_created_sequence > 0 AND "
+            "(last_evaluated_sequence IS NULL OR "
+            "last_evaluated_sequence > episode_created_sequence)",
+            name="pm_recovery_episodes_sequence_order",
+        ),
+        sa.CheckConstraint(
+            "(last_evaluated_sequence IS NULL AND last_evaluation_id IS NULL AND "
+            "last_evaluation_fingerprint IS NULL AND last_evaluated_at IS NULL) OR "
+            "(last_evaluated_sequence IS NOT NULL AND "
+            "length(last_evaluation_id) BETWEEN 1 AND 128 AND "
+            "length(last_evaluation_fingerprint) = 64 AND "
+            "last_evaluated_at IS NOT NULL AND last_evaluated_at >= created_at)",
+            name="pm_recovery_episodes_evaluation_fields",
+        ),
+        sa.CheckConstraint(
+            "(closed_at IS NULL AND closure_event_id IS NULL AND closure_kind IS NULL) "
+            "OR (closed_at IS NOT NULL AND length(closure_event_id) BETWEEN 1 AND 128 "
+            "AND closure_kind IN ('authoritative_lifecycle_entry', "
+            "'publication_replacement', 'recovery_completed') "
+            "AND closed_at >= created_at AND "
+            "(last_evaluated_at IS NULL OR closed_at >= last_evaluated_at))",
+            name="pm_recovery_episodes_closure_fields",
+        ),
+        sa.Index(
+            "ix_pm_recovery_episodes_active_operation",
+            "product_id",
+            "closed_at",
+            "operation",
+        ),
+        sa.Index(
+            "ix_pm_recovery_episodes_active_candidate",
+            "product_id",
+            "candidate_ticket_id",
+            "closed_at",
+        ),
+        sa.Index(
+            "ix_pm_recovery_episodes_fairness",
+            "product_id",
+            "closed_at",
+            "last_evaluated_sequence",
+            "episode_created_sequence",
+            "candidate_ticket_key",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(sa.Uuid, primary_key=True)
+    schema_version: Mapped[str] = mapped_column(sa.Text)
+    identity_fingerprint: Mapped[str] = mapped_column(sa.Text)
+    product_id: Mapped[UUID] = mapped_column(sa.Uuid, sa.ForeignKey("products.id"))
+    operation: Mapped[str] = mapped_column(sa.Text)
+    authority_id: Mapped[str] = mapped_column(sa.Text)
+    authoritative_episode_id: Mapped[str] = mapped_column(sa.Text)
+    candidate_ticket_id: Mapped[UUID | None] = mapped_column(
+        sa.Uuid, sa.ForeignKey("tickets.id")
+    )
+    candidate_ticket_key: Mapped[str | None] = mapped_column(sa.Text)
+    episode_created_sequence: Mapped[int] = mapped_column(sa.BigInteger)
+    last_evaluated_sequence: Mapped[int | None] = mapped_column(sa.BigInteger)
+    last_evaluation_id: Mapped[str | None] = mapped_column(sa.Text)
+    last_evaluation_fingerprint: Mapped[str | None] = mapped_column(sa.Text)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime())
+    last_evaluated_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    closed_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    closure_event_id: Mapped[str | None] = mapped_column(sa.Text)
+    closure_kind: Mapped[str | None] = mapped_column(sa.Text)
+
+
+class PmBlockerOccurrenceRow(Base):
+    """Bounded mutable diagnosis for one active interval of a stable cause."""
+
+    __tablename__ = "pm_blocker_occurrences"
+    __table_args__ = (
+        sa.UniqueConstraint("product_id", "active_fingerprint"),
+        sa.CheckConstraint(
+            "schema_version = 'pm-blocker-observation-v1'",
+            name="pm_blocker_occurrences_schema_version",
+        ),
+        sa.CheckConstraint(
+            "kind IN ('routine_wait', 'retryable', 'unresolved_fence', 'unknown')",
+            name="pm_blocker_occurrences_kind",
+        ),
+        sa.CheckConstraint(
+            "authority_kind IN ('operation', 'lease', 'fence', 'intent')",
+            name="pm_blocker_occurrences_authority_kind",
+        ),
+        sa.CheckConstraint(
+            "kind <> 'unresolved_fence' OR authority_kind = 'fence'",
+            name="pm_blocker_occurrences_fence_authority",
+        ),
+        sa.CheckConstraint(
+            "length(operation) BETWEEN 1 AND 128 AND "
+            "length(code) BETWEEN 1 AND 128 AND "
+            "length(authority_id) BETWEEN 1 AND 128 AND "
+            "length(blocker_fingerprint) = 64",
+            name="pm_blocker_occurrences_identity_bounds",
+        ),
+        sa.CheckConstraint(
+            "(candidate_ticket_id IS NULL AND candidate_ticket_key IS NULL) OR "
+            "(candidate_ticket_id IS NOT NULL AND "
+            "length(candidate_ticket_key) BETWEEN 1 AND 128)",
+            name="pm_blocker_occurrences_candidate_pair",
+        ),
+        sa.CheckConstraint(
+            "length(first_evaluation_id) BETWEEN 1 AND 128 AND "
+            "length(latest_evaluation_id) BETWEEN 1 AND 128 AND "
+            "latest_observed_at >= first_observed_at AND "
+            "consecutive_observations BETWEEN 1 AND 2147483647",
+            name="pm_blocker_occurrences_observation_bounds",
+        ),
+        sa.CheckConstraint(
+            "(policy_namespace IS NULL AND policy_revision IS NULL AND "
+            "policy_fingerprint IS NULL) OR "
+            "(length(policy_namespace) BETWEEN 1 AND 128 AND policy_revision > 0 "
+            "AND length(policy_fingerprint) = 64)",
+            name="pm_blocker_occurrences_policy_fields",
+        ),
+        sa.CheckConstraint(
+            "(active_fingerprint = blocker_fingerprint AND superseded_at IS NULL "
+            "AND superseded_by_event_id IS NULL AND supersession_kind IS NULL) OR "
+            "(active_fingerprint IS NULL AND superseded_at IS NOT NULL "
+            "AND length(superseded_by_event_id) BETWEEN 1 AND 128 "
+            "AND supersession_kind IN ('progress', 'recovery') "
+            "AND superseded_at >= latest_observed_at)",
+            name="pm_blocker_occurrences_active_or_superseded",
+        ),
+        sa.Index(
+            "ix_pm_blocker_occurrences_active_operation",
+            "product_id",
+            "active_fingerprint",
+            "operation",
+        ),
+        sa.Index(
+            "ix_pm_blocker_occurrences_active_candidate",
+            "product_id",
+            "candidate_ticket_id",
+            "active_fingerprint",
+        ),
+        sa.Index(
+            "ix_pm_blocker_occurrences_episode",
+            "recovery_episode_id",
+            "active_fingerprint",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(sa.Uuid, primary_key=True)
+    schema_version: Mapped[str] = mapped_column(sa.Text)
+    product_id: Mapped[UUID] = mapped_column(sa.Uuid, sa.ForeignKey("products.id"))
+    operation: Mapped[str] = mapped_column(sa.Text)
+    code: Mapped[str] = mapped_column(sa.Text)
+    kind: Mapped[str] = mapped_column(sa.Text)
+    authority_kind: Mapped[str] = mapped_column(sa.Text)
+    authority_id: Mapped[str] = mapped_column(sa.Text)
+    recovery_episode_id: Mapped[UUID] = mapped_column(
+        sa.Uuid, sa.ForeignKey("pm_recovery_episodes.id")
+    )
+    candidate_ticket_id: Mapped[UUID | None] = mapped_column(
+        sa.Uuid, sa.ForeignKey("tickets.id")
+    )
+    candidate_ticket_key: Mapped[str | None] = mapped_column(sa.Text)
+    blocker_fingerprint: Mapped[str] = mapped_column(sa.Text)
+    active_fingerprint: Mapped[str | None] = mapped_column(sa.Text)
+    first_evaluation_id: Mapped[str] = mapped_column(sa.Text)
+    latest_evaluation_id: Mapped[str] = mapped_column(sa.Text)
+    first_observed_at: Mapped[datetime] = mapped_column(UTCDateTime())
+    latest_observed_at: Mapped[datetime] = mapped_column(UTCDateTime())
+    consecutive_observations: Mapped[int] = mapped_column(sa.BigInteger)
+    next_safe_retry_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    capacity_impact: Mapped[bool] = mapped_column(
+        sa.Boolean, nullable=False, server_default=sa.text("FALSE")
+    )
+    policy_namespace: Mapped[str | None] = mapped_column(sa.Text)
+    policy_revision: Mapped[int | None] = mapped_column(sa.BigInteger)
+    policy_fingerprint: Mapped[str | None] = mapped_column(sa.Text)
+    superseded_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    superseded_by_event_id: Mapped[str | None] = mapped_column(sa.Text)
+    supersession_kind: Mapped[str | None] = mapped_column(sa.Text)
+
+
+class PmBlockerStarvedCandidateRow(Base):
+    """Structurally bounded current starvation membership for one blocker."""
+
+    __tablename__ = "pm_blocker_starved_candidates"
+    __table_args__ = (
+        sa.PrimaryKeyConstraint("blocker_occurrence_id", "ordinal"),
+        sa.UniqueConstraint("blocker_occurrence_id", "ticket_id"),
+        sa.UniqueConstraint("blocker_occurrence_id", "ticket_key"),
+        sa.CheckConstraint(
+            "ordinal BETWEEN 1 AND 128",
+            name="pm_blocker_starved_candidates_ordinal_bounds",
+        ),
+        sa.CheckConstraint(
+            "length(ticket_key) BETWEEN 1 AND 128",
+            name="pm_blocker_starved_candidates_key_bounds",
+        ),
+    )
+
+    blocker_occurrence_id: Mapped[UUID] = mapped_column(
+        sa.Uuid, sa.ForeignKey("pm_blocker_occurrences.id")
+    )
+    ordinal: Mapped[int] = mapped_column(sa.Integer)
+    ticket_id: Mapped[UUID] = mapped_column(sa.Uuid, sa.ForeignKey("tickets.id"))
+    ticket_key: Mapped[str] = mapped_column(sa.Text)
+    started_at: Mapped[datetime] = mapped_column(UTCDateTime())
+
+
 class AdmissionLeaseRow(Base):
     """One expiring, product-scoped owner of the PM admission write lane."""
 

@@ -489,6 +489,66 @@ DOCUMENTED_COLUMNS: dict[str, dict[str, tuple[bool, str | None]]] = {
         "created_by_type": (NN, None),
         "created_by_id": (NN, None),
     },
+    # §5.20 dormant PM recovery/fairness and bounded blocker state.
+    "pm_recovery_sequence_counters": {
+        "product_id": (NN, None),
+        "high_water": (NN, "0"),
+    },
+    "pm_recovery_episodes": {
+        "id": (NN, None),
+        "schema_version": (NN, None),
+        "identity_fingerprint": (NN, None),
+        "product_id": (NN, None),
+        "operation": (NN, None),
+        "authority_id": (NN, None),
+        "authoritative_episode_id": (NN, None),
+        "candidate_ticket_id": (True, None),
+        "candidate_ticket_key": (True, None),
+        "episode_created_sequence": (NN, None),
+        "last_evaluated_sequence": (True, None),
+        "last_evaluation_id": (True, None),
+        "last_evaluation_fingerprint": (True, None),
+        "created_at": (NN, None),
+        "last_evaluated_at": (True, None),
+        "closed_at": (True, None),
+        "closure_event_id": (True, None),
+        "closure_kind": (True, None),
+    },
+    "pm_blocker_occurrences": {
+        "id": (NN, None),
+        "schema_version": (NN, None),
+        "product_id": (NN, None),
+        "operation": (NN, None),
+        "code": (NN, None),
+        "kind": (NN, None),
+        "authority_kind": (NN, None),
+        "authority_id": (NN, None),
+        "recovery_episode_id": (NN, None),
+        "candidate_ticket_id": (True, None),
+        "candidate_ticket_key": (True, None),
+        "blocker_fingerprint": (NN, None),
+        "active_fingerprint": (True, None),
+        "first_evaluation_id": (NN, None),
+        "latest_evaluation_id": (NN, None),
+        "first_observed_at": (NN, None),
+        "latest_observed_at": (NN, None),
+        "consecutive_observations": (NN, None),
+        "next_safe_retry_at": (True, None),
+        "capacity_impact": (NN, "FALSE"),
+        "policy_namespace": (True, None),
+        "policy_revision": (True, None),
+        "policy_fingerprint": (True, None),
+        "superseded_at": (True, None),
+        "superseded_by_event_id": (True, None),
+        "supersession_kind": (True, None),
+    },
+    "pm_blocker_starved_candidates": {
+        "blocker_occurrence_id": (NN, None),
+        "ordinal": (NN, None),
+        "ticket_id": (NN, None),
+        "ticket_key": (NN, None),
+        "started_at": (NN, None),
+    },
     # Phase-15 single-write admission coordination state.
     "admission_leases": {
         "product_id": (NN, None),
@@ -606,6 +666,20 @@ DOCUMENTED_FOREIGN_KEYS: dict[str, dict[str, str]] = {
         "admission_run_id": "admission_runs",
         "pm_sync_receipt_id": "pm_sync_receipts",
     },
+    "pm_recovery_sequence_counters": {"product_id": "products"},
+    "pm_recovery_episodes": {
+        "product_id": "products",
+        "candidate_ticket_id": "tickets",
+    },
+    "pm_blocker_occurrences": {
+        "product_id": "products",
+        "recovery_episode_id": "pm_recovery_episodes",
+        "candidate_ticket_id": "tickets",
+    },
+    "pm_blocker_starved_candidates": {
+        "blocker_occurrence_id": "pm_blocker_occurrences",
+        "ticket_id": "tickets",
+    },
     "admission_leases": {"product_id": "products"},
     "admission_eligibility": {
         "ticket_id": "tickets",
@@ -649,6 +723,18 @@ DOCUMENTED_UNIQUES: dict[str, list[list[str]]] = {
         ["admission_run_id"],
         ["pm_sync_receipt_id"],
         ["ticket_id"],
+    ],
+    "pm_recovery_sequence_counters": [],
+    "pm_recovery_episodes": [
+        ["authoritative_episode_id"],
+        ["identity_fingerprint"],
+        ["episode_created_sequence", "product_id"],
+        ["last_evaluated_sequence", "product_id"],
+    ],
+    "pm_blocker_occurrences": [["active_fingerprint", "product_id"]],
+    "pm_blocker_starved_candidates": [
+        ["blocker_occurrence_id", "ticket_id"],
+        ["blocker_occurrence_id", "ticket_key"],
     ],
     "admission_leases": [],
     "admission_eligibility": [],
@@ -974,7 +1060,7 @@ def test_pm_sync_receipt_migration_preserves_ticket_definition_cursors(
 def test_alembic_upgrades_fresh_db_and_matches_metadata(tmp_path: Path) -> None:
     url = f"sqlite:///{tmp_path}/migrated.db"
     config = _alembic_config(url)
-    assert ScriptDirectory.from_config(config).get_heads() == ["0035"]
+    assert ScriptDirectory.from_config(config).get_heads() == ["0036"]
     command.upgrade(config, "head")
 
     engine = sa.create_engine(url)
@@ -1651,12 +1737,88 @@ def test_planned_ci_pending_recovery_migration_compiles_for_postgresql() -> None
     assert "CREATE TRIGGER planned_ci_pending_recoveries_append_only" in migration_sql
 
 
+def test_pm_recovery_migration_upgrade_and_downgrade(tmp_path: Path) -> None:
+    url = f"sqlite:///{tmp_path}/pm-recovery.db"
+    config = _alembic_config(url)
+    command.upgrade(config, "0035")
+    engine = sa.create_engine(url)
+    product_id = UUID("11111111-1111-4111-8111-111111111111")
+    with engine.begin() as connection:
+        assert "pm_recovery_episodes" not in sa.inspect(connection).get_table_names()
+        connection.execute(
+            sa.text(
+                "INSERT INTO products ("
+                "id, key, name, description, vision, status, goals, non_goals, "
+                "constraints, created_by_type, created_by_id, created_at, updated_at"
+                ") VALUES ("
+                ":id, 'ATLAS', 'Atlas', 'sentinel', 'sentinel', 'active', "
+                "'[]', '[]', '[]', 'human', 'operator', :at, :at)"
+            ),
+            {"id": product_id.hex, "at": datetime(2026, 8, 31, tzinfo=UTC)},
+        )
+
+    command.upgrade(config, "0036")
+    with engine.connect() as connection:
+        inspector = sa.inspect(connection)
+        assert {
+            "pm_recovery_sequence_counters",
+            "pm_recovery_episodes",
+            "pm_blocker_occurrences",
+            "pm_blocker_starved_candidates",
+        } <= set(inspector.get_table_names())
+        assert {
+            "ix_pm_recovery_episodes_active_operation",
+            "ix_pm_recovery_episodes_active_candidate",
+            "ix_pm_recovery_episodes_fairness",
+        } == {item["name"] for item in inspector.get_indexes("pm_recovery_episodes")}
+        assert {
+            "ix_pm_blocker_occurrences_active_operation",
+            "ix_pm_blocker_occurrences_active_candidate",
+            "ix_pm_blocker_occurrences_episode",
+        } == {item["name"] for item in inspector.get_indexes("pm_blocker_occurrences")}
+
+    command.downgrade(config, "0035")
+    with engine.connect() as connection:
+        inspector = sa.inspect(connection)
+        assert {
+            "pm_recovery_sequence_counters",
+            "pm_recovery_episodes",
+            "pm_blocker_occurrences",
+            "pm_blocker_starved_candidates",
+        }.isdisjoint(inspector.get_table_names())
+        assert (
+            connection.execute(
+                sa.text("SELECT key FROM products WHERE id = :id"),
+                {"id": product_id.hex},
+            ).scalar_one()
+            == "ATLAS"
+        )
+
+
+def test_pm_recovery_migration_compiles_for_postgresql() -> None:
+    output = StringIO()
+    config = Config(str(REPO_ROOT / "alembic.ini"), output_buffer=output)
+    config.set_main_option(
+        "script_location", str(REPO_ROOT / "atlas" / "storage" / "migrations")
+    )
+    config.set_main_option("sqlalchemy.url", "postgresql://atlas:atlas@localhost/atlas")
+
+    command.upgrade(config, "0035:0036", sql=True)
+
+    migration_sql = output.getvalue()
+    assert "-- Running upgrade 0035 -> 0036" in migration_sql
+    assert "CREATE TABLE pm_recovery_sequence_counters" in migration_sql
+    assert "CREATE TABLE pm_recovery_episodes" in migration_sql
+    assert "CREATE TABLE pm_blocker_occurrences" in migration_sql
+    assert "CREATE TABLE pm_blocker_starved_candidates" in migration_sql
+
+
 def test_acceptance_evidence_receipt_outcomes_migrate_without_losing_guards(
     tmp_path: Path,
 ) -> None:
     url = f"sqlite:///{tmp_path}/acceptance-evidence-outcomes.db"
     config = _alembic_config(url)
-    assert ScriptDirectory.from_config(config).get_heads() == ["0035"]
+    assert ScriptDirectory.from_config(config).get_heads() == ["0036"]
     command.upgrade(config, "head")
 
     engine = sa.create_engine(url)

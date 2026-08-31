@@ -94,6 +94,7 @@ from atlas.pm.protected_lanes import (
 from atlas.pm.protected_lanes import (
     REGISTRY_VERSION as PROTECTED_LANE_REGISTRY_VERSION,
 )
+from atlas.pm.recovery_projection import project_durable_blocker
 from atlas.pm.report import (
     AgentRunMetric,
     AnomalyCount,
@@ -203,6 +204,7 @@ __all__ = [
     "load_packaged_protected_lane_registry",
     "load_protected_lane_registry_bytes",
     "parse_protected_lane_registry",
+    "project_durable_blocker",
     "promote_ready",
     "reconcile_ci_handoff",
     "reconcile_one_ci_handoff",

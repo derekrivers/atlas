@@ -1,0 +1,146 @@
+{
+  "$defs": {
+    "PmBlockerAuthorityKind": {
+      "description": "Kind of exact durable authority named by a blocker.",
+      "enum": [
+        "operation",
+        "lease",
+        "fence",
+        "intent"
+      ],
+      "title": "PmBlockerAuthorityKind",
+      "type": "string"
+    },
+    "PmBlockerKind": {
+      "description": "Bounded recovery posture shared by persistence and PM health.",
+      "enum": [
+        "routine_wait",
+        "retryable",
+        "unresolved_fence",
+        "unknown"
+      ],
+      "title": "PmBlockerKind",
+      "type": "string"
+    },
+    "PmStarvedCandidateRef": {
+      "additionalProperties": false,
+      "description": "Identity-only observation; the repository owns starvation start time.",
+      "properties": {
+        "ticket_id": {
+          "format": "uuid",
+          "title": "Ticket Id",
+          "type": "string"
+        },
+        "ticket_key": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Ticket Key",
+          "type": "string"
+        }
+      },
+      "required": [
+        "ticket_id",
+        "ticket_key"
+      ],
+      "title": "PmStarvedCandidateRef",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Caller intent for one evaluation's bounded blocker observation.",
+  "properties": {
+    "authority_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Authority Id",
+      "type": "string"
+    },
+    "authority_kind": {
+      "$ref": "#/$defs/PmBlockerAuthorityKind"
+    },
+    "capacity_impact": {
+      "default": false,
+      "title": "Capacity Impact",
+      "type": "boolean"
+    },
+    "code": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Code",
+      "type": "string"
+    },
+    "kind": {
+      "$ref": "#/$defs/PmBlockerKind"
+    },
+    "next_safe_retry_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Next Safe Retry At"
+    },
+    "policy_fingerprint": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Policy Fingerprint"
+    },
+    "policy_namespace": {
+      "anyOf": [
+        {
+          "maxLength": 128,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Policy Namespace"
+    },
+    "policy_revision": {
+      "anyOf": [
+        {
+          "maximum": 9223372036854775807,
+          "minimum": 1,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Policy Revision"
+    },
+    "starved_candidates": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/PmStarvedCandidateRef"
+      },
+      "maxItems": 128,
+      "title": "Starved Candidates",
+      "type": "array"
+    }
+  },
+  "required": [
+    "code",
+    "kind",
+    "authority_kind",
+    "authority_id"
+  ],
+  "title": "PmBlockerObservationIntent",
+  "type": "object"
+}

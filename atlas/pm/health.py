@@ -24,6 +24,15 @@ from pydantic import (
     model_validator,
 )
 
+from atlas.core.models.pm_recovery import (
+    PmBlockerKind as _PmBlockerKind,
+)
+from atlas.core.models.pm_recovery import (
+    pm_blocker_identity_bytes as _pm_blocker_identity_bytes,
+)
+
+PmBlockerKind = _PmBlockerKind
+
 MAX_SCHEMA_LENGTH = 64
 MAX_NAME_LENGTH = 128
 MAX_KEY_LENGTH = 128
@@ -39,15 +48,6 @@ class PmHealthStatus(StrEnum):
     HEALTHY = "healthy"
     DEGRADED = "degraded"
     BLOCKED = "blocked"
-
-
-class PmBlockerKind(StrEnum):
-    """Bounded recovery posture of one durable PM observation."""
-
-    ROUTINE_WAIT = "routine_wait"
-    RETRYABLE = "retryable"
-    UNRESOLVED_FENCE = "unresolved_fence"
-    UNKNOWN = "unknown"
 
 
 class PmHealthReasonCode(StrEnum):
@@ -228,16 +228,15 @@ class PmBlockerObservation(BaseModel):
     def identity_bytes(self) -> bytes:
         """Canonical stable cause/episode identity, excluding mutable state."""
 
-        payload = {
-            "schema_version": self.schema_version,
-            "operation": self.operation,
-            "code": self.code,
-            "kind": self.kind.value,
-            "authority_id": self.authority_id,
-            "episode_id": self.episode_id,
-            "candidate_key": self.candidate_key,
-        }
-        return json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+        return _pm_blocker_identity_bytes(
+            schema_version=self.schema_version,
+            operation=self.operation,
+            code=self.code,
+            kind=self.kind,
+            authority_id=self.authority_id,
+            episode_id=self.episode_id,
+            candidate_key=self.candidate_key,
+        )
 
     @property
     def fingerprint(self) -> str:

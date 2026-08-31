@@ -1,0 +1,307 @@
+{
+  "$defs": {
+    "PmBlockerAuthorityKind": {
+      "description": "Kind of exact durable authority named by a blocker.",
+      "enum": [
+        "operation",
+        "lease",
+        "fence",
+        "intent"
+      ],
+      "title": "PmBlockerAuthorityKind",
+      "type": "string"
+    },
+    "PmBlockerKind": {
+      "description": "Bounded recovery posture shared by persistence and PM health.",
+      "enum": [
+        "routine_wait",
+        "retryable",
+        "unresolved_fence",
+        "unknown"
+      ],
+      "title": "PmBlockerKind",
+      "type": "string"
+    },
+    "PmBlockerSupersessionKind": {
+      "description": "Bounded class of observation that made a blocker obsolete.",
+      "enum": [
+        "progress",
+        "recovery"
+      ],
+      "title": "PmBlockerSupersessionKind",
+      "type": "string"
+    },
+    "PmStarvedCandidate": {
+      "additionalProperties": false,
+      "description": "Durable current starvation member with repository-owned start time.",
+      "properties": {
+        "started_at": {
+          "format": "date-time",
+          "title": "Started At",
+          "type": "string"
+        },
+        "ticket_id": {
+          "format": "uuid",
+          "title": "Ticket Id",
+          "type": "string"
+        },
+        "ticket_key": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Ticket Key",
+          "type": "string"
+        }
+      },
+      "required": [
+        "ticket_id",
+        "ticket_key",
+        "started_at"
+      ],
+      "title": "PmStarvedCandidate",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "One retained blocker occurrence; only explicit progress supersedes it.",
+  "properties": {
+    "active_fingerprint": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Active Fingerprint"
+    },
+    "authority_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Authority Id",
+      "type": "string"
+    },
+    "authority_kind": {
+      "$ref": "#/$defs/PmBlockerAuthorityKind"
+    },
+    "blocker_fingerprint": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Blocker Fingerprint",
+      "type": "string"
+    },
+    "candidate_ticket_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Candidate Ticket Id"
+    },
+    "candidate_ticket_key": {
+      "anyOf": [
+        {
+          "maxLength": 128,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Candidate Ticket Key"
+    },
+    "capacity_impact": {
+      "default": false,
+      "title": "Capacity Impact",
+      "type": "boolean"
+    },
+    "code": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Code",
+      "type": "string"
+    },
+    "consecutive_observations": {
+      "maximum": 2147483647,
+      "minimum": 1,
+      "title": "Consecutive Observations",
+      "type": "integer"
+    },
+    "first_evaluation_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "First Evaluation Id",
+      "type": "string"
+    },
+    "first_observed_at": {
+      "format": "date-time",
+      "title": "First Observed At",
+      "type": "string"
+    },
+    "id": {
+      "format": "uuid",
+      "title": "Id",
+      "type": "string"
+    },
+    "kind": {
+      "$ref": "#/$defs/PmBlockerKind"
+    },
+    "latest_evaluation_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Latest Evaluation Id",
+      "type": "string"
+    },
+    "latest_observed_at": {
+      "format": "date-time",
+      "title": "Latest Observed At",
+      "type": "string"
+    },
+    "next_safe_retry_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Next Safe Retry At"
+    },
+    "operation": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Operation",
+      "type": "string"
+    },
+    "policy_fingerprint": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Policy Fingerprint"
+    },
+    "policy_namespace": {
+      "anyOf": [
+        {
+          "maxLength": 128,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Policy Namespace"
+    },
+    "policy_revision": {
+      "anyOf": [
+        {
+          "maximum": 9223372036854775807,
+          "minimum": 1,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Policy Revision"
+    },
+    "product_id": {
+      "format": "uuid",
+      "title": "Product Id",
+      "type": "string"
+    },
+    "recovery_episode_id": {
+      "format": "uuid",
+      "title": "Recovery Episode Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "pm-blocker-observation-v1",
+      "default": "pm-blocker-observation-v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "starved_candidates": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/PmStarvedCandidate"
+      },
+      "maxItems": 128,
+      "title": "Starved Candidates",
+      "type": "array"
+    },
+    "superseded_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Superseded At"
+    },
+    "superseded_by_event_id": {
+      "anyOf": [
+        {
+          "maxLength": 128,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Superseded By Event Id"
+    },
+    "supersession_kind": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/PmBlockerSupersessionKind"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    }
+  },
+  "required": [
+    "product_id",
+    "operation",
+    "code",
+    "kind",
+    "authority_kind",
+    "authority_id",
+    "recovery_episode_id",
+    "id",
+    "blocker_fingerprint",
+    "first_evaluation_id",
+    "latest_evaluation_id",
+    "first_observed_at",
+    "latest_observed_at",
+    "consecutive_observations"
+  ],
+  "title": "DurablePmBlocker",
+  "type": "object"
+}
