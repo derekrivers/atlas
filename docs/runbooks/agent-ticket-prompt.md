@@ -7,9 +7,36 @@
 > `docs/runbooks/symphony-agent-execution.md` through the executable
 > `WORKFLOW.md` spine.
 
-Reusable prompt for a human to hand-dispatch one ticket in Claude Code, VS Code
-or another interactive session. Replace everything in `{curly braces}`. One
-ticket per session.
+Reusable prompt for a human to hand-dispatch one canonical ticket in Claude
+Code, VS Code or another interactive session. Replace everything in `{curly
+braces}`. One ticket per session. Non-key maintenance units and campaigns use
+the separate procedure below.
+
+---
+
+## Hand-dispatched Codex maintenance units and campaigns
+
+An `ATLAS-NNNM` maintenance meta-label is not a canonical Atlas ticket key. It
+must not create a ticket YAML, mutate Linear, or enter Symphony's `PR Open` or
+`CI Pending` lifecycle. Dispatch this work with
+`atlas-maintenance-execution`; retain the operator's maintenance prompt as the
+binding unit or campaign contract.
+
+For a campaign, the primary Codex coordinator first establishes fresh
+`origin/main`, meta-label and open-PR path-collision truth, then delegates
+bounded read-heavy discovery or review. It waits for every requested child and
+synthesises the dependency and path-ownership graph. Subagents advise; they do
+not become writers in the coordinator's mutable checkout.
+
+One mutable checkout has one writer and produces one coherent maintenance PR.
+Parallel implementation uses separate worktrees only for units with unique
+meta-labels and branches, exact starting SHAs, disjoint declared mutable paths,
+and no dependency on unmerged sibling behavior. Serialize overlapping paths.
+Refresh `origin/main`, recalculate exact validation, and rerun it before each
+unit's publication. Publication is an explicit operator-authorised handoff; it
+does not grant merge or lifecycle authority.
+
+The canonical-ticket template that follows remains unchanged in purpose.
 
 ---
 

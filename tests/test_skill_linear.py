@@ -26,6 +26,7 @@ AGENTS_PATH = REPO_ROOT / "AGENTS.md"
 REQUIRED_SKILLS = (
     "linear",
     "atlas-investigate",
+    "atlas-maintenance-execution",
     "atlas-validation",
     "atlas-ticket-planning",
     "atlas-planning-apply",
@@ -45,6 +46,7 @@ SYMPHONY_STATE_SKILL_ROUTES = (
 
 AGENT_TASK_SKILL_ROUTES = (
     ("Current-state or repository investigation", "atlas-investigate"),
+    ("Hand-dispatched maintenance execution", "atlas-maintenance-execution"),
     ("Candidate validation", "atlas-validation"),
     ("Ratified design or phase decomposition", "atlas-ticket-planning"),
     ("Operator planning plan/apply", "atlas-planning-apply"),
@@ -68,6 +70,12 @@ REQUIRED_AUTHORITY_REFERENCES = {
         "docs/MANIFEST.md",
         "docs/runbooks/operational-practice.md",
         "docs/runbooks/reviewer-session.md",
+    ),
+    "atlas-maintenance-execution": (
+        "AGENTS.md",
+        "docs/MANIFEST.md",
+        "docs/runbooks/operational-practice.md",
+        "docs/runbooks/agent-ticket-prompt.md",
     ),
     "atlas-validation": (
         "docs/runbooks/local-development.md",
@@ -114,6 +122,11 @@ REQUIRED_AUTHORITY_REFERENCES = {
 
 EXPECTED_COMPOSITION = {
     "atlas-investigate": (),
+    "atlas-maintenance-execution": (
+        "atlas-investigate",
+        "atlas-validation",
+        "atlas-pr-review",
+    ),
     "atlas-validation": (),
     "atlas-ticket-planning": ("atlas-planning-apply",),
     "atlas-planning-apply": (),
@@ -190,6 +203,11 @@ def test_atlas_skills_name_their_exact_canonical_authorities() -> None:
 def test_atlas_skills_declare_only_the_approved_composition_edges() -> None:
     for skill_name, targets in EXPECTED_COMPOSITION.items():
         _, body = _split(skill_name)
+        if skill_name == "atlas-maintenance-execution":
+            section = _markdown_h2_section(
+                SKILLS_ROOT / skill_name / "SKILL.md", "Authorities and distinction"
+            )
+            body = section[section.index("Compose ") : section.index("Do not compose")]
         referenced_skills = {
             candidate for candidate in REQUIRED_SKILLS if f"`{candidate}`" in body
         }

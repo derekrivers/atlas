@@ -148,9 +148,9 @@ Prompts and tools:
 
 Runbooks (`docs/runbooks/`):
 
-- `docs/runbooks/agent-ticket-prompt.md` — interactive/hand-dispatched agent
-  template (plan gate, scope and definition-of-done rules); not Symphony's
-  autonomous execution contract
+- `docs/runbooks/agent-ticket-prompt.md` — interactive/hand-dispatched canonical
+  ticket template plus the distinct non-key Codex maintenance dispatch
+  boundary; not Symphony's autonomous execution contract
 - `docs/runbooks/symphony-agent-execution.md` — canonical detailed lifecycle
   for Symphony-dispatched agents: routing, freshness, deterministic validation,
   issue-bound publication, remediation, CI Pending stop and hard limits
@@ -173,9 +173,9 @@ Runbooks (`docs/runbooks/`):
   suite, reproducing the CI gates, pre-commit, the shape of the suite,
   and the operator-run live tests
 - `docs/runbooks/operational-practice.md` — cross-cutting operator handbook:
-  fresh-session truth establishment, authority map, phase/ticket
-  decomposition, mint/apply/Linear handoffs, review practice, diagnosis and
-  durable knowledge capture
+  fresh-session truth establishment, authority map, governed Codex maintenance
+  orchestration, phase/ticket decomposition, mint/apply/Linear handoffs, review
+  practice, diagnosis and durable knowledge capture
 - `docs/runbooks/pm-runtime-deployment.md` — operator-owned deployment of one
   exact accepted release into the single-host managed PM runtime: quiescence,
   SQLite-safe backup, target migration, pinned activation, natural-cadence

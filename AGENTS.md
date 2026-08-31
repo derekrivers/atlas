@@ -42,6 +42,7 @@ execution but never override repository authority.
 | Task or capability | Procedural skill |
 | --- | --- |
 | Current-state or repository investigation | `atlas-investigate` |
+| Hand-dispatched maintenance execution | `atlas-maintenance-execution` |
 | Candidate validation | `atlas-validation` |
 | Ratified design or phase decomposition | `atlas-ticket-planning` |
 | Operator planning plan/apply | `atlas-planning-apply` |
@@ -50,6 +51,30 @@ execution but never override repository authority.
 | PR semantic review | `atlas-pr-review` |
 | PR acceptance | `atlas-pr-acceptance` |
 | Bounded Linear operations | `linear` |
+
+## Codex delegation and write isolation
+
+Subagents parallelise cognition; worktrees parallelise mutation. Use bounded
+subagents for independent read-heavy investigation or review when that
+materially reduces latency or keeps noisy evidence out of the primary context.
+Give each child one question, explicit scope and prohibited actions, and an
+exact return contract. The primary agent retains authority, waits for every
+requested result, resolves contradictions against canonical Atlas authority,
+and synthesises the outcome; child consensus is not authority.
+
+One mutable checkout has one writer. Parallel implementation requires isolated
+worktrees with unique branches, exact starting SHAs, declared owned and excluded
+paths, dependencies, and one primary writer per worktree. Serialize units whose
+mutable path ownership overlaps; do not use optimistic conflict resolution as a
+coordination model.
+
+Subagents may not independently mint canonical tickets, mutate Linear, operate
+managed services, mutate production databases, merge PRs, or broaden scope.
+Canonical documents and the deterministic Atlas CLI remain above skills and
+agent instructions in authority. Tier-0 operational work must assess
+retrospective recovery and eventual liveness as well as immediate crash safety:
+failing closed on one action must not make the subsystem permanently
+fail-stopped.
 
 ## Rules
 
@@ -77,10 +102,10 @@ execution but never override repository authority.
 - Do not build product features before the Atlas harness foundation exists.
 - Do not introduce Linear integration before local planning works.
 - Do not introduce Symphony integration before context packs exist.
-- Keep tickets small and dependency-aware. Update documentation when
+- Keep work units small and dependency-aware. Update documentation when
   behaviour changes. Before publication, calculate `atlas validation-plan`
-  from exact base/head identities, every changed path, every explicit ticket
-  validation requirement and every ticket-declared test file. The CLI must
+  from exact base/head identities, every changed path, every explicit governing
+  work-contract validation requirement and every declared test file. The CLI must
   prove that path set against the read-only Git diff and prove explicit test
   files at the head. Run every ordered command and explicit test target. Run a
   complete local sweep only when the named `full-sweep` conservative profile
@@ -89,9 +114,10 @@ execution but never override repository authority.
   publication, and any head change makes old-head results historical only.
   Scoped local results are agent-tier confidence only; complete CI at the
   accepted identity remains the system-tier authority and runs unchanged.
-- After one successful current-main rebase, a passing validation plan and one
-  successful candidate publication, record exact commands/results, move the
-  ticket through `PR Open` to `CI Pending`, and stop in the same turn. Do not
+- For Symphony-dispatched canonical tickets, after one successful current-main
+  rebase, a passing validation plan and one successful candidate publication,
+  record exact commands/results, move the ticket through `PR Open` to `CI
+  Pending`, and stop in the same turn. Do not
   poll CI or wait for review. `CI Pending` must remain absent from Symphony's
   active states; only the system-tier reconciler owns its exit to `Review
   Required` or `Changes Requested`.

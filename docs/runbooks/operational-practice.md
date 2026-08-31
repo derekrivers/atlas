@@ -92,6 +92,7 @@ mistakes. Use this map before diagnosing or mutating anything.
 | Operational ticket state | Atlas store, reconciled through the documented state-edge owners |
 | Human/operator decision | Explicit operator action/receipt, never an agent inference |
 | Agent execution | Symphony workspace/session and its tracker-visible lifecycle |
+| Hand-dispatched maintenance | Operator contract plus repository/branch/PR identities; no Linear lifecycle |
 | Complete CI result | System-tier GitHub/CI evidence pinned to the exact published head |
 | Acceptance readiness | Atlas verification at the exact accepted identity plus required human confirmation |
 | Merge | Manual operator action in GitHub |
@@ -151,7 +152,36 @@ When diagnosing a broken loop, first locate **which boundary failed**. Do not
 start by changing code or dragging a Linear card until the owner of the missing
 edge is known.
 
-### 3.1 Repository Codex skill layer
+### 3.1 Hand-dispatched Codex maintenance
+
+Hand-dispatched maintenance is a separate operating path from the minted-ticket
+Symphony loop. Its `ATLAS-NNNM` identifier is a non-canonical maintenance
+meta-label: it creates no ticket YAML, has no Linear identity, and grants no
+tracker mutation. Use `atlas-maintenance-execution`, not
+`atlas-ticket-execution`, for this path.
+
+Start each unit from fetched `origin/main`, prove the meta-label does not
+collide with an existing branch or PR, and inspect every open PR's changed paths
+before selecting mutable ownership. Use subagents for bounded parallel
+investigation and review; the primary coordinator waits for all requested
+results and retains synthesis and decision authority. Subagents parallelise
+cognition, while worktrees parallelise mutation.
+
+One mutable checkout has one writer. A campaign may run implementation units in
+parallel only after the coordinator records their unique labels and branches,
+exact starting SHAs, disjoint owned and excluded paths, and dependency graph.
+Serialize overlapping mutable paths or dependencies on unmerged behavior. Each
+worktree produces and validates one independently coherent unit and PR.
+
+Before publication, fetch current `origin/main` again, refresh the candidate if
+required, freeze its exact base/head, and use `atlas-validation`. Meaningful
+changes receive independent review under `atlas-pr-review`; any required
+write-based review probe runs only in a disposable isolated checkout. Publish
+one bounded maintenance PR with exact validation and delegation evidence, then
+stop. Do not create a closing relationship, mutate Linear, imitate `PR Open` or
+`CI Pending`, merge, poll CI, or begin the next maintenance campaign.
+
+### 3.2 Repository Codex skill layer
 
 Atlas exposes small, composable Codex skills under `.codex/skills/` so a fresh
 agent can discover and sequence the governed workflows above. The authority
@@ -175,10 +205,12 @@ acceptance authority. If a skill conflicts with current canonical repository
 authority, the repository authority wins and the skill is defective.
 
 The supported set is `linear`, `atlas-investigate`, `atlas-validation`,
-`atlas-ticket-planning`, `atlas-planning-apply`, `atlas-ticket-execution`,
-`atlas-ticket-remediation`, `atlas-pr-review`, and `atlas-pr-acceptance`. Each
-skill remains narrow: ordinary ticket execution and remediation reuse `linear`
-and `atlas-validation`, review reuses `atlas-validation`, and acceptance begins
+`atlas-maintenance-execution`, `atlas-ticket-planning`,
+`atlas-planning-apply`, `atlas-ticket-execution`,
+`atlas-ticket-remediation`, `atlas-pr-review`, and `atlas-pr-acceptance`.
+Each skill remains narrow: maintenance execution has no Linear lifecycle;
+ordinary ticket execution and remediation reuse `linear` and
+`atlas-validation`; review reuses `atlas-validation`; and acceptance begins
 with `atlas-pr-review`.
 
 ## 4. Turning a phase into governed work
