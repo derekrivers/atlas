@@ -167,7 +167,7 @@ def test_new_arrival_joins_product_sequence_tail(tmp_path: Path) -> None:
     first = select_fair_ci_handoff_candidate(
         db=database,
         tickets=TicketRepo(database),
-        initial_issues=issues,  # type: ignore[arg-type]
+        initial_issues=issues,
         now=NOW,
     )
     assert first.candidate is not None and first.candidate.key == "ATLAS-290"
@@ -191,7 +191,7 @@ def test_new_arrival_joins_product_sequence_tail(tmp_path: Path) -> None:
     next_selection = select_fair_ci_handoff_candidate(
         db=database,
         tickets=TicketRepo(database),
-        initial_issues=issues,  # type: ignore[arg-type]
+        initial_issues=issues,
         now=NOW + timedelta(seconds=1),
     )
     assert next_selection.candidate is not None
@@ -212,7 +212,7 @@ def test_selected_candidate_evaluation_clears_only_its_stale_starvation_membersh
     first = select_fair_ci_handoff_candidate(
         db=database,
         tickets=TicketRepo(database),
-        initial_issues=list(issues),  # type: ignore[arg-type]
+        initial_issues=list(issues),
         now=NOW,
     )
     record_fair_ci_handoff_evaluation(
@@ -229,7 +229,7 @@ def test_selected_candidate_evaluation_clears_only_its_stale_starvation_membersh
     second = select_fair_ci_handoff_candidate(
         db=database,
         tickets=TicketRepo(database),
-        initial_issues=list(issues),  # type: ignore[arg-type]
+        initial_issues=list(issues),
         now=NOW + timedelta(seconds=1),
     )
     record_fair_ci_handoff_evaluation(
@@ -316,7 +316,7 @@ def test_lifecycle_exit_closes_episode_and_reentry_creates_a_new_one(
     initial = select_fair_ci_handoff_candidate(
         db=database,
         tickets=tickets,
-        initial_issues=list(issues),  # type: ignore[arg-type]
+        initial_issues=list(issues),
         now=NOW,
     )
     assert initial.candidate is not None and initial.episode is not None
@@ -330,7 +330,7 @@ def test_lifecycle_exit_closes_episode_and_reentry_creates_a_new_one(
     empty = select_fair_ci_handoff_candidate(
         db=database,
         tickets=tickets,
-        initial_issues=list(issues),  # type: ignore[arg-type]
+        initial_issues=list(issues),
         now=NOW + timedelta(seconds=1),
     )
     assert empty.candidate is None
@@ -346,7 +346,7 @@ def test_lifecycle_exit_closes_episode_and_reentry_creates_a_new_one(
     reentered = select_fair_ci_handoff_candidate(
         db=database,
         tickets=tickets,
-        initial_issues=list(issues),  # type: ignore[arg-type]
+        initial_issues=list(issues),
         now=NOW + timedelta(seconds=2),
     )
     assert reentered.episode is not None
@@ -397,7 +397,7 @@ def test_bounded_poison_outcomes_cannot_starve_the_next_candidate(
     first = select_fair_ci_handoff_candidate(
         db=database,
         tickets=TicketRepo(database),
-        initial_issues=list(issues),  # type: ignore[arg-type]
+        initial_issues=list(issues),
         now=NOW,
     )
     assert first.candidate is not None and first.candidate.key == "ATLAS-290"
@@ -411,7 +411,7 @@ def test_bounded_poison_outcomes_cannot_starve_the_next_candidate(
     second = select_fair_ci_handoff_candidate(
         db=database,
         tickets=TicketRepo(database),
-        initial_issues=list(issues),  # type: ignore[arg-type]
+        initial_issues=list(issues),
         now=NOW + timedelta(seconds=1),
     )
     assert second.candidate is not None and second.candidate.key == "ATLAS-291"
@@ -449,7 +449,7 @@ def test_adapter_holds_persist_explicit_bounded_codes(
     selection = select_fair_ci_handoff_candidate(
         db=database,
         tickets=TicketRepo(database),
-        initial_issues=list(issues),  # type: ignore[arg-type]
+        initial_issues=list(issues),
         now=NOW,
     )
     record_fair_ci_handoff_evaluation(

@@ -339,7 +339,7 @@ def _blocker_intent(
             f"unmapped held CI-handoff adapter result: {result.reason.value}"
         )
 
-    starved = ()
+    starved: tuple[PmStarvedCandidateRef, ...] = ()
     if (
         kind is not PmBlockerKind.UNRESOLVED_FENCE
         and code is not PmBlockerCode.LEASE_UNAVAILABLE
@@ -457,6 +457,7 @@ def record_fair_ci_handoff_evaluation(
     )
 
     if reconciled_fence:
+        assert result.reconciliation is not None
         reconciliation_id = result.reconciliation.reconciliation_id
         assert reconciliation_id is not None
         _supersede_fence_blockers(
