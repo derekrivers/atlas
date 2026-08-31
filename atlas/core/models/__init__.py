@@ -61,6 +61,7 @@ from atlas.core.models.planner_call_telemetry import (
 from atlas.core.models.pm_recovery import (
     DurablePmBlocker,
     PmBlockerAuthorityKind,
+    PmBlockerCode,
     PmBlockerIdentity,
     PmBlockerKind,
     PmBlockerObservationIntent,
@@ -140,6 +141,7 @@ __all__ = [
     "PlanningExecutionOutcome",
     "PlanningExecutionOutcomeStatus",
     "PmBlockerAuthorityKind",
+    "PmBlockerCode",
     "PmBlockerIdentity",
     "PmBlockerKind",
     "PmBlockerObservationIntent",

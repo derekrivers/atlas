@@ -29,7 +29,7 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["product_id"], ["products.id"]),
         sa.PrimaryKeyConstraint("product_id"),
         sa.CheckConstraint(
-            "high_water >= 0 AND high_water < 9223372036854775807",
+            "high_water >= 0 AND high_water <= 9223372036854775807",
             name="pm_recovery_sequence_counters_bounds",
         ),
     )
@@ -43,6 +43,7 @@ def upgrade() -> None:
         sa.Column("operation", sa.Text(), nullable=False),
         sa.Column("authority_id", sa.Text(), nullable=False),
         sa.Column("authoritative_episode_id", sa.Text(), nullable=False),
+        sa.Column("active_scope_fingerprint", sa.Text(), nullable=True),
         sa.Column("candidate_ticket_id", sa.Uuid(), nullable=True),
         sa.Column("candidate_ticket_key", sa.Text(), nullable=True),
         sa.Column("episode_created_sequence", sa.BigInteger(), nullable=False),
@@ -58,7 +59,7 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["product_id"], ["products.id"]),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("identity_fingerprint"),
-        sa.UniqueConstraint("authoritative_episode_id"),
+        sa.UniqueConstraint("product_id", "active_scope_fingerprint"),
         sa.UniqueConstraint("product_id", "episode_created_sequence"),
         sa.UniqueConstraint("product_id", "last_evaluated_sequence"),
         sa.CheckConstraint(
@@ -66,6 +67,7 @@ def upgrade() -> None:
             name="pm_recovery_episodes_schema_version",
         ),
         sa.CheckConstraint(
+            "length(identity_fingerprint) = 64 AND "
             "length(operation) BETWEEN 1 AND 128 AND "
             "length(authority_id) BETWEEN 1 AND 128 AND "
             "length(authoritative_episode_id) BETWEEN 1 AND 128",
@@ -100,6 +102,11 @@ def upgrade() -> None:
             "AND closed_at >= created_at AND "
             "(last_evaluated_at IS NULL OR closed_at >= last_evaluated_at))",
             name="pm_recovery_episodes_closure_fields",
+        ),
+        sa.CheckConstraint(
+            "(closed_at IS NULL AND length(active_scope_fingerprint) = 64) OR "
+            "(closed_at IS NOT NULL AND active_scope_fingerprint IS NULL)",
+            name="pm_recovery_episodes_active_scope",
         ),
     )
     op.create_index(
@@ -169,6 +176,11 @@ def upgrade() -> None:
         sa.CheckConstraint(
             "kind IN ('routine_wait', 'retryable', 'unresolved_fence', 'unknown')",
             name="pm_blocker_occurrences_kind",
+        ),
+        sa.CheckConstraint(
+            "code IN ('lease_unavailable', 'provider_unavailable', "
+            "'publication_ambiguous', 'publication_not_yet_complete')",
+            name="pm_blocker_occurrences_code",
         ),
         sa.CheckConstraint(
             "authority_kind IN ('operation', 'lease', 'fence', 'intent')",

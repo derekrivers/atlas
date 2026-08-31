@@ -502,6 +502,7 @@ DOCUMENTED_COLUMNS: dict[str, dict[str, tuple[bool, str | None]]] = {
         "operation": (NN, None),
         "authority_id": (NN, None),
         "authoritative_episode_id": (NN, None),
+        "active_scope_fingerprint": (True, None),
         "candidate_ticket_id": (True, None),
         "candidate_ticket_key": (True, None),
         "episode_created_sequence": (NN, None),
@@ -726,8 +727,8 @@ DOCUMENTED_UNIQUES: dict[str, list[list[str]]] = {
     ],
     "pm_recovery_sequence_counters": [],
     "pm_recovery_episodes": [
-        ["authoritative_episode_id"],
         ["identity_fingerprint"],
+        ["active_scope_fingerprint", "product_id"],
         ["episode_created_sequence", "product_id"],
         ["last_evaluated_sequence", "product_id"],
     ],
@@ -1811,6 +1812,42 @@ def test_pm_recovery_migration_compiles_for_postgresql() -> None:
     assert "CREATE TABLE pm_recovery_episodes" in migration_sql
     assert "CREATE TABLE pm_blocker_occurrences" in migration_sql
     assert "CREATE TABLE pm_blocker_starved_candidates" in migration_sql
+    for required_name in (
+        "pm_recovery_sequence_counters_bounds",
+        "pm_recovery_episodes_identity_bounds",
+        "pm_recovery_episodes_evaluation_fields",
+        "pm_recovery_episodes_active_scope",
+        "pm_blocker_occurrences_code",
+        "pm_blocker_occurrences_active_or_superseded",
+        "pm_blocker_starved_candidates_ordinal_bounds",
+        "ix_pm_recovery_episodes_fairness",
+        "ix_pm_blocker_occurrences_active_operation",
+        "ix_pm_blocker_occurrences_active_candidate",
+        "ix_pm_blocker_occurrences_episode",
+    ):
+        assert required_name in migration_sql
+
+    downgrade_output = StringIO()
+    downgrade_config = Config(
+        str(REPO_ROOT / "alembic.ini"), output_buffer=downgrade_output
+    )
+    downgrade_config.set_main_option(
+        "script_location", str(REPO_ROOT / "atlas" / "storage" / "migrations")
+    )
+    downgrade_config.set_main_option(
+        "sqlalchemy.url", "postgresql://atlas:atlas@localhost/atlas"
+    )
+    command.downgrade(downgrade_config, "0036:0035", sql=True)
+    downgrade_sql = downgrade_output.getvalue()
+    assert downgrade_sql.index("DROP TABLE pm_blocker_starved_candidates") < (
+        downgrade_sql.index("DROP TABLE pm_blocker_occurrences")
+    )
+    assert downgrade_sql.index("DROP TABLE pm_blocker_occurrences") < (
+        downgrade_sql.index("DROP TABLE pm_recovery_episodes")
+    )
+    assert downgrade_sql.index("DROP TABLE pm_recovery_episodes") < (
+        downgrade_sql.index("DROP TABLE pm_recovery_sequence_counters")
+    )
 
 
 def test_acceptance_evidence_receipt_outcomes_migrate_without_losing_guards(

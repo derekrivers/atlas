@@ -44,8 +44,10 @@ class PmRecoveryStorageCode(StrEnum):
     EPISODE_NOT_FOUND = "episode_not_found"
     EPISODE_CLOSED = "episode_closed"
     EPISODE_CLOSURE_CONFLICT = "episode_closure_conflict"
+    EPISODE_ACTIVE_SCOPE_CONFLICT = "episode_active_scope_conflict"
     CANDIDATE_IDENTITY_CONFLICT = "candidate_identity_conflict"
     EVALUATION_REPLAY_CONFLICT = "evaluation_replay_conflict"
+    EVALUATION_CURSOR_CONFLICT = "evaluation_cursor_conflict"
     EVALUATION_OUT_OF_ORDER = "evaluation_out_of_order"
     BLOCKER_IDENTITY_CONFLICT = "blocker_identity_conflict"
     BLOCKER_NOT_FOUND = "blocker_not_found"
@@ -73,6 +75,14 @@ class PmRecoveryEvaluationRecord:
 class PmRecoveryMutationRecord:
     """Idempotent mutation result for closure or supersession."""
 
+    changed: bool
+
+
+@dataclass(frozen=True)
+class PmRecoveryReplacementRecord:
+    """Result of one atomic authoritative episode replacement."""
+
+    episode: PmRecoveryEpisode
     changed: bool
 
 
@@ -118,8 +128,6 @@ def _blocker_model(session: Session, row: PmBlockerOccurrenceRow) -> DurablePmBl
 def _episode_identity_matches(
     episode: PmRecoveryEpisode,
     identity: PmRecoveryEpisodeIdentity,
-    *,
-    created_at: datetime,
 ) -> bool:
     fields = (
         "schema_version",
@@ -134,22 +142,38 @@ def _episode_identity_matches(
         all(getattr(episode, field) == getattr(identity, field) for field in fields)
         and episode.id == identity.episode_id
         and episode.identity_fingerprint == identity.computed_identity_fingerprint
-        and episode.created_at == created_at
     )
 
 
 def _evaluation_fingerprint(
     *,
-    authoritative_episode_id: str,
+    episode_id: UUID,
+    expected_cursor_sequence: int,
     evaluation_id: str,
     evaluated_at: datetime,
     blocker: PmBlockerObservationIntent | None,
 ) -> str:
     payload = {
-        "authoritative_episode_id": authoritative_episode_id,
+        "episode_id": str(episode_id),
+        "expected_cursor_sequence": expected_cursor_sequence,
         "blocker": None if blocker is None else blocker.model_dump(mode="json"),
         "evaluated_at": evaluated_at.isoformat(),
         "evaluation_id": evaluation_id,
+    }
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode()).hexdigest()
+
+
+def _episode_scope_fingerprint(identity: PmRecoveryEpisodeIdentity) -> str:
+    payload = {
+        "authority_id": identity.authority_id,
+        "candidate_ticket_id": (
+            None
+            if identity.candidate_ticket_id is None
+            else str(identity.candidate_ticket_id)
+        ),
+        "candidate_ticket_key": identity.candidate_ticket_key,
+        "operation": identity.operation,
     }
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode()).hexdigest()
@@ -238,14 +262,9 @@ class PmRecoveryRepo:
             )
             return 0 if value is None else value
 
-    def get_episode(self, authoritative_episode_id: str) -> PmRecoveryEpisode | None:
+    def get_episode(self, episode_id: UUID) -> PmRecoveryEpisode | None:
         with self._db.session() as session:
-            row = session.scalar(
-                sa.select(PmRecoveryEpisodeRow).where(
-                    PmRecoveryEpisodeRow.authoritative_episode_id
-                    == authoritative_episode_id
-                )
-            )
+            row = session.get(PmRecoveryEpisodeRow, episode_id)
             return None if row is None else _episode_model(row)
 
     def establish_episode(
@@ -260,23 +279,28 @@ class PmRecoveryRepo:
             identity.model_dump(mode="python")
         )
         created = _aware(created_at, name="episode created_at")
+        active_scope_fingerprint = _episode_scope_fingerprint(identity)
         try:
             with self._db.session() as session, session.begin():
                 self._lock_sequence_counter(session, identity.product_id)
-                existing_row = session.scalar(
-                    sa.select(PmRecoveryEpisodeRow).where(
-                        PmRecoveryEpisodeRow.authoritative_episode_id
-                        == identity.authoritative_episode_id
-                    )
-                )
+                existing_row = session.get(PmRecoveryEpisodeRow, identity.episode_id)
                 if existing_row is not None:
                     existing = _episode_model(existing_row)
-                    if _episode_identity_matches(
-                        existing, identity, created_at=created
-                    ):
+                    if _episode_identity_matches(existing, identity):
                         return existing
                     raise PmRecoveryStorageError(
                         PmRecoveryStorageCode.EPISODE_IDENTITY_CONFLICT
+                    )
+                active_scope = session.scalar(
+                    sa.select(PmRecoveryEpisodeRow).where(
+                        PmRecoveryEpisodeRow.product_id == identity.product_id,
+                        PmRecoveryEpisodeRow.active_scope_fingerprint
+                        == active_scope_fingerprint,
+                    )
+                )
+                if active_scope is not None:
+                    raise PmRecoveryStorageError(
+                        PmRecoveryStorageCode.EPISODE_ACTIVE_SCOPE_CONFLICT
                     )
                 self._validate_ticket_identity(
                     session,
@@ -290,6 +314,7 @@ class PmRecoveryRepo:
                         **identity.model_dump(mode="python"),
                         id=identity.episode_id,
                         identity_fingerprint=identity.computed_identity_fingerprint,
+                        active_scope_fingerprint=active_scope_fingerprint,
                         episode_created_sequence=sequence,
                         last_evaluated_sequence=None,
                         last_evaluation_id=None,
@@ -303,17 +328,15 @@ class PmRecoveryRepo:
                 )
                 session.flush()
         except sa.exc.IntegrityError:
-            replay = self.get_episode(identity.authoritative_episode_id)
-            if replay is not None and _episode_identity_matches(
-                replay, identity, created_at=created
-            ):
+            replay = self.get_episode(identity.episode_id)
+            if replay is not None and _episode_identity_matches(replay, identity):
                 return replay
             if replay is not None:
                 raise PmRecoveryStorageError(
                     PmRecoveryStorageCode.EPISODE_IDENTITY_CONFLICT
                 ) from None
             raise
-        result = self.get_episode(identity.authoritative_episode_id)
+        result = self.get_episode(identity.episode_id)
         if result is None:  # pragma: no cover - committed insert invariant
             raise PmRecoveryStorageError(PmRecoveryStorageCode.EPISODE_NOT_FOUND)
         return result
@@ -321,7 +344,7 @@ class PmRecoveryRepo:
     def close_episode(
         self,
         *,
-        authoritative_episode_id: str,
+        episode_id: UUID,
         closure_event_id: str,
         closure_kind: PmRecoveryEpisodeClosureKind,
         closed_at: datetime,
@@ -333,12 +356,7 @@ class PmRecoveryRepo:
             closure_event_id, name="closure_event_id"
         )
         with self._db.session() as session, session.begin():
-            row = session.scalar(
-                sa.select(PmRecoveryEpisodeRow).where(
-                    PmRecoveryEpisodeRow.authoritative_episode_id
-                    == authoritative_episode_id
-                )
-            )
+            row = session.get(PmRecoveryEpisodeRow, episode_id)
             if row is None:
                 raise PmRecoveryStorageError(PmRecoveryStorageCode.EPISODE_NOT_FOUND)
             if row.closed_at is not None:
@@ -360,7 +378,125 @@ class PmRecoveryRepo:
             row.closed_at = closed
             row.closure_event_id = closure_event_id
             row.closure_kind = closure_kind.value
+            row.active_scope_fingerprint = None
+            for blocker in session.scalars(
+                sa.select(PmBlockerOccurrenceRow).where(
+                    PmBlockerOccurrenceRow.recovery_episode_id == row.id,
+                    PmBlockerOccurrenceRow.active_fingerprint.is_not(None),
+                )
+            ):
+                blocker.active_fingerprint = None
+                blocker.superseded_at = closed
+                blocker.superseded_by_event_id = closure_event_id
+                blocker.supersession_kind = PmBlockerSupersessionKind.RECOVERY.value
             return PmRecoveryMutationRecord(changed=True)
+
+    def replace_episode(
+        self,
+        *,
+        expected_episode_id: UUID,
+        replacement: PmRecoveryEpisodeIdentity,
+        closure_event_id: str,
+        closure_kind: PmRecoveryEpisodeClosureKind,
+        replaced_at: datetime,
+    ) -> PmRecoveryReplacementRecord:
+        """Atomically retire one scope and create its authoritative replacement."""
+
+        replacement = PmRecoveryEpisodeIdentity.model_validate(
+            replacement.model_dump(mode="python")
+        )
+        replaced = _aware(replaced_at, name="episode replaced_at")
+        replacement_scope_fingerprint = _episode_scope_fingerprint(replacement)
+        closure_event_id = _bounded_identifier(
+            closure_event_id, name="closure_event_id"
+        )
+        with self._db.session() as session, session.begin():
+            self._lock_sequence_counter(session, replacement.product_id)
+            old = session.get(PmRecoveryEpisodeRow, expected_episode_id)
+            if old is None:
+                raise PmRecoveryStorageError(PmRecoveryStorageCode.EPISODE_NOT_FOUND)
+            if old.product_id != replacement.product_id:
+                raise PmRecoveryStorageError(
+                    PmRecoveryStorageCode.EPISODE_IDENTITY_CONFLICT
+                )
+            existing = session.get(PmRecoveryEpisodeRow, replacement.episode_id)
+            if existing is not None:
+                existing_model = _episode_model(existing)
+                if (
+                    not _episode_identity_matches(existing_model, replacement)
+                    or old.closed_at != replaced
+                    or old.closure_event_id != closure_event_id
+                    or old.closure_kind != closure_kind.value
+                ):
+                    raise PmRecoveryStorageError(
+                        PmRecoveryStorageCode.EPISODE_CLOSURE_CONFLICT
+                    )
+                return PmRecoveryReplacementRecord(
+                    episode=existing_model, changed=False
+                )
+            if old.closed_at is not None:
+                raise PmRecoveryStorageError(
+                    PmRecoveryStorageCode.EPISODE_CLOSURE_CONFLICT
+                )
+            if (
+                old.operation != replacement.operation
+                or old.authority_id != replacement.authority_id
+                or old.candidate_ticket_id != replacement.candidate_ticket_id
+                or old.candidate_ticket_key != replacement.candidate_ticket_key
+                or old.active_scope_fingerprint != replacement_scope_fingerprint
+            ):
+                raise PmRecoveryStorageError(
+                    PmRecoveryStorageCode.EPISODE_ACTIVE_SCOPE_CONFLICT
+                )
+            if replaced < old.created_at or (
+                old.last_evaluated_at is not None and replaced < old.last_evaluated_at
+            ):
+                raise PmRecoveryStorageError(
+                    PmRecoveryStorageCode.EPISODE_CLOSURE_CONFLICT
+                )
+            self._validate_ticket_identity(
+                session,
+                product_id=replacement.product_id,
+                ticket_id=replacement.candidate_ticket_id,
+                ticket_key=replacement.candidate_ticket_key,
+            )
+            old.closed_at = replaced
+            old.closure_event_id = closure_event_id
+            old.closure_kind = closure_kind.value
+            old.active_scope_fingerprint = None
+            for blocker in session.scalars(
+                sa.select(PmBlockerOccurrenceRow).where(
+                    PmBlockerOccurrenceRow.recovery_episode_id == old.id,
+                    PmBlockerOccurrenceRow.active_fingerprint.is_not(None),
+                )
+            ):
+                blocker.active_fingerprint = None
+                blocker.superseded_at = replaced
+                blocker.superseded_by_event_id = closure_event_id
+                blocker.supersession_kind = PmBlockerSupersessionKind.RECOVERY.value
+            sequence = self._allocate_locked_sequence(session, replacement.product_id)
+            session.add(
+                PmRecoveryEpisodeRow(
+                    **replacement.model_dump(mode="python"),
+                    id=replacement.episode_id,
+                    identity_fingerprint=(replacement.computed_identity_fingerprint),
+                    active_scope_fingerprint=replacement_scope_fingerprint,
+                    episode_created_sequence=sequence,
+                    last_evaluated_sequence=None,
+                    last_evaluation_id=None,
+                    last_evaluation_fingerprint=None,
+                    created_at=replaced,
+                    last_evaluated_at=None,
+                    closed_at=None,
+                    closure_event_id=None,
+                    closure_kind=None,
+                )
+            )
+            session.flush()
+        stored = self.get_episode(replacement.episode_id)
+        if stored is None:  # pragma: no cover - committed insert invariant
+            raise PmRecoveryStorageError(PmRecoveryStorageCode.EPISODE_NOT_FOUND)
+        return PmRecoveryReplacementRecord(episode=stored, changed=True)
 
     def _replace_starved_candidates(
         self,
@@ -503,7 +639,8 @@ class PmRecoveryRepo:
     def record_evaluation(
         self,
         *,
-        authoritative_episode_id: str,
+        episode_id: UUID,
+        expected_cursor_sequence: int,
         evaluation_id: str,
         evaluated_at: datetime,
         blocker: PmBlockerObservationIntent | None = None,
@@ -511,29 +648,27 @@ class PmRecoveryRepo:
         """Move one episode to the product tail and record its blocker atomically."""
 
         evaluated = _aware(evaluated_at, name="evaluation time")
+        if expected_cursor_sequence < 1:
+            raise ValueError("expected_cursor_sequence must be positive")
         evaluation_id = _bounded_identifier(evaluation_id, name="evaluation_id")
         if blocker is not None:
             blocker = PmBlockerObservationIntent.model_validate(
                 blocker.model_dump(mode="python")
             )
         fingerprint = _evaluation_fingerprint(
-            authoritative_episode_id=authoritative_episode_id,
+            episode_id=episode_id,
+            expected_cursor_sequence=expected_cursor_sequence,
             evaluation_id=evaluation_id,
             evaluated_at=evaluated,
             blocker=blocker,
         )
         blocker_id: UUID | None = None
-        current = self.get_episode(authoritative_episode_id)
+        current = self.get_episode(episode_id)
         if current is None:
             raise PmRecoveryStorageError(PmRecoveryStorageCode.EPISODE_NOT_FOUND)
         with self._db.session() as session, session.begin():
             self._lock_sequence_counter(session, current.product_id)
-            episode = session.scalar(
-                sa.select(PmRecoveryEpisodeRow).where(
-                    PmRecoveryEpisodeRow.authoritative_episode_id
-                    == authoritative_episode_id
-                )
-            )
+            episode = session.get(PmRecoveryEpisodeRow, episode_id)
             if episode is None:
                 raise PmRecoveryStorageError(PmRecoveryStorageCode.EPISODE_NOT_FOUND)
             if episode.closed_at is not None:
@@ -561,6 +696,13 @@ class PmRecoveryRepo:
                     ),
                     changed=False,
                 )
+            current_cursor = (
+                episode.last_evaluated_sequence or episode.episode_created_sequence
+            )
+            if current_cursor != expected_cursor_sequence:
+                raise PmRecoveryStorageError(
+                    PmRecoveryStorageCode.EVALUATION_CURSOR_CONFLICT
+                )
             if (
                 episode.last_evaluated_at is not None
                 and evaluated <= episode.last_evaluated_at
@@ -583,7 +725,7 @@ class PmRecoveryRepo:
                 )
             session.flush()
 
-        stored_episode = self.get_episode(authoritative_episode_id)
+        stored_episode = self.get_episode(episode_id)
         if stored_episode is None:  # pragma: no cover - committed update invariant
             raise PmRecoveryStorageError(PmRecoveryStorageCode.EPISODE_NOT_FOUND)
         stored_blocker = None if blocker_id is None else self.get_blocker(blocker_id)
@@ -601,8 +743,7 @@ class PmRecoveryRepo:
     def supersede_blocker(
         self,
         *,
-        product_id: UUID,
-        blocker_fingerprint: str,
+        blocker_id: UUID,
         superseded_by_event_id: str,
         supersession_kind: PmBlockerSupersessionKind,
         superseded_at: datetime,
@@ -614,33 +755,20 @@ class PmRecoveryRepo:
             superseded_by_event_id, name="superseded_by_event_id"
         )
         with self._db.session() as session, session.begin():
-            row = session.scalar(
-                sa.select(PmBlockerOccurrenceRow).where(
-                    PmBlockerOccurrenceRow.product_id == product_id,
-                    PmBlockerOccurrenceRow.active_fingerprint == blocker_fingerprint,
-                )
-            )
+            row = session.get(PmBlockerOccurrenceRow, blocker_id)
             if row is None:
-                prior = session.scalar(
-                    sa.select(PmBlockerOccurrenceRow)
-                    .where(
-                        PmBlockerOccurrenceRow.product_id == product_id,
-                        PmBlockerOccurrenceRow.blocker_fingerprint
-                        == blocker_fingerprint,
-                        PmBlockerOccurrenceRow.superseded_at.is_not(None),
-                    )
-                    .order_by(PmBlockerOccurrenceRow.superseded_at.desc())
-                )
-                if prior is None:
-                    raise PmRecoveryStorageError(
-                        PmRecoveryStorageCode.BLOCKER_NOT_FOUND
-                    )
+                raise PmRecoveryStorageError(PmRecoveryStorageCode.BLOCKER_NOT_FOUND)
+            if row.superseded_at is not None:
                 if (
-                    prior.superseded_at == observed
-                    and prior.superseded_by_event_id == superseded_by_event_id
-                    and prior.supersession_kind == supersession_kind.value
+                    row.superseded_at == observed
+                    and row.superseded_by_event_id == superseded_by_event_id
+                    and row.supersession_kind == supersession_kind.value
                 ):
                     return PmRecoveryMutationRecord(changed=False)
+                raise PmRecoveryStorageError(
+                    PmRecoveryStorageCode.BLOCKER_SUPERSESSION_CONFLICT
+                )
+            if row.active_fingerprint is None:
                 raise PmRecoveryStorageError(
                     PmRecoveryStorageCode.BLOCKER_SUPERSESSION_CONFLICT
                 )

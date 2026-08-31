@@ -62,6 +62,15 @@ class PmBlockerKind(StrEnum):
     UNKNOWN = "unknown"
 
 
+class PmBlockerCode(StrEnum):
+    """Closed machine-readable blocker causes accepted by durable storage."""
+
+    LEASE_UNAVAILABLE = "lease_unavailable"
+    PUBLICATION_NOT_YET_COMPLETE = "publication_not_yet_complete"
+    PROVIDER_UNAVAILABLE = "provider_unavailable"
+    PUBLICATION_AMBIGUOUS = "publication_ambiguous"
+
+
 class PmBlockerAuthorityKind(StrEnum):
     """Kind of exact durable authority named by a blocker."""
 
@@ -231,6 +240,7 @@ def pm_blocker_identity_bytes(
     operation: str,
     code: str,
     kind: PmBlockerKind,
+    authority_kind: PmBlockerAuthorityKind,
     authority_id: str,
     episode_id: str,
     candidate_key: str | None,
@@ -243,6 +253,7 @@ def pm_blocker_identity_bytes(
             "operation": operation,
             "code": code,
             "kind": kind.value,
+            "authority_kind": authority_kind.value,
             "authority_id": authority_id,
             "episode_id": episode_id,
             "candidate_key": candidate_key,
@@ -256,6 +267,7 @@ def pm_blocker_fingerprint(
     operation: str,
     code: str,
     kind: PmBlockerKind,
+    authority_kind: PmBlockerAuthorityKind,
     authority_id: str,
     episode_id: str,
     candidate_key: str | None,
@@ -266,6 +278,7 @@ def pm_blocker_fingerprint(
             operation=operation,
             code=code,
             kind=kind,
+            authority_kind=authority_kind,
             authority_id=authority_id,
             episode_id=episode_id,
             candidate_key=candidate_key,
@@ -281,7 +294,7 @@ class PmBlockerIdentity(BaseModel):
     schema_version: Literal["pm-blocker-observation-v1"] = "pm-blocker-observation-v1"
     product_id: UUID
     operation: str = Field(min_length=1, max_length=MAX_PM_RECOVERY_NAME_LENGTH)
-    code: str = Field(min_length=1, max_length=MAX_PM_RECOVERY_NAME_LENGTH)
+    code: PmBlockerCode
     kind: PmBlockerKind
     authority_kind: PmBlockerAuthorityKind
     authority_id: str = Field(min_length=1, max_length=MAX_PM_RECOVERY_NAME_LENGTH)
@@ -291,7 +304,7 @@ class PmBlockerIdentity(BaseModel):
         default=None, max_length=MAX_PM_RECOVERY_NAME_LENGTH
     )
 
-    @field_validator("operation", "code", "authority_id")
+    @field_validator("operation", "authority_id")
     @classmethod
     def _validate_identifiers(cls, value: str, info: ValidationInfo) -> str:
         return _bounded_identifier(value, name=info.field_name or "identifier")
@@ -320,6 +333,7 @@ class PmBlockerIdentity(BaseModel):
             operation=self.operation,
             code=self.code,
             kind=self.kind,
+            authority_kind=self.authority_kind,
             authority_id=self.authority_id,
             episode_id=str(self.recovery_episode_id),
             candidate_key=self.candidate_ticket_key,
@@ -360,7 +374,7 @@ class PmBlockerObservationIntent(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    code: str = Field(min_length=1, max_length=MAX_PM_RECOVERY_NAME_LENGTH)
+    code: PmBlockerCode
     kind: PmBlockerKind
     authority_kind: PmBlockerAuthorityKind
     authority_id: str = Field(min_length=1, max_length=MAX_PM_RECOVERY_NAME_LENGTH)
@@ -375,7 +389,7 @@ class PmBlockerObservationIntent(BaseModel):
     policy_revision: int | None = Field(default=None, ge=1, le=MAX_PM_SEQUENCE)
     policy_fingerprint: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
 
-    @field_validator("code", "authority_id", "policy_namespace")
+    @field_validator("authority_id", "policy_namespace")
     @classmethod
     def _validate_optional_identifiers(
         cls, value: str | None, info: ValidationInfo

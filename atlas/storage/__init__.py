@@ -38,6 +38,7 @@ from atlas.storage.planned_ci_pending_recovery import (
 from atlas.storage.pm_recovery import (
     PmRecoveryEvaluationRecord,
     PmRecoveryMutationRecord,
+    PmRecoveryReplacementRecord,
     PmRecoveryRepo,
     PmRecoveryStorageCode,
     PmRecoveryStorageError,
@@ -126,6 +127,7 @@ __all__ = [
     "PlannedCIPendingRecoveryStorageError",
     "PmRecoveryEvaluationRecord",
     "PmRecoveryMutationRecord",
+    "PmRecoveryReplacementRecord",
     "PmRecoveryRepo",
     "PmRecoveryStorageCode",
     "PmRecoveryStorageError",

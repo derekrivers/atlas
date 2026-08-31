@@ -11,6 +11,17 @@
       "title": "PmBlockerAuthorityKind",
       "type": "string"
     },
+    "PmBlockerCode": {
+      "description": "Closed machine-readable blocker causes accepted by durable storage.",
+      "enum": [
+        "lease_unavailable",
+        "publication_not_yet_complete",
+        "provider_unavailable",
+        "publication_ambiguous"
+      ],
+      "title": "PmBlockerCode",
+      "type": "string"
+    },
     "PmBlockerKind": {
       "description": "Bounded recovery posture shared by persistence and PM health.",
       "enum": [
@@ -123,10 +134,7 @@
       "type": "boolean"
     },
     "code": {
-      "maxLength": 128,
-      "minLength": 1,
-      "title": "Code",
-      "type": "string"
+      "$ref": "#/$defs/PmBlockerCode"
     },
     "consecutive_observations": {
       "maximum": 2147483647,

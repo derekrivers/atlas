@@ -25,6 +25,9 @@ from pydantic import (
 )
 
 from atlas.core.models.pm_recovery import (
+    PmBlockerAuthorityKind,
+)
+from atlas.core.models.pm_recovery import (
     PmBlockerKind as _PmBlockerKind,
 )
 from atlas.core.models.pm_recovery import (
@@ -161,6 +164,7 @@ class PmBlockerObservation(BaseModel):
     operation: str = Field(min_length=1, max_length=MAX_NAME_LENGTH)
     code: str = Field(min_length=1, max_length=MAX_NAME_LENGTH)
     kind: PmBlockerKind
+    authority_kind: PmBlockerAuthorityKind = PmBlockerAuthorityKind.OPERATION
     authority_id: str = Field(min_length=1, max_length=MAX_NAME_LENGTH)
     episode_id: str = Field(min_length=1, max_length=MAX_EPISODE_ID_LENGTH)
     candidate_key: str | None = Field(default=None, max_length=MAX_KEY_LENGTH)
@@ -233,6 +237,7 @@ class PmBlockerObservation(BaseModel):
             operation=self.operation,
             code=self.code,
             kind=self.kind,
+            authority_kind=self.authority_kind,
             authority_id=self.authority_id,
             episode_id=self.episode_id,
             candidate_key=self.candidate_key,

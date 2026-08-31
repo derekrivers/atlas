@@ -215,6 +215,13 @@ payloads. Historical anomaly, evidence, decision and transition records remain
 append-only. Progress supersedes an obsolete blocker explicitly; silence or a
 process restart does not clear it.
 
+The dormant storage substrate does not persist or infer
+`progress_expected_since` or `convergence_expected_since`. Their writer and
+reset semantics are intentionally deferred to the health/diagnose integration
+unit. Until that contract is activated, an episode creation, evaluation,
+heartbeat or blocker timestamp must not be projected as `last_progress_at`,
+`last_convergence_at` or an expected-since baseline.
+
 `partial` is a receipt classification, not a diagnosis. A completed tick may be
 operationally blocked, and an isolated partial tick may be safely retryable.
 Health consumes the typed observations rather than inferring cause from a

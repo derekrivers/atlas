@@ -14,6 +14,7 @@ def project_durable_blocker(blocker: DurablePmBlocker) -> PmBlockerObservation:
         operation=blocker.operation,
         code=blocker.code,
         kind=blocker.kind,
+        authority_kind=blocker.authority_kind,
         authority_id=blocker.authority_id,
         episode_id=str(blocker.recovery_episode_id),
         candidate_key=blocker.candidate_ticket_key,
