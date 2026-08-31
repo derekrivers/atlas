@@ -2052,13 +2052,17 @@ retrospective completion and authorises no new external write.
 global sequence allocator. Every episode creation and evaluation consumes the
 next positive value; creation stores it in `episode_created_sequence`, while a
 later evaluation stores a strictly greater value in `last_evaluated_sequence`.
+The production cadence reserves the evaluation value before provider work and
+passes that exact value into the atomic evaluation commit. A crash before that
+commit may leave a harmless unused gap; reserved values are never reused, and
+the episode cursor does not advance without the evaluation commit.
 Repository mutations lock the product counter row before rereading mutable
 state. PostgreSQL uses a row lock and SQLite uses its transaction-level writer
 serialization, so replay cannot reuse a committed sequence or expose a
 half-created logical state. Exhausting the signed 64-bit range fails closed;
-the production cadence preflights this capacity before publication, evidence,
-fence or provider workflow effects so it cannot create an externally visible
-action whose evaluation is known to be unrecordable.
+the production cadence durably reserves one sequence before publication,
+evidence, fence or provider workflow effects so concurrent writers cannot
+consume its recording capacity after an externally visible action.
 The latest evaluation fingerprint binds its expected cursor, caller evaluation
 identifier, observation time, complete optional blocker intent, and the
 caller's explicit starvation-relief and obsolete-cause-supersession choices. Only that

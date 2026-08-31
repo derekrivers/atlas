@@ -275,13 +275,13 @@ dedicated evidence-backed local recovery above) and AgentRun reconstruction,
 it reconciles durable recovery episodes for one finite snapshot of locally
 `CI Pending` tickets and considers the episode with the least product-global
 fairness cursor. A fenced product is excluded from ordinary selection, while
-its fence episode and independent products' ordinary candidates share the
-durable cross-product observation-time rank. Within a product the least
-monotonic sequence cursor wins; across products the oldest durable
+multiple fence episodes share the durable cross-product observation-time rank
+and retain absolute precedence over every ordinary candidate. Within a product
+the least monotonic sequence cursor wins; across products the oldest durable
 `last_evaluated_at`, or `created_at` before a first evaluation, wins, with
 product UUID only as the final tie. Every completed evaluation, including an
-unresolved-fence attempt, moves that episode behind currently older independent
-work. Stable
+unresolved-fence attempt, moves that episode behind currently older fenced
+products. Stable
 ticket order is used only for deterministic one-time bootstrap; every completed
 evaluation moves that episode to the durable sequence tail. The latest
 append-only transition into
@@ -292,10 +292,11 @@ attachment. Atlas accepts a publication identity only when its canonical
 `github.com/<owner>/<repo>/pull/<number>` URL and GitHub attachment metadata
 agree, the metadata identifies a live (`open` or `draft`) `main`-target PR that
 closes the issue, the attachment connection is complete, and exactly one
-repository/PR identity remains. The join to the ticket is the stable Linear
+attachment remains. Two attachment identities are ambiguous even when both
+name the same repository and PR. The join to the ticket is the stable Linear
 issue id. Missing
 publication identity holds as `trusted_publication_unavailable`; truncation,
-contradiction or multiple distinct publications holds as
+contradiction or multiple attachments holds as
 `trusted_publication_ambiguous`, before any GitHub call. Ticket titles, branch
 guesses, PR-title close sets, GitHub rollups, manual operator input, earlier
 AgentRuns and earlier CI-pending episodes are never identity inputs.
@@ -321,11 +322,14 @@ evaluated in that tick. `atlas pm sync --once -v` exposes one bounded
 secret-free adapter line plus integer evaluated/held/mutation counters; durable
 authority remains the append-only reconciliation, not console text.
 
-The cadence checks selected-product evaluation-sequence capacity before
+The cadence reserves the selected-product evaluation sequence before
 publication resolution, evidence refresh, fence reconciliation or any provider
 workflow effect. Fence recovery refreshes the complete project board only after
 the recovery owner acquires the product lease, so a stale discovery snapshot
-cannot clear or classify the authoritative fence.
+cannot clear or classify the authoritative fence. Clearing it verifies the
+exact live lease owner and fence identity atomically. The selected publication
+attachment/repository/PR generation is likewise re-resolved from both final
+board revalidations before any new fence or workflow write.
 
 These states are deliberately different claims. `CI Pending` says only that a
 locally validated candidate was published and CI now owns classification.

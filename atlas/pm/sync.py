@@ -104,6 +104,7 @@ from atlas.context.pack import ContextBudgetExceededError, build_context_pack
 from atlas.core.anchors import IngestionError, SourceDocument
 from atlas.core.enums import ActorType
 from atlas.core.models.adr import ADRStatus, ArchitectureDecisionRecord
+from atlas.core.models.ci_handoff_reconciliation import CIHandoffReason
 from atlas.core.models.debt_item import AnomalyType, DebtItem
 from atlas.core.models.lesson import Lesson
 from atlas.core.models.pm_sync_receipt import PmSyncReceipt, PmSyncReceiptResult
@@ -2035,9 +2036,9 @@ def _sync_tick_impl(
     )
     issues_by_id: dict[str, LinearIssue] = {issue.id: issue for issue in fetched_issues}
     # A durable CI write fence is possible prior external mutation. Its product
-    # is excluded from ordinary candidate work until the fence resolves, while
-    # the same durable cursor arbitration prevents that product from globally
-    # starving independent products. This remains reachable even when the
+    # is excluded from ordinary candidate work until the fence resolves. Fences
+    # rotate among themselves but retain absolute precedence over ordinary
+    # candidates. This remains reachable even when the
     # prior target commit removed the final local CI-pending candidate.
     product_ids = {ticket.product_id for ticket in pull_board}
     product_ids.update(product.id for product in ProductRepo(db).list())
@@ -2069,72 +2070,62 @@ def _sync_tick_impl(
                 now=now,
             )
             fence_options.append((candidate_episode, candidate_fence, candidate_ticket))
-        fence_episode, fence, fence_ticket = min(
+        _fence_episode, fence, fence_ticket = min(
             fence_options,
             key=lambda item: (
                 cross_product_fairness_key(item[0]),
                 str(item[1].product_id),
             ),
         )
-        independent = (
-            select_fair_ci_handoff_candidate(
-                db=db,
-                tickets=tickets,
-                initial_issues=fetched_issues,
-                now=now,
-                excluded_product_ids=fenced_product_ids,
-            )
-            if github_client is not None
-            else FairCIHandoffSelection((), None, None)
+        product_id = fence.product_id
+        reserved_sequence = PmRecoveryRepo(db).reserve_evaluation_sequence(product_id)
+        handoff = reconcile_existing_ci_handoff_fence(
+            db=db,
+            tickets=tickets,
+            status_map=status_map,
+            linear=client,
+            project_id=project_id,
+            initial_issues=fetched_issues,
+            product_id=product_id,
+            candidate_count=sum(
+                ticket.product_id == product_id
+                and ticket.status is TicketStatus.CI_PENDING
+                for ticket in pull_board
+            ),
+            now=now,
         )
-        fence_rank = (*cross_product_fairness_key(fence_episode), 0)
-        independent_rank = (
-            None
-            if independent.episode is None
-            else (*cross_product_fairness_key(independent.episode), 1)
-        )
-        if independent_rank is None or independent_rank >= fence_rank:
-            product_id = fence.product_id
-            PmRecoveryRepo(db).require_sequence_capacity(product_id)
-            handoff = reconcile_existing_ci_handoff_fence(
-                db=db,
-                tickets=tickets,
-                status_map=status_map,
-                linear=client,
-                project_id=project_id,
-                initial_issues=fetched_issues,
-                product_id=product_id,
-                candidate_count=sum(
-                    ticket.product_id == product_id
-                    and ticket.status is TicketStatus.CI_PENDING
-                    for ticket in pull_board
-                ),
-                now=now,
-            )
-            assert handoff is not None
-            _apply_ci_handoff_result(result, handoff)
-            episode = ensure_ci_handoff_episode(
-                db=db,
-                ticket=fence_ticket,
-                initial_issues=fetched_issues,
-                now=now,
-            )
-            record_fair_ci_handoff_evaluation(
-                db=db,
-                selection=FairCIHandoffSelection(
-                    candidates=tuple(
-                        ticket
-                        for ticket in pull_board
-                        if ticket.product_id == product_id
-                        and ticket.status is TicketStatus.CI_PENDING
-                    ),
-                    candidate=fence_ticket,
-                    episode=episode,
-                ),
-                result=handoff,
-                now=now,
-            )
+        assert handoff is not None
+        _apply_ci_handoff_result(result, handoff)
+        if (
+            handoff.reconciliation is not None
+            and handoff.reconciliation.reason is CIHandoffReason.LEASE_UNAVAILABLE
+        ):
             return result
+        episode = ensure_ci_handoff_episode(
+            db=db,
+            ticket=fence_ticket,
+            initial_issues=fetched_issues,
+            now=now,
+        )
+        record_fair_ci_handoff_evaluation(
+            db=db,
+            selection=FairCIHandoffSelection(
+                candidates=tuple(
+                    ticket
+                    for ticket in pull_board
+                    if ticket.product_id == product_id
+                    and ticket.status is TicketStatus.CI_PENDING
+                ),
+                candidate=fence_ticket,
+                episode=episode,
+            ),
+            result=handoff,
+            now=now,
+            reserved_evaluation_sequence=reserved_sequence,
+        )
+        if ci_handoff_hooks is not None:
+            ci_handoff_hooks.after_fairness_persisted()
+        return result
     # Pull all joined tickets first, then reconstruct AgentRuns from the local
     # transition/evidence store plus the already-fetched board descriptions
     # (ATLAS-166). The push pass runs after reconstruction so this step is
@@ -2188,7 +2179,11 @@ def _sync_tick_impl(
             )
         else:
             assert selection.episode is not None
-            PmRecoveryRepo(db).require_sequence_capacity(selection.episode.product_id)
+            reserved_sequence = PmRecoveryRepo(db).reserve_evaluation_sequence(
+                selection.episode.product_id
+            )
+            if ci_handoff_hooks is not None:
+                ci_handoff_hooks.after_candidate_selected()
             handoff = reconcile_ci_handoff_candidate(
                 db=db,
                 tickets=tickets,
@@ -2202,12 +2197,21 @@ def _sync_tick_impl(
                 now=now,
                 hooks=ci_handoff_hooks,
             )
-            record_fair_ci_handoff_evaluation(
-                db=db,
-                selection=selection,
-                result=handoff,
-                now=now,
-            )
+            if ci_handoff_hooks is not None:
+                ci_handoff_hooks.after_candidate_evaluated()
+            if not (
+                handoff.reconciliation is not None
+                and handoff.reconciliation.reason is CIHandoffReason.LEASE_UNAVAILABLE
+            ):
+                record_fair_ci_handoff_evaluation(
+                    db=db,
+                    selection=selection,
+                    result=handoff,
+                    now=now,
+                    reserved_evaluation_sequence=reserved_sequence,
+                )
+                if ci_handoff_hooks is not None:
+                    ci_handoff_hooks.after_fairness_persisted()
         _apply_ci_handoff_result(result, handoff)
         if handoff.ends_workflow_write_window:
             return result

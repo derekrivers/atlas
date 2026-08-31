@@ -200,23 +200,32 @@ not ticket key, owns selection.
 The tick still permits at most one external workflow mutation. A confirmed
 mutation or any reconciliation attempt for an existing ambiguous write fence
 ends the tick. A fenced product is excluded from its ordinary candidate lane
-until recovery, but its fence and independent products' ordinary candidates
-share the durable cross-product cursor arbitration. When the fence wins, it is
-reconciled before generic pull handling, publication resolution or evidence
-evaluation, even when the earlier local target commit means no `ci_pending`
-candidate remains. A permanently unresolved product therefore cannot monopolise
-the global cadence.
+until recovery. Existing fences retain absolute precedence over ordinary
+fairness and are reconciled before generic pull handling, publication
+resolution or evidence evaluation, even when the earlier local target commit
+means no `ci_pending` candidate remains. Multiple fenced products rotate by
+their durable cross-product observation-time rank, but ordinary work never
+skips unresolved write ambiguity for throughput.
 Evaluation fairness never creates a second writer, bypasses a lease, weakens a
 candidate predicate or converts an unbounded arrival model into a liveness
 claim.
 
+A selected publication generation is re-resolved from each final complete
+provider board immediately before fence creation. Attachment replacement,
+cardinality change or repository/PR mismatch is an authority change and permits
+no workflow write.
+
 Before publication resolution, evidence refresh, fence reconciliation or any
-provider workflow call, the cadence checks that the selected product can still
-commit its next signed 64-bit evaluation sequence. Exhaustion therefore fails
-closed before an external effect rather than discovering an unrecordable
-evaluation afterward. A fence owner also refreshes the complete project board
+provider workflow call, the cadence durably reserves the selected product's
+next signed 64-bit evaluation sequence. Exhaustion therefore fails closed
+before an external effect rather than discovering an unrecordable evaluation
+afterward. A crash may leave a non-authoritative unused sequence gap, but never
+advances the episode cursor without its atomic evaluation and blocker commit.
+A fence owner also refreshes the complete project board
 after acquiring its lease; the pre-lease pull is discovery input, not recovery
-authority.
+authority. Source, target or moved fence retirement atomically verifies the
+exact still-live lease owner and fence identity, so an expired or replaced
+recovery process cannot clear ambiguity after a slow provider refresh.
 
 ## Durable blocker observations
 

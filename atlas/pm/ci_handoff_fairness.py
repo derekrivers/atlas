@@ -447,6 +447,7 @@ def record_fair_ci_handoff_evaluation(
     selection: FairCIHandoffSelection,
     result: CIHandoffAdapterResult,
     now: datetime,
+    reserved_evaluation_sequence: int | None = None,
 ) -> PmRecoveryEpisode:
     """Atomically move the selected episode to the tail and diagnose a hold."""
 
@@ -498,6 +499,7 @@ def record_fair_ci_handoff_evaluation(
             blocker=blocker,
             relieve_starvation_for_candidate=True,
             supersede_prior_blockers_for_episode=True,
+            reserved_evaluation_sequence=reserved_evaluation_sequence,
         )
         .episode
     )

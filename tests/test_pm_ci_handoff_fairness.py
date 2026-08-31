@@ -481,7 +481,7 @@ def test_lifecycle_exit_closes_episode_and_reentry_creates_a_new_one(
     tmp_path: Path,
 ) -> None:
     path = tmp_path / "lifecycle-reentry.db"
-    issues = _seed(path, ("ATLAS-290",))
+    issues = _seed(path, ("ATLAS-290", "ATLAS-291"))
     database = Database(f"sqlite:///{path}")
     tickets = TicketRepo(database)
     initial = select_fair_ci_handoff_candidate(
@@ -689,6 +689,98 @@ def test_changed_blocker_cause_atomically_supersedes_obsolete_diagnosis(
     retained = PmRecoveryRepo(database).get_blocker(obsolete.id)
     assert retained is not None
     assert retained.superseded_at == NOW + timedelta(seconds=1)
+    [active] = PmRecoveryRepo(database).list_blockers(
+        product_id=PRODUCT_ID, active_only=True
+    )
+    assert active.code is PmBlockerCode.CI_EVIDENCE_NOT_YET_COMPLETE
+
+
+def test_changed_blocker_cause_failure_rolls_back_full_evaluation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = tmp_path / "changed-cause-rollback.db"
+    issues = _seed(path, ("ATLAS-290", "ATLAS-291"))
+    database = Database(f"sqlite:///{path}")
+    first = select_fair_ci_handoff_candidate(
+        db=database,
+        tickets=TicketRepo(database),
+        initial_issues=list(issues),
+        now=NOW,
+    )
+    record_fair_ci_handoff_evaluation(
+        db=database,
+        selection=first,
+        result=CIHandoffAdapterResult(
+            reason=CIHandoffAdapterReason.PUBLICATION_AMBIGUOUS,
+            candidate_count=1,
+            ticket_key="ATLAS-290",
+        ),
+        now=NOW,
+    )
+    [obsolete] = PmRecoveryRepo(database).list_blockers(
+        product_id=PRODUCT_ID, active_only=True
+    )
+    assert first.episode is not None
+    updated_episode = PmRecoveryRepo(database).get_episode(first.episode.id)
+    assert updated_episode is not None
+    second = FairCIHandoffSelection(
+        candidates=first.candidates,
+        candidate=first.candidate,
+        episode=updated_episode,
+    )
+    assert second.episode is not None
+    old_cursor = second.episode.fairness_cursor
+    old_high_water = PmRecoveryRepo(database).sequence_high_water(PRODUCT_ID)
+
+    def fail_observation(*args: object, **kwargs: object) -> object:
+        raise RuntimeError("seeded replacement blocker insert failure")
+
+    with monkeypatch.context() as patcher:
+        patcher.setattr(PmRecoveryRepo, "_observe_blocker", fail_observation)
+        with pytest.raises(RuntimeError, match="seeded replacement"):
+            record_fair_ci_handoff_evaluation(
+                db=database,
+                selection=second,
+                result=CIHandoffAdapterResult(
+                    reason=CIHandoffAdapterReason.RECONCILED,
+                    candidate_count=1,
+                    ticket_key="ATLAS-290",
+                    reconciliation=CIHandoffResult(
+                        classification=CIHandoffClassification.PENDING,
+                        decision=CIHandoffDecision.HOLD,
+                        reason=CIHandoffReason.REQUIRED_CHECKS_PENDING,
+                        ticket_key="ATLAS-290",
+                    ),
+                ),
+                now=NOW + timedelta(seconds=1),
+            )
+
+    retained_episode = PmRecoveryRepo(database).get_episode(second.episode.id)
+    assert retained_episode is not None
+    assert retained_episode.fairness_cursor == old_cursor
+    assert PmRecoveryRepo(database).sequence_high_water(PRODUCT_ID) == old_high_water
+    retained = PmRecoveryRepo(database).get_blocker(obsolete.id)
+    assert retained is not None and retained.superseded_at is None
+    assert retained.active_fingerprint == retained.blocker_fingerprint
+    assert [item.ticket_key for item in retained.starved_candidates] == ["ATLAS-291"]
+
+    record_fair_ci_handoff_evaluation(
+        db=database,
+        selection=second,
+        result=CIHandoffAdapterResult(
+            reason=CIHandoffAdapterReason.RECONCILED,
+            candidate_count=1,
+            ticket_key="ATLAS-290",
+            reconciliation=CIHandoffResult(
+                classification=CIHandoffClassification.PENDING,
+                decision=CIHandoffDecision.HOLD,
+                reason=CIHandoffReason.REQUIRED_CHECKS_PENDING,
+                ticket_key="ATLAS-290",
+            ),
+        ),
+        now=NOW + timedelta(seconds=1),
+    )
     [active] = PmRecoveryRepo(database).list_blockers(
         product_id=PRODUCT_ID, active_only=True
     )

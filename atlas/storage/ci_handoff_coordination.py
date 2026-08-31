@@ -211,3 +211,37 @@ class CIHandoffCoordinationRepo:
             )
             if getattr(result, "rowcount", 0) != 1:
                 raise CIHandoffWriteFenceError("CI handoff fence could not be cleared")
+
+    def clear_owned_fence(
+        self,
+        *,
+        product_id: UUID,
+        owner_id: UUID,
+        reconciliation_id: UUID,
+        observed_at: datetime,
+    ) -> None:
+        """Clear recovery state only while the exact lease is still live."""
+
+        observed = _aware(observed_at, name="CI handoff recovery observation time")
+        with self._db.session() as session, session.begin():
+            lease_lock = session.execute(
+                sa.update(AdmissionLeaseRow)
+                .where(
+                    AdmissionLeaseRow.product_id == product_id,
+                    AdmissionLeaseRow.owner_id == owner_id,
+                    AdmissionLeaseRow.expires_at > observed,
+                )
+                .values(owner_id=AdmissionLeaseRow.owner_id)
+            )
+            if getattr(lease_lock, "rowcount", 0) != 1:
+                raise AdmissionLeaseLostError(
+                    "PM write lease expired or was replaced during fence recovery"
+                )
+            result = session.execute(
+                sa.delete(CIHandoffWriteFenceRow).where(
+                    CIHandoffWriteFenceRow.product_id == product_id,
+                    CIHandoffWriteFenceRow.reconciliation_id == reconciliation_id,
+                )
+            )
+            if getattr(result, "rowcount", 0) != 1:
+                raise CIHandoffWriteFenceError("CI handoff fence could not be cleared")

@@ -8,13 +8,14 @@ from concurrent.futures import TimeoutError as FutureTimeoutError
 from dataclasses import replace
 from datetime import timedelta
 from pathlib import Path
-from threading import Event
+from threading import Barrier, Event
 from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
 import sqlalchemy as sa
 from github_fakes import FakeGitHubClient
+from pm_temporal_harness import SimulatedProcessDeath
 from test_models_validation import NOW
 from test_pm_sync import (
     CI_PENDING_STATE,
@@ -40,6 +41,7 @@ from atlas.core.models.pm_recovery import PmBlockerCode
 from atlas.evidence.pull import drive_evidence_pull
 from atlas.linear.client import LinearIssue, _github_publication_from_attachment
 from atlas.pm import CIHandoffHooks, sync_tick
+from atlas.pm.ci_handoff import reconcile_ci_handoff_fence
 from atlas.pm.ci_handoff_adapter import CIHandoffAdapterReason
 from atlas.pm.ci_handoff_fairness import select_fair_ci_handoff_candidate
 from atlas.pm.sync import CI_PENDING_POLL_COMPRESSION_CREATED_BY
@@ -57,7 +59,7 @@ from atlas.storage import (
     TicketStatusTransitionRepo,
 )
 from atlas.storage.ci_handoff_coordination import CIHandoffCoordinationRepo
-from atlas.storage.tables import PmRecoverySequenceCounterRow
+from atlas.storage.tables import AdmissionLeaseRow, PmRecoverySequenceCounterRow
 
 HEAD = "a" * 40
 OTHER_HEAD = "b" * 40
@@ -306,6 +308,14 @@ def _run(
     )
 
 
+def _rebuilt_client(source: RecordingClient) -> RecordingClient:
+    rebuilt = RecordingClient()
+    rebuilt._issues = {
+        issue.id: replace(issue) for issue in source.fetch_project_issues(PROJECT_ID)
+    }
+    return rebuilt
+
+
 def test_production_tick_resolves_exact_identity_writes_once_and_ends_window(
     db: Database,
     monkeypatch: pytest.MonkeyPatch,
@@ -504,6 +514,37 @@ def test_two_distinct_attachments_for_same_pr_are_ambiguous(db: Database) -> Non
     assert decision.reconciliation is None
     assert client.state_writes == []
     assert github.calls == []
+
+
+def test_publication_replacement_during_final_revalidation_blocks_write(
+    db: Database,
+) -> None:
+    client = RecordingClient()
+    ticket = _seed_ci_pending(db, client)
+    assert ticket.external_linear_id is not None
+
+    def replace_publication() -> None:
+        client.seed_github_publication(
+            ticket.external_linear_id or "",
+            owner="derekrivers",
+            repo="atlas",
+            pr_number=PR_NUMBER + 1,
+            attachment_id="replacement-publication",
+        )
+
+    result = _run(
+        db,
+        client,
+        _github(),
+        hooks=CIHandoffHooks(after_revalidation=replace_publication),
+    )
+
+    reconciliation = result.ci_handoff_decisions[0].reconciliation
+    assert reconciliation is not None
+    assert reconciliation.reason is CIHandoffReason.SNAPSHOT_CHANGED
+    assert client.state_writes == []
+    stored = TicketRepo(db).get_by_key(ticket.key)
+    assert stored is not None and stored.status is TicketStatus.CI_PENDING
 
 
 def test_compressed_stale_head_holds_after_exact_provider_revalidation(
@@ -818,7 +859,7 @@ def test_unresolved_fence_rotates_to_independent_product_fence(db: Database) -> 
     assert client.state_writes == []
 
 
-def test_unresolved_fence_rotates_to_independent_ordinary_candidate(
+def test_unresolved_fence_retains_precedence_over_independent_ordinary_candidate(
     db: Database,
 ) -> None:
     client = RecordingClient()
@@ -868,11 +909,16 @@ def test_unresolved_fence_rotates_to_independent_ordinary_candidate(
     )
     rebuilt.engine.dispose()
 
-    assert second.ci_handoff_decisions[0].ticket_key == healthy.key
-    assert second.ci_handoff_mutations == 1
-    assert client.state_writes == [
-        (healthy.external_linear_id, "state-review-required")
-    ]
+    assert second.ci_handoff_decisions[0].ticket_key == fenced.key
+    assert (
+        second.ci_handoff_decisions[0].reconciliation.reason
+        is CIHandoffReason.FENCE_STILL_UNRESOLVED
+    )
+    assert second.ci_handoff_mutations == 0
+    assert client.state_writes == []
+    stored_healthy = TicketRepo(db).get_by_key(healthy.key)
+    assert stored_healthy is not None
+    assert stored_healthy.status is TicketStatus.CI_PENDING
     assert CIHandoffCoordinationRepo(db).get_fence(PRODUCT_ID) is not None
 
 
@@ -1021,6 +1067,189 @@ def test_sequence_exhaustion_fails_before_provider_or_workflow_effect(
     assert CIHandoffCoordinationRepo(db).get_fence(PRODUCT_ID) is None
 
 
+def test_final_sequence_is_reserved_before_provider_effect_and_records(
+    db: Database,
+) -> None:
+    client = RecordingClient()
+    ticket = _seed_ci_pending(db, client)
+    select_fair_ci_handoff_candidate(
+        db=db,
+        tickets=TicketRepo(db),
+        initial_issues=client.fetch_project_issues(PROJECT_ID),
+        now=NOW,
+    )
+    with db.engine.begin() as connection:
+        connection.execute(
+            sa.update(PmRecoverySequenceCounterRow)
+            .where(PmRecoverySequenceCounterRow.product_id == PRODUCT_ID)
+            .values(high_water=9_223_372_036_854_775_806)
+        )
+
+    result = _run(db, client, _github(), now=NOW + timedelta(seconds=1))
+
+    assert result.ci_handoff_mutations == 1
+    assert client.state_writes == [(ticket.external_linear_id, "state-review-required")]
+    assert (
+        PmRecoveryRepo(db).sequence_high_water(PRODUCT_ID) == 9_223_372_036_854_775_807
+    )
+
+
+def test_read_only_result_lost_before_fairness_commit_retries_then_rotates(
+    db: Database,
+) -> None:
+    client = RecordingClient()
+    first = _seed_ci_pending(db, client, key="ATLAS-263")
+    second = _seed_ci_pending(db, client, key="ATLAS-264")
+    assert first.external_linear_id is not None
+    issue = client.fetch_issue(first.external_linear_id)
+    assert issue is not None
+    client._issues[first.external_linear_id] = replace(issue, github_publications=())
+
+    def die_after_read_only_evaluation() -> None:
+        raise SimulatedProcessDeath("read-only result lost before fairness commit")
+
+    with pytest.raises(SimulatedProcessDeath):
+        _run(
+            db,
+            client,
+            _github(),
+            hooks=CIHandoffHooks(
+                after_candidate_evaluated=die_after_read_only_evaluation
+            ),
+        )
+    assert client.state_writes == []
+    database_url = str(db.engine.url)
+    rebuilt_client = _rebuilt_client(client)
+    db.engine.dispose()
+
+    rebuilt = Database(database_url)
+    retried = _run(rebuilt, rebuilt_client, _github(), now=NOW + timedelta(seconds=1))
+    assert retried.ci_handoff_decisions[0].ticket_key == first.key
+    assert retried.ci_handoff_mutations == 0
+    next_client = _rebuilt_client(rebuilt_client)
+    rebuilt.engine.dispose()
+
+    final_db = Database(database_url)
+    advanced = _run(final_db, next_client, _github(), now=NOW + timedelta(seconds=2))
+    assert advanced.ci_handoff_decisions[0].ticket_key == second.key
+    assert advanced.ci_handoff_mutations == 1
+    final_db.engine.dispose()
+
+
+def test_held_fairness_commit_survives_death_before_outer_receipt(
+    db: Database,
+) -> None:
+    client = RecordingClient()
+    first = _seed_ci_pending(db, client, key="ATLAS-263")
+    second = _seed_ci_pending(db, client, key="ATLAS-264")
+    assert first.external_linear_id is not None
+    issue = client.fetch_issue(first.external_linear_id)
+    assert issue is not None
+    client._issues[first.external_linear_id] = replace(issue, github_publications=())
+
+    def die_after_fairness_commit() -> None:
+        raise SimulatedProcessDeath("fairness committed before receipt")
+
+    with pytest.raises(SimulatedProcessDeath):
+        _run(
+            db,
+            client,
+            _github(),
+            hooks=CIHandoffHooks(after_fairness_persisted=die_after_fairness_commit),
+        )
+    assert PmSyncReceiptRepo(db).list() == []
+    [blocker] = PmRecoveryRepo(db).list_blockers(
+        product_id=PRODUCT_ID, active_only=True
+    )
+    assert blocker.consecutive_observations == 1
+    first_episode = next(
+        episode
+        for episode in PmRecoveryRepo(db).list_active_episodes_ordered(PRODUCT_ID)
+        if episode.candidate_ticket_key == first.key
+    )
+    assert first_episode.candidate_ticket_key == first.key
+    assert first_episode.last_evaluated_sequence is not None
+    database_url = str(db.engine.url)
+    rebuilt_client = _rebuilt_client(client)
+    db.engine.dispose()
+
+    rebuilt = Database(database_url)
+    advanced = _run(
+        rebuilt,
+        rebuilt_client,
+        _github(),
+        now=NOW + timedelta(seconds=1),
+    )
+    assert advanced.ci_handoff_decisions[0].ticket_key == second.key
+    retained = PmRecoveryRepo(rebuilt).get_blocker(blocker.id)
+    assert retained is not None and retained.consecutive_observations == 1
+    rebuilt.engine.dispose()
+
+
+def test_competing_reconstructed_ticks_commit_one_stale_cursor_result(
+    db: Database,
+) -> None:
+    client = RecordingClient()
+    ticket = _seed_ci_pending(db, client)
+    assert ticket.external_linear_id is not None
+    issue = client.fetch_issue(ticket.external_linear_id)
+    assert issue is not None
+    client._issues[ticket.external_linear_id] = replace(issue, github_publications=())
+    select_fair_ci_handoff_candidate(
+        db=db,
+        tickets=TicketRepo(db),
+        initial_issues=client.fetch_project_issues(PROJECT_ID),
+        now=NOW,
+    )
+    database_url = str(db.engine.url)
+    first_client = _rebuilt_client(client)
+    second_client = _rebuilt_client(client)
+    db.engine.dispose()
+    selected = Barrier(2)
+
+    def await_both_selections() -> None:
+        selected.wait(timeout=5)
+
+    def attempt(item: tuple[RecordingClient, int]) -> Any:
+        candidate_client, offset = item
+        database = Database(database_url)
+        try:
+            return _run(
+                database,
+                candidate_client,
+                _github(),
+                now=NOW + timedelta(seconds=offset),
+                hooks=CIHandoffHooks(after_candidate_selected=await_both_selections),
+            )
+        finally:
+            database.engine.dispose()
+
+    outcomes: list[Any] = []
+    failures: list[PmRecoveryStorageError] = []
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        futures = [
+            pool.submit(attempt, item)
+            for item in ((first_client, 1), (second_client, 2))
+        ]
+        for future in futures:
+            try:
+                outcomes.append(future.result(timeout=10))
+            except PmRecoveryStorageError as error:
+                failures.append(error)
+
+    assert len(outcomes) == 1
+    assert len(failures) == 1
+    assert failures[0].code is PmRecoveryStorageCode.EVALUATION_CURSOR_CONFLICT
+    assert first_client.state_writes == []
+    assert second_client.state_writes == []
+    rebuilt = Database(database_url)
+    [blocker] = PmRecoveryRepo(rebuilt).list_blockers(
+        product_id=PRODUCT_ID, active_only=True
+    )
+    assert blocker.consecutive_observations == 1
+    rebuilt.engine.dispose()
+
+
 def test_fence_recovery_refreshes_board_after_acquiring_lease(db: Database) -> None:
     class AdvancingBoardClient(RecordingClient):
         def __init__(self) -> None:
@@ -1031,6 +1260,16 @@ def test_fence_recovery_refreshes_board_after_acquiring_lease(db: Database) -> N
         def fetch_project_issues(self, project_id: str) -> list[LinearIssue]:
             self.project_pulls += 1
             if self.project_pulls == 2:
+                with db.session() as session:
+                    assert (
+                        session.scalar(
+                            sa.select(AdmissionLeaseRow.owner_id).where(
+                                AdmissionLeaseRow.product_id == PRODUCT_ID,
+                                AdmissionLeaseRow.expires_at > NOW,
+                            )
+                        )
+                        is not None
+                    )
                 assert self.advance_issue_id is not None
                 self.simulate_linear_state(self.advance_issue_id, REVIEW_REQUIRED_STATE)
             return super().fetch_project_issues(project_id)
@@ -1070,6 +1309,106 @@ def test_fence_recovery_refreshes_board_after_acquiring_lease(db: Database) -> N
     )
     assert client.state_writes == []
     assert CIHandoffCoordinationRepo(db).get_fence(PRODUCT_ID) is None
+
+
+def test_fence_appearing_after_initial_scan_uses_fresh_owned_recovery(
+    db: Database,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = RecordingClient()
+    ticket = _seed_ci_pending(db, client)
+    assert ticket.external_linear_id is not None
+    original_pull = drive_evidence_pull
+    installed = False
+
+    def install_fence(*args: Any, **kwargs: Any) -> Any:
+        nonlocal installed
+        if not installed:
+            installed = True
+            owner_id = uuid4()
+            lease = AdmissionCoordinationRepo(db)
+            assert lease.try_acquire(
+                product_id=PRODUCT_ID,
+                owner_id=owner_id,
+                acquired_at=NOW,
+                ttl=timedelta(minutes=1),
+            )
+            CIHandoffCoordinationRepo(db).begin_write(
+                product_id=PRODUCT_ID,
+                owner_id=owner_id,
+                reconciliation_id=uuid4(),
+                ticket_id=ticket.id,
+                ticket_key=ticket.key,
+                issue_id=ticket.external_linear_id or "",
+                source_state_id=CI_PENDING_STATE.id,
+                target_state_id="state-review-required",
+                target_status=TicketStatus.REVIEW_REQUIRED,
+                created_at=NOW,
+            )
+            lease.release(product_id=PRODUCT_ID, owner_id=owner_id)
+            client.simulate_linear_state(
+                ticket.external_linear_id or "", REVIEW_REQUIRED_STATE
+            )
+        return original_pull(*args, **kwargs)
+
+    monkeypatch.setattr(
+        "atlas.pm.ci_handoff_adapter.drive_evidence_pull", install_fence
+    )
+
+    result = _run(db, client, _github())
+
+    reconciliation = result.ci_handoff_decisions[0].reconciliation
+    assert reconciliation is not None
+    assert reconciliation.reason is CIHandoffReason.FENCE_RECONCILED_TARGET
+    assert client.state_writes == []
+    assert CIHandoffCoordinationRepo(db).get_fence(PRODUCT_ID) is None
+    stored = TicketRepo(db).get_by_key(ticket.key)
+    assert stored is not None and stored.status is TicketStatus.REVIEW_REQUIRED
+
+
+def test_fence_recovery_cannot_clear_after_lease_expires_during_refresh(
+    db: Database,
+) -> None:
+    client = RecordingClient()
+    ticket = _seed_ci_pending(db, client)
+    assert ticket.external_linear_id is not None
+    owner_id = uuid4()
+    lease = AdmissionCoordinationRepo(db)
+    assert lease.try_acquire(
+        product_id=PRODUCT_ID,
+        owner_id=owner_id,
+        acquired_at=NOW,
+        ttl=timedelta(minutes=1),
+    )
+    fence = CIHandoffCoordinationRepo(db).begin_write(
+        product_id=PRODUCT_ID,
+        owner_id=owner_id,
+        reconciliation_id=uuid4(),
+        ticket_id=ticket.id,
+        ticket_key=ticket.key,
+        issue_id=ticket.external_linear_id,
+        source_state_id=CI_PENDING_STATE.id,
+        target_state_id="state-review-required",
+        target_status=TicketStatus.REVIEW_REQUIRED,
+        created_at=NOW,
+    )
+    lease.release(product_id=PRODUCT_ID, owner_id=owner_id)
+    clock = iter((0.0, 301.0))
+
+    result = reconcile_ci_handoff_fence(
+        db=db,
+        tickets=TicketRepo(db),
+        status_map=status_map(),
+        initial_issues=client.fetch_project_issues(PROJECT_ID),
+        product_id=PRODUCT_ID,
+        now=NOW,
+        linear=client,
+        project_id=PROJECT_ID,
+        monotonic_clock=lambda: next(clock),
+    )
+
+    assert result is not None and result.reason is CIHandoffReason.LEASE_LOST
+    assert CIHandoffCoordinationRepo(db).get_fence(PRODUCT_ID) == fence
 
 
 @pytest.mark.parametrize(

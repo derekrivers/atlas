@@ -283,11 +283,12 @@ class PmRecoveryRepo:
             )
             return 0 if value is None else value
 
-    def require_sequence_capacity(self, product_id: UUID) -> None:
-        """Fail before provider work when no durable evaluation can commit."""
+    def reserve_evaluation_sequence(self, product_id: UUID) -> int:
+        """Durably reserve the evaluation tail before any provider effect."""
 
-        if self.sequence_high_water(product_id) >= 9_223_372_036_854_775_807:
-            raise PmRecoveryStorageError(PmRecoveryStorageCode.SEQUENCE_EXHAUSTED)
+        with self._db.session() as session, session.begin():
+            self._lock_sequence_counter(session, product_id)
+            return self._allocate_locked_sequence(session, product_id)
 
     def get_episode(self, episode_id: UUID) -> PmRecoveryEpisode | None:
         with self._db.session() as session:
@@ -676,12 +677,21 @@ class PmRecoveryRepo:
         blocker: PmBlockerObservationIntent | None = None,
         relieve_starvation_for_candidate: bool = False,
         supersede_prior_blockers_for_episode: bool = False,
+        reserved_evaluation_sequence: int | None = None,
     ) -> PmRecoveryEvaluationRecord:
         """Move one episode to the product tail and record its blocker atomically."""
 
         evaluated = _aware(evaluated_at, name="evaluation time")
         if expected_cursor_sequence < 1:
             raise ValueError("expected_cursor_sequence must be positive")
+        if reserved_evaluation_sequence is not None and not (
+            expected_cursor_sequence
+            < reserved_evaluation_sequence
+            <= 9_223_372_036_854_775_807
+        ):
+            raise ValueError(
+                "reserved_evaluation_sequence must be greater than the cursor"
+            )
         evaluation_id = _bounded_identifier(evaluation_id, name="evaluation_id")
         if blocker is not None:
             blocker = PmBlockerObservationIntent.model_validate(
@@ -758,7 +768,19 @@ class PmRecoveryRepo:
                 raise PmRecoveryStorageError(
                     PmRecoveryStorageCode.EVALUATION_OUT_OF_ORDER
                 )
-            sequence = self._allocate_locked_sequence(session, episode.product_id)
+            if reserved_evaluation_sequence is None:
+                sequence = self._allocate_locked_sequence(session, episode.product_id)
+            else:
+                high_water = session.scalar(
+                    sa.select(PmRecoverySequenceCounterRow.high_water).where(
+                        PmRecoverySequenceCounterRow.product_id == episode.product_id
+                    )
+                )
+                if high_water is None or reserved_evaluation_sequence > high_water:
+                    raise PmRecoveryStorageError(
+                        PmRecoveryStorageCode.SEQUENCE_EXHAUSTED
+                    )
+                sequence = reserved_evaluation_sequence
             episode.last_evaluated_sequence = sequence
             episode.last_evaluation_id = evaluation_id
             episode.last_evaluation_fingerprint = fingerprint

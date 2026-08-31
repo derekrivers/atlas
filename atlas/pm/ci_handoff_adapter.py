@@ -234,6 +234,7 @@ def reconcile_ci_handoff_candidate(
         pr_number=identity.pr_number,
         expected_head=identity.head_commit,
         now=now,
+        publication_attachment_id=identity.attachment_id,
         evidence_ids=tuple(record.id for record in pulled.observed),
         hooks=hooks,
     )
