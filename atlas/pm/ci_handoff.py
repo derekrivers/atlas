@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from time import monotonic
 from uuid import UUID, uuid4
 
 from atlas.core.enums import ActorType
@@ -63,6 +64,7 @@ class CIHandoffHooks:
     after_classification: Callable[[], None] = _noop
     after_revalidation: Callable[[], None] = _noop
     after_fence_persisted: Callable[[], None] = _noop
+    monotonic_clock: Callable[[], float] = monotonic
 
 
 @dataclass(frozen=True)
@@ -387,6 +389,7 @@ def reconcile_ci_handoff(
     if ticket is None:
         raise ValueError(f"unknown ticket {ticket_key!r}")
     hooks = hooks or CIHandoffHooks()
+    lease_started_at = hooks.monotonic_clock()
     selected_evidence_ids = None if evidence_ids is None else frozenset(evidence_ids)
     selected_source_ids: frozenset[str] | None = None
     if selected_evidence_ids is not None:
@@ -788,7 +791,12 @@ def reconcile_ci_handoff(
             )
 
         hooks.after_fence_persisted()
-        if not lease.is_owner(product_id=ticket.product_id, owner_id=owner_id):
+        lease_age = hooks.monotonic_clock() - lease_started_at
+        if (
+            lease_age < 0
+            or lease_age >= CI_HANDOFF_LEASE_TTL.total_seconds()
+            or not (lease.is_owner(product_id=ticket.product_id, owner_id=owner_id))
+        ):
             # The durable fence remains for the replacement owner.  An expired
             # process must never resume its external call after that owner can
             # have observed source and begun recovery.

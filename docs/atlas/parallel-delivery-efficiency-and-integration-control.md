@@ -225,9 +225,10 @@ immediately before the write under the shared product lease. Any change to the
 assessment or its deciding evidence ids records a typed hold and requires a
 fresh tick. Each determinate decision is appended with the exact identity and
 bounded check results, and a durable fence is committed before the single
-Linear mutation. The owner rechecks its exact product lease after that fence
-commit and immediately before the call; lease replacement leaves the fence to
-the new owner and the expired process performs zero mutations. A
+Linear mutation. The owner rechecks its exact product lease and monotonic lease
+age after that fence commit and immediately before the call; lease replacement
+or passive TTL expiry leaves the fence to the next owner and the expired
+process performs zero mutations. A
 transport-ambiguous mutation remains fenced until a fresh
 complete board observation proves source, target or external movement; that
 reconciliation tick never retries the write. Duplicate observations are

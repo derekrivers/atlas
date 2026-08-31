@@ -858,6 +858,29 @@ def test_replaced_lease_stops_zombie_writer_after_fence_persistence(
     assert client.state_writes == []
 
 
+def test_passively_expired_lease_stops_writer_after_fence_persistence(
+    db: Database,
+) -> None:
+    client = RecordingClient()
+    _seed_ci_pending(db, client)
+    monotonic_times = iter((0.0, 301.0))
+
+    stopped = _run(
+        db,
+        client,
+        _github(),
+        hooks=CIHandoffHooks(monotonic_clock=lambda: next(monotonic_times)),
+        now=NOW,
+    )
+
+    decision = stopped.ci_handoff_decisions[0]
+    assert decision.reconciliation is not None
+    assert decision.reconciliation.reason is CIHandoffReason.LEASE_LOST
+    assert decision.ends_workflow_write_window
+    assert client.state_writes == []
+    assert CIHandoffCoordinationRepo(db).get_fence(PRODUCT_ID) is not None
+
+
 @pytest.mark.parametrize(
     ("moved", "expected_reason"),
     [
