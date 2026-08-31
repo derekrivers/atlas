@@ -1,0 +1,69 @@
+{
+  "additionalProperties": false,
+  "description": "Stable authoritative identity from which one episode UUID is derived.",
+  "properties": {
+    "authoritative_episode_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Authoritative Episode Id",
+      "type": "string"
+    },
+    "authority_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Authority Id",
+      "type": "string"
+    },
+    "candidate_ticket_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Candidate Ticket Id"
+    },
+    "candidate_ticket_key": {
+      "anyOf": [
+        {
+          "maxLength": 128,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Candidate Ticket Key"
+    },
+    "operation": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Operation",
+      "type": "string"
+    },
+    "product_id": {
+      "format": "uuid",
+      "title": "Product Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "pm-recovery-episode-v1",
+      "default": "pm-recovery-episode-v1",
+      "title": "Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "product_id",
+    "operation",
+    "authority_id",
+    "authoritative_episode_id"
+  ],
+  "title": "PmRecoveryEpisodeIdentity",
+  "type": "object"
+}

@@ -1,0 +1,115 @@
+{
+  "$defs": {
+    "PmBlockerAuthorityKind": {
+      "description": "Kind of exact durable authority named by a blocker.",
+      "enum": [
+        "operation",
+        "lease",
+        "fence",
+        "intent"
+      ],
+      "title": "PmBlockerAuthorityKind",
+      "type": "string"
+    },
+    "PmBlockerCode": {
+      "description": "Closed machine-readable blocker causes accepted by durable storage.",
+      "enum": [
+        "lease_unavailable",
+        "publication_not_yet_complete",
+        "provider_unavailable",
+        "publication_ambiguous"
+      ],
+      "title": "PmBlockerCode",
+      "type": "string"
+    },
+    "PmBlockerKind": {
+      "description": "Bounded recovery posture shared by persistence and PM health.",
+      "enum": [
+        "routine_wait",
+        "retryable",
+        "unresolved_fence",
+        "unknown"
+      ],
+      "title": "PmBlockerKind",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Stable cause identity for one or more bounded blocker occurrences.",
+  "properties": {
+    "authority_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Authority Id",
+      "type": "string"
+    },
+    "authority_kind": {
+      "$ref": "#/$defs/PmBlockerAuthorityKind"
+    },
+    "candidate_ticket_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Candidate Ticket Id"
+    },
+    "candidate_ticket_key": {
+      "anyOf": [
+        {
+          "maxLength": 128,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Candidate Ticket Key"
+    },
+    "code": {
+      "$ref": "#/$defs/PmBlockerCode"
+    },
+    "kind": {
+      "$ref": "#/$defs/PmBlockerKind"
+    },
+    "operation": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Operation",
+      "type": "string"
+    },
+    "product_id": {
+      "format": "uuid",
+      "title": "Product Id",
+      "type": "string"
+    },
+    "recovery_episode_id": {
+      "format": "uuid",
+      "title": "Recovery Episode Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "pm-blocker-observation-v1",
+      "default": "pm-blocker-observation-v1",
+      "title": "Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "product_id",
+    "operation",
+    "code",
+    "kind",
+    "authority_kind",
+    "authority_id",
+    "recovery_episode_id"
+  ],
+  "title": "PmBlockerIdentity",
+  "type": "object"
+}

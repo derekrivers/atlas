@@ -2033,6 +2033,297 @@ CREATE TABLE planned_ci_pending_recoveries (
 );
 ```
 
+## 5.20 Durable PM Recovery, Fairness and Blocker State
+
+Migration `0036` installs four dormant operational tables for reconstructable
+PM recovery episodes, product-global fairness cursors and bounded blocker
+observations. This schema provides durable recovery memory and fairness state;
+it grants no new PM workflow authority. In particular, it does not change
+CI-handoff selection, activate retrospective completion or authorise any new
+external write.
+
+`pm_recovery_sequence_counters` is the product-scoped serialization point and
+global sequence allocator. Every episode creation and evaluation consumes the
+next positive value; creation stores it in `episode_created_sequence`, while a
+later evaluation stores a strictly greater value in `last_evaluated_sequence`.
+Repository mutations lock the product counter row before rereading mutable
+state. PostgreSQL uses a row lock and SQLite uses its transaction-level writer
+serialization, so replay cannot reuse a committed sequence or expose a
+half-created logical state. Exhausting the signed 64-bit range fails closed.
+The latest evaluation fingerprint binds its expected cursor, caller evaluation
+identifier, observation time and complete optional blocker intent. Only that
+exact latest intent is an idempotent replay. Caller evaluation identifiers are
+not episode-global keys: a newly created blocker occurrence derives its UUID
+from the allocated global evaluation sequence, while replay resolves the exact
+cause fingerprint, caller identifier and observation time. An older occurrence
+therefore cannot masquerade as the latest evaluation result.
+
+`pm_recovery_episodes.identity_fingerprint` is the unique full episode
+identity. `active_scope_fingerprint` is a separate structural identity used
+only while the episode is open: the check constraint makes it non-null for an
+open row and null for a closed row, allowing the nullable
+`(product_id, active_scope_fingerprint)` unique constraint to enforce one
+active episode per scope on both SQLite and PostgreSQL. Candidate UUID/key,
+evaluation cursor fields and closure fields are all-or-none tuples. Closure is
+bounded to an authoritative lifecycle entry, publication replacement or
+completed recovery, and cannot predate creation or the last evaluation.
+
+A replacement closes its predecessor and creates a fresh episode in the same
+transaction. `replaces_episode_id` is a self-reference and is unique, so one
+predecessor cannot acquire two replacement descendants;
+`replacement_event_id` proves the exact replacement lineage during replay.
+The new episode receives its own full identity, active-scope identity and
+creation sequence. Closed or replaced episodes cannot silently reactivate.
+
+`pm_blocker_occurrences.blocker_fingerprint` covers the immutable blocker
+identity: schema, operation, bounded code and recoverability kind, candidate,
+authority kind and identifier, and recovery episode. The separately nullable
+`active_fingerprint` equals that fingerprint only while the occurrence is
+active. A recurring observation of the same active identity updates its
+bounded count, observation times, retry/capacity fields and optional policy
+tuple; a changed cause, authority or episode creates a distinct occurrence.
+Supersession clears the active fingerprint and atomically records a bounded
+`progress` or `recovery` event at or after the last observation. Occurrence
+identity, recurrence and supersession therefore survive complete process
+reconstruction.
+
+`pm_blocker_starved_candidates` is the bounded ordered membership of candidates
+independently starved by one occurrence. The composite primary key fixes each
+ordinal, the per-occurrence UUID and key unique constraints prevent duplicate
+members, and the `1..128` ordinal bound caps the projection. `started_at`
+preserves starvation age across reconstruction. Clearing or superseding an
+occurrence is not inferred from silence; repository code explicitly manages
+the occurrence and its membership under the product serialization point.
+
+```sql
+CREATE TABLE pm_recovery_sequence_counters (
+    product_id UUID PRIMARY KEY REFERENCES products(id),
+    high_water BIGINT NOT NULL DEFAULT 0,
+    CONSTRAINT pm_recovery_sequence_counters_bounds
+        CHECK (high_water >= 0 AND high_water <= 9223372036854775807)
+);
+
+CREATE TABLE pm_recovery_episodes (
+    id UUID PRIMARY KEY,
+    schema_version TEXT NOT NULL,
+    identity_fingerprint TEXT NOT NULL UNIQUE,
+    product_id UUID NOT NULL REFERENCES products(id),
+    operation TEXT NOT NULL,
+    authority_id TEXT NOT NULL,
+    authoritative_episode_id TEXT NOT NULL,
+    active_scope_fingerprint TEXT,
+    candidate_ticket_id UUID REFERENCES tickets(id),
+    candidate_ticket_key TEXT,
+    episode_created_sequence BIGINT NOT NULL,
+    last_evaluated_sequence BIGINT,
+    last_evaluation_id TEXT,
+    last_evaluation_fingerprint TEXT,
+    created_at TIMESTAMPTZ NOT NULL,
+    last_evaluated_at TIMESTAMPTZ,
+    closed_at TIMESTAMPTZ,
+    closure_event_id TEXT,
+    closure_kind TEXT,
+    replaces_episode_id UUID UNIQUE REFERENCES pm_recovery_episodes(id),
+    replacement_event_id TEXT,
+    UNIQUE (product_id, active_scope_fingerprint),
+    UNIQUE (product_id, episode_created_sequence),
+    UNIQUE (product_id, last_evaluated_sequence),
+    CONSTRAINT pm_recovery_episodes_schema_version
+        CHECK (schema_version = 'pm-recovery-episode-v1'),
+    CONSTRAINT pm_recovery_episodes_identity_bounds CHECK (
+        length(identity_fingerprint) = 64
+        AND length(operation) BETWEEN 1 AND 128
+        AND length(authority_id) BETWEEN 1 AND 128
+        AND length(authoritative_episode_id) BETWEEN 1 AND 128
+    ),
+    CONSTRAINT pm_recovery_episodes_candidate_pair CHECK (
+        (candidate_ticket_id IS NULL AND candidate_ticket_key IS NULL)
+        OR (candidate_ticket_id IS NOT NULL
+            AND candidate_ticket_key IS NOT NULL
+            AND length(candidate_ticket_key) BETWEEN 1 AND 128)
+    ),
+    CONSTRAINT pm_recovery_episodes_sequence_order CHECK (
+        episode_created_sequence > 0
+        AND (last_evaluated_sequence IS NULL
+             OR last_evaluated_sequence > episode_created_sequence)
+    ),
+    CONSTRAINT pm_recovery_episodes_evaluation_fields CHECK (
+        (last_evaluated_sequence IS NULL
+         AND last_evaluation_id IS NULL
+         AND last_evaluation_fingerprint IS NULL
+         AND last_evaluated_at IS NULL)
+        OR (last_evaluated_sequence IS NOT NULL
+            AND last_evaluation_id IS NOT NULL
+            AND last_evaluation_fingerprint IS NOT NULL
+            AND length(last_evaluation_id) BETWEEN 1 AND 128
+            AND length(last_evaluation_fingerprint) = 64
+            AND last_evaluated_at IS NOT NULL
+            AND last_evaluated_at >= created_at)
+    ),
+    CONSTRAINT pm_recovery_episodes_closure_fields CHECK (
+        (closed_at IS NULL
+         AND closure_event_id IS NULL
+         AND closure_kind IS NULL)
+        OR (closed_at IS NOT NULL
+            AND closure_event_id IS NOT NULL
+            AND length(closure_event_id) BETWEEN 1 AND 128
+            AND closure_kind IS NOT NULL
+            AND closure_kind IN (
+                'authoritative_lifecycle_entry',
+                'publication_replacement',
+                'recovery_completed'
+            )
+            AND closed_at >= created_at
+            AND (last_evaluated_at IS NULL
+                 OR closed_at >= last_evaluated_at))
+    ),
+    CONSTRAINT pm_recovery_episodes_active_scope CHECK (
+        (closed_at IS NULL
+         AND active_scope_fingerprint IS NOT NULL
+         AND length(active_scope_fingerprint) = 64)
+        OR (closed_at IS NOT NULL AND active_scope_fingerprint IS NULL)
+    ),
+    CONSTRAINT pm_recovery_episodes_replacement_lineage CHECK (
+        (replaces_episode_id IS NULL AND replacement_event_id IS NULL)
+        OR (replaces_episode_id IS NOT NULL
+            AND replacement_event_id IS NOT NULL
+            AND length(replacement_event_id) BETWEEN 1 AND 128
+            AND replaces_episode_id <> id)
+    )
+);
+
+CREATE INDEX ix_pm_recovery_episodes_active_operation
+    ON pm_recovery_episodes (product_id, closed_at, operation);
+CREATE INDEX ix_pm_recovery_episodes_active_candidate
+    ON pm_recovery_episodes (product_id, candidate_ticket_id, closed_at);
+CREATE INDEX ix_pm_recovery_episodes_fairness
+    ON pm_recovery_episodes (
+        product_id,
+        closed_at,
+        last_evaluated_sequence,
+        episode_created_sequence,
+        candidate_ticket_key
+    );
+
+CREATE TABLE pm_blocker_occurrences (
+    id UUID PRIMARY KEY,
+    schema_version TEXT NOT NULL,
+    product_id UUID NOT NULL REFERENCES products(id),
+    operation TEXT NOT NULL,
+    code TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    authority_kind TEXT NOT NULL,
+    authority_id TEXT NOT NULL,
+    recovery_episode_id UUID NOT NULL REFERENCES pm_recovery_episodes(id),
+    candidate_ticket_id UUID REFERENCES tickets(id),
+    candidate_ticket_key TEXT,
+    blocker_fingerprint TEXT NOT NULL,
+    active_fingerprint TEXT,
+    first_evaluation_id TEXT NOT NULL,
+    latest_evaluation_id TEXT NOT NULL,
+    first_observed_at TIMESTAMPTZ NOT NULL,
+    latest_observed_at TIMESTAMPTZ NOT NULL,
+    consecutive_observations BIGINT NOT NULL,
+    next_safe_retry_at TIMESTAMPTZ,
+    capacity_impact BOOLEAN NOT NULL DEFAULT FALSE,
+    policy_namespace TEXT,
+    policy_revision BIGINT,
+    policy_fingerprint TEXT,
+    superseded_at TIMESTAMPTZ,
+    superseded_by_event_id TEXT,
+    supersession_kind TEXT,
+    UNIQUE (product_id, active_fingerprint),
+    CONSTRAINT pm_blocker_occurrences_schema_version
+        CHECK (schema_version = 'pm-blocker-observation-v1'),
+    CONSTRAINT pm_blocker_occurrences_kind CHECK (
+        kind IN ('routine_wait', 'retryable', 'unresolved_fence', 'unknown')
+    ),
+    CONSTRAINT pm_blocker_occurrences_code CHECK (
+        code IN (
+            'lease_unavailable',
+            'provider_unavailable',
+            'publication_ambiguous',
+            'publication_not_yet_complete'
+        )
+    ),
+    CONSTRAINT pm_blocker_occurrences_authority_kind CHECK (
+        authority_kind IN ('operation', 'lease', 'fence', 'intent')
+    ),
+    CONSTRAINT pm_blocker_occurrences_fence_authority CHECK (
+        kind <> 'unresolved_fence' OR authority_kind = 'fence'
+    ),
+    CONSTRAINT pm_blocker_occurrences_identity_bounds CHECK (
+        length(operation) BETWEEN 1 AND 128
+        AND length(code) BETWEEN 1 AND 128
+        AND length(authority_id) BETWEEN 1 AND 128
+        AND length(blocker_fingerprint) = 64
+    ),
+    CONSTRAINT pm_blocker_occurrences_candidate_pair CHECK (
+        (candidate_ticket_id IS NULL AND candidate_ticket_key IS NULL)
+        OR (candidate_ticket_id IS NOT NULL
+            AND candidate_ticket_key IS NOT NULL
+            AND length(candidate_ticket_key) BETWEEN 1 AND 128)
+    ),
+    CONSTRAINT pm_blocker_occurrences_observation_bounds CHECK (
+        length(first_evaluation_id) BETWEEN 1 AND 128
+        AND length(latest_evaluation_id) BETWEEN 1 AND 128
+        AND latest_observed_at >= first_observed_at
+        AND consecutive_observations BETWEEN 1 AND 2147483647
+    ),
+    CONSTRAINT pm_blocker_occurrences_policy_fields CHECK (
+        (policy_namespace IS NULL
+         AND policy_revision IS NULL
+         AND policy_fingerprint IS NULL)
+        OR (policy_namespace IS NOT NULL
+            AND policy_revision IS NOT NULL
+            AND policy_fingerprint IS NOT NULL
+            AND length(policy_namespace) BETWEEN 1 AND 128
+            AND policy_revision > 0
+            AND length(policy_fingerprint) = 64)
+    ),
+    CONSTRAINT pm_blocker_occurrences_active_or_superseded CHECK (
+        (active_fingerprint IS NOT NULL
+         AND active_fingerprint = blocker_fingerprint
+         AND superseded_at IS NULL
+         AND superseded_by_event_id IS NULL
+         AND supersession_kind IS NULL)
+        OR (active_fingerprint IS NULL
+            AND superseded_at IS NOT NULL
+            AND superseded_by_event_id IS NOT NULL
+            AND length(superseded_by_event_id) BETWEEN 1 AND 128
+            AND supersession_kind IS NOT NULL
+            AND supersession_kind IN ('progress', 'recovery')
+            AND superseded_at >= latest_observed_at)
+    )
+);
+
+CREATE INDEX ix_pm_blocker_occurrences_active_operation
+    ON pm_blocker_occurrences (product_id, active_fingerprint, operation);
+CREATE INDEX ix_pm_blocker_occurrences_active_candidate
+    ON pm_blocker_occurrences (
+        product_id,
+        candidate_ticket_id,
+        active_fingerprint
+    );
+CREATE INDEX ix_pm_blocker_occurrences_episode
+    ON pm_blocker_occurrences (recovery_episode_id, active_fingerprint);
+
+CREATE TABLE pm_blocker_starved_candidates (
+    blocker_occurrence_id UUID NOT NULL REFERENCES pm_blocker_occurrences(id),
+    ordinal INTEGER NOT NULL,
+    ticket_id UUID NOT NULL REFERENCES tickets(id),
+    ticket_key TEXT NOT NULL,
+    started_at TIMESTAMPTZ NOT NULL,
+    PRIMARY KEY (blocker_occurrence_id, ordinal),
+    UNIQUE (blocker_occurrence_id, ticket_id),
+    UNIQUE (blocker_occurrence_id, ticket_key),
+    CONSTRAINT pm_blocker_starved_candidates_ordinal_bounds
+        CHECK (ordinal BETWEEN 1 AND 128),
+    CONSTRAINT pm_blocker_starved_candidates_key_bounds
+        CHECK (length(ticket_key) BETWEEN 1 AND 128)
+);
+```
+
 ---
 
 ## 5.13 Lesson Disposition Result Snapshot

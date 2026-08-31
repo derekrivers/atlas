@@ -1,0 +1,29 @@
+{
+  "additionalProperties": false,
+  "description": "Durable current starvation member with repository-owned start time.",
+  "properties": {
+    "started_at": {
+      "format": "date-time",
+      "title": "Started At",
+      "type": "string"
+    },
+    "ticket_id": {
+      "format": "uuid",
+      "title": "Ticket Id",
+      "type": "string"
+    },
+    "ticket_key": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Ticket Key",
+      "type": "string"
+    }
+  },
+  "required": [
+    "ticket_id",
+    "ticket_key",
+    "started_at"
+  ],
+  "title": "PmStarvedCandidate",
+  "type": "object"
+}
