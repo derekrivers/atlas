@@ -213,7 +213,7 @@ def test_verbose_sync_once_itemises_routine_push_skips(
     assert "push skipped ATLAS-421: status not pushable (rejected)" in lines
 
 
-def test_cursor_already_stamped_push_skips_are_routine_not_itemised(
+def test_push_skip_summary_distinguishes_nonpushable_from_cursor_stamped(
     db: Database,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -249,5 +249,7 @@ def test_cursor_already_stamped_push_skips_are_routine_not_itemised(
     assert len(lines) == 3
     assert lines[1].startswith("pm sync actions:")
     assert lines[2].startswith("admission stale none: reason=snapshot_incomplete")
-    assert "push_skipped=3 (cursor already stamped=3)" in lines[0]
+    assert (
+        "push_skipped=3 (not pushable: backlog=1; cursor already stamped=2)" in lines[0]
+    )
     assert not any(line.startswith("push skipped ") for line in lines)

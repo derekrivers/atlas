@@ -17,13 +17,14 @@ from atlas.core.enums import RiskLevel
 from atlas.core.models import DeliveryAdmissionPolicyRevision, Ticket, TicketDependency
 from atlas.core.models.ticket import TicketStatus
 from atlas.linear.client import LinearIssue
-from atlas.linear.ownership import LinearStatusMap
+from atlas.linear.ownership import EXTERNALLY_MIRRORED_STATUSES, LinearStatusMap
 from atlas.pm import (
     DeliverySnapshot,
     LinearBoardPull,
     OccupancyDimension,
     SnapshotIncompletenessCode,
     build_delivery_snapshot,
+    build_stored_delivery_occupancy,
 )
 
 NOW = datetime(2026, 8, 3, 9, 30, tzinfo=UTC)
@@ -32,12 +33,12 @@ POLICY_ID = UUID("22222222-2222-4222-8222-222222222222")
 PROJECT_ID = "linear-project-atlas"
 
 STATE_IDS: dict[TicketStatus, str] = {
-    status: f"state-{status.value}" for status in TicketStatus
+    status: f"state-{status.value}"
+    for status in TicketStatus
+    if status in EXTERNALLY_MIRRORED_STATUSES
 }
 STATE_TYPES: dict[TicketStatus, str] = {
-    TicketStatus.BACKLOG: "backlog",
     TicketStatus.PLANNED: "unstarted",
-    TicketStatus.BLOCKED: "unstarted",
     TicketStatus.READY_FOR_AGENT: "unstarted",
     TicketStatus.IN_PROGRESS: "started",
     TicketStatus.PR_OPEN: "started",
@@ -110,6 +111,10 @@ def issue(
     state_type: str | None = None,
 ) -> LinearIssue:
     observed = item.status if status is None else status
+    if observed not in EXTERNALLY_MIRRORED_STATUSES:
+        raise ValueError(
+            f"{observed.value!r} is not externally mirrored and has no Linear state"
+        )
     return LinearIssue(
         id=issue_id or item.external_linear_id or f"issue-{item.key}",
         identifier=identifier or item.key,
@@ -163,9 +168,7 @@ def snapshot(
 @pytest.mark.parametrize(
     ("status", "working", "integration", "review", "changes_requested"),
     [
-        (TicketStatus.BACKLOG, 0, 0, 0, 0),
         (TicketStatus.PLANNED, 0, 0, 0, 0),
-        (TicketStatus.BLOCKED, 0, 0, 0, 0),
         (TicketStatus.READY_FOR_AGENT, 1, 0, 0, 0),
         (TicketStatus.IN_PROGRESS, 1, 0, 0, 0),
         (TicketStatus.PR_OPEN, 1, 0, 0, 0),
@@ -178,7 +181,7 @@ def snapshot(
     ],
     ids=lambda status: status.value if isinstance(status, TicketStatus) else None,
 )
-def test_ac1_every_configured_state_id_has_named_working_and_review_occupancy(
+def test_ac1_each_mirrored_state_has_named_linear_board_occupancy(
     status: TicketStatus,
     working: int,
     integration: int,
@@ -190,13 +193,64 @@ def test_ac1_every_configured_state_id_has_named_working_and_review_occupancy(
     result = snapshot([item], [issue(item)])
 
     counts = {entry.status: entry.count for entry in result.status_occupancy}
+    # The result remains an Atlas lifecycle projection, while the observed
+    # count can only originate from an externally mirrored Linear state.
     assert len(counts) == len(TicketStatus)
     assert counts[status] == 1
+    assert counts[TicketStatus.BACKLOG] == 0
+    assert counts[TicketStatus.BLOCKED] == 0
     assert result.working_occupancy == working
     assert result.integration_occupancy == integration
     assert result.review_occupancy == review
     assert result.changes_requested_occupancy == changes_requested
     assert result.admission_allowed is True
+
+
+def test_linear_board_fixtures_cover_only_externally_mirrored_statuses() -> None:
+    assert set(STATE_IDS) == set(EXTERNALLY_MIRRORED_STATUSES)
+    assert set(STATE_TYPES) == set(EXTERNALLY_MIRRORED_STATUSES)
+    assert set(STATUS_MAP.snapshot().values()) == {
+        status.value for status in EXTERNALLY_MIRRORED_STATUSES
+    }
+
+
+@pytest.mark.parametrize(
+    "status",
+    [TicketStatus.BACKLOG, TicketStatus.BLOCKED],
+    ids=lambda status: status.value,
+)
+def test_linear_issue_fixture_rejects_nonmirrored_compatibility_statuses(
+    status: TicketStatus,
+) -> None:
+    item = ticket("ATLAS-1", status)
+
+    with pytest.raises(ValueError, match="not externally mirrored"):
+        issue(item)
+
+
+def test_atlas_stored_occupancy_retains_nonmirrored_compatibility_statuses() -> None:
+    backlog = ticket(
+        "ATLAS-1",
+        TicketStatus.BACKLOG,
+        external_linear_id=None,
+    )
+    historical_blocked = ticket(
+        "ATLAS-2",
+        TicketStatus.BLOCKED,
+        external_linear_id=None,
+    )
+
+    result = build_stored_delivery_occupancy(
+        policy=policy(), tickets=[backlog, historical_blocked]
+    )
+
+    counts = {entry.status: entry.count for entry in result.status_occupancy}
+    assert len(counts) == len(TicketStatus)
+    assert counts[TicketStatus.BACKLOG] == 1
+    assert counts[TicketStatus.BLOCKED] == 1
+    assert result.working_occupancy == 0
+    assert result.integration_occupancy == 0
+    assert result.review_occupancy == 0
 
 
 def test_ac1_display_names_never_override_the_configured_state_id() -> None:
@@ -477,13 +531,24 @@ def test_ac4_unjoined_delivery_occupancy_ticket_fails_closed_without_guessing_co
 
 @pytest.mark.parametrize(
     "status",
-    [TicketStatus.BACKLOG, TicketStatus.PLANNED, TicketStatus.BLOCKED],
+    [TicketStatus.BACKLOG, TicketStatus.BLOCKED],
     ids=lambda status: status.value,
 )
-def test_ac4_unjoined_pre_delivery_ticket_is_not_an_occupancy_join_gap(
+def test_ac4_unjoined_nonmirrored_ticket_is_not_a_linear_occupancy_join_gap(
     status: TicketStatus,
 ) -> None:
     item = ticket("ATLAS-1", status, external_linear_id=None)
+
+    result = snapshot([item], [])
+
+    assert result.incompleteness_reasons == ()
+    assert result.working_occupancy == 0
+    assert result.review_occupancy == 0
+    assert result.admission_allowed is True
+
+
+def test_ac4_unjoined_planned_ticket_is_not_an_occupancy_join_gap() -> None:
+    item = ticket("ATLAS-1", TicketStatus.PLANNED, external_linear_id=None)
 
     result = snapshot([item], [])
 

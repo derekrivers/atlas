@@ -59,7 +59,9 @@ ATLAS-31 builds the projection above; the analyses below consume it.
 A ticket is ready exactly when all of the following hold (refines
 data-model §4.3):
 
-1. `status` is `planned` or `backlog`.
+1. `status` is `planned`, or the retained Atlas-internal compatibility value
+   `backlog`. Governed `atlas apply` creates new work as `planned`; neither
+   value implies dependency readiness by itself.
 2. Every `depends_on` ticket target has `status: done`.
 3. Every `depends_on` ADR target has `status: accepted`.
 4. The ticket has ≥1 acceptance criterion.
@@ -68,6 +70,13 @@ data-model §4.3):
 
 Readiness does not require a rendered context pack — pack rendering is the
 PM Engine's promotion step (Phase 4), which consumes this predicate.
+
+A failed dependency condition does not change ticket lifecycle state. Normal
+work remains `planned` while `ReadinessResult.reasons` and `blocked(graph,
+key)` derive its operational blockedness. No dependency-driven `blocked`
+transition, stored flag or Linear `Blocked` state exists. The historical
+`TicketStatus.BLOCKED` enum member remains persisted compatibility vocabulary,
+not a second blocker calculation.
 
 ATLAS-34 implements the predicate in `atlas/dependencies/readiness.py`:
 `is_ready(graph, key)` for one ticket and `ready_tickets(graph)` for the
@@ -204,6 +213,10 @@ semantics fixed by this ticket:
   {high, critical} that a non-terminal ticket depends on. The report is
   advisory only — it surfaces risky work that other tickets depend on and
   does NOT gate readiness or dispatch.
+
+This analysis is the sole dependency-blockedness projection. It filters the
+typed dependency reasons returned by `is_ready`; it does not inspect or write a
+`blocked` lifecycle status, persist a duplicate flag, or create a Linear state.
 
 ## Validation rules
 

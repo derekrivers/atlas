@@ -2,6 +2,40 @@
 
 A running register of known technical debt.
 
+## Ticket-minting lifecycle vocabulary drift (2026-08-30; ATLAS-303 ledger input)
+
+**Observed evidence and identity.** Current repository `main` at
+`1e73a073b35c3619c26c3afd6f00c8333fe4a0ab` documented Linear `Backlog` and
+`Blocked` states even though the managed PM release
+`080bae80775d964c42a994094be111628a2d6fb9` used an eleven-entry
+`LINEAR_STATE_MAP` containing `planned` and no mapping for either value. The
+canonical store `/root/atlas/.atlas/atlas.db` contained 32 `planned` tickets,
+zero `backlog`/`blocked` tickets and no transition to or from either value.
+Static writer inspection found governed apply materialising `planned`, no
+production assignment to `BACKLOG` or `BLOCKED`, dependency blockedness derived
+through readiness/blocker analysis, and a latent mismatch in which
+`PUSHABLE_STATUSES` nevertheless admitted both non-mirrored enum members before
+unconditionally resolving a create-time Linear target.
+
+**Lifecycle boundary and classification.** This is a durable
+governance/documentation plus fail-closed PM-boundary defect, not a transient
+provider event. `blocked` is a derived graph/readiness condition; `backlog` is
+Atlas-internal compatibility vocabulary; `planned` is the normal first
+externally mirrored state; publication in Planned is not delivery admission;
+and `Canceled`/`Duplicate` intentionally remain two Linear projections of
+Atlas `rejected`.
+
+**Durable adaptation and recurrence proof.** The correction is absorbed by
+the authoritative classification in `atlas/linear/ownership.py`, the narrowed
+publication set in `atlas/pm/sync.py`, Planned-aware live preflight, the PM,
+dependency, Symphony and data-model documents, and focused ownership/PM/
+readiness/workflow tests. The contract rejects any configured Backlog or
+Blocked target and a seeded reintroduction of Blocked as mirrored must fail the
+focused ownership test. This entry is an explicit input to ATLAS-303's final
+`Observed findings and durable adaptations` ledger; that milestone should cite
+these owning surfaces and recurrence proof rather than rediscovering the
+finding from conversation history.
+
 ## Atlas → Linear priority mapping (deferred, ATLAS-42)
 
 `priority` is owned Atlas → Linear (ADR-0006 field ownership) but is **not

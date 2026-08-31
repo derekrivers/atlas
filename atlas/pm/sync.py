@@ -38,8 +38,9 @@ round trips is routed to ``Needs Human`` via the sanctioned
 :meth:`LinearClient.set_state` and one ``REVIEW_CYCLE`` ``DebtItem`` is appended
 as the deterministic failure-analysis note (see :func:`_detect_review_cycle`).
 This is the ONE anomaly that both logs AND moves a ticket — everywhere else the
-two are separate. Stale-block (ATLAS-44): a ticket stranded in ``blocked`` whose
-structural blockers have all cleared (``blocked(graph, key)`` empty) appends one
+two are separate. Stale-block (ATLAS-44 compatibility hygiene): a historical
+ticket stranded in the retained ``blocked`` enum value whose structural
+blockers have all cleared (``blocked(graph, key)`` empty) appends one
 ``STALE_BLOCK`` ``DebtItem`` per blocked *episode* (see
 :func:`_detect_stale_block`) — report-only like dwell, it surfaces a candidate to
 move but NEVER routes, since the graph sees only structural blockers and the
@@ -128,6 +129,7 @@ from atlas.linear.client import (
     LinearRateLimitError,
 )
 from atlas.linear.ownership import (
+    EXTERNALLY_MIRRORED_STATUSES,
     PACK_HEADER_PREFIX,
     LinearStatusMap,
     compose_embedded_description,
@@ -276,17 +278,21 @@ _MARKER_RE = re.compile(rf"<!-- {_SOURCE_COMMENT_MARKER}: (?P<id>.+?) -->")
 _PROCESSED_SUBDIR = "processed"
 
 # "Frozen once In Progress" (pm-engine-and-linear-sync.md "Field ownership"):
-# definitions are pushed only while the ticket is pre-dispatch or Ready for
-# Agent. Every status from in_progress onward (pr_open, review_required,
+# definitions are pushed only while a ticket has a legitimate Linear mirror in
+# the pre-dispatch lifecycle or is Ready for Agent. ``backlog`` is Atlas-internal
+# compatibility vocabulary and dependency ``blocked`` is derived; neither may
+# reach create-time state assertion merely because it is a TicketStatus member.
+# Every status from in_progress onward (pr_open, review_required,
 # changes_requested, done, rejected, needs_human_decision) is frozen.
 PUSHABLE_STATUSES: frozenset[TicketStatus] = frozenset(
     {
-        TicketStatus.BACKLOG,
         TicketStatus.PLANNED,
-        TicketStatus.BLOCKED,
         TicketStatus.READY_FOR_AGENT,
     }
 )
+
+if not PUSHABLE_STATUSES <= EXTERNALLY_MIRRORED_STATUSES:
+    raise RuntimeError("definition publication may require only mirrored statuses")
 
 # The enumerated pack-render failure classes the embed path degrades on
 # (ATLAS-164 D-2, enumerated-exceptions-only): the fail-closed token budget
@@ -1600,7 +1606,8 @@ def _push(
     ticket whose cursor says it changed. Push first, then stamp (D5).
 
     Every definition push EMBEDS the ticket's rendered context pack beneath the
-    definition fields (ATLAS-164, gate assumption A-1: all ``PUSHABLE_STATUSES``,
+    definition fields (ATLAS-164, gate assumption A-1: every mirrored
+    ``PUSHABLE_STATUSES`` member,
     create and update paths alike) — ``description`` stays the single owned key,
     widened in content per the ATLAS-143 precedent. A render failure degrades
     THIS ticket's push to today's exact definition-only payload

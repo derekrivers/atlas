@@ -15,7 +15,8 @@ attribute. The graph IS the input.
 
 A ticket is ready exactly when all five conditions hold:
 
-1. ``status`` is ``planned`` or ``backlog``.
+1. ``status`` is ``planned`` or the Atlas-internal compatibility value
+   ``backlog``. Governed apply creates new work as ``planned``.
 2. Every ``depends_on`` ticket target has ``status: done``.
 3. Every ``depends_on`` ADR target has ``status: accepted``.
 4. The ticket has >=1 acceptance criterion.
@@ -48,7 +49,8 @@ from atlas.core.models.dependency import DependencyType
 from atlas.core.models.ticket import TicketStatus
 
 # Statuses from which a ticket is eligible to be promoted, derived from the
-# enum (not hard-coded): condition 1.
+# enum (not hard-coded): normal ``planned`` plus retained ``backlog``
+# compatibility. Dependency blockedness never adds a stored status here.
 READY_STATUSES: frozenset[str] = frozenset(
     {TicketStatus.PLANNED.value, TicketStatus.BACKLOG.value}
 )
@@ -119,7 +121,7 @@ def is_ready(graph: nx.DiGraph[str], key: str) -> ReadinessResult:
 
     reasons: list[NotReadyReason] = []
 
-    # Condition 1: status is planned or backlog.
+    # Condition 1: status is planned or retained backlog compatibility.
     status = data.get("status")
     if status not in READY_STATUSES:
         reasons.append(

@@ -36,9 +36,10 @@ PROJECT_SLUG = "atlas-team"
 TEAM_ID = "team-1"
 
 # A complete, coherent baseline: every contract name (active and terminal lists
-# plus the two handoff names) exists as an exact-cased state, with a type the
+# plus Planned and the handoff names) exists as an exact-cased state, with a type the
 # status map accepts. Each written status maps to exactly one state.
 _BASELINE_STATES: tuple[WorkflowState, ...] = (
+    WorkflowState("state-planned", "Planned", "unstarted"),
     WorkflowState("state-ready", "Ready for Agent", "unstarted"),
     WorkflowState("state-inprogress", "In Progress", "started"),
     WorkflowState("state-propen", "PR Open", "started"),
@@ -52,6 +53,7 @@ _BASELINE_STATES: tuple[WorkflowState, ...] = (
 )
 
 _BASELINE_MAP: dict[str, TicketStatus] = {
+    "state-planned": TicketStatus.PLANNED,
     "state-ready": TicketStatus.READY_FOR_AGENT,
     "state-inprogress": TicketStatus.IN_PROGRESS,
     "state-propen": TicketStatus.PR_OPEN,
@@ -259,7 +261,7 @@ def test_ac3_6_ambiguous_write_target_fails(tmp_path: Path) -> None:
     assert "done" in c3[0].message.lower()
 
 
-# --- the DELTA: C1 covers the handoff names (Review Required / Needs Human) ----
+# --- C1 covers non-routed mirrored names (Planned plus handoffs) ----------------
 
 
 def test_ac3_8_missing_handoff_state_fails(tmp_path: Path) -> None:
@@ -288,6 +290,22 @@ def test_ac3_8b_case_drifted_handoff_state_fails(tmp_path: Path) -> None:
     findings = _run(tmp_path, client=_client(states))
     c1 = _failing(findings, "C1")
     assert any("Review Required" in f.message for f in c1)
+
+
+def test_planned_is_required_by_name_and_as_a_unique_write_target(
+    tmp_path: Path,
+) -> None:
+    states = tuple(state for state in _BASELINE_STATES if state.name != "Planned")
+    pruned = {
+        key: value for key, value in _BASELINE_MAP.items() if key != "state-planned"
+    }
+
+    findings = _run(
+        tmp_path, client=_client(states), status_map=LinearStatusMap(pruned)
+    )
+
+    assert any("Planned" in finding.message for finding in _failing(findings, "C1"))
+    assert any("planned" in finding.message for finding in _failing(findings, "C3"))
 
 
 # --- AC3.7: the CLI exit code is the two-bucket contract ----------------------

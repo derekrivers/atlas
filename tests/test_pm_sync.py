@@ -80,7 +80,11 @@ from atlas.pm import (
     SyncResult,
     sync_tick,
 )
-from atlas.pm.sync import CI_PENDING_POLL_COMPRESSION_CREATED_BY, CREATED_BY
+from atlas.pm.sync import (
+    CI_PENDING_POLL_COMPRESSION_CREATED_BY,
+    CREATED_BY,
+    PUSHABLE_STATUSES,
+)
 from atlas.storage import (
     AgentRunRepo,
     ContextPackRepo,
@@ -1254,6 +1258,36 @@ def test_first_sync_create_asserts_mapped_state_in_order(db: Database) -> None:
     issue = client.fetch_issue(issue_id)
     assert issue is not None
     assert issue.state_id == UNSTARTED.id
+
+
+def test_definition_publication_requires_an_externally_mirrored_status() -> None:
+    assert (
+        frozenset({TicketStatus.PLANNED, TicketStatus.READY_FOR_AGENT})
+        == PUSHABLE_STATUSES
+    )
+    assert TicketStatus.BACKLOG not in PUSHABLE_STATUSES
+    assert TicketStatus.BLOCKED not in PUSHABLE_STATUSES
+
+
+@pytest.mark.parametrize("status", [TicketStatus.BACKLOG, TicketStatus.BLOCKED])
+def test_non_mirrored_unsynced_ticket_requires_no_linear_target(
+    db: Database, status: TicketStatus
+) -> None:
+    client = RecordingClient()
+    seed_ticket(
+        db,
+        client,
+        key=f"ATLAS-NON-MIRRORED-{status.value}",
+        status=status,
+        with_issue=False,
+        status_entered_at=None,
+    )
+
+    result = run(db, client)
+
+    assert result.pushed_created == 0
+    assert client.creates == []
+    assert client.state_writes == []
 
 
 def test_blocked_planned_ticket_created_planned_and_not_promoted(

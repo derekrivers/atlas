@@ -453,6 +453,14 @@ class Ticket(BaseModel):
     completed_at: Optional[datetime] = None
 ```
 
+`TicketStatus` is persisted Atlas vocabulary, not a declaration that every
+member has a Linear workflow state. The authoritative external classification
+and projection is `pm-engine-and-linear-sync.md#status-lifecycle-classification`:
+`blocked` denotes the derived dependency condition (with its enum member
+retained for historical compatibility), `backlog` is Atlas-internal
+compatibility vocabulary, and all other members are externally mirrored.
+Governed apply materialises new tickets as `planned`.
+
 The CI-pending edge has one writer per transition. An agent may write
 `pr_open → ci_pending`; the `pr_open` source is the durable prerequisite that a
 PR has been published. Atlas alone may write `ci_pending → review_required` or
