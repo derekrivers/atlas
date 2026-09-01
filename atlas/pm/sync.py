@@ -2221,9 +2221,10 @@ def _sync_tick_impl(
     # recovery lineage. CI fences above retain their stronger absolute
     # precedence when both kinds exist.
     admission_fences = [
-        fence
+        admission_fence
         for product_id in product_ids
-        if (fence := AdmissionCoordinationRepo(db).get_fence(product_id)) is not None
+        if (admission_fence := AdmissionCoordinationRepo(db).get_fence(product_id))
+        is not None
     ]
     if admission_fences:
         admission_fence = min(
