@@ -247,7 +247,12 @@ UUID, one uniquely correlated successful PM receipt proving
 `admitted = promoted = 1` with no stale or indeterminate outcome, one complete
 coherent issue-bound GitHub publication, compatible pre-dispatch history and no
 active admission or CI-handoff fence. Missing, duplicate, contradictory or
-mismatched proof leaves the existing out-of-ownership anomaly path unchanged.
+mismatched proof leaves the existing out-of-ownership anomaly path unchanged;
+so does any active write fence encountered by the recovery predicate. A
+CI-handoff fence already present when the tick performs its initial fence scan
+is instead reconciled before generic pull; that tick creates no synthetic
+ownership debt, and the recovery predicate is reconsidered on a fresh tick after
+the fence is durably cleared.
 
 An accepted decision atomically appends one direct local
 `Planned -> CI Pending` transition and one bounded immutable recovery record.

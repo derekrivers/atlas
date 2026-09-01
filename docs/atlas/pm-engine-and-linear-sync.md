@@ -510,9 +510,13 @@ approximate timestamps and operator assertions are not inputs. Existing
 AgentRuns are optional corroboration; the absence of a dispatch transition is
 expected in this poll-compression shape and never causes Atlas to fabricate a
 run. Duplicate/mismatched runs or receipts, missing/ambiguous publication,
-incomplete/duplicate board identity, non-pre-dispatch local history, or either
-active write fence refuses recovery and leaves the ordinary
-`OUT_OF_OWNERSHIP_TRANSITION` behaviour in force.
+incomplete/duplicate board identity or non-pre-dispatch local history refuses
+recovery and leaves the ordinary `OUT_OF_OWNERSHIP_TRANSITION` behaviour in
+force. Any active write fence encountered by the recovery predicate has the same
+result. A CI-handoff fence already present when the tick performs its initial
+fence scan instead retains absolute precedence before generic pull; its
+reconciliation tick creates no synthetic ownership debt, and ordinary recovery
+is reconsidered on a fresh tick after the fence is durably cleared.
 
 On acceptance, `PlannedCIPendingRecoveryRepo` revalidates all durable local
 inputs and compare-and-sets the ticket in the same transaction that appends the

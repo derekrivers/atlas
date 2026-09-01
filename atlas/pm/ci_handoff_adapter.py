@@ -7,7 +7,7 @@ from datetime import datetime
 from enum import StrEnum
 from uuid import UUID
 
-from atlas.core.models import CIHandoffDecision, CIHandoffReason, Ticket, TicketStatus
+from atlas.core.models import CIHandoffDecision, CIHandoffReason, Ticket
 from atlas.evidence.pull import (
     EvidencePullMalformedSourceError,
     drive_evidence_pull,
@@ -125,11 +125,6 @@ class CIHandoffAdapterResult:
         if self.reconciliation is not None:
             prefix = f"{prefix}; {self.reconciliation.safe_summary}"
         return prefix
-
-
-def _candidate_key(ticket: Ticket) -> tuple[int, str]:
-    suffix = ticket.key.removeprefix("ATLAS-")
-    return (int(suffix) if suffix.isdigit() else 2**31 - 1, ticket.key)
 
 
 def _full_sha(value: str | None) -> str | None:
@@ -289,46 +284,4 @@ def reconcile_existing_ci_handoff_fence(
         ticket_key=reconciliation.ticket_key,
         reconciliation=reconciliation,
         fence_precedence=True,
-    )
-
-
-def reconcile_one_ci_handoff(
-    *,
-    db: Database,
-    tickets: TicketRepo,
-    github: GitHubClient,
-    linear: LinearClient,
-    status_map: LinearStatusMap,
-    project_id: str,
-    initial_issues: list[LinearIssue],
-    now: datetime,
-    hooks: CIHandoffHooks | None = None,
-) -> CIHandoffAdapterResult:
-    """Discover deterministically and evaluate at most one CI-pending ticket."""
-
-    candidates = sorted(
-        (
-            ticket
-            for ticket in tickets.list()
-            if ticket.status is TicketStatus.CI_PENDING
-        ),
-        key=_candidate_key,
-    )
-    if not candidates:
-        return CIHandoffAdapterResult(
-            reason=CIHandoffAdapterReason.NO_CANDIDATE,
-            candidate_count=0,
-        )
-    return reconcile_ci_handoff_candidate(
-        db=db,
-        tickets=tickets,
-        github=github,
-        linear=linear,
-        status_map=status_map,
-        project_id=project_id,
-        initial_issues=initial_issues,
-        candidate=candidates[0],
-        candidate_count=len(candidates),
-        now=now,
-        hooks=hooks,
     )

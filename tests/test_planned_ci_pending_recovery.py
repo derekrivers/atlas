@@ -646,10 +646,17 @@ def test_ci_fence_precedes_planned_ci_recovery_then_fresh_tick_recovers(
                 policy_revision=None,
                 policy_fingerprint=None,
                 snapshot_fingerprint=None,
-                classification="pending",
-                reason="required_checks_pending",
-                decision="hold",
-                check_results=[],
+                classification="passed",
+                reason="complete_required_checks_passed",
+                decision="review_required",
+                check_results=[
+                    {
+                        "check_type": "tests",
+                        "status": "passed",
+                        "classification": "passed",
+                        "evidence_ids": [str(uuid4())],
+                    }
+                ],
                 observed_at=RECOVERED_AT,
                 created_by_type="system",
                 created_by_id="ci-handoff-reconciler",

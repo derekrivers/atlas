@@ -45,7 +45,6 @@ from atlas.pm.ci_handoff_adapter import (
     CIHandoffAdapterReason,
     CIHandoffAdapterResult,
     CIHandoffIdentity,
-    reconcile_one_ci_handoff,
 )
 from atlas.pm.completion import complete_verified
 from atlas.pm.delivery_snapshot import (
@@ -207,7 +206,6 @@ __all__ = [
     "project_durable_blocker",
     "promote_ready",
     "reconcile_ci_handoff",
-    "reconcile_one_ci_handoff",
     "reconstruct_agent_runs",
     "recover_planned_ci_pending",
     "render_markdown",
