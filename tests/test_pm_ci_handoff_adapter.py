@@ -2065,6 +2065,12 @@ def test_unresolved_admission_fence_rotates_to_independent_ci_product(
         acceptance_criteria=["retain an unresolved admission ambiguity"],
         linear_synced_at=NOW,
     )
+    same_product_ci = _seed_ci_pending(
+        db,
+        client,
+        key="ATLAS-263",
+        product_id=PRODUCT_ID,
+    )
     healthy_product_id = UUID("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
     healthy = _seed_ci_pending(
         db,
@@ -2072,9 +2078,6 @@ def test_unresolved_admission_fence_rotates_to_independent_ci_product(
         key="OTHER-263",
         product_id=healthy_product_id,
     )
-    assert admission_ticket.external_linear_id is not None
-    admission_issue = client.fetch_issue(admission_ticket.external_linear_id)
-    assert admission_issue is not None and admission_issue.state_id is not None
     owner_id = uuid4()
     coordination = AdmissionCoordinationRepo(db)
     assert coordination.try_acquire(
@@ -2089,14 +2092,13 @@ def test_unresolved_admission_fence_rotates_to_independent_ci_product(
         admission_run_id=uuid4(),
         ticket_id=admission_ticket.id,
         ticket_key=admission_ticket.key,
-        issue_id=admission_ticket.external_linear_id,
-        source_state_id=admission_issue.state_id,
+        issue_id="missing-admission-issue",
+        source_state_id="state-planned",
         target_state_id=READY.id,
         policy_revision=1,
         created_at=NOW,
     )
     coordination.release(product_id=PRODUCT_ID, owner_id=owner_id)
-    client._issues.pop(admission_ticket.external_linear_id)
 
     first = _run(db, client, _github(), now=NOW + timedelta(seconds=1))
 
@@ -2110,9 +2112,19 @@ def test_unresolved_admission_fence_rotates_to_independent_ci_product(
     assert deferred_fence.admission_run_id == initial_fence.admission_run_id
     assert deferred_fence.updated_at > initial_fence.updated_at
     assert client.state_writes == []
+    assert PmRecoveryRepo(db).list_active_episodes_ordered(PRODUCT_ID) == []
+    [healthy_episode] = PmRecoveryRepo(db).list_active_episodes_ordered(
+        healthy_product_id
+    )
+    assert healthy_episode.candidate_ticket_id == healthy.id
+    assert deferred_fence.updated_at == healthy_episode.created_at
 
     database_url = str(db.engine.url)
-    healthy_client = _rebuilt_client(client)
+    assert healthy.external_linear_id is not None
+    healthy_issue = client.fetch_issue(healthy.external_linear_id)
+    assert healthy_issue is not None
+    healthy_client = RecordingClient()
+    healthy_client._issues = {healthy_issue.id: replace(healthy_issue)}
     db.engine.dispose()
     healthy_db = Database(database_url)
     second = _run(
@@ -2129,6 +2141,7 @@ def test_unresolved_admission_fence_rotates_to_independent_ci_product(
         (healthy.external_linear_id, "state-review-required")
     ]
     assert AdmissionCoordinationRepo(db).get_fence(PRODUCT_ID) == deferred_fence
+    assert PmRecoveryRepo(db).list_active_episodes_ordered(PRODUCT_ID) == []
 
     retry_client = _rebuilt_client(healthy_client)
     retry_db = Database(database_url)
@@ -2146,6 +2159,17 @@ def test_unresolved_admission_fence_rotates_to_independent_ci_product(
         is AdmissionSyncReason.INDETERMINATE_STILL_UNRESOLVED
     )
     assert retry_client.state_writes == []
+    assert PmRecoveryRepo(db).list_active_episodes_ordered(PRODUCT_ID) == []
+    retained_same_product = TicketRepo(db).get_by_key(same_product_ci.key)
+    assert retained_same_product is not None
+    assert retained_same_product.status is TicketStatus.CI_PENDING
+    assert (
+        sum(
+            len(generation.state_writes)
+            for generation in (client, healthy_client, retry_client)
+        )
+        == 1
+    )
 
 
 @pytest.mark.parametrize("publication_available", [True, False])
