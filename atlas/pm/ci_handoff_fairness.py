@@ -289,10 +289,21 @@ def select_fair_ci_handoff_candidate(
     return FairCIHandoffSelection(candidates, candidate, episode)
 
 
-def _fence_authority_id(db: Database, candidate: Ticket) -> str:
+def _fence_authority_id(
+    db: Database,
+    candidate: Ticket,
+    reconciliation_id: UUID | None,
+) -> str:
     fence = CIHandoffCoordinationRepo(db).get_fence(candidate.product_id)
-    if fence is None:
-        return f"ci-handoff-fence:{candidate.product_id}"
+    if (
+        fence is None
+        or reconciliation_id is None
+        or fence.reconciliation_id != reconciliation_id
+        or fence.ticket_id != candidate.id
+    ):
+        raise CIHandoffFairnessError(
+            "unresolved CI handoff result no longer matches the exact live fence"
+        )
     return f"ci-handoff-fence:{fence.reconciliation_id}"
 
 
@@ -351,7 +362,11 @@ def _blocker_intent(
             code = PmBlockerCode.WRITE_FENCE_UNRESOLVED
             kind = PmBlockerKind.UNRESOLVED_FENCE
             authority_kind = PmBlockerAuthorityKind.FENCE
-            authority_id = _fence_authority_id(db, candidate)
+            authority_id = _fence_authority_id(
+                db,
+                candidate,
+                result.reconciliation.reconciliation_id,
+            )
         elif reason in {
             CIHandoffReason.REQUIRED_CHECKS_PENDING,
             CIHandoffReason.REQUIRED_CHECKS_MISSING,
