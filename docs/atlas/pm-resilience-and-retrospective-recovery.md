@@ -175,11 +175,12 @@ after an evaluation and otherwise `created_at`, with an unevaluated episode
 first at an equal instant and product UUID only as the deterministic final tie.
 A fixed candidate or fence rank can therefore have only finitely many older
 ranks ahead of it; an unresolved fence is moved behind every currently older
-independent product after each attempt. A held
-evaluation moves that episode to the sequence tail rather than retaining first
-position. New episodes receive their creation cursor at the same global tail,
-while their outer rank is their later creation time, so new products and new
-episodes cannot cut ahead of an older observed retry. Under a functioning
+independent product after each attempt. A held evaluation moves that episode to
+the sequence tail rather than retaining first position. New episodes receive
+their creation cursor at the same global tail, so within the durable
+product-local cursor ordering new arrivals cannot cut ahead of an older retry
+cursor. Their outer rank is their later creation time, so new products and new
+episodes also cannot cut ahead of an older observed retry. Under a functioning
 cadence, a coherent monotonic tick clock, coherent sequence allocation, a
 finite eligible snapshot, finite arrivals between ticks and no global
 prerequisite failure, every older rank has only finitely many ranks ahead of it

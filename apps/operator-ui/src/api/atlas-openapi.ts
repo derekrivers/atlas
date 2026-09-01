@@ -878,7 +878,7 @@ export interface components {
          * @description Safe reason codes; none contains an external response or issue body.
          * @enum {string}
          */
-        AdmissionSyncReason: "lease_unavailable" | "product_ambiguous" | "policy_unavailable" | "snapshot_incomplete" | "no_candidate" | "policy_or_capacity_hold" | "over_capacity" | "revalidation_failed" | "revalidation_mismatch" | "policy_changed" | "protected_lane_registry_unavailable" | "protected_lane_registry_changed" | "protected_lane_state_changed" | "candidate_moved" | "lease_lost" | "write_confirmed" | "write_indeterminate" | "indeterminate_still_unresolved" | "indeterminate_reconciled_admitted" | "indeterminate_reconciled_no_write" | "indeterminate_reconciled_moved";
+        AdmissionSyncReason: "lease_unavailable" | "ci_handoff_fence_present" | "product_ambiguous" | "policy_unavailable" | "snapshot_incomplete" | "no_candidate" | "policy_or_capacity_hold" | "over_capacity" | "revalidation_failed" | "revalidation_mismatch" | "policy_changed" | "protected_lane_registry_unavailable" | "protected_lane_registry_changed" | "protected_lane_state_changed" | "candidate_moved" | "lease_lost" | "write_confirmed" | "write_indeterminate" | "indeterminate_still_unresolved" | "indeterminate_reconciled_admitted" | "indeterminate_reconciled_no_write" | "indeterminate_reconciled_moved";
         /**
          * CIHandoffClassification
          * @description Closed evidence classes that can drive or hold the CI-pending edge.

@@ -35,6 +35,7 @@ from atlas.core.models import (
     AdmissionRun,
     AnomalyType,
     CIHandoffClassification,
+    CIHandoffReason,
     PmSyncReceipt,
     PmSyncReceiptResult,
     Product,
@@ -61,8 +62,10 @@ from atlas.pm import (
 )
 from atlas.pm.sync import CI_PENDING_POLL_COMPRESSION_SOURCES
 from atlas.storage import (
+    AdmissionCoordinationRepo,
     AdmissionRunRepo,
     AgentRunRepo,
+    CIHandoffCoordinationRepo,
     Database,
     DebtItemRepo,
     DeliveryAdmissionPolicyRepo,
@@ -79,7 +82,6 @@ from atlas.storage.planned_ci_pending_recovery import (
 from atlas.storage.tables import (
     AdmissionWriteFenceRow,
     CIHandoffReconciliationRow,
-    CIHandoffWriteFenceRow,
     PlannedCIPendingRecoveryRow,
 )
 
@@ -281,6 +283,14 @@ def _current_board(client: RecordingClient) -> LinearBoardPull:
     )
 
 
+def _rebuilt_client(source: RecordingClient) -> RecordingClient:
+    rebuilt = RecordingClient()
+    rebuilt._issues = {
+        issue.id: replace(issue) for issue in source.fetch_project_issues(PROJECT_ID)
+    }
+    return rebuilt
+
+
 def test_atlas_280_shaped_recovery_reconsiders_deduped_anomaly_and_is_idempotent(
     db: Database,
 ) -> None:
@@ -440,7 +450,6 @@ def test_multiple_or_conflicting_selecting_admission_runs_fail_closed(
         "missing_history",
         "conflicting_history",
         "admission_fence",
-        "ci_handoff_fence",
     ],
 )
 def test_missing_duplicate_contradictory_or_mismatched_proof_fails_closed(
@@ -599,50 +608,6 @@ def test_missing_duplicate_contradictory_or_mismatched_proof_fails_closed(
                     updated_at=RECOVERED_AT,
                 )
             )
-    if mutation == "ci_handoff_fence":
-        reconciliation_id = uuid4()
-        with db.session() as session, session.begin():
-            session.add(
-                CIHandoffReconciliationRow(
-                    id=reconciliation_id,
-                    schema_version="ci-handoff-reconciliation-v1",
-                    product_id=ticket.product_id,
-                    ticket_id=ticket.id,
-                    ticket_key=ticket.key,
-                    linear_issue_id=ticket.external_linear_id,
-                    repository_owner="derekrivers",
-                    repository_name="atlas",
-                    pr_number=PR_NUMBER,
-                    head_commit=HEAD,
-                    policy_id=None,
-                    policy_revision=None,
-                    policy_fingerprint=None,
-                    snapshot_fingerprint=None,
-                    classification="pending",
-                    reason="required_checks_pending",
-                    decision="hold",
-                    check_results=[],
-                    observed_at=RECOVERED_AT,
-                    created_by_type="system",
-                    created_by_id="ci-handoff-reconciler",
-                )
-            )
-            session.add(
-                CIHandoffWriteFenceRow(
-                    product_id=ticket.product_id,
-                    reconciliation_id=reconciliation_id,
-                    ticket_id=ticket.id,
-                    ticket_key=ticket.key,
-                    issue_id=ticket.external_linear_id,
-                    source_state_id=CI_PENDING_STATE.id,
-                    target_state_id="state-review-required",
-                    target_status=TicketStatus.REVIEW_REQUIRED.value,
-                    state="pending",
-                    created_at=RECOVERED_AT,
-                    updated_at=RECOVERED_AT,
-                )
-            )
-
     result = _sync(db, client)
 
     stored = TicketRepo(db).get_by_key(ticket.key)
@@ -654,6 +619,122 @@ def test_missing_duplicate_contradictory_or_mismatched_proof_fails_closed(
     assert (
         len(debt_rows(db, AnomalyType.OUT_OF_OWNERSHIP_TRANSITION, ticket.id)) == 1
     ), mutation
+
+
+def test_ci_fence_precedes_planned_ci_recovery_then_fresh_tick_recovers(
+    db: Database,
+) -> None:
+    seed_client = RecordingClient()
+    ticket = _seed_ticket(db, seed_client)
+    run, receipt = _seed_proof(db, seed_client, ticket)
+    assert ticket.external_linear_id is not None
+    reconciliation_id = uuid4()
+    with db.session() as session, session.begin():
+        session.add(
+            CIHandoffReconciliationRow(
+                id=reconciliation_id,
+                schema_version="ci-handoff-reconciliation-v1",
+                product_id=ticket.product_id,
+                ticket_id=ticket.id,
+                ticket_key=ticket.key,
+                linear_issue_id=ticket.external_linear_id,
+                repository_owner="derekrivers",
+                repository_name="atlas",
+                pr_number=PR_NUMBER,
+                head_commit=HEAD,
+                policy_id=None,
+                policy_revision=None,
+                policy_fingerprint=None,
+                snapshot_fingerprint=None,
+                classification="pending",
+                reason="required_checks_pending",
+                decision="hold",
+                check_results=[],
+                observed_at=RECOVERED_AT,
+                created_by_type="system",
+                created_by_id="ci-handoff-reconciler",
+            )
+        )
+    owner_id = uuid4()
+    lease = AdmissionCoordinationRepo(db)
+    assert lease.try_acquire(
+        product_id=ticket.product_id,
+        owner_id=owner_id,
+        acquired_at=RECOVERED_AT,
+        ttl=timedelta(minutes=1),
+    )
+    fence = CIHandoffCoordinationRepo(db).begin_write(
+        product_id=ticket.product_id,
+        owner_id=owner_id,
+        reconciliation_id=reconciliation_id,
+        ticket_id=ticket.id,
+        ticket_key=ticket.key,
+        issue_id=ticket.external_linear_id,
+        source_state_id=CI_PENDING_STATE.id,
+        target_state_id="state-review-required",
+        target_status=TicketStatus.REVIEW_REQUIRED,
+        created_at=RECOVERED_AT,
+    )
+    lease.release(product_id=ticket.product_id, owner_id=owner_id)
+
+    database_url = str(db.engine.url)
+    first_client = _rebuilt_client(seed_client)
+    db.engine.dispose()
+    first_db = Database(database_url)
+    first = _sync(
+        first_db,
+        first_client,
+        now=RECOVERED_AT + timedelta(seconds=1),
+    )
+
+    [first_decision] = first.ci_handoff_decisions
+    handoff = first_decision.reconciliation
+    assert handoff is not None
+    assert handoff.reason is CIHandoffReason.FENCE_RECONCILED_SOURCE
+    assert handoff.reconciliation_id == fence.reconciliation_id
+    assert handoff.linear_mutations == 0
+    assert first_decision.fence_precedence
+    assert first_decision.ends_workflow_write_window
+    assert first.ci_handoff_mutations == 0
+    assert first.status_pulled == 0
+    assert first.anomalies_logged == 0
+    assert first_client.state_writes == []
+    first_stored = TicketRepo(first_db).get_by_key(ticket.key)
+    assert first_stored is not None
+    assert first_stored.status is TicketStatus.PLANNED
+    assert PlannedCIPendingRecoveryRepo(first_db).list() == []
+    assert debt_rows(first_db, AnomalyType.OUT_OF_OWNERSHIP_TRANSITION, ticket.id) == []
+    assert CIHandoffCoordinationRepo(first_db).get_fence(PRODUCT_ID) is None
+
+    second_client = _rebuilt_client(first_client)
+    first_db.engine.dispose()
+    second_db = Database(database_url)
+    second = _sync(
+        second_db,
+        second_client,
+        now=RECOVERED_AT + timedelta(seconds=2),
+    )
+
+    assert second.status_pulled == 1
+    assert second.anomalies_logged == 0
+    assert second.ci_handoff_mutations == 0
+    assert second.ci_handoff_decisions == []
+    assert second_client.state_writes == []
+    second_stored = TicketRepo(second_db).get_by_key(ticket.key)
+    assert second_stored is not None
+    assert second_stored.status is TicketStatus.CI_PENDING
+    [recovery] = PlannedCIPendingRecoveryRepo(second_db).list()
+    assert recovery.ticket_id == ticket.id
+    assert recovery.admission_run_id == run.id
+    assert recovery.pm_sync_receipt_id == receipt.id
+    assert recovery.linear_issue_id == ticket.external_linear_id
+    assert recovery.observed_linear_state_id == CI_PENDING_STATE.id
+    assert recovery.publication_pr_number == PR_NUMBER
+    assert CIHandoffCoordinationRepo(second_db).get_fence(PRODUCT_ID) is None
+    assert (
+        debt_rows(second_db, AnomalyType.OUT_OF_OWNERSHIP_TRANSITION, ticket.id) == []
+    )
+    assert first_client.state_writes + second_client.state_writes == []
 
 
 @pytest.mark.parametrize("case", ["incomplete", "gap", "duplicate_id"])
