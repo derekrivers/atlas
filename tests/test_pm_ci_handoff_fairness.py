@@ -6,7 +6,7 @@ from dataclasses import dataclass, replace
 from datetime import timedelta
 from pathlib import Path
 from typing import cast
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 from pm_temporal_harness import ProcessGeneration, TemporalHarness
@@ -18,11 +18,13 @@ from test_pm_sync import (
     seed_ticket,
 )
 
+from atlas.core.enums import ActorType
 from atlas.core.models import (
     CIHandoffClassification,
     CIHandoffDecision,
     CIHandoffReason,
     TicketStatus,
+    TicketStatusTransition,
 )
 from atlas.core.models.pm_recovery import MAX_PM_STARVED_CANDIDATES, PmBlockerCode
 from atlas.linear.client import LinearIssue
@@ -36,7 +38,12 @@ from atlas.pm.ci_handoff_fairness import (
     record_fair_ci_handoff_evaluation,
     select_fair_ci_handoff_candidate,
 )
-from atlas.storage import Database, PmRecoveryRepo, TicketRepo
+from atlas.storage import (
+    Database,
+    PmRecoveryRepo,
+    TicketRepo,
+    TicketStatusTransitionRepo,
+)
 
 PRODUCT_ID = UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
 
@@ -159,7 +166,9 @@ def test_crash_before_fairness_persistence_reselects_then_eventually_advances(
             assert later.candidate is not None and later.candidate.key == "ATLAS-291"
 
 
-def test_new_arrival_joins_product_sequence_tail(tmp_path: Path) -> None:
+def test_new_arrival_joins_product_sequence_tail_across_reconstruction(
+    tmp_path: Path,
+) -> None:
     path = tmp_path / "new-arrival.db"
     issues = list(_seed(path, ("ATLAS-290", "ATLAS-291")))
     database = Database(f"sqlite:///{path}")
@@ -187,6 +196,8 @@ def test_new_arrival_joins_product_sequence_tail(tmp_path: Path) -> None:
     issue = client.fetch_issue(newcomer.external_linear_id or "")
     assert issue is not None
     issues.append(issue)
+    database.engine.dispose()
+    database = Database(f"sqlite:///{path}")
 
     next_selection = select_fair_ci_handoff_candidate(
         db=database,
@@ -201,6 +212,70 @@ def test_new_arrival_joins_product_sequence_tail(tmp_path: Path) -> None:
         episode.candidate_ticket_key: episode.fairness_cursor for episode in episodes
     }
     assert cursors["ATLAS-291"] < cursors["ATLAS-290"] < cursors["ATLAS-292"]
+
+
+def test_stale_ci_pending_transition_does_not_replace_current_episode(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "stale-transition.db"
+    database = Database(f"sqlite:///{path}")
+    database.create_all()
+    client = RecordingClient()
+    ticket = seed_ticket(
+        database,
+        client,
+        key="ATLAS-290",
+        product_id=PRODUCT_ID,
+        status=TicketStatus.PR_OPEN,
+        issue_state=CI_PENDING_STATE,
+        linear_synced_at=NOW,
+        status_entered_at=NOW - timedelta(seconds=1),
+    )
+    TicketRepo(database).apply_linear_status(
+        ticket.key,
+        TicketStatus.CI_PENDING,
+        now=NOW,
+        created_by_id="test:current-ci-entry",
+    )
+    issues = client.fetch_project_issues(PROJECT_ID)
+    selected = select_fair_ci_handoff_candidate(
+        db=database,
+        tickets=TicketRepo(database),
+        initial_issues=issues,
+        now=NOW,
+    )
+    assert selected.episode is not None
+    recorded = record_fair_ci_handoff_evaluation(
+        db=database,
+        selection=selected,
+        result=_held(),
+        now=NOW + timedelta(seconds=1),
+    )
+    high_water = PmRecoveryRepo(database).sequence_high_water(PRODUCT_ID)
+    TicketStatusTransitionRepo(database).record(
+        TicketStatusTransition(
+            id=uuid4(),
+            ticket_id=ticket.id,
+            from_status=TicketStatus.PR_OPEN.value,
+            to_status=TicketStatus.CI_PENDING.value,
+            occurred_at=NOW - timedelta(minutes=1),
+            created_by_type=ActorType.SYSTEM,
+            created_by_id="test:stale-ci-entry",
+        )
+    )
+    database.engine.dispose()
+
+    rebuilt = Database(f"sqlite:///{path}")
+    replay = select_fair_ci_handoff_candidate(
+        db=rebuilt,
+        tickets=TicketRepo(rebuilt),
+        initial_issues=issues,
+        now=NOW + timedelta(seconds=2),
+    )
+    assert replay.episode is not None
+    assert replay.episode.id == recorded.id
+    assert replay.episode.fairness_cursor == recorded.fairness_cursor
+    assert PmRecoveryRepo(rebuilt).sequence_high_water(PRODUCT_ID) == high_water
 
 
 def test_selected_candidate_evaluation_clears_only_its_stale_starvation_membership(

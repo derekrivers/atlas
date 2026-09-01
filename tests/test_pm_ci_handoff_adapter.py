@@ -821,6 +821,126 @@ def test_post_commit_crash_fence_recovers_without_a_local_ci_candidate(
     assert client.state_writes == [(ticket.external_linear_id, "state-review-required")]
 
 
+@pytest.mark.parametrize(
+    ("provider_outcome", "expected_reason", "fence_remains", "target_applied"),
+    [
+        (
+            "target",
+            CIHandoffReason.FENCE_RECONCILED_TARGET,
+            False,
+            True,
+        ),
+        (
+            "source",
+            CIHandoffReason.FENCE_RECONCILED_SOURCE,
+            False,
+            False,
+        ),
+        (
+            "moved",
+            CIHandoffReason.FENCE_RECONCILED_MOVED,
+            False,
+            False,
+        ),
+        (
+            "unresolved",
+            CIHandoffReason.FENCE_STILL_UNRESOLVED,
+            True,
+            False,
+        ),
+    ],
+)
+def test_fence_outcomes_survive_complete_database_and_client_reconstruction(
+    db: Database,
+    provider_outcome: str,
+    expected_reason: CIHandoffReason,
+    fence_remains: bool,
+    target_applied: bool,
+) -> None:
+    client = RecordingClient()
+    ticket = _seed_ci_pending(db, client)
+    selected = select_fair_ci_handoff_candidate(
+        db=db,
+        tickets=TicketRepo(db),
+        initial_issues=client.fetch_project_issues(PROJECT_ID),
+        now=NOW,
+    )
+    assert selected.episode is not None
+    owner_id = uuid4()
+    lease = AdmissionCoordinationRepo(db)
+    assert lease.try_acquire(
+        product_id=PRODUCT_ID,
+        owner_id=owner_id,
+        acquired_at=NOW,
+        ttl=timedelta(minutes=1),
+    )
+    assert ticket.external_linear_id is not None
+    fence = CIHandoffCoordinationRepo(db).begin_write(
+        product_id=PRODUCT_ID,
+        owner_id=owner_id,
+        reconciliation_id=uuid4(),
+        ticket_id=ticket.id,
+        ticket_key=ticket.key,
+        issue_id=ticket.external_linear_id,
+        source_state_id=CI_PENDING_STATE.id,
+        target_state_id="state-review-required",
+        target_status=TicketStatus.REVIEW_REQUIRED,
+        created_at=NOW,
+    )
+    lease.release(product_id=PRODUCT_ID, owner_id=owner_id)
+    if provider_outcome == "target":
+        client.simulate_linear_state(ticket.external_linear_id, REVIEW_REQUIRED_STATE)
+    elif provider_outcome == "moved":
+        client.simulate_linear_state(ticket.external_linear_id, STARTED)
+    elif provider_outcome == "unresolved":
+        client._issues.pop(ticket.external_linear_id)
+
+    rebuilt_client = _rebuilt_client(client)
+    database_url = str(db.engine.url)
+    db.engine.dispose()
+    rebuilt_db = Database(database_url)
+    result = _run(
+        rebuilt_db,
+        rebuilt_client,
+        _github(),
+        now=NOW + timedelta(seconds=1),
+    )
+
+    decision = result.ci_handoff_decisions[0]
+    assert decision.ticket_key == ticket.key
+    assert decision.reconciliation is not None
+    assert decision.reconciliation.reason is expected_reason
+    assert decision.ends_workflow_write_window
+    assert rebuilt_client.state_writes == []
+    assert (
+        CIHandoffCoordinationRepo(rebuilt_db).get_fence(PRODUCT_ID) is not None
+    ) is fence_remains
+    stored = TicketRepo(rebuilt_db).get_by_key(ticket.key)
+    assert stored is not None
+    assert (stored.status is TicketStatus.REVIEW_REQUIRED) is target_applied
+    episode = PmRecoveryRepo(rebuilt_db).get_episode(selected.episode.id)
+    assert episode is not None
+    assert (episode.closed_at is not None) is target_applied
+    active_blockers = PmRecoveryRepo(rebuilt_db).list_blockers(
+        product_id=PRODUCT_ID,
+        active_only=True,
+    )
+    if provider_outcome == "unresolved":
+        assert [blocker.code for blocker in active_blockers] == [
+            PmBlockerCode.WRITE_FENCE_UNRESOLVED
+        ]
+    elif provider_outcome == "moved":
+        assert [blocker.code for blocker in active_blockers] == [
+            PmBlockerCode.AUTHORITY_CHANGED
+        ]
+    else:
+        assert active_blockers == []
+    assert CIHandoffCoordinationRepo(rebuilt_db).get_fence(PRODUCT_ID) == (
+        fence if fence_remains else None
+    )
+    rebuilt_db.engine.dispose()
+
+
 def test_unresolved_fence_rotates_to_independent_product_fence(db: Database) -> None:
     client = RecordingClient()
     first = _seed_ci_pending(db, client, key="ATLAS-263")
@@ -958,6 +1078,25 @@ def test_contended_fence_defers_to_next_fenced_product(db: Database) -> None:
     assert CIHandoffCoordinationRepo(db).get_fence(second_product_id) is None
     assert client.state_writes == []
     lease.release(product_id=PRODUCT_ID, owner_id=live_owner)
+
+    retry_client = _rebuilt_client(client)
+    rebuilt = Database(str(db.engine.url))
+    converged = _run(
+        rebuilt,
+        retry_client,
+        _github(),
+        now=NOW + timedelta(minutes=1, seconds=1),
+    )
+    rebuilt.engine.dispose()
+    converged_reconciliation = converged.ci_handoff_decisions[0].reconciliation
+    assert converged_reconciliation is not None
+    assert converged_reconciliation.ticket_key == first.key
+    assert converged_reconciliation.reason is CIHandoffReason.FENCE_RECONCILED_SOURCE
+    assert CIHandoffCoordinationRepo(db).get_fence(PRODUCT_ID) is None
+    recovered_blocker = PmRecoveryRepo(db).get_blocker(blocker.id)
+    assert recovered_blocker is not None
+    assert recovered_blocker.superseded_at is not None
+    assert retry_client.state_writes == []
 
 
 def test_unresolved_fence_retains_precedence_over_independent_ordinary_candidate(
@@ -1391,6 +1530,32 @@ def test_lease_contention_defers_product_without_stealing_cursor(db: Database) -
     assert client.state_writes == []
     lease.release(product_id=PRODUCT_ID, owner_id=live_owner)
 
+    retry_client = _rebuilt_client(client)
+    rebuilt = Database(str(db.engine.url))
+    converged = _run(
+        rebuilt,
+        retry_client,
+        _github(),
+        now=NOW + timedelta(minutes=1, seconds=1),
+    )
+    rebuilt.engine.dispose()
+
+    assert converged.ci_handoff_decisions[0].ticket_key == contended.key
+    assert converged.ci_handoff_decisions[0].reconciliation is not None
+    assert (
+        converged.ci_handoff_decisions[0].reconciliation.reason
+        is CIHandoffReason.SNAPSHOT_INCOMPLETE
+    )
+    assert converged.ci_handoff_mutations == 0
+    stored = TicketRepo(db).get_by_key(contended.key)
+    assert stored is not None and stored.status is TicketStatus.CI_PENDING
+    reevaluated = PmRecoveryRepo(db).get_episode(initial.episode.id)
+    assert reevaluated is not None and reevaluated.fairness_cursor > initial_cursor
+    recovered_blocker = PmRecoveryRepo(db).get_blocker(blocker.id)
+    assert recovered_blocker is not None
+    assert recovered_blocker.superseded_at is not None
+    assert retry_client.state_writes == []
+
 
 def test_read_only_result_lost_before_fairness_commit_retries_then_rotates(
     db: Database,
@@ -1744,6 +1909,89 @@ def test_fence_appearing_after_initial_scan_uses_fresh_owned_recovery(
     assert recovered_fence is not None and recovered_fence.closed_at == NOW
     stored = TicketRepo(db).get_by_key(fenced_ticket.key)
     assert stored is not None and stored.status is TicketStatus.REVIEW_REQUIRED
+
+
+def test_late_different_ticket_fence_preempts_publication_early_return(
+    db: Database,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = RecordingClient()
+    selected_ticket = _seed_ci_pending(db, client, key="ATLAS-263")
+    fenced_ticket = _seed_ci_pending(db, client, key="ATLAS-264")
+    initial = select_fair_ci_handoff_candidate(
+        db=db,
+        tickets=TicketRepo(db),
+        initial_issues=client.fetch_project_issues(PROJECT_ID),
+        now=NOW,
+    )
+    assert initial.candidate == selected_ticket and initial.episode is not None
+    selected_cursor = initial.episode.fairness_cursor
+    fenced_episode = next(
+        episode
+        for episode in PmRecoveryRepo(db).list_active_episodes_ordered(PRODUCT_ID)
+        if episode.candidate_ticket_id == fenced_ticket.id
+    )
+    assert selected_ticket.external_linear_id is not None
+    selected_issue = client.fetch_issue(selected_ticket.external_linear_id)
+    assert selected_issue is not None
+    client._issues[selected_ticket.external_linear_id] = replace(
+        selected_issue,
+        github_publications=(),
+    )
+
+    def install_target_fence() -> None:
+        owner_id = uuid4()
+        lease = AdmissionCoordinationRepo(db)
+        assert lease.try_acquire(
+            product_id=PRODUCT_ID,
+            owner_id=owner_id,
+            acquired_at=NOW,
+            ttl=timedelta(minutes=1),
+        )
+        assert fenced_ticket.external_linear_id is not None
+        CIHandoffCoordinationRepo(db).begin_write(
+            product_id=PRODUCT_ID,
+            owner_id=owner_id,
+            reconciliation_id=uuid4(),
+            ticket_id=fenced_ticket.id,
+            ticket_key=fenced_ticket.key,
+            issue_id=fenced_ticket.external_linear_id,
+            source_state_id=CI_PENDING_STATE.id,
+            target_state_id="state-review-required",
+            target_status=TicketStatus.REVIEW_REQUIRED,
+            created_at=NOW,
+        )
+        lease.release(product_id=PRODUCT_ID, owner_id=owner_id)
+        client.simulate_linear_state(
+            fenced_ticket.external_linear_id,
+            REVIEW_REQUIRED_STATE,
+        )
+
+    def forbidden(*args: Any, **kwargs: Any) -> Any:
+        raise AssertionError("a later workflow writer ran after late-fence recovery")
+
+    monkeypatch.setattr("atlas.pm.sync.admit_one_ready", forbidden)
+    monkeypatch.setattr("atlas.pm.sync.complete_verified", forbidden)
+    result = _run(
+        db,
+        client,
+        _github(),
+        hooks=CIHandoffHooks(after_candidate_selected=install_target_fence),
+    )
+
+    decision = result.ci_handoff_decisions[0]
+    assert decision.ticket_key == fenced_ticket.key
+    assert decision.reconciliation is not None
+    assert decision.reconciliation.ticket_key == fenced_ticket.key
+    assert decision.reconciliation.reason is CIHandoffReason.FENCE_RECONCILED_TARGET
+    assert decision.ends_workflow_write_window
+    assert client.state_writes == []
+    selected_episode = PmRecoveryRepo(db).get_episode(initial.episode.id)
+    assert selected_episode is not None
+    assert selected_episode.fairness_cursor == selected_cursor
+    recovered_episode = PmRecoveryRepo(db).get_episode(fenced_episode.id)
+    assert recovered_episode is not None and recovered_episode.closed_at == NOW
+    assert CIHandoffCoordinationRepo(db).get_fence(PRODUCT_ID) is None
 
 
 def test_fence_recovery_cannot_clear_after_lease_expires_during_refresh(

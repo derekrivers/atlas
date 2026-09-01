@@ -2225,6 +2225,33 @@ def _sync_tick_impl(
             )
             if ci_handoff_hooks is not None:
                 ci_handoff_hooks.after_candidate_evaluated()
+            late_fence = CIHandoffCoordinationRepo(db).get_fence(
+                selection.candidate.product_id
+            )
+            if late_fence is not None and not handoff.fence_precedence:
+                late_ticket = tickets.get_by_key(late_fence.ticket_key)
+                if late_ticket is None or late_ticket.id != late_fence.ticket_id:
+                    raise CIHandoffWriteFenceError(
+                        "late CI handoff fence no longer resolves to its exact ticket"
+                    )
+                recovered_late_fence = reconcile_existing_ci_handoff_fence(
+                    db=db,
+                    tickets=tickets,
+                    status_map=status_map,
+                    linear=client,
+                    project_id=project_id,
+                    initial_issues=fetched_issues,
+                    product_id=late_fence.product_id,
+                    candidate_count=selection.candidate_count,
+                    now=now,
+                    expected_reconciliation_id=late_fence.reconciliation_id,
+                    expected_ticket_id=late_fence.ticket_id,
+                )
+                if recovered_late_fence is None:  # pragma: no cover - exact CAS
+                    raise CIHandoffWriteFenceError(
+                        "late CI handoff fence disappeared during recovery"
+                    )
+                handoff = recovered_late_fence
             recording_selection = selection
             if handoff.ticket_key != selection.candidate.key:
                 late_fence_ticket = tickets.get_by_key(handoff.ticket_key or "")

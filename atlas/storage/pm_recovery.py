@@ -1,4 +1,4 @@
-"""Transactional persistence for dormant PM recovery and blocker state."""
+"""Transactional persistence for active PM recovery and blocker state."""
 
 from __future__ import annotations
 
@@ -203,7 +203,7 @@ def _episode_scope_fingerprint(identity: PmRecoveryEpisodeIdentity) -> str:
 class PmRecoveryRepo:
     """Own recurrence, replay, supersession, and product-global fairness state.
 
-    This repository exposes dormant storage capabilities only.  It performs no
+    This repository exposes storage capabilities only.  It performs no
     candidate selection, provider request, workflow mutation, or scheduler work.
     """
 
@@ -1025,7 +1025,7 @@ class PmRecoveryRepo:
             return [_blocker_model(session, row) for row in rows]
 
     def list_active_episodes_ordered(self, product_id: UUID) -> list[PmRecoveryEpisode]:
-        """Expose the dormant fairness projection without selecting runtime work."""
+        """Expose the fairness projection without selecting runtime work."""
 
         with self._db.session() as session:
             rows = session.scalars(

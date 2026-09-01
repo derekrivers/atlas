@@ -457,7 +457,10 @@ def _supersede_fence_blockers(
         operation=CI_HANDOFF_RECOVERY_OPERATION,
         candidate_ticket_id=candidate.id,
     ):
-        if blocker.authority_kind is PmBlockerAuthorityKind.FENCE:
+        if (
+            blocker.authority_kind is PmBlockerAuthorityKind.FENCE
+            or blocker.code is PmBlockerCode.LEASE_UNAVAILABLE
+        ):
             repo.supersede_blocker(
                 blocker_id=blocker.id,
                 superseded_by_event_id=event_id,

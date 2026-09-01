@@ -489,7 +489,7 @@ DOCUMENTED_COLUMNS: dict[str, dict[str, tuple[bool, str | None]]] = {
         "created_by_type": (NN, None),
         "created_by_id": (NN, None),
     },
-    # §5.20 dormant PM recovery/fairness and bounded blocker state.
+    # §5.20 PM recovery/fairness and bounded blocker state.
     "pm_recovery_sequence_counters": {
         "product_id": (NN, None),
         "high_water": (NN, "0"),

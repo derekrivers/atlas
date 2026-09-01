@@ -21,6 +21,7 @@ from pm_temporal_harness import (
 from atlas.core.enums import ActorType, EntityStatus, RiskLevel
 from atlas.core.models import Product, Ticket, TicketStatus, TicketType
 from atlas.core.models.pm_recovery import (
+    MAX_PM_RECURRENCE_COUNT,
     PmBlockerAuthorityKind,
     PmBlockerCode,
     PmBlockerKind,
@@ -473,6 +474,60 @@ def test_blocker_recurrence_and_post_commit_replay_survive_reconstruction(
     assert changed.blocker is not None
     assert changed.blocker.blocker_fingerprint != first.blocker.blocker_fingerprint
     assert len(active) == 2
+
+
+def test_blocker_recurrence_saturates_while_latest_projection_keeps_advancing(
+    tmp_path: Path,
+) -> None:
+    seeded = _seed_store(tmp_path / "recurrence-saturation.db")
+    repo = PmRecoveryRepo(seeded.database)
+    episode = repo.establish_episode(_identity(seeded.candidate), created_at=NOW)
+    first = repo.record_evaluation(
+        episode_id=episode.id,
+        expected_cursor_sequence=episode.fairness_cursor,
+        evaluation_id="evaluation-1",
+        evaluated_at=NOW + timedelta(seconds=1),
+        blocker=_blocker(),
+    )
+    assert first.blocker is not None
+    with seeded.database.session() as session, session.begin():
+        session.execute(
+            sa.update(PmBlockerOccurrenceRow)
+            .where(PmBlockerOccurrenceRow.id == first.blocker.id)
+            .values(consecutive_observations=MAX_PM_RECURRENCE_COUNT - 1)
+        )
+
+    second_intent = _blocker(seeded.starved[:1]).model_copy(
+        update={"next_safe_retry_at": NOW + timedelta(minutes=2)}
+    )
+    second = repo.record_evaluation(
+        episode_id=episode.id,
+        expected_cursor_sequence=first.episode.fairness_cursor,
+        evaluation_id="evaluation-2",
+        evaluated_at=NOW + timedelta(seconds=2),
+        blocker=second_intent,
+    )
+    assert second.blocker is not None
+    third_intent = _blocker(seeded.starved).model_copy(
+        update={"next_safe_retry_at": NOW + timedelta(minutes=3)}
+    )
+    third = repo.record_evaluation(
+        episode_id=episode.id,
+        expected_cursor_sequence=second.episode.fairness_cursor,
+        evaluation_id="evaluation-3",
+        evaluated_at=NOW + timedelta(seconds=3),
+        blocker=third_intent,
+    )
+
+    assert third.blocker is not None
+    assert third.blocker.consecutive_observations == MAX_PM_RECURRENCE_COUNT
+    assert third.blocker.latest_observed_at == NOW + timedelta(seconds=3)
+    assert third.blocker.next_safe_retry_at == NOW + timedelta(minutes=3)
+    assert [item.ticket_key for item in third.blocker.starved_candidates] == [
+        "ATLAS-291",
+        "ATLAS-292",
+    ]
+    assert third.episode.fairness_cursor > second.episode.fairness_cursor
 
 
 def test_stale_evaluation_identity_cannot_reenter_after_a_later_evaluation(
