@@ -48,6 +48,7 @@ from atlas.pm.ci_handoff_fairness import (
     select_fair_ci_handoff_candidate,
 )
 from atlas.pm.sync import CI_PENDING_POLL_COMPRESSION_CREATED_BY
+from atlas.pm.workflow_write import PMWorkflowWriteGuard, WorkflowWriteWindowClosed
 from atlas.storage import (
     AdmissionCoordinationRepo,
     AgentRunRepo,
@@ -1434,6 +1435,105 @@ def test_fenced_call_lock_blocks_replacement_until_provider_call_finishes(
     )
 
 
+def test_guarded_ordinary_call_blocks_ci_fence_creation_until_call_finishes(
+    db: Database,
+) -> None:
+    client = RecordingClient()
+    ticket = _seed_ci_pending(db, client)
+    assert ticket.external_linear_id is not None
+    entered_call = Event()
+    release_call = Event()
+    replacement_started = Event()
+
+    def ordinary_provider_call() -> None:
+        entered_call.set()
+        assert release_call.wait(timeout=5)
+
+    guard = PMWorkflowWriteGuard(db=db, observed_at=NOW)
+
+    def install_ci_fence() -> Any:
+        replacement_started.set()
+        owner_id = uuid4()
+        lease = AdmissionCoordinationRepo(db)
+        assert lease.try_acquire(
+            product_id=PRODUCT_ID,
+            owner_id=owner_id,
+            acquired_at=NOW + timedelta(minutes=6),
+            ttl=timedelta(minutes=5),
+        )
+        fence = CIHandoffCoordinationRepo(db).begin_write(
+            product_id=PRODUCT_ID,
+            owner_id=owner_id,
+            reconciliation_id=uuid4(),
+            ticket_id=ticket.id,
+            ticket_key=ticket.key,
+            issue_id=ticket.external_linear_id or "",
+            source_state_id=CI_PENDING_STATE.id,
+            target_state_id="state-review-required",
+            target_status=TicketStatus.REVIEW_REQUIRED,
+            created_at=NOW + timedelta(minutes=6),
+        )
+        lease.release(product_id=PRODUCT_ID, owner_id=owner_id)
+        return fence
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        guarded_future = pool.submit(
+            guard.execute,
+            product_id=PRODUCT_ID,
+            call=ordinary_provider_call,
+        )
+        assert entered_call.wait(timeout=5)
+        fence_future = pool.submit(install_ci_fence)
+        assert replacement_started.wait(timeout=5)
+        with pytest.raises(FutureTimeoutError):
+            fence_future.result(timeout=0.1)
+        release_call.set()
+        assert guarded_future.result(timeout=5) is None
+        installed_fence = fence_future.result(timeout=5)
+
+    assert CIHandoffCoordinationRepo(db).get_fence(PRODUCT_ID) == installed_fence
+
+
+def test_guarded_ordinary_call_refuses_preexisting_ci_fence(db: Database) -> None:
+    client = RecordingClient()
+    ticket = _seed_ci_pending(db, client)
+    assert ticket.external_linear_id is not None
+    owner_id = uuid4()
+    lease = AdmissionCoordinationRepo(db)
+    assert lease.try_acquire(
+        product_id=PRODUCT_ID,
+        owner_id=owner_id,
+        acquired_at=NOW,
+        ttl=timedelta(minutes=1),
+    )
+    fence = CIHandoffCoordinationRepo(db).begin_write(
+        product_id=PRODUCT_ID,
+        owner_id=owner_id,
+        reconciliation_id=uuid4(),
+        ticket_id=ticket.id,
+        ticket_key=ticket.key,
+        issue_id=ticket.external_linear_id,
+        source_state_id=CI_PENDING_STATE.id,
+        target_state_id="state-review-required",
+        target_status=TicketStatus.REVIEW_REQUIRED,
+        created_at=NOW,
+    )
+    lease.release(product_id=PRODUCT_ID, owner_id=owner_id)
+    called = False
+
+    def forbidden_call() -> None:
+        nonlocal called
+        called = True
+
+    with pytest.raises(WorkflowWriteWindowClosed):
+        PMWorkflowWriteGuard(db=db, observed_at=NOW + timedelta(seconds=1)).execute(
+            product_id=PRODUCT_ID, call=forbidden_call
+        )
+
+    assert called is False
+    assert CIHandoffCoordinationRepo(db).get_fence(PRODUCT_ID) == fence
+
+
 def test_sequence_exhaustion_fails_before_provider_or_workflow_effect(
     db: Database,
 ) -> None:
@@ -1664,6 +1764,75 @@ def test_held_fairness_commit_survives_death_before_outer_receipt(
     retained = PmRecoveryRepo(rebuilt).get_blocker(blocker.id)
     assert retained is not None and retained.consecutive_observations == 1
     rebuilt.engine.dispose()
+
+
+def test_fence_installed_after_fairness_commit_blocks_downstream_workflow_call(
+    db: Database,
+) -> None:
+    client = RecordingClient()
+    selected = _seed_ci_pending(db, client, key="ATLAS-263")
+    seed_ticket(
+        db,
+        client,
+        key="ATLAS-264",
+        product_id=PRODUCT_ID,
+        status=TicketStatus.PLANNED,
+        acceptance_criteria=["must not create while CI authority is ambiguous"],
+        with_issue=False,
+        linear_synced_at=None,
+    )
+    assert selected.external_linear_id is not None
+    selected_issue = client.fetch_issue(selected.external_linear_id)
+    assert selected_issue is not None
+    client._issues[selected.external_linear_id] = replace(
+        selected_issue, github_publications=()
+    )
+    installed_fence: Any = None
+
+    def install_fence_after_fairness_commit() -> None:
+        nonlocal installed_fence
+        owner_id = uuid4()
+        lease = AdmissionCoordinationRepo(db)
+        assert lease.try_acquire(
+            product_id=PRODUCT_ID,
+            owner_id=owner_id,
+            acquired_at=NOW,
+            ttl=timedelta(minutes=1),
+        )
+        installed_fence = CIHandoffCoordinationRepo(db).begin_write(
+            product_id=PRODUCT_ID,
+            owner_id=owner_id,
+            reconciliation_id=uuid4(),
+            ticket_id=selected.id,
+            ticket_key=selected.key,
+            issue_id=selected.external_linear_id or "",
+            source_state_id=CI_PENDING_STATE.id,
+            target_state_id="state-review-required",
+            target_status=TicketStatus.REVIEW_REQUIRED,
+            created_at=NOW,
+        )
+        lease.release(product_id=PRODUCT_ID, owner_id=owner_id)
+
+    result = _run(
+        db,
+        client,
+        _github(),
+        hooks=CIHandoffHooks(
+            after_fairness_persisted=install_fence_after_fairness_commit
+        ),
+    )
+
+    assert result.ci_handoff_evaluated == 1
+    assert result.ci_handoff_held == 1
+    assert result.ci_handoff_mutations == 0
+    assert client.creates == []
+    assert client.state_writes == []
+    assert CIHandoffCoordinationRepo(db).get_fence(PRODUCT_ID) == installed_fence
+    episodes = PmRecoveryRepo(db).list_active_episodes_ordered(PRODUCT_ID)
+    selected_episode = next(
+        episode for episode in episodes if episode.candidate_ticket_id == selected.id
+    )
+    assert selected_episode.last_evaluated_sequence is not None
 
 
 def test_competing_reconstructed_ticks_commit_one_stale_cursor_result(

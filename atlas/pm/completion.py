@@ -55,6 +55,7 @@ from atlas.core.enums import EvidenceStatus
 from atlas.core.models.ticket import TicketStatus
 from atlas.linear.client import LinearClient
 from atlas.linear.ownership import LinearStatusMap
+from atlas.pm.workflow_write import PMWorkflowWriteGuard
 from atlas.storage.db import Database
 from atlas.storage.repositories import EvidenceRepo, TicketRepo, VerificationCheckRepo
 from atlas.verification.completion import (
@@ -72,6 +73,7 @@ def complete_verified(
     db: Database,
     client: LinearClient,
     status_map: LinearStatusMap,
+    workflow_write_guard: PMWorkflowWriteGuard | None = None,
 ) -> int:
     """Move every PASSED-verdict ``review_required`` ticket to ``Done`` in Linear.
 
@@ -144,7 +146,18 @@ def complete_verified(
                 ticket.key,
             )
             continue
-        client.set_state(ticket.external_linear_id, done_state_id)
+        issue_id = ticket.external_linear_id
+        if workflow_write_guard is None:
+            client.set_state(issue_id, done_state_id)
+        else:
+
+            def set_done(issue_id: str = issue_id) -> None:
+                client.set_state(issue_id, done_state_id)
+
+            workflow_write_guard.execute(
+                product_id=ticket.product_id,
+                call=set_done,
+            )
         completed += 1
         logger.info(
             "linear-sync: completed %s -> Done (verdict PASSED; Linear state %s)",

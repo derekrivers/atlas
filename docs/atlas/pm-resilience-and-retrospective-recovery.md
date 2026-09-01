@@ -232,6 +232,15 @@ eligibility and the durable ambiguity fence intact. A fence discovered after
 ordinary candidate selection is accounted to its own ticket episode, never to
 the displaced candidate.
 
+Fence absence is also enforced at every later workflow-writer boundary, not
+only by a cadence-level snapshot. Definition creation with its create-time
+state assertion, admission, verified completion and review-cycle routing each
+hold the shared product lease and atomically verify that no CI-handoff fence
+exists across the bounded provider call. CI-handoff fence creation locks that
+same lease row. A lease conflict or late fence therefore makes zero downstream
+workflow calls and closes the rest of the tick's workflow-write window; a
+fresh tick reconciles the retained fence first.
+
 A lease-contention observation consumes its already reserved sequence only as
 the blocker occurrence identity; it does not advance the episode cursor that a
 live owner may still commit. The typed `lease_unavailable` blocker durably

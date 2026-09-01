@@ -32,6 +32,7 @@ from atlas.storage import (
     AdmissionCoordinationRepo,
     AdmissionLeaseLostError,
     AdmissionRunRepo,
+    CIHandoffFencePresentError,
     Database,
     DeliveryAdmissionPolicyRepo,
     ProductRepo,
@@ -56,6 +57,7 @@ class AdmissionSyncReason(StrEnum):
     """Safe reason codes; none contains an external response or issue body."""
 
     LEASE_UNAVAILABLE = "lease_unavailable"
+    CI_HANDOFF_FENCE_PRESENT = "ci_handoff_fence_present"
     PRODUCT_AMBIGUOUS = "product_ambiguous"
     POLICY_UNAVAILABLE = "policy_unavailable"
     SNAPSHOT_INCOMPLETE = "snapshot_incomplete"
@@ -629,6 +631,15 @@ def admit_one_ready(
             return AdmissionSyncResult(
                 outcome=AdmissionSyncOutcome.STALE,
                 reason=AdmissionSyncReason.LEASE_LOST,
+                policy_revision=final_policy.revision,
+                policy_fingerprint=delivery_policy_fingerprint(final_policy),
+                admission_run_id=run.id,
+                ticket_key=selected.ticket_key,
+            )
+        except CIHandoffFencePresentError:
+            return AdmissionSyncResult(
+                outcome=AdmissionSyncOutcome.HELD,
+                reason=AdmissionSyncReason.CI_HANDOFF_FENCE_PRESENT,
                 policy_revision=final_policy.revision,
                 policy_fingerprint=delivery_policy_fingerprint(final_policy),
                 admission_run_id=run.id,

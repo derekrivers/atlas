@@ -334,6 +334,15 @@ and episode identity. The selected publication
 attachment/repository/PR generation is likewise re-resolved from both final
 board revalidations before any new fence or workflow write.
 
+The same exclusion remains authoritative after fairness persistence. Every
+downstream workflow writer locks the shared product lease and proves CI-handoff
+fence absence in the transaction held across its provider call; CI fence
+creation takes the identical lease-row lock. A late ambiguous fence or lease
+contender therefore closes the ordinary workflow-write window without a
+provider call. A final scheduler read alone is not sufficient authority because
+it would leave a check/use race before definition creation, admission,
+completion or anomaly routing.
+
 Lease contention records `lease_unavailable` without advancing the selected
 episode cursor, then defers that product until the blocker's durable retry time.
 This prevents an observer from stealing an in-flight owner's cursor while still

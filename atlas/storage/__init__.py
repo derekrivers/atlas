@@ -9,6 +9,7 @@ from atlas.storage.admission_coordination import (
     AdmissionLeaseLostError,
     AdmissionWriteFence,
     AdmissionWriteFenceError,
+    CIHandoffFencePresentError,
 )
 from atlas.storage.apply import apply_backlog
 from atlas.storage.atlas_280_bootstrap_recovery import (
@@ -98,6 +99,7 @@ __all__ = [
     "Atlas280BootstrapStorageCode",
     "Atlas280BootstrapStorageError",
     "CIHandoffCoordinationRepo",
+    "CIHandoffFencePresentError",
     "CIHandoffReconciliationRepo",
     "CIHandoffWriteFence",
     "CIHandoffWriteFenceError",

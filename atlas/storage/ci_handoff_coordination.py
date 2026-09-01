@@ -102,12 +102,16 @@ class CIHandoffCoordinationRepo:
             raise CIHandoffWriteFenceError("CI handoff target is not permitted")
         created = _aware(created_at, name="CI handoff fence created_at")
         with self._db.session() as session, session.begin():
-            owner = session.scalar(
-                sa.select(AdmissionLeaseRow.owner_id).where(
-                    AdmissionLeaseRow.product_id == product_id
+            lease_lock = session.execute(
+                sa.update(AdmissionLeaseRow)
+                .where(
+                    AdmissionLeaseRow.product_id == product_id,
+                    AdmissionLeaseRow.owner_id == owner_id,
+                    AdmissionLeaseRow.expires_at > created,
                 )
+                .values(owner_id=AdmissionLeaseRow.owner_id)
             )
-            if owner != owner_id:
+            if getattr(lease_lock, "rowcount", 0) != 1:
                 raise AdmissionLeaseLostError("PM write lease was lost before CI write")
             if session.get(CIHandoffWriteFenceRow, product_id) is not None:
                 raise CIHandoffWriteFenceError(

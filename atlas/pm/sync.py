@@ -140,6 +140,7 @@ from atlas.linear.ownership import (
 from atlas.pm.admission_sync import (
     AdmissionSyncHooks,
     AdmissionSyncOutcome,
+    AdmissionSyncReason,
     AdmissionSyncResult,
     admit_one_ready,
 )
@@ -166,6 +167,10 @@ from atlas.pm.planned_ci_pending_recovery import recover_planned_ci_pending
 from atlas.pm.protected_lanes import (
     ProtectedLaneRegistryLoadResult,
     load_packaged_protected_lane_registry,
+)
+from atlas.pm.workflow_write import (
+    PMWorkflowWriteGuard,
+    WorkflowWriteWindowClosed,
 )
 from atlas.storage.ci_handoff_coordination import (
     CIHandoffCoordinationRepo,
@@ -1096,6 +1101,7 @@ def _detect_review_cycle(
     needs_human_state_id: str,
     result: SyncResult,
     now: datetime,
+    workflow_write_guard: PMWorkflowWriteGuard | None = None,
 ) -> DebtItem | None:
     """Step 5 (ATLAS-120): route a review-cycling ticket to ``Needs Human`` and
     log one ``REVIEW_CYCLE`` note. The ONE anomaly that both moves a ticket AND
@@ -1132,7 +1138,15 @@ def _detect_review_cycle(
         return None  # no episode boundary for dedup; unreachable when count > threshold
     # Route first: the one sanctioned move (ATLAS-43), idempotent and Linear-only.
     # A raise here aborts the tick before the log and is retried next tick.
-    client.set_state(ticket.external_linear_id, needs_human_state_id)
+    if workflow_write_guard is None:
+        client.set_state(ticket.external_linear_id, needs_human_state_id)
+    else:
+        workflow_write_guard.execute(
+            product_id=ticket.product_id,
+            call=lambda: client.set_state(
+                ticket.external_linear_id or "", needs_human_state_id
+            ),
+        )
     result.routed_to_human += 1
     logger.info(
         "linear-sync: review-cycling %s (%d round trips) routed to "
@@ -1618,6 +1632,7 @@ def _push(
     debt: DebtItemRepo,
     result: SyncResult,
     now: datetime,
+    workflow_write_guard: PMWorkflowWriteGuard | None = None,
 ) -> str | None:
     """Step 2 (Atlas -> Linear): push the owned definition for a pushable
     ticket whose cursor says it changed. Push first, then stamp (D5).
@@ -1677,12 +1692,29 @@ def _push(
         definition["description"] = embedded
     if ticket.external_linear_id is None:
         target_state_id = status_map.state_id_for(ticket.status)
+
         # First sync: create the issue and write back the join key. A full embed
         # stamps immediately after the confirmed create to shrink the
         # non-idempotent create-retry window (tracked in
         # docs/tech-debt/debt-register.md); a degraded create records only the
         # join key so the next tick updates this issue with the full embed.
-        issue = client.create_issue(definition, team_id=team_id, project_id=project_id)
+        def create_and_assert_state() -> tuple[LinearIssue, Exception | None]:
+            issue = client.create_issue(
+                definition, team_id=team_id, project_id=project_id
+            )
+            try:
+                client.set_state(issue.id, target_state_id)
+            except Exception as error:
+                return issue, error
+            return issue, None
+
+        if workflow_write_guard is None:
+            issue, state_error = create_and_assert_state()
+        else:
+            issue, state_error = workflow_write_guard.execute(
+                product_id=ticket.product_id,
+                call=create_and_assert_state,
+            )
         if degraded:
             tickets.mark_external_linear_id(ticket.key, issue.id)
         else:
@@ -1703,9 +1735,7 @@ def _push(
             logger.info(
                 "linear-sync: created Linear issue %s for %s", issue.id, ticket.key
             )
-        try:
-            client.set_state(issue.id, target_state_id)
-        except Exception as error:
+        if state_error is not None:
             result.anomalies_logged += 1
             result.push_decisions.append(
                 SyncDecision(
@@ -1714,7 +1744,8 @@ def _push(
                     outcome="state assertion failed",
                     reason=(
                         f"created Linear issue {issue.id} but could not assert "
-                        f"{ticket.status.value} state {target_state_id!r}: {error}"
+                        f"{ticket.status.value} state {target_state_id!r}: "
+                        f"{state_error}"
                     ),
                 )
             )
@@ -2317,20 +2348,25 @@ def _sync_tick_impl(
     # first push that will actually embed, so a no-op tick stays byte-identical
     # in both requests and local reads.
     pack_inputs = _PackInputLoader(db, documents)
+    workflow_write_guard = PMWorkflowWriteGuard(db=db, observed_at=now)
     pushed_issue_ids: set[str] = set()
     for after_pull in pulled_board:
-        pushed_issue_id = _push(
-            after_pull,
-            tickets,
-            client,
-            team_id,
-            project_id,
-            status_map,
-            pack_inputs,
-            debt,
-            result,
-            now,
-        )
+        try:
+            pushed_issue_id = _push(
+                after_pull,
+                tickets,
+                client,
+                team_id,
+                project_id,
+                status_map,
+                pack_inputs,
+                debt,
+                result,
+                now,
+                workflow_write_guard,
+            )
+        except WorkflowWriteWindowClosed:
+            return result
         if pushed_issue_id is not None:
             pushed_issue_ids.add(pushed_issue_id)
     if repair_packs:
@@ -2362,20 +2398,31 @@ def _sync_tick_impl(
         # sole-write boundary.  The next ordinary pull remains the Atlas-status
         # writer and no later completion/anomaly route can become a second
         # external mutation in the same decision window.
-        if admission.outcome in {
-            AdmissionSyncOutcome.ADMITTED,
-            AdmissionSyncOutcome.STALE,
-            AdmissionSyncOutcome.INDETERMINATE,
-        }:
+        if (
+            admission.outcome
+            in {
+                AdmissionSyncOutcome.ADMITTED,
+                AdmissionSyncOutcome.STALE,
+                AdmissionSyncOutcome.INDETERMINATE,
+            }
+            or admission.reason is AdmissionSyncReason.CI_HANDOFF_FENCE_PRESENT
+        ):
             return result
     # Step 3b (ATLAS-131): verified completion, immediately after admission. Move
     # every review_required ticket whose persisted Verification Engine verdict is
     # PASSED to Done via the sanctioned set_state. Like admission it resolves
     # its Done target up front (the load-time guard, fired even when nothing is
     # completable) and writes Linear only, so the next tick's pull reconciles Atlas.
-    result.completed = complete_verified(
-        tickets=tickets, db=db, client=client, status_map=status_map
-    )
+    try:
+        result.completed = complete_verified(
+            tickets=tickets,
+            db=db,
+            client=client,
+            status_map=status_map,
+            workflow_write_guard=workflow_write_guard,
+        )
+    except WorkflowWriteWindowClosed:
+        return result
     # Step 4 (ATLAS-45): the follow-up comment scan, after admission and before
     # the step-5 anomaly passes (the loop order). The inbox is read once up front
     # for the dedup key set and per-ticket index; each newly-seen tagged comment
@@ -2398,9 +2445,18 @@ def _sync_tick_impl(
         dwell_item = _detect_dwell(ticket, debt, result, now)
         if dwell_item is not None:
             new_anomaly_items.append(dwell_item)
-        review_item = _detect_review_cycle(
-            ticket, debt, client, needs_human_state_id, result, now
-        )
+        try:
+            review_item = _detect_review_cycle(
+                ticket,
+                debt,
+                client,
+                needs_human_state_id,
+                result,
+                now,
+                workflow_write_guard,
+            )
+        except WorkflowWriteWindowClosed:
+            return result
         if review_item is not None:
             new_anomaly_items.append(review_item)
         _detect_stale_block(ticket, graph, debt, result, now)
