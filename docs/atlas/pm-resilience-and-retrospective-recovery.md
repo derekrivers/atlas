@@ -227,6 +227,13 @@ authority. Source, target or moved fence retirement atomically verifies the
 exact still-live lease owner and fence identity, so an expired or replaced
 recovery process cannot clear ambiguity after a slow provider refresh.
 
+A lease-contention observation consumes its already reserved sequence only as
+the blocker occurrence identity; it does not advance the episode cursor that a
+live owner may still commit. The typed `lease_unavailable` blocker durably
+defers that whole product until `next_safe_retry_at`, allowing another ordinary
+product—or, under absolute fence precedence, another fenced product—to receive
+the next cadence opportunity without racing the live owner's cursor.
+
 ## Durable blocker observations
 
 An unsafe or incomplete action outcome that survives the current call must be

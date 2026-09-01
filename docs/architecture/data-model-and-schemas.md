@@ -2056,6 +2056,11 @@ The production cadence reserves the evaluation value before provider work and
 passes that exact value into the atomic evaluation commit. A crash before that
 commit may leave a harmless unused gap; reserved values are never reused, and
 the episode cursor does not advance without the evaluation commit.
+Lease contention is the bounded exception: the reserved value identifies the
+typed blocker occurrence, while the selected episode cursor remains unchanged
+for the in-flight lease owner. Its durable retry time temporarily defers the
+product from selection; neither the reservation nor the blocker observation can
+masquerade as a completed evaluation.
 Repository mutations lock the product counter row before rereading mutable
 state. PostgreSQL uses a row lock and SQLite uses its transaction-level writer
 serialization, so replay cannot reuse a committed sequence or expose a

@@ -331,6 +331,11 @@ exact live lease owner and fence identity atomically. The selected publication
 attachment/repository/PR generation is likewise re-resolved from both final
 board revalidations before any new fence or workflow write.
 
+Lease contention records `lease_unavailable` without advancing the selected
+episode cursor, then defers that product until the blocker's durable retry time.
+This prevents an observer from stealing an in-flight owner's cursor while still
+allowing an independent product at the same authority tier to rotate next.
+
 These states are deliberately different claims. `CI Pending` says only that a
 locally validated candidate was published and CI now owns classification.
 `Review Required` says the system-tier required-check set passed for that exact

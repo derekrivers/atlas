@@ -859,6 +859,69 @@ def test_unresolved_fence_rotates_to_independent_product_fence(db: Database) -> 
     assert client.state_writes == []
 
 
+def test_contended_fence_defers_to_next_fenced_product(db: Database) -> None:
+    client = RecordingClient()
+    first = _seed_ci_pending(db, client, key="ATLAS-263")
+    second_product_id = UUID("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
+    second = _seed_ci_pending(
+        db,
+        client,
+        key="OTHER-263",
+        product_id=second_product_id,
+    )
+    lease = AdmissionCoordinationRepo(db)
+    for ticket in (first, second):
+        owner_id = uuid4()
+        assert ticket.external_linear_id is not None
+        assert lease.try_acquire(
+            product_id=ticket.product_id,
+            owner_id=owner_id,
+            acquired_at=NOW,
+            ttl=timedelta(minutes=1),
+        )
+        CIHandoffCoordinationRepo(db).begin_write(
+            product_id=ticket.product_id,
+            owner_id=owner_id,
+            reconciliation_id=uuid4(),
+            ticket_id=ticket.id,
+            ticket_key=ticket.key,
+            issue_id=ticket.external_linear_id,
+            source_state_id=CI_PENDING_STATE.id,
+            target_state_id="state-review-required",
+            target_status=TicketStatus.REVIEW_REQUIRED,
+            created_at=NOW,
+        )
+        lease.release(product_id=ticket.product_id, owner_id=owner_id)
+    live_owner = uuid4()
+    assert lease.try_acquire(
+        product_id=PRODUCT_ID,
+        owner_id=live_owner,
+        acquired_at=NOW,
+        ttl=timedelta(minutes=5),
+    )
+
+    held = _run(db, client, _github(), now=NOW)
+    held_reconciliation = held.ci_handoff_decisions[0].reconciliation
+    assert held_reconciliation is not None
+    assert held_reconciliation.reason is CIHandoffReason.LEASE_UNAVAILABLE
+    [blocker] = PmRecoveryRepo(db).list_blockers(
+        product_id=PRODUCT_ID, active_only=True
+    )
+    assert blocker.code is PmBlockerCode.LEASE_UNAVAILABLE
+
+    rebuilt = Database(str(db.engine.url))
+    rotated = _run(rebuilt, client, _github(), now=NOW + timedelta(seconds=1))
+    rebuilt.engine.dispose()
+
+    rotated_reconciliation = rotated.ci_handoff_decisions[0].reconciliation
+    assert rotated_reconciliation is not None
+    assert rotated_reconciliation.ticket_key == second.key
+    assert rotated_reconciliation.reason is CIHandoffReason.FENCE_RECONCILED_SOURCE
+    assert CIHandoffCoordinationRepo(db).get_fence(PRODUCT_ID) is not None
+    assert CIHandoffCoordinationRepo(db).get_fence(second_product_id) is None
+    lease.release(product_id=PRODUCT_ID, owner_id=live_owner)
+
+
 def test_unresolved_fence_retains_precedence_over_independent_ordinary_candidate(
     db: Database,
 ) -> None:
@@ -1072,12 +1135,13 @@ def test_final_sequence_is_reserved_before_provider_effect_and_records(
 ) -> None:
     client = RecordingClient()
     ticket = _seed_ci_pending(db, client)
-    select_fair_ci_handoff_candidate(
+    selected = select_fair_ci_handoff_candidate(
         db=db,
         tickets=TicketRepo(db),
         initial_issues=client.fetch_project_issues(PROJECT_ID),
         now=NOW,
     )
+    assert selected.episode is not None
     with db.engine.begin() as connection:
         connection.execute(
             sa.update(PmRecoverySequenceCounterRow)
@@ -1092,6 +1156,64 @@ def test_final_sequence_is_reserved_before_provider_effect_and_records(
     assert (
         PmRecoveryRepo(db).sequence_high_water(PRODUCT_ID) == 9_223_372_036_854_775_807
     )
+    recorded = PmRecoveryRepo(db).get_episode(selected.episode.id)
+    assert recorded is not None
+    assert recorded.last_evaluated_sequence == 9_223_372_036_854_775_807
+    assert recorded.last_evaluation_id is not None
+    assert recorded.last_evaluation_fingerprint is not None
+    assert recorded.closed_at is not None
+
+
+def test_lease_contention_defers_product_without_stealing_cursor(db: Database) -> None:
+    client = RecordingClient()
+    contended = _seed_ci_pending(db, client, key="ATLAS-263")
+    healthy_product_id = UUID("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
+    healthy = _seed_ci_pending(
+        db,
+        client,
+        key="OTHER-263",
+        product_id=healthy_product_id,
+    )
+    initial = select_fair_ci_handoff_candidate(
+        db=db,
+        tickets=TicketRepo(db),
+        initial_issues=client.fetch_project_issues(PROJECT_ID),
+        now=NOW,
+    )
+    assert initial.candidate == contended and initial.episode is not None
+    initial_cursor = initial.episode.fairness_cursor
+    live_owner = uuid4()
+    lease = AdmissionCoordinationRepo(db)
+    assert lease.try_acquire(
+        product_id=PRODUCT_ID,
+        owner_id=live_owner,
+        acquired_at=NOW,
+        ttl=timedelta(minutes=5),
+    )
+
+    held = _run(db, client, _github(), now=NOW)
+
+    reconciliation = held.ci_handoff_decisions[0].reconciliation
+    assert reconciliation is not None
+    assert reconciliation.reason is CIHandoffReason.LEASE_UNAVAILABLE
+    retained = PmRecoveryRepo(db).get_episode(initial.episode.id)
+    assert retained is not None and retained.fairness_cursor == initial_cursor
+    [blocker] = PmRecoveryRepo(db).list_blockers(
+        product_id=PRODUCT_ID, active_only=True
+    )
+    assert blocker.code is PmBlockerCode.LEASE_UNAVAILABLE
+
+    rebuilt = Database(str(db.engine.url))
+    advanced = _run(rebuilt, client, _github(), now=NOW + timedelta(seconds=1))
+    rebuilt.engine.dispose()
+
+    assert advanced.ci_handoff_decisions[0].ticket_key == healthy.key
+    advanced_reconciliation = advanced.ci_handoff_decisions[0].reconciliation
+    assert advanced_reconciliation is not None
+    assert advanced_reconciliation.reason is CIHandoffReason.SNAPSHOT_INCOMPLETE
+    assert advanced.ci_handoff_mutations == 0
+    assert client.state_writes == []
+    lease.release(product_id=PRODUCT_ID, owner_id=live_owner)
 
 
 def test_read_only_result_lost_before_fairness_commit_retries_then_rotates(

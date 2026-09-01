@@ -153,8 +153,10 @@ from atlas.pm.ci_handoff_adapter import (
 )
 from atlas.pm.ci_handoff_fairness import (
     FairCIHandoffSelection,
+    ci_handoff_product_retry_deferred,
     cross_product_fairness_key,
     ensure_ci_handoff_episode,
+    record_fair_ci_handoff_contention,
     record_fair_ci_handoff_evaluation,
     select_fair_ci_handoff_candidate,
 )
@@ -2055,6 +2057,10 @@ def _sync_tick_impl(
         # products without comparing unrelated local counters.
         fence_options = []
         for candidate_fence in fences:
+            if ci_handoff_product_retry_deferred(
+                db=db, product_id=candidate_fence.product_id, now=now
+            ):
+                continue
             candidate_ticket = tickets.get_by_key(candidate_fence.ticket_key)
             if (
                 candidate_ticket is None
@@ -2070,6 +2076,8 @@ def _sync_tick_impl(
                 now=now,
             )
             fence_options.append((candidate_episode, candidate_fence, candidate_ticket))
+        if not fence_options:
+            return result
         _fence_episode, fence, fence_ticket = min(
             fence_options,
             key=lambda item: (
@@ -2100,6 +2108,22 @@ def _sync_tick_impl(
             handoff.reconciliation is not None
             and handoff.reconciliation.reason is CIHandoffReason.LEASE_UNAVAILABLE
         ):
+            record_fair_ci_handoff_contention(
+                db=db,
+                selection=FairCIHandoffSelection(
+                    candidates=tuple(
+                        ticket
+                        for ticket in pull_board
+                        if ticket.product_id == product_id
+                        and ticket.status is TicketStatus.CI_PENDING
+                    ),
+                    candidate=fence_ticket,
+                    episode=_fence_episode,
+                ),
+                result=handoff,
+                now=now,
+                reserved_observation_sequence=reserved_sequence,
+            )
             return result
         episode = ensure_ci_handoff_episode(
             db=db,
@@ -2212,6 +2236,14 @@ def _sync_tick_impl(
                 )
                 if ci_handoff_hooks is not None:
                     ci_handoff_hooks.after_fairness_persisted()
+            else:
+                record_fair_ci_handoff_contention(
+                    db=db,
+                    selection=selection,
+                    result=handoff,
+                    now=now,
+                    reserved_observation_sequence=reserved_sequence,
+                )
         _apply_ci_handoff_result(result, handoff)
         if handoff.ends_workflow_write_window:
             return result

@@ -12,6 +12,7 @@ from atlas.core.keys import natural_key
 from atlas.core.models import CIHandoffReason, Ticket, TicketStatus
 from atlas.core.models.pm_recovery import (
     MAX_PM_STARVED_CANDIDATES,
+    DurablePmBlocker,
     PmBlockerAuthorityKind,
     PmBlockerCode,
     PmBlockerKind,
@@ -68,6 +69,23 @@ def cross_product_fairness_key(episode: PmRecoveryEpisode) -> tuple[datetime, in
     if episode.last_evaluated_at is None:
         return (episode.created_at, 0)
     return (episode.last_evaluated_at, 1)
+
+
+def ci_handoff_product_retry_deferred(
+    *, db: Database, product_id: UUID, now: datetime
+) -> bool:
+    """Return whether a durable live-lease observation defers this product."""
+
+    return any(
+        blocker.code is PmBlockerCode.LEASE_UNAVAILABLE
+        and blocker.next_safe_retry_at is not None
+        and blocker.next_safe_retry_at > now
+        for blocker in PmRecoveryRepo(db).list_blockers(
+            product_id=product_id,
+            active_only=True,
+            operation=CI_HANDOFF_RECOVERY_OPERATION,
+        )
+    )
 
 
 def _canonical_hash(payload: object) -> str:
@@ -241,8 +259,15 @@ def select_fair_ci_handoff_candidate(
                 ).episode
         resolved.append((candidate, current))
 
+    eligible_product_ids = [
+        product_id
+        for product_id in sorted(product_ids, key=str)
+        if not ci_handoff_product_retry_deferred(db=db, product_id=product_id, now=now)
+    ]
+    if not eligible_product_ids:
+        return FairCIHandoffSelection(candidates, None, None)
     product_representatives = []
-    for product_id in sorted(product_ids, key=str):
+    for product_id in eligible_product_ids:
         product_representatives.append(
             min(
                 (item for item in resolved if item[0].product_id == product_id),
@@ -539,6 +564,42 @@ def record_fair_ci_handoff_evaluation(
             closed_at=now,
         )
     return recorded
+
+
+def record_fair_ci_handoff_contention(
+    *,
+    db: Database,
+    selection: FairCIHandoffSelection,
+    result: CIHandoffAdapterResult,
+    now: datetime,
+    reserved_observation_sequence: int,
+) -> DurablePmBlocker:
+    """Persist a lease hold without advancing an in-flight owner's cursor."""
+
+    candidate = selection.candidate
+    episode = selection.episode
+    if candidate is None or episode is None:
+        raise CIHandoffFairnessError("cannot diagnose an empty fairness selection")
+    if (
+        result.reconciliation is None
+        or result.reconciliation.reason is not CIHandoffReason.LEASE_UNAVAILABLE
+    ):
+        raise CIHandoffFairnessError("contention recording requires lease_unavailable")
+    blocker = _blocker_intent(
+        db=db,
+        candidate=candidate,
+        result=result,
+        snapshot=selection.candidates,
+        now=now,
+    )
+    return PmRecoveryRepo(db).record_blocker_without_cursor_advance(
+        episode_id=episode.id,
+        expected_cursor_sequence=episode.fairness_cursor,
+        observation_id=_evaluation_id(episode, result, now),
+        observed_at=now,
+        blocker=blocker,
+        reserved_observation_sequence=reserved_observation_sequence,
+    )
 
 
 def active_episode_for_ticket(db: Database, ticket: Ticket) -> PmRecoveryEpisode | None:

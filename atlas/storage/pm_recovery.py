@@ -879,6 +879,68 @@ class PmRecoveryRepo:
             changed=True,
         )
 
+    def record_blocker_without_cursor_advance(
+        self,
+        *,
+        episode_id: UUID,
+        expected_cursor_sequence: int,
+        observation_id: str,
+        observed_at: datetime,
+        blocker: PmBlockerObservationIntent,
+        reserved_observation_sequence: int,
+    ) -> DurablePmBlocker:
+        """Diagnose contention without stealing an in-flight owner's cursor."""
+
+        observed = _aware(observed_at, name="blocker observation time")
+        observation_id = _bounded_identifier(observation_id, name="observation_id")
+        blocker = PmBlockerObservationIntent.model_validate(
+            blocker.model_dump(mode="python")
+        )
+        if not (
+            expected_cursor_sequence
+            < reserved_observation_sequence
+            <= 9_223_372_036_854_775_807
+        ):
+            raise ValueError(
+                "reserved_observation_sequence must be greater than the cursor"
+            )
+        current = self.get_episode(episode_id)
+        if current is None:
+            raise PmRecoveryStorageError(PmRecoveryStorageCode.EPISODE_NOT_FOUND)
+        with self._db.session() as session, session.begin():
+            self._lock_sequence_counter(session, current.product_id)
+            episode = session.get(PmRecoveryEpisodeRow, episode_id)
+            if episode is None:
+                raise PmRecoveryStorageError(PmRecoveryStorageCode.EPISODE_NOT_FOUND)
+            if episode.closed_at is not None:
+                raise PmRecoveryStorageError(PmRecoveryStorageCode.EPISODE_CLOSED)
+            current_cursor = (
+                episode.last_evaluated_sequence or episode.episode_created_sequence
+            )
+            if current_cursor != expected_cursor_sequence:
+                raise PmRecoveryStorageError(
+                    PmRecoveryStorageCode.EVALUATION_CURSOR_CONFLICT
+                )
+            high_water = session.scalar(
+                sa.select(PmRecoverySequenceCounterRow.high_water).where(
+                    PmRecoverySequenceCounterRow.product_id == episode.product_id
+                )
+            )
+            if high_water is None or reserved_observation_sequence > high_water:
+                raise PmRecoveryStorageError(PmRecoveryStorageCode.SEQUENCE_EXHAUSTED)
+            blocker_id = self._observe_blocker(
+                session,
+                episode=episode,
+                evaluation_sequence=reserved_observation_sequence,
+                evaluation_id=observation_id,
+                evaluated_at=observed,
+                observation=blocker,
+            )
+        stored = self.get_blocker(blocker_id)
+        if stored is None:  # pragma: no cover - committed insert invariant
+            raise PmRecoveryStorageError(PmRecoveryStorageCode.BLOCKER_NOT_FOUND)
+        return stored
+
     def get_blocker(self, blocker_id: UUID) -> DurablePmBlocker | None:
         with self._db.session() as session:
             row = session.get(PmBlockerOccurrenceRow, blocker_id)
