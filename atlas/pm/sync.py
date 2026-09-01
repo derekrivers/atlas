@@ -173,6 +173,7 @@ from atlas.pm.workflow_write import (
     PMWorkflowWriteGuard,
     WorkflowWriteWindowClosed,
 )
+from atlas.storage.admission_coordination import AdmissionCoordinationRepo
 from atlas.storage.ci_handoff_coordination import (
     CIHandoffCoordinationRepo,
     CIHandoffWriteFenceError,
@@ -2214,6 +2215,31 @@ def _sync_tick_impl(
     )
     result.agent_runs_reconstructed = reconstructed.created
     result.agent_runs_updated = reconstructed.updated
+    # A retained admission fence is also possible prior external mutation.
+    # Resolve it after the ordinary board pull has projected any provider-side
+    # target, but before CI episode establishment or selection can change
+    # recovery lineage. CI fences above retain their stronger absolute
+    # precedence when both kinds exist.
+    admission_fences = [
+        fence
+        for product_id in product_ids
+        if (fence := AdmissionCoordinationRepo(db).get_fence(product_id)) is not None
+    ]
+    if admission_fences:
+        admission_fence = min(
+            admission_fences,
+            key=lambda candidate: (candidate.created_at, str(candidate.product_id)),
+        )
+        admission_fence_result = reconcile_existing_admission_fence(
+            db=db,
+            product_id=admission_fence.product_id,
+            status_map=status_map,
+            initial_issues=fetched_issues,
+            now=now,
+        )
+        assert admission_fence_result is not None
+        _apply_admission_result(result, admission_fence_result)
+        return result
     # Phase 15.5 production CI handoff: after the coherent board pull and local
     # AgentRun reconstruction, deterministically consider at most one locally
     # CI-pending ticket. Its issue-bound Linear GitHub attachment supplies the
@@ -2237,16 +2263,6 @@ def _sync_tick_impl(
             )
         else:
             assert selection.episode is not None
-            admission_fence_result = reconcile_existing_admission_fence(
-                db=db,
-                product_id=selection.candidate.product_id,
-                status_map=status_map,
-                initial_issues=fetched_issues,
-                now=now,
-            )
-            if admission_fence_result is not None:
-                _apply_admission_result(result, admission_fence_result)
-                return result
             reserved_sequence = PmRecoveryRepo(db).reserve_evaluation_sequence(
                 selection.episode.product_id
             )
@@ -2267,6 +2283,27 @@ def _sync_tick_impl(
             )
             if ci_handoff_hooks is not None:
                 ci_handoff_hooks.after_candidate_evaluated()
+            # An admission writer may win the shared lease after the initial
+            # fence scan. Its durable ambiguity displaces this ordinary
+            # evaluation: do not advance the selected episode cursor, and do
+            # not run any later workflow writer in this tick. A fresh tick
+            # reaches the admission recovery owner before selecting CI work.
+            late_admission_fence = AdmissionCoordinationRepo(db).get_fence(
+                selection.candidate.product_id
+            )
+            if late_admission_fence is not None:
+                _apply_ci_handoff_result(result, handoff)
+                _apply_admission_result(
+                    result,
+                    AdmissionSyncResult(
+                        outcome=AdmissionSyncOutcome.INDETERMINATE,
+                        reason=AdmissionSyncReason.WRITE_INDETERMINATE,
+                        policy_revision=late_admission_fence.policy_revision,
+                        admission_run_id=late_admission_fence.admission_run_id,
+                        ticket_key=late_admission_fence.ticket_key,
+                    ),
+                )
+                return result
             late_fence = CIHandoffCoordinationRepo(db).get_fence(
                 selection.candidate.product_id
             )

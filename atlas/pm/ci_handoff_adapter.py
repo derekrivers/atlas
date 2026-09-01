@@ -99,6 +99,8 @@ class CIHandoffAdapterResult:
             self.reconciliation.linear_mutations
             or self.reconciliation.reason
             in {
+                CIHandoffReason.LEASE_UNAVAILABLE,
+                CIHandoffReason.LEASE_LOST,
                 CIHandoffReason.FENCE_RECONCILED_TARGET,
                 CIHandoffReason.FENCE_RECONCILED_SOURCE,
                 CIHandoffReason.FENCE_RECONCILED_MOVED,

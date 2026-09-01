@@ -42,6 +42,7 @@ from atlas.core.models.pm_recovery import PmBlockerAuthorityKind, PmBlockerCode
 from atlas.evidence.pull import drive_evidence_pull
 from atlas.linear.client import LinearIssue, _github_publication_from_attachment
 from atlas.pm import CIHandoffHooks, sync_tick
+from atlas.pm.admission_sync import AdmissionSyncReason
 from atlas.pm.ci_handoff import reconcile_ci_handoff_fence
 from atlas.pm.ci_handoff_adapter import CIHandoffAdapterReason
 from atlas.pm.ci_handoff_fairness import (
@@ -1535,6 +1536,59 @@ def test_guarded_ordinary_call_refuses_preexisting_ci_fence(db: Database) -> Non
     assert CIHandoffCoordinationRepo(db).get_fence(PRODUCT_ID) == fence
 
 
+def test_guarded_ordinary_call_refuses_preexisting_admission_fence(
+    db: Database,
+) -> None:
+    client = RecordingClient()
+    ticket = seed_ticket(
+        db,
+        client,
+        key="ATLAS-263",
+        product_id=PRODUCT_ID,
+        status=TicketStatus.PLANNED,
+        acceptance_criteria=["retain the unresolved admission write"],
+        linear_synced_at=NOW,
+    )
+    assert ticket.external_linear_id is not None
+    issue = client.fetch_issue(ticket.external_linear_id)
+    assert issue is not None and issue.state_id is not None
+    owner_id = uuid4()
+    coordination = AdmissionCoordinationRepo(db)
+    assert coordination.try_acquire(
+        product_id=PRODUCT_ID,
+        owner_id=owner_id,
+        acquired_at=NOW,
+        ttl=timedelta(minutes=1),
+    )
+    fence = coordination.begin_write(
+        product_id=PRODUCT_ID,
+        owner_id=owner_id,
+        admission_run_id=uuid4(),
+        ticket_id=ticket.id,
+        ticket_key=ticket.key,
+        issue_id=ticket.external_linear_id,
+        source_state_id=issue.state_id,
+        target_state_id=READY.id,
+        policy_revision=1,
+        created_at=NOW,
+    )
+    coordination.release(product_id=PRODUCT_ID, owner_id=owner_id)
+    called = False
+
+    def forbidden_call() -> None:
+        nonlocal called
+        called = True
+
+    with pytest.raises(WorkflowWriteWindowClosed):
+        PMWorkflowWriteGuard(db=db, observed_at=NOW + timedelta(seconds=1)).execute(
+            product_id=PRODUCT_ID,
+            call=forbidden_call,
+        )
+
+    assert called is False
+    assert AdmissionCoordinationRepo(db).get_fence(PRODUCT_ID) == fence
+
+
 def test_sequence_exhaustion_fails_before_provider_or_workflow_effect(
     db: Database,
 ) -> None:
@@ -1943,6 +1997,15 @@ def test_retained_admission_fence_recovers_before_same_product_ci_candidate(
         created_at=NOW,
     )
     coordination.release(product_id=PRODUCT_ID, owner_id=owner_id)
+    assert PmRecoveryRepo(db).list_active_episodes_ordered(PRODUCT_ID) == []
+    assert PmRecoveryRepo(db).list_blockers(product_id=PRODUCT_ID) == []
+    with db.session() as session:
+        assert (
+            session.scalar(
+                sa.select(sa.func.count(PmRecoverySequenceCounterRow.product_id))
+            )
+            == 0
+        )
     database_url = str(db.engine.url)
     recovery_client = _rebuilt_client(client)
     db.engine.dispose()
@@ -1962,6 +2025,15 @@ def test_retained_admission_fence_recovers_before_same_product_ci_candidate(
     )
     assert recovery_client.state_writes == []
     assert AdmissionCoordinationRepo(db).get_fence(PRODUCT_ID) is None
+    assert PmRecoveryRepo(db).list_active_episodes_ordered(PRODUCT_ID) == []
+    assert PmRecoveryRepo(db).list_blockers(product_id=PRODUCT_ID) == []
+    with db.session() as session:
+        assert (
+            session.scalar(
+                sa.select(sa.func.count(PmRecoverySequenceCounterRow.product_id))
+            )
+            == 0
+        )
 
     resumed_client = _rebuilt_client(recovery_client)
     resumed_db = Database(database_url)
@@ -1978,6 +2050,150 @@ def test_retained_admission_fence_recovers_before_same_product_ci_candidate(
         (ci_ticket.external_linear_id, "state-review-required")
     ]
     assert fence.admission_run_id == admission_run_id
+
+
+@pytest.mark.parametrize("publication_available", [True, False])
+def test_late_admission_fence_closes_tick_then_recovers_before_ci_candidate(
+    db: Database,
+    publication_available: bool,
+) -> None:
+    client = RecordingClient()
+    ci_ticket = _seed_ci_pending(db, client, key="ATLAS-263")
+    admission_ticket = seed_ticket(
+        db,
+        client,
+        key="ATLAS-264",
+        product_id=PRODUCT_ID,
+        status=TicketStatus.PLANNED,
+        acceptance_criteria=["recover a late admission ambiguity first"],
+        linear_synced_at=NOW,
+    )
+    deferred_definition = seed_ticket(
+        db,
+        client,
+        key="ATLAS-265",
+        product_id=PRODUCT_ID,
+        status=TicketStatus.PLANNED,
+        acceptance_criteria=["defer this definition to a fresh tick"],
+        with_issue=False,
+        linear_synced_at=None,
+    )
+    assert admission_ticket.external_linear_id is not None
+    admission_issue = client.fetch_issue(admission_ticket.external_linear_id)
+    assert admission_issue is not None and admission_issue.state_id is not None
+    if not publication_available:
+        assert ci_ticket.external_linear_id is not None
+        ci_issue = client.fetch_issue(ci_ticket.external_linear_id)
+        assert ci_issue is not None
+        client._issues[ci_ticket.external_linear_id] = replace(
+            ci_issue, github_publications=()
+        )
+    selected = select_fair_ci_handoff_candidate(
+        db=db,
+        tickets=TicketRepo(db),
+        initial_issues=client.fetch_project_issues(PROJECT_ID),
+        now=NOW,
+    )
+    assert selected.episode is not None
+    initial_cursor = selected.episode.fairness_cursor
+    installed_fence = None
+
+    def install_late_admission_fence() -> None:
+        nonlocal installed_fence
+        owner_id = uuid4()
+        coordination = AdmissionCoordinationRepo(db)
+        assert coordination.try_acquire(
+            product_id=PRODUCT_ID,
+            owner_id=owner_id,
+            acquired_at=NOW,
+            ttl=timedelta(minutes=1),
+        )
+        installed_fence = coordination.begin_write(
+            product_id=PRODUCT_ID,
+            owner_id=owner_id,
+            admission_run_id=uuid4(),
+            ticket_id=admission_ticket.id,
+            ticket_key=admission_ticket.key,
+            issue_id=admission_ticket.external_linear_id or "",
+            source_state_id=admission_issue.state_id or "",
+            target_state_id=READY.id,
+            policy_revision=1,
+            created_at=NOW,
+        )
+        coordination.release(product_id=PRODUCT_ID, owner_id=owner_id)
+
+    deferred = _run(
+        db,
+        client,
+        _github(),
+        hooks=CIHandoffHooks(after_candidate_selected=install_late_admission_fence),
+    )
+
+    decision = deferred.ci_handoff_decisions[0]
+    if publication_available:
+        assert decision.reconciliation is not None
+        assert decision.reconciliation.reason is CIHandoffReason.LEASE_LOST
+        assert decision.ends_workflow_write_window
+    else:
+        assert decision.reason is CIHandoffAdapterReason.PUBLICATION_UNAVAILABLE
+        assert decision.reconciliation is None
+    assert deferred.ci_handoff_mutations == 0
+    assert (
+        deferred.admission_decisions[0].reason
+        is AdmissionSyncReason.WRITE_INDETERMINATE
+    )
+    assert client.creates == []
+    assert client.state_writes == []
+    assert AdmissionCoordinationRepo(db).get_fence(PRODUCT_ID) == installed_fence
+    retained_episode = PmRecoveryRepo(db).get_episode(selected.episode.id)
+    assert retained_episode is not None
+    assert retained_episode.fairness_cursor == initial_cursor
+    assert PmRecoveryRepo(db).list_blockers(product_id=PRODUCT_ID) == []
+    stored_definition = TicketRepo(db).get_by_key(deferred_definition.key)
+    assert stored_definition is not None
+    assert stored_definition.external_linear_id is None
+
+    database_url = str(db.engine.url)
+    recovery_client = _rebuilt_client(client)
+    db.engine.dispose()
+    recovery_db = Database(database_url)
+    recovered = _run(
+        recovery_db,
+        recovery_client,
+        _github(),
+        now=NOW + timedelta(seconds=1),
+    )
+    recovery_db.engine.dispose()
+
+    assert recovered.ci_handoff_evaluated == 0
+    assert recovered.admission_decisions[0].reason.value == (
+        "indeterminate_reconciled_no_write"
+    )
+    assert recovery_client.state_writes == []
+    assert AdmissionCoordinationRepo(db).get_fence(PRODUCT_ID) is None
+
+    resumed_client = _rebuilt_client(recovery_client)
+    if not publication_available:
+        assert ci_ticket.external_linear_id is not None
+        resumed_client.seed_github_publication(
+            ci_ticket.external_linear_id,
+            owner="derekrivers",
+            repo="atlas",
+            pr_number=PR_NUMBER,
+        )
+    resumed_db = Database(database_url)
+    resumed = _run(
+        resumed_db,
+        resumed_client,
+        _github(),
+        now=NOW + timedelta(seconds=2),
+    )
+    resumed_db.engine.dispose()
+
+    assert resumed.ci_handoff_mutations == 1
+    assert resumed_client.state_writes == [
+        (ci_ticket.external_linear_id, "state-review-required")
+    ]
 
 
 def test_competing_reconstructed_ticks_commit_one_stale_cursor_result(

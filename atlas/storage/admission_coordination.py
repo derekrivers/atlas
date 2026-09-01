@@ -270,7 +270,7 @@ class AdmissionCoordinationRepo:
         observed_at: datetime,
         call: Callable[[], _T],
     ) -> _T:
-        """Run one provider call while owned and atomically CI-unfenced.
+        """Run one provider call while owned and atomically workflow-unfenced.
 
         The lease-row write lock is held across the bounded call. CI-handoff
         fence creation takes the same lock, so the absence check cannot race a
@@ -299,6 +299,10 @@ class AdmissionCoordinationRepo:
             if session.get(CIHandoffWriteFenceRow, product_id) is not None:
                 raise CIHandoffFencePresentError(
                     "an unresolved CI handoff write blocks the workflow call"
+                )
+            if session.get(AdmissionWriteFenceRow, product_id) is not None:
+                raise AdmissionWriteFenceError(
+                    "an unresolved admission write blocks the workflow call"
                 )
             try:
                 returned.append(call())

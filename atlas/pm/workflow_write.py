@@ -10,6 +10,7 @@ from uuid import UUID, uuid4
 from atlas.storage import (
     AdmissionCoordinationRepo,
     AdmissionLeaseLostError,
+    AdmissionWriteFenceError,
     CIHandoffFencePresentError,
     Database,
 )
@@ -63,7 +64,11 @@ class PMWorkflowWriteGuard:
                 )
                 self._consumed = True
                 return result
-            except (AdmissionLeaseLostError, CIHandoffFencePresentError) as exc:
+            except (
+                AdmissionLeaseLostError,
+                AdmissionWriteFenceError,
+                CIHandoffFencePresentError,
+            ) as exc:
                 raise WorkflowWriteWindowClosed(str(exc)) from exc
         finally:
             self._coordination.release(product_id=product_id, owner_id=owner_id)
