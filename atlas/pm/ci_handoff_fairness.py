@@ -323,7 +323,22 @@ def _blocker_intent(
         kind = PmBlockerKind.UNKNOWN
     elif result.reconciliation is not None:
         reason = result.reconciliation.reason
-        if reason in {CIHandoffReason.LEASE_UNAVAILABLE, CIHandoffReason.LEASE_LOST}:
+        surviving_fence = CIHandoffCoordinationRepo(db).get_fence(candidate.product_id)
+        if (
+            reason is CIHandoffReason.LEASE_LOST
+            and surviving_fence is not None
+            and surviving_fence.ticket_id == candidate.id
+            and surviving_fence.reconciliation_id
+            == result.reconciliation.reconciliation_id
+        ):
+            code = PmBlockerCode.WRITE_FENCE_UNRESOLVED
+            kind = PmBlockerKind.UNRESOLVED_FENCE
+            authority_kind = PmBlockerAuthorityKind.FENCE
+            authority_id = f"ci-handoff-fence:{surviving_fence.reconciliation_id}"
+        elif reason in {
+            CIHandoffReason.LEASE_UNAVAILABLE,
+            CIHandoffReason.LEASE_LOST,
+        }:
             code = PmBlockerCode.LEASE_UNAVAILABLE
             kind = PmBlockerKind.RETRYABLE
             authority_kind = PmBlockerAuthorityKind.LEASE

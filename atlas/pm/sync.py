@@ -2228,7 +2228,18 @@ def _sync_tick_impl(
             late_fence = CIHandoffCoordinationRepo(db).get_fence(
                 selection.candidate.product_id
             )
-            if late_fence is not None and not handoff.fence_precedence:
+            handoff_matches_late_fence = bool(
+                late_fence is not None
+                and handoff.reconciliation is not None
+                and handoff.reconciliation.reconciliation_id
+                == late_fence.reconciliation_id
+                and handoff.reconciliation.ticket_key == late_fence.ticket_key
+            )
+            if (
+                late_fence is not None
+                and not handoff_matches_late_fence
+                and handoff.linear_mutations == 0
+            ):
                 late_ticket = tickets.get_by_key(late_fence.ticket_key)
                 if late_ticket is None or late_ticket.id != late_fence.ticket_id:
                     raise CIHandoffWriteFenceError(

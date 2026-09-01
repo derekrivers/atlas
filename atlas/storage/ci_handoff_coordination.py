@@ -17,6 +17,7 @@ from atlas.storage.repositories import _apply_linear_status_in_session
 from atlas.storage.tables import (
     AdmissionLeaseRow,
     CIHandoffWriteFenceRow,
+    TicketRow,
 )
 
 
@@ -279,6 +280,22 @@ class CIHandoffCoordinationRepo:
             ):
                 raise CIHandoffWriteFenceError(
                     "CI handoff fence changed before owned finalization"
+                )
+            ticket_lock = session.execute(
+                sa.update(TicketRow)
+                .where(
+                    TicketRow.id == ticket_id,
+                    TicketRow.product_id == product_id,
+                    TicketRow.key == ticket_key,
+                    TicketRow.status.in_(
+                        [TicketStatus.CI_PENDING.value, target_status.value]
+                    ),
+                )
+                .values(status=TicketRow.status)
+            )
+            if getattr(ticket_lock, "rowcount", 0) != 1:
+                raise CIHandoffWriteFenceError(
+                    "CI handoff target finalization found a divergent local status"
                 )
             _apply_linear_status_in_session(
                 session,

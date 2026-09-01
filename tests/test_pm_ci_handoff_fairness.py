@@ -196,13 +196,15 @@ def test_new_arrival_joins_product_sequence_tail_across_reconstruction(
     issue = client.fetch_issue(newcomer.external_linear_id or "")
     assert issue is not None
     issues.append(issue)
+    rebuilt_client = RecordingClient()
+    rebuilt_client._issues = {issue.id: replace(issue) for issue in issues}
     database.engine.dispose()
     database = Database(f"sqlite:///{path}")
 
     next_selection = select_fair_ci_handoff_candidate(
         db=database,
         tickets=TicketRepo(database),
-        initial_issues=issues,
+        initial_issues=rebuilt_client.fetch_project_issues(PROJECT_ID),
         now=NOW + timedelta(seconds=1),
     )
     assert next_selection.candidate is not None
