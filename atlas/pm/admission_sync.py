@@ -171,12 +171,18 @@ def _reconcile_fence(
     product_id: UUID,
     status_map: LinearStatusMap,
     board_pull: LinearBoardPull,
+    now: datetime,
 ) -> AdmissionSyncResult | None:
     fence = coordination.get_fence(product_id)
     if fence is None:
         return None
     issue = _issue_by_id(board_pull.issues, fence.issue_id)
     if issue is None:
+        coordination.mark_recovery_deferred(
+            product_id=product_id,
+            admission_run_id=fence.admission_run_id,
+            observed_at=now,
+        )
         return AdmissionSyncResult(
             outcome=AdmissionSyncOutcome.INDETERMINATE,
             reason=AdmissionSyncReason.INDETERMINATE_STILL_UNRESOLVED,
@@ -188,6 +194,11 @@ def _reconcile_fence(
     if mapped is None or not status_map.state_type_is_compatible(
         issue.state_id, issue.state_type
     ):
+        coordination.mark_recovery_deferred(
+            product_id=product_id,
+            admission_run_id=fence.admission_run_id,
+            observed_at=now,
+        )
         return AdmissionSyncResult(
             outcome=AdmissionSyncOutcome.INDETERMINATE,
             reason=AdmissionSyncReason.INDETERMINATE_STILL_UNRESOLVED,
@@ -262,6 +273,7 @@ def reconcile_existing_admission_fence(
             product_id=product_id,
             status_map=status_map,
             board_pull=_board_pull(initial_issues),
+            now=now,
         )
     finally:
         coordination.release(product_id=product_id, owner_id=owner_id)
@@ -357,6 +369,7 @@ def admit_one_ready(
             product_id=product_id,
             status_map=status_map,
             board_pull=initial_pull,
+            now=now,
         )
         if reconciled is not None:
             return reconciled

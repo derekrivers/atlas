@@ -384,6 +384,23 @@ class AdmissionCoordinationRepo:
             row.state = "indeterminate"
             row.updated_at = observed
 
+    def mark_recovery_deferred(
+        self, *, product_id: UUID, admission_run_id: UUID, observed_at: datetime
+    ) -> None:
+        """Move one still-unresolved fence to the outer scheduling tail."""
+
+        observed = _aware_utc(
+            observed_at, name="deferred admission recovery observation time"
+        )
+        with self._db.session() as session, session.begin():
+            row = session.get(AdmissionWriteFenceRow, product_id)
+            if row is None or row.admission_run_id != admission_run_id:
+                raise AdmissionWriteFenceError(
+                    "the admission write fence changed before recovery deferral"
+                )
+            row.state = "indeterminate"
+            row.updated_at = max(observed, row.updated_at + timedelta(microseconds=1))
+
     def clear_fence(self, *, product_id: UUID, admission_run_id: UUID) -> None:
         """Clear one exact fence after confirmed write or fresh reconciliation."""
 

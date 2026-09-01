@@ -348,6 +348,9 @@ Conversely, an already retained same-product admission fence displaces an
 ordinary CI candidate for one admission-recovery tick. CI fence creation
 rejects that exact collision as bounded deferral rather than bypassing or
 fail-stopping before the admission owner can reconcile it.
+Admission fences do not impose cross-product fail-stop: an unresolved recovery
+attempt advances the fence's durable outer observation-time rank, permitting an
+independent CI product to rotate next while the fenced product remains excluded.
 
 Lease contention records `lease_unavailable` without advancing the selected
 episode cursor, then defers that product until the blocker's durable retry time.

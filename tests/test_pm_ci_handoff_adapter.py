@@ -2052,6 +2052,102 @@ def test_retained_admission_fence_recovers_before_same_product_ci_candidate(
     assert fence.admission_run_id == admission_run_id
 
 
+def test_unresolved_admission_fence_rotates_to_independent_ci_product(
+    db: Database,
+) -> None:
+    client = RecordingClient()
+    admission_ticket = seed_ticket(
+        db,
+        client,
+        key="ATLAS-264",
+        product_id=PRODUCT_ID,
+        status=TicketStatus.PLANNED,
+        acceptance_criteria=["retain an unresolved admission ambiguity"],
+        linear_synced_at=NOW,
+    )
+    healthy_product_id = UUID("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
+    healthy = _seed_ci_pending(
+        db,
+        client,
+        key="OTHER-263",
+        product_id=healthy_product_id,
+    )
+    assert admission_ticket.external_linear_id is not None
+    admission_issue = client.fetch_issue(admission_ticket.external_linear_id)
+    assert admission_issue is not None and admission_issue.state_id is not None
+    owner_id = uuid4()
+    coordination = AdmissionCoordinationRepo(db)
+    assert coordination.try_acquire(
+        product_id=PRODUCT_ID,
+        owner_id=owner_id,
+        acquired_at=NOW,
+        ttl=timedelta(minutes=1),
+    )
+    initial_fence = coordination.begin_write(
+        product_id=PRODUCT_ID,
+        owner_id=owner_id,
+        admission_run_id=uuid4(),
+        ticket_id=admission_ticket.id,
+        ticket_key=admission_ticket.key,
+        issue_id=admission_ticket.external_linear_id,
+        source_state_id=admission_issue.state_id,
+        target_state_id=READY.id,
+        policy_revision=1,
+        created_at=NOW,
+    )
+    coordination.release(product_id=PRODUCT_ID, owner_id=owner_id)
+    client._issues.pop(admission_ticket.external_linear_id)
+
+    first = _run(db, client, _github(), now=NOW + timedelta(seconds=1))
+
+    assert first.ci_handoff_evaluated == 0
+    assert (
+        first.admission_decisions[0].reason
+        is AdmissionSyncReason.INDETERMINATE_STILL_UNRESOLVED
+    )
+    deferred_fence = AdmissionCoordinationRepo(db).get_fence(PRODUCT_ID)
+    assert deferred_fence is not None
+    assert deferred_fence.admission_run_id == initial_fence.admission_run_id
+    assert deferred_fence.updated_at > initial_fence.updated_at
+    assert client.state_writes == []
+
+    database_url = str(db.engine.url)
+    healthy_client = _rebuilt_client(client)
+    db.engine.dispose()
+    healthy_db = Database(database_url)
+    second = _run(
+        healthy_db,
+        healthy_client,
+        _github(),
+        now=NOW + timedelta(seconds=2),
+    )
+    healthy_db.engine.dispose()
+
+    assert second.ci_handoff_decisions[0].ticket_key == healthy.key
+    assert second.ci_handoff_mutations == 1
+    assert healthy_client.state_writes == [
+        (healthy.external_linear_id, "state-review-required")
+    ]
+    assert AdmissionCoordinationRepo(db).get_fence(PRODUCT_ID) == deferred_fence
+
+    retry_client = _rebuilt_client(healthy_client)
+    retry_db = Database(database_url)
+    third = _run(
+        retry_db,
+        retry_client,
+        _github(),
+        now=NOW + timedelta(seconds=3),
+    )
+    retry_db.engine.dispose()
+
+    assert third.ci_handoff_evaluated == 0
+    assert (
+        third.admission_decisions[0].reason
+        is AdmissionSyncReason.INDETERMINATE_STILL_UNRESOLVED
+    )
+    assert retry_client.state_writes == []
+
+
 @pytest.mark.parametrize("publication_available", [True, False])
 def test_late_admission_fence_closes_tick_then_recovers_before_ci_candidate(
     db: Database,

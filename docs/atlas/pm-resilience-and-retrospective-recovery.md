@@ -250,6 +250,11 @@ can create a CI fence. Source, target or moved admission recovery ends that
 tick; a late admission fence that wins the shared lease is returned as typed
 CI deferral, so a reconstructed tick reaches the admission recovery owner
 instead of repeating an exception before fairness persistence.
+Across products, retained admission fences and ordinary CI product
+representatives share the durable outer observation-time rank. A still-
+unresolved admission recovery advances only that fence's rank, so it continues
+to exclude same-product CI work while an independent product receives the next
+cadence opportunity; the fence then becomes eligible for recovery again.
 
 A lease-contention observation consumes its already reserved sequence only as
 the blocker occurrence identity; it does not advance the episode cursor that a

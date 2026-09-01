@@ -2216,21 +2216,55 @@ def _sync_tick_impl(
     result.agent_runs_reconstructed = reconstructed.created
     result.agent_runs_updated = reconstructed.updated
     # A retained admission fence is also possible prior external mutation.
-    # Resolve it after the ordinary board pull has projected any provider-side
-    # target, but before CI episode establishment or selection can change
-    # recovery lineage. CI fences above retain their stronger absolute
-    # precedence when both kinds exist.
+    # It excludes ordinary CI work only for its own product and participates
+    # in the durable outer product rotation. A still-unresolved observation
+    # advances the fence rank, allowing an independent product to run next
+    # without weakening same-product exclusion. CI fences above retain their
+    # stronger absolute precedence over this entire scheduler.
     admission_fences = [
         admission_fence
         for product_id in product_ids
         if (admission_fence := AdmissionCoordinationRepo(db).get_fence(product_id))
         is not None
     ]
-    if admission_fences:
-        admission_fence = min(
-            admission_fences,
-            key=lambda candidate: (candidate.created_at, str(candidate.product_id)),
+    admission_fenced_product_ids = frozenset(
+        fence.product_id for fence in admission_fences
+    )
+    selection: FairCIHandoffSelection | None = None
+    if github_client is not None:
+        selection = select_fair_ci_handoff_candidate(
+            db=db,
+            tickets=tickets,
+            initial_issues=fetched_issues,
+            now=now,
+            excluded_product_ids=(fenced_product_ids | admission_fenced_product_ids),
         )
+    admission_fence = (
+        None
+        if not admission_fences
+        else min(
+            admission_fences,
+            key=lambda candidate: (candidate.updated_at, str(candidate.product_id)),
+        )
+    )
+    admission_fence_precedes = bool(
+        admission_fence is not None
+        and (
+            selection is None
+            or selection.episode is None
+            or (
+                admission_fence.updated_at,
+                1,
+                str(admission_fence.product_id),
+            )
+            <= (
+                *cross_product_fairness_key(selection.episode),
+                str(selection.episode.product_id),
+            )
+        )
+    )
+    if admission_fence_precedes:
+        assert admission_fence is not None
         admission_fence_result = reconcile_existing_admission_fence(
             db=db,
             product_id=admission_fence.product_id,
@@ -2250,13 +2284,7 @@ def _sync_tick_impl(
     # confirmation of an earlier fenced target) ends the tick before
     # definition, admission, completion or anomaly writers.
     if github_client is not None:
-        selection = select_fair_ci_handoff_candidate(
-            db=db,
-            tickets=tickets,
-            initial_issues=fetched_issues,
-            now=now,
-            excluded_product_ids=fenced_product_ids,
-        )
+        assert selection is not None
         if selection.candidate is None:
             handoff = CIHandoffAdapterResult(
                 reason=CIHandoffAdapterReason.NO_CANDIDATE,
