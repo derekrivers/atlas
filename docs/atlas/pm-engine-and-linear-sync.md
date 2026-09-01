@@ -373,23 +373,55 @@ integration step.
 
 ## System-tier CI handoff reconciliation
 
-`reconcile_ci_handoff` is the one-candidate PM operation for Atlas-owned exits
-from `ci_pending`. The production `reconcile_one_ci_handoff` adapter is reached
-by both one-shot and recurring `atlas pm sync` ticks. After the complete project
-pull and AgentRun reconstruction it considers only locally `ci_pending` tickets
-in stable key order and evaluates at most one. A complete board observation may
-first catch the local mirror up from a Symphony-active predecessor if the poll
-missed transient states; the direct transition names the real observed source
-and the `pm-engine:linear-poll-compression` actor, never invented intermediate
-rows. The latest transition into `ci_pending` bounds the episode, but identity
-does not require an AgentRun. Instead, the ticket's issue-bound Linear GitHub
-attachment must expose one exact repository/PR publication. The canonical URL
-and GitHub metadata must agree, the metadata must identify an open
+`reconcile_ci_handoff` remains the one-candidate PM operation for Atlas-owned
+exits from `ci_pending`, but production selection is owned by the durable
+fairness scheduler used by both one-shot and recurring `atlas pm sync` ticks.
+After the complete project pull and AgentRun reconstruction, one finite snapshot
+contains only locally `ci_pending` tickets. Every eligible lifecycle/publication
+episode receives a durable recovery identity from the latest authoritative
+transition into `ci_pending` plus the exact issue-bound publication generation;
+a legacy candidate with no transition history bootstraps deterministically once
+from its durable ticket identity. Identity does not require an AgentRun and does
+not change on process restart.
+
+Within a product, normal order is the least durable fairness cursor:
+`last_evaluated_sequence` after evaluation and otherwise
+`episode_created_sequence`. A held or actionable evaluation moves that episode
+to the product sequence tail. New arrivals allocate at the same tail behind
+already-established older work, and reconstruction preserves the order. Across
+products, durable observation-time rank supplies the outer scheduler described
+in `pm-resilience-and-retrospective-recovery.md`. Ticket key is only a final
+deterministic tie-break for corrupt or equivalent legacy input; it is not the
+ongoing scheduler authority.
+
+The authority split is explicit:
+
+```text
+durable fairness owner
+        ↓
+selected exact ticket
+        ↓
+existing CI-handoff adapter/reconciler
+        ↓
+publication/evidence/fence/workflow authority
+```
+
+Fairness decides which exact candidate receives this tick's evaluation turn; it
+does not decide whether that candidate is safe to mutate. A complete board
+observation may first catch the local mirror up from a Symphony-active
+predecessor if the poll missed transient states; the direct transition names the
+real observed source and the `pm-engine:linear-poll-compression` actor, never
+invented intermediate rows. The ticket's issue-bound Linear GitHub attachment
+must expose one exact repository/PR publication. The canonical URL and GitHub
+metadata must agree, the metadata must identify an `open` or `draft`
 `main`-target PR that closes the issue, the bounded attachment connection must
 be complete, and the adapter joins it to the ticket only through the stable
-Linear issue id. Missing, truncated, contradictory or multiple publication
-identities hold before any GitHub request; titles, branches, rollups, manual
-input and earlier handoff episodes are not identity sources.
+Linear issue id. Missing, truncated, contradictory, multiple, closed or merged
+publication identities hold before any GitHub request; titles, branches,
+rollups, manual input and earlier handoff episodes are not identity sources.
+Fair scheduling does not activate retrospective merged-publication recovery. A
+historical merged publication remains ineligible in the ordinary lane, but its
+held evaluation moves to the tail instead of monopolising every future tick.
 
 For that exact publication the adapter invokes `drive_evidence_pull` inside the
 supported tick. The canonical mapper persists normal product-scoped
@@ -428,12 +460,34 @@ fresh complete board pull clears it only after proving the exact issue is at the
 source, target or another state, and that fence-reconciliation tick never
 attempts a second write.
 
+Existing unresolved CI-handoff fences outrank ordinary fairness selection and
+are reconciled before publication or evidence work, including when no ordinary
+`ci_pending` candidate remains. Fenced products rotate by their durable outer
+rank, but crash safety has precedence over throughput: every existing-fence
+reconciliation attempt ends that tick, whether the fresh board proves source,
+target, external movement or continuing ambiguity. Exact live lease and fence
+identity guard retirement, and target confirmation commits the matching local
+status with fence removal.
+
+Admission fences exclude same-product ordinary CI evaluation until their named
+owner reconciles them. Retained admission fences and independent-product CI
+work share the durable outer rank, so a still-unresolved fence can defer only
+its product while independent work eventually receives a turn; late admission
+ambiguity ends the current CI attempt without advancing the displaced episode.
+Every later workflow writer—definition creation and its create-only assertion,
+admission, verified completion and review-cycle routing—uses the shared product
+lease, rechecks both fence kinds at the write boundary and shares one latched
+tick budget.
+
 This seam has no GitHub mutation, Git, Symphony, policy, acceptance,
 verification-waiver, merge or Done authority. The generic Linear pull continues
-to reject both `ci_pending` exits; it does not become a second writer.
-After a confirmed CI-handoff mutation or target-fence reconciliation, the sync
-body returns immediately. Admission, verified completion and anomaly routing
-therefore cannot perform a second workflow mutation in the same tick.
+to reject both `ci_pending` exits; it does not become a second writer. **At most
+one workflow effect per PM tick.** Fairness operates across repeated ticks, not
+by performing multiple workflow mutations inside one tick. A confirmed
+CI-handoff mutation, every prior-fence reconciliation attempt, or the first
+completed downstream workflow route closes that tick's write window.
+Admission, verified completion and anomaly routing therefore cannot perform a
+second workflow mutation in the same tick.
 
 ### Evidence-backed Planned-to-CI-Pending mirror recovery
 
@@ -550,15 +604,22 @@ Pull-based, consistent with ADR-0008 (no webhooks before hosting):
    tick. The step makes no Linear call of its own and updates an existing
    partial run when later ticks observe handoff or evidence.
 
-   The production CI-handoff adapter then selects at most one local
-   `ci_pending` ticket and resolves identity directly from bounded trusted
-   GitHub evidence, so a compressed observation with no reconstructed AgentRun
-   remains recoverable. It either records a typed identity hold or delegates to
-   the system-tier reconciler. A confirmed write or reconciled target fence
-   ends the tick here. Otherwise the tick continues to definition and admission
-   work without considering another CI candidate. `GITHUB_TOKEN` is therefore
-   a production `atlas pm sync` precondition alongside the Linear credentials;
-   the GitHub client is read-only and is not called for an unresolved identity.
+   Existing CI-handoff fences are recovered before this ordinary pull. After
+   the pull, the durable fairness owner establishes eligible episodes, selects
+   at most one exact local `ci_pending` ticket, and passes that ticket to the
+   existing adapter. The adapter resolves ordinary publication identity and
+   evidence directly from bounded trusted provider observations, so a
+   compressed observation with no reconstructed AgentRun remains recoverable.
+   It either records a typed durable hold or delegates to the system-tier
+   reconciler; held evaluation moves the episode to the durable tail. A
+   same-product admission fence excludes the candidate, while its durable outer
+   rank still permits an independent product to receive a later turn. A
+   confirmed write, any prior-fence reconciliation attempt, late admission
+   ambiguity or lease-loss outcome closes the tick's workflow-write window.
+   Otherwise the tick may continue to definition and admission work without
+   considering another CI candidate. `GITHUB_TOKEN` is therefore a production
+   `atlas pm sync` precondition alongside the Linear credentials; the GitHub
+   client is read-only and is not called for an unresolved identity.
 
 2. Push definition updates (title/priority/labels/description) for
    tickets whose Atlas `updated_at` is newer, only while the ticket is in
@@ -573,9 +634,11 @@ Pull-based, consistent with ADR-0008 (no webhooks before hosting):
    the full embed until the render condition clears. A first-sync degraded
    create records only the Linear join key, never the cursor, so the retry
    updates the same issue instead of creating a duplicate. On first sync only,
-   immediately after a successful `create_issue`, the PM Engine resolves the
-   Linear workflow state mapped to the ticket's current Atlas status and asserts
-   it via `LinearClient.set_state`; the update path never writes workflow state.
+   immediately after a successful `create_issue`, the PM Engine durably records
+   that returned join key (and the definition cursor for a full embed) before it
+   resolves and asserts the Linear workflow state mapped to the ticket's current
+   Atlas status via `LinearClient.set_state`; the update path never writes
+   workflow state.
    Because every pushable status is externally mirrored, this inverse lookup is
    fail-closed and unique. In particular, apply-created work asserts `Planned`;
    it does not assert `Ready for Agent` until the separate admission step.

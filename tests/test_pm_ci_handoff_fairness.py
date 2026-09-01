@@ -170,7 +170,7 @@ def test_new_arrival_joins_product_sequence_tail_across_reconstruction(
     tmp_path: Path,
 ) -> None:
     path = tmp_path / "new-arrival.db"
-    issues = list(_seed(path, ("ATLAS-290", "ATLAS-291")))
+    issues = list(_seed(path, ("ATLAS-291", "ATLAS-292")))
     database = Database(f"sqlite:///{path}")
     client = RecordingClient()
     first = select_fair_ci_handoff_candidate(
@@ -179,14 +179,14 @@ def test_new_arrival_joins_product_sequence_tail_across_reconstruction(
         initial_issues=issues,
         now=NOW,
     )
-    assert first.candidate is not None and first.candidate.key == "ATLAS-290"
+    assert first.candidate is not None and first.candidate.key == "ATLAS-291"
     record_fair_ci_handoff_evaluation(
         db=database, selection=first, result=_held(), now=NOW
     )
     newcomer = seed_ticket(
         database,
         client,
-        key="ATLAS-292",
+        key="ATLAS-290",
         product_id=PRODUCT_ID,
         status=TicketStatus.CI_PENDING,
         issue_state=CI_PENDING_STATE,
@@ -208,12 +208,12 @@ def test_new_arrival_joins_product_sequence_tail_across_reconstruction(
         now=NOW + timedelta(seconds=1),
     )
     assert next_selection.candidate is not None
-    assert next_selection.candidate.key == "ATLAS-291"
+    assert next_selection.candidate.key == "ATLAS-292"
     episodes = PmRecoveryRepo(database).list_active_episodes_ordered(PRODUCT_ID)
     cursors = {
         episode.candidate_ticket_key: episode.fairness_cursor for episode in episodes
     }
-    assert cursors["ATLAS-291"] < cursors["ATLAS-290"] < cursors["ATLAS-292"]
+    assert cursors["ATLAS-292"] < cursors["ATLAS-291"] < cursors["ATLAS-290"]
 
 
 def test_stale_ci_pending_transition_does_not_replace_current_episode(

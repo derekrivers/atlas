@@ -1700,30 +1700,40 @@ def _push(
         # non-idempotent create-retry window (tracked in
         # docs/tech-debt/debt-register.md); a degraded create records only the
         # join key so the next tick updates this issue with the full embed.
-        def create_and_assert_state() -> tuple[LinearIssue, Exception | None]:
+        def persist_created_issue(issue: LinearIssue) -> None:
+            if degraded:
+                tickets.mark_external_linear_id(ticket.key, issue.id)
+            else:
+                tickets.mark_definition_pushed(
+                    ticket.key,
+                    synced_at=ticket.updated_at,
+                    external_linear_id=issue.id,
+                )
+
+        def assert_created_state(issue: LinearIssue) -> None:
+            client.set_state(issue.id, target_state_id)
+
+        def create_and_checkpoint_then_assert() -> tuple[LinearIssue, Exception | None]:
             issue = client.create_issue(
                 definition, team_id=team_id, project_id=project_id
             )
+            persist_created_issue(issue)
             try:
-                client.set_state(issue.id, target_state_id)
+                assert_created_state(issue)
             except Exception as error:
                 return issue, error
             return issue, None
 
         if workflow_write_guard is None:
-            issue, state_error = create_and_assert_state()
+            issue, state_error = create_and_checkpoint_then_assert()
         else:
-            issue, state_error = workflow_write_guard.execute(
+            issue, state_error = workflow_write_guard.execute_checkpointed(
                 product_id=ticket.product_id,
-                call=create_and_assert_state,
-            )
-        if degraded:
-            tickets.mark_external_linear_id(ticket.key, issue.id)
-        else:
-            tickets.mark_definition_pushed(
-                ticket.key,
-                synced_at=ticket.updated_at,
-                external_linear_id=issue.id,
+                call=lambda: client.create_issue(
+                    definition, team_id=team_id, project_id=project_id
+                ),
+                checkpoint=persist_created_issue,
+                continuation=assert_created_state,
             )
         result.pushed_created += 1
         if degraded:
