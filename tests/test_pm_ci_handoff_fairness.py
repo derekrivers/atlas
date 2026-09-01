@@ -532,8 +532,15 @@ def test_publication_replacement_retires_old_episode_and_blocker(
     [old_blocker] = PmRecoveryRepo(database).list_blockers(
         product_id=PRODUCT_ID, active_only=True
     )
+    database_url = str(database.engine.url)
+    rebuilt_client = RecordingClient()
+    rebuilt_client._issues = {
+        issue.id: replace(issue) for issue in client.fetch_project_issues(PROJECT_ID)
+    }
+    database.engine.dispose()
+    rebuilt = Database(database_url)
 
-    client.seed_github_publication(
+    rebuilt_client.seed_github_publication(
         ticket.external_linear_id,
         owner="derekrivers",
         repo="atlas",
@@ -541,17 +548,21 @@ def test_publication_replacement_retires_old_episode_and_blocker(
         attachment_id="publication-b",
     )
     replacement = select_fair_ci_handoff_candidate(
-        db=database,
-        tickets=TicketRepo(database),
-        initial_issues=client.fetch_project_issues(PROJECT_ID),
+        db=rebuilt,
+        tickets=TicketRepo(rebuilt),
+        initial_issues=rebuilt_client.fetch_project_issues(PROJECT_ID),
         now=NOW + timedelta(seconds=1),
     )
     assert replacement.episode is not None
     assert replacement.episode.id != old_episode_id
     assert replacement.episode.replaces_episode_id == old_episode_id
-    retained = PmRecoveryRepo(database).get_blocker(old_blocker.id)
+    retained = PmRecoveryRepo(rebuilt).get_blocker(old_blocker.id)
     assert retained is not None and retained.superseded_at is not None
     assert retained.supersession_kind is not None
+    assert replacement.episode.episode_created_sequence > (
+        first.episode.episode_created_sequence
+    )
+    rebuilt.engine.dispose()
 
 
 def test_lifecycle_exit_closes_episode_and_reentry_creates_a_new_one(

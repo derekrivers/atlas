@@ -344,6 +344,10 @@ it would leave a check/use race before definition creation, admission,
 completion or anomaly routing. One shared guard instance owns the remaining
 tick budget and latches after its first completed effect; later downstream
 writers cannot manufacture another budget by acquiring a fresh lease owner.
+Conversely, an already retained same-product admission fence displaces an
+ordinary CI candidate for one admission-recovery tick. CI fence creation
+rejects that exact collision as bounded deferral rather than bypassing or
+fail-stopping before the admission owner can reconcile it.
 
 Lease contention records `lease_unavailable` without advancing the selected
 episode cursor, then defers that product until the blocker's durable retry time.

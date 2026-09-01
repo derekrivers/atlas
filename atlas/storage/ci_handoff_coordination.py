@@ -26,6 +26,10 @@ class CIHandoffWriteFenceError(RuntimeError):
     """A CI handoff fence disappeared, collided or carried an unsafe target."""
 
 
+class AdmissionFencePresentError(CIHandoffWriteFenceError):
+    """A prior ambiguous admission write owns the product recovery lane."""
+
+
 _T = TypeVar("_T")
 
 
@@ -115,7 +119,7 @@ class CIHandoffCoordinationRepo:
             if getattr(lease_lock, "rowcount", 0) != 1:
                 raise AdmissionLeaseLostError("PM write lease was lost before CI write")
             if session.get(AdmissionWriteFenceRow, product_id) is not None:
-                raise CIHandoffWriteFenceError(
+                raise AdmissionFencePresentError(
                     "an unresolved admission write blocks CI handoff"
                 )
             if session.get(CIHandoffWriteFenceRow, product_id) is not None:

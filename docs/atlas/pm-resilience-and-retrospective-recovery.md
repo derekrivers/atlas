@@ -244,6 +244,13 @@ after its first completed provider effect, so later definition, completion or
 anomaly candidates are deferred to another tick rather than reacquiring a new
 one-effect budget.
 
+The exclusion is bidirectional. If a same-product admission fence survives a
+crash, its admission reconciler runs before the selected ordinary CI candidate
+can create a CI fence. Source, target or moved admission recovery ends that
+tick; a late admission fence that wins the shared lease is returned as typed
+CI deferral, so a reconstructed tick reaches the admission recovery owner
+instead of repeating an exception before fairness persistence.
+
 A lease-contention observation consumes its already reserved sequence only as
 the blocker occurrence identity; it does not advance the episode cursor that a
 live owner may still commit. The typed `lease_unavailable` blocker durably

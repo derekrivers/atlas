@@ -143,6 +143,7 @@ from atlas.pm.admission_sync import (
     AdmissionSyncReason,
     AdmissionSyncResult,
     admit_one_ready,
+    reconcile_existing_admission_fence,
 )
 from atlas.pm.agent_runs import reconstruct_agent_runs
 from atlas.pm.ci_handoff import CIHandoffHooks
@@ -2236,6 +2237,16 @@ def _sync_tick_impl(
             )
         else:
             assert selection.episode is not None
+            admission_fence_result = reconcile_existing_admission_fence(
+                db=db,
+                product_id=selection.candidate.product_id,
+                status_map=status_map,
+                initial_issues=fetched_issues,
+                now=now,
+            )
+            if admission_fence_result is not None:
+                _apply_admission_result(result, admission_fence_result)
+                return result
             reserved_sequence = PmRecoveryRepo(db).reserve_evaluation_sequence(
                 selection.episode.product_id
             )

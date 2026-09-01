@@ -20,6 +20,7 @@ from atlas.storage.atlas_280_bootstrap_recovery import (
     Atlas280BootstrapStorageError,
 )
 from atlas.storage.ci_handoff_coordination import (
+    AdmissionFencePresentError,
     CIHandoffCoordinationRepo,
     CIHandoffWriteFence,
     CIHandoffWriteFenceError,
@@ -90,6 +91,7 @@ __all__ = [
     "AcceptanceSessionRepo",
     "AcceptanceSessionStateError",
     "AdmissionCoordinationRepo",
+    "AdmissionFencePresentError",
     "AdmissionLeaseLostError",
     "AdmissionProviderCallIndeterminateError",
     "AdmissionRunRepo",

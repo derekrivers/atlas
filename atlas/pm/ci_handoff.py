@@ -36,6 +36,7 @@ from atlas.pm.delivery_snapshot import (
 )
 from atlas.storage import (
     AdmissionCoordinationRepo,
+    AdmissionFencePresentError,
     AdmissionLeaseLostError,
     CIHandoffCoordinationRepo,
     CIHandoffReconciliationRepo,
@@ -915,7 +916,7 @@ def reconcile_ci_handoff(
                 target_status=target,
                 created_at=now,
             )
-        except AdmissionLeaseLostError:
+        except (AdmissionLeaseLostError, AdmissionFencePresentError):
             return _result(
                 ticket,
                 classification=CIHandoffClassification.STALE,

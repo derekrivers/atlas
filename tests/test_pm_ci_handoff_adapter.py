@@ -1903,6 +1903,83 @@ def test_held_ci_evaluation_consumes_at_most_one_downstream_workflow_window(
     assert stored_first is not None and stored_first.external_linear_id is not None
 
 
+def test_retained_admission_fence_recovers_before_same_product_ci_candidate(
+    db: Database,
+) -> None:
+    client = RecordingClient()
+    ci_ticket = _seed_ci_pending(db, client, key="ATLAS-263")
+    admission_ticket = seed_ticket(
+        db,
+        client,
+        key="ATLAS-264",
+        product_id=PRODUCT_ID,
+        status=TicketStatus.PLANNED,
+        acceptance_criteria=["recover prior admission ambiguity first"],
+        linear_synced_at=NOW,
+    )
+    assert admission_ticket.external_linear_id is not None
+    admission_issue = client.fetch_issue(admission_ticket.external_linear_id)
+    assert admission_issue is not None
+    assert admission_issue.state_id is not None
+    owner_id = uuid4()
+    admission_run_id = uuid4()
+    coordination = AdmissionCoordinationRepo(db)
+    assert coordination.try_acquire(
+        product_id=PRODUCT_ID,
+        owner_id=owner_id,
+        acquired_at=NOW,
+        ttl=timedelta(minutes=1),
+    )
+    fence = coordination.begin_write(
+        product_id=PRODUCT_ID,
+        owner_id=owner_id,
+        admission_run_id=admission_run_id,
+        ticket_id=admission_ticket.id,
+        ticket_key=admission_ticket.key,
+        issue_id=admission_ticket.external_linear_id,
+        source_state_id=admission_issue.state_id,
+        target_state_id=READY.id,
+        policy_revision=1,
+        created_at=NOW,
+    )
+    coordination.release(product_id=PRODUCT_ID, owner_id=owner_id)
+    database_url = str(db.engine.url)
+    recovery_client = _rebuilt_client(client)
+    db.engine.dispose()
+
+    recovery_db = Database(database_url)
+    recovered = _run(
+        recovery_db,
+        recovery_client,
+        _github(),
+        now=NOW + timedelta(seconds=1),
+    )
+    recovery_db.engine.dispose()
+
+    assert recovered.ci_handoff_evaluated == 0
+    assert recovered.admission_decisions[0].reason.value == (
+        "indeterminate_reconciled_no_write"
+    )
+    assert recovery_client.state_writes == []
+    assert AdmissionCoordinationRepo(db).get_fence(PRODUCT_ID) is None
+
+    resumed_client = _rebuilt_client(recovery_client)
+    resumed_db = Database(database_url)
+    resumed = _run(
+        resumed_db,
+        resumed_client,
+        _github(),
+        now=NOW + timedelta(seconds=2),
+    )
+    resumed_db.engine.dispose()
+
+    assert resumed.ci_handoff_mutations == 1
+    assert resumed_client.state_writes == [
+        (ci_ticket.external_linear_id, "state-review-required")
+    ]
+    assert fence.admission_run_id == admission_run_id
+
+
 def test_competing_reconstructed_ticks_commit_one_stale_cursor_result(
     db: Database,
 ) -> None:

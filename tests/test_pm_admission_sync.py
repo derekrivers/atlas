@@ -396,6 +396,10 @@ def test_crash_retained_admission_fence_blocks_ci_fence_creation(
         created_at=NOW,
     )
     coordination.release(product_id=PRODUCT_ID, owner_id=admission_owner)
+    database_url = str(db.engine.url)
+    db.engine.dispose()
+    rebuilt = Database(database_url)
+    coordination = AdmissionCoordinationRepo(rebuilt)
 
     ci_owner = uuid4()
     assert coordination.try_acquire(
@@ -408,7 +412,7 @@ def test_crash_retained_admission_fence_blocks_ci_fence_creation(
         CIHandoffWriteFenceError,
         match="admission write blocks CI handoff",
     ):
-        CIHandoffCoordinationRepo(db).begin_write(
+        CIHandoffCoordinationRepo(rebuilt).begin_write(
             product_id=PRODUCT_ID,
             owner_id=ci_owner,
             reconciliation_id=uuid4(),
@@ -422,8 +426,9 @@ def test_crash_retained_admission_fence_blocks_ci_fence_creation(
         )
 
     assert coordination.get_fence(PRODUCT_ID) == admission_fence
-    assert CIHandoffCoordinationRepo(db).get_fence(PRODUCT_ID) is None
+    assert CIHandoffCoordinationRepo(rebuilt).get_fence(PRODUCT_ID) is None
     coordination.release(product_id=PRODUCT_ID, owner_id=ci_owner)
+    rebuilt.engine.dispose()
 
 
 def test_ac3_revalidation_candidate_movement_writes_nothing_and_atlas_stays_writer(

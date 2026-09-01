@@ -224,6 +224,49 @@ def _reconcile_fence(
     )
 
 
+def reconcile_existing_admission_fence(
+    *,
+    db: Database,
+    product_id: UUID,
+    status_map: LinearStatusMap,
+    initial_issues: list[LinearIssue],
+    now: datetime,
+) -> AdmissionSyncResult | None:
+    """Give one exact product's durable admission ambiguity recovery authority."""
+
+    coordination = AdmissionCoordinationRepo(db)
+    fence = coordination.get_fence(product_id)
+    if fence is None:
+        return None
+    owner_id = uuid4()
+    if not coordination.try_acquire(
+        product_id=product_id,
+        owner_id=owner_id,
+        acquired_at=now,
+        ttl=ADMISSION_LEASE_TTL,
+    ):
+        policy = DeliveryAdmissionPolicyRepo(db).get_active(product_id)
+        return AdmissionSyncResult(
+            outcome=AdmissionSyncOutcome.HELD,
+            reason=AdmissionSyncReason.LEASE_UNAVAILABLE,
+            policy_revision=None if policy is None else policy.revision,
+            policy_fingerprint=(
+                None if policy is None else delivery_policy_fingerprint(policy)
+            ),
+            admission_run_id=fence.admission_run_id,
+            ticket_key=fence.ticket_key,
+        )
+    try:
+        return _reconcile_fence(
+            coordination=coordination,
+            product_id=product_id,
+            status_map=status_map,
+            board_pull=_board_pull(initial_issues),
+        )
+    finally:
+        coordination.release(product_id=product_id, owner_id=owner_id)
+
+
 _CAPACITY_HOLD_CODES = frozenset(
     {
         AdmissionHoldCode.WORKING_BUDGET,
