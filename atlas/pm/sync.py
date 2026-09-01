@@ -2101,6 +2101,8 @@ def _sync_tick_impl(
                 for ticket in pull_board
             ),
             now=now,
+            expected_reconciliation_id=fence.reconciliation_id,
+            expected_ticket_id=fence.ticket_id,
         )
         assert handoff is not None
         _apply_ci_handoff_result(result, handoff)
@@ -2223,13 +2225,34 @@ def _sync_tick_impl(
             )
             if ci_handoff_hooks is not None:
                 ci_handoff_hooks.after_candidate_evaluated()
+            recording_selection = selection
+            if handoff.ticket_key != selection.candidate.key:
+                late_fence_ticket = tickets.get_by_key(handoff.ticket_key or "")
+                if (
+                    late_fence_ticket is None
+                    or late_fence_ticket.product_id != selection.candidate.product_id
+                ):
+                    raise CIHandoffWriteFenceError(
+                        "late CI handoff fence no longer resolves within the selected "
+                        "product"
+                    )
+                recording_selection = FairCIHandoffSelection(
+                    candidates=selection.candidates,
+                    candidate=late_fence_ticket,
+                    episode=ensure_ci_handoff_episode(
+                        db=db,
+                        ticket=late_fence_ticket,
+                        initial_issues=fetched_issues,
+                        now=now,
+                    ),
+                )
             if not (
                 handoff.reconciliation is not None
                 and handoff.reconciliation.reason is CIHandoffReason.LEASE_UNAVAILABLE
             ):
                 record_fair_ci_handoff_evaluation(
                     db=db,
-                    selection=selection,
+                    selection=recording_selection,
                     result=handoff,
                     now=now,
                     reserved_evaluation_sequence=reserved_sequence,
@@ -2239,7 +2262,7 @@ def _sync_tick_impl(
             else:
                 record_fair_ci_handoff_contention(
                     db=db,
-                    selection=selection,
+                    selection=recording_selection,
                     result=handoff,
                     now=now,
                     reserved_observation_sequence=reserved_sequence,

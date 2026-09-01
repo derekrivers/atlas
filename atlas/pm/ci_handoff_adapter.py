@@ -241,7 +241,7 @@ def reconcile_ci_handoff_candidate(
     return CIHandoffAdapterResult(
         reason=CIHandoffAdapterReason.RECONCILED,
         candidate_count=candidate_count,
-        ticket_key=candidate.key,
+        ticket_key=reconciliation.ticket_key,
         identity=identity,
         reconciliation=reconciliation,
         fence_precedence=(
@@ -261,6 +261,8 @@ def reconcile_existing_ci_handoff_fence(
     product_id: UUID,
     candidate_count: int,
     now: datetime,
+    expected_reconciliation_id: UUID | None = None,
+    expected_ticket_id: UUID | None = None,
 ) -> CIHandoffAdapterResult | None:
     """Reconcile the product's durable fence without publication gating."""
 
@@ -273,6 +275,8 @@ def reconcile_existing_ci_handoff_fence(
         initial_issues=initial_issues,
         product_id=product_id,
         now=now,
+        expected_reconciliation_id=expected_reconciliation_id,
+        expected_ticket_id=expected_ticket_id,
     )
     if reconciliation is None:
         return None

@@ -327,7 +327,10 @@ publication resolution, evidence refresh, fence reconciliation or any provider
 workflow effect. Fence recovery refreshes the complete project board only after
 the recovery owner acquires the product lease, so a stale discovery snapshot
 cannot clear or classify the authoritative fence. Clearing it verifies the
-exact live lease owner and fence identity atomically. The selected publication
+exact live lease owner and fence identity atomically; target confirmation also
+commits the exact ticket's local status in that transaction. A fence appearing
+after ordinary selection displaces that selection and retains its own ticket
+and episode identity. The selected publication
 attachment/repository/PR generation is likewise re-resolved from both final
 board revalidations before any new fence or workflow write.
 

@@ -13,6 +13,7 @@ import sqlalchemy as sa
 from atlas.core.models.ticket import TicketStatus
 from atlas.storage.admission_coordination import AdmissionLeaseLostError
 from atlas.storage.db import Database
+from atlas.storage.repositories import _apply_linear_status_in_session
 from atlas.storage.tables import (
     AdmissionLeaseRow,
     CIHandoffWriteFenceRow,
@@ -201,17 +202,6 @@ class CIHandoffCoordinationRepo:
             raise CIHandoffWriteFenceError("owned CI handoff call had no outcome")
         return returned[0]
 
-    def clear_fence(self, *, product_id: UUID, reconciliation_id: UUID) -> None:
-        with self._db.session() as session, session.begin():
-            result = session.execute(
-                sa.delete(CIHandoffWriteFenceRow).where(
-                    CIHandoffWriteFenceRow.product_id == product_id,
-                    CIHandoffWriteFenceRow.reconciliation_id == reconciliation_id,
-                )
-            )
-            if getattr(result, "rowcount", 0) != 1:
-                raise CIHandoffWriteFenceError("CI handoff fence could not be cleared")
-
     def clear_owned_fence(
         self,
         *,
@@ -245,3 +235,58 @@ class CIHandoffCoordinationRepo:
             )
             if getattr(result, "rowcount", 0) != 1:
                 raise CIHandoffWriteFenceError("CI handoff fence could not be cleared")
+
+    def finalize_owned_target(
+        self,
+        *,
+        product_id: UUID,
+        owner_id: UUID,
+        reconciliation_id: UUID,
+        ticket_id: UUID,
+        ticket_key: str,
+        target_status: TicketStatus,
+        observed_at: datetime,
+        status_observed_at: datetime,
+        created_by_id: str,
+    ) -> None:
+        """Atomically apply the confirmed target and retire the exact owned fence."""
+
+        observed = _aware(observed_at, name="CI handoff finalization time")
+        status_observed = _aware(
+            status_observed_at, name="CI handoff status observation time"
+        )
+        with self._db.session() as session, session.begin():
+            lease_lock = session.execute(
+                sa.update(AdmissionLeaseRow)
+                .where(
+                    AdmissionLeaseRow.product_id == product_id,
+                    AdmissionLeaseRow.owner_id == owner_id,
+                    AdmissionLeaseRow.expires_at > observed,
+                )
+                .values(owner_id=AdmissionLeaseRow.owner_id)
+            )
+            if getattr(lease_lock, "rowcount", 0) != 1:
+                raise AdmissionLeaseLostError(
+                    "PM write lease expired or was replaced before CI finalization"
+                )
+            fence = session.get(CIHandoffWriteFenceRow, product_id)
+            if (
+                fence is None
+                or fence.reconciliation_id != reconciliation_id
+                or fence.ticket_id != ticket_id
+                or fence.ticket_key != ticket_key
+                or fence.target_status != target_status.value
+            ):
+                raise CIHandoffWriteFenceError(
+                    "CI handoff fence changed before owned finalization"
+                )
+            _apply_linear_status_in_session(
+                session,
+                key=ticket_key,
+                status=target_status,
+                now=status_observed,
+                created_by_id=created_by_id,
+                expected_ticket_id=ticket_id,
+                expected_product_id=product_id,
+            )
+            session.delete(fence)

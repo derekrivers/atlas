@@ -285,6 +285,48 @@ def _status_transition_row(
     )
 
 
+def _apply_linear_status_in_session(
+    session: Session,
+    *,
+    key: str,
+    status: TicketStatus,
+    now: datetime,
+    created_by_id: str,
+    expected_ticket_id: UUID | None = None,
+    expected_product_id: UUID | None = None,
+) -> TicketRow:
+    """Apply one trusted status observation inside the caller's transaction."""
+
+    row = session.scalars(sa.select(TicketRow).where(TicketRow.key == key)).first()
+    if (
+        row is None
+        or (expected_ticket_id is not None and row.id != expected_ticket_id)
+        or (expected_product_id is not None and row.product_id != expected_product_id)
+    ):
+        raise TicketNotFoundError(f"no exact ticket with key {key!r}")
+    if row.status != status.value:
+        row.status_entered_at = now
+        if status == TicketStatus.DONE:
+            row.completed_at = now
+        if (
+            row.status == TicketStatus.CHANGES_REQUESTED.value
+            and status == TicketStatus.PR_OPEN
+        ):
+            row.review_cycle_count = row.review_cycle_count + 1
+        session.add(
+            _status_transition_row(
+                transition_id=uuid4(),
+                ticket_id=row.id,
+                from_status=row.status,
+                to_status=status.value,
+                occurred_at=now,
+                created_by_id=created_by_id,
+            )
+        )
+    row.status = status.value
+    return row
+
+
 def _add_operator_action_reservation(
     session: Session,
     *,
@@ -598,31 +640,13 @@ class TicketRepo(_KeyedRepo[Ticket]):
         if now.utcoffset() is None:
             raise NaiveDatetimeError("Ticket", "status_entered_at")
         with self._db.session() as session, session.begin():
-            row = session.scalars(
-                sa.select(TicketRow).where(TicketRow.key == key)
-            ).first()
-            if row is None:
-                raise TicketNotFoundError(f"no ticket with key {key!r}")
-            if row.status != status.value:
-                row.status_entered_at = now
-                if status == TicketStatus.DONE:
-                    row.completed_at = now
-                if (
-                    row.status == TicketStatus.CHANGES_REQUESTED.value
-                    and status == TicketStatus.PR_OPEN
-                ):
-                    row.review_cycle_count = row.review_cycle_count + 1
-                session.add(
-                    _status_transition_row(
-                        transition_id=uuid4(),
-                        ticket_id=row.id,
-                        from_status=row.status,
-                        to_status=status.value,
-                        occurred_at=now,
-                        created_by_id=created_by_id,
-                    )
-                )
-            row.status = status.value
+            row = _apply_linear_status_in_session(
+                session,
+                key=key,
+                status=status,
+                now=now,
+                created_by_id=created_by_id,
+            )
             return self._to_model(row)
 
     def mark_linear_state_observed(self, key: str, state_id: str | None) -> Ticket:

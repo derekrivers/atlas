@@ -226,6 +226,11 @@ after acquiring its lease; the pre-lease pull is discovery input, not recovery
 authority. Source, target or moved fence retirement atomically verifies the
 exact still-live lease owner and fence identity, so an expired or replaced
 recovery process cannot clear ambiguity after a slow provider refresh.
+Target confirmation applies the exact ticket's local status and retires that
+fence in the same transaction; losing the lease or fence CAS leaves both local
+eligibility and the durable ambiguity fence intact. A fence discovered after
+ordinary candidate selection is accounted to its own ticket episode, never to
+the displaced candidate.
 
 A lease-contention observation consumes its already reserved sequence only as
 the blocker occurrence identity; it does not advance the episode cursor that a
