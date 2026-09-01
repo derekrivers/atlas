@@ -239,7 +239,10 @@ hold the shared product lease and atomically verify that no CI-handoff fence
 exists across the bounded provider call. CI-handoff fence creation locks that
 same lease row. A lease conflict or late fence therefore makes zero downstream
 workflow calls and closes the rest of the tick's workflow-write window; a
-fresh tick reconciles the retained fence first.
+fresh tick reconciles the retained fence first. The shared guard also latches
+after its first completed provider effect, so later definition, completion or
+anomaly candidates are deferred to another tick rather than reacquiring a new
+one-effect budget.
 
 A lease-contention observation consumes its already reserved sequence only as
 the blocker occurrence identity; it does not advance the episode cursor that a

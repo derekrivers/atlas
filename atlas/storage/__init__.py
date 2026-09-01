@@ -7,6 +7,7 @@ inside this package.
 from atlas.storage.admission_coordination import (
     AdmissionCoordinationRepo,
     AdmissionLeaseLostError,
+    AdmissionProviderCallIndeterminateError,
     AdmissionWriteFence,
     AdmissionWriteFenceError,
     CIHandoffFencePresentError,
@@ -90,6 +91,7 @@ __all__ = [
     "AcceptanceSessionStateError",
     "AdmissionCoordinationRepo",
     "AdmissionLeaseLostError",
+    "AdmissionProviderCallIndeterminateError",
     "AdmissionRunRepo",
     "AdmissionWriteFence",
     "AdmissionWriteFenceError",

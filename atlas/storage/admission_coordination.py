@@ -32,6 +32,10 @@ class CIHandoffFencePresentError(RuntimeError):
     """An unresolved CI-handoff write closes the product's workflow window."""
 
 
+class AdmissionProviderCallIndeterminateError(RuntimeError):
+    """The admission provider call failed after its durable fence was locked."""
+
+
 _T = TypeVar("_T")
 
 
@@ -304,6 +308,59 @@ class AdmissionCoordinationRepo:
             raise failure
         if not returned:  # pragma: no cover - call either returns or raises
             raise RuntimeError("guarded workflow call had no outcome")
+        return returned[0]
+
+    def execute_owned_admission_call_if_no_ci_fence(
+        self,
+        *,
+        product_id: UUID,
+        owner_id: UUID,
+        admission_run_id: UUID,
+        observed_at: datetime,
+        call: Callable[[], _T],
+    ) -> _T:
+        """Run the exact fenced admission call and retain ambiguity atomically."""
+
+        observed = _aware_utc(
+            observed_at, name="guarded admission call observation time"
+        )
+        returned: list[_T] = []
+        failure: Exception | None = None
+        with self._db.session() as session, session.begin():
+            lease_lock = session.execute(
+                sa.update(AdmissionLeaseRow)
+                .where(
+                    AdmissionLeaseRow.product_id == product_id,
+                    AdmissionLeaseRow.owner_id == owner_id,
+                    AdmissionLeaseRow.expires_at > observed,
+                )
+                .values(owner_id=AdmissionLeaseRow.owner_id)
+            )
+            if getattr(lease_lock, "rowcount", 0) != 1:
+                raise AdmissionLeaseLostError(
+                    "PM write lease expired or was replaced before admission call"
+                )
+            if session.get(CIHandoffWriteFenceRow, product_id) is not None:
+                raise CIHandoffFencePresentError(
+                    "an unresolved CI handoff write blocks the admission call"
+                )
+            fence = session.get(AdmissionWriteFenceRow, product_id)
+            if fence is None or fence.admission_run_id != admission_run_id:
+                raise AdmissionWriteFenceError(
+                    "the admission write fence changed before the owned call"
+                )
+            try:
+                returned.append(call())
+            except Exception as exc:
+                fence.state = "indeterminate"
+                fence.updated_at = observed
+                failure = exc
+        if failure is not None:
+            raise AdmissionProviderCallIndeterminateError(
+                "the fenced admission provider call had an indeterminate outcome"
+            ) from failure
+        if not returned:  # pragma: no cover - call either returns or raises
+            raise AdmissionWriteFenceError("owned admission call had no outcome")
         return returned[0]
 
     def mark_indeterminate(

@@ -2369,6 +2369,8 @@ def _sync_tick_impl(
             return result
         if pushed_issue_id is not None:
             pushed_issue_ids.add(pushed_issue_id)
+    if workflow_write_guard.consumed:
+        return result
     if repair_packs:
         _repair_pack_absent_descriptions(
             tickets=tickets,
@@ -2422,6 +2424,8 @@ def _sync_tick_impl(
             workflow_write_guard=workflow_write_guard,
         )
     except WorkflowWriteWindowClosed:
+        return result
+    if workflow_write_guard.consumed:
         return result
     # Step 4 (ATLAS-45): the follow-up comment scan, after admission and before
     # the step-5 anomaly passes (the loop order). The inbox is read once up front

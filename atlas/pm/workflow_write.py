@@ -28,10 +28,21 @@ class PMWorkflowWriteGuard:
     def __init__(self, *, db: Database, observed_at: datetime) -> None:
         self._coordination = AdmissionCoordinationRepo(db)
         self._observed_at = observed_at
+        self._consumed = False
+
+    @property
+    def consumed(self) -> bool:
+        """Whether this tick already completed one workflow-effect call."""
+
+        return self._consumed
 
     def execute(self, *, product_id: UUID, call: Callable[[], _T]) -> _T:
         """Execute once while the shared lease is live and no CI fence exists."""
 
+        if self._consumed:
+            raise WorkflowWriteWindowClosed(
+                "the tick workflow-write window was already consumed"
+            )
         owner_id = uuid4()
         if not self._coordination.try_acquire(
             product_id=product_id,
@@ -44,12 +55,14 @@ class PMWorkflowWriteGuard:
             )
         try:
             try:
-                return self._coordination.execute_owned_call_if_no_ci_fence(
+                result = self._coordination.execute_owned_call_if_no_ci_fence(
                     product_id=product_id,
                     owner_id=owner_id,
                     observed_at=self._observed_at,
                     call=call,
                 )
+                self._consumed = True
+                return result
             except (AdmissionLeaseLostError, CIHandoffFencePresentError) as exc:
                 raise WorkflowWriteWindowClosed(str(exc)) from exc
         finally:

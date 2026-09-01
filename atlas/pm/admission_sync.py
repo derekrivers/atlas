@@ -31,7 +31,9 @@ from atlas.pm.protected_lanes import (
 from atlas.storage import (
     AdmissionCoordinationRepo,
     AdmissionLeaseLostError,
+    AdmissionProviderCallIndeterminateError,
     AdmissionRunRepo,
+    AdmissionWriteFenceError,
     CIHandoffFencePresentError,
     Database,
     DeliveryAdmissionPolicyRepo,
@@ -636,6 +638,15 @@ def admit_one_ready(
                 admission_run_id=run.id,
                 ticket_key=selected.ticket_key,
             )
+        except AdmissionWriteFenceError:
+            return AdmissionSyncResult(
+                outcome=AdmissionSyncOutcome.STALE,
+                reason=AdmissionSyncReason.LEASE_LOST,
+                policy_revision=final_policy.revision,
+                policy_fingerprint=delivery_policy_fingerprint(final_policy),
+                admission_run_id=run.id,
+                ticket_key=selected.ticket_key,
+            )
         except CIHandoffFencePresentError:
             return AdmissionSyncResult(
                 outcome=AdmissionSyncOutcome.HELD,
@@ -646,16 +657,53 @@ def admit_one_ready(
                 ticket_key=selected.ticket_key,
             )
 
-        try:
-            written = client.set_state(selected.external_linear_id, target_state_id)
-        except Exception:
-            # Once the mutation call has begun, even a response-decoding or
-            # adapter exception cannot prove that Linear did not apply it.
-            # Preserve the fence and require the next complete board pull to
-            # reconcile the exact issue rather than attempting another write.
-            coordination.mark_indeterminate(
-                product_id=product_id, admission_run_id=run.id, observed_at=now
+        def write_and_validate() -> LinearIssue:
+            written = client.set_state(
+                selected.external_linear_id or "", target_state_id
             )
+            if (
+                written.id != selected.external_linear_id
+                or written.state_id != target_state_id
+            ):
+                raise RuntimeError("admission provider response identity mismatch")
+            return written
+
+        try:
+            coordination.execute_owned_admission_call_if_no_ci_fence(
+                product_id=product_id,
+                owner_id=owner_id,
+                admission_run_id=run.id,
+                observed_at=now,
+                call=write_and_validate,
+            )
+        except AdmissionLeaseLostError:
+            return AdmissionSyncResult(
+                outcome=AdmissionSyncOutcome.STALE,
+                reason=AdmissionSyncReason.LEASE_LOST,
+                policy_revision=final_policy.revision,
+                policy_fingerprint=delivery_policy_fingerprint(final_policy),
+                admission_run_id=run.id,
+                ticket_key=selected.ticket_key,
+            )
+        except AdmissionWriteFenceError:
+            return AdmissionSyncResult(
+                outcome=AdmissionSyncOutcome.STALE,
+                reason=AdmissionSyncReason.LEASE_LOST,
+                policy_revision=final_policy.revision,
+                policy_fingerprint=delivery_policy_fingerprint(final_policy),
+                admission_run_id=run.id,
+                ticket_key=selected.ticket_key,
+            )
+        except CIHandoffFencePresentError:
+            return AdmissionSyncResult(
+                outcome=AdmissionSyncOutcome.HELD,
+                reason=AdmissionSyncReason.CI_HANDOFF_FENCE_PRESENT,
+                policy_revision=final_policy.revision,
+                policy_fingerprint=delivery_policy_fingerprint(final_policy),
+                admission_run_id=run.id,
+                ticket_key=selected.ticket_key,
+            )
+        except AdmissionProviderCallIndeterminateError:
             return AdmissionSyncResult(
                 outcome=AdmissionSyncOutcome.INDETERMINATE,
                 reason=AdmissionSyncReason.WRITE_INDETERMINATE,
@@ -664,10 +712,11 @@ def admit_one_ready(
                 admission_run_id=run.id,
                 ticket_key=selected.ticket_key,
             )
-        if (
-            written.id != selected.external_linear_id
-            or written.state_id != target_state_id
-        ):
+        except Exception:
+            # Once the mutation call has begun, even a response-decoding or
+            # adapter exception cannot prove that Linear did not apply it.
+            # Preserve the fence and require the next complete board pull to
+            # reconcile the exact issue rather than attempting another write.
             coordination.mark_indeterminate(
                 product_id=product_id, admission_run_id=run.id, observed_at=now
             )

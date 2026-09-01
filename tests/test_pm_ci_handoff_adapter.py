@@ -21,6 +21,7 @@ from test_pm_sync import (
     CI_PENDING_STATE,
     PACK_DOC,
     PROJECT_ID,
+    READY,
     REVIEW_REQUIRED_STATE,
     STARTED,
     TEAM_ID,
@@ -1766,20 +1767,19 @@ def test_held_fairness_commit_survives_death_before_outer_receipt(
     rebuilt.engine.dispose()
 
 
-def test_fence_installed_after_fairness_commit_blocks_downstream_workflow_call(
+def test_fence_installed_after_fairness_commit_blocks_then_defers_admission(
     db: Database,
 ) -> None:
     client = RecordingClient()
     selected = _seed_ci_pending(db, client, key="ATLAS-263")
-    seed_ticket(
+    planned = seed_ticket(
         db,
         client,
         key="ATLAS-264",
         product_id=PRODUCT_ID,
         status=TicketStatus.PLANNED,
-        acceptance_criteria=["must not create while CI authority is ambiguous"],
-        with_issue=False,
-        linear_synced_at=None,
+        acceptance_criteria=["must not admit while CI authority is ambiguous"],
+        linear_synced_at=NOW,
     )
     assert selected.external_linear_id is not None
     selected_issue = client.fetch_issue(selected.external_linear_id)
@@ -1827,12 +1827,80 @@ def test_fence_installed_after_fairness_commit_blocks_downstream_workflow_call(
     assert result.ci_handoff_mutations == 0
     assert client.creates == []
     assert client.state_writes == []
+    assert result.admission_decisions[0].reason.value == "ci_handoff_fence_present"
     assert CIHandoffCoordinationRepo(db).get_fence(PRODUCT_ID) == installed_fence
     episodes = PmRecoveryRepo(db).list_active_episodes_ordered(PRODUCT_ID)
     selected_episode = next(
         episode for episode in episodes if episode.candidate_ticket_id == selected.id
     )
     assert selected_episode.last_evaluated_sequence is not None
+
+    database_url = str(db.engine.url)
+    recovery_client = _rebuilt_client(client)
+    db.engine.dispose()
+    recovery_db = Database(database_url)
+    recovered = _run(
+        recovery_db,
+        recovery_client,
+        _github(),
+        now=NOW + timedelta(seconds=1),
+    )
+    recovery_db.engine.dispose()
+
+    assert recovered.ci_handoff_decisions[0].ticket_key == selected.key
+    assert recovered.ci_handoff_decisions[0].reconciliation is not None
+    assert (
+        recovered.ci_handoff_decisions[0].reconciliation.reason
+        is CIHandoffReason.FENCE_RECONCILED_SOURCE
+    )
+    assert recovery_client.state_writes == []
+    assert CIHandoffCoordinationRepo(db).get_fence(PRODUCT_ID) is None
+
+    resumed_client = _rebuilt_client(recovery_client)
+    resumed_db = Database(database_url)
+    resumed = _run(
+        resumed_db,
+        resumed_client,
+        _github(),
+        now=NOW + timedelta(seconds=2),
+    )
+    resumed_db.engine.dispose()
+
+    assert resumed.admitted == 1
+    assert resumed_client.state_writes == [(planned.external_linear_id, READY.id)]
+
+
+def test_held_ci_evaluation_consumes_at_most_one_downstream_workflow_window(
+    db: Database,
+) -> None:
+    client = RecordingClient()
+    selected = _seed_ci_pending(db, client, key="ATLAS-263")
+    first = seed_ticket(
+        db,
+        client,
+        key="ATLAS-264",
+        product_id=PRODUCT_ID,
+        status=TicketStatus.PLANNED,
+        acceptance_criteria=["first bounded definition creation"],
+        with_issue=False,
+        linear_synced_at=None,
+    )
+    assert selected.external_linear_id is not None
+    selected_issue = client.fetch_issue(selected.external_linear_id)
+    assert selected_issue is not None
+    client._issues[selected.external_linear_id] = replace(
+        selected_issue, github_publications=()
+    )
+
+    result = _run(db, client, _github())
+
+    assert result.ci_handoff_held == 1
+    assert len(client.creates) == 1
+    assert len(client.state_writes) == 1
+    assert result.admitted == 0
+    assert result.admission_decisions == []
+    stored_first = TicketRepo(db).get_by_key(first.key)
+    assert stored_first is not None and stored_first.external_linear_id is not None
 
 
 def test_competing_reconstructed_ticks_commit_one_stale_cursor_result(

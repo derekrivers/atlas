@@ -9,9 +9,12 @@ from __future__ import annotations
 
 import tempfile
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeoutError
 from dataclasses import replace
 from datetime import timedelta
 from pathlib import Path
+from threading import Event
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -57,6 +60,8 @@ from atlas.pm.scheduler import TickConfig, run_scheduler, run_tick
 from atlas.storage import (
     AdmissionCoordinationRepo,
     AdmissionRunRepo,
+    CIHandoffCoordinationRepo,
+    CIHandoffWriteFenceError,
     Database,
     PmSyncReceiptRepo,
     TicketRepo,
@@ -281,6 +286,144 @@ def test_ac2_success_repulls_complete_board_and_writes_exact_selected_state(
         PmSyncReceiptRepo(db).list()[-1].result
         is PmSyncReceiptResult.SUCCESS_STATUS_ONLY
     )
+
+
+def test_admission_provider_call_blocks_expired_lease_ci_fence_creation(
+    db: Database,
+) -> None:
+    entered_call = Event()
+    release_call = Event()
+    admission_finished = Event()
+
+    class BlockingAdmissionClient(CountingPullClient):
+        def set_state(self, issue_id: str, state_id: str) -> LinearIssue:
+            entered_call.set()
+            assert release_call.wait(timeout=5)
+            return super().set_state(issue_id, state_id)
+
+    client = BlockingAdmissionClient()
+    candidate = seed_candidate(db, client)
+    assert candidate.external_linear_id is not None
+    fenced_ticket = seed_ticket(
+        db,
+        client,
+        key="ATLAS-250",
+        product_id=PRODUCT_ID,
+        status=TicketStatus.CI_PENDING,
+        issue_state=CI_PENDING_STATE,
+        acceptance_criteria=["retain exact CI ambiguity"],
+        linear_synced_at=NOW,
+    )
+    assert fenced_ticket.external_linear_id is not None
+    replacement_owner = uuid4()
+
+    def install_ci_fence() -> Any:
+        lease = AdmissionCoordinationRepo(db)
+        assert lease.try_acquire(
+            product_id=PRODUCT_ID,
+            owner_id=replacement_owner,
+            acquired_at=NOW + timedelta(minutes=6),
+            ttl=timedelta(minutes=5),
+        )
+        assert admission_finished.wait(timeout=5)
+        fence = CIHandoffCoordinationRepo(db).begin_write(
+            product_id=PRODUCT_ID,
+            owner_id=replacement_owner,
+            reconciliation_id=uuid4(),
+            ticket_id=fenced_ticket.id,
+            ticket_key=fenced_ticket.key,
+            issue_id=fenced_ticket.external_linear_id or "",
+            source_state_id=CI_PENDING_STATE.id,
+            target_state_id="state-review-required",
+            target_status=TicketStatus.REVIEW_REQUIRED,
+            created_at=NOW + timedelta(minutes=6),
+        )
+        lease.release(product_id=PRODUCT_ID, owner_id=replacement_owner)
+        return fence
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        admission_future = pool.submit(run, db, client)
+        assert entered_call.wait(timeout=5)
+        fence_future = pool.submit(install_ci_fence)
+        with pytest.raises(FutureTimeoutError):
+            fence_future.result(timeout=0.1)
+        release_call.set()
+        result = admission_future.result(timeout=5)
+        admission_finished.set()
+        fence = fence_future.result(timeout=5)
+
+    assert result.admitted == 1
+    assert client.state_writes == [(candidate.external_linear_id, READY.id)]
+    assert CIHandoffCoordinationRepo(db).get_fence(PRODUCT_ID) == fence
+
+
+def test_crash_retained_admission_fence_blocks_ci_fence_creation(
+    db: Database,
+) -> None:
+    client = CountingPullClient()
+    admission_ticket = seed_candidate(db, client)
+    ci_ticket = seed_ticket(
+        db,
+        client,
+        key="ATLAS-250",
+        product_id=PRODUCT_ID,
+        status=TicketStatus.CI_PENDING,
+        issue_state=CI_PENDING_STATE,
+        acceptance_criteria=["retain one ambiguous writer"],
+        linear_synced_at=NOW,
+    )
+    assert admission_ticket.external_linear_id is not None
+    assert ci_ticket.external_linear_id is not None
+    admission_owner = uuid4()
+    admission_run_id = uuid4()
+    coordination = AdmissionCoordinationRepo(db)
+    assert coordination.try_acquire(
+        product_id=PRODUCT_ID,
+        owner_id=admission_owner,
+        acquired_at=NOW,
+        ttl=timedelta(minutes=1),
+    )
+    admission_fence = coordination.begin_write(
+        product_id=PRODUCT_ID,
+        owner_id=admission_owner,
+        admission_run_id=admission_run_id,
+        ticket_id=admission_ticket.id,
+        ticket_key=admission_ticket.key,
+        issue_id=admission_ticket.external_linear_id,
+        source_state_id="state-unstarted",
+        target_state_id=READY.id,
+        policy_revision=1,
+        created_at=NOW,
+    )
+    coordination.release(product_id=PRODUCT_ID, owner_id=admission_owner)
+
+    ci_owner = uuid4()
+    assert coordination.try_acquire(
+        product_id=PRODUCT_ID,
+        owner_id=ci_owner,
+        acquired_at=NOW + timedelta(minutes=2),
+        ttl=timedelta(minutes=1),
+    )
+    with pytest.raises(
+        CIHandoffWriteFenceError,
+        match="admission write blocks CI handoff",
+    ):
+        CIHandoffCoordinationRepo(db).begin_write(
+            product_id=PRODUCT_ID,
+            owner_id=ci_owner,
+            reconciliation_id=uuid4(),
+            ticket_id=ci_ticket.id,
+            ticket_key=ci_ticket.key,
+            issue_id=ci_ticket.external_linear_id,
+            source_state_id=CI_PENDING_STATE.id,
+            target_state_id="state-review-required",
+            target_status=TicketStatus.REVIEW_REQUIRED,
+            created_at=NOW + timedelta(minutes=2),
+        )
+
+    assert coordination.get_fence(PRODUCT_ID) == admission_fence
+    assert CIHandoffCoordinationRepo(db).get_fence(PRODUCT_ID) is None
+    coordination.release(product_id=PRODUCT_ID, owner_id=ci_owner)
 
 
 def test_ac3_revalidation_candidate_movement_writes_nothing_and_atlas_stays_writer(

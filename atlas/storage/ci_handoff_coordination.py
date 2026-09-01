@@ -16,6 +16,7 @@ from atlas.storage.db import Database
 from atlas.storage.repositories import _apply_linear_status_in_session
 from atlas.storage.tables import (
     AdmissionLeaseRow,
+    AdmissionWriteFenceRow,
     CIHandoffWriteFenceRow,
     TicketRow,
 )
@@ -113,6 +114,10 @@ class CIHandoffCoordinationRepo:
             )
             if getattr(lease_lock, "rowcount", 0) != 1:
                 raise AdmissionLeaseLostError("PM write lease was lost before CI write")
+            if session.get(AdmissionWriteFenceRow, product_id) is not None:
+                raise CIHandoffWriteFenceError(
+                    "an unresolved admission write blocks CI handoff"
+                )
             if session.get(CIHandoffWriteFenceRow, product_id) is not None:
                 raise CIHandoffWriteFenceError(
                     "an unresolved CI handoff write already blocks this product"

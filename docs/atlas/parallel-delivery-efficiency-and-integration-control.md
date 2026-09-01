@@ -341,7 +341,9 @@ creation takes the identical lease-row lock. A late ambiguous fence or lease
 contender therefore closes the ordinary workflow-write window without a
 provider call. A final scheduler read alone is not sufficient authority because
 it would leave a check/use race before definition creation, admission,
-completion or anomaly routing.
+completion or anomaly routing. One shared guard instance owns the remaining
+tick budget and latches after its first completed effect; later downstream
+writers cannot manufacture another budget by acquiring a fresh lease owner.
 
 Lease contention records `lease_unavailable` without advancing the selected
 episode cursor, then defers that product until the blocker's durable retry time.

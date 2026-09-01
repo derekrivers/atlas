@@ -1359,7 +1359,8 @@ def test_dependency_ready_new_issue_waits_for_complete_pull_then_promotes(
     issue_id = synced.external_linear_id
     assert first.pushed_created == 1
     assert first.promoted == 0
-    assert first.stale == 1
+    assert first.stale == 0
+    assert first.admission_decisions == []
 
     second = run(db, client)
 
