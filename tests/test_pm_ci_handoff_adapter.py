@@ -2403,6 +2403,100 @@ def test_replaced_unresolved_fence_cannot_record_against_new_authority(
     assert client.state_writes == []
 
 
+def test_fence_replacement_after_blocker_classification_fails_atomic_cas(
+    db: Database,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = RecordingClient()
+    ticket = _seed_ci_pending(db, client)
+    selected = select_fair_ci_handoff_candidate(
+        db=db,
+        tickets=TicketRepo(db),
+        initial_issues=client.fetch_project_issues(PROJECT_ID),
+        now=NOW,
+    )
+    assert selected.episode is not None
+    initial_cursor = selected.episode.fairness_cursor
+    lease = AdmissionCoordinationRepo(db)
+    owner_id = uuid4()
+    assert lease.try_acquire(
+        product_id=PRODUCT_ID,
+        owner_id=owner_id,
+        acquired_at=NOW,
+        ttl=timedelta(minutes=1),
+    )
+    assert ticket.external_linear_id is not None
+    first_fence = CIHandoffCoordinationRepo(db).begin_write(
+        product_id=PRODUCT_ID,
+        owner_id=owner_id,
+        reconciliation_id=uuid4(),
+        ticket_id=ticket.id,
+        ticket_key=ticket.key,
+        issue_id=ticket.external_linear_id,
+        source_state_id=CI_PENDING_STATE.id,
+        target_state_id="state-review-required",
+        target_status=TicketStatus.REVIEW_REQUIRED,
+        created_at=NOW,
+    )
+    lease.release(product_id=PRODUCT_ID, owner_id=owner_id)
+    client._issues.pop(ticket.external_linear_id)
+    from atlas.pm.ci_handoff_fairness import _fence_authority_id as original
+
+    replacement_fence: Any = None
+
+    def replace_after_classification(*args: Any, **kwargs: Any) -> str:
+        nonlocal replacement_fence
+        authority_id = original(*args, **kwargs)
+        replacement_owner = uuid4()
+        assert lease.try_acquire(
+            product_id=PRODUCT_ID,
+            owner_id=replacement_owner,
+            acquired_at=NOW,
+            ttl=timedelta(minutes=1),
+        )
+        CIHandoffCoordinationRepo(db).clear_owned_fence(
+            product_id=PRODUCT_ID,
+            owner_id=replacement_owner,
+            reconciliation_id=first_fence.reconciliation_id,
+            observed_at=NOW,
+        )
+        replacement_fence = CIHandoffCoordinationRepo(db).begin_write(
+            product_id=PRODUCT_ID,
+            owner_id=replacement_owner,
+            reconciliation_id=uuid4(),
+            ticket_id=ticket.id,
+            ticket_key=ticket.key,
+            issue_id=ticket.external_linear_id or "",
+            source_state_id=CI_PENDING_STATE.id,
+            target_state_id="state-review-required",
+            target_status=TicketStatus.REVIEW_REQUIRED,
+            created_at=NOW,
+        )
+        lease.release(product_id=PRODUCT_ID, owner_id=replacement_owner)
+        return authority_id
+
+    monkeypatch.setattr(
+        "atlas.pm.ci_handoff_fairness._fence_authority_id",
+        replace_after_classification,
+    )
+
+    with pytest.raises(PmRecoveryStorageError) as conflict:
+        _run(db, client, _github())
+
+    assert conflict.value.code is PmRecoveryStorageCode.FENCE_IDENTITY_CONFLICT
+    retained = PmRecoveryRepo(db).get_episode(selected.episode.id)
+    assert retained is not None and retained.fairness_cursor == initial_cursor
+    assert CIHandoffCoordinationRepo(db).get_fence(PRODUCT_ID) == replacement_fence
+    assert (
+        PmRecoveryRepo(db).list_blockers(
+            product_id=PRODUCT_ID,
+            active_only=True,
+        )
+        == []
+    )
+    assert client.state_writes == []
+
+
 def test_fence_recovery_cannot_clear_after_lease_expires_during_refresh(
     db: Database,
 ) -> None:

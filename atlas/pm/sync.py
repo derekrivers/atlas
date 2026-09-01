@@ -2237,25 +2237,7 @@ def _sync_tick_impl(
             )
             prior_fence_attempt = bool(
                 handoff.reconciliation is not None
-                and (
-                    handoff.reconciliation.reason
-                    in {
-                        CIHandoffReason.CONCURRENT_WRITE_FENCE,
-                        CIHandoffReason.FENCE_STILL_UNRESOLVED,
-                        CIHandoffReason.FENCE_RECONCILED_TARGET,
-                        CIHandoffReason.FENCE_RECONCILED_SOURCE,
-                        CIHandoffReason.FENCE_RECONCILED_MOVED,
-                        CIHandoffReason.WRITE_INDETERMINATE,
-                    }
-                    or (
-                        handoff.fence_precedence
-                        and handoff.reconciliation.reason
-                        in {
-                            CIHandoffReason.LEASE_UNAVAILABLE,
-                            CIHandoffReason.LEASE_LOST,
-                        }
-                    )
-                )
+                and handoff.reconciliation.fence_reconciliation_attempted
             )
             if (
                 late_fence is not None

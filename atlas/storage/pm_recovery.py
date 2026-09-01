@@ -27,6 +27,7 @@ from atlas.core.models.pm_recovery import (
 )
 from atlas.storage.db import Database
 from atlas.storage.tables import (
+    CIHandoffWriteFenceRow,
     PmBlockerOccurrenceRow,
     PmBlockerStarvedCandidateRow,
     PmRecoveryEpisodeRow,
@@ -49,6 +50,7 @@ class PmRecoveryStorageCode(StrEnum):
     EVALUATION_REPLAY_CONFLICT = "evaluation_replay_conflict"
     EVALUATION_CURSOR_CONFLICT = "evaluation_cursor_conflict"
     EVALUATION_OUT_OF_ORDER = "evaluation_out_of_order"
+    FENCE_IDENTITY_CONFLICT = "fence_identity_conflict"
     BLOCKER_IDENTITY_CONFLICT = "blocker_identity_conflict"
     BLOCKER_NOT_FOUND = "blocker_not_found"
     BLOCKER_SUPERSESSION_CONFLICT = "blocker_supersession_conflict"
@@ -678,6 +680,8 @@ class PmRecoveryRepo:
         relieve_starvation_for_candidate: bool = False,
         supersede_prior_blockers_for_episode: bool = False,
         reserved_evaluation_sequence: int | None = None,
+        expected_fence_reconciliation_id: UUID | None = None,
+        expected_fence_ticket_id: UUID | None = None,
     ) -> PmRecoveryEvaluationRecord:
         """Move one episode to the product tail and record its blocker atomically."""
 
@@ -692,6 +696,10 @@ class PmRecoveryRepo:
             raise ValueError(
                 "reserved_evaluation_sequence must be greater than the cursor"
             )
+        if (expected_fence_reconciliation_id is None) != (
+            expected_fence_ticket_id is None
+        ):
+            raise ValueError("expected fence reconciliation and ticket travel together")
         evaluation_id = _bounded_identifier(evaluation_id, name="evaluation_id")
         if blocker is not None:
             blocker = PmBlockerObservationIntent.model_validate(
@@ -712,6 +720,21 @@ class PmRecoveryRepo:
             raise PmRecoveryStorageError(PmRecoveryStorageCode.EPISODE_NOT_FOUND)
         with self._db.session() as session, session.begin():
             self._lock_sequence_counter(session, current.product_id)
+            if expected_fence_reconciliation_id is not None:
+                fence_lock = session.execute(
+                    sa.update(CIHandoffWriteFenceRow)
+                    .where(
+                        CIHandoffWriteFenceRow.product_id == current.product_id,
+                        CIHandoffWriteFenceRow.reconciliation_id
+                        == expected_fence_reconciliation_id,
+                        CIHandoffWriteFenceRow.ticket_id == expected_fence_ticket_id,
+                    )
+                    .values(state=CIHandoffWriteFenceRow.state)
+                )
+                if getattr(fence_lock, "rowcount", 0) != 1:
+                    raise PmRecoveryStorageError(
+                        PmRecoveryStorageCode.FENCE_IDENTITY_CONFLICT
+                    )
             episode = session.get(PmRecoveryEpisodeRow, episode_id)
             if episode is None:
                 raise PmRecoveryStorageError(PmRecoveryStorageCode.EPISODE_NOT_FOUND)

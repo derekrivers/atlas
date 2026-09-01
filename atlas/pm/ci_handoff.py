@@ -81,6 +81,7 @@ class CIHandoffResult:
     ticket_key: str
     reconciliation_id: UUID | None = None
     linear_mutations: int = 0
+    fence_reconciliation_attempted: bool = False
 
     @property
     def safe_summary(self) -> str:
@@ -120,6 +121,7 @@ def _result(
     reason: CIHandoffReason,
     reconciliation_id: UUID | None = None,
     linear_mutations: int = 0,
+    fence_reconciliation_attempted: bool = False,
 ) -> CIHandoffResult:
     return CIHandoffResult(
         classification=classification,
@@ -128,6 +130,7 @@ def _result(
         ticket_key=ticket.key,
         reconciliation_id=reconciliation_id,
         linear_mutations=linear_mutations,
+        fence_reconciliation_attempted=fence_reconciliation_attempted,
     )
 
 
@@ -267,6 +270,7 @@ def _reconcile_fence(
             classification=CIHandoffClassification.INDETERMINATE,
             reason=CIHandoffReason.FENCE_STILL_UNRESOLVED,
             reconciliation_id=fence.reconciliation_id,
+            fence_reconciliation_attempted=True,
         )
     issue = _issue_by_id(board_pull.issues, fence.issue_id)
     if issue is None or not status_map.state_type_is_compatible(
@@ -277,6 +281,7 @@ def _reconcile_fence(
             classification=CIHandoffClassification.INDETERMINATE,
             reason=CIHandoffReason.FENCE_STILL_UNRESOLVED,
             reconciliation_id=fence.reconciliation_id,
+            fence_reconciliation_attempted=True,
         )
     if issue.state_id == fence.target_state_id:
         coordination.finalize_owned_target(
@@ -301,6 +306,7 @@ def _reconcile_fence(
             classification=classification,
             reason=CIHandoffReason.FENCE_RECONCILED_TARGET,
             reconciliation_id=fence.reconciliation_id,
+            fence_reconciliation_attempted=True,
         )
     coordination.clear_owned_fence(
         product_id=fence.product_id,
@@ -314,12 +320,14 @@ def _reconcile_fence(
             classification=CIHandoffClassification.INDETERMINATE,
             reason=CIHandoffReason.FENCE_RECONCILED_SOURCE,
             reconciliation_id=fence.reconciliation_id,
+            fence_reconciliation_attempted=True,
         )
     return _result(
         fence_ticket,
         classification=CIHandoffClassification.STALE,
         reason=CIHandoffReason.FENCE_RECONCILED_MOVED,
         reconciliation_id=fence.reconciliation_id,
+        fence_reconciliation_attempted=True,
     )
 
 
@@ -390,6 +398,7 @@ def reconcile_ci_handoff_fence(
             ticket,
             classification=CIHandoffClassification.INDETERMINATE,
             reason=CIHandoffReason.LEASE_UNAVAILABLE,
+            fence_reconciliation_attempted=True,
         )
     try:
         fresh_issues = initial_issues
@@ -402,6 +411,7 @@ def reconcile_ci_handoff_fence(
                     classification=CIHandoffClassification.INDETERMINATE,
                     reason=CIHandoffReason.FENCE_STILL_UNRESOLVED,
                     reconciliation_id=fence.reconciliation_id,
+                    fence_reconciliation_attempted=True,
                 )
         lease_age = monotonic_clock() - lease_started_at
         if lease_age < 0 or lease_age >= CI_HANDOFF_LEASE_TTL.total_seconds():
@@ -410,6 +420,7 @@ def reconcile_ci_handoff_fence(
                 classification=CIHandoffClassification.STALE,
                 reason=CIHandoffReason.LEASE_LOST,
                 reconciliation_id=fence.reconciliation_id,
+                fence_reconciliation_attempted=True,
             )
         try:
             return _reconcile_fence(
@@ -429,6 +440,7 @@ def reconcile_ci_handoff_fence(
                 classification=CIHandoffClassification.STALE,
                 reason=CIHandoffReason.LEASE_LOST,
                 reconciliation_id=fence.reconciliation_id,
+                fence_reconciliation_attempted=True,
             )
     finally:
         lease.release(product_id=product_id, owner_id=owner_id)
@@ -514,6 +526,7 @@ def reconcile_ci_handoff(
                     classification=CIHandoffClassification.INDETERMINATE,
                     reason=CIHandoffReason.FENCE_STILL_UNRESOLVED,
                     reconciliation_id=existing_fence.reconciliation_id,
+                    fence_reconciliation_attempted=True,
                 )
             lease_age = hooks.monotonic_clock() - lease_started_at
             if lease_age < 0 or lease_age >= CI_HANDOFF_LEASE_TTL.total_seconds():
@@ -522,6 +535,7 @@ def reconcile_ci_handoff(
                     classification=CIHandoffClassification.STALE,
                     reason=CIHandoffReason.LEASE_LOST,
                     reconciliation_id=existing_fence.reconciliation_id,
+                    fence_reconciliation_attempted=True,
                 )
             try:
                 fenced = _reconcile_fence(
@@ -541,6 +555,7 @@ def reconcile_ci_handoff(
                     classification=CIHandoffClassification.STALE,
                     reason=CIHandoffReason.LEASE_LOST,
                     reconciliation_id=existing_fence.reconciliation_id,
+                    fence_reconciliation_attempted=True,
                 )
             if fenced is not None:
                 return fenced

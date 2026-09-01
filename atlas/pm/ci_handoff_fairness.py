@@ -547,6 +547,12 @@ def record_fair_ci_handoff_evaluation(
             snapshot=selection.candidates,
             now=now,
         )
+    expected_fence_reconciliation_id = None
+    expected_fence_ticket_id = None
+    if blocker is not None and blocker.authority_kind is PmBlockerAuthorityKind.FENCE:
+        assert result.reconciliation is not None
+        expected_fence_reconciliation_id = result.reconciliation.reconciliation_id
+        expected_fence_ticket_id = candidate.id
     recorded = (
         PmRecoveryRepo(db)
         .record_evaluation(
@@ -558,6 +564,8 @@ def record_fair_ci_handoff_evaluation(
             relieve_starvation_for_candidate=True,
             supersede_prior_blockers_for_episode=True,
             reserved_evaluation_sequence=reserved_evaluation_sequence,
+            expected_fence_reconciliation_id=expected_fence_reconciliation_id,
+            expected_fence_ticket_id=expected_fence_ticket_id,
         )
         .episode
     )

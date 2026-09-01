@@ -245,7 +245,8 @@ def reconcile_ci_handoff_candidate(
         identity=identity,
         reconciliation=reconciliation,
         fence_precedence=(
-            CIHandoffCoordinationRepo(db).get_fence(candidate.product_id) is not None
+            reconciliation.fence_reconciliation_attempted
+            or CIHandoffCoordinationRepo(db).get_fence(candidate.product_id) is not None
         ),
     )
 
