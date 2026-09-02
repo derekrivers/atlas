@@ -13,7 +13,7 @@ import json
 from datetime import UTC, datetime
 from io import StringIO
 from pathlib import Path
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 import sqlalchemy as sa
@@ -2100,6 +2100,46 @@ def test_retrospective_completion_migration_has_sqlite_and_postgresql_guards(
         )
         assert "retrospective_proof_incomplete" in blocker_sql
         assert "retrospective_proof_ambiguous" in blocker_sql
+
+    reconciliation_id = uuid4().hex
+    with engine.begin() as connection:
+        connection.execute(
+            sa.text(
+                "INSERT INTO retrospective_completion_reconciliations "
+                "(id, schema_version, product_id, ticket_id, ticket_key, reason, "
+                "decision, observed_at, created_by_type, created_by_id) VALUES "
+                "(:id, 'retrospective-completion-reconciliation-v1', :product, "
+                ":ticket, 'ATLAS-TEST', 'historical_publication_unavailable', "
+                "'hold', :observed, 'system', 'migration-test')"
+            ),
+            {
+                "id": reconciliation_id,
+                "product": uuid4().hex,
+                "ticket": uuid4().hex,
+                "observed": "2026-09-02 12:00:00.000000",
+            },
+        )
+    with (
+        pytest.raises(sa.exc.IntegrityError, match="append-only"),
+        engine.begin() as connection,
+    ):
+        connection.execute(
+            sa.text(
+                "UPDATE retrospective_completion_reconciliations "
+                "SET reason = 'tampered' WHERE id = :id"
+            ),
+            {"id": reconciliation_id},
+        )
+    with (
+        pytest.raises(sa.exc.IntegrityError, match="append-only"),
+        engine.begin() as connection,
+    ):
+        connection.execute(
+            sa.text(
+                "DELETE FROM retrospective_completion_reconciliations WHERE id = :id"
+            ),
+            {"id": reconciliation_id},
+        )
 
     command.downgrade(config, "0037")
     with engine.connect() as connection:

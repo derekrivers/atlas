@@ -13,12 +13,14 @@ import sqlalchemy as sa
 from atlas.core.models import RetrospectiveCompletionReconciliation, TicketStatus
 from atlas.storage.admission_coordination import AdmissionLeaseLostError
 from atlas.storage.db import Database
+from atlas.storage.repositories import _apply_linear_status_in_session
 from atlas.storage.tables import (
     AdmissionLeaseRow,
     AdmissionWriteFenceRow,
     CIHandoffWriteFenceRow,
     RetrospectiveCompletionReconciliationRow,
     RetrospectiveCompletionWriteFenceRow,
+    TicketRow,
 )
 
 
@@ -317,6 +319,76 @@ class RetrospectiveCompletionCoordinationRepo:
                 raise RetrospectiveCompletionWriteFenceError(
                     "retrospective completion fence could not be cleared"
                 )
+
+    def finalize_owned_target(
+        self,
+        *,
+        product_id: UUID,
+        owner_id: UUID,
+        reconciliation_id: UUID,
+        ticket_id: UUID,
+        ticket_key: str,
+        observed_at: datetime,
+        status_observed_at: datetime,
+        created_by_id: str,
+    ) -> None:
+        """Atomically apply confirmed Done and retire the exact owned fence."""
+
+        observed = _aware(observed_at, name="retrospective finalization time")
+        status_observed = _aware(
+            status_observed_at, name="retrospective status observation time"
+        )
+        with self._db.session() as session, session.begin():
+            lease_lock = session.execute(
+                sa.update(AdmissionLeaseRow)
+                .where(
+                    AdmissionLeaseRow.product_id == product_id,
+                    AdmissionLeaseRow.owner_id == owner_id,
+                    AdmissionLeaseRow.expires_at > observed,
+                )
+                .values(owner_id=AdmissionLeaseRow.owner_id)
+            )
+            if getattr(lease_lock, "rowcount", 0) != 1:
+                raise AdmissionLeaseLostError(
+                    "PM write lease expired before retrospective finalization"
+                )
+            fence = session.get(RetrospectiveCompletionWriteFenceRow, product_id)
+            if (
+                fence is None
+                or fence.reconciliation_id != reconciliation_id
+                or fence.ticket_id != ticket_id
+                or fence.ticket_key != ticket_key
+                or fence.target_status != TicketStatus.DONE.value
+            ):
+                raise RetrospectiveCompletionWriteFenceError(
+                    "retrospective fence changed before owned finalization"
+                )
+            ticket_lock = session.execute(
+                sa.update(TicketRow)
+                .where(
+                    TicketRow.id == ticket_id,
+                    TicketRow.product_id == product_id,
+                    TicketRow.key == ticket_key,
+                    TicketRow.status.in_(
+                        [TicketStatus.CI_PENDING.value, TicketStatus.DONE.value]
+                    ),
+                )
+                .values(status=TicketRow.status)
+            )
+            if getattr(ticket_lock, "rowcount", 0) != 1:
+                raise RetrospectiveCompletionWriteFenceError(
+                    "retrospective target finalization found divergent local status"
+                )
+            _apply_linear_status_in_session(
+                session,
+                key=ticket_key,
+                status=TicketStatus.DONE,
+                now=status_observed,
+                created_by_id=created_by_id,
+                expected_ticket_id=ticket_id,
+                expected_product_id=product_id,
+            )
+            session.delete(fence)
 
     def defer_unresolved(
         self,

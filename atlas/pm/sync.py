@@ -2116,10 +2116,7 @@ def _sync_tick_impl(
         {fence.product_id for fence in ci_fences}
         | {fence.product_id for fence in retrospective_fences}
     )
-    if ci_fences or retrospective_fences:
-        if retrospective_fences and github_client is None:
-            # Historical proof recovery requires fresh canonical-provider reads.
-            return result
+    while ci_fences or retrospective_fences:
         # Every existing fence first resolves to a durable episode. Product-
         # local monotonic cursors choose that product's representative; the
         # durable observation-time rank below rotates representatives across
@@ -2153,6 +2150,11 @@ def _sync_tick_impl(
             candidate_ticket_id,
             candidate_ticket_key,
         ) in fence_candidates:
+            if fence_kind == "retrospective" and github_client is None:
+                # The fence remains authoritative for its product, while the
+                # missing read prerequisite must not globally stop independent
+                # products from using later cadence opportunities.
+                continue
             if ci_handoff_product_retry_deferred(
                 db=db, product_id=candidate_product_id, now=now
             ):
@@ -2183,7 +2185,11 @@ def _sync_tick_impl(
                 )
             )
         if not fence_options:
-            return result
+            # Every currently eligible fence is either retry-deferred or lacks
+            # its read-only provider prerequisite. Keep those products fenced,
+            # then continue with independent products rather than fail-stopping
+            # the whole scheduler.
+            break
         (
             _fence_episode,
             fence_kind,

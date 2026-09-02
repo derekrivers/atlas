@@ -13,6 +13,7 @@ from atlas.core.acceptance_criteria import (
     acceptance_criteria_fingerprint,
     acceptance_criteria_snapshot,
 )
+from atlas.core.acceptance_history import stored_acceptance_history_reasons
 from atlas.core.enums import ActorType, EvidenceStatus
 from atlas.core.models import (
     AcceptanceSession,
@@ -62,15 +63,18 @@ from atlas.storage import (
     Database,
     DeliveryAdmissionPolicyRepo,
     EvidenceRepo,
+    PmRecoveryRepo,
     RetrospectiveCompletionCoordinationRepo,
     RetrospectiveCompletionReconciliationRepo,
     RetrospectiveCompletionWriteFenceError,
     RetrospectiveProviderCallIndeterminateError,
     TicketDependencyRepo,
     TicketRepo,
+    TicketStatusTransitionRepo,
     VerificationCheckRepo,
 )
 from atlas.verification import (
+    evaluate_human_approval,
     evaluate_ticket,
     proof_evidence_ids,
     required_checks,
@@ -238,8 +242,37 @@ def _historical_contributor_head(
     db: Database,
     ticket: Ticket,
     publication: LinearMergedGitHubPublication,
+    recovery_episode_id: UUID,
 ) -> str | None:
     """Recover the episode head only from the append-only ordinary CI decision."""
+
+    episode = PmRecoveryRepo(db).get_episode(recovery_episode_id)
+    if (
+        episode is None
+        or episode.closed_at is not None
+        or episode.product_id != ticket.product_id
+        or episode.candidate_ticket_id != ticket.id
+        or episode.candidate_ticket_key != ticket.key
+        or episode.operation != "ci_handoff"
+        or episode.authority_id != "pm:ci-handoff"
+    ):
+        return None
+    lifecycle_identity = episode.authoritative_episode_id.split(":publication:", 1)[0]
+    episode_started_at: datetime | None = None
+    if lifecycle_identity.startswith("transition:"):
+        transition_id = lifecycle_identity.removeprefix("transition:")
+        transitions = TicketStatusTransitionRepo(db).list_for_ticket(ticket.id)
+        matching_entries = [
+            transition
+            for transition in transitions
+            if str(transition.id) == transition_id
+            and transition.to_status == TicketStatus.CI_PENDING.value
+        ]
+        if len(matching_entries) != 1:
+            return None
+        episode_started_at = matching_entries[0].occurred_at
+    elif lifecycle_identity != f"legacy:{ticket.id}":
+        return None
 
     matching = [
         decision
@@ -251,6 +284,7 @@ def _historical_contributor_head(
         and decision.pr_number == publication.pr_number
         and decision.classification is CIHandoffClassification.PASSED
         and decision.decision is CIHandoffDecision.REVIEW_REQUIRED
+        and (episode_started_at is None or decision.observed_at >= episode_started_at)
     ]
     if not matching:
         return None
@@ -283,6 +317,8 @@ def _current_acceptance_session(
     if len(candidates) != 1:
         return None
     session = candidates[0]
+    if stored_acceptance_history_reasons(session):
+        return None
     close_tickets = [tickets.get_by_key(key) for key in session.close_set]
     if any(item is None for item in close_tickets):
         return None
@@ -301,8 +337,6 @@ def _current_acceptance_session(
         or not confirmations.receipt_ids
         or verification.state is not AcceptanceSessionStepState.COMPLETE
         or verification.verification is None
-        or verification.verification.status is not EvidenceStatus.PASSED
-        or verification.verification.head_commit != contributor_head
         or readiness.state is not AcceptanceSessionStepState.COMPLETE
         or readiness.readiness is None
         or readiness.readiness.verdict_id != verification.verification.verdict_id
@@ -373,6 +407,7 @@ def evaluate_retrospective_proof(
     project_id: str,
     board_issues: Sequence[LinearIssue],
     now: datetime,
+    recovery_episode_id: UUID,
     expected_contributor_head: str | None = None,
 ) -> tuple[RetrospectiveCompletionProof | None, RetrospectiveCompletionReason]:
     """Freshly prove every canonical fact without writing any verdict or evidence."""
@@ -393,7 +428,10 @@ def evaluate_retrospective_proof(
         return None, RetrospectiveCompletionReason.SNAPSHOT_INCOMPLETE
 
     contributor_head = expected_contributor_head or _historical_contributor_head(
-        db=db, ticket=ticket, publication=publication
+        db=db,
+        ticket=ticket,
+        publication=publication,
+        recovery_episode_id=recovery_episode_id,
     )
     contributor_head = _full_sha(contributor_head)
     if contributor_head is None:
@@ -493,6 +531,14 @@ def evaluate_retrospective_proof(
     )
     if fresh.status is not EvidenceStatus.PASSED or fresh_ids != proof_ids:
         return None, RetrospectiveCompletionReason.VERIFICATION_UNPROVEN
+    blanket = evaluate_human_approval(
+        ticket_id=ticket.id,
+        head_commit=contributor_head,
+        evidence=evidence,
+    )
+    if blanket.status is not EvidenceStatus.PASSED or blanket.evidence_id is None:
+        return None, RetrospectiveCompletionReason.ACCEPTANCE_UNPROVEN
+    proof_ids = frozenset((*proof_ids, blanket.evidence_id))
     verification_summary = session.step_summaries[
         AcceptanceSessionStep.VERIFICATION
     ].verification
@@ -581,8 +627,18 @@ def _decision_record(
     )
 
 
-def _confirmed_target(issue: LinearIssue, *, target_state_id: str) -> bool:
-    return issue.state_id == target_state_id
+def _confirmed_state(
+    issue: LinearIssue,
+    *,
+    state_id: str,
+    expected_status: TicketStatus,
+    status_map: LinearStatusMap,
+) -> bool:
+    return (
+        issue.state_id == state_id
+        and status_map.status_for(issue.state_id) is expected_status
+        and status_map.state_type_is_compatible(issue.state_id, issue.state_type)
+    )
 
 
 def reconcile_retrospective_completion(
@@ -623,6 +679,8 @@ def reconcile_retrospective_completion(
         RetrospectiveCompletionReconciliationRepo(db).record(record)
         return RetrospectiveCompletionResult(reason=reason, ticket_key=ticket.key)
 
+    if recovery_episode_id is None:
+        raise ValueError("retrospective completion requires a recovery episode")
     initial_proof, initial_reason = evaluate_retrospective_proof(
         db=db,
         tickets=tickets,
@@ -633,6 +691,7 @@ def reconcile_retrospective_completion(
         project_id=project_id,
         board_issues=initial_issues,
         now=now,
+        recovery_episode_id=recovery_episode_id,
     )
     hooks.after_proof_evaluated()
     if initial_proof is None:
@@ -690,6 +749,7 @@ def reconcile_retrospective_completion(
             or fresh_ticket.status is not TicketStatus.CI_PENDING
             or issue is None
             or status_from_issue(issue, status_map) is not TicketStatus.CI_PENDING
+            or not status_map.state_type_is_compatible(issue.state_id, issue.state_type)
         ):
             return RetrospectiveCompletionResult(
                 reason=RetrospectiveCompletionReason.BOARD_STATE_MOVED,
@@ -716,6 +776,7 @@ def reconcile_retrospective_completion(
             project_id=project_id,
             board_issues=fresh_issues,
             now=now,
+            recovery_episode_id=recovery_episode_id,
             expected_contributor_head=initial_proof.contributor_head,
         )
         if final_proof != initial_proof:
@@ -796,7 +857,12 @@ def reconcile_retrospective_completion(
                 reconciliation_id=reconciliation.id,
             )
         hooks.after_provider_write()
-        if not _confirmed_target(returned, target_state_id=target_state_id):
+        if not _confirmed_state(
+            returned,
+            state_id=target_state_id,
+            expected_status=TicketStatus.DONE,
+            status_map=status_map,
+        ):
             coordination.defer_unresolved(
                 product_id=ticket.product_id,
                 reconciliation_id=reconciliation.id,
@@ -807,11 +873,15 @@ def reconcile_retrospective_completion(
                 ticket_key=ticket.key,
                 reconciliation_id=reconciliation.id,
             )
-        coordination.clear_owned_fence(
+        coordination.finalize_owned_target(
             product_id=ticket.product_id,
             owner_id=owner_id,
             reconciliation_id=reconciliation.id,
             observed_at=now + timedelta(seconds=lease_age),
+            status_observed_at=now,
+            ticket_id=ticket.id,
+            ticket_key=ticket.key,
+            created_by_id=CREATED_BY,
         )
         return RetrospectiveCompletionResult(
             reason=RetrospectiveCompletionReason.WRITE_CONFIRMED,
@@ -898,12 +968,21 @@ def reconcile_retrospective_completion_fence(
                 reconciliation_id=fence.reconciliation_id,
                 fence_reconciliation_attempted=True,
             )
-        if issue.state_id == fence.target_state_id:
-            coordination.clear_owned_fence(
+        if _confirmed_state(
+            issue,
+            state_id=fence.target_state_id,
+            expected_status=TicketStatus.DONE,
+            status_map=status_map,
+        ):
+            coordination.finalize_owned_target(
                 product_id=product_id,
                 owner_id=owner_id,
                 reconciliation_id=fence.reconciliation_id,
                 observed_at=now,
+                status_observed_at=now,
+                ticket_id=ticket.id,
+                ticket_key=ticket.key,
+                created_by_id=CREATED_BY,
             )
             return RetrospectiveCompletionResult(
                 reason=RetrospectiveCompletionReason.FENCE_RECONCILED_TARGET,
@@ -912,7 +991,12 @@ def reconcile_retrospective_completion_fence(
                 reconciliation_id=fence.reconciliation_id,
                 fence_reconciliation_attempted=True,
             )
-        if issue.state_id != fence.source_state_id:
+        if not _confirmed_state(
+            issue,
+            state_id=fence.source_state_id,
+            expected_status=TicketStatus.CI_PENDING,
+            status_map=status_map,
+        ):
             coordination.defer_unresolved(
                 product_id=product_id,
                 reconciliation_id=fence.reconciliation_id,
@@ -928,7 +1012,15 @@ def reconcile_retrospective_completion_fence(
             fence.reconciliation_id
         )
         publication, publication_reason = resolve_historical_publication(ticket, issues)
-        if original is None or publication is None:
+        if (
+            original is None
+            or original.recovery_episode_id is None
+            or publication is None
+            or publication.attachment_id != original.publication_attachment_id
+            or publication.repository_owner.casefold() != original.repository_owner
+            or publication.repository_name.casefold() != original.repository_name
+            or publication.pr_number != original.pr_number
+        ):
             coordination.defer_unresolved(
                 product_id=product_id,
                 reconciliation_id=fence.reconciliation_id,
@@ -953,6 +1045,7 @@ def reconcile_retrospective_completion_fence(
             project_id=project_id,
             board_issues=issues,
             now=now,
+            recovery_episode_id=original.recovery_episode_id,
             expected_contributor_head=original.contributor_head,
         )
         if (
@@ -1003,7 +1096,12 @@ def reconcile_retrospective_completion_fence(
                 fence_reconciliation_attempted=True,
             )
         hooks.after_provider_write()
-        if not _confirmed_target(returned, target_state_id=fence.target_state_id):
+        if not _confirmed_state(
+            returned,
+            state_id=fence.target_state_id,
+            expected_status=TicketStatus.DONE,
+            status_map=status_map,
+        ):
             coordination.defer_unresolved(
                 product_id=product_id,
                 reconciliation_id=fence.reconciliation_id,
@@ -1015,11 +1113,15 @@ def reconcile_retrospective_completion_fence(
                 reconciliation_id=fence.reconciliation_id,
                 fence_reconciliation_attempted=True,
             )
-        coordination.clear_owned_fence(
+        coordination.finalize_owned_target(
             product_id=product_id,
             owner_id=owner_id,
             reconciliation_id=fence.reconciliation_id,
             observed_at=now,
+            status_observed_at=now,
+            ticket_id=ticket.id,
+            ticket_key=ticket.key,
+            created_by_id=CREATED_BY,
         )
         return RetrospectiveCompletionResult(
             reason=RetrospectiveCompletionReason.FENCE_RECONCILED_SOURCE,

@@ -1450,6 +1450,7 @@ _APPEND_ONLY_TABLES = (
     cast(sa.Table, OperatorActionKeyRow.__table__),
     cast(sa.Table, OperatorActionReceiptRow.__table__),
     cast(sa.Table, PlannedCIPendingRecoveryRow.__table__),
+    cast(sa.Table, RetrospectiveCompletionReconciliationRow.__table__),
 )
 
 for _append_only_table in _APPEND_ONLY_TABLES:

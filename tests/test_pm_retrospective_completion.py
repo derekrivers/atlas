@@ -3,19 +3,30 @@
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Mapping
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, cast
 from uuid import UUID, uuid4
 
 import pytest
+import sqlalchemy as sa
 from github_fakes import FakeGitHubClient
-from pm_temporal_harness import SimulatedProcessDeath, TemporalHarness
+from pm_temporal_harness import (
+    ExternalRequest,
+    FaultPoint,
+    MutableProviderWorld,
+    SimulatedProcessDeath,
+    TemporalHarness,
+    WorkflowTick,
+)
 from test_models_validation import product_kwargs, ticket_kwargs
 from test_pm_sync import (
     CI_PENDING_STATE,
     DONE_STATE,
     PROJECT_ID,
+    STARTED,
     TEAM_ID,
     RecordingClient,
     seed_default_admission_policy,
@@ -47,7 +58,7 @@ from atlas.core.models.ci_handoff_reconciliation import CIHandoffCheckResult
 from atlas.core.models.evidence import Evidence, EvidenceType
 from atlas.evidence import build_merge_evidence
 from atlas.github import GitHubCompare, GitHubCompareStatus
-from atlas.linear.client import LinearClient
+from atlas.linear.client import LinearClient, LinearIssue, LinearMergedGitHubPublication
 from atlas.orchestration.acceptance_sessions import (
     acceptance_criteria_fingerprint,
     acceptance_criteria_snapshot,
@@ -61,20 +72,27 @@ from atlas.pm import (
 )
 from atlas.pm.ci_handoff_adapter import resolve_issue_bound_publication
 from atlas.pm.ci_handoff_fairness import select_fair_ci_handoff_candidate
+from atlas.pm.workflow_write import PMWorkflowWriteGuard, WorkflowWriteWindowClosed
 from atlas.storage import (
     AcceptanceSessionRepo,
+    AdmissionCoordinationRepo,
+    CIHandoffCoordinationRepo,
     CIHandoffReconciliationRepo,
+    CIHandoffWriteFenceError,
     Database,
     EvidenceRepo,
     PmRecoveryRepo,
     ProductRepo,
     RetrospectiveCompletionCoordinationRepo,
+    RetrospectiveCompletionFencePresentError,
     RetrospectiveCompletionReconciliationRepo,
     TicketRepo,
     VerificationCheckRepo,
 )
+from atlas.storage.tables import RetrospectiveCompletionReconciliationRow
 from atlas.verification import (
     build_acceptance_confirmation,
+    build_blanket_approval,
     evaluate_ticket,
     required_checks,
 )
@@ -91,14 +109,119 @@ ATTACHMENT = "merged-attachment-335"
 SOURCE_PATH = "atlas/pm/retrospective_completion.py"
 
 
-class DelegatingLinearClient:
-    """Fresh process object over one provider world that survives restarts."""
+class TemporalLinearClient:
+    """Fresh client over the harness's process-independent provider world."""
 
-    def __init__(self, provider: RecordingClient) -> None:
-        self.provider = provider
+    def __init__(
+        self,
+        *,
+        world: MutableProviderWorld,
+        tick: WorkflowTick,
+        issue_ids: tuple[str, ...],
+    ) -> None:
+        self._world = world
+        self._tick = tick
+        self._issue_ids = issue_ids
 
-    def __getattr__(self, name: str) -> Any:
-        return getattr(self.provider, name)
+    @staticmethod
+    def _decode(value: Mapping[str, Any]) -> LinearIssue:
+        publications = tuple(
+            LinearMergedGitHubPublication(**item)
+            for item in value["merged_github_publications"]
+        )
+        return LinearIssue(
+            id=str(value["id"]),
+            title=str(value["title"]),
+            state_id=str(value["state_id"]),
+            state_name=str(value["state_name"]),
+            state_type=str(value["state_type"]),
+            description=str(value["description"]),
+            merged_github_publications=publications,
+            github_publications_complete=True,
+        )
+
+    def fetch_project_issues(self, _project_id: str) -> list[LinearIssue]:
+        return [
+            self._decode(self._world.resource("linear", f"issue:{issue_id}"))
+            for issue_id in self._issue_ids
+        ]
+
+    def fetch_issue(self, issue_id: str) -> LinearIssue | None:
+        if issue_id not in self._issue_ids:
+            return None
+        return self._decode(self._world.resource("linear", f"issue:{issue_id}"))
+
+    def set_state(self, issue_id: str, state_id: str) -> LinearIssue:
+        assert state_id == DONE_STATE.id
+        result = self._tick.external_write(_done_request(issue_id))
+        return self._decode(result.value)
+
+
+class ContradictoryStateClient(RecordingClient):
+    """Expose a valid source id with a contradictory workflow-state type."""
+
+    contradictory = False
+
+    def fetch_project_issues(self, project_id: str) -> list[LinearIssue]:
+        issues = super().fetch_project_issues(project_id)
+        if not self.contradictory:
+            return issues
+        return [
+            replace(issue, state_type="completed")
+            if issue.state_id == CI_PENDING_STATE.id
+            else issue
+            for issue in issues
+        ]
+
+
+def _done_request(issue_id: str) -> ExternalRequest:
+    return ExternalRequest(
+        provider="linear",
+        operation="set_state",
+        resource=f"issue:{issue_id}",
+        payload={
+            "state_id": DONE_STATE.id,
+            "state_name": DONE_STATE.name,
+            "state_type": DONE_STATE.type,
+        },
+    )
+
+
+def _merge_provider_state(
+    current: Mapping[str, object], payload: Mapping[str, object]
+) -> Mapping[str, Any]:
+    def mutable(value: object) -> Any:
+        if isinstance(value, Mapping):
+            return {str(key): mutable(child) for key, child in value.items()}
+        if isinstance(value, tuple):
+            return [mutable(child) for child in value]
+        return value
+
+    return {**mutable(current), **mutable(payload)}
+
+
+def _seed_provider_issue(world: MutableProviderWorld, issue: LinearIssue) -> None:
+    world.set_resource(
+        "linear",
+        f"issue:{issue.id}",
+        {
+            "id": issue.id,
+            "title": issue.title,
+            "state_id": issue.state_id,
+            "state_name": issue.state_name,
+            "state_type": issue.state_type,
+            "description": issue.description or "",
+            "merged_github_publications": [
+                {
+                    "attachment_id": publication.attachment_id,
+                    "repository_owner": publication.repository_owner,
+                    "repository_name": publication.repository_name,
+                    "pr_number": publication.pr_number,
+                }
+                for publication in issue.merged_github_publications
+            ],
+        },
+    )
 
 
 def _database(path: Path) -> Database:
@@ -149,7 +272,11 @@ def _system_evidence(
 
 
 def _acceptance_session(
-    ticket: Ticket, verdict_id: UUID, *, pr_number: int = PR
+    ticket: Ticket,
+    verdict_id: UUID,
+    *,
+    pr_number: int = PR,
+    verification_ticket_count: int = 1,
 ) -> AcceptanceSession:
     snapshot = acceptance_criteria_snapshot((ticket.key,), (ticket,))
     fingerprint = acceptance_criteria_fingerprint(snapshot)
@@ -208,7 +335,7 @@ def _acceptance_session(
                     verdict_id=verdict_id,
                     status=EvidenceStatus.PASSED,
                     head_commit=HEAD,
-                    ticket_count=1,
+                    ticket_count=verification_ticket_count,
                     blocking_check_count=0,
                 ),
             ),
@@ -281,6 +408,8 @@ def _seed_complete_world(
     linear: RecordingClient,
     *,
     include_acceptance: bool = True,
+    include_blanket_approval: bool = True,
+    acceptance_ticket_count: int = 1,
     ci_head: str = HEAD,
     key: str = "ATLAS-335",
     pr_number: int = PR,
@@ -328,6 +457,18 @@ def _seed_complete_world(
                 now=NOW - timedelta(hours=1),
             )
         )
+        if include_blanket_approval:
+            evidence_repo.add(
+                build_blanket_approval(
+                    approved=True,
+                    ticket_id=ticket.id,
+                    head_commit=HEAD,
+                    product_id=ticket.product_id,
+                    operator_id="operator",
+                    evidence_id=uuid4(),
+                    now=NOW - timedelta(hours=1),
+                )
+            )
     merge_evidence = build_merge_evidence(
         _github(pr_number=pr_number).fetch_pull_request(OWNER, REPO, pr_number),
         head_commit=HEAD,
@@ -363,7 +504,12 @@ def _seed_complete_world(
             )
     verdict_id = uuid4()
     AcceptanceSessionRepo(db).add(
-        _acceptance_session(ticket, verdict_id, pr_number=pr_number)
+        _acceptance_session(
+            ticket,
+            verdict_id,
+            pr_number=pr_number,
+            verification_ticket_count=acceptance_ticket_count,
+        )
     )
     first_required = next(item for item in required_checks(ticket) if item.required)
     CIHandoffReconciliationRepo(db).record(
@@ -453,7 +599,7 @@ def test_historical_completion_requires_separate_ordinary_rejection_and_exact_pr
     assert linear.state_writes == [(ticket.external_linear_id, DONE_STATE.id)]
     retained = TicketRepo(db).get_by_key(ticket.key)
     assert retained is not None
-    assert retained.status is TicketStatus.CI_PENDING
+    assert retained.status is TicketStatus.DONE
     [decision] = RetrospectiveCompletionReconciliationRepo(db).list_for_ticket(
         ticket.id
     )
@@ -468,6 +614,26 @@ def test_historical_completion_requires_separate_ordinary_rejection_and_exact_pr
     assert decision.verification_check_ids
     assert decision.deciding_evidence_ids
     assert decision.merged_evidence_id is not None
+    with (
+        pytest.raises(sa.exc.IntegrityError, match="append-only"),
+        db.session() as session,
+        session.begin(),
+    ):
+        session.execute(
+            sa.update(RetrospectiveCompletionReconciliationRow)
+            .where(RetrospectiveCompletionReconciliationRow.id == decision.id)
+            .values(reason="tampered")
+        )
+    with (
+        pytest.raises(sa.exc.IntegrityError, match="append-only"),
+        db.session() as session,
+        session.begin(),
+    ):
+        session.execute(
+            sa.delete(RetrospectiveCompletionReconciliationRow).where(
+                RetrospectiveCompletionReconciliationRow.id == decision.id
+            )
+        )
 
 
 def test_sync_cadence_routes_merged_candidate_and_persists_typed_hold(
@@ -599,7 +765,10 @@ def test_held_history_does_not_starve_later_independent_candidate(
     assert retained_poison.status is TicketStatus.CI_PENDING
 
 
-@pytest.mark.parametrize("defect", ["merge_only", "wrong_head", "off_main"])
+@pytest.mark.parametrize(
+    "defect",
+    ["merge_only", "missing_blanket", "invalid_session", "wrong_head", "off_main"],
+)
 def test_incomplete_or_wrong_exact_proof_holds_without_workflow_write(
     tmp_path: Path, defect: str
 ) -> None:
@@ -609,6 +778,8 @@ def test_incomplete_or_wrong_exact_proof_holds_without_workflow_write(
         db,
         linear,
         include_acceptance=defect != "merge_only",
+        include_blanket_approval=defect != "missing_blanket",
+        acceptance_ticket_count=2 if defect == "invalid_session" else 1,
         ci_head=OTHER_HEAD if defect == "wrong_head" else HEAD,
     )
     github = _github(
@@ -652,85 +823,498 @@ def test_publication_cardinality_ambiguity_holds_before_retrospective_owner(
         attachment_id="replacement",
         append=True,
     )
-    issues = linear.fetch_project_issues(PROJECT_ID)
+    result = sync_tick(
+        tickets=TicketRepo(db),
+        db=db,
+        client=linear,
+        status_map=status_map(),
+        team_id=TEAM_ID,
+        project_id=PROJECT_ID,
+        inbox_dir=tmp_path / "inbox",
+        documents=lambda: [],
+        now=NOW,
+        github_client=_github(),
+        completion_clock=lambda: NOW + timedelta(seconds=1),
+    )
 
-    publication, ordinary_reason = resolve_issue_bound_publication(ticket, issues)
-
-    assert publication is None
-    assert ordinary_reason is not None
+    assert result.ci_handoff_held == 1
     assert linear.state_writes == []
+    [blocker] = PmRecoveryRepo(db).list_blockers(
+        product_id=ticket.product_id,
+        active_only=True,
+    )
+    assert blocker.code.value == "publication_ambiguous"
+
+
+def test_prior_ci_decision_cannot_authorize_a_later_ci_pending_episode(
+    tmp_path: Path,
+) -> None:
+    db = _database(tmp_path / "later-episode.db")
+    linear = RecordingClient()
+    ticket, _old_episode = _seed_complete_world(db, linear)
+    tickets = TicketRepo(db)
+    tickets.apply_linear_status(
+        ticket.key,
+        TicketStatus.REVIEW_REQUIRED,
+        now=NOW - timedelta(hours=2),
+        created_by_id="test",
+    )
+    tickets.apply_linear_status(
+        ticket.key,
+        TicketStatus.CI_PENDING,
+        now=NOW - timedelta(hours=1),
+        created_by_id="test",
+    )
+    selection = select_fair_ci_handoff_candidate(
+        db=db,
+        tickets=tickets,
+        initial_issues=linear.fetch_project_issues(PROJECT_ID),
+        now=NOW,
+    )
+    assert selection.episode is not None
+
+    result = _run(db, linear, ticket, selection.episode.id, _github())
+
+    assert result.reason.value == "contributor_head_unavailable"
+    assert result.linear_mutations == 0
+    assert linear.state_writes == []
+
+
+def test_contradictory_source_state_type_blocks_final_revalidation(
+    tmp_path: Path,
+) -> None:
+    db = _database(tmp_path / "contradictory-state.db")
+    linear = ContradictoryStateClient()
+    ticket, episode_id = _seed_complete_world(db, linear)
+    hooks = RetrospectiveCompletionHooks(
+        after_proof_evaluated=lambda: setattr(linear, "contradictory", True)
+    )
+
+    result = _run(db, linear, ticket, episode_id, _github(), hooks=hooks)
+
+    assert result.reason.value == "board_state_moved"
+    assert result.linear_mutations == 0
+    assert linear.state_writes == []
+
+
+def test_crash_before_rejects_replaced_attachment_for_same_pr(tmp_path: Path) -> None:
+    db = _database(tmp_path / "replacement-after-fence.db")
+    linear = RecordingClient()
+    ticket, episode_id = _seed_complete_world(db, linear)
+    with pytest.raises(SimulatedProcessDeath):
+        _run(
+            db,
+            linear,
+            ticket,
+            episode_id,
+            _github(),
+            hooks=RetrospectiveCompletionHooks(
+                before_provider_write=lambda: (_ for _ in ()).throw(
+                    SimulatedProcessDeath()
+                )
+            ),
+        )
+    assert ticket.external_linear_id is not None
+    linear.seed_merged_github_publication(
+        ticket.external_linear_id,
+        owner=OWNER,
+        repo=REPO,
+        pr_number=PR,
+        attachment_id="replacement-same-pr",
+    )
+
+    result = reconcile_retrospective_completion_fence(
+        db=db,
+        tickets=TicketRepo(db),
+        github=_github(),
+        linear=linear,
+        status_map=status_map(),
+        project_id=PROJECT_ID,
+        product_id=ticket.product_id,
+        now=NOW + timedelta(seconds=1),
+    )
+
+    assert result is not None
+    assert result.linear_mutations == 0
+    assert linear.state_writes == []
+    assert RetrospectiveCompletionCoordinationRepo(db).get_fence(ticket.product_id)
+
+
+def test_retrospective_fence_blocks_ordinary_admission_and_ci_writers(
+    tmp_path: Path,
+) -> None:
+    db = _database(tmp_path / "retrospective-exclusion.db")
+    linear = RecordingClient()
+    ticket, episode_id = _seed_complete_world(db, linear)
+    with pytest.raises(SimulatedProcessDeath):
+        _run(
+            db,
+            linear,
+            ticket,
+            episode_id,
+            _github(),
+            hooks=RetrospectiveCompletionHooks(
+                before_provider_write=lambda: (_ for _ in ()).throw(
+                    SimulatedProcessDeath()
+                )
+            ),
+        )
+
+    with pytest.raises(WorkflowWriteWindowClosed):
+        PMWorkflowWriteGuard(db=db, observed_at=NOW + timedelta(seconds=1)).execute(
+            product_id=ticket.product_id,
+            call=lambda: "forbidden",
+        )
+
+    lease = AdmissionCoordinationRepo(db)
+    owner = uuid4()
+    assert lease.try_acquire(
+        product_id=ticket.product_id,
+        owner_id=owner,
+        acquired_at=NOW + timedelta(seconds=1),
+        ttl=timedelta(minutes=1),
+    )
+    with pytest.raises(RetrospectiveCompletionFencePresentError):
+        lease.begin_write(
+            product_id=ticket.product_id,
+            owner_id=owner,
+            admission_run_id=uuid4(),
+            ticket_id=ticket.id,
+            ticket_key=ticket.key,
+            issue_id=ticket.external_linear_id or "",
+            source_state_id=CI_PENDING_STATE.id,
+            target_state_id=DONE_STATE.id,
+            policy_revision=1,
+            created_at=NOW + timedelta(seconds=1),
+        )
+    [ci_decision] = CIHandoffReconciliationRepo(db).list_for_ticket(ticket.id)
+    with pytest.raises(CIHandoffWriteFenceError):
+        CIHandoffCoordinationRepo(db).begin_write(
+            product_id=ticket.product_id,
+            owner_id=owner,
+            reconciliation_id=ci_decision.id,
+            ticket_id=ticket.id,
+            ticket_key=ticket.key,
+            issue_id=ticket.external_linear_id or "",
+            source_state_id=CI_PENDING_STATE.id,
+            target_state_id="state-review-required",
+            target_status=TicketStatus.REVIEW_REQUIRED,
+            created_at=NOW + timedelta(seconds=1),
+        )
+    lease.release(product_id=ticket.product_id, owner_id=owner)
+
+
+@pytest.mark.parametrize("competing_fence", ["admission", "ci"])
+def test_existing_competing_fence_blocks_retrospective_preparation(
+    tmp_path: Path, competing_fence: str
+) -> None:
+    db = _database(tmp_path / f"{competing_fence}-blocks-retrospective.db")
+    linear = RecordingClient()
+    ticket, episode_id = _seed_complete_world(db, linear)
+    lease = AdmissionCoordinationRepo(db)
+    owner = uuid4()
+    assert lease.try_acquire(
+        product_id=ticket.product_id,
+        owner_id=owner,
+        acquired_at=NOW,
+        ttl=timedelta(minutes=1),
+    )
+    if competing_fence == "admission":
+        lease.begin_write(
+            product_id=ticket.product_id,
+            owner_id=owner,
+            admission_run_id=uuid4(),
+            ticket_id=ticket.id,
+            ticket_key=ticket.key,
+            issue_id=ticket.external_linear_id or "",
+            source_state_id=CI_PENDING_STATE.id,
+            target_state_id=DONE_STATE.id,
+            policy_revision=1,
+            created_at=NOW,
+        )
+    else:
+        [ci_decision] = CIHandoffReconciliationRepo(db).list_for_ticket(ticket.id)
+        CIHandoffCoordinationRepo(db).begin_write(
+            product_id=ticket.product_id,
+            owner_id=owner,
+            reconciliation_id=ci_decision.id,
+            ticket_id=ticket.id,
+            ticket_key=ticket.key,
+            issue_id=ticket.external_linear_id or "",
+            source_state_id=CI_PENDING_STATE.id,
+            target_state_id="state-review-required",
+            target_status=TicketStatus.REVIEW_REQUIRED,
+            created_at=NOW,
+        )
+    lease.release(product_id=ticket.product_id, owner_id=owner)
+
+    result = _run(db, linear, ticket, episode_id, _github())
+
+    assert result.reason.value == "concurrent_write_fence"
+    assert result.linear_mutations == 0
+    assert linear.state_writes == []
+    assert (
+        RetrospectiveCompletionCoordinationRepo(db).get_fence(ticket.product_id) is None
+    )
+
+
+def test_missing_github_for_fenced_product_does_not_stop_independent_pull(
+    tmp_path: Path,
+) -> None:
+    db = _database(tmp_path / "missing-github-independent.db")
+    linear = RecordingClient()
+    fenced, episode_id = _seed_complete_world(db, linear)
+    with pytest.raises(SimulatedProcessDeath):
+        _run(
+            db,
+            linear,
+            fenced,
+            episode_id,
+            _github(),
+            hooks=RetrospectiveCompletionHooks(
+                before_provider_write=lambda: (_ for _ in ()).throw(
+                    SimulatedProcessDeath()
+                )
+            ),
+        )
+
+    product = Product(**product_kwargs() | {"id": uuid4(), "key": "P-INDEPENDENT"})
+    ProductRepo(db).add(product)
+    seed_default_admission_policy(db, product.id)
+    issue = linear.create_issue(
+        {"title": "Independent", "description": "independent"},
+        team_id=TEAM_ID,
+        project_id=PROJECT_ID,
+    )
+    linear.simulate_linear_state(issue.id, STARTED)
+    independent = _ticket(product.id, issue.id, key="ATLAS-336").model_copy(
+        update={"status": TicketStatus.PLANNED}
+    )
+    TicketRepo(db).add(independent)
+    linear.creates.clear()
+    linear.state_writes.clear()
+
+    sync_tick(
+        tickets=TicketRepo(db),
+        db=db,
+        client=linear,
+        status_map=status_map(),
+        team_id=TEAM_ID,
+        project_id=PROJECT_ID,
+        inbox_dir=tmp_path / "inbox",
+        documents=lambda: [],
+        now=NOW + timedelta(seconds=1),
+        github_client=None,
+        completion_clock=lambda: NOW + timedelta(seconds=2),
+    )
+
+    retained = TicketRepo(db).get_by_key(independent.key)
+    assert retained is not None
+    assert retained.status is TicketStatus.IN_PROGRESS
+    assert RetrospectiveCompletionCoordinationRepo(db).get_fence(fenced.product_id)
+
+
+def test_retry_deferred_fence_does_not_stop_independent_product(
+    tmp_path: Path,
+) -> None:
+    db = _database(tmp_path / "deferred-fence-independent.db")
+    linear = RecordingClient()
+    fenced, episode_id = _seed_complete_world(db, linear)
+    with pytest.raises(SimulatedProcessDeath):
+        _run(
+            db,
+            linear,
+            fenced,
+            episode_id,
+            _github(),
+            hooks=RetrospectiveCompletionHooks(
+                before_provider_write=lambda: (_ for _ in ()).throw(
+                    SimulatedProcessDeath()
+                )
+            ),
+        )
+    product = Product(**product_kwargs() | {"id": uuid4(), "key": "P-DEFERRED"})
+    ProductRepo(db).add(product)
+    seed_default_admission_policy(db, product.id)
+    issue = linear.create_issue(
+        {"title": "Independent", "description": "independent"},
+        team_id=TEAM_ID,
+        project_id=PROJECT_ID,
+    )
+    linear.simulate_linear_state(issue.id, STARTED)
+    independent = _ticket(product.id, issue.id, key="ATLAS-337").model_copy(
+        update={"status": TicketStatus.PLANNED}
+    )
+    TicketRepo(db).add(independent)
+    lease = AdmissionCoordinationRepo(db)
+    competing_owner = uuid4()
+    assert lease.try_acquire(
+        product_id=fenced.product_id,
+        owner_id=competing_owner,
+        acquired_at=NOW + timedelta(seconds=1),
+        ttl=timedelta(minutes=5),
+    )
+
+    first = sync_tick(
+        tickets=TicketRepo(db),
+        db=db,
+        client=linear,
+        status_map=status_map(),
+        team_id=TEAM_ID,
+        project_id=PROJECT_ID,
+        inbox_dir=tmp_path / "inbox",
+        documents=lambda: [],
+        now=NOW + timedelta(seconds=1),
+        github_client=_github(),
+        completion_clock=lambda: NOW + timedelta(seconds=2),
+    )
+    assert first.ci_handoff_held == 1
+    before_retry = TicketRepo(db).get_by_key(independent.key)
+    assert before_retry is not None
+    assert before_retry.status is TicketStatus.PLANNED
+
+    sync_tick(
+        tickets=TicketRepo(db),
+        db=db,
+        client=linear,
+        status_map=status_map(),
+        team_id=TEAM_ID,
+        project_id=PROJECT_ID,
+        inbox_dir=tmp_path / "inbox",
+        documents=lambda: [],
+        now=NOW + timedelta(seconds=2),
+        github_client=_github(),
+        completion_clock=lambda: NOW + timedelta(seconds=3),
+    )
+
+    retained = TicketRepo(db).get_by_key(independent.key)
+    assert retained is not None
+    assert retained.status is TicketStatus.IN_PROGRESS
+    assert RetrospectiveCompletionCoordinationRepo(db).get_fence(fenced.product_id)
+    lease.release(product_id=fenced.product_id, owner_id=competing_owner)
 
 
 @pytest.mark.parametrize("crash_point", ["before", "after"])
 def test_fence_recovers_across_fresh_process_without_duplicate_write(
     crash_point: str,
 ) -> None:
-    provider = RecordingClient()
     with TemporalHarness(initial_time=NOW) as harness:
+        seeder = RecordingClient()
         seed_db = _database(harness.db_path)
-        ticket, episode_id = _seed_complete_world(seed_db, provider)
+        ticket, episode_id = _seed_complete_world(seed_db, seeder)
+        issue_id = ticket.external_linear_id
+        assert issue_id is not None
+        [seed_issue] = seeder.fetch_project_issues(PROJECT_ID)
+        _seed_provider_issue(harness.providers, seed_issue)
+        harness.providers.register_operation(
+            "linear", "set_state", _merge_provider_state
+        )
         harness.register_generation_resource(
             "db", lambda _generation: _database(harness.db_path)
         )
         harness.register_generation_resource(
-            "linear", lambda _generation: DelegatingLinearClient(provider)
+            "linear",
+            lambda generation: TemporalLinearClient(
+                world=harness.providers,
+                tick=generation.tick(f"process-{generation.generation_id}"),
+                issue_ids=(issue_id,),
+            ),
         )
-        first = harness.new_generation()
-        db1 = first.resource("db")
-        linear1 = first.resource("linear")
-        assert isinstance(db1, Database)
-        hooks = RetrospectiveCompletionHooks(
-            before_provider_write=(
-                (lambda: (_ for _ in ()).throw(SimulatedProcessDeath()))
+        request = _done_request(issue_id)
+        harness.faults.arm(
+            (
+                FaultPoint.BEFORE_PROVIDER_CALL
                 if crash_point == "before"
-                else lambda: None
+                else FaultPoint.AFTER_EFFECT_BEFORE_RETURN
             ),
-            after_provider_write=(
-                (lambda: (_ for _ in ()).throw(SimulatedProcessDeath()))
-                if crash_point == "after"
-                else lambda: None
-            ),
+            request_fingerprint=request.request_fingerprint,
         )
-        with pytest.raises(SimulatedProcessDeath):
-            _run(
-                db1,
-                cast(LinearClient, linear1),
-                ticket,
-                episode_id,
-                _github(),
-                hooks=hooks,
-            )
-        first.close()
-        writes_after_crash = len(provider.state_writes)
-        assert writes_after_crash == (0 if crash_point == "before" else 1)
-
-        second = harness.new_generation()
-        db2 = second.resource("db")
-        linear2 = second.resource("linear")
-        assert isinstance(db2, Database)
-        recovered = reconcile_retrospective_completion_fence(
-            db=db2,
-            tickets=TicketRepo(db2),
-            github=_github(main=OTHER_HEAD if crash_point == "before" else MAIN),
-            linear=cast(LinearClient, linear2),
-            status_map=status_map(),
-            project_id=PROJECT_ID,
-            product_id=ticket.product_id,
-            now=NOW + timedelta(seconds=1),
-        )
-        assert recovered is not None
-        assert recovered.linear_mutations == (1 if crash_point == "before" else 0)
-        assert len(provider.state_writes) == 1
-        assert (
-            RetrospectiveCompletionCoordinationRepo(db2).get_fence(ticket.product_id)
-            is None
-        )
-        assert (
-            len(
-                RetrospectiveCompletionReconciliationRepo(db2).list_for_ticket(
-                    ticket.id
+        with harness.new_generation() as first:
+            db1 = first.resource("db")
+            linear1 = first.resource("linear")
+            assert isinstance(db1, Database)
+            with pytest.raises(SimulatedProcessDeath):
+                _run(
+                    db1,
+                    cast(LinearClient, linear1),
+                    ticket,
+                    episode_id,
+                    _github(),
                 )
-            )
-            == 1
+        harness.providers.ledger.assert_counts(
+            request.request_fingerprint,
+            attempts=0 if crash_point == "before" else 1,
+            effects=0 if crash_point == "before" else 1,
         )
-        second.close()
+
+        with harness.new_generation() as second:
+            db2 = second.resource("db")
+            linear2 = second.resource("linear")
+            assert isinstance(db2, Database)
+            recovered = sync_tick(
+                tickets=TicketRepo(db2),
+                db=db2,
+                client=cast(LinearClient, linear2),
+                status_map=status_map(),
+                team_id=TEAM_ID,
+                project_id=PROJECT_ID,
+                inbox_dir=harness.db_path.parent / "inbox",
+                documents=lambda: [],
+                now=NOW + timedelta(seconds=1),
+                github_client=_github(
+                    main=OTHER_HEAD if crash_point == "before" else MAIN
+                ),
+                completion_clock=lambda: NOW + timedelta(seconds=2),
+            )
+            assert recovered.ci_handoff_mutations == (
+                1 if crash_point == "before" else 0
+            )
+            retained = TicketRepo(db2).get_by_key(ticket.key)
+            assert retained is not None
+            assert retained.status is TicketStatus.DONE
+            episode = PmRecoveryRepo(db2).get_episode(episode_id)
+            assert episode is not None
+            assert episode.closed_at is not None
+            assert (
+                RetrospectiveCompletionCoordinationRepo(db2).get_fence(
+                    ticket.product_id
+                )
+                is None
+            )
+        with harness.new_generation() as third:
+            db3 = third.resource("db")
+            linear3 = third.resource("linear")
+            assert isinstance(db3, Database)
+            follow_up = sync_tick(
+                tickets=TicketRepo(db3),
+                db=db3,
+                client=cast(LinearClient, linear3),
+                status_map=status_map(),
+                team_id=TEAM_ID,
+                project_id=PROJECT_ID,
+                inbox_dir=harness.db_path.parent / "inbox",
+                documents=lambda: [],
+                now=NOW + timedelta(seconds=2),
+                github_client=_github(),
+                completion_clock=lambda: NOW + timedelta(seconds=3),
+            )
+            assert follow_up.ci_handoff_mutations == 0
+            assert (
+                RetrospectiveCompletionCoordinationRepo(db3).get_fence(
+                    ticket.product_id
+                )
+                is None
+            )
+            assert (
+                len(
+                    RetrospectiveCompletionReconciliationRepo(db3).list_for_ticket(
+                        ticket.id
+                    )
+                )
+                == 1
+            )
+        harness.providers.ledger.assert_counts(
+            request.request_fingerprint, attempts=1, effects=1
+        )
+        harness.providers.ledger.assert_no_duplicate_harmful_effects()
+        harness.providers.ledger.assert_at_most_one_workflow_effect_per_tick()

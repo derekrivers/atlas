@@ -376,12 +376,8 @@ def _blocker_intent(
         surviving_retrospective_fence = RetrospectiveCompletionCoordinationRepo(
             db
         ).get_fence(candidate.product_id)
-        if (
-            retrospective_reason
-            in {
-                RetrospectiveCompletionReason.LEASE_UNAVAILABLE,
-                RetrospectiveCompletionReason.LEASE_LOST,
-            }
+        if retrospective_reason is RetrospectiveCompletionReason.LEASE_UNAVAILABLE or (
+            retrospective_reason is RetrospectiveCompletionReason.LEASE_LOST
             and surviving_retrospective_fence is None
         ):
             code = PmBlockerCode.LEASE_UNAVAILABLE
