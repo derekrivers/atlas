@@ -27,6 +27,13 @@ from atlas.pm.ci_handoff import (
 from atlas.pm.ci_handoff import (
     reconcile_ci_handoff_fence as reconcile_domain_ci_handoff_fence,
 )
+from atlas.pm.retrospective_completion import (
+    RetrospectiveCompletionHooks,
+    RetrospectiveCompletionResult,
+    reconcile_retrospective_completion,
+    reconcile_retrospective_completion_fence,
+    resolve_historical_publication,
+)
 from atlas.storage import CIHandoffCoordinationRepo, Database, EvidenceRepo, TicketRepo
 
 
@@ -39,6 +46,7 @@ class CIHandoffAdapterReason(StrEnum):
     EVIDENCE_INGESTION_FAILED = "system_evidence_ingestion_failed"
     IDENTITY_UNAVAILABLE = "trusted_identity_unavailable"
     RECONCILED = "reconciled"
+    RETROSPECTIVE_RECONCILED = "retrospective_reconciled"
 
 
 @dataclass(frozen=True)
@@ -61,6 +69,7 @@ class CIHandoffAdapterResult:
     ticket_key: str | None = None
     identity: CIHandoffIdentity | None = None
     reconciliation: CIHandoffResult | None = None
+    retrospective: RetrospectiveCompletionResult | None = None
     fence_precedence: bool = False
 
     @property
@@ -76,6 +85,8 @@ class CIHandoffAdapterResult:
             CIHandoffAdapterReason.IDENTITY_UNAVAILABLE,
         }:
             return True
+        if self.retrospective is not None:
+            return self.retrospective.held
         return bool(
             self.reconciliation
             and self.reconciliation.decision is CIHandoffDecision.HOLD
@@ -83,6 +94,8 @@ class CIHandoffAdapterResult:
 
     @property
     def linear_mutations(self) -> int:
+        if self.retrospective is not None:
+            return self.retrospective.linear_mutations
         return (
             0 if self.reconciliation is None else self.reconciliation.linear_mutations
         )
@@ -93,6 +106,8 @@ class CIHandoffAdapterResult:
 
         if self.fence_precedence:
             return True
+        if self.retrospective is not None:
+            return self.retrospective.ends_workflow_write_window
         if self.reconciliation is None:
             return False
         return bool(
@@ -124,6 +139,8 @@ class CIHandoffAdapterResult:
             )
         if self.reconciliation is not None:
             prefix = f"{prefix}; {self.reconciliation.safe_summary}"
+        if self.retrospective is not None:
+            prefix = f"{prefix}; {self.retrospective.safe_summary}"
         return prefix
 
 
@@ -172,6 +189,8 @@ def reconcile_ci_handoff_candidate(
     candidate_count: int,
     now: datetime,
     hooks: CIHandoffHooks | None = None,
+    retrospective_hooks: RetrospectiveCompletionHooks | None = None,
+    recovery_episode_id: UUID | None = None,
 ) -> CIHandoffAdapterResult:
     """Evaluate exactly the caller-selected CI-pending candidate."""
 
@@ -182,6 +201,35 @@ def reconcile_ci_handoff_candidate(
     )
     if publication is None:
         assert publication_reason is not None
+        historical, historical_reason = resolve_historical_publication(
+            candidate, initial_issues
+        )
+        if historical is not None:
+            retrospective = reconcile_retrospective_completion(
+                db=db,
+                tickets=tickets,
+                github=github,
+                linear=linear,
+                status_map=status_map,
+                project_id=project_id,
+                initial_issues=initial_issues,
+                ticket_key=candidate.key,
+                publication=historical,
+                now=now,
+                recovery_episode_id=recovery_episode_id,
+                hooks=retrospective_hooks,
+            )
+            return CIHandoffAdapterResult(
+                reason=CIHandoffAdapterReason.RETROSPECTIVE_RECONCILED,
+                candidate_count=candidate_count,
+                ticket_key=candidate.key,
+                retrospective=retrospective,
+                fence_precedence=retrospective.fence_reconciliation_attempted,
+            )
+        if historical_reason is not None and historical_reason.value.endswith(
+            "ambiguous"
+        ):
+            publication_reason = CIHandoffAdapterReason.PUBLICATION_AMBIGUOUS
         return CIHandoffAdapterResult(
             reason=publication_reason,
             candidate_count=candidate_count,
@@ -245,6 +293,43 @@ def reconcile_ci_handoff_candidate(
             reconciliation.fence_reconciliation_attempted
             or CIHandoffCoordinationRepo(db).get_fence(candidate.product_id) is not None
         ),
+    )
+
+
+def reconcile_existing_retrospective_completion_fence(
+    *,
+    db: Database,
+    tickets: TicketRepo,
+    github: GitHubClient,
+    status_map: LinearStatusMap,
+    linear: LinearClient,
+    project_id: str,
+    product_id: UUID,
+    candidate_count: int,
+    now: datetime,
+    hooks: RetrospectiveCompletionHooks | None = None,
+) -> CIHandoffAdapterResult | None:
+    """Adapt the separate historical fence into the shared cadence result."""
+
+    retrospective = reconcile_retrospective_completion_fence(
+        db=db,
+        tickets=tickets,
+        github=github,
+        linear=linear,
+        status_map=status_map,
+        project_id=project_id,
+        product_id=product_id,
+        now=now,
+        hooks=hooks,
+    )
+    if retrospective is None:
+        return None
+    return CIHandoffAdapterResult(
+        reason=CIHandoffAdapterReason.RETROSPECTIVE_RECONCILED,
+        candidate_count=candidate_count,
+        ticket_key=retrospective.ticket_key,
+        retrospective=retrospective,
+        fence_precedence=True,
     )
 
 

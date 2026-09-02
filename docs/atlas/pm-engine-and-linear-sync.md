@@ -416,12 +416,15 @@ must expose one exact repository/PR publication. The canonical URL and GitHub
 metadata must agree, the metadata must identify an `open` or `draft`
 `main`-target PR that closes the issue, the bounded attachment connection must
 be complete, and the adapter joins it to the ticket only through the stable
-Linear issue id. Missing, truncated, contradictory, multiple, closed or merged
+Linear issue id. Missing, truncated, contradictory, multiple or closed
 publication identities hold before any GitHub request; titles, branches,
-rollups, manual input and earlier handoff episodes are not identity sources.
-Fair scheduling does not activate retrospective merged-publication recovery. A
-historical merged publication remains ineligible in the ordinary lane, but its
-held evaluation moves to the tail instead of monopolising every future tick.
+rollups, manual input and earlier handoff episodes are not identity sources. A
+merged publication remains ineligible in this ordinary lane. A distinct
+bounded historical projection may instead route exactly one complete,
+canonical merged attachment to the PM Retrospective Completion Reconciler.
+That owner reuses the same durable episode, product lease, fairness cursor and
+one-effect tick budget; it does not widen the ordinary predicate or create an
+independent queue.
 
 For that exact publication the adapter invokes `drive_evidence_pull` inside the
 supported tick. The canonical mapper persists normal product-scoped
@@ -460,34 +463,67 @@ fresh complete board pull clears it only after proving the exact issue is at the
 source, target or another state, and that fence-reconciliation tick never
 attempts a second write.
 
-Existing unresolved CI-handoff fences outrank ordinary fairness selection and
-are reconciled before publication or evidence work, including when no ordinary
-`ci_pending` candidate remains. Fenced products rotate by their durable outer
+Existing unresolved CI-handoff or retrospective-completion fences outrank
+ordinary fairness selection and are reconciled before publication or evidence
+work, including when no ordinary `ci_pending` candidate remains. Fenced products rotate by their durable outer
 rank, but crash safety has precedence over throughput: every existing-fence
 reconciliation attempt ends that tick, whether the fresh board proves source,
 target, external movement or continuing ambiguity. Exact live lease and fence
 identity guard retirement, and target confirmation commits the matching local
 status with fence removal.
 
-Admission fences exclude same-product ordinary CI evaluation until their named
-owner reconciles them. Retained admission fences and independent-product CI
+Admission, CI-handoff and retrospective-completion fences pairwise exclude all
+same-product workflow writers until their named owner reconciles them. Retained
+fences and independent-product CI
 work share the durable outer rank, so a still-unresolved fence can defer only
 its product while independent work eventually receives a turn; late admission
 ambiguity ends the current CI attempt without advancing the displaced episode.
 Every later workflow writer—definition creation and its create-only assertion,
 admission, verified completion and review-cycle routing—uses the shared product
-lease, rechecks both fence kinds at the write boundary and shares one latched
+lease, rechecks all fence kinds at the write boundary and shares one latched
 tick budget.
 
-This seam has no GitHub mutation, Git, Symphony, policy, acceptance,
-verification-waiver, merge or Done authority. The generic Linear pull continues
-to reject both `ci_pending` exits; it does not become a second writer. **At most
+The ordinary seam has no GitHub mutation, Git, Symphony, policy, acceptance,
+verification-waiver, merge or Done authority. The retrospective owner has only
+the proof-gated direct Done edge described below. The generic Linear pull
+continues to reject every `ci_pending` exit; it does not become a second writer. **At most
 one workflow effect per PM tick.** Fairness operates across repeated ticks, not
 by performing multiple workflow mutations inside one tick. A confirmed
 CI-handoff mutation, every prior-fence reconciliation attempt, or the first
 completed downstream workflow route closes that tick's write window.
 Admission, verified completion and anomaly routing therefore cannot perform a
 second workflow mutation in the same tick.
+
+### Retrospective merged-publication completion
+
+When the distinct historical projection yields exactly one merged publication,
+the PM Retrospective Completion Reconciler reconstructs the affected contributor
+head from the retained successful CI-handoff reconciliation for that exact
+issue-bound PR. It freshly requires the canonical merged PR and immutable merge
+commit, a freshly fetched canonical `main` containing that merge, the current
+criteria fingerprint, an exact-head stored `MERGE_READY` acceptance session and
+confirmation receipt, the exact persisted `PASSED` verdict/readiness record,
+all required persisted checks, retained deciding evidence, an exact schema-v2
+`PR_MERGED` record naming repository/PR/head/merge, and a fresh canonical
+re-evaluation that returns the same complete proof identities. Merge state alone
+is never sufficient.
+
+The operation resolves publication, board and proof once, then acquires the
+shared product admission lease and repeats the complete board/publication/proof
+validation. It records one immutable HOLD or DONE reconciliation. A DONE
+decision and a prepared `retrospective_completion_write_fence` commit atomically
+before the strict writer can request only `ci_pending -> done`. A confirming
+provider response clears the fence without synthesising local intermediate
+states. An exception or non-confirming response leaves the fence for a fresh
+process: a complete board at target clears it without another write; a board at
+source must reproduce the original exact proof before retrying the same fenced
+decision; movement or incomplete observation remains fenced. Every such fence
+attempt consumes the tick's only workflow-effect window.
+Fresh source-side reconstruction keeps the original policy and immutable proof
+identities, but permits canonical `main` or unrelated occupancy to advance when
+the rebuilt snapshot remains complete and fresh ancestry still contains the
+same merge commit. This preserves safety without making a harmless later merge
+a permanent fail-stop.
 
 ### Evidence-backed Planned-to-CI-Pending mirror recovery
 

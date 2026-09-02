@@ -2045,8 +2045,8 @@ observations. Migration `0037` extends the closed blocker-code constraint and
 adds the explicit bounded-starvation truncation marker required by active
 ordinary CI-handoff diagnosis. The ordinary CI-handoff scheduler
 uses this state to choose which exact current candidate the existing adapter
-evaluates; the schema grants no new workflow authority, does not activate
-retrospective completion and authorises no new external write.
+evaluates. Migration `0038` adds the separately owned retrospective-completion
+decision and fence described in §5.21 without widening ordinary identity.
 
 `pm_recovery_sequence_counters` is the product-scoped serialization point and
 global sequence allocator. Every episode creation and evaluation consumes the
@@ -2361,6 +2361,90 @@ CREATE TABLE pm_blocker_starved_candidates (
         CHECK (ordinal BETWEEN 1 AND 128),
     CONSTRAINT pm_blocker_starved_candidates_key_bounds
         CHECK (length(ticket_key) BETWEEN 1 AND 128)
+);
+```
+
+---
+
+## 5.21 Retrospective Merged-Publication Completion
+
+Migration `0038` installs two purpose-specific tables. They grant no authority
+to the ordinary CI-handoff predicate or generic Linear pull.
+
+`retrospective_completion_reconciliations` is immutable decision history. A
+HOLD carries a closed typed reason and may retain only the proof identities
+that were safely established. A DONE row must be system-authored and binds the
+ticket/issue, shared recovery episode, issue attachment, canonical repository
+and PR, contributor head, immutable merge commit, freshly resolved canonical
+main, stored MERGE_READY acceptance session, verdict, current criteria
+fingerprint, required verification-check ids, deciding evidence ids and exact
+schema-v2 merged-evidence id. It also binds the active delivery-policy identity
+and fingerprint plus the deciding complete snapshot fingerprint. Repository
+validation enforces this complete
+tuple; database append-only triggers reject update and delete on both SQLite
+and PostgreSQL.
+
+`retrospective_completion_write_fences` has one primary-keyed row per product
+and a unique reconciliation id. The DONE decision and prepared fence commit in
+one transaction while the shared product admission lease is held. Its target is
+closed to `done` and its state to `pending|indeterminate`. Admission,
+CI-handoff and retrospective coordinators pairwise reject the other two fence
+kinds, and every later workflow writer rechecks all three at its write
+boundary. A fresh process must resolve this row from a complete board and the
+original immutable proof and policy before any source retry; target confirmation
+clears it without another provider write. A later complete snapshot and freshly
+resolved main may have a new fingerprint/identity when they still preserve the
+same source authority and merge ancestry, avoiding permanent fail-stop on
+unrelated progress.
+
+```sql
+CREATE TABLE retrospective_completion_reconciliations (
+    id UUID PRIMARY KEY,
+    schema_version TEXT NOT NULL,
+    product_id UUID NOT NULL REFERENCES products(id),
+    ticket_id UUID NOT NULL REFERENCES tickets(id),
+    ticket_key TEXT NOT NULL,
+    linear_issue_id TEXT,
+    recovery_episode_id UUID REFERENCES pm_recovery_episodes(id),
+    publication_attachment_id TEXT,
+    repository_owner TEXT,
+    repository_name TEXT,
+    pr_number INTEGER,
+    contributor_head TEXT,
+    merge_commit TEXT,
+    canonical_main TEXT,
+    policy_id UUID REFERENCES delivery_admission_policy_revisions(id),
+    policy_revision INTEGER,
+    policy_fingerprint TEXT,
+    snapshot_fingerprint TEXT,
+    acceptance_session_id UUID REFERENCES acceptance_sessions(id),
+    verification_verdict_id UUID,
+    criteria_fingerprint TEXT,
+    verification_check_ids JSONB NOT NULL,
+    deciding_evidence_ids JSONB NOT NULL,
+    merged_evidence_id UUID REFERENCES evidence(id),
+    reason TEXT NOT NULL,
+    decision TEXT NOT NULL,
+    observed_at TIMESTAMPTZ NOT NULL,
+    created_by_type TEXT NOT NULL,
+    created_by_id TEXT NOT NULL,
+    CHECK (schema_version = 'retrospective-completion-reconciliation-v1'),
+    CHECK (decision IN ('hold', 'done'))
+);
+
+CREATE TABLE retrospective_completion_write_fences (
+    product_id UUID PRIMARY KEY REFERENCES products(id),
+    reconciliation_id UUID NOT NULL UNIQUE
+        REFERENCES retrospective_completion_reconciliations(id),
+    ticket_id UUID NOT NULL REFERENCES tickets(id),
+    ticket_key TEXT NOT NULL,
+    issue_id TEXT NOT NULL,
+    source_state_id TEXT NOT NULL,
+    target_state_id TEXT NOT NULL,
+    target_status TEXT NOT NULL CHECK (target_status = 'done'),
+    state TEXT NOT NULL CHECK (state IN ('pending', 'indeterminate')),
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL
 );
 ```
 

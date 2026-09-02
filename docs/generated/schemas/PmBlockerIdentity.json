@@ -21,7 +21,9 @@
         "ci_evidence_not_yet_complete",
         "ci_evidence_ambiguous",
         "authority_changed",
-        "write_fence_unresolved"
+        "write_fence_unresolved",
+        "retrospective_proof_incomplete",
+        "retrospective_proof_ambiguous"
       ],
       "title": "PmBlockerCode",
       "type": "string"

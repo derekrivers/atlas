@@ -45,8 +45,9 @@ Phase design documents (one per engine; phase-readiness rule below):
   ownership, follow-up inbox, anomaly detection
 - `docs/atlas/pm-resilience-and-retrospective-recovery.md` — specialist
   authority for PM write-boundary recovery, eventual convergence,
-  retrospective authority, fairness and operational health; its target
-  retrospective edge remains inactive, current runtime ownership remains in
+  retrospective authority, fairness and operational health; its separately
+  fenced retrospective edge is active in repository code, current runtime
+  ownership remains in
   the owning transition/acceptance documents, and it resolves the older blanket
   "missed tick costs latency only" claim without weakening ordinary Phase-4
   ownership and trust boundaries

@@ -247,8 +247,9 @@ uv run atlas verify --pr <N> --repo <owner>/<repo>
 ```
 
 Run verification after GitHub reports the PR merged. This records the
-system-tier `PR_MERGED` evidence at the verdict commit. Without that proof the
-completion service must refuse Done.
+system-tier schema-v2 `PR_MERGED` evidence naming the repository, PR,
+contributor head and immutable merge commit at the verdict commit. Without that
+proof the completion service must refuse Done.
 
 ## 8. Observe managed PM completion
 
@@ -264,6 +265,18 @@ orchestration, and manual `atlas pm sync --once` are not acceptance steps. They
 belong to the separately governed
 `docs/runbooks/pm-runtime-deployment.md` procedure. Never drag a card to Done
 manually: doing so bypasses the completion gate and creates an integrity anomaly.
+
+If GitHub has already merged the exact accepted head while the Linear issue is
+still at CI Pending, do not fabricate Review Required, rerun an obsolete CI
+classification, or move the card manually. The normal recurring PM cadence may
+route the unique historical merged publication to its separately fenced
+retrospective owner. It completes only from the retained exact-head MERGE_READY
+session, confirmation receipt, persisted PASSED verdict and required checks,
+exact deciding evidence, schema-v2 merged proof, and fresh canonical-main
+ancestry and verifier agreement. Missing or ambiguous proof records a durable
+hold with zero workflow writes. Acceptance does not invoke this owner, and
+landing this code does not authorize a live migration, service restart or
+manual recovery tick; use the governed PM runtime deployment procedure.
 
 ## One-line rules earned by incident
 

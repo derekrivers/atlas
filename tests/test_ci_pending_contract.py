@@ -3,9 +3,11 @@
 from pathlib import Path
 
 from atlas.core.models import (
+    RetrospectiveTransitionOwner,
     TicketStatus,
     TicketTransitionOwner,
     ci_pending_transition_owner,
+    retrospective_completion_transition_owner,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -52,6 +54,21 @@ def test_ac1_atlas_owns_every_ci_pending_exit() -> None:
         for target in TicketStatus
     )
     assert {owner.value for owner in TicketTransitionOwner} == {"agent", "atlas"}
+
+
+def test_direct_retrospective_completion_has_one_separate_owner() -> None:
+    assert (
+        retrospective_completion_transition_owner(
+            TicketStatus.CI_PENDING, TicketStatus.DONE
+        )
+        is RetrospectiveTransitionOwner.PM_RETROSPECTIVE_COMPLETION_RECONCILER
+    )
+    for source, target in (
+        (TicketStatus.PR_OPEN, TicketStatus.DONE),
+        (TicketStatus.CI_PENDING, TicketStatus.REVIEW_REQUIRED),
+        (TicketStatus.REVIEW_REQUIRED, TicketStatus.DONE),
+    ):
+        assert retrospective_completion_transition_owner(source, target) is None
 
 
 def test_ac1_canonical_linear_mapping_is_exact_and_unique() -> None:

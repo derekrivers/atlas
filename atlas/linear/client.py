@@ -114,6 +114,22 @@ class LinearGitHubPublication:
 
 
 @dataclass(frozen=True)
+class LinearMergedGitHubPublication:
+    """Exact historically merged PR identity from an issue-bound attachment.
+
+    This projection is deliberately separate from ``LinearGitHubPublication``:
+    ordinary CI handoff continues to consume only live ``open|draft``
+    publications, while retrospective completion may inspect this merged-only
+    observation through its distinct authority path.
+    """
+
+    attachment_id: str
+    repository_owner: str
+    repository_name: str
+    pr_number: int
+
+
+@dataclass(frozen=True)
 class LinearIssue:
     """The only issue shape that crosses the boundary.
 
@@ -140,6 +156,7 @@ class LinearIssue:
     description: str | None = None
     identifier: str | None = None
     github_publications: tuple[LinearGitHubPublication, ...] = ()
+    merged_github_publications: tuple[LinearMergedGitHubPublication, ...] = ()
     github_publications_complete: bool = True
 
 
@@ -391,7 +408,7 @@ def _raise_if_rate_limited(errors: Any, message: str) -> None:
 
 def _github_publication_from_attachment(
     node: Mapping[str, Any],
-) -> LinearGitHubPublication | None:
+) -> LinearGitHubPublication | LinearMergedGitHubPublication | None:
     """Validate one Linear GitHub attachment without provider-text inference."""
 
     if node.get("sourceType") != "github":
@@ -442,48 +459,72 @@ def _github_publication_from_attachment(
         or not metadata_repo_id.isdigit()
         or metadata.get("linkKind") != "closes"
         or metadata.get("targetBranch") != "main"
-        or metadata.get("status") not in ("open", "draft")
     ):
         raise ValueError("contradictory Linear GitHub attachment identity")
-    return LinearGitHubPublication(
-        attachment_id=attachment_id,
-        repository_owner=owner.casefold(),
-        repository_name=name.casefold(),
-        pr_number=number,
-    )
+    status = metadata.get("status")
+    if status in ("open", "draft"):
+        return LinearGitHubPublication(
+            attachment_id=attachment_id,
+            repository_owner=owner.casefold(),
+            repository_name=name.casefold(),
+            pr_number=number,
+        )
+    if status == "merged":
+        return LinearMergedGitHubPublication(
+            attachment_id=attachment_id,
+            repository_owner=owner.casefold(),
+            repository_name=name.casefold(),
+            pr_number=number,
+        )
+    raise ValueError("contradictory Linear GitHub attachment identity")
 
 
 def _github_publications(
     node: Mapping[str, Any],
-) -> tuple[tuple[LinearGitHubPublication, ...], bool]:
+) -> tuple[
+    tuple[LinearGitHubPublication, ...],
+    tuple[LinearMergedGitHubPublication, ...],
+    bool,
+]:
     connection = node.get("attachments")
     if connection is None:
-        return (), True
+        return (), (), True
     if not isinstance(connection, Mapping):
-        return (), False
+        return (), (), False
     nodes = connection.get("nodes")
     page_info = connection.get("pageInfo")
     if not isinstance(nodes, list) or not isinstance(page_info, Mapping):
-        return (), False
+        return (), (), False
     has_next_page = page_info.get("hasNextPage")
     if not isinstance(has_next_page, bool) or has_next_page:
-        return (), False
+        return (), (), False
     publications: list[LinearGitHubPublication] = []
+    merged_publications: list[LinearMergedGitHubPublication] = []
     try:
         for attachment in nodes:
             if not isinstance(attachment, Mapping):
-                return (), False
+                return (), (), False
             publication = _github_publication_from_attachment(attachment)
-            if publication is not None:
+            if isinstance(publication, LinearGitHubPublication):
                 publications.append(publication)
+            elif isinstance(publication, LinearMergedGitHubPublication):
+                merged_publications.append(publication)
     except ValueError:
-        return (), False
-    return tuple(publications), True
+        return (), (), False
+    # A live and merged attachment set is contradictory for one issue-bound
+    # publication generation; neither forward nor retrospective authority may
+    # pick a preferred row from it.
+    complete = not (publications and merged_publications)
+    return tuple(publications), tuple(merged_publications), complete
 
 
 def _issue_from_node(node: Mapping[str, Any]) -> LinearIssue:
     state = node.get("state")
-    github_publications, github_publications_complete = _github_publications(node)
+    (
+        github_publications,
+        merged_github_publications,
+        github_publications_complete,
+    ) = _github_publications(node)
     return LinearIssue(
         id=node["id"],
         title=node["title"],
@@ -496,6 +537,7 @@ def _issue_from_node(node: Mapping[str, Any]) -> LinearIssue:
         # None via the DTO default.
         identifier=node.get("identifier"),
         github_publications=github_publications,
+        merged_github_publications=merged_github_publications,
         github_publications_complete=github_publications_complete,
     )
 

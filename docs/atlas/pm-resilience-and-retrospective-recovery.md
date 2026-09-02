@@ -21,9 +21,11 @@ or interrupted tick may create a durable blocker and health must report it.
 This document defines the contracts and pure health calculus. The ordinary PM
 CI-handoff lane consumes the durable episode, product-global fairness and
 blocker substrate to schedule one exact current `ci_pending` candidate per
-tick. Retrospective merged-publication recovery remains inactive. This document
-does not add a recovery CLI, operate the managed runtime, alter a production
-database or recover a live ticket.
+tick. The separately fenced PM Retrospective Completion Reconciler is active in
+repository code for an exact historical merged publication; it shares that
+episode and cadence rather than widening ordinary publication identity or
+creating a second queue. This document does not add a recovery CLI, operate the
+managed runtime, alter a production database or recover a live ticket.
 
 ## Core invariants
 
@@ -63,11 +65,10 @@ publication must never be admitted by widening the ordinary predicate.
 
 ### Historical merged-publication proof
 
-Retrospective reconciliation is a separate, named target authority. If it is
-activated by the later governed implementation defined below, the ordinary
-cadence invokes it only after ordinary identity resolution reports a
-historically advanced publication. It must freshly establish all of the
-following:
+Retrospective reconciliation is a separate, named authority. The ordinary
+cadence invokes it only after ordinary identity resolution rejects the
+publication and the distinct historical projection establishes exactly one
+merged issue-bound publication. It must freshly establish all of the following:
 
 - one joined Atlas ticket and Linear issue, using `external_linear_id` only;
 - one issue-bound canonical repository and PR number with a complete attachment
@@ -132,7 +133,7 @@ That action is not reconstructed from the merge and cannot be implied by an
 agent or system actor. Any other missing or ambiguous fact likewise holds with
 no workflow mutation.
 
-The sole future owner of a direct retrospective transition is the **PM
+The sole owner of a direct retrospective transition is the **PM
 Retrospective Completion Reconciler**. It must acquire one product-scoped
 retrospective-completion lease and persist a prepared
 `retrospective_completion_write_fence` before the Linear write. A confirming
@@ -140,6 +141,11 @@ provider response clears the fence; an exception or non-confirming response
 makes it indeterminate. A fresh process holding the same product lease must
 resolve the fence from a complete board pull before any retry, and its
 fence-reconciliation tick performs no second workflow mutation.
+At the exact source, retry must reproduce the original publication, contributor
+head, merge commit, policy, human/verdict/check/evidence proof and a complete
+current snapshot. Canonical `main` and unrelated snapshot occupancy may have
+advanced since preparation; that is not a permanent stop when a fresh ancestry
+check still proves the same immutable merge commit on the newly resolved main.
 
 When all facts prove that delivery has already advanced past the obsolete
 intermediate states, that sole owner may perform one direct `ci_pending -> done`
@@ -148,15 +154,14 @@ it must not fabricate `review_required`, replay an obsolete CI classification
 mutation, reopen a merged PR, or create synthetic timestamps. No other
 condition grants a direct transition to `done`.
 
-This edge is **INACTIVE**. It gains no runtime authority until a separately
-reviewed implementation updates the owning canonical transition and acceptance
-documents (`docs/atlas/symphony-integration.md`,
-`docs/atlas/verification-engine.md`, `docs/atlas/review-acceptance-console.md`,
-`docs/runbooks/pr-acceptance.md` and `WORKFLOW.md`), installs executable
-single-owner, lease, fence, exact-proof and writer guards, and lands the required
-storage and temporal tests. Until then current runtime ownership remains
-unchanged: the existing PM CI-handoff and verified-completion owners keep their
-current edges, and no component may execute the direct retrospective edge.
+This edge is **ACTIVE IN REPOSITORY CODE** through executable single-owner,
+shared-lease, separate-fence, exact-proof and strict-writer guards. Migration
+`0038` installs its immutable decision history and append-only prepared fence.
+The existing PM CI-handoff and verified-completion owners keep their current
+edges; neither gains direct retrospective authority. Code acceptance is not
+deployment: this maintenance change does not migrate a live database, activate
+or restart the managed PM service, invoke a recovery tick, or recover a live
+ticket. Those remain separately governed operator actions.
 
 ## Fair bounded evaluation
 
