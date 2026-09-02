@@ -50,6 +50,7 @@ from uuid import UUID, uuid4
 
 import pytest
 from linear_fakes import InMemoryLinearClient
+from pm_temporal_harness import SimulatedProcessDeath
 from test_lesson_model import lesson_kwargs
 from test_models_validation import NOW, dependency_kwargs, product_kwargs, ticket_kwargs
 
@@ -273,6 +274,15 @@ class FailingStateAssertionClient(RecordingClient):
         self.write_events.append(("set_state", issue_id, state_id))
         self.state_writes.append((issue_id, state_id))
         raise RuntimeError("state assertion unavailable")
+
+
+class DyingStateAssertionClient(RecordingClient):
+    """Simulate process loss after creation is checkpointed, during assertion."""
+
+    def set_state(self, issue_id: str, state_id: str) -> LinearIssue:
+        self.write_events.append(("set_state", issue_id, state_id))
+        self.state_writes.append((issue_id, state_id))
+        raise SimulatedProcessDeath()
 
 
 class FailingProjectPullClient(RecordingClient):
@@ -1359,7 +1369,8 @@ def test_dependency_ready_new_issue_waits_for_complete_pull_then_promotes(
     issue_id = synced.external_linear_id
     assert first.pushed_created == 1
     assert first.promoted == 0
-    assert first.stale == 1
+    assert first.stale == 0
+    assert first.admission_decisions == []
 
     second = run(db, client)
 
@@ -1423,6 +1434,53 @@ def test_create_state_assertion_failure_keeps_join_and_counts_anomaly(
     assert any(
         "failed to assert mapped planned state" in r.message for r in caplog.records
     )
+
+
+def test_process_death_during_create_state_assertion_keeps_join_across_reconstruction(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "create-assertion-restart.db"
+    database = Database(f"sqlite:///{path}")
+    database.create_all()
+    client = DyingStateAssertionClient()
+    seed_ticket(
+        database,
+        client,
+        key="ATLAS-ASSERTION-RESTART",
+        status=TicketStatus.PLANNED,
+        acceptance_criteria=[],
+        with_issue=False,
+    )
+
+    with pytest.raises(SimulatedProcessDeath):
+        run(database, client)
+
+    stored = TicketRepo(database).get_by_key("ATLAS-ASSERTION-RESTART")
+    assert stored is not None and stored.external_linear_id is not None
+    assert stored.linear_synced_at == stored.updated_at
+    issue_id = stored.external_linear_id
+    assert client.write_events == [
+        ("create_issue", issue_id),
+        ("set_state", issue_id, UNSTARTED.id),
+    ]
+    provider_issues = dict(client._issues)
+    provider_counter = client._counter
+    database.engine.dispose()
+
+    rebuilt_database = Database(f"sqlite:///{path}")
+    rebuilt_client = RecordingClient()
+    rebuilt_client._issues = provider_issues
+    rebuilt_client._counter = provider_counter
+    resumed = run(rebuilt_database, rebuilt_client, now=NOW + timedelta(seconds=1))
+
+    reconstructed = TicketRepo(rebuilt_database).get_by_key("ATLAS-ASSERTION-RESTART")
+    assert reconstructed is not None
+    assert reconstructed.external_linear_id == issue_id
+    assert resumed.pushed_created == 0
+    assert rebuilt_client.creates == []
+    assert rebuilt_client.updates == []
+    assert rebuilt_client.state_writes == []
+    assert set(rebuilt_client._issues) == {issue_id}
 
 
 # --- directionality --------------------------------------------------------

@@ -1,4 +1,4 @@
-"""Transactional persistence for dormant PM recovery and blocker state."""
+"""Transactional persistence for active PM recovery and blocker state."""
 
 from __future__ import annotations
 
@@ -27,6 +27,7 @@ from atlas.core.models.pm_recovery import (
 )
 from atlas.storage.db import Database
 from atlas.storage.tables import (
+    CIHandoffWriteFenceRow,
     PmBlockerOccurrenceRow,
     PmBlockerStarvedCandidateRow,
     PmRecoveryEpisodeRow,
@@ -49,6 +50,7 @@ class PmRecoveryStorageCode(StrEnum):
     EVALUATION_REPLAY_CONFLICT = "evaluation_replay_conflict"
     EVALUATION_CURSOR_CONFLICT = "evaluation_cursor_conflict"
     EVALUATION_OUT_OF_ORDER = "evaluation_out_of_order"
+    FENCE_IDENTITY_CONFLICT = "fence_identity_conflict"
     BLOCKER_IDENTITY_CONFLICT = "blocker_identity_conflict"
     BLOCKER_NOT_FOUND = "blocker_not_found"
     BLOCKER_SUPERSESSION_CONFLICT = "blocker_supersession_conflict"
@@ -152,6 +154,8 @@ def _evaluation_fingerprint(
     evaluation_id: str,
     evaluated_at: datetime,
     blocker: PmBlockerObservationIntent | None,
+    relieve_starvation_for_candidate: bool,
+    supersede_prior_blockers_for_episode: bool,
 ) -> str:
     payload = {
         "episode_id": str(episode_id),
@@ -159,6 +163,8 @@ def _evaluation_fingerprint(
         "blocker": None if blocker is None else blocker.model_dump(mode="json"),
         "evaluated_at": evaluated_at.isoformat(),
         "evaluation_id": evaluation_id,
+        "relieve_starvation_for_candidate": relieve_starvation_for_candidate,
+        "supersede_prior_blockers_for_episode": (supersede_prior_blockers_for_episode),
     }
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode()).hexdigest()
@@ -199,7 +205,7 @@ def _episode_scope_fingerprint(identity: PmRecoveryEpisodeIdentity) -> str:
 class PmRecoveryRepo:
     """Own recurrence, replay, supersession, and product-global fairness state.
 
-    This repository exposes dormant storage capabilities only.  It performs no
+    This repository exposes storage capabilities only.  It performs no
     candidate selection, provider request, workflow mutation, or scheduler work.
     """
 
@@ -278,6 +284,13 @@ class PmRecoveryRepo:
                 )
             )
             return 0 if value is None else value
+
+    def reserve_evaluation_sequence(self, product_id: UUID) -> int:
+        """Durably reserve the evaluation tail before any provider effect."""
+
+        with self._db.session() as session, session.begin():
+            self._lock_sequence_counter(session, product_id)
+            return self._allocate_locked_sequence(session, product_id)
 
     def get_episode(self, episode_id: UUID) -> PmRecoveryEpisode | None:
         with self._db.session() as session:
@@ -593,6 +606,7 @@ class PmRecoveryRepo:
                 consecutive_observations=1,
                 next_safe_retry_at=observation.next_safe_retry_at,
                 capacity_impact=observation.capacity_impact,
+                starved_candidates_truncated=(observation.starved_candidates_truncated),
                 policy_namespace=observation.policy_namespace,
                 policy_revision=observation.policy_revision,
                 policy_fingerprint=observation.policy_fingerprint,
@@ -634,6 +648,7 @@ class PmRecoveryRepo:
             )
             row.next_safe_retry_at = observation.next_safe_retry_at
             row.capacity_impact = observation.capacity_impact
+            row.starved_candidates_truncated = observation.starved_candidates_truncated
             row.policy_namespace = observation.policy_namespace
             row.policy_revision = observation.policy_revision
             row.policy_fingerprint = observation.policy_fingerprint
@@ -662,12 +677,29 @@ class PmRecoveryRepo:
         evaluation_id: str,
         evaluated_at: datetime,
         blocker: PmBlockerObservationIntent | None = None,
+        relieve_starvation_for_candidate: bool = False,
+        supersede_prior_blockers_for_episode: bool = False,
+        reserved_evaluation_sequence: int | None = None,
+        expected_fence_reconciliation_id: UUID | None = None,
+        expected_fence_ticket_id: UUID | None = None,
     ) -> PmRecoveryEvaluationRecord:
         """Move one episode to the product tail and record its blocker atomically."""
 
         evaluated = _aware(evaluated_at, name="evaluation time")
         if expected_cursor_sequence < 1:
             raise ValueError("expected_cursor_sequence must be positive")
+        if reserved_evaluation_sequence is not None and not (
+            expected_cursor_sequence
+            < reserved_evaluation_sequence
+            <= 9_223_372_036_854_775_807
+        ):
+            raise ValueError(
+                "reserved_evaluation_sequence must be greater than the cursor"
+            )
+        if (expected_fence_reconciliation_id is None) != (
+            expected_fence_ticket_id is None
+        ):
+            raise ValueError("expected fence reconciliation and ticket travel together")
         evaluation_id = _bounded_identifier(evaluation_id, name="evaluation_id")
         if blocker is not None:
             blocker = PmBlockerObservationIntent.model_validate(
@@ -679,6 +711,8 @@ class PmRecoveryRepo:
             evaluation_id=evaluation_id,
             evaluated_at=evaluated,
             blocker=blocker,
+            relieve_starvation_for_candidate=relieve_starvation_for_candidate,
+            supersede_prior_blockers_for_episode=(supersede_prior_blockers_for_episode),
         )
         blocker_id: UUID | None = None
         current = self.get_episode(episode_id)
@@ -686,6 +720,21 @@ class PmRecoveryRepo:
             raise PmRecoveryStorageError(PmRecoveryStorageCode.EPISODE_NOT_FOUND)
         with self._db.session() as session, session.begin():
             self._lock_sequence_counter(session, current.product_id)
+            if expected_fence_reconciliation_id is not None:
+                fence_lock = session.execute(
+                    sa.update(CIHandoffWriteFenceRow)
+                    .where(
+                        CIHandoffWriteFenceRow.product_id == current.product_id,
+                        CIHandoffWriteFenceRow.reconciliation_id
+                        == expected_fence_reconciliation_id,
+                        CIHandoffWriteFenceRow.ticket_id == expected_fence_ticket_id,
+                    )
+                    .values(state=CIHandoffWriteFenceRow.state)
+                )
+                if getattr(fence_lock, "rowcount", 0) != 1:
+                    raise PmRecoveryStorageError(
+                        PmRecoveryStorageCode.FENCE_IDENTITY_CONFLICT
+                    )
             episode = session.get(PmRecoveryEpisodeRow, episode_id)
             if episode is None:
                 raise PmRecoveryStorageError(PmRecoveryStorageCode.EPISODE_NOT_FOUND)
@@ -742,7 +791,19 @@ class PmRecoveryRepo:
                 raise PmRecoveryStorageError(
                     PmRecoveryStorageCode.EVALUATION_OUT_OF_ORDER
                 )
-            sequence = self._allocate_locked_sequence(session, episode.product_id)
+            if reserved_evaluation_sequence is None:
+                sequence = self._allocate_locked_sequence(session, episode.product_id)
+            else:
+                high_water = session.scalar(
+                    sa.select(PmRecoverySequenceCounterRow.high_water).where(
+                        PmRecoverySequenceCounterRow.product_id == episode.product_id
+                    )
+                )
+                if high_water is None or reserved_evaluation_sequence > high_water:
+                    raise PmRecoveryStorageError(
+                        PmRecoveryStorageCode.SEQUENCE_EXHAUSTED
+                    )
+                sequence = reserved_evaluation_sequence
             episode.last_evaluated_sequence = sequence
             episode.last_evaluation_id = evaluation_id
             episode.last_evaluation_fingerprint = fingerprint
@@ -756,6 +817,79 @@ class PmRecoveryRepo:
                     evaluated_at=evaluated,
                     observation=blocker,
                 )
+                if supersede_prior_blockers_for_episode:
+                    obsolete = list(
+                        session.scalars(
+                            sa.select(PmBlockerOccurrenceRow).where(
+                                PmBlockerOccurrenceRow.recovery_episode_id
+                                == episode.id,
+                                PmBlockerOccurrenceRow.active_fingerprint.is_not(None),
+                                PmBlockerOccurrenceRow.id != blocker_id,
+                            )
+                        )
+                    )
+                    for prior in obsolete:
+                        prior.active_fingerprint = None
+                        prior.superseded_at = evaluated
+                        prior.superseded_by_event_id = evaluation_id
+                        prior.supersession_kind = (
+                            PmBlockerSupersessionKind.PROGRESS.value
+                        )
+            if (
+                relieve_starvation_for_candidate
+                and episode.candidate_ticket_id is not None
+            ):
+                # A committed exact evaluation proves this candidate is no
+                # longer currently starved by an older candidate. Clear only
+                # that mutable membership atomically with the cursor; retain
+                # the blocker occurrence and all of its historical diagnosis.
+                affected_blocker_ids = list(
+                    session.scalars(
+                        sa.select(PmBlockerStarvedCandidateRow.blocker_occurrence_id)
+                        .join(
+                            PmBlockerOccurrenceRow,
+                            PmBlockerOccurrenceRow.id
+                            == PmBlockerStarvedCandidateRow.blocker_occurrence_id,
+                        )
+                        .where(
+                            PmBlockerStarvedCandidateRow.ticket_id
+                            == episode.candidate_ticket_id,
+                            PmBlockerOccurrenceRow.product_id == episode.product_id,
+                            PmBlockerOccurrenceRow.operation == episode.operation,
+                            PmBlockerOccurrenceRow.active_fingerprint.is_not(None),
+                        )
+                    )
+                )
+                session.execute(
+                    sa.delete(PmBlockerStarvedCandidateRow).where(
+                        PmBlockerStarvedCandidateRow.ticket_id
+                        == episode.candidate_ticket_id,
+                        PmBlockerStarvedCandidateRow.blocker_occurrence_id.in_(
+                            sa.select(PmBlockerOccurrenceRow.id).where(
+                                PmBlockerOccurrenceRow.product_id == episode.product_id,
+                                PmBlockerOccurrenceRow.operation == episode.operation,
+                                PmBlockerOccurrenceRow.active_fingerprint.is_not(None),
+                            )
+                        ),
+                    )
+                )
+                session.flush()
+                for affected_id in affected_blocker_ids:
+                    remaining = session.scalar(
+                        sa.select(sa.func.count())
+                        .select_from(PmBlockerStarvedCandidateRow)
+                        .where(
+                            PmBlockerStarvedCandidateRow.blocker_occurrence_id
+                            == affected_id
+                        )
+                    )
+                    if remaining == 0:
+                        affected = session.get(PmBlockerOccurrenceRow, affected_id)
+                        if (
+                            affected is not None
+                            and not affected.starved_candidates_truncated
+                        ):
+                            affected.capacity_impact = False
             session.flush()
 
         stored_episode = self.get_episode(episode_id)
@@ -767,6 +901,68 @@ class PmRecoveryRepo:
             blocker=stored_blocker,
             changed=True,
         )
+
+    def record_blocker_without_cursor_advance(
+        self,
+        *,
+        episode_id: UUID,
+        expected_cursor_sequence: int,
+        observation_id: str,
+        observed_at: datetime,
+        blocker: PmBlockerObservationIntent,
+        reserved_observation_sequence: int,
+    ) -> DurablePmBlocker:
+        """Diagnose contention without stealing an in-flight owner's cursor."""
+
+        observed = _aware(observed_at, name="blocker observation time")
+        observation_id = _bounded_identifier(observation_id, name="observation_id")
+        blocker = PmBlockerObservationIntent.model_validate(
+            blocker.model_dump(mode="python")
+        )
+        if not (
+            expected_cursor_sequence
+            < reserved_observation_sequence
+            <= 9_223_372_036_854_775_807
+        ):
+            raise ValueError(
+                "reserved_observation_sequence must be greater than the cursor"
+            )
+        current = self.get_episode(episode_id)
+        if current is None:
+            raise PmRecoveryStorageError(PmRecoveryStorageCode.EPISODE_NOT_FOUND)
+        with self._db.session() as session, session.begin():
+            self._lock_sequence_counter(session, current.product_id)
+            episode = session.get(PmRecoveryEpisodeRow, episode_id)
+            if episode is None:
+                raise PmRecoveryStorageError(PmRecoveryStorageCode.EPISODE_NOT_FOUND)
+            if episode.closed_at is not None:
+                raise PmRecoveryStorageError(PmRecoveryStorageCode.EPISODE_CLOSED)
+            current_cursor = (
+                episode.last_evaluated_sequence or episode.episode_created_sequence
+            )
+            if current_cursor != expected_cursor_sequence:
+                raise PmRecoveryStorageError(
+                    PmRecoveryStorageCode.EVALUATION_CURSOR_CONFLICT
+                )
+            high_water = session.scalar(
+                sa.select(PmRecoverySequenceCounterRow.high_water).where(
+                    PmRecoverySequenceCounterRow.product_id == episode.product_id
+                )
+            )
+            if high_water is None or reserved_observation_sequence > high_water:
+                raise PmRecoveryStorageError(PmRecoveryStorageCode.SEQUENCE_EXHAUSTED)
+            blocker_id = self._observe_blocker(
+                session,
+                episode=episode,
+                evaluation_sequence=reserved_observation_sequence,
+                evaluation_id=observation_id,
+                evaluated_at=observed,
+                observation=blocker,
+            )
+        stored = self.get_blocker(blocker_id)
+        if stored is None:  # pragma: no cover - committed insert invariant
+            raise PmRecoveryStorageError(PmRecoveryStorageCode.BLOCKER_NOT_FOUND)
+        return stored
 
     def get_blocker(self, blocker_id: UUID) -> DurablePmBlocker | None:
         with self._db.session() as session:
@@ -852,7 +1048,7 @@ class PmRecoveryRepo:
             return [_blocker_model(session, row) for row in rows]
 
     def list_active_episodes_ordered(self, product_id: UUID) -> list[PmRecoveryEpisode]:
-        """Expose the dormant fairness projection without selecting runtime work."""
+        """Expose the fairness projection without selecting runtime work."""
 
         with self._db.session() as session:
             rows = session.scalars(

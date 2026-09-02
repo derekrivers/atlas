@@ -111,6 +111,7 @@ export const atlasOpenApiEnums = {
   ],
   "AdmissionSyncReason": [
     "lease_unavailable",
+    "ci_handoff_fence_present",
     "product_ambiguous",
     "policy_unavailable",
     "snapshot_incomplete",

@@ -17,7 +17,11 @@
         "lease_unavailable",
         "publication_not_yet_complete",
         "provider_unavailable",
-        "publication_ambiguous"
+        "publication_ambiguous",
+        "ci_evidence_not_yet_complete",
+        "ci_evidence_ambiguous",
+        "authority_changed",
+        "write_fence_unresolved"
       ],
       "title": "PmBlockerCode",
       "type": "string"
@@ -141,6 +145,11 @@
       "maxItems": 128,
       "title": "Starved Candidates",
       "type": "array"
+    },
+    "starved_candidates_truncated": {
+      "default": false,
+      "title": "Starved Candidates Truncated",
+      "type": "boolean"
     }
   },
   "required": [

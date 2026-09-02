@@ -1880,7 +1880,11 @@ delete.
 per product is committed before the sole external transition. Confirmed success
 or a complete fresh-board reconciliation deletes it; an ambiguous response may
 change only its state from `pending` to `indeterminate`. The unique
-reconciliation foreign key prevents one decision from owning two writes.
+reconciliation foreign key prevents one decision from owning two writes. The
+writer transaction locks both the exact live admission lease and this fence
+across the bounded provider call, so a replacement owner cannot reconcile
+source or remove the fence until the original call has returned or its process
+connection has ended.
 
 ```sql
 CREATE TABLE ci_handoff_reconciliations (
@@ -2035,28 +2039,50 @@ CREATE TABLE planned_ci_pending_recoveries (
 
 ## 5.20 Durable PM Recovery, Fairness and Blocker State
 
-Migration `0036` installs four dormant operational tables for reconstructable
-PM recovery episodes, product-global fairness cursors and bounded blocker
-observations. This schema provides durable recovery memory and fairness state;
-it grants no new PM workflow authority. In particular, it does not change
-CI-handoff selection, activate retrospective completion or authorise any new
-external write.
+Migration `0036` installs four operational tables for reconstructable PM
+recovery episodes, product-global fairness cursors and bounded blocker
+observations. Migration `0037` extends the closed blocker-code constraint and
+adds the explicit bounded-starvation truncation marker required by active
+ordinary CI-handoff diagnosis. The ordinary CI-handoff scheduler
+uses this state to choose which exact current candidate the existing adapter
+evaluates; the schema grants no new workflow authority, does not activate
+retrospective completion and authorises no new external write.
 
 `pm_recovery_sequence_counters` is the product-scoped serialization point and
 global sequence allocator. Every episode creation and evaluation consumes the
 next positive value; creation stores it in `episode_created_sequence`, while a
 later evaluation stores a strictly greater value in `last_evaluated_sequence`.
+The production cadence reserves the evaluation value before provider work and
+passes that exact value into the atomic evaluation commit. A crash before that
+commit may leave a harmless unused gap; reserved values are never reused, and
+the episode cursor does not advance without the evaluation commit.
+Lease contention is the bounded exception: the reserved value identifies the
+typed blocker occurrence, while the selected episode cursor remains unchanged
+for the in-flight lease owner. Its durable retry time temporarily defers the
+product from selection; neither the reservation nor the blocker observation can
+masquerade as a completed evaluation.
 Repository mutations lock the product counter row before rereading mutable
 state. PostgreSQL uses a row lock and SQLite uses its transaction-level writer
 serialization, so replay cannot reuse a committed sequence or expose a
-half-created logical state. Exhausting the signed 64-bit range fails closed.
+half-created logical state. Exhausting the signed 64-bit range fails closed;
+the production cadence durably reserves one sequence before publication,
+evidence, fence or provider workflow effects so concurrent writers cannot
+consume its recording capacity after an externally visible action.
 The latest evaluation fingerprint binds its expected cursor, caller evaluation
-identifier, observation time and complete optional blocker intent. Only that
+identifier, observation time, complete optional blocker intent, and the
+caller's explicit starvation-relief and obsolete-cause-supersession choices. Only that
 exact latest intent is an idempotent replay. Caller evaluation identifiers are
 not episode-global keys: a newly created blocker occurrence derives its UUID
 from the allocated global evaluation sequence, while replay resolves the exact
 cause fingerprint, caller identifier and observation time. An older occurrence
 therefore cannot masquerade as the latest evaluation result.
+
+Sequence cursors are compared only within a product. Cross-product arbitration
+uses the selected episode's durable observation time: `last_evaluated_at` after
+an evaluation and otherwise `created_at`, with unevaluated work first at an
+equal instant and product UUID as the deterministic final tie. This keeps new
+products from repeatedly winning with an incomparable product-local sequence
+of one while preserving deterministic reconstruction.
 
 `pm_recovery_episodes.identity_fingerprint` is the unique full episode
 identity. `active_scope_fingerprint` is a separate structural identity used
@@ -2082,7 +2108,9 @@ authority kind and identifier, and recovery episode. The separately nullable
 active. A recurring observation of the same active identity updates its
 bounded count, observation times, retry/capacity fields and optional policy
 tuple; a changed cause, authority or episode creates a distinct occurrence.
-Supersession clears the active fingerprint and atomically records a bounded
+For ordinary CI handoff, committing a changed active cause also supersedes
+every obsolete active cause in that episode inside the same evaluation
+transaction. Supersession clears the active fingerprint and atomically records a bounded
 `progress` or `recovery` event at or after the last observation. Occurrence
 identity, recurrence and supersession therefore survive complete process
 reconstruction.
@@ -2091,9 +2119,16 @@ reconstruction.
 independently starved by one occurrence. The composite primary key fixes each
 ordinal, the per-occurrence UUID and key unique constraints prevent duplicate
 members, and the `1..128` ordinal bound caps the projection. `started_at`
-preserves starvation age across reconstruction. Clearing or superseding an
-occurrence is not inferred from silence; repository code explicitly manages
-the occurrence and its membership under the product serialization point.
+preserves starvation age across reconstruction. A saturated 128-member
+projection sets `starved_candidates_truncated`; that durable bit proves the
+projection omitted at least one same-product member, retains capacity impact
+after the visible prefix drains, and clears only on a later complete blocker
+observation or explicit supersession. A committed exact evaluation
+atomically removes that selected candidate from older active starvation
+memberships without deleting or superseding the original occurrence. Clearing
+or superseding an occurrence is not inferred from silence; repository code
+explicitly manages the occurrence and its membership under the product
+serialization point.
 
 ```sql
 CREATE TABLE pm_recovery_sequence_counters (
@@ -2226,6 +2261,7 @@ CREATE TABLE pm_blocker_occurrences (
     consecutive_observations BIGINT NOT NULL,
     next_safe_retry_at TIMESTAMPTZ,
     capacity_impact BOOLEAN NOT NULL DEFAULT FALSE,
+    starved_candidates_truncated BOOLEAN NOT NULL DEFAULT FALSE,
     policy_namespace TEXT,
     policy_revision BIGINT,
     policy_fingerprint TEXT,
@@ -2243,7 +2279,11 @@ CREATE TABLE pm_blocker_occurrences (
             'lease_unavailable',
             'provider_unavailable',
             'publication_ambiguous',
-            'publication_not_yet_complete'
+            'publication_not_yet_complete',
+            'ci_evidence_not_yet_complete',
+            'ci_evidence_ambiguous',
+            'authority_changed',
+            'write_fence_unresolved'
         )
     ),
     CONSTRAINT pm_blocker_occurrences_authority_kind CHECK (

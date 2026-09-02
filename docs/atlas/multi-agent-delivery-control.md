@@ -545,7 +545,8 @@ the trusted CI-handoff service existed, but neither the one-shot nor recurring
 `atlas pm sync` path called it. That head completed CI and remained `CI Pending`
 with no `ci_handoff_reconciliations` row, so it is failed historical evidence,
 not the live PASS sample. The supported PM tick now considers only local
-`CI Pending` tickets in stable ticket-key order and evaluates at most one. A
+`CI Pending` tickets, selects at most one by its durable recovery-episode
+fairness cursor, and uses ticket key only as a final deterministic tie-break. A
 complete board pull may first catch the local mirror up from a Symphony-active
 predecessor if the cadence missed transient `In Progress`/`PR Open` states. It
 records only the actually observed direct edge with the

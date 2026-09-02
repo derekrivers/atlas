@@ -104,6 +104,7 @@ from atlas.context.pack import ContextBudgetExceededError, build_context_pack
 from atlas.core.anchors import IngestionError, SourceDocument
 from atlas.core.enums import ActorType
 from atlas.core.models.adr import ADRStatus, ArchitectureDecisionRecord
+from atlas.core.models.ci_handoff_reconciliation import CIHandoffReason
 from atlas.core.models.debt_item import AnomalyType, DebtItem
 from atlas.core.models.lesson import Lesson
 from atlas.core.models.pm_sync_receipt import PmSyncReceipt, PmSyncReceiptResult
@@ -139,14 +140,27 @@ from atlas.linear.ownership import (
 from atlas.pm.admission_sync import (
     AdmissionSyncHooks,
     AdmissionSyncOutcome,
+    AdmissionSyncReason,
     AdmissionSyncResult,
     admit_one_ready,
+    reconcile_existing_admission_fence,
 )
 from atlas.pm.agent_runs import reconstruct_agent_runs
 from atlas.pm.ci_handoff import CIHandoffHooks
 from atlas.pm.ci_handoff_adapter import (
+    CIHandoffAdapterReason,
     CIHandoffAdapterResult,
-    reconcile_one_ci_handoff,
+    reconcile_ci_handoff_candidate,
+    reconcile_existing_ci_handoff_fence,
+)
+from atlas.pm.ci_handoff_fairness import (
+    FairCIHandoffSelection,
+    ci_handoff_product_retry_deferred,
+    cross_product_fairness_key,
+    ensure_ci_handoff_episode,
+    record_fair_ci_handoff_contention,
+    record_fair_ci_handoff_evaluation,
+    select_fair_ci_handoff_candidate,
 )
 from atlas.pm.completion import complete_verified
 from atlas.pm.delivery_snapshot import LinearBoardPull, linear_board_fingerprint
@@ -155,7 +169,17 @@ from atlas.pm.protected_lanes import (
     ProtectedLaneRegistryLoadResult,
     load_packaged_protected_lane_registry,
 )
+from atlas.pm.workflow_write import (
+    PMWorkflowWriteGuard,
+    WorkflowWriteWindowClosed,
+)
+from atlas.storage.admission_coordination import AdmissionCoordinationRepo
+from atlas.storage.ci_handoff_coordination import (
+    CIHandoffCoordinationRepo,
+    CIHandoffWriteFenceError,
+)
 from atlas.storage.db import Database
+from atlas.storage.pm_recovery import PmRecoveryRepo
 from atlas.storage.repositories import (
     ADRRepo,
     ContextPackRepo,
@@ -1079,6 +1103,7 @@ def _detect_review_cycle(
     needs_human_state_id: str,
     result: SyncResult,
     now: datetime,
+    workflow_write_guard: PMWorkflowWriteGuard | None = None,
 ) -> DebtItem | None:
     """Step 5 (ATLAS-120): route a review-cycling ticket to ``Needs Human`` and
     log one ``REVIEW_CYCLE`` note. The ONE anomaly that both moves a ticket AND
@@ -1115,7 +1140,15 @@ def _detect_review_cycle(
         return None  # no episode boundary for dedup; unreachable when count > threshold
     # Route first: the one sanctioned move (ATLAS-43), idempotent and Linear-only.
     # A raise here aborts the tick before the log and is retried next tick.
-    client.set_state(ticket.external_linear_id, needs_human_state_id)
+    if workflow_write_guard is None:
+        client.set_state(ticket.external_linear_id, needs_human_state_id)
+    else:
+        workflow_write_guard.execute(
+            product_id=ticket.product_id,
+            call=lambda: client.set_state(
+                ticket.external_linear_id or "", needs_human_state_id
+            ),
+        )
     result.routed_to_human += 1
     logger.info(
         "linear-sync: review-cycling %s (%d round trips) routed to "
@@ -1601,6 +1634,7 @@ def _push(
     debt: DebtItemRepo,
     result: SyncResult,
     now: datetime,
+    workflow_write_guard: PMWorkflowWriteGuard | None = None,
 ) -> str | None:
     """Step 2 (Atlas -> Linear): push the owned definition for a pushable
     ticket whose cursor says it changed. Push first, then stamp (D5).
@@ -1660,19 +1694,46 @@ def _push(
         definition["description"] = embedded
     if ticket.external_linear_id is None:
         target_state_id = status_map.state_id_for(ticket.status)
+
         # First sync: create the issue and write back the join key. A full embed
         # stamps immediately after the confirmed create to shrink the
         # non-idempotent create-retry window (tracked in
         # docs/tech-debt/debt-register.md); a degraded create records only the
         # join key so the next tick updates this issue with the full embed.
-        issue = client.create_issue(definition, team_id=team_id, project_id=project_id)
-        if degraded:
-            tickets.mark_external_linear_id(ticket.key, issue.id)
+        def persist_created_issue(issue: LinearIssue) -> None:
+            if degraded:
+                tickets.mark_external_linear_id(ticket.key, issue.id)
+            else:
+                tickets.mark_definition_pushed(
+                    ticket.key,
+                    synced_at=ticket.updated_at,
+                    external_linear_id=issue.id,
+                )
+
+        def assert_created_state(issue: LinearIssue) -> None:
+            client.set_state(issue.id, target_state_id)
+
+        def create_and_checkpoint_then_assert() -> tuple[LinearIssue, Exception | None]:
+            issue = client.create_issue(
+                definition, team_id=team_id, project_id=project_id
+            )
+            persist_created_issue(issue)
+            try:
+                assert_created_state(issue)
+            except Exception as error:
+                return issue, error
+            return issue, None
+
+        if workflow_write_guard is None:
+            issue, state_error = create_and_checkpoint_then_assert()
         else:
-            tickets.mark_definition_pushed(
-                ticket.key,
-                synced_at=ticket.updated_at,
-                external_linear_id=issue.id,
+            issue, state_error = workflow_write_guard.execute_checkpointed(
+                product_id=ticket.product_id,
+                call=lambda: client.create_issue(
+                    definition, team_id=team_id, project_id=project_id
+                ),
+                checkpoint=persist_created_issue,
+                continuation=assert_created_state,
             )
         result.pushed_created += 1
         if degraded:
@@ -1686,9 +1747,7 @@ def _push(
             logger.info(
                 "linear-sync: created Linear issue %s for %s", issue.id, ticket.key
             )
-        try:
-            client.set_state(issue.id, target_state_id)
-        except Exception as error:
+        if state_error is not None:
             result.anomalies_logged += 1
             result.push_decisions.append(
                 SyncDecision(
@@ -1697,7 +1756,8 @@ def _push(
                     outcome="state assertion failed",
                     reason=(
                         f"created Linear issue {issue.id} but could not assert "
-                        f"{ticket.status.value} state {target_state_id!r}: {error}"
+                        f"{ticket.status.value} state {target_state_id!r}: "
+                        f"{state_error}"
                     ),
                 )
             )
@@ -2020,6 +2080,121 @@ def _sync_tick_impl(
         pagination_gaps=tuple(getattr(fetched_issues, "pagination_gaps", ())),
     )
     issues_by_id: dict[str, LinearIssue] = {issue.id: issue for issue in fetched_issues}
+    # A durable CI write fence is possible prior external mutation. Its product
+    # is excluded from ordinary candidate work until the fence resolves. Fences
+    # rotate among themselves but retain absolute precedence over ordinary
+    # candidates. This remains reachable even when the
+    # prior target commit removed the final local CI-pending candidate.
+    product_ids = {ticket.product_id for ticket in pull_board}
+    product_ids.update(product.id for product in ProductRepo(db).list())
+    fences = [
+        fence
+        for product_id in product_ids
+        if (fence := CIHandoffCoordinationRepo(db).get_fence(product_id)) is not None
+    ]
+    fenced_product_ids = frozenset(fence.product_id for fence in fences)
+    if fences:
+        # Every existing fence first resolves to a durable episode. Product-
+        # local monotonic cursors choose that product's representative; the
+        # durable observation-time rank below rotates representatives across
+        # products without comparing unrelated local counters.
+        fence_options = []
+        for candidate_fence in fences:
+            if ci_handoff_product_retry_deferred(
+                db=db, product_id=candidate_fence.product_id, now=now
+            ):
+                continue
+            candidate_ticket = tickets.get_by_key(candidate_fence.ticket_key)
+            if (
+                candidate_ticket is None
+                or candidate_ticket.id != candidate_fence.ticket_id
+            ):
+                raise CIHandoffWriteFenceError(
+                    "CI handoff fence no longer resolves to its exact ticket"
+                )
+            candidate_episode = ensure_ci_handoff_episode(
+                db=db,
+                ticket=candidate_ticket,
+                initial_issues=fetched_issues,
+                now=now,
+            )
+            fence_options.append((candidate_episode, candidate_fence, candidate_ticket))
+        if not fence_options:
+            return result
+        _fence_episode, fence, fence_ticket = min(
+            fence_options,
+            key=lambda item: (
+                cross_product_fairness_key(item[0]),
+                str(item[1].product_id),
+            ),
+        )
+        product_id = fence.product_id
+        reserved_sequence = PmRecoveryRepo(db).reserve_evaluation_sequence(product_id)
+        handoff = reconcile_existing_ci_handoff_fence(
+            db=db,
+            tickets=tickets,
+            status_map=status_map,
+            linear=client,
+            project_id=project_id,
+            initial_issues=fetched_issues,
+            product_id=product_id,
+            candidate_count=sum(
+                ticket.product_id == product_id
+                and ticket.status is TicketStatus.CI_PENDING
+                for ticket in pull_board
+            ),
+            now=now,
+            expected_reconciliation_id=fence.reconciliation_id,
+            expected_ticket_id=fence.ticket_id,
+        )
+        assert handoff is not None
+        _apply_ci_handoff_result(result, handoff)
+        if (
+            handoff.reconciliation is not None
+            and handoff.reconciliation.reason is CIHandoffReason.LEASE_UNAVAILABLE
+        ):
+            record_fair_ci_handoff_contention(
+                db=db,
+                selection=FairCIHandoffSelection(
+                    candidates=tuple(
+                        ticket
+                        for ticket in pull_board
+                        if ticket.product_id == product_id
+                        and ticket.status is TicketStatus.CI_PENDING
+                    ),
+                    candidate=fence_ticket,
+                    episode=_fence_episode,
+                ),
+                result=handoff,
+                now=now,
+                reserved_observation_sequence=reserved_sequence,
+            )
+            return result
+        episode = ensure_ci_handoff_episode(
+            db=db,
+            ticket=fence_ticket,
+            initial_issues=fetched_issues,
+            now=now,
+        )
+        record_fair_ci_handoff_evaluation(
+            db=db,
+            selection=FairCIHandoffSelection(
+                candidates=tuple(
+                    ticket
+                    for ticket in pull_board
+                    if ticket.product_id == product_id
+                    and ticket.status is TicketStatus.CI_PENDING
+                ),
+                candidate=fence_ticket,
+                episode=episode,
+            ),
+            result=handoff,
+            now=now,
+            reserved_evaluation_sequence=reserved_sequence,
+        )
+        if ci_handoff_hooks is not None:
+            ci_handoff_hooks.after_fairness_persisted()
+        return result
     # Pull all joined tickets first, then reconstruct AgentRuns from the local
     # transition/evidence store plus the already-fetched board descriptions
     # (ATLAS-166). The push pass runs after reconstruction so this step is
@@ -2050,6 +2225,66 @@ def _sync_tick_impl(
     )
     result.agent_runs_reconstructed = reconstructed.created
     result.agent_runs_updated = reconstructed.updated
+    # A retained admission fence is also possible prior external mutation.
+    # It excludes ordinary CI work only for its own product and participates
+    # in the durable outer product rotation. A still-unresolved observation
+    # advances the fence rank, allowing an independent product to run next
+    # without weakening same-product exclusion. CI fences above retain their
+    # stronger absolute precedence over this entire scheduler.
+    admission_fences = [
+        admission_fence
+        for product_id in product_ids
+        if (admission_fence := AdmissionCoordinationRepo(db).get_fence(product_id))
+        is not None
+    ]
+    admission_fenced_product_ids = frozenset(
+        fence.product_id for fence in admission_fences
+    )
+    selection: FairCIHandoffSelection | None = None
+    if github_client is not None:
+        selection = select_fair_ci_handoff_candidate(
+            db=db,
+            tickets=tickets,
+            initial_issues=fetched_issues,
+            now=now,
+            excluded_product_ids=(fenced_product_ids | admission_fenced_product_ids),
+        )
+    admission_fence = (
+        None
+        if not admission_fences
+        else min(
+            admission_fences,
+            key=lambda candidate: (candidate.updated_at, str(candidate.product_id)),
+        )
+    )
+    admission_fence_precedes = bool(
+        admission_fence is not None
+        and (
+            selection is None
+            or selection.episode is None
+            or (
+                admission_fence.updated_at,
+                1,
+                str(admission_fence.product_id),
+            )
+            <= (
+                *cross_product_fairness_key(selection.episode),
+                str(selection.episode.product_id),
+            )
+        )
+    )
+    if admission_fence_precedes:
+        assert admission_fence is not None
+        admission_fence_result = reconcile_existing_admission_fence(
+            db=db,
+            product_id=admission_fence.product_id,
+            status_map=status_map,
+            initial_issues=fetched_issues,
+            now=now,
+        )
+        assert admission_fence_result is not None
+        _apply_admission_result(result, admission_fence_result)
+        return result
     # Phase 15.5 production CI handoff: after the coherent board pull and local
     # AgentRun reconstruction, deterministically consider at most one locally
     # CI-pending ticket. Its issue-bound Linear GitHub attachment supplies the
@@ -2059,17 +2294,140 @@ def _sync_tick_impl(
     # confirmation of an earlier fenced target) ends the tick before
     # definition, admission, completion or anomaly writers.
     if github_client is not None:
-        handoff = reconcile_one_ci_handoff(
-            db=db,
-            tickets=tickets,
-            github=github_client,
-            linear=client,
-            status_map=status_map,
-            project_id=project_id,
-            initial_issues=fetched_issues,
-            now=now,
-            hooks=ci_handoff_hooks,
-        )
+        assert selection is not None
+        if selection.candidate is None:
+            handoff = CIHandoffAdapterResult(
+                reason=CIHandoffAdapterReason.NO_CANDIDATE,
+                candidate_count=0,
+            )
+        else:
+            assert selection.episode is not None
+            reserved_sequence = PmRecoveryRepo(db).reserve_evaluation_sequence(
+                selection.episode.product_id
+            )
+            if ci_handoff_hooks is not None:
+                ci_handoff_hooks.after_candidate_selected()
+            handoff = reconcile_ci_handoff_candidate(
+                db=db,
+                tickets=tickets,
+                github=github_client,
+                linear=client,
+                status_map=status_map,
+                project_id=project_id,
+                initial_issues=fetched_issues,
+                candidate=selection.candidate,
+                candidate_count=selection.candidate_count,
+                now=now,
+                hooks=ci_handoff_hooks,
+            )
+            if ci_handoff_hooks is not None:
+                ci_handoff_hooks.after_candidate_evaluated()
+            # An admission writer may win the shared lease after the initial
+            # fence scan. Its durable ambiguity displaces this ordinary
+            # evaluation: do not advance the selected episode cursor, and do
+            # not run any later workflow writer in this tick. A fresh tick
+            # reaches the admission recovery owner before selecting CI work.
+            late_admission_fence = AdmissionCoordinationRepo(db).get_fence(
+                selection.candidate.product_id
+            )
+            if late_admission_fence is not None:
+                _apply_ci_handoff_result(result, handoff)
+                _apply_admission_result(
+                    result,
+                    AdmissionSyncResult(
+                        outcome=AdmissionSyncOutcome.INDETERMINATE,
+                        reason=AdmissionSyncReason.WRITE_INDETERMINATE,
+                        policy_revision=late_admission_fence.policy_revision,
+                        admission_run_id=late_admission_fence.admission_run_id,
+                        ticket_key=late_admission_fence.ticket_key,
+                    ),
+                )
+                return result
+            late_fence = CIHandoffCoordinationRepo(db).get_fence(
+                selection.candidate.product_id
+            )
+            handoff_matches_late_fence = bool(
+                late_fence is not None
+                and handoff.reconciliation is not None
+                and handoff.reconciliation.reconciliation_id
+                == late_fence.reconciliation_id
+                and handoff.reconciliation.ticket_key == late_fence.ticket_key
+            )
+            prior_fence_attempt = bool(
+                handoff.reconciliation is not None
+                and handoff.reconciliation.fence_reconciliation_attempted
+            )
+            if (
+                late_fence is not None
+                and not handoff_matches_late_fence
+                and handoff.linear_mutations == 0
+                and not prior_fence_attempt
+            ):
+                late_ticket = tickets.get_by_key(late_fence.ticket_key)
+                if late_ticket is None or late_ticket.id != late_fence.ticket_id:
+                    raise CIHandoffWriteFenceError(
+                        "late CI handoff fence no longer resolves to its exact ticket"
+                    )
+                recovered_late_fence = reconcile_existing_ci_handoff_fence(
+                    db=db,
+                    tickets=tickets,
+                    status_map=status_map,
+                    linear=client,
+                    project_id=project_id,
+                    initial_issues=fetched_issues,
+                    product_id=late_fence.product_id,
+                    candidate_count=selection.candidate_count,
+                    now=now,
+                    expected_reconciliation_id=late_fence.reconciliation_id,
+                    expected_ticket_id=late_fence.ticket_id,
+                )
+                if recovered_late_fence is None:  # pragma: no cover - exact CAS
+                    raise CIHandoffWriteFenceError(
+                        "late CI handoff fence disappeared during recovery"
+                    )
+                handoff = recovered_late_fence
+            recording_selection = selection
+            if handoff.ticket_key != selection.candidate.key:
+                late_fence_ticket = tickets.get_by_key(handoff.ticket_key or "")
+                if (
+                    late_fence_ticket is None
+                    or late_fence_ticket.product_id != selection.candidate.product_id
+                ):
+                    raise CIHandoffWriteFenceError(
+                        "late CI handoff fence no longer resolves within the selected "
+                        "product"
+                    )
+                recording_selection = FairCIHandoffSelection(
+                    candidates=selection.candidates,
+                    candidate=late_fence_ticket,
+                    episode=ensure_ci_handoff_episode(
+                        db=db,
+                        ticket=late_fence_ticket,
+                        initial_issues=fetched_issues,
+                        now=now,
+                    ),
+                )
+            if not (
+                handoff.reconciliation is not None
+                and handoff.reconciliation.reason is CIHandoffReason.LEASE_UNAVAILABLE
+            ):
+                record_fair_ci_handoff_evaluation(
+                    db=db,
+                    selection=recording_selection,
+                    result=handoff,
+                    now=now,
+                    reserved_evaluation_sequence=reserved_sequence,
+                )
+                if ci_handoff_hooks is not None:
+                    ci_handoff_hooks.after_fairness_persisted()
+            else:
+                record_fair_ci_handoff_contention(
+                    db=db,
+                    selection=recording_selection,
+                    result=handoff,
+                    now=now,
+                    reserved_observation_sequence=reserved_sequence,
+                )
         _apply_ci_handoff_result(result, handoff)
         if handoff.ends_workflow_write_window:
             return result
@@ -2077,22 +2435,29 @@ def _sync_tick_impl(
     # first push that will actually embed, so a no-op tick stays byte-identical
     # in both requests and local reads.
     pack_inputs = _PackInputLoader(db, documents)
+    workflow_write_guard = PMWorkflowWriteGuard(db=db, observed_at=now)
     pushed_issue_ids: set[str] = set()
     for after_pull in pulled_board:
-        pushed_issue_id = _push(
-            after_pull,
-            tickets,
-            client,
-            team_id,
-            project_id,
-            status_map,
-            pack_inputs,
-            debt,
-            result,
-            now,
-        )
+        try:
+            pushed_issue_id = _push(
+                after_pull,
+                tickets,
+                client,
+                team_id,
+                project_id,
+                status_map,
+                pack_inputs,
+                debt,
+                result,
+                now,
+                workflow_write_guard,
+            )
+        except WorkflowWriteWindowClosed:
+            return result
         if pushed_issue_id is not None:
             pushed_issue_ids.add(pushed_issue_id)
+    if workflow_write_guard.consumed:
+        return result
     if repair_packs:
         _repair_pack_absent_descriptions(
             tickets=tickets,
@@ -2122,20 +2487,33 @@ def _sync_tick_impl(
         # sole-write boundary.  The next ordinary pull remains the Atlas-status
         # writer and no later completion/anomaly route can become a second
         # external mutation in the same decision window.
-        if admission.outcome in {
-            AdmissionSyncOutcome.ADMITTED,
-            AdmissionSyncOutcome.STALE,
-            AdmissionSyncOutcome.INDETERMINATE,
-        }:
+        if (
+            admission.outcome
+            in {
+                AdmissionSyncOutcome.ADMITTED,
+                AdmissionSyncOutcome.STALE,
+                AdmissionSyncOutcome.INDETERMINATE,
+            }
+            or admission.reason is AdmissionSyncReason.CI_HANDOFF_FENCE_PRESENT
+        ):
             return result
     # Step 3b (ATLAS-131): verified completion, immediately after admission. Move
     # every review_required ticket whose persisted Verification Engine verdict is
     # PASSED to Done via the sanctioned set_state. Like admission it resolves
     # its Done target up front (the load-time guard, fired even when nothing is
     # completable) and writes Linear only, so the next tick's pull reconciles Atlas.
-    result.completed = complete_verified(
-        tickets=tickets, db=db, client=client, status_map=status_map
-    )
+    try:
+        result.completed = complete_verified(
+            tickets=tickets,
+            db=db,
+            client=client,
+            status_map=status_map,
+            workflow_write_guard=workflow_write_guard,
+        )
+    except WorkflowWriteWindowClosed:
+        return result
+    if workflow_write_guard.consumed:
+        return result
     # Step 4 (ATLAS-45): the follow-up comment scan, after admission and before
     # the step-5 anomaly passes (the loop order). The inbox is read once up front
     # for the dedup key set and per-ticket index; each newly-seen tagged comment
@@ -2158,9 +2536,18 @@ def _sync_tick_impl(
         dwell_item = _detect_dwell(ticket, debt, result, now)
         if dwell_item is not None:
             new_anomaly_items.append(dwell_item)
-        review_item = _detect_review_cycle(
-            ticket, debt, client, needs_human_state_id, result, now
-        )
+        try:
+            review_item = _detect_review_cycle(
+                ticket,
+                debt,
+                client,
+                needs_human_state_id,
+                result,
+                now,
+                workflow_write_guard,
+            )
+        except WorkflowWriteWindowClosed:
+            return result
         if review_item is not None:
             new_anomaly_items.append(review_item)
         _detect_stale_block(ticket, graph, debt, result, now)

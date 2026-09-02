@@ -851,7 +851,9 @@ class PmBlockerOccurrenceRow(Base):
         ),
         sa.CheckConstraint(
             "code IN ('lease_unavailable', 'provider_unavailable', "
-            "'publication_ambiguous', 'publication_not_yet_complete')",
+            "'publication_ambiguous', 'publication_not_yet_complete', "
+            "'ci_evidence_not_yet_complete', 'ci_evidence_ambiguous', "
+            "'authority_changed', 'write_fence_unresolved')",
             name="pm_blocker_occurrences_code",
         ),
         sa.CheckConstraint(
@@ -946,6 +948,9 @@ class PmBlockerOccurrenceRow(Base):
     consecutive_observations: Mapped[int] = mapped_column(sa.BigInteger)
     next_safe_retry_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     capacity_impact: Mapped[bool] = mapped_column(
+        sa.Boolean, nullable=False, server_default=sa.text("FALSE")
+    )
+    starved_candidates_truncated: Mapped[bool] = mapped_column(
         sa.Boolean, nullable=False, server_default=sa.text("FALSE")
     )
     policy_namespace: Mapped[str | None] = mapped_column(sa.Text)

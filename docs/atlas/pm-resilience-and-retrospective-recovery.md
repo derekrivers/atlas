@@ -18,11 +18,12 @@ crash-after outcomes are durably reconstructable. It is not a subsystem-wide
 property. Every seam must prove the stronger contract here; otherwise a missed
 or interrupted tick may create a durable blocker and health must report it.
 
-This document defines the contracts and pure health calculus. The durable
-episode, product-global fairness and blocker substrate is available as dormant
-lower-layer storage, but no PM runtime path consumes it. This document does not
-change PM sync, add a CLI, mutate Linear or GitHub, operate the managed runtime,
-alter a production database, or recover a live ticket.
+This document defines the contracts and pure health calculus. The ordinary PM
+CI-handoff lane consumes the durable episode, product-global fairness and
+blocker substrate to schedule one exact current `ci_pending` candidate per
+tick. Retrospective merged-publication recovery remains inactive. This document
+does not add a recovery CLI, operate the managed runtime, alter a production
+database or recover a live ticket.
 
 ## Core invariants
 
@@ -167,30 +168,109 @@ cursor is `last_evaluated_sequence` when present and otherwise
 `episode_created_sequence`; the natural ticket key is only the final tie-break
 for corrupt/equivalent legacy input, which health must also diagnose.
 
-Selection takes the least cursor from one finite eligible snapshot. A held
-evaluation moves that episode to the sequence tail rather than retaining first
-position. New episodes receive their creation cursor at the same global tail,
-so new arrivals cannot cut ahead of an older retry cursor. Under a functioning
-cadence, coherent sequence allocation, a finite eligible snapshot, finite
-arrivals between ticks and no global prerequisite failure, every older cursor
-has only finitely many cursors ahead of it even when newer work continues to
-arrive; it is therefore eventually selected. Episode identity changes only on
-an authoritative lifecycle entry or publication replacement, never on process
-restart.
+Selection takes the least cursor from one finite eligible snapshot. Cursors
+are product-local monotonic work ranks. Across products, the durable outer
+scheduler compares the oldest episode observation time: `last_evaluated_at`
+after an evaluation and otherwise `created_at`, with an unevaluated episode
+first at an equal instant and product UUID only as the deterministic final tie.
+A fixed candidate or fence rank can therefore have only finitely many older
+ranks ahead of it; an unresolved fence is moved behind every currently older
+independent product after each attempt. A held evaluation moves that episode to
+the sequence tail rather than retaining first position. New episodes receive
+their creation cursor at the same global tail, so within the durable
+product-local cursor ordering new arrivals cannot cut ahead of an older retry
+cursor. Their outer rank is their later creation time, so new products and new
+episodes also cannot cut ahead of an older observed retry. Under a functioning
+cadence, a coherent monotonic tick clock, coherent sequence allocation, a
+finite eligible snapshot, finite arrivals between ticks and no global
+prerequisite failure, every older rank has only finitely many ranks ahead of it
+even when newer work continues to arrive; it is therefore eventually selected.
+Episode identity changes only on an authoritative lifecycle entry or
+publication replacement, never on process restart.
+
+The active ordinary implementation derives a candidate episode from the latest
+append-only transition into `ci_pending` and the exact issue-bound publication
+attachment/repository/PR generation when one is available. A legacy row with no
+transition history uses its durable ticket UUID only for the one-time bootstrap;
+the first later real re-entry has a transition UUID and therefore a new episode.
+Missing, incomplete or ambiguous publication observations are blockers, never
+proof of replacement. The finite snapshot is established once per tick and
+bootstrap allocation is deterministic; after establishment the durable cursor,
+not ticket key, owns selection.
 
 The tick still permits at most one external workflow mutation. A confirmed
-mutation or reconciliation of an ambiguous target fence ends the tick.
+mutation or any reconciliation attempt for an existing ambiguous write fence
+ends the tick. A fenced product is excluded from its ordinary candidate lane
+until recovery. Existing fences retain absolute precedence over ordinary
+fairness and are reconciled before generic pull handling, publication
+resolution or evidence evaluation, even when the earlier local target commit
+means no `ci_pending` candidate remains. Multiple fenced products rotate by
+their durable cross-product observation-time rank, but ordinary work never
+skips unresolved write ambiguity for throughput.
 Evaluation fairness never creates a second writer, bypasses a lease, weakens a
 candidate predicate or converts an unbounded arrival model into a liveness
 claim.
 
+A selected publication generation is re-resolved from each final complete
+provider board immediately before fence creation. Attachment replacement,
+cardinality change or repository/PR mismatch is an authority change and permits
+no workflow write.
+
+Before publication resolution, evidence refresh, fence reconciliation or any
+provider workflow call, the cadence durably reserves the selected product's
+next signed 64-bit evaluation sequence. Exhaustion therefore fails closed
+before an external effect rather than discovering an unrecordable evaluation
+afterward. A crash may leave a non-authoritative unused sequence gap, but never
+advances the episode cursor without its atomic evaluation and blocker commit.
+A fence owner also refreshes the complete project board
+after acquiring its lease; the pre-lease pull is discovery input, not recovery
+authority. Source, target or moved fence retirement atomically verifies the
+exact still-live lease owner and fence identity, so an expired or replaced
+recovery process cannot clear ambiguity after a slow provider refresh.
+Target confirmation applies the exact ticket's local status and retires that
+fence in the same transaction; losing the lease or fence CAS leaves both local
+eligibility and the durable ambiguity fence intact. A fence discovered after
+ordinary candidate selection is accounted to its own ticket episode, never to
+the displaced candidate.
+
+Fence absence is also enforced at every later workflow-writer boundary, not
+only by a cadence-level snapshot. Definition creation with its create-time
+state assertion, admission, verified completion and review-cycle routing each
+hold the shared product lease and atomically verify that no CI-handoff fence
+exists across the bounded provider call. CI-handoff fence creation locks that
+same lease row. A lease conflict or late fence therefore makes zero downstream
+workflow calls and closes the rest of the tick's workflow-write window; a
+fresh tick reconciles the retained fence first. The shared guard also latches
+after its first completed provider effect, so later definition, completion or
+anomaly candidates are deferred to another tick rather than reacquiring a new
+one-effect budget.
+
+The exclusion is bidirectional. If a same-product admission fence survives a
+crash, its admission reconciler runs before the selected ordinary CI candidate
+can create a CI fence. Source, target or moved admission recovery ends that
+tick; a late admission fence that wins the shared lease is returned as typed
+CI deferral, so a reconstructed tick reaches the admission recovery owner
+instead of repeating an exception before fairness persistence.
+Across products, retained admission fences and ordinary CI product
+representatives share the durable outer observation-time rank. A still-
+unresolved admission recovery advances only that fence's rank, so it continues
+to exclude same-product CI work while an independent product receives the next
+cadence opportunity; the fence then becomes eligible for recovery again.
+
+A lease-contention observation consumes its already reserved sequence only as
+the blocker occurrence identity; it does not advance the episode cursor that a
+live owner may still commit. The typed `lease_unavailable` blocker durably
+defers that whole product until `next_safe_retry_at`, allowing another ordinary
+product—or, under absolute fence precedence, another fenced product—to receive
+the next cadence opportunity without racing the live owner's cursor.
+
 ## Durable blocker observations
 
 An unsafe or incomplete action outcome that survives the current call must be
-representable as a bounded typed observation. The separately reviewed storage
-substrate persists this dormant shape without activating scheduling, recovery or
-workflow behavior. The durable shape must answer without raw provider payloads
-or exception text:
+representable as a bounded typed observation. The ordinary CI-handoff scheduler
+now persists this shape for publication, provider, evidence, authority, lease
+and fence holds without acquiring any new workflow authority. The durable shape
+must answer without raw provider payloads or exception text:
 
 - schema and policy revision/fingerprint;
 - operation and bounded reason code;
@@ -201,7 +281,9 @@ or exception text:
 - first and last observation times plus consecutive observation count;
 - next safe retry time;
 - whether delivery capacity is affected;
-- independently starved candidates and starvation start;
+- a deterministic same-product prefix of at most 128 independently starved
+  candidates and starvation start, plus an explicit truncation marker when
+  that prefix omits further members;
 - the exact lease/fence/intent identity when applicable; and
 - the later progress observation that supersedes the blocker.
 
@@ -211,11 +293,13 @@ supersession. Recurrence of the same cause in the same authority/episode keeps
 one fingerprint; a changed reason, authority or episode changes it. Repeated
 observations update bounded current diagnostic state or append a new observation
 according to the owning storage contract; they must not grow unbounded duplicate
-payloads. Historical anomaly, evidence, decision and transition records remain
-append-only. Progress supersedes an obsolete blocker explicitly; silence or a
+payloads. The ordinary CI-handoff evaluator atomically supersedes the prior
+active cause when its committed current cause changes. Historical anomaly,
+evidence, decision and transition records remain append-only. Progress
+supersedes an obsolete blocker explicitly; silence or a
 process restart does not clear it.
 
-The dormant storage substrate does not persist or infer
+The storage substrate does not persist or infer
 `progress_expected_since` or `convergence_expected_since`. Their writer and
 reset semantics are intentionally deferred to the health/diagnose integration
 unit. Until that contract is activated, an episode creation, evaluation,

@@ -63,6 +63,7 @@ from atlas.evidence import build_merge_evidence
 from atlas.linear.client import WorkflowState
 from atlas.linear.ownership import LinearStatusMap, LinearStatusMapError
 from atlas.pm import SyncResult, complete_verified, sync_tick
+from atlas.pm.workflow_write import PMWorkflowWriteGuard
 from atlas.storage import Database, EvidenceRepo, TicketRepo, VerificationCheckRepo
 from atlas.verification import required_checks
 
@@ -438,6 +439,35 @@ def test_sync_tick_surfaces_completed_count(db: Database) -> None:
     # Linear-only: Atlas is not written this tick (the pull was set-to-same).
     after = TicketRepo(db).get_by_key("ATLAS-407")
     assert after is not None and after.status == TicketStatus.REVIEW_REQUIRED
+
+
+def test_guarded_completion_stops_after_one_and_returns_partial_count(
+    db: Database,
+) -> None:
+    client = RecordingClient()
+    first = seed_ticket(
+        db, client, key="ATLAS-407", status=TicketStatus.REVIEW_REQUIRED
+    )
+    second = seed_ticket(
+        db, client, key="ATLAS-408", status=TicketStatus.REVIEW_REQUIRED
+    )
+    seed_all_passed(db, first)
+    seed_all_passed(db, second)
+
+    completed = complete_verified(
+        tickets=TicketRepo(db),
+        db=db,
+        client=client,
+        status_map=status_map(),
+        workflow_write_guard=PMWorkflowWriteGuard(db=db, observed_at=NOW),
+    )
+
+    assert completed == 1
+    assert len(client.state_writes) == 1
+    assert client.state_writes[0] in {
+        (first.external_linear_id, DONE_STATE.id),
+        (second.external_linear_id, DONE_STATE.id),
+    }
 
 
 # === ATLAS-134: merged-PR gate on review_required -> done ====================

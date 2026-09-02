@@ -225,7 +225,13 @@ immediately before the write under the shared product lease. Any change to the
 assessment or its deciding evidence ids records a typed hold and requires a
 fresh tick. Each determinate decision is appended with the exact identity and
 bounded check results, and a durable fence is committed before the single
-Linear mutation. A transport-ambiguous mutation remains fenced until a fresh
+Linear mutation. The owner rechecks its exact product lease and monotonic lease
+age after that fence commit, then holds transactional lease and fence locks
+across the bounded call. Replacement cannot clear the fence while the original
+call remains live; lease replacement or passive TTL expiry before the lock
+leaves the fence to the next owner and the expired process performs zero
+mutations. A
+transport-ambiguous mutation remains fenced until a fresh
 complete board observation proves source, target or external movement; that
 reconciliation tick never retries the write. Duplicate observations are
 therefore idempotent, and concurrent owners, lease loss or identity movement
@@ -241,7 +247,12 @@ UUID, one uniquely correlated successful PM receipt proving
 `admitted = promoted = 1` with no stale or indeterminate outcome, one complete
 coherent issue-bound GitHub publication, compatible pre-dispatch history and no
 active admission or CI-handoff fence. Missing, duplicate, contradictory or
-mismatched proof leaves the existing out-of-ownership anomaly path unchanged.
+mismatched proof leaves the existing out-of-ownership anomaly path unchanged;
+so does any active write fence encountered by the recovery predicate. A
+CI-handoff fence already present when the tick performs its initial fence scan
+is instead reconciled before generic pull; that tick creates no synthetic
+ownership debt, and the recovery predicate is reconsidered on a fresh tick after
+the fence is durably cleared.
 
 An accepted decision atomically appends one direct local
 `Planned -> CI Pending` transition and one bounded immutable recovery record.
@@ -266,8 +277,19 @@ at the remediated final head.
 Both recurring and `--once` PM modes now share the same adapter. After the
 complete project pull, authorised status reconciliation (including the
 dedicated evidence-backed local recovery above) and AgentRun reconstruction,
-it sorts only locally `CI Pending` tickets by stable ticket key and considers
-the first one. The latest append-only transition into
+it reconciles durable recovery episodes for one finite snapshot of locally
+`CI Pending` tickets and considers the episode with the least product-global
+fairness cursor. A fenced product is excluded from ordinary selection, while
+multiple fence episodes share the durable cross-product observation-time rank
+and retain absolute precedence over every ordinary candidate. Within a product
+the least monotonic sequence cursor wins; across products the oldest durable
+`last_evaluated_at`, or `created_at` before a first evaluation, wins, with
+product UUID only as the final tie. Every completed evaluation, including an
+unresolved-fence attempt, moves that episode behind currently older fenced
+products. Stable
+ticket order is used only for deterministic one-time bootstrap; every completed
+evaluation moves that episode to the durable sequence tail. The latest
+append-only transition into
 `ci_pending` bounds the delivery episode even when the poll-compressed source
 is `ready_for_agent` or `in_progress` and no AgentRun could be reconstructed.
 The same complete board observation carries the issue-bound Linear GitHub
@@ -275,10 +297,11 @@ attachment. Atlas accepts a publication identity only when its canonical
 `github.com/<owner>/<repo>/pull/<number>` URL and GitHub attachment metadata
 agree, the metadata identifies a live (`open` or `draft`) `main`-target PR that
 closes the issue, the attachment connection is complete, and exactly one
-repository/PR identity remains. The join to the ticket is the stable Linear
+attachment remains. Two attachment identities are ambiguous even when both
+name the same repository and PR. The join to the ticket is the stable Linear
 issue id. Missing
 publication identity holds as `trusted_publication_unavailable`; truncation,
-contradiction or multiple distinct publications holds as
+contradiction or multiple attachments holds as
 `trusted_publication_ambiguous`, before any GitHub call. Ticket titles, branch
 guesses, PR-title close sets, GitHub rollups, manual operator input, earlier
 AgentRuns and earlier CI-pending episodes are never identity inputs.
@@ -303,6 +326,41 @@ leave the remaining read/definition work intact, but no second CI candidate is
 evaluated in that tick. `atlas pm sync --once -v` exposes one bounded
 secret-free adapter line plus integer evaluated/held/mutation counters; durable
 authority remains the append-only reconciliation, not console text.
+
+The cadence reserves the selected-product evaluation sequence before
+publication resolution, evidence refresh, fence reconciliation or any provider
+workflow effect. Fence recovery refreshes the complete project board only after
+the recovery owner acquires the product lease, so a stale discovery snapshot
+cannot clear or classify the authoritative fence. Clearing it verifies the
+exact live lease owner and fence identity atomically; target confirmation also
+commits the exact ticket's local status in that transaction. A fence appearing
+after ordinary selection displaces that selection and retains its own ticket
+and episode identity. The selected publication
+attachment/repository/PR generation is likewise re-resolved from both final
+board revalidations before any new fence or workflow write.
+
+The same exclusion remains authoritative after fairness persistence. Every
+downstream workflow writer locks the shared product lease and proves CI-handoff
+fence absence in the transaction held across its provider call; CI fence
+creation takes the identical lease-row lock. A late ambiguous fence or lease
+contender therefore closes the ordinary workflow-write window without a
+provider call. A final scheduler read alone is not sufficient authority because
+it would leave a check/use race before definition creation, admission,
+completion or anomaly routing. One shared guard instance owns the remaining
+tick budget and latches after its first completed effect; later downstream
+writers cannot manufacture another budget by acquiring a fresh lease owner.
+Conversely, an already retained same-product admission fence displaces an
+ordinary CI candidate for one admission-recovery tick. CI fence creation
+rejects that exact collision as bounded deferral rather than bypassing or
+fail-stopping before the admission owner can reconcile it.
+Admission fences do not impose cross-product fail-stop: an unresolved recovery
+attempt advances the fence's durable outer observation-time rank, permitting an
+independent CI product to rotate next while the fenced product remains excluded.
+
+Lease contention records `lease_unavailable` without advancing the selected
+episode cursor, then defers that product until the blocker's durable retry time.
+This prevents an observer from stealing an in-flight owner's cursor while still
+allowing an independent product at the same authority tier to rotate next.
 
 These states are deliberately different claims. `CI Pending` says only that a
 locally validated candidate was published and CI now owns classification.

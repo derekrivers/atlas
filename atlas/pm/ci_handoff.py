@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from time import monotonic
 from uuid import UUID, uuid4
 
 from atlas.core.enums import ActorType
@@ -35,9 +36,11 @@ from atlas.pm.delivery_snapshot import (
 )
 from atlas.storage import (
     AdmissionCoordinationRepo,
+    AdmissionFencePresentError,
     AdmissionLeaseLostError,
     CIHandoffCoordinationRepo,
     CIHandoffReconciliationRepo,
+    CIHandoffWriteFenceError,
     Database,
     DeliveryAdmissionPolicyRepo,
     EvidenceRepo,
@@ -61,6 +64,12 @@ class CIHandoffHooks:
     after_initial_snapshot: Callable[[], None] = _noop
     after_classification: Callable[[], None] = _noop
     after_revalidation: Callable[[], None] = _noop
+    after_fence_persisted: Callable[[], None] = _noop
+    after_provider_write: Callable[[], None] = _noop
+    after_candidate_selected: Callable[[], None] = _noop
+    after_candidate_evaluated: Callable[[], None] = _noop
+    after_fairness_persisted: Callable[[], None] = _noop
+    monotonic_clock: Callable[[], float] = monotonic
 
 
 @dataclass(frozen=True)
@@ -73,6 +82,7 @@ class CIHandoffResult:
     ticket_key: str
     reconciliation_id: UUID | None = None
     linear_mutations: int = 0
+    fence_reconciliation_attempted: bool = False
 
     @property
     def safe_summary(self) -> str:
@@ -112,6 +122,7 @@ def _result(
     reason: CIHandoffReason,
     reconciliation_id: UUID | None = None,
     linear_mutations: int = 0,
+    fence_reconciliation_attempted: bool = False,
 ) -> CIHandoffResult:
     return CIHandoffResult(
         classification=classification,
@@ -120,6 +131,7 @@ def _result(
         ticket_key=ticket.key,
         reconciliation_id=reconciliation_id,
         linear_mutations=linear_mutations,
+        fence_reconciliation_attempted=fence_reconciliation_attempted,
     )
 
 
@@ -232,40 +244,57 @@ def _reconcile_fence(
     status_map: LinearStatusMap,
     board_pull: LinearBoardPull,
     now: datetime,
+    owner_id: UUID,
+    lease_observed_at: datetime,
+    expected_reconciliation_id: UUID,
+    expected_ticket_id: UUID,
 ) -> CIHandoffResult | None:
     coordination = CIHandoffCoordinationRepo(db)
     fence = coordination.get_fence(ticket.product_id)
     if fence is None:
         return None
+    if (
+        fence.reconciliation_id != expected_reconciliation_id
+        or fence.ticket_id != expected_ticket_id
+    ):
+        raise CIHandoffWriteFenceError(
+            "CI handoff fence changed before exact reconciliation"
+        )
+    fence_ticket = TicketRepo(db).get_by_key(fence.ticket_key)
+    if fence_ticket is None or fence_ticket.id != fence.ticket_id:
+        raise CIHandoffWriteFenceError(
+            "CI handoff fence no longer resolves to its exact ticket"
+        )
     if not board_pull.complete or board_pull.pagination_gaps:
         return _result(
-            ticket,
+            fence_ticket,
             classification=CIHandoffClassification.INDETERMINATE,
             reason=CIHandoffReason.FENCE_STILL_UNRESOLVED,
             reconciliation_id=fence.reconciliation_id,
+            fence_reconciliation_attempted=True,
         )
     issue = _issue_by_id(board_pull.issues, fence.issue_id)
     if issue is None or not status_map.state_type_is_compatible(
         issue.state_id, issue.state_type
     ):
         return _result(
-            ticket,
+            fence_ticket,
             classification=CIHandoffClassification.INDETERMINATE,
             reason=CIHandoffReason.FENCE_STILL_UNRESOLVED,
             reconciliation_id=fence.reconciliation_id,
+            fence_reconciliation_attempted=True,
         )
     if issue.state_id == fence.target_state_id:
-        current = TicketRepo(db).get_by_key(fence.ticket_key)
-        if current is not None and current.status is TicketStatus.CI_PENDING:
-            TicketRepo(db).apply_linear_status(
-                current.key,
-                fence.target_status,
-                now=now,
-                created_by_id=CREATED_BY,
-            )
-        coordination.clear_fence(
+        coordination.finalize_owned_target(
             product_id=fence.product_id,
+            owner_id=owner_id,
             reconciliation_id=fence.reconciliation_id,
+            ticket_id=fence.ticket_id,
+            ticket_key=fence.ticket_key,
+            target_status=fence.target_status,
+            observed_at=lease_observed_at,
+            status_observed_at=now,
+            created_by_id=CREATED_BY,
         )
         original = CIHandoffReconciliationRepo(db).get(fence.reconciliation_id)
         classification = (
@@ -274,28 +303,148 @@ def _reconcile_fence(
             else original.classification
         )
         return _result(
-            ticket,
+            fence_ticket,
             classification=classification,
             reason=CIHandoffReason.FENCE_RECONCILED_TARGET,
             reconciliation_id=fence.reconciliation_id,
+            fence_reconciliation_attempted=True,
         )
-    coordination.clear_fence(
+    coordination.clear_owned_fence(
         product_id=fence.product_id,
+        owner_id=owner_id,
         reconciliation_id=fence.reconciliation_id,
+        observed_at=lease_observed_at,
     )
     if issue.state_id == fence.source_state_id:
         return _result(
-            ticket,
+            fence_ticket,
             classification=CIHandoffClassification.INDETERMINATE,
             reason=CIHandoffReason.FENCE_RECONCILED_SOURCE,
             reconciliation_id=fence.reconciliation_id,
+            fence_reconciliation_attempted=True,
         )
     return _result(
-        ticket,
+        fence_ticket,
         classification=CIHandoffClassification.STALE,
         reason=CIHandoffReason.FENCE_RECONCILED_MOVED,
         reconciliation_id=fence.reconciliation_id,
+        fence_reconciliation_attempted=True,
     )
+
+
+def reconcile_ci_handoff_fence(
+    *,
+    db: Database,
+    tickets: TicketRepo,
+    status_map: LinearStatusMap,
+    initial_issues: list[LinearIssue],
+    product_id: UUID,
+    now: datetime,
+    linear: LinearClient | None = None,
+    project_id: str | None = None,
+    uuid_factory: Callable[[], UUID] = uuid4,
+    monotonic_clock: Callable[[], float] = monotonic,
+    expected_reconciliation_id: UUID | None = None,
+    expected_ticket_id: UUID | None = None,
+) -> CIHandoffResult | None:
+    """Reconcile one existing product fence before ordinary candidate work.
+
+    The fence already names the exact ticket and prior reconciliation.  Its
+    next-process owner therefore needs only a complete board observation and
+    the shared writer lease; publication discovery and CI evidence evaluation
+    must not gate recovery of a possibly completed external write.
+    """
+
+    if now.utcoffset() is None:
+        raise ValueError("CI handoff clock must be timezone-aware")
+    fence = CIHandoffCoordinationRepo(db).get_fence(product_id)
+    if fence is None:
+        if expected_reconciliation_id is not None or expected_ticket_id is not None:
+            raise CIHandoffWriteFenceError(
+                "expected CI handoff fence disappeared before reconciliation"
+            )
+        return None
+    if (
+        expected_reconciliation_id is not None
+        and fence.reconciliation_id != expected_reconciliation_id
+    ) or (expected_ticket_id is not None and fence.ticket_id != expected_ticket_id):
+        raise CIHandoffWriteFenceError(
+            "expected CI handoff fence was replaced before reconciliation"
+        )
+    ticket = tickets.get_by_key(fence.ticket_key)
+    if ticket is None or ticket.id != fence.ticket_id:
+        raise CIHandoffWriteFenceError(
+            "CI handoff fence no longer resolves to its exact ticket"
+        )
+
+    lease = AdmissionCoordinationRepo(db)
+    owner_id = uuid_factory()
+    lease_started_at = monotonic_clock()
+    if not lease.try_acquire(
+        product_id=product_id,
+        owner_id=owner_id,
+        acquired_at=now,
+        ttl=CI_HANDOFF_LEASE_TTL,
+    ):
+        current_fence = CIHandoffCoordinationRepo(db).get_fence(product_id)
+        if (
+            current_fence is None
+            or current_fence.reconciliation_id != fence.reconciliation_id
+            or current_fence.ticket_id != fence.ticket_id
+        ):
+            raise CIHandoffWriteFenceError(
+                "expected CI handoff fence changed during lease contention"
+            )
+        return _result(
+            ticket,
+            classification=CIHandoffClassification.INDETERMINATE,
+            reason=CIHandoffReason.LEASE_UNAVAILABLE,
+            fence_reconciliation_attempted=True,
+        )
+    try:
+        fresh_issues = initial_issues
+        if linear is not None and project_id is not None:
+            try:
+                fresh_issues = linear.fetch_project_issues(project_id)
+            except LinearAPIError:
+                return _result(
+                    ticket,
+                    classification=CIHandoffClassification.INDETERMINATE,
+                    reason=CIHandoffReason.FENCE_STILL_UNRESOLVED,
+                    reconciliation_id=fence.reconciliation_id,
+                    fence_reconciliation_attempted=True,
+                )
+        lease_age = monotonic_clock() - lease_started_at
+        if lease_age < 0 or lease_age >= CI_HANDOFF_LEASE_TTL.total_seconds():
+            return _result(
+                ticket,
+                classification=CIHandoffClassification.STALE,
+                reason=CIHandoffReason.LEASE_LOST,
+                reconciliation_id=fence.reconciliation_id,
+                fence_reconciliation_attempted=True,
+            )
+        try:
+            return _reconcile_fence(
+                db=db,
+                ticket=ticket,
+                status_map=status_map,
+                board_pull=_board_pull(fresh_issues),
+                now=now,
+                owner_id=owner_id,
+                lease_observed_at=now + timedelta(seconds=lease_age),
+                expected_reconciliation_id=fence.reconciliation_id,
+                expected_ticket_id=fence.ticket_id,
+            )
+        except AdmissionLeaseLostError:
+            return _result(
+                ticket,
+                classification=CIHandoffClassification.STALE,
+                reason=CIHandoffReason.LEASE_LOST,
+                reconciliation_id=fence.reconciliation_id,
+                fence_reconciliation_attempted=True,
+            )
+    finally:
+        lease.release(product_id=product_id, owner_id=owner_id)
 
 
 def reconcile_ci_handoff(
@@ -313,6 +462,7 @@ def reconcile_ci_handoff(
     pr_number: int,
     expected_head: str,
     now: datetime,
+    publication_attachment_id: str | None = None,
     evidence_ids: tuple[UUID, ...] | None = None,
     hooks: CIHandoffHooks | None = None,
     uuid_factory: Callable[[], UUID] = uuid4,
@@ -331,6 +481,7 @@ def reconcile_ci_handoff(
     if ticket is None:
         raise ValueError(f"unknown ticket {ticket_key!r}")
     hooks = hooks or CIHandoffHooks()
+    lease_started_at = hooks.monotonic_clock()
     selected_evidence_ids = None if evidence_ids is None else frozenset(evidence_ids)
     selected_source_ids: frozenset[str] | None = None
     if selected_evidence_ids is not None:
@@ -366,21 +517,49 @@ def reconcile_ci_handoff(
 
     try:
         initial_pull = _board_pull(initial_issues)
-        fenced = _reconcile_fence(
-            db=db,
-            ticket=ticket,
-            status_map=status_map,
-            board_pull=initial_pull,
-            now=now,
-        )
-        if fenced is not None:
-            return fenced
-        if AdmissionCoordinationRepo(db).get_fence(ticket.product_id) is not None:
-            return _result(
-                ticket,
-                classification=CIHandoffClassification.INDETERMINATE,
-                reason=CIHandoffReason.CONCURRENT_WRITE_FENCE,
-            )
+        existing_fence = CIHandoffCoordinationRepo(db).get_fence(ticket.product_id)
+        if existing_fence is not None:
+            try:
+                fence_issues = linear.fetch_project_issues(project_id)
+            except LinearAPIError:
+                return _result(
+                    ticket,
+                    classification=CIHandoffClassification.INDETERMINATE,
+                    reason=CIHandoffReason.FENCE_STILL_UNRESOLVED,
+                    reconciliation_id=existing_fence.reconciliation_id,
+                    fence_reconciliation_attempted=True,
+                )
+            lease_age = hooks.monotonic_clock() - lease_started_at
+            if lease_age < 0 or lease_age >= CI_HANDOFF_LEASE_TTL.total_seconds():
+                return _result(
+                    ticket,
+                    classification=CIHandoffClassification.STALE,
+                    reason=CIHandoffReason.LEASE_LOST,
+                    reconciliation_id=existing_fence.reconciliation_id,
+                    fence_reconciliation_attempted=True,
+                )
+            try:
+                fenced = _reconcile_fence(
+                    db=db,
+                    ticket=ticket,
+                    status_map=status_map,
+                    board_pull=_board_pull(fence_issues),
+                    now=now,
+                    owner_id=owner_id,
+                    lease_observed_at=now + timedelta(seconds=lease_age),
+                    expected_reconciliation_id=existing_fence.reconciliation_id,
+                    expected_ticket_id=existing_fence.ticket_id,
+                )
+            except AdmissionLeaseLostError:
+                return _result(
+                    ticket,
+                    classification=CIHandoffClassification.STALE,
+                    reason=CIHandoffReason.LEASE_LOST,
+                    reconciliation_id=existing_fence.reconciliation_id,
+                    fence_reconciliation_attempted=True,
+                )
+            if fenced is not None:
+                return fenced
 
         policy_repo = DeliveryAdmissionPolicyRepo(db)
         policy = policy_repo.get_active(ticket.product_id)
@@ -590,6 +769,20 @@ def reconcile_ci_handoff(
                     CIHandoffClassification.STALE,
                     CIHandoffReason.BOARD_STATE_MOVED,
                 )
+            if publication_attachment_id is not None:
+                publications = issue.github_publications
+                if (
+                    not issue.github_publications_complete
+                    or len(publications) != 1
+                    or publications[0].attachment_id != publication_attachment_id
+                    or publications[0].repository_owner != repository_owner
+                    or publications[0].repository_name != repository_name
+                    or publications[0].pr_number != pr_number
+                ):
+                    return (
+                        CIHandoffClassification.STALE,
+                        CIHandoffReason.SNAPSHOT_CHANGED,
+                    )
             current_snapshot = _snapshot(
                 db=db,
                 ticket=re_ticket,
@@ -723,7 +916,7 @@ def reconcile_ci_handoff(
                 target_status=target,
                 created_at=now,
             )
-        except AdmissionLeaseLostError:
+        except (AdmissionLeaseLostError, AdmissionFencePresentError):
             return _result(
                 ticket,
                 classification=CIHandoffClassification.STALE,
@@ -731,18 +924,51 @@ def reconcile_ci_handoff(
                 reconciliation_id=recorded.id,
             )
 
-        try:
+        hooks.after_fence_persisted()
+        lease_age = hooks.monotonic_clock() - lease_started_at
+        if (
+            lease_age < 0
+            or lease_age >= CI_HANDOFF_LEASE_TTL.total_seconds()
+            or not (lease.is_owner(product_id=ticket.product_id, owner_id=owner_id))
+        ):
+            # The durable fence remains for the replacement owner.  An expired
+            # process must never resume its external call after that owner can
+            # have observed source and begun recovery.
+            return _result(
+                ticket,
+                classification=CIHandoffClassification.STALE,
+                reason=CIHandoffReason.LEASE_LOST,
+                reconciliation_id=recorded.id,
+            )
+
+        def exact_transition() -> LinearIssue:
             written = writer.transition(
                 issue_id,
                 observed_source=TicketStatus.CI_PENDING,
                 target=target,
             )
+            if written.id != issue_id or written.state_id != target_state_id:
+                raise CIHandoffWriteFenceError(
+                    "Linear returned a mismatched CI handoff write result"
+                )
+            return written
+
+        try:
+            coordination.execute_owned_call(
+                product_id=ticket.product_id,
+                owner_id=owner_id,
+                reconciliation_id=recorded.id,
+                observed_at=now + timedelta(seconds=lease_age),
+                call=exact_transition,
+            )
+        except AdmissionLeaseLostError:
+            return _result(
+                ticket,
+                classification=CIHandoffClassification.STALE,
+                reason=CIHandoffReason.LEASE_LOST,
+                reconciliation_id=recorded.id,
+            )
         except Exception:
-            coordination.mark_indeterminate(
-                product_id=ticket.product_id,
-                reconciliation_id=recorded.id,
-                observed_at=now,
-            )
             return _result(
                 ticket,
                 classification=CIHandoffClassification.INDETERMINATE,
@@ -750,12 +976,40 @@ def reconcile_ci_handoff(
                 reconciliation_id=recorded.id,
                 linear_mutations=1,
             )
-        if written.id != issue_id or written.state_id != target_state_id:
-            coordination.mark_indeterminate(
-                product_id=ticket.product_id,
+        hooks.after_provider_write()
+        final_lease_age = hooks.monotonic_clock() - lease_started_at
+        if (
+            final_lease_age < 0
+            or final_lease_age >= CI_HANDOFF_LEASE_TTL.total_seconds()
+        ):
+            return _result(
+                ticket,
+                classification=CIHandoffClassification.STALE,
+                reason=CIHandoffReason.LEASE_LOST,
                 reconciliation_id=recorded.id,
-                observed_at=now,
+                linear_mutations=1,
             )
+        try:
+            coordination.finalize_owned_target(
+                product_id=ticket.product_id,
+                owner_id=owner_id,
+                reconciliation_id=recorded.id,
+                ticket_id=ticket.id,
+                ticket_key=ticket.key,
+                target_status=target,
+                observed_at=now + timedelta(seconds=final_lease_age),
+                status_observed_at=now,
+                created_by_id=CREATED_BY,
+            )
+        except AdmissionLeaseLostError:
+            return _result(
+                ticket,
+                classification=CIHandoffClassification.STALE,
+                reason=CIHandoffReason.LEASE_LOST,
+                reconciliation_id=recorded.id,
+                linear_mutations=1,
+            )
+        except CIHandoffWriteFenceError:
             return _result(
                 ticket,
                 classification=CIHandoffClassification.INDETERMINATE,
@@ -763,16 +1017,6 @@ def reconcile_ci_handoff(
                 reconciliation_id=recorded.id,
                 linear_mutations=1,
             )
-        tickets.apply_linear_status(
-            ticket.key,
-            target,
-            now=now,
-            created_by_id=CREATED_BY,
-        )
-        coordination.clear_fence(
-            product_id=ticket.product_id,
-            reconciliation_id=recorded.id,
-        )
         return _result(
             ticket,
             classification=recorded.classification,

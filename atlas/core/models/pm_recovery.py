@@ -69,6 +69,10 @@ class PmBlockerCode(StrEnum):
     PUBLICATION_NOT_YET_COMPLETE = "publication_not_yet_complete"
     PROVIDER_UNAVAILABLE = "provider_unavailable"
     PUBLICATION_AMBIGUOUS = "publication_ambiguous"
+    CI_EVIDENCE_NOT_YET_COMPLETE = "ci_evidence_not_yet_complete"
+    CI_EVIDENCE_AMBIGUOUS = "ci_evidence_ambiguous"
+    AUTHORITY_CHANGED = "authority_changed"
+    WRITE_FENCE_UNRESOLVED = "write_fence_unresolved"
 
 
 class PmBlockerAuthorityKind(StrEnum):
@@ -394,6 +398,7 @@ class PmBlockerObservationIntent(BaseModel):
     starved_candidates: tuple[PmStarvedCandidateRef, ...] = Field(
         default=(), max_length=MAX_PM_STARVED_CANDIDATES
     )
+    starved_candidates_truncated: bool = False
     policy_namespace: str | None = Field(
         default=None, max_length=MAX_PM_RECOVERY_NAME_LENGTH
     )
@@ -445,6 +450,13 @@ class PmBlockerObservationIntent(BaseModel):
             and self.authority_kind is not PmBlockerAuthorityKind.FENCE
         ):
             raise ValueError("an unresolved fence must name a fence authority")
+        if self.starved_candidates_truncated and (
+            len(self.starved_candidates) != MAX_PM_STARVED_CANDIDATES
+            or not self.capacity_impact
+        ):
+            raise ValueError(
+                "truncated starvation requires a full projection and capacity impact"
+            )
         return self
 
     def canonical_bytes(self) -> bytes:
@@ -471,6 +483,7 @@ class DurablePmBlocker(PmBlockerIdentity):
     starved_candidates: tuple[PmStarvedCandidate, ...] = Field(
         default=(), max_length=MAX_PM_STARVED_CANDIDATES
     )
+    starved_candidates_truncated: bool = False
     policy_namespace: str | None = Field(
         default=None, max_length=MAX_PM_RECOVERY_NAME_LENGTH
     )
@@ -506,6 +519,13 @@ class DurablePmBlocker(PmBlockerIdentity):
             raise ValueError("latest blocker observation precedes first observation")
         if self.next_safe_retry_at is not None:
             _aware_utc(self.next_safe_retry_at, name="next_safe_retry_at")
+        if self.starved_candidates_truncated and (
+            len(self.starved_candidates) != MAX_PM_STARVED_CANDIDATES
+            or not self.capacity_impact
+        ):
+            raise ValueError(
+                "truncated starvation requires a full projection and capacity impact"
+            )
         policy = (
             self.policy_namespace,
             self.policy_revision,

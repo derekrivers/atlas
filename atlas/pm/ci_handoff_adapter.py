@@ -5,8 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
+from uuid import UUID
 
-from atlas.core.models import CIHandoffDecision, CIHandoffReason, Ticket, TicketStatus
+from atlas.core.models import CIHandoffDecision, CIHandoffReason, Ticket
 from atlas.evidence.pull import (
     EvidencePullMalformedSourceError,
     drive_evidence_pull,
@@ -18,8 +19,15 @@ from atlas.linear.client import (
     LinearIssue,
 )
 from atlas.linear.ownership import LinearStatusMap
-from atlas.pm.ci_handoff import CIHandoffHooks, CIHandoffResult, reconcile_ci_handoff
-from atlas.storage import Database, EvidenceRepo, TicketRepo
+from atlas.pm.ci_handoff import (
+    CIHandoffHooks,
+    CIHandoffResult,
+    reconcile_ci_handoff,
+)
+from atlas.pm.ci_handoff import (
+    reconcile_ci_handoff_fence as reconcile_domain_ci_handoff_fence,
+)
+from atlas.storage import CIHandoffCoordinationRepo, Database, EvidenceRepo, TicketRepo
 
 
 class CIHandoffAdapterReason(StrEnum):
@@ -37,6 +45,7 @@ class CIHandoffAdapterReason(StrEnum):
 class CIHandoffIdentity:
     """Exact same-repository contributor-head identity supplied to the service."""
 
+    attachment_id: str
     repository_owner: str
     repository_name: str
     pr_number: int
@@ -52,6 +61,7 @@ class CIHandoffAdapterResult:
     ticket_key: str | None = None
     identity: CIHandoffIdentity | None = None
     reconciliation: CIHandoffResult | None = None
+    fence_precedence: bool = False
 
     @property
     def routine(self) -> bool:
@@ -81,11 +91,21 @@ class CIHandoffAdapterResult:
     def ends_workflow_write_window(self) -> bool:
         """Whether later workflow writers must not run during this tick."""
 
+        if self.fence_precedence:
+            return True
         if self.reconciliation is None:
             return False
         return bool(
             self.reconciliation.linear_mutations
-            or self.reconciliation.reason is CIHandoffReason.FENCE_RECONCILED_TARGET
+            or self.reconciliation.reason
+            in {
+                CIHandoffReason.LEASE_UNAVAILABLE,
+                CIHandoffReason.LEASE_LOST,
+                CIHandoffReason.FENCE_RECONCILED_TARGET,
+                CIHandoffReason.FENCE_RECONCILED_SOURCE,
+                CIHandoffReason.FENCE_RECONCILED_MOVED,
+                CIHandoffReason.FENCE_STILL_UNRESOLVED,
+            }
         )
 
     @property
@@ -105,11 +125,6 @@ class CIHandoffAdapterResult:
         if self.reconciliation is not None:
             prefix = f"{prefix}; {self.reconciliation.safe_summary}"
         return prefix
-
-
-def _candidate_key(ticket: Ticket) -> tuple[int, str]:
-    suffix = ticket.key.removeprefix("ATLAS-")
-    return (int(suffix) if suffix.isdigit() else 2**31 - 1, ticket.key)
 
 
 def _full_sha(value: str | None) -> str | None:
@@ -137,22 +152,14 @@ def resolve_issue_bound_publication(
     issue = issues[0]
     if not issue.github_publications_complete:
         return None, CIHandoffAdapterReason.PUBLICATION_AMBIGUOUS
-    by_identity: dict[tuple[str, str, int], LinearGitHubPublication] = {}
-    for publication in issue.github_publications:
-        key = (
-            publication.repository_owner.casefold(),
-            publication.repository_name.casefold(),
-            publication.pr_number,
-        )
-        by_identity[key] = publication
-    if not by_identity:
+    if not issue.github_publications:
         return None, CIHandoffAdapterReason.PUBLICATION_UNAVAILABLE
-    if len(by_identity) != 1:
+    if len(issue.github_publications) != 1:
         return None, CIHandoffAdapterReason.PUBLICATION_AMBIGUOUS
-    return next(iter(by_identity.values())), None
+    return issue.github_publications[0], None
 
 
-def reconcile_one_ci_handoff(
+def reconcile_ci_handoff_candidate(
     *,
     db: Database,
     tickets: TicketRepo,
@@ -161,25 +168,15 @@ def reconcile_one_ci_handoff(
     status_map: LinearStatusMap,
     project_id: str,
     initial_issues: list[LinearIssue],
+    candidate: Ticket,
+    candidate_count: int,
     now: datetime,
     hooks: CIHandoffHooks | None = None,
 ) -> CIHandoffAdapterResult:
-    """Discover deterministically and evaluate at most one CI-pending ticket."""
+    """Evaluate exactly the caller-selected CI-pending candidate."""
 
-    candidates = sorted(
-        (
-            ticket
-            for ticket in tickets.list()
-            if ticket.status is TicketStatus.CI_PENDING
-        ),
-        key=_candidate_key,
-    )
-    if not candidates:
-        return CIHandoffAdapterResult(
-            reason=CIHandoffAdapterReason.NO_CANDIDATE,
-            candidate_count=0,
-        )
-    candidate = candidates[0]
+    if candidate_count < 1:
+        raise ValueError("candidate_count must include the selected candidate")
     publication, publication_reason = resolve_issue_bound_publication(
         candidate, initial_issues
     )
@@ -187,7 +184,7 @@ def reconcile_one_ci_handoff(
         assert publication_reason is not None
         return CIHandoffAdapterResult(
             reason=publication_reason,
-            candidate_count=len(candidates),
+            candidate_count=candidate_count,
             ticket_key=candidate.key,
         )
     try:
@@ -203,17 +200,18 @@ def reconcile_one_ci_handoff(
     except (GitHubAPIError, EvidencePullMalformedSourceError):
         return CIHandoffAdapterResult(
             reason=CIHandoffAdapterReason.EVIDENCE_INGESTION_FAILED,
-            candidate_count=len(candidates),
+            candidate_count=candidate_count,
             ticket_key=candidate.key,
         )
     head_commit = _full_sha(pulled.head_sha)
     if head_commit is None:
         return CIHandoffAdapterResult(
             reason=CIHandoffAdapterReason.IDENTITY_UNAVAILABLE,
-            candidate_count=len(candidates),
+            candidate_count=candidate_count,
             ticket_key=candidate.key,
         )
     identity = CIHandoffIdentity(
+        attachment_id=publication.attachment_id,
         repository_owner=publication.repository_owner,
         repository_name=publication.repository_name,
         pr_number=publication.pr_number,
@@ -233,13 +231,57 @@ def reconcile_one_ci_handoff(
         pr_number=identity.pr_number,
         expected_head=identity.head_commit,
         now=now,
+        publication_attachment_id=identity.attachment_id,
         evidence_ids=tuple(record.id for record in pulled.observed),
         hooks=hooks,
     )
     return CIHandoffAdapterResult(
         reason=CIHandoffAdapterReason.RECONCILED,
-        candidate_count=len(candidates),
-        ticket_key=candidate.key,
+        candidate_count=candidate_count,
+        ticket_key=reconciliation.ticket_key,
         identity=identity,
         reconciliation=reconciliation,
+        fence_precedence=(
+            reconciliation.fence_reconciliation_attempted
+            or CIHandoffCoordinationRepo(db).get_fence(candidate.product_id) is not None
+        ),
+    )
+
+
+def reconcile_existing_ci_handoff_fence(
+    *,
+    db: Database,
+    tickets: TicketRepo,
+    status_map: LinearStatusMap,
+    linear: LinearClient,
+    project_id: str,
+    initial_issues: list[LinearIssue],
+    product_id: UUID,
+    candidate_count: int,
+    now: datetime,
+    expected_reconciliation_id: UUID | None = None,
+    expected_ticket_id: UUID | None = None,
+) -> CIHandoffAdapterResult | None:
+    """Reconcile the product's durable fence without publication gating."""
+
+    reconciliation = reconcile_domain_ci_handoff_fence(
+        db=db,
+        tickets=tickets,
+        status_map=status_map,
+        linear=linear,
+        project_id=project_id,
+        initial_issues=initial_issues,
+        product_id=product_id,
+        now=now,
+        expected_reconciliation_id=expected_reconciliation_id,
+        expected_ticket_id=expected_ticket_id,
+    )
+    if reconciliation is None:
+        return None
+    return CIHandoffAdapterResult(
+        reason=CIHandoffAdapterReason.RECONCILED,
+        candidate_count=candidate_count,
+        ticket_key=reconciliation.ticket_key,
+        reconciliation=reconciliation,
+        fence_precedence=True,
     )

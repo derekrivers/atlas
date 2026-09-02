@@ -7,8 +7,10 @@ inside this package.
 from atlas.storage.admission_coordination import (
     AdmissionCoordinationRepo,
     AdmissionLeaseLostError,
+    AdmissionProviderCallIndeterminateError,
     AdmissionWriteFence,
     AdmissionWriteFenceError,
+    CIHandoffFencePresentError,
 )
 from atlas.storage.apply import apply_backlog
 from atlas.storage.atlas_280_bootstrap_recovery import (
@@ -18,6 +20,7 @@ from atlas.storage.atlas_280_bootstrap_recovery import (
     Atlas280BootstrapStorageError,
 )
 from atlas.storage.ci_handoff_coordination import (
+    AdmissionFencePresentError,
     CIHandoffCoordinationRepo,
     CIHandoffWriteFence,
     CIHandoffWriteFenceError,
@@ -88,7 +91,9 @@ __all__ = [
     "AcceptanceSessionRepo",
     "AcceptanceSessionStateError",
     "AdmissionCoordinationRepo",
+    "AdmissionFencePresentError",
     "AdmissionLeaseLostError",
+    "AdmissionProviderCallIndeterminateError",
     "AdmissionRunRepo",
     "AdmissionWriteFence",
     "AdmissionWriteFenceError",
@@ -98,6 +103,7 @@ __all__ = [
     "Atlas280BootstrapStorageCode",
     "Atlas280BootstrapStorageError",
     "CIHandoffCoordinationRepo",
+    "CIHandoffFencePresentError",
     "CIHandoffReconciliationRepo",
     "CIHandoffWriteFence",
     "CIHandoffWriteFenceError",

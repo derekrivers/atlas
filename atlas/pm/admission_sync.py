@@ -31,7 +31,10 @@ from atlas.pm.protected_lanes import (
 from atlas.storage import (
     AdmissionCoordinationRepo,
     AdmissionLeaseLostError,
+    AdmissionProviderCallIndeterminateError,
     AdmissionRunRepo,
+    AdmissionWriteFenceError,
+    CIHandoffFencePresentError,
     Database,
     DeliveryAdmissionPolicyRepo,
     ProductRepo,
@@ -56,6 +59,7 @@ class AdmissionSyncReason(StrEnum):
     """Safe reason codes; none contains an external response or issue body."""
 
     LEASE_UNAVAILABLE = "lease_unavailable"
+    CI_HANDOFF_FENCE_PRESENT = "ci_handoff_fence_present"
     PRODUCT_AMBIGUOUS = "product_ambiguous"
     POLICY_UNAVAILABLE = "policy_unavailable"
     SNAPSHOT_INCOMPLETE = "snapshot_incomplete"
@@ -167,12 +171,18 @@ def _reconcile_fence(
     product_id: UUID,
     status_map: LinearStatusMap,
     board_pull: LinearBoardPull,
+    now: datetime,
 ) -> AdmissionSyncResult | None:
     fence = coordination.get_fence(product_id)
     if fence is None:
         return None
     issue = _issue_by_id(board_pull.issues, fence.issue_id)
     if issue is None:
+        coordination.mark_recovery_deferred(
+            product_id=product_id,
+            admission_run_id=fence.admission_run_id,
+            observed_at=now,
+        )
         return AdmissionSyncResult(
             outcome=AdmissionSyncOutcome.INDETERMINATE,
             reason=AdmissionSyncReason.INDETERMINATE_STILL_UNRESOLVED,
@@ -184,6 +194,11 @@ def _reconcile_fence(
     if mapped is None or not status_map.state_type_is_compatible(
         issue.state_id, issue.state_type
     ):
+        coordination.mark_recovery_deferred(
+            product_id=product_id,
+            admission_run_id=fence.admission_run_id,
+            observed_at=now,
+        )
         return AdmissionSyncResult(
             outcome=AdmissionSyncOutcome.INDETERMINATE,
             reason=AdmissionSyncReason.INDETERMINATE_STILL_UNRESOLVED,
@@ -218,6 +233,50 @@ def _reconcile_fence(
         admission_run_id=fence.admission_run_id,
         ticket_key=fence.ticket_key,
     )
+
+
+def reconcile_existing_admission_fence(
+    *,
+    db: Database,
+    product_id: UUID,
+    status_map: LinearStatusMap,
+    initial_issues: list[LinearIssue],
+    now: datetime,
+) -> AdmissionSyncResult | None:
+    """Give one exact product's durable admission ambiguity recovery authority."""
+
+    coordination = AdmissionCoordinationRepo(db)
+    fence = coordination.get_fence(product_id)
+    if fence is None:
+        return None
+    owner_id = uuid4()
+    if not coordination.try_acquire(
+        product_id=product_id,
+        owner_id=owner_id,
+        acquired_at=now,
+        ttl=ADMISSION_LEASE_TTL,
+    ):
+        policy = DeliveryAdmissionPolicyRepo(db).get_active(product_id)
+        return AdmissionSyncResult(
+            outcome=AdmissionSyncOutcome.HELD,
+            reason=AdmissionSyncReason.LEASE_UNAVAILABLE,
+            policy_revision=None if policy is None else policy.revision,
+            policy_fingerprint=(
+                None if policy is None else delivery_policy_fingerprint(policy)
+            ),
+            admission_run_id=fence.admission_run_id,
+            ticket_key=fence.ticket_key,
+        )
+    try:
+        return _reconcile_fence(
+            coordination=coordination,
+            product_id=product_id,
+            status_map=status_map,
+            board_pull=_board_pull(initial_issues),
+            now=now,
+        )
+    finally:
+        coordination.release(product_id=product_id, owner_id=owner_id)
 
 
 _CAPACITY_HOLD_CODES = frozenset(
@@ -310,6 +369,7 @@ def admit_one_ready(
             product_id=product_id,
             status_map=status_map,
             board_pull=initial_pull,
+            now=now,
         )
         if reconciled is not None:
             return reconciled
@@ -634,17 +694,72 @@ def admit_one_ready(
                 admission_run_id=run.id,
                 ticket_key=selected.ticket_key,
             )
+        except AdmissionWriteFenceError:
+            return AdmissionSyncResult(
+                outcome=AdmissionSyncOutcome.STALE,
+                reason=AdmissionSyncReason.LEASE_LOST,
+                policy_revision=final_policy.revision,
+                policy_fingerprint=delivery_policy_fingerprint(final_policy),
+                admission_run_id=run.id,
+                ticket_key=selected.ticket_key,
+            )
+        except CIHandoffFencePresentError:
+            return AdmissionSyncResult(
+                outcome=AdmissionSyncOutcome.HELD,
+                reason=AdmissionSyncReason.CI_HANDOFF_FENCE_PRESENT,
+                policy_revision=final_policy.revision,
+                policy_fingerprint=delivery_policy_fingerprint(final_policy),
+                admission_run_id=run.id,
+                ticket_key=selected.ticket_key,
+            )
+
+        def write_and_validate() -> LinearIssue:
+            written = client.set_state(
+                selected.external_linear_id or "", target_state_id
+            )
+            if (
+                written.id != selected.external_linear_id
+                or written.state_id != target_state_id
+            ):
+                raise RuntimeError("admission provider response identity mismatch")
+            return written
 
         try:
-            written = client.set_state(selected.external_linear_id, target_state_id)
-        except Exception:
-            # Once the mutation call has begun, even a response-decoding or
-            # adapter exception cannot prove that Linear did not apply it.
-            # Preserve the fence and require the next complete board pull to
-            # reconcile the exact issue rather than attempting another write.
-            coordination.mark_indeterminate(
-                product_id=product_id, admission_run_id=run.id, observed_at=now
+            coordination.execute_owned_admission_call_if_no_ci_fence(
+                product_id=product_id,
+                owner_id=owner_id,
+                admission_run_id=run.id,
+                observed_at=now,
+                call=write_and_validate,
             )
+        except AdmissionLeaseLostError:
+            return AdmissionSyncResult(
+                outcome=AdmissionSyncOutcome.STALE,
+                reason=AdmissionSyncReason.LEASE_LOST,
+                policy_revision=final_policy.revision,
+                policy_fingerprint=delivery_policy_fingerprint(final_policy),
+                admission_run_id=run.id,
+                ticket_key=selected.ticket_key,
+            )
+        except AdmissionWriteFenceError:
+            return AdmissionSyncResult(
+                outcome=AdmissionSyncOutcome.STALE,
+                reason=AdmissionSyncReason.LEASE_LOST,
+                policy_revision=final_policy.revision,
+                policy_fingerprint=delivery_policy_fingerprint(final_policy),
+                admission_run_id=run.id,
+                ticket_key=selected.ticket_key,
+            )
+        except CIHandoffFencePresentError:
+            return AdmissionSyncResult(
+                outcome=AdmissionSyncOutcome.HELD,
+                reason=AdmissionSyncReason.CI_HANDOFF_FENCE_PRESENT,
+                policy_revision=final_policy.revision,
+                policy_fingerprint=delivery_policy_fingerprint(final_policy),
+                admission_run_id=run.id,
+                ticket_key=selected.ticket_key,
+            )
+        except AdmissionProviderCallIndeterminateError:
             return AdmissionSyncResult(
                 outcome=AdmissionSyncOutcome.INDETERMINATE,
                 reason=AdmissionSyncReason.WRITE_INDETERMINATE,
@@ -653,10 +768,11 @@ def admit_one_ready(
                 admission_run_id=run.id,
                 ticket_key=selected.ticket_key,
             )
-        if (
-            written.id != selected.external_linear_id
-            or written.state_id != target_state_id
-        ):
+        except Exception:
+            # Once the mutation call has begun, even a response-decoding or
+            # adapter exception cannot prove that Linear did not apply it.
+            # Preserve the fence and require the next complete board pull to
+            # reconcile the exact issue rather than attempting another write.
             coordination.mark_indeterminate(
                 product_id=product_id, admission_run_id=run.id, observed_at=now
             )
