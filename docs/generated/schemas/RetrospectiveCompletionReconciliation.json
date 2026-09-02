@@ -1,0 +1,367 @@
+{
+  "$defs": {
+    "ActorType": {
+      "description": "Who or what created a record (data-model §2.2, attribution §1.5).",
+      "enum": [
+        "human",
+        "agent",
+        "system"
+      ],
+      "title": "ActorType",
+      "type": "string"
+    },
+    "RetrospectiveCompletionDecision": {
+      "description": "The only workflow outcome owned by retrospective completion.",
+      "enum": [
+        "hold",
+        "done"
+      ],
+      "title": "RetrospectiveCompletionDecision",
+      "type": "string"
+    },
+    "RetrospectiveCompletionReason": {
+      "description": "Closed, secret-free outcomes for historical proof and fenced writes.",
+      "enum": [
+        "complete_delivery_proof",
+        "ticket_not_ci_pending",
+        "ticket_identity_mismatch",
+        "historical_publication_unavailable",
+        "historical_publication_ambiguous",
+        "contributor_head_unavailable",
+        "merged_pr_unproven",
+        "merged_pr_identity_mismatch",
+        "canonical_main_unproven",
+        "merge_ancestry_unproven",
+        "policy_unavailable",
+        "policy_changed",
+        "snapshot_incomplete",
+        "snapshot_changed",
+        "verification_unproven",
+        "human_acceptance_unproven",
+        "merged_evidence_unproven",
+        "board_revalidation_failed",
+        "board_state_moved",
+        "proof_changed",
+        "lease_unavailable",
+        "lease_lost",
+        "concurrent_write_fence",
+        "fence_still_unresolved",
+        "fence_reconciled_target",
+        "fence_reconciled_source",
+        "fence_reconciled_moved",
+        "write_confirmed",
+        "write_indeterminate"
+      ],
+      "title": "RetrospectiveCompletionReason",
+      "type": "string"
+    }
+  },
+  "description": "Immutable proof projection for one exact historical candidate evaluation.",
+  "properties": {
+    "acceptance_session_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Acceptance Session Id"
+    },
+    "canonical_main": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{40}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Canonical Main"
+    },
+    "contributor_head": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{40}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Contributor Head"
+    },
+    "created_by_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Created By Id",
+      "type": "string"
+    },
+    "created_by_type": {
+      "$ref": "#/$defs/ActorType"
+    },
+    "criteria_fingerprint": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Criteria Fingerprint"
+    },
+    "deciding_evidence_ids": {
+      "default": [],
+      "items": {
+        "format": "uuid",
+        "type": "string"
+      },
+      "maxItems": 256,
+      "title": "Deciding Evidence Ids",
+      "type": "array"
+    },
+    "decision": {
+      "$ref": "#/$defs/RetrospectiveCompletionDecision"
+    },
+    "id": {
+      "format": "uuid",
+      "title": "Id",
+      "type": "string"
+    },
+    "linear_issue_id": {
+      "anyOf": [
+        {
+          "maxLength": 256,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Linear Issue Id"
+    },
+    "merge_commit": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{40}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Merge Commit"
+    },
+    "merged_evidence_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Merged Evidence Id"
+    },
+    "observed_at": {
+      "format": "date-time",
+      "title": "Observed At",
+      "type": "string"
+    },
+    "policy_fingerprint": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Policy Fingerprint"
+    },
+    "policy_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Policy Id"
+    },
+    "policy_revision": {
+      "anyOf": [
+        {
+          "minimum": 1,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Policy Revision"
+    },
+    "pr_number": {
+      "anyOf": [
+        {
+          "exclusiveMinimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Pr Number"
+    },
+    "product_id": {
+      "format": "uuid",
+      "title": "Product Id",
+      "type": "string"
+    },
+    "publication_attachment_id": {
+      "anyOf": [
+        {
+          "maxLength": 256,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Publication Attachment Id"
+    },
+    "reason": {
+      "$ref": "#/$defs/RetrospectiveCompletionReason"
+    },
+    "recovery_episode_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Recovery Episode Id"
+    },
+    "repository_name": {
+      "anyOf": [
+        {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Repository Name"
+    },
+    "repository_owner": {
+      "anyOf": [
+        {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Repository Owner"
+    },
+    "schema_version": {
+      "const": "retrospective-completion-reconciliation-v1",
+      "default": "retrospective-completion-reconciliation-v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "snapshot_fingerprint": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Snapshot Fingerprint"
+    },
+    "ticket_id": {
+      "format": "uuid",
+      "title": "Ticket Id",
+      "type": "string"
+    },
+    "ticket_key": {
+      "maxLength": 64,
+      "minLength": 1,
+      "title": "Ticket Key",
+      "type": "string"
+    },
+    "verification_check_ids": {
+      "default": [],
+      "items": {
+        "format": "uuid",
+        "type": "string"
+      },
+      "maxItems": 64,
+      "title": "Verification Check Ids",
+      "type": "array"
+    },
+    "verification_verdict_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Verification Verdict Id"
+    }
+  },
+  "required": [
+    "id",
+    "product_id",
+    "ticket_id",
+    "ticket_key",
+    "reason",
+    "decision",
+    "observed_at",
+    "created_by_type",
+    "created_by_id"
+  ],
+  "title": "RetrospectiveCompletionReconciliation",
+  "type": "object"
+}
