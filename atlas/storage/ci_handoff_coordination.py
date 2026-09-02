@@ -18,6 +18,7 @@ from atlas.storage.tables import (
     AdmissionLeaseRow,
     AdmissionWriteFenceRow,
     CIHandoffWriteFenceRow,
+    RetrospectiveCompletionWriteFenceRow,
     TicketRow,
 )
 
@@ -28,6 +29,10 @@ class CIHandoffWriteFenceError(RuntimeError):
 
 class AdmissionFencePresentError(CIHandoffWriteFenceError):
     """A prior ambiguous admission write owns the product recovery lane."""
+
+
+class RetrospectiveFencePresentError(CIHandoffWriteFenceError):
+    """A prior retrospective write owns the product recovery lane."""
 
 
 _T = TypeVar("_T")
@@ -121,6 +126,13 @@ class CIHandoffCoordinationRepo:
             if session.get(AdmissionWriteFenceRow, product_id) is not None:
                 raise AdmissionFencePresentError(
                     "an unresolved admission write blocks CI handoff"
+                )
+            if (
+                session.get(RetrospectiveCompletionWriteFenceRow, product_id)
+                is not None
+            ):
+                raise RetrospectiveFencePresentError(
+                    "an unresolved retrospective write blocks CI handoff"
                 )
             if session.get(CIHandoffWriteFenceRow, product_id) is not None:
                 raise CIHandoffWriteFenceError(

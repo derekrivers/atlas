@@ -40,7 +40,11 @@ from atlas.core.models import (
 )
 from atlas.core.models.pm_recovery import PmBlockerAuthorityKind, PmBlockerCode
 from atlas.evidence.pull import drive_evidence_pull
-from atlas.linear.client import LinearIssue, _github_publication_from_attachment
+from atlas.linear.client import (
+    LinearGitHubPublication,
+    LinearIssue,
+    _github_publication_from_attachment,
+)
 from atlas.pm import CIHandoffHooks, sync_tick
 from atlas.pm.admission_sync import AdmissionSyncReason
 from atlas.pm.ci_handoff import reconcile_ci_handoff_fence
@@ -154,6 +158,7 @@ def _draft_publication_issue(issue: LinearIssue) -> LinearIssue:
         }
     )
     assert publication is not None
+    assert isinstance(publication, LinearGitHubPublication)
     return LinearIssue(
         id=issue.id,
         title=issue.title,

@@ -616,6 +616,50 @@ DOCUMENTED_COLUMNS: dict[str, dict[str, tuple[bool, str | None]]] = {
         "created_at": (NN, None),
         "updated_at": (NN, None),
     },
+    "retrospective_completion_reconciliations": {
+        "id": (NN, None),
+        "schema_version": (NN, None),
+        "product_id": (NN, None),
+        "ticket_id": (NN, None),
+        "ticket_key": (NN, None),
+        "linear_issue_id": (True, None),
+        "recovery_episode_id": (True, None),
+        "publication_attachment_id": (True, None),
+        "repository_owner": (True, None),
+        "repository_name": (True, None),
+        "pr_number": (True, None),
+        "contributor_head": (True, None),
+        "merge_commit": (True, None),
+        "canonical_main": (True, None),
+        "policy_id": (True, None),
+        "policy_revision": (True, None),
+        "policy_fingerprint": (True, None),
+        "snapshot_fingerprint": (True, None),
+        "acceptance_session_id": (True, None),
+        "verification_verdict_id": (True, None),
+        "criteria_fingerprint": (True, None),
+        "verification_check_ids": (NN, "'[]'"),
+        "deciding_evidence_ids": (NN, "'[]'"),
+        "merged_evidence_id": (True, None),
+        "reason": (NN, None),
+        "decision": (NN, None),
+        "observed_at": (NN, None),
+        "created_by_type": (NN, None),
+        "created_by_id": (NN, None),
+    },
+    "retrospective_completion_write_fences": {
+        "product_id": (NN, None),
+        "reconciliation_id": (NN, None),
+        "ticket_id": (NN, None),
+        "ticket_key": (NN, None),
+        "issue_id": (NN, None),
+        "source_state_id": (NN, None),
+        "target_state_id": (NN, None),
+        "target_status": (NN, None),
+        "state": (NN, None),
+        "created_at": (NN, None),
+        "updated_at": (NN, None),
+    },
 }
 
 # Transcribed FK targets: table -> {column: referred table}. Absence is
@@ -705,6 +749,19 @@ DOCUMENTED_FOREIGN_KEYS: dict[str, dict[str, str]] = {
         "reconciliation_id": "ci_handoff_reconciliations",
         "ticket_id": "tickets",
     },
+    "retrospective_completion_reconciliations": {
+        "product_id": "products",
+        "ticket_id": "tickets",
+        "recovery_episode_id": "pm_recovery_episodes",
+        "policy_id": "delivery_admission_policy_revisions",
+        "acceptance_session_id": "acceptance_sessions",
+        "merged_evidence_id": "evidence",
+    },
+    "retrospective_completion_write_fences": {
+        "product_id": "products",
+        "reconciliation_id": "retrospective_completion_reconciliations",
+        "ticket_id": "tickets",
+    },
 }
 
 DOCUMENTED_UNIQUES: dict[str, list[list[str]]] = {
@@ -747,6 +804,8 @@ DOCUMENTED_UNIQUES: dict[str, list[list[str]]] = {
     "admission_write_fences": [["admission_run_id"]],
     "ci_handoff_reconciliations": [],
     "ci_handoff_write_fences": [["reconciliation_id"]],
+    "retrospective_completion_reconciliations": [],
+    "retrospective_completion_write_fences": [["reconciliation_id"]],
 }
 
 
@@ -1066,7 +1125,7 @@ def test_pm_sync_receipt_migration_preserves_ticket_definition_cursors(
 def test_alembic_upgrades_fresh_db_and_matches_metadata(tmp_path: Path) -> None:
     url = f"sqlite:///{tmp_path}/migrated.db"
     config = _alembic_config(url)
-    assert ScriptDirectory.from_config(config).get_heads() == ["0037"]
+    assert ScriptDirectory.from_config(config).get_heads() == ["0038"]
     command.upgrade(config, "head")
 
     engine = sa.create_engine(url)
@@ -1077,6 +1136,8 @@ def test_alembic_upgrades_fresh_db_and_matches_metadata(tmp_path: Path) -> None:
             "admission_write_fences",
             "ci_handoff_reconciliations",
             "ci_handoff_write_fences",
+            "retrospective_completion_reconciliations",
+            "retrospective_completion_write_fences",
             "planned_ci_pending_recoveries",
         } <= set(sa.inspect(connection).get_table_names())
         context = MigrationContext.configure(connection)
@@ -1922,7 +1983,7 @@ def test_acceptance_evidence_receipt_outcomes_migrate_without_losing_guards(
 ) -> None:
     url = f"sqlite:///{tmp_path}/acceptance-evidence-outcomes.db"
     config = _alembic_config(url)
-    assert ScriptDirectory.from_config(config).get_heads() == ["0037"]
+    assert ScriptDirectory.from_config(config).get_heads() == ["0038"]
     command.upgrade(config, "head")
 
     engine = sa.create_engine(url)
@@ -2000,6 +2061,66 @@ def test_acceptance_evidence_receipt_outcomes_migrate_without_losing_guards(
             "admission_runs_no_update",
             "admission_runs_no_delete",
         }
+
+
+def test_retrospective_completion_migration_has_sqlite_and_postgresql_guards(
+    tmp_path: Path,
+) -> None:
+    url = f"sqlite:///{tmp_path}/retrospective-completion.db"
+    config = _alembic_config(url)
+    command.upgrade(config, "0037")
+    command.upgrade(config, "0038")
+
+    engine = sa.create_engine(url)
+    with engine.connect() as connection:
+        tables = set(sa.inspect(connection).get_table_names())
+        assert {
+            "retrospective_completion_reconciliations",
+            "retrospective_completion_write_fences",
+        } <= tables
+        triggers = {
+            row[0]
+            for row in connection.execute(
+                sa.text(
+                    "SELECT name FROM sqlite_master WHERE type = 'trigger' "
+                    "AND name LIKE 'retrospective_completion_reconciliations_no_%'"
+                )
+            )
+        }
+        assert triggers == {
+            "retrospective_completion_reconciliations_no_update",
+            "retrospective_completion_reconciliations_no_delete",
+        }
+        blocker_sql = next(
+            item["sqltext"]
+            for item in sa.inspect(connection).get_check_constraints(
+                "pm_blocker_occurrences"
+            )
+            if item["name"] == "pm_blocker_occurrences_code"
+        )
+        assert "retrospective_proof_incomplete" in blocker_sql
+        assert "retrospective_proof_ambiguous" in blocker_sql
+
+    command.downgrade(config, "0037")
+    with engine.connect() as connection:
+        tables = set(sa.inspect(connection).get_table_names())
+        assert "retrospective_completion_reconciliations" not in tables
+        assert "retrospective_completion_write_fences" not in tables
+
+    output = StringIO()
+    postgres = Config(str(REPO_ROOT / "alembic.ini"), output_buffer=output)
+    postgres.set_main_option(
+        "script_location", str(REPO_ROOT / "atlas" / "storage" / "migrations")
+    )
+    postgres.set_main_option(
+        "sqlalchemy.url", "postgresql://atlas:atlas@localhost/atlas"
+    )
+    command.upgrade(postgres, "0037:0038", sql=True)
+    migration_sql = output.getvalue()
+    assert "-- Running upgrade 0037 -> 0038" in migration_sql
+    assert "CREATE TABLE retrospective_completion_reconciliations" in migration_sql
+    assert "CREATE TABLE retrospective_completion_write_fences" in migration_sql
+    assert "retrospective_completion_reconciliations_append_only" in migration_sql
 
 
 def test_ddl_compiles_under_postgresql_dialect() -> None:

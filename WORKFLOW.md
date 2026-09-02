@@ -206,6 +206,11 @@ CI reconciler may move `CI Pending` to `Review Required` or
 ambiguous or identity-mismatched execution input routes to the fail-closed
 outcome defined by the canonical runbook.
 
+The PM Retrospective Completion Reconciler is the only separate owner of a
+proof-gated direct `CI Pending → Done` repair after an already merged exact
+accepted head. Agents never invoke, replay or substitute for that owner and
+never infer its proof from merge state.
+
 Never author tickets in Linear. Record an out-of-scope finding only through the
 canonical `atlas:proposed-follow-up` comment contract in the execution
 runbook. Work only in the provided repository checkout.

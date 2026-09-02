@@ -15,7 +15,9 @@ ingest (always ``DOCUMENTATION_UPDATE``, one record per PR, ``None`` when no
 from atlas.evidence.ingest import ingest_checks, ingest_docs, ingest_reviews
 from atlas.evidence.mapping import (
     GITHUB_ACTIONS_ACTOR_ID,
+    MergedPRIdentity,
     build_merge_evidence,
+    canonical_merged_pr_identity,
     evidence_type_for_job,
     map_check_to_evidence,
     map_docs_to_evidence,
@@ -31,8 +33,10 @@ from atlas.evidence.views import evidence_summary
 __all__ = [
     "GITHUB_ACTIONS_ACTOR_ID",
     "EvidencePullMalformedSourceError",
+    "MergedPRIdentity",
     "PullResult",
     "build_merge_evidence",
+    "canonical_merged_pr_identity",
     "drive_evidence_pull",
     "evidence_summary",
     "evidence_type_for_job",

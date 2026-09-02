@@ -853,7 +853,9 @@ class PmBlockerOccurrenceRow(Base):
             "code IN ('lease_unavailable', 'provider_unavailable', "
             "'publication_ambiguous', 'publication_not_yet_complete', "
             "'ci_evidence_not_yet_complete', 'ci_evidence_ambiguous', "
-            "'authority_changed', 'write_fence_unresolved')",
+            "'authority_changed', 'write_fence_unresolved', "
+            "'retrospective_proof_incomplete', "
+            "'retrospective_proof_ambiguous')",
             name="pm_blocker_occurrences_code",
         ),
         sa.CheckConstraint(
@@ -1114,6 +1116,97 @@ class CIHandoffWriteFenceRow(Base):
     )
     reconciliation_id: Mapped[UUID] = mapped_column(
         sa.Uuid, sa.ForeignKey("ci_handoff_reconciliations.id")
+    )
+    ticket_id: Mapped[UUID] = mapped_column(sa.Uuid, sa.ForeignKey("tickets.id"))
+    ticket_key: Mapped[str] = mapped_column(sa.Text)
+    issue_id: Mapped[str] = mapped_column(sa.Text)
+    source_state_id: Mapped[str] = mapped_column(sa.Text)
+    target_state_id: Mapped[str] = mapped_column(sa.Text)
+    target_status: Mapped[str] = mapped_column(sa.Text)
+    state: Mapped[str] = mapped_column(sa.Text)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime())
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime())
+
+
+class RetrospectiveCompletionReconciliationRow(Base):
+    """Append-only exact-proof decision for one historical CI-pending episode."""
+
+    __tablename__ = "retrospective_completion_reconciliations"
+    __table_args__ = (
+        sa.CheckConstraint(
+            "schema_version = 'retrospective-completion-reconciliation-v1'",
+            name="retrospective_completion_reconciliations_schema_version",
+        ),
+        sa.CheckConstraint(
+            "decision IN ('hold', 'done')",
+            name="retrospective_completion_reconciliations_decision",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(sa.Uuid, primary_key=True)
+    schema_version: Mapped[str] = mapped_column(sa.Text)
+    product_id: Mapped[UUID] = mapped_column(sa.Uuid, sa.ForeignKey("products.id"))
+    ticket_id: Mapped[UUID] = mapped_column(sa.Uuid, sa.ForeignKey("tickets.id"))
+    ticket_key: Mapped[str] = mapped_column(sa.Text)
+    linear_issue_id: Mapped[str | None] = mapped_column(sa.Text)
+    recovery_episode_id: Mapped[UUID | None] = mapped_column(
+        sa.Uuid, sa.ForeignKey("pm_recovery_episodes.id")
+    )
+    publication_attachment_id: Mapped[str | None] = mapped_column(sa.Text)
+    repository_owner: Mapped[str | None] = mapped_column(sa.Text)
+    repository_name: Mapped[str | None] = mapped_column(sa.Text)
+    pr_number: Mapped[int | None] = mapped_column(sa.Integer)
+    contributor_head: Mapped[str | None] = mapped_column(sa.Text)
+    merge_commit: Mapped[str | None] = mapped_column(sa.Text)
+    canonical_main: Mapped[str | None] = mapped_column(sa.Text)
+    policy_id: Mapped[UUID | None] = mapped_column(
+        sa.Uuid, sa.ForeignKey("delivery_admission_policy_revisions.id")
+    )
+    policy_revision: Mapped[int | None] = mapped_column(sa.Integer)
+    policy_fingerprint: Mapped[str | None] = mapped_column(sa.Text)
+    snapshot_fingerprint: Mapped[str | None] = mapped_column(sa.Text)
+    acceptance_session_id: Mapped[UUID | None] = mapped_column(
+        sa.Uuid, sa.ForeignKey("acceptance_sessions.id")
+    )
+    verification_verdict_id: Mapped[UUID | None] = mapped_column(sa.Uuid)
+    criteria_fingerprint: Mapped[str | None] = mapped_column(sa.Text)
+    verification_check_ids: Mapped[list[str]] = mapped_column(
+        JSONB, server_default=_EMPTY_LIST
+    )
+    deciding_evidence_ids: Mapped[list[str]] = mapped_column(
+        JSONB, server_default=_EMPTY_LIST
+    )
+    merged_evidence_id: Mapped[UUID | None] = mapped_column(
+        sa.Uuid, sa.ForeignKey("evidence.id")
+    )
+    reason: Mapped[str] = mapped_column(sa.Text)
+    decision: Mapped[str] = mapped_column(sa.Text)
+    observed_at: Mapped[datetime] = mapped_column(UTCDateTime())
+    created_by_type: Mapped[str] = mapped_column(sa.Text)
+    created_by_id: Mapped[str] = mapped_column(sa.Text)
+
+
+class RetrospectiveCompletionWriteFenceRow(Base):
+    """Distinct durable fence for the retrospective ci_pending -> done edge."""
+
+    __tablename__ = "retrospective_completion_write_fences"
+    __table_args__ = (
+        sa.UniqueConstraint("reconciliation_id"),
+        sa.CheckConstraint(
+            "target_status = 'done'",
+            name="retrospective_completion_write_fences_target_status",
+        ),
+        sa.CheckConstraint(
+            "state IN ('pending', 'indeterminate')",
+            name="retrospective_completion_write_fences_state",
+        ),
+    )
+
+    product_id: Mapped[UUID] = mapped_column(
+        sa.Uuid, sa.ForeignKey("products.id"), primary_key=True
+    )
+    reconciliation_id: Mapped[UUID] = mapped_column(
+        sa.Uuid, sa.ForeignKey("retrospective_completion_reconciliations.id")
     )
     ticket_id: Mapped[UUID] = mapped_column(sa.Uuid, sa.ForeignKey("tickets.id"))
     ticket_key: Mapped[str] = mapped_column(sa.Text)

@@ -558,7 +558,20 @@ def test_builder_record_is_read_by_the_gate_round_trip(db: Database) -> None:
     )
     seed_all_passed(db, ticket, commit=PROOF_COMMIT, merged=False)
     record = build_merge_evidence(
-        {"merged": True},
+        {
+            "merged": True,
+            "state": "closed",
+            "number": 414,
+            "merge_commit_sha": "e" * 40,
+            "head": {
+                "sha": PROOF_COMMIT,
+                "repo": {"full_name": "acme/atlas"},
+            },
+            "base": {
+                "ref": "main",
+                "repo": {"full_name": "acme/atlas"},
+            },
+        },
         head_commit=PROOF_COMMIT,
         ticket_id=ticket.id,
         product_id=ticket.product_id,

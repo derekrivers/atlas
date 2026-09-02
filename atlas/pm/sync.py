@@ -103,10 +103,12 @@ from atlas.context.lesson_retrieval import retrieve_lessons
 from atlas.context.pack import ContextBudgetExceededError, build_context_pack
 from atlas.core.anchors import IngestionError, SourceDocument
 from atlas.core.enums import ActorType
+from atlas.core.models import RetrospectiveCompletionReason
 from atlas.core.models.adr import ADRStatus, ArchitectureDecisionRecord
 from atlas.core.models.ci_handoff_reconciliation import CIHandoffReason
 from atlas.core.models.debt_item import AnomalyType, DebtItem
 from atlas.core.models.lesson import Lesson
+from atlas.core.models.pm_recovery import PmRecoveryEpisode
 from atlas.core.models.pm_sync_receipt import PmSyncReceipt, PmSyncReceiptResult
 from atlas.core.models.ticket import (
     Ticket,
@@ -152,6 +154,7 @@ from atlas.pm.ci_handoff_adapter import (
     CIHandoffAdapterResult,
     reconcile_ci_handoff_candidate,
     reconcile_existing_ci_handoff_fence,
+    reconcile_existing_retrospective_completion_fence,
 )
 from atlas.pm.ci_handoff_fairness import (
     FairCIHandoffSelection,
@@ -169,6 +172,7 @@ from atlas.pm.protected_lanes import (
     ProtectedLaneRegistryLoadResult,
     load_packaged_protected_lane_registry,
 )
+from atlas.pm.retrospective_completion import RetrospectiveCompletionHooks
 from atlas.pm.workflow_write import (
     PMWorkflowWriteGuard,
     WorkflowWriteWindowClosed,
@@ -188,6 +192,10 @@ from atlas.storage.repositories import (
     PmSyncReceiptRepo,
     ProductRepo,
     TicketRepo,
+)
+from atlas.storage.retrospective_completion import (
+    RetrospectiveCompletionCoordinationRepo,
+    RetrospectiveCompletionWriteFenceError,
 )
 
 # Attribution for system-observed anomalies (data-model §6.1): the PM Engine
@@ -1943,6 +1951,7 @@ def _sync_tick_impl(
     admission_hooks: AdmissionSyncHooks | None = None,
     github_client: GitHubClient | None = None,
     ci_handoff_hooks: CIHandoffHooks | None = None,
+    retrospective_completion_hooks: RetrospectiveCompletionHooks | None = None,
     admission_registry_provider: Callable[
         [], ProtectedLaneRegistryLoadResult
     ] = load_packaged_protected_lane_registry,
@@ -2087,30 +2096,75 @@ def _sync_tick_impl(
     # prior target commit removed the final local CI-pending candidate.
     product_ids = {ticket.product_id for ticket in pull_board}
     product_ids.update(product.id for product in ProductRepo(db).list())
-    fences = [
-        fence
+    ci_fences = [
+        ci_fence_candidate
         for product_id in product_ids
-        if (fence := CIHandoffCoordinationRepo(db).get_fence(product_id)) is not None
+        if (ci_fence_candidate := CIHandoffCoordinationRepo(db).get_fence(product_id))
+        is not None
     ]
-    fenced_product_ids = frozenset(fence.product_id for fence in fences)
-    if fences:
+    retrospective_fences = [
+        retrospective_fence_candidate
+        for product_id in product_ids
+        if (
+            retrospective_fence_candidate := RetrospectiveCompletionCoordinationRepo(
+                db
+            ).get_fence(product_id)
+        )
+        is not None
+    ]
+    fenced_product_ids = frozenset(
+        {fence.product_id for fence in ci_fences}
+        | {fence.product_id for fence in retrospective_fences}
+    )
+    if ci_fences or retrospective_fences:
+        if retrospective_fences and github_client is None:
+            # Historical proof recovery requires fresh canonical-provider reads.
+            return result
         # Every existing fence first resolves to a durable episode. Product-
         # local monotonic cursors choose that product's representative; the
         # durable observation-time rank below rotates representatives across
         # products without comparing unrelated local counters.
-        fence_options = []
-        for candidate_fence in fences:
+        fence_options: list[
+            tuple[PmRecoveryEpisode, str, UUID, UUID, UUID, Ticket]
+        ] = []
+        fence_candidates = [
+            (
+                "ci",
+                fence.product_id,
+                fence.reconciliation_id,
+                fence.ticket_id,
+                fence.ticket_key,
+            )
+            for fence in ci_fences
+        ] + [
+            (
+                "retrospective",
+                fence.product_id,
+                fence.reconciliation_id,
+                fence.ticket_id,
+                fence.ticket_key,
+            )
+            for fence in retrospective_fences
+        ]
+        for (
+            fence_kind,
+            candidate_product_id,
+            candidate_reconciliation_id,
+            candidate_ticket_id,
+            candidate_ticket_key,
+        ) in fence_candidates:
             if ci_handoff_product_retry_deferred(
-                db=db, product_id=candidate_fence.product_id, now=now
+                db=db, product_id=candidate_product_id, now=now
             ):
                 continue
-            candidate_ticket = tickets.get_by_key(candidate_fence.ticket_key)
-            if (
-                candidate_ticket is None
-                or candidate_ticket.id != candidate_fence.ticket_id
-            ):
-                raise CIHandoffWriteFenceError(
-                    "CI handoff fence no longer resolves to its exact ticket"
+            candidate_ticket = tickets.get_by_key(candidate_ticket_key)
+            if candidate_ticket is None or candidate_ticket.id != candidate_ticket_id:
+                if fence_kind == "ci":
+                    raise CIHandoffWriteFenceError(
+                        "CI handoff fence no longer resolves to its exact ticket"
+                    )
+                raise RetrospectiveCompletionWriteFenceError(
+                    "retrospective fence no longer resolves to its exact ticket"
                 )
             candidate_episode = ensure_ci_handoff_episode(
                 db=db,
@@ -2118,41 +2172,80 @@ def _sync_tick_impl(
                 initial_issues=fetched_issues,
                 now=now,
             )
-            fence_options.append((candidate_episode, candidate_fence, candidate_ticket))
+            fence_options.append(
+                (
+                    candidate_episode,
+                    fence_kind,
+                    candidate_product_id,
+                    candidate_reconciliation_id,
+                    candidate_ticket_id,
+                    candidate_ticket,
+                )
+            )
         if not fence_options:
             return result
-        _fence_episode, fence, fence_ticket = min(
+        (
+            _fence_episode,
+            fence_kind,
+            product_id,
+            fence_reconciliation_id,
+            fence_ticket_id,
+            fence_ticket,
+        ) = min(
             fence_options,
             key=lambda item: (
                 cross_product_fairness_key(item[0]),
-                str(item[1].product_id),
+                str(item[2]),
+                item[1],
             ),
         )
-        product_id = fence.product_id
         reserved_sequence = PmRecoveryRepo(db).reserve_evaluation_sequence(product_id)
-        handoff = reconcile_existing_ci_handoff_fence(
-            db=db,
-            tickets=tickets,
-            status_map=status_map,
-            linear=client,
-            project_id=project_id,
-            initial_issues=fetched_issues,
-            product_id=product_id,
-            candidate_count=sum(
-                ticket.product_id == product_id
-                and ticket.status is TicketStatus.CI_PENDING
-                for ticket in pull_board
-            ),
-            now=now,
-            expected_reconciliation_id=fence.reconciliation_id,
-            expected_ticket_id=fence.ticket_id,
+        candidate_count = sum(
+            ticket.product_id == product_id and ticket.status is TicketStatus.CI_PENDING
+            for ticket in pull_board
         )
+        if fence_kind == "ci":
+            handoff = reconcile_existing_ci_handoff_fence(
+                db=db,
+                tickets=tickets,
+                status_map=status_map,
+                linear=client,
+                project_id=project_id,
+                initial_issues=fetched_issues,
+                product_id=product_id,
+                candidate_count=candidate_count,
+                now=now,
+                expected_reconciliation_id=fence_reconciliation_id,
+                expected_ticket_id=fence_ticket_id,
+            )
+        else:
+            assert github_client is not None
+            handoff = reconcile_existing_retrospective_completion_fence(
+                db=db,
+                tickets=tickets,
+                github=github_client,
+                status_map=status_map,
+                linear=client,
+                project_id=project_id,
+                product_id=product_id,
+                candidate_count=candidate_count,
+                now=now,
+                hooks=retrospective_completion_hooks,
+            )
         assert handoff is not None
         _apply_ci_handoff_result(result, handoff)
-        if (
-            handoff.reconciliation is not None
-            and handoff.reconciliation.reason is CIHandoffReason.LEASE_UNAVAILABLE
-        ):
+        lease_unavailable = bool(
+            (
+                handoff.reconciliation is not None
+                and handoff.reconciliation.reason is CIHandoffReason.LEASE_UNAVAILABLE
+            )
+            or (
+                handoff.retrospective is not None
+                and handoff.retrospective.reason
+                is RetrospectiveCompletionReason.LEASE_UNAVAILABLE
+            )
+        )
+        if lease_unavailable:
             record_fair_ci_handoff_contention(
                 db=db,
                 selection=FairCIHandoffSelection(
@@ -2319,6 +2412,8 @@ def _sync_tick_impl(
                 candidate_count=selection.candidate_count,
                 now=now,
                 hooks=ci_handoff_hooks,
+                retrospective_hooks=retrospective_completion_hooks,
+                recovery_episode_id=selection.episode.id,
             )
             if ci_handoff_hooks is not None:
                 ci_handoff_hooks.after_candidate_evaluated()
@@ -2346,41 +2441,82 @@ def _sync_tick_impl(
             late_fence = CIHandoffCoordinationRepo(db).get_fence(
                 selection.candidate.product_id
             )
+            late_retrospective_fence = RetrospectiveCompletionCoordinationRepo(
+                db
+            ).get_fence(selection.candidate.product_id)
             handoff_matches_late_fence = bool(
-                late_fence is not None
-                and handoff.reconciliation is not None
-                and handoff.reconciliation.reconciliation_id
-                == late_fence.reconciliation_id
-                and handoff.reconciliation.ticket_key == late_fence.ticket_key
+                (
+                    late_fence is not None
+                    and handoff.reconciliation is not None
+                    and handoff.reconciliation.reconciliation_id
+                    == late_fence.reconciliation_id
+                    and handoff.reconciliation.ticket_key == late_fence.ticket_key
+                )
+                or (
+                    late_retrospective_fence is not None
+                    and handoff.retrospective is not None
+                    and handoff.retrospective.reconciliation_id
+                    == late_retrospective_fence.reconciliation_id
+                    and handoff.retrospective.ticket_key
+                    == late_retrospective_fence.ticket_key
+                )
             )
             prior_fence_attempt = bool(
-                handoff.reconciliation is not None
-                and handoff.reconciliation.fence_reconciliation_attempted
+                (
+                    handoff.reconciliation is not None
+                    and handoff.reconciliation.fence_reconciliation_attempted
+                )
+                or (
+                    handoff.retrospective is not None
+                    and handoff.retrospective.fence_reconciliation_attempted
+                )
             )
             if (
-                late_fence is not None
+                (late_fence is not None or late_retrospective_fence is not None)
                 and not handoff_matches_late_fence
                 and handoff.linear_mutations == 0
                 and not prior_fence_attempt
             ):
-                late_ticket = tickets.get_by_key(late_fence.ticket_key)
-                if late_ticket is None or late_ticket.id != late_fence.ticket_id:
-                    raise CIHandoffWriteFenceError(
-                        "late CI handoff fence no longer resolves to its exact ticket"
+                selected_late_fence = late_fence or late_retrospective_fence
+                assert selected_late_fence is not None
+                late_ticket = tickets.get_by_key(selected_late_fence.ticket_key)
+                if (
+                    late_ticket is None
+                    or late_ticket.id != selected_late_fence.ticket_id
+                ):
+                    raise RetrospectiveCompletionWriteFenceError(
+                        "late workflow fence no longer resolves to its exact ticket"
                     )
-                recovered_late_fence = reconcile_existing_ci_handoff_fence(
-                    db=db,
-                    tickets=tickets,
-                    status_map=status_map,
-                    linear=client,
-                    project_id=project_id,
-                    initial_issues=fetched_issues,
-                    product_id=late_fence.product_id,
-                    candidate_count=selection.candidate_count,
-                    now=now,
-                    expected_reconciliation_id=late_fence.reconciliation_id,
-                    expected_ticket_id=late_fence.ticket_id,
-                )
+                if late_fence is not None:
+                    recovered_late_fence = reconcile_existing_ci_handoff_fence(
+                        db=db,
+                        tickets=tickets,
+                        status_map=status_map,
+                        linear=client,
+                        project_id=project_id,
+                        initial_issues=fetched_issues,
+                        product_id=late_fence.product_id,
+                        candidate_count=selection.candidate_count,
+                        now=now,
+                        expected_reconciliation_id=late_fence.reconciliation_id,
+                        expected_ticket_id=late_fence.ticket_id,
+                    )
+                else:
+                    assert late_retrospective_fence is not None
+                    recovered_late_fence = (
+                        reconcile_existing_retrospective_completion_fence(
+                            db=db,
+                            tickets=tickets,
+                            github=github_client,
+                            status_map=status_map,
+                            linear=client,
+                            project_id=project_id,
+                            product_id=late_retrospective_fence.product_id,
+                            candidate_count=selection.candidate_count,
+                            now=now,
+                            hooks=retrospective_completion_hooks,
+                        )
+                    )
                 if recovered_late_fence is None:  # pragma: no cover - exact CAS
                     raise CIHandoffWriteFenceError(
                         "late CI handoff fence disappeared during recovery"
@@ -2408,8 +2544,16 @@ def _sync_tick_impl(
                     ),
                 )
             if not (
-                handoff.reconciliation is not None
-                and handoff.reconciliation.reason is CIHandoffReason.LEASE_UNAVAILABLE
+                (
+                    handoff.reconciliation is not None
+                    and handoff.reconciliation.reason
+                    is CIHandoffReason.LEASE_UNAVAILABLE
+                )
+                or (
+                    handoff.retrospective is not None
+                    and handoff.retrospective.reason
+                    is RetrospectiveCompletionReason.LEASE_UNAVAILABLE
+                )
             ):
                 record_fair_ci_handoff_evaluation(
                     db=db,
@@ -2582,6 +2726,7 @@ def sync_tick(
     admission_hooks: AdmissionSyncHooks | None = None,
     github_client: GitHubClient | None = None,
     ci_handoff_hooks: CIHandoffHooks | None = None,
+    retrospective_completion_hooks: RetrospectiveCompletionHooks | None = None,
     admission_registry_provider: Callable[
         [], ProtectedLaneRegistryLoadResult
     ] = load_packaged_protected_lane_registry,
@@ -2615,6 +2760,7 @@ def sync_tick(
             admission_hooks=admission_hooks,
             github_client=github_client,
             ci_handoff_hooks=ci_handoff_hooks,
+            retrospective_completion_hooks=retrospective_completion_hooks,
             admission_registry_provider=admission_registry_provider,
             receipt_context=context,
         )

@@ -474,7 +474,11 @@ To prevent races between the PM Engine and agents:
   the compatibility readiness rule), `ci_pending → review_required` or `ci_pending →
   changes_requested` (system-tier CI classification), `review_required → done` (post-verification),
   `review_required → changes_requested` (operator verdict relay), and any
-  administrative archive/reject.
+  administrative archive/reject. The separately fenced **PM Retrospective
+  Completion Reconciler** alone may write direct `ci_pending → done`, and only
+  from the complete retained exact-head human/system/merge proof defined by
+  `pm-resilience-and-retrospective-recovery.md`; it never fabricates the skipped
+  lifecycle states.
 - **The agent writes:** `ready_for_agent → in_progress → pr_open`, then only
   `pr_open → ci_pending` after the PR is published; it also owns
   `changes_requested → in_progress`, and any active state →
