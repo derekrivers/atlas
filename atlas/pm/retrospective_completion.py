@@ -641,6 +641,48 @@ def _confirmed_state(
     )
 
 
+def _exact_transition(
+    writer: LinearRetrospectiveCompletionWriter,
+    *,
+    issue_id: str,
+    target_state_id: str,
+) -> LinearIssue:
+    """Require the provider response to confirm the exact requested write."""
+
+    written = writer.transition(
+        issue_id,
+        observed_source=TicketStatus.CI_PENDING,
+    )
+    if written.id != issue_id or written.state_id != target_state_id:
+        raise RetrospectiveCompletionWriteFenceError(
+            "Linear returned a mismatched retrospective completion write result"
+        )
+    return written
+
+
+def _finalization_failure_result(
+    error: AdmissionLeaseLostError | RetrospectiveCompletionWriteFenceError,
+    *,
+    ticket_key: str,
+    reconciliation_id: UUID,
+    linear_mutations: int,
+    fence_reconciliation_attempted: bool = False,
+) -> RetrospectiveCompletionResult:
+    """Project a failed atomic finalization without losing fence identity."""
+
+    return RetrospectiveCompletionResult(
+        reason=(
+            RetrospectiveCompletionReason.LEASE_LOST
+            if isinstance(error, AdmissionLeaseLostError)
+            else RetrospectiveCompletionReason.WRITE_INDETERMINATE
+        ),
+        ticket_key=ticket_key,
+        reconciliation_id=reconciliation_id,
+        linear_mutations=linear_mutations,
+        fence_reconciliation_attempted=fence_reconciliation_attempted,
+    )
+
+
 def reconcile_retrospective_completion(
     *,
     db: Database,
@@ -843,18 +885,24 @@ def reconcile_retrospective_completion(
                 owner_id=owner_id,
                 reconciliation_id=reconciliation.id,
                 observed_at=now + timedelta(seconds=lease_age),
-                call=lambda: writer.transition(
-                    issue.id, observed_source=TicketStatus.CI_PENDING
+                call=lambda: _exact_transition(
+                    writer,
+                    issue_id=issue.id,
+                    target_state_id=target_state_id,
                 ),
             )
-        except (
-            RetrospectiveProviderCallIndeterminateError,
-            AdmissionLeaseLostError,
-        ):
+        except AdmissionLeaseLostError:
+            return RetrospectiveCompletionResult(
+                reason=RetrospectiveCompletionReason.LEASE_LOST,
+                ticket_key=ticket.key,
+                reconciliation_id=reconciliation.id,
+            )
+        except RetrospectiveProviderCallIndeterminateError:
             return RetrospectiveCompletionResult(
                 reason=RetrospectiveCompletionReason.WRITE_INDETERMINATE,
                 ticket_key=ticket.key,
                 reconciliation_id=reconciliation.id,
+                linear_mutations=1,
             )
         hooks.after_provider_write()
         if not _confirmed_state(
@@ -872,17 +920,29 @@ def reconcile_retrospective_completion(
                 reason=RetrospectiveCompletionReason.WRITE_INDETERMINATE,
                 ticket_key=ticket.key,
                 reconciliation_id=reconciliation.id,
+                linear_mutations=1,
             )
-        coordination.finalize_owned_target(
-            product_id=ticket.product_id,
-            owner_id=owner_id,
-            reconciliation_id=reconciliation.id,
-            observed_at=now + timedelta(seconds=lease_age),
-            status_observed_at=now,
-            ticket_id=ticket.id,
-            ticket_key=ticket.key,
-            created_by_id=CREATED_BY,
-        )
+        try:
+            coordination.finalize_owned_target(
+                product_id=ticket.product_id,
+                owner_id=owner_id,
+                reconciliation_id=reconciliation.id,
+                observed_at=now + timedelta(seconds=lease_age),
+                status_observed_at=now,
+                ticket_id=ticket.id,
+                ticket_key=ticket.key,
+                created_by_id=CREATED_BY,
+            )
+        except (
+            AdmissionLeaseLostError,
+            RetrospectiveCompletionWriteFenceError,
+        ) as error:
+            return _finalization_failure_result(
+                error,
+                ticket_key=ticket.key,
+                reconciliation_id=reconciliation.id,
+                linear_mutations=1,
+            )
         return RetrospectiveCompletionResult(
             reason=RetrospectiveCompletionReason.WRITE_CONFIRMED,
             decision=RetrospectiveCompletionDecision.DONE,
@@ -911,13 +971,27 @@ def reconcile_retrospective_completion_fence(
     now: datetime,
     hooks: RetrospectiveCompletionHooks | None = None,
     uuid_factory: Callable[[], UUID] = uuid4,
+    expected_reconciliation_id: UUID | None = None,
+    expected_ticket_id: UUID | None = None,
 ) -> RetrospectiveCompletionResult | None:
     """Fresh-process owner of one prepared/indeterminate retrospective fence."""
 
     coordination = RetrospectiveCompletionCoordinationRepo(db)
     fence = coordination.get_fence(product_id)
     if fence is None:
+        if expected_reconciliation_id is not None or expected_ticket_id is not None:
+            raise RetrospectiveCompletionWriteFenceError(
+                "expected retrospective completion fence disappeared before "
+                "reconciliation"
+            )
         return None
+    if (
+        expected_reconciliation_id is not None
+        and fence.reconciliation_id != expected_reconciliation_id
+    ) or (expected_ticket_id is not None and fence.ticket_id != expected_ticket_id):
+        raise RetrospectiveCompletionWriteFenceError(
+            "expected retrospective completion fence was replaced before reconciliation"
+        )
     ticket = tickets.get_by_key(fence.ticket_key)
     if ticket is None or ticket.id != fence.ticket_id:
         raise RetrospectiveCompletionWriteFenceError(
@@ -932,6 +1006,16 @@ def reconcile_retrospective_completion_fence(
         acquired_at=now,
         ttl=RETROSPECTIVE_COMPLETION_LEASE_TTL,
     ):
+        current_fence = coordination.get_fence(product_id)
+        if (
+            current_fence is None
+            or current_fence.reconciliation_id != fence.reconciliation_id
+            or current_fence.ticket_id != fence.ticket_id
+        ):
+            raise RetrospectiveCompletionWriteFenceError(
+                "expected retrospective completion fence changed during lease "
+                "contention"
+            )
         return RetrospectiveCompletionResult(
             reason=RetrospectiveCompletionReason.LEASE_UNAVAILABLE,
             ticket_key=ticket.key,
@@ -939,6 +1023,16 @@ def reconcile_retrospective_completion_fence(
             fence_reconciliation_attempted=True,
         )
     try:
+        current_fence = coordination.get_fence(product_id)
+        if (
+            current_fence is None
+            or current_fence.reconciliation_id != fence.reconciliation_id
+            or current_fence.ticket_id != fence.ticket_id
+        ):
+            raise RetrospectiveCompletionWriteFenceError(
+                "expected retrospective completion fence changed before owned "
+                "reconciliation"
+            )
         try:
             issues = linear.fetch_project_issues(project_id)
         except LinearAPIError:
@@ -974,16 +1068,28 @@ def reconcile_retrospective_completion_fence(
             expected_status=TicketStatus.DONE,
             status_map=status_map,
         ):
-            coordination.finalize_owned_target(
-                product_id=product_id,
-                owner_id=owner_id,
-                reconciliation_id=fence.reconciliation_id,
-                observed_at=now,
-                status_observed_at=now,
-                ticket_id=ticket.id,
-                ticket_key=ticket.key,
-                created_by_id=CREATED_BY,
-            )
+            try:
+                coordination.finalize_owned_target(
+                    product_id=product_id,
+                    owner_id=owner_id,
+                    reconciliation_id=fence.reconciliation_id,
+                    observed_at=now,
+                    status_observed_at=now,
+                    ticket_id=ticket.id,
+                    ticket_key=ticket.key,
+                    created_by_id=CREATED_BY,
+                )
+            except (
+                AdmissionLeaseLostError,
+                RetrospectiveCompletionWriteFenceError,
+            ) as error:
+                return _finalization_failure_result(
+                    error,
+                    ticket_key=ticket.key,
+                    reconciliation_id=fence.reconciliation_id,
+                    linear_mutations=0,
+                    fence_reconciliation_attempted=True,
+                )
             return RetrospectiveCompletionResult(
                 reason=RetrospectiveCompletionReason.FENCE_RECONCILED_TARGET,
                 decision=RetrospectiveCompletionDecision.DONE,
@@ -1084,15 +1190,25 @@ def reconcile_retrospective_completion_fence(
                 owner_id=owner_id,
                 reconciliation_id=fence.reconciliation_id,
                 observed_at=now,
-                call=lambda: writer.transition(
-                    issue.id, observed_source=TicketStatus.CI_PENDING
+                call=lambda: _exact_transition(
+                    writer,
+                    issue_id=fence.issue_id,
+                    target_state_id=fence.target_state_id,
                 ),
             )
-        except (RetrospectiveProviderCallIndeterminateError, AdmissionLeaseLostError):
+        except AdmissionLeaseLostError:
+            return RetrospectiveCompletionResult(
+                reason=RetrospectiveCompletionReason.LEASE_LOST,
+                ticket_key=ticket.key,
+                reconciliation_id=fence.reconciliation_id,
+                fence_reconciliation_attempted=True,
+            )
+        except RetrospectiveProviderCallIndeterminateError:
             return RetrospectiveCompletionResult(
                 reason=RetrospectiveCompletionReason.WRITE_INDETERMINATE,
                 ticket_key=ticket.key,
                 reconciliation_id=fence.reconciliation_id,
+                linear_mutations=1,
                 fence_reconciliation_attempted=True,
             )
         hooks.after_provider_write()
@@ -1111,18 +1227,31 @@ def reconcile_retrospective_completion_fence(
                 reason=RetrospectiveCompletionReason.WRITE_INDETERMINATE,
                 ticket_key=ticket.key,
                 reconciliation_id=fence.reconciliation_id,
+                linear_mutations=1,
                 fence_reconciliation_attempted=True,
             )
-        coordination.finalize_owned_target(
-            product_id=product_id,
-            owner_id=owner_id,
-            reconciliation_id=fence.reconciliation_id,
-            observed_at=now,
-            status_observed_at=now,
-            ticket_id=ticket.id,
-            ticket_key=ticket.key,
-            created_by_id=CREATED_BY,
-        )
+        try:
+            coordination.finalize_owned_target(
+                product_id=product_id,
+                owner_id=owner_id,
+                reconciliation_id=fence.reconciliation_id,
+                observed_at=now,
+                status_observed_at=now,
+                ticket_id=ticket.id,
+                ticket_key=ticket.key,
+                created_by_id=CREATED_BY,
+            )
+        except (
+            AdmissionLeaseLostError,
+            RetrospectiveCompletionWriteFenceError,
+        ) as error:
+            return _finalization_failure_result(
+                error,
+                ticket_key=ticket.key,
+                reconciliation_id=fence.reconciliation_id,
+                linear_mutations=1,
+                fence_reconciliation_attempted=True,
+            )
         return RetrospectiveCompletionResult(
             reason=RetrospectiveCompletionReason.FENCE_RECONCILED_SOURCE,
             decision=RetrospectiveCompletionDecision.DONE,

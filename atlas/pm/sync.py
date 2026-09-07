@@ -2237,6 +2237,8 @@ def _sync_tick_impl(
                 candidate_count=candidate_count,
                 now=now,
                 hooks=retrospective_completion_hooks,
+                expected_reconciliation_id=fence_reconciliation_id,
+                expected_ticket_id=fence_ticket_id,
             )
         assert handoff is not None
         _apply_ci_handoff_result(result, handoff)
@@ -2521,6 +2523,10 @@ def _sync_tick_impl(
                             candidate_count=selection.candidate_count,
                             now=now,
                             hooks=retrospective_completion_hooks,
+                            expected_reconciliation_id=(
+                                late_retrospective_fence.reconciliation_id
+                            ),
+                            expected_ticket_id=late_retrospective_fence.ticket_id,
                         )
                     )
                 if recovered_late_fence is None:  # pragma: no cover - exact CAS

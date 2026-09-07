@@ -308,6 +308,8 @@ def reconcile_existing_retrospective_completion_fence(
     candidate_count: int,
     now: datetime,
     hooks: RetrospectiveCompletionHooks | None = None,
+    expected_reconciliation_id: UUID | None = None,
+    expected_ticket_id: UUID | None = None,
 ) -> CIHandoffAdapterResult | None:
     """Adapt the separate historical fence into the shared cadence result."""
 
@@ -321,6 +323,8 @@ def reconcile_existing_retrospective_completion_fence(
         product_id=product_id,
         now=now,
         hooks=hooks,
+        expected_reconciliation_id=expected_reconciliation_id,
+        expected_ticket_id=expected_ticket_id,
     )
     if retrospective is None:
         return None
