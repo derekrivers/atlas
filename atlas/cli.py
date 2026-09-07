@@ -31,6 +31,7 @@ import networkx as nx
 import uvicorn
 from sqlalchemy.exc import OperationalError
 
+from atlas import evidence as evidence_api
 from atlas.context import (
     DEFAULT_TOKEN_BUDGET,
     ContextBudgetExceededError,
@@ -67,11 +68,6 @@ from atlas.dependencies.views import (
     high_risk_blockers_payload,
     unlocks_payload,
     violation_json,
-)
-from atlas.evidence import (
-    EvidencePullMalformedSourceError,
-    drive_evidence_pull,
-    evidence_summary,
 )
 from atlas.github import (
     GitHubAPIError,
@@ -1516,7 +1512,7 @@ def _evidence_pull(
             return EXIT_PRECONDITION
 
     try:
-        result = drive_evidence_pull(
+        result = evidence_api.drive_evidence_pull(
             client,
             owner,
             repo,
@@ -1525,7 +1521,7 @@ def _evidence_pull(
             product_id=product.id,
             now=datetime.now(UTC),
         )
-    except (GitHubAPIError, EvidencePullMalformedSourceError) as error:
+    except (GitHubAPIError, evidence_api.EvidencePullMalformedSourceError) as error:
         print(error, file=sys.stderr)
         return EXIT_PRECONDITION
 
@@ -1571,7 +1567,7 @@ def _evidence_list(args: argparse.Namespace, resolved_db: Database) -> int:
         rows = [record for record in rows if record.evidence_type.value == args.type]
     rows = sorted(rows, key=lambda record: (record.created_at, str(record.id)))
 
-    payload = [evidence_summary(record) for record in rows]
+    payload = [evidence_api.evidence_summary(record) for record in rows]
     text = (
         "\n".join(_evidence_row_text(record) for record in rows)
         if rows
