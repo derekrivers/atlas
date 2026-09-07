@@ -64,6 +64,7 @@ from atlas.orchestration.acceptance_sessions import (
     acceptance_criteria_snapshot,
 )
 from atlas.pm import (
+    CIHandoffHooks,
     RetrospectiveCompletionHooks,
     RetrospectiveCompletionResult,
     reconcile_retrospective_completion,
@@ -972,7 +973,8 @@ def test_fence_retry_write_response_requires_exact_issue_and_target(
     tmp_path: Path,
     response_defect: str,
 ) -> None:
-    db = _database(tmp_path / f"recovery-response-{response_defect}.db")
+    db_path = tmp_path / f"recovery-response-{response_defect}.db"
+    db = _database(db_path)
     linear = MismatchedWriteResponseClient()
     ticket, episode_id = _seed_complete_world(db, linear)
     _prepare_fence(db, linear, ticket, episode_id)
@@ -997,6 +999,28 @@ def test_fence_retry_write_response_requires_exact_issue_and_target(
     assert retained is not None and retained.status is TicketStatus.CI_PENDING
     fence = RetrospectiveCompletionCoordinationRepo(db).get_fence(ticket.product_id)
     assert fence is not None and fence.state == "indeterminate"
+    assert linear.state_writes == [(ticket.external_linear_id, DONE_STATE.id)]
+
+    linear.response_defect = None
+    rebuilt = _database(db_path)
+    recovered = reconcile_retrospective_completion_fence(
+        db=rebuilt,
+        tickets=TicketRepo(rebuilt),
+        github=_github(),
+        linear=linear,
+        status_map=status_map(),
+        project_id=PROJECT_ID,
+        product_id=ticket.product_id,
+        now=NOW + timedelta(seconds=2),
+        expected_reconciliation_id=fence.reconciliation_id,
+        expected_ticket_id=fence.ticket_id,
+    )
+
+    assert recovered is not None
+    assert recovered.reason.value == "fence_reconciled_target"
+    assert recovered.linear_mutations == 0
+    stored = TicketRepo(rebuilt).get_by_key(ticket.key)
+    assert stored is not None and stored.status is TicketStatus.DONE
     assert linear.state_writes == [(ticket.external_linear_id, DONE_STATE.id)]
 
 
@@ -1228,6 +1252,7 @@ def test_post_write_fence_error_returns_bounded_indeterminate_result(
     linear = RecordingClient()
     ticket, episode_id = _seed_complete_world(db, linear)
     fence = _prepare_fence(db, linear, ticket, episode_id)
+    original_finalize = RetrospectiveCompletionCoordinationRepo.finalize_owned_target
 
     def fail_finalization(*args: Any, **kwargs: Any) -> None:
         raise RetrospectiveCompletionWriteFenceError(
@@ -1263,6 +1288,31 @@ def test_post_write_fence_error_returns_bounded_indeterminate_result(
         RetrospectiveCompletionCoordinationRepo(db).get_fence(ticket.product_id)
         == fence
     )
+    assert linear.state_writes == [(ticket.external_linear_id, DONE_STATE.id)]
+
+    monkeypatch.setattr(
+        RetrospectiveCompletionCoordinationRepo,
+        "finalize_owned_target",
+        original_finalize,
+    )
+    recovered = reconcile_retrospective_completion_fence(
+        db=db,
+        tickets=TicketRepo(db),
+        github=_github(),
+        linear=linear,
+        status_map=status_map(),
+        project_id=PROJECT_ID,
+        product_id=ticket.product_id,
+        now=NOW + timedelta(seconds=2),
+        expected_reconciliation_id=fence.reconciliation_id,
+        expected_ticket_id=fence.ticket_id,
+    )
+
+    assert recovered is not None
+    assert recovered.reason.value == "fence_reconciled_target"
+    assert recovered.linear_mutations == 0
+    stored = TicketRepo(db).get_by_key(ticket.key)
+    assert stored is not None and stored.status is TicketStatus.DONE
     assert linear.state_writes == [(ticket.external_linear_id, DONE_STATE.id)]
 
 
@@ -1307,6 +1357,103 @@ def test_scheduler_passes_selected_retrospective_fence_identity(
     assert result.ci_handoff_mutations == 1
     stored = TicketRepo(db).get_by_key(ticket.key)
     assert stored is not None and stored.status is TicketStatus.DONE
+
+
+def test_late_scheduler_passes_selected_retrospective_fence_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db = _database(tmp_path / "late-scheduler-retrospective-pin.db")
+    linear = RecordingClient()
+    ticket, episode_id = _seed_complete_world(db, linear)
+    expected = _prepare_fence(db, linear, ticket, episode_id)
+    issue_id = ticket.external_linear_id
+    assert issue_id is not None
+    original_issue = linear.fetch_issue(issue_id)
+    assert original_issue is not None
+    coordination = RetrospectiveCompletionCoordinationRepo(db)
+    lease = AdmissionCoordinationRepo(db)
+    clear_owner = uuid4()
+    assert lease.try_acquire(
+        product_id=ticket.product_id,
+        owner_id=clear_owner,
+        acquired_at=NOW + timedelta(seconds=1),
+        ttl=timedelta(minutes=1),
+    )
+    coordination.clear_owned_fence(
+        product_id=ticket.product_id,
+        owner_id=clear_owner,
+        reconciliation_id=expected.reconciliation_id,
+        observed_at=NOW + timedelta(seconds=1),
+    )
+    lease.release(product_id=ticket.product_id, owner_id=clear_owner)
+    linear._issues[issue_id] = replace(
+        original_issue,
+        merged_github_publications=(),
+    )
+    installed = False
+
+    def install_late_fence() -> None:
+        nonlocal installed
+        assert not installed
+        installed = True
+        owner_id = uuid4()
+        assert lease.try_acquire(
+            product_id=ticket.product_id,
+            owner_id=owner_id,
+            acquired_at=NOW + timedelta(seconds=2),
+            ttl=timedelta(minutes=1),
+        )
+        coordination.begin_write(
+            product_id=ticket.product_id,
+            owner_id=owner_id,
+            reconciliation_id=expected.reconciliation_id,
+            ticket_id=expected.ticket_id,
+            ticket_key=expected.ticket_key,
+            issue_id=expected.issue_id,
+            source_state_id=expected.source_state_id,
+            target_state_id=expected.target_state_id,
+            created_at=NOW + timedelta(seconds=2),
+        )
+        lease.release(product_id=ticket.product_id, owner_id=owner_id)
+        linear._issues[issue_id] = original_issue
+
+    observed: list[tuple[UUID | None, UUID | None]] = []
+
+    def capture_expected_ids(**kwargs: Any) -> Any:
+        observed.append(
+            (
+                kwargs.get("expected_reconciliation_id"),
+                kwargs.get("expected_ticket_id"),
+            )
+        )
+        return reconcile_existing_retrospective_completion_fence(**kwargs)
+
+    monkeypatch.setattr(
+        "atlas.pm.sync.reconcile_existing_retrospective_completion_fence",
+        capture_expected_ids,
+    )
+    result = sync_tick(
+        tickets=TicketRepo(db),
+        db=db,
+        client=linear,
+        status_map=status_map(),
+        team_id=TEAM_ID,
+        project_id=PROJECT_ID,
+        inbox_dir=tmp_path / "inbox",
+        documents=lambda: [],
+        now=NOW + timedelta(seconds=2),
+        github_client=_github(),
+        ci_handoff_hooks=CIHandoffHooks(after_candidate_selected=install_late_fence),
+        completion_clock=lambda: NOW + timedelta(seconds=3),
+    )
+
+    assert installed
+    assert observed == [(expected.reconciliation_id, expected.ticket_id)]
+    assert result.ci_handoff_mutations == 1
+    stored = TicketRepo(db).get_by_key(ticket.key)
+    assert stored is not None and stored.status is TicketStatus.DONE
+    assert linear.state_writes == [(ticket.external_linear_id, DONE_STATE.id)]
 
 
 def test_retrospective_fence_blocks_ordinary_admission_and_ci_writers(
