@@ -122,13 +122,33 @@ def normalise_status(status: str | None, conclusion: str | None) -> EvidenceStat
     return _CONCLUSION_STATUS.get(conclusion, EvidenceStatus.WARNING)
 
 
+def _validate_ci_head(payload: Mapping[str, Any], *, head_sha: str) -> None:
+    """Reject supplied CI identity that cannot attest the requested head.
+
+    Legacy payloads omitting the key retain endpoint-scoped attribution.
+    An explicitly supplied invalid value is never treated as that legacy case.
+    """
+    if "head_sha" not in payload:
+        return
+    source_head = payload["head_sha"]
+    if (
+        not isinstance(source_head, str)
+        or len(source_head) != 40
+        or any(character not in "0123456789abcdefABCDEF" for character in source_head)
+        or source_head.lower() != head_sha.lower()
+    ):
+        # Keep provider payloads out of caller-visible errors.
+        raise ValueError("GitHub CI head identity was contradictory or malformed")
+
+
 def normalise_workflow_run(run: Mapping[str, Any], *, head_sha: str) -> NormalisedCheck:
     """Normalise one ``actions/runs`` workflow-run payload.
 
-    ``commit_sha`` is pinned to the polled ``head_sha`` (the exact code state
-    attested; ADR-0008), not re-read from the payload, so the record is
-    pinned to what Atlas asked about even if GitHub echoes a differing field.
+    ``commit_sha`` is pinned to the polled ``head_sha`` (ADR-0008). A supplied
+    payload head must agree before this record can be created; it is never
+    relabelled across commits. Raw payload and its hash remain unchanged.
     """
+    _validate_ci_head(run, head_sha=head_sha)
     return NormalisedCheck(
         name=str(run["name"]),
         status=normalise_status(run.get("status"), run.get("conclusion")),
@@ -148,8 +168,9 @@ def normalise_check_run(check: Mapping[str, Any], *, head_sha: str) -> Normalise
 
     Check runs expose a browser link as ``html_url`` (``details_url`` points
     at the external provider); the same (status, conclusion) normalisation and
-    head-SHA pinning as workflow runs applies.
+    head-SHA validation and pinning as workflow runs applies.
     """
+    _validate_ci_head(check, head_sha=head_sha)
     return NormalisedCheck(
         name=str(check["name"]),
         status=normalise_status(check.get("status"), check.get("conclusion")),

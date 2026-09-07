@@ -68,7 +68,11 @@ from atlas.dependencies.views import (
     unlocks_payload,
     violation_json,
 )
-from atlas.evidence import drive_evidence_pull, evidence_summary
+from atlas.evidence import (
+    EvidencePullMalformedSourceError,
+    drive_evidence_pull,
+    evidence_summary,
+)
 from atlas.github import (
     GitHubAPIError,
     GitHubClient,
@@ -1521,7 +1525,7 @@ def _evidence_pull(
             product_id=product.id,
             now=datetime.now(UTC),
         )
-    except GitHubAPIError as error:
+    except (GitHubAPIError, EvidencePullMalformedSourceError) as error:
         print(error, file=sys.stderr)
         return EXIT_PRECONDITION
 

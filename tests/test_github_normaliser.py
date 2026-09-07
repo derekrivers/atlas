@@ -8,6 +8,7 @@ seeded-defect target (criterion 7) is the status table below.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import UTC, datetime
 
 import pytest
@@ -117,18 +118,52 @@ def test_normalised_shape_pins_commit_and_omits_evidence_type() -> None:
     assert "evidence_type" not in NormalisedCheck.__dataclass_fields__
 
 
-def test_commit_sha_is_the_polled_head_not_the_payload_field() -> None:
-    # The payload's own head_sha differs from what we polled; the record pins
-    # to the polled head (the exact state Atlas attested; ADR-0008).
+@pytest.mark.parametrize("normalise", [normalise_workflow_run, normalise_check_run])
+@pytest.mark.parametrize(
+    "source_head",
+    ["d" * 40, None, "", 123, True, "short", "g" * 40, " " + HEAD_SHA],
+)
+def test_ci_run_rejects_contradictory_or_malformed_supplied_head(
+    normalise: Callable[..., NormalisedCheck], source_head: object
+) -> None:
     run = {
         "id": 7,
-        "name": "Tests",
+        "name": "test",
         "status": "completed",
         "conclusion": "success",
-        "head_sha": "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+        "head_sha": source_head,
     }
-    normalised = normalise_workflow_run(run, head_sha=HEAD_SHA)
-    assert normalised.commit_sha == HEAD_SHA
+    with pytest.raises(ValueError, match="CI head identity"):
+        normalise(run, head_sha=HEAD_SHA)
+
+
+@pytest.mark.parametrize("normalise", [normalise_workflow_run, normalise_check_run])
+@pytest.mark.parametrize("source_head", [HEAD_SHA, HEAD_SHA.upper()])
+def test_ci_run_accepts_matching_head_without_rewriting_payload(
+    normalise: Callable[..., NormalisedCheck], source_head: object
+) -> None:
+    run = {
+        "id": 7,
+        "name": "test",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": source_head,
+    }
+    original = dict(run)
+    result = normalise(run, head_sha=HEAD_SHA)
+    assert result.commit_sha == HEAD_SHA
+    assert result.raw_payload == original == run
+    assert result.payload_hash == payload_hash(original)
+
+
+@pytest.mark.parametrize("normalise", [normalise_workflow_run, normalise_check_run])
+def test_ci_run_retains_endpoint_pin_when_legacy_payload_omits_head(
+    normalise: Callable[..., NormalisedCheck],
+) -> None:
+    run = {"id": 7, "name": "test", "status": "completed", "conclusion": "success"}
+    result = normalise(run, head_sha=HEAD_SHA)
+    assert result.commit_sha == HEAD_SHA
+    assert "head_sha" not in result.raw_payload
 
 
 def test_check_run_normalises_with_html_url() -> None:
@@ -185,20 +220,23 @@ def test_malformed_source_time_fails_closed_without_crashing(
 
 def test_recorded_workflow_runs_normalise() -> None:
     runs = load_fixture("workflow_runs.json", "workflow_runs")
-    normalised = normalise_workflow_runs(runs, head_sha=HEAD_SHA)
+    # Archived payloads span unrelated commits; attest each actual source head.
+    normalised = [normalise_workflow_run(run, head_sha=run["head_sha"]) for run in runs]
     assert len(normalised) == len(runs)
     by_name = {n.name: n for n in normalised}
     # The recorded set carries success / failure / action_required(unknown).
     assert by_name["pre-commit"].status == EvidenceStatus.PASSED
     assert by_name["Tests"].status == EvidenceStatus.FAILED
     assert by_name["CodeQL"].status == EvidenceStatus.WARNING  # unknown -> WARNING
-    assert all(n.commit_sha == HEAD_SHA for n in normalised)
+    assert [n.commit_sha for n in normalised] == [run["head_sha"] for run in runs]
     assert all(n.dedup_key == (n.external_run_id, n.payload_hash) for n in normalised)
 
 
 def test_recorded_check_runs_normalise() -> None:
     checks = load_fixture("check_runs.json", "check_runs")
-    normalised = normalise_check_runs(checks, head_sha=HEAD_SHA)
+    normalised = [
+        normalise_check_run(check, head_sha=check["head_sha"]) for check in checks
+    ]
     statuses = {n.status for n in normalised}
     assert EvidenceStatus.PASSED in statuses
     assert EvidenceStatus.FAILED in statuses
@@ -218,5 +256,9 @@ def test_fake_client_satisfies_protocol_and_replays_fixtures() -> None:
     checks = client.fetch_check_runs("o", "r", HEAD_SHA)
     assert runs and checks
     assert client.calls[0] == ("workflow_runs", "o", "r", HEAD_SHA)
-    # End to end through the fake: raw -> normalised, no network.
-    assert normalise_workflow_runs(runs, head_sha=HEAD_SHA)
+    # The fake preserves foreign source identity instead of hiding mismatch.
+    # Normalise each archived run only for the head it actually attributes.
+    for run in runs:
+        assert normalise_workflow_runs([run], head_sha=run["head_sha"])
+    for check in checks:
+        assert normalise_check_runs([check], head_sha=check["head_sha"])
