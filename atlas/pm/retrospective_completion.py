@@ -660,6 +660,20 @@ def _exact_transition(
     return written
 
 
+def _lease_observed_at(
+    *,
+    now: datetime,
+    lease_started: float,
+    hooks: RetrospectiveCompletionHooks,
+) -> datetime:
+    """Measure lease authority again at each provider/confirmation boundary."""
+
+    lease_age = hooks.monotonic_clock() - lease_started
+    if not 0 <= lease_age < RETROSPECTIVE_COMPLETION_LEASE_TTL.total_seconds():
+        raise AdmissionLeaseLostError("retrospective completion lease elapsed")
+    return now + timedelta(seconds=lease_age)
+
+
 def _finalization_failure_result(
     error: AdmissionLeaseLostError | RetrospectiveCompletionWriteFenceError,
     *,
@@ -884,7 +898,9 @@ def reconcile_retrospective_completion(
                 product_id=ticket.product_id,
                 owner_id=owner_id,
                 reconciliation_id=reconciliation.id,
-                observed_at=now + timedelta(seconds=lease_age),
+                observed_at=_lease_observed_at(
+                    now=now, lease_started=lease_started, hooks=hooks
+                ),
                 call=lambda: _exact_transition(
                     writer,
                     issue_id=issue.id,
@@ -927,7 +943,9 @@ def reconcile_retrospective_completion(
                 product_id=ticket.product_id,
                 owner_id=owner_id,
                 reconciliation_id=reconciliation.id,
-                observed_at=now + timedelta(seconds=lease_age),
+                observed_at=_lease_observed_at(
+                    now=now, lease_started=lease_started, hooks=hooks
+                ),
                 status_observed_at=now,
                 ticket_id=ticket.id,
                 ticket_key=ticket.key,
@@ -1000,6 +1018,7 @@ def reconcile_retrospective_completion_fence(
     hooks = hooks or RetrospectiveCompletionHooks()
     lease = AdmissionCoordinationRepo(db)
     owner_id = uuid_factory()
+    lease_started = hooks.monotonic_clock()
     if not lease.try_acquire(
         product_id=product_id,
         owner_id=owner_id,
@@ -1073,7 +1092,9 @@ def reconcile_retrospective_completion_fence(
                     product_id=product_id,
                     owner_id=owner_id,
                     reconciliation_id=fence.reconciliation_id,
-                    observed_at=now,
+                    observed_at=_lease_observed_at(
+                        now=now, lease_started=lease_started, hooks=hooks
+                    ),
                     status_observed_at=now,
                     ticket_id=ticket.id,
                     ticket_key=ticket.key,
@@ -1189,7 +1210,9 @@ def reconcile_retrospective_completion_fence(
                 product_id=product_id,
                 owner_id=owner_id,
                 reconciliation_id=fence.reconciliation_id,
-                observed_at=now,
+                observed_at=_lease_observed_at(
+                    now=now, lease_started=lease_started, hooks=hooks
+                ),
                 call=lambda: _exact_transition(
                     writer,
                     issue_id=fence.issue_id,
@@ -1235,7 +1258,9 @@ def reconcile_retrospective_completion_fence(
                 product_id=product_id,
                 owner_id=owner_id,
                 reconciliation_id=fence.reconciliation_id,
-                observed_at=now,
+                observed_at=_lease_observed_at(
+                    now=now, lease_started=lease_started, hooks=hooks
+                ),
                 status_observed_at=now,
                 ticket_id=ticket.id,
                 ticket_key=ticket.key,

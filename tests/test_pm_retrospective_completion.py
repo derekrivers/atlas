@@ -1117,6 +1117,199 @@ def test_expected_retrospective_fence_identity_rejects_disappearance_or_replacem
     assert linear.state_writes == []
 
 
+@pytest.mark.parametrize("path", ["initial", "retry", "target"])
+@pytest.mark.parametrize("elapsed", [-1, 299, 300, 301])
+def test_elapsed_lease_bounds_target_confirmation_and_fresh_process_recovery(
+    path: str,
+    elapsed: int,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with TemporalHarness(initial_time=NOW) as harness:
+        seeder = RecordingClient()
+        seed_db = _database(harness.db_path)
+        ticket, episode_id = _seed_complete_world(seed_db, seeder)
+        if path != "initial":
+            _prepare_fence(seed_db, seeder, ticket, episode_id)
+        issue_id = ticket.external_linear_id
+        assert issue_id is not None
+        if path == "target":
+            seeder.simulate_linear_state(issue_id, DONE_STATE)
+        [seed_issue] = seeder.fetch_project_issues(PROJECT_ID)
+        _seed_provider_issue(harness.providers, seed_issue)
+        harness.providers.register_operation(
+            "linear", "set_state", _merge_provider_state
+        )
+        harness.register_generation_resource(
+            "db", lambda _generation: _database(harness.db_path)
+        )
+        harness.register_generation_resource(
+            "linear",
+            lambda generation: TemporalLinearClient(
+                world=harness.providers,
+                tick=generation.tick(f"process-{generation.generation_id}"),
+                issue_ids=(issue_id,),
+            ),
+        )
+        monotonic_now = 1000.0
+
+        def advance_clock() -> None:
+            nonlocal monotonic_now
+            monotonic_now = 1000.0 + elapsed
+
+        hooks = RetrospectiveCompletionHooks(
+            monotonic_clock=lambda: monotonic_now,
+            after_provider_write=advance_clock,
+        )
+        with harness.new_generation() as first:
+            db1 = first.resource("db")
+            linear1 = first.resource("linear")
+            assert isinstance(db1, Database)
+            assert isinstance(linear1, TemporalLinearClient)
+            if path == "target":
+                original_fetch = linear1.fetch_project_issues
+
+                def slow_fetch(project_id: str) -> list[LinearIssue]:
+                    issues = original_fetch(project_id)
+                    advance_clock()
+                    return issues
+
+                monkeypatch.setattr(linear1, "fetch_project_issues", slow_fetch)
+            if path == "initial":
+                result = _run(
+                    db1,
+                    cast(LinearClient, linear1),
+                    ticket,
+                    episode_id,
+                    _github(),
+                    hooks=hooks,
+                )
+            else:
+                result = reconcile_retrospective_completion_fence(
+                    db=db1,
+                    tickets=TicketRepo(db1),
+                    github=_github(),
+                    linear=cast(LinearClient, linear1),
+                    status_map=status_map(),
+                    project_id=PROJECT_ID,
+                    product_id=ticket.product_id,
+                    now=NOW,
+                    hooks=hooks,
+                )
+            assert result is not None
+            assert result.linear_mutations == (0 if path == "target" else 1)
+            assert result.fence_reconciliation_attempted == (path != "initial")
+            stored = TicketRepo(db1).get_by_key(ticket.key)
+            assert stored is not None
+            fence = RetrospectiveCompletionCoordinationRepo(db1).get_fence(
+                ticket.product_id
+            )
+            if elapsed == 299:
+                assert (
+                    result.reason.value
+                    == {
+                        "initial": "write_confirmed",
+                        "retry": "fence_reconciled_source",
+                        "target": "fence_reconciled_target",
+                    }[path]
+                )
+                assert stored.status is TicketStatus.DONE
+                assert fence is None
+            else:
+                assert result.reason.value == "lease_lost"
+                assert stored.status is TicketStatus.CI_PENDING
+                assert fence is not None
+                assert fence.reconciliation_id == result.reconciliation_id
+
+        # Reconstruct both process-owned objects over retained store/provider state.
+        with harness.new_generation() as second:
+            db2 = second.resource("db")
+            linear2 = second.resource("linear")
+            assert isinstance(db2, Database)
+            recovered = sync_tick(
+                tickets=TicketRepo(db2),
+                db=db2,
+                client=cast(LinearClient, linear2),
+                status_map=status_map(),
+                team_id=TEAM_ID,
+                project_id=PROJECT_ID,
+                inbox_dir=harness.db_path.parent / "inbox",
+                documents=lambda: [],
+                now=NOW + timedelta(minutes=6),
+                github_client=_github(),
+                completion_clock=lambda: NOW + timedelta(minutes=6, seconds=1),
+            )
+            assert recovered.ci_handoff_mutations == 0
+            stored = TicketRepo(db2).get_by_key(ticket.key)
+            assert stored is not None and stored.status is TicketStatus.DONE
+            assert (
+                RetrospectiveCompletionCoordinationRepo(db2).get_fence(
+                    ticket.product_id
+                )
+                is None
+            )
+            episode = PmRecoveryRepo(db2).get_episode(episode_id)
+            assert episode is not None and episode.closed_at is not None
+        writes = 0 if path == "target" else 1
+        harness.providers.ledger.assert_counts(
+            _done_request(issue_id).request_fingerprint,
+            attempts=writes,
+            effects=writes,
+        )
+
+
+@pytest.mark.parametrize("path", ["initial", "retry", "retry_slow_board"])
+def test_expired_lease_cannot_begin_provider_write(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    path: str,
+) -> None:
+    db = _database(tmp_path / "expired-before-write.db")
+    linear = RecordingClient()
+    ticket, episode_id = _seed_complete_world(db, linear)
+    if path != "initial":
+        _prepare_fence(db, linear, ticket, episode_id)
+    monotonic_now = 1000.0
+
+    def advance_clock() -> None:
+        nonlocal monotonic_now
+        monotonic_now = 1301.0
+
+    if path == "retry_slow_board":
+        original_fetch = linear.fetch_project_issues
+
+        def slow_fetch(project_id: str) -> list[LinearIssue]:
+            issues = original_fetch(project_id)
+            advance_clock()
+            return issues
+
+        monkeypatch.setattr(linear, "fetch_project_issues", slow_fetch)
+    hooks = RetrospectiveCompletionHooks(
+        monotonic_clock=lambda: monotonic_now,
+        before_provider_write=advance_clock,
+    )
+    if path == "initial":
+        result = _run(db, linear, ticket, episode_id, _github(), hooks=hooks)
+    else:
+        result = reconcile_retrospective_completion_fence(
+            db=db,
+            tickets=TicketRepo(db),
+            github=_github(),
+            linear=linear,
+            status_map=status_map(),
+            project_id=PROJECT_ID,
+            product_id=ticket.product_id,
+            now=NOW,
+            hooks=hooks,
+        )
+    assert result is not None and result.reason.value == "lease_lost"
+    assert result.linear_mutations == 0
+    assert linear.state_writes == []
+    stored = TicketRepo(db).get_by_key(ticket.key)
+    assert stored is not None and stored.status is TicketStatus.CI_PENDING
+    fence = RetrospectiveCompletionCoordinationRepo(db).get_fence(ticket.product_id)
+    assert fence is not None and fence.reconciliation_id == result.reconciliation_id
+
+
 def test_post_write_lease_loss_returns_bounded_result_and_recovers_next_tick(
     tmp_path: Path,
 ) -> None:

@@ -234,7 +234,12 @@ exact still-live lease owner and fence identity, so an expired or replaced
 recovery process cannot clear ambiguity after a slow provider refresh.
 Target confirmation applies the exact ticket's local status and retires that
 fence in the same transaction; losing the lease or fence CAS leaves both local
-eligibility and the durable ambiguity fence intact. A fence discovered after
+eligibility and the durable ambiguity fence intact. Lease authority uses elapsed
+monotonic time sampled again immediately before each provider write and atomic
+target confirmation, including recovery after a slow board refresh or retry.
+Reaching the lease TTL, or observing negative elapsed time, returns `lease_lost`;
+a completed provider effect retains its mutation count and fence so a fresh
+owner can confirm the target without repeating the write. A fence discovered after
 ordinary candidate selection is accounted to its own ticket episode, never to
 the displaced candidate.
 
