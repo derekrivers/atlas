@@ -50,6 +50,7 @@ from atlas.core.models import (
     PlanRunStatus,
     PmSyncReceipt,
     Product,
+    RetrospectiveCompletionReconciliation,
     Ticket,
     TicketDependency,
     TicketStatus,
@@ -84,6 +85,7 @@ from atlas.storage.tables import (
     PlanRunRow,
     PmSyncReceiptRow,
     ProductRow,
+    RetrospectiveCompletionReconciliationRow,
     TicketDependencyRow,
     TicketRow,
     TicketStatusTransitionRow,
@@ -1535,6 +1537,38 @@ class CIHandoffReconciliationRepo(_Repo[CIHandoffReconciliation]):
                 .order_by(
                     CIHandoffReconciliationRow.observed_at,
                     CIHandoffReconciliationRow.id,
+                )
+            )
+            return [self._to_model(row) for row in rows]
+
+
+class RetrospectiveCompletionReconciliationRepo(
+    _Repo[RetrospectiveCompletionReconciliation]
+):
+    """Append-only exact-proof outcomes for the retrospective Done owner."""
+
+    def __init__(self, db: Database) -> None:
+        super().__init__(
+            db,
+            RetrospectiveCompletionReconciliation,
+            RetrospectiveCompletionReconciliationRow,
+        )
+
+    def record(
+        self, model: RetrospectiveCompletionReconciliation
+    ) -> RetrospectiveCompletionReconciliation:
+        return self.add(model)
+
+    def list_for_ticket(
+        self, ticket_id: UUID
+    ) -> list[RetrospectiveCompletionReconciliation]:
+        with self._db.session() as session:
+            rows = session.scalars(
+                sa.select(RetrospectiveCompletionReconciliationRow)
+                .where(RetrospectiveCompletionReconciliationRow.ticket_id == ticket_id)
+                .order_by(
+                    RetrospectiveCompletionReconciliationRow.observed_at,
+                    RetrospectiveCompletionReconciliationRow.id,
                 )
             )
             return [self._to_model(row) for row in rows]

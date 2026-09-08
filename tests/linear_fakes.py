@@ -17,6 +17,7 @@ from atlas.linear.client import (
     LinearComment,
     LinearGitHubPublication,
     LinearIssue,
+    LinearMergedGitHubPublication,
     LinearProject,
     WorkflowState,
     reject_unowned_keys,
@@ -81,6 +82,7 @@ class InMemoryLinearClient:
             description=str(definition.get("description", current.description or "")),
             identifier=current.identifier,
             github_publications=current.github_publications,
+            merged_github_publications=current.merged_github_publications,
             github_publications_complete=current.github_publications_complete,
         )
         self._issues[issue_id] = updated
@@ -131,6 +133,7 @@ class InMemoryLinearClient:
             description=current.description,
             identifier=current.identifier,
             github_publications=current.github_publications,
+            merged_github_publications=current.merged_github_publications,
             github_publications_complete=current.github_publications_complete,
         )
         self._issues[issue_id] = updated
@@ -170,6 +173,47 @@ class InMemoryLinearClient:
             description=current.description,
             identifier=current.identifier,
             github_publications=publications,
+            merged_github_publications=current.merged_github_publications,
+            github_publications_complete=complete,
+        )
+
+    def seed_merged_github_publication(
+        self,
+        issue_id: str,
+        *,
+        owner: str,
+        repo: str,
+        pr_number: int,
+        attachment_id: str = "github-merged-publication-1",
+        complete: bool = True,
+        append: bool = False,
+    ) -> None:
+        """Seed the distinct historically merged attachment projection."""
+
+        current = self._issues[issue_id]
+        new_publication = (
+            LinearMergedGitHubPublication(
+                attachment_id=attachment_id,
+                repository_owner=owner,
+                repository_name=repo,
+                pr_number=pr_number,
+            ),
+        )
+        publications = (
+            current.merged_github_publications + new_publication
+            if append
+            else new_publication
+        )
+        self._issues[issue_id] = LinearIssue(
+            id=current.id,
+            title=current.title,
+            state_id=current.state_id,
+            state_name=current.state_name,
+            state_type=current.state_type,
+            description=current.description,
+            identifier=current.identifier,
+            github_publications=current.github_publications,
+            merged_github_publications=publications,
             github_publications_complete=complete,
         )
 
@@ -213,5 +257,6 @@ class InMemoryLinearClient:
             description=current.description,
             identifier=current.identifier,
             github_publications=current.github_publications,
+            merged_github_publications=current.merged_github_publications,
             github_publications_complete=current.github_publications_complete,
         )

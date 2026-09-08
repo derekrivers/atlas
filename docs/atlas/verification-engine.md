@@ -157,8 +157,12 @@ handoff operation owns the separately fenced `ci_pending → review_required` or
 `ci_pending → changes_requested` edge. It revalidates external identity before
 using the assessment and repeats the assessment from freshly loaded
 product-scoped evidence immediately before the write fence. A change to the
-classification, bounded results or evidence ids holds until a fresh tick; the completion evaluator and its
-`review_required → done` authority are unchanged.
+classification, bounded results or evidence ids holds until a fresh tick; the
+ordinary completion evaluator and its `review_required → done` authority are
+unchanged. The separate retrospective completion owner cannot write or infer a
+verdict: it requires the stored exact-head PASSED verdict and deciding evidence,
+then invokes the canonical evaluator afresh and requires the resulting verdict,
+criteria fingerprint, checks and evidence identities to reproduce that proof.
 
 ## Candidate-attestation disposition
 
@@ -192,6 +196,13 @@ Non-required checks (`required=False`, like the deferred SECURITY surface) appea
 in the breakdown but do not gate. The PM Engine performs
 `review_required → done` only on a PASSED verdict
 (`symphony-integration.md#ticket-transitions-one-writer-per-state-edge`).
+A separate retrospective exception permits only the PM Retrospective Completion
+Reconciler to write `ci_pending → done` after the full retained exact-head
+acceptance/verdict/check/merge proof and fresh re-evaluation in
+`pm-resilience-and-retrospective-recovery.md`. Its system-tier `PR_MERGED`
+evidence uses schema `pr-merged-evidence-v2` and names canonical repository
+owner/name, PR number, contributor head and immutable merge commit. Neither a
+green rollup nor a merge observation alone satisfies that edge.
 A FAILED verdict routes to `changes_requested` (machine-check failures)
 or `needs_human_decision` (criteria/scope disputes).
 

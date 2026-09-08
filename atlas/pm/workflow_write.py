@@ -13,6 +13,7 @@ from atlas.storage import (
     AdmissionWriteFenceError,
     CIHandoffFencePresentError,
     Database,
+    RetrospectiveCompletionFencePresentError,
 )
 
 _WORKFLOW_LEASE_TTL = timedelta(minutes=5)
@@ -68,6 +69,7 @@ class PMWorkflowWriteGuard:
                 AdmissionLeaseLostError,
                 AdmissionWriteFenceError,
                 CIHandoffFencePresentError,
+                RetrospectiveCompletionFencePresentError,
             ) as exc:
                 raise WorkflowWriteWindowClosed(str(exc)) from exc
         finally:
@@ -118,6 +120,7 @@ class PMWorkflowWriteGuard:
                 AdmissionLeaseLostError,
                 AdmissionWriteFenceError,
                 CIHandoffFencePresentError,
+                RetrospectiveCompletionFencePresentError,
             ) as exc:
                 raise WorkflowWriteWindowClosed(str(exc)) from exc
             self._consumed = True

@@ -11,6 +11,7 @@ from atlas.storage.admission_coordination import (
     AdmissionWriteFence,
     AdmissionWriteFenceError,
     CIHandoffFencePresentError,
+    RetrospectiveCompletionFencePresentError,
 )
 from atlas.storage.apply import apply_backlog
 from atlas.storage.atlas_280_bootstrap_recovery import (
@@ -24,6 +25,7 @@ from atlas.storage.ci_handoff_coordination import (
     CIHandoffCoordinationRepo,
     CIHandoffWriteFence,
     CIHandoffWriteFenceError,
+    RetrospectiveFencePresentError,
 )
 from atlas.storage.db import Database
 from atlas.storage.delivery_control_snapshot import (
@@ -74,6 +76,7 @@ from atlas.storage.repositories import (
     PmSyncReceiptRepo,
     ProductRepo,
     Reservation,
+    RetrospectiveCompletionReconciliationRepo,
     StaleLessonReview,
     TicketDependencyRepo,
     TicketNotFoundError,
@@ -82,6 +85,13 @@ from atlas.storage.repositories import (
     TickFailureRepo,
     TrustTierError,
     VerificationCheckRepo,
+)
+from atlas.storage.retrospective_completion import (
+    CompetingWorkflowFencePresentError,
+    RetrospectiveCompletionCoordinationRepo,
+    RetrospectiveCompletionWriteFence,
+    RetrospectiveCompletionWriteFenceError,
+    RetrospectiveProviderCallIndeterminateError,
 )
 
 __all__ = [
@@ -107,6 +117,7 @@ __all__ = [
     "CIHandoffReconciliationRepo",
     "CIHandoffWriteFence",
     "CIHandoffWriteFenceError",
+    "CompetingWorkflowFencePresentError",
     "ContextPackRepo",
     "Database",
     "DebtItemRepo",
@@ -140,6 +151,13 @@ __all__ = [
     "PmSyncReceiptRepo",
     "ProductRepo",
     "Reservation",
+    "RetrospectiveCompletionCoordinationRepo",
+    "RetrospectiveCompletionFencePresentError",
+    "RetrospectiveCompletionReconciliationRepo",
+    "RetrospectiveCompletionWriteFence",
+    "RetrospectiveCompletionWriteFenceError",
+    "RetrospectiveFencePresentError",
+    "RetrospectiveProviderCallIndeterminateError",
     "StaleLessonReview",
     "TickFailureRepo",
     "TicketDependencyRepo",

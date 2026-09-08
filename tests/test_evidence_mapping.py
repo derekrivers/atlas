@@ -461,6 +461,22 @@ def _merge(
     extra: dict[str, Any] | None = None,
 ) -> Evidence | None:
     pull_request: dict[str, Any] = {"merged": merged}
+    if merged is True:
+        pull_request.update(
+            {
+                "number": 42,
+                "state": "closed",
+                "merge_commit_sha": "e" * 40,
+                "head": {
+                    "sha": head_commit,
+                    "repo": {"full_name": "acme/atlas"},
+                },
+                "base": {
+                    "ref": "main",
+                    "repo": {"full_name": "acme/atlas"},
+                },
+            }
+        )
     if extra is not None:
         pull_request.update(extra)
     return build_merge_evidence(
@@ -522,10 +538,9 @@ def test_build_merge_evidence_is_persistable_through_the_system_tier_guard(
 def test_build_merge_evidence_never_raises_on_a_degenerate_dict() -> None:
     """AC-3: a degenerate pull_request dict never raises -- absence is data."""
     assert _merge(None) is None  # merged=None -> falsy -> None
-    # a merged truthy value with otherwise-empty payload still builds (only .get
-    # is read), proving no required key beyond "merged" is dereferenced.
+    # Truthy guesses and incomplete provider identity fail closed.
     record = _merge("yes")
-    assert record is not None and record.evidence_type is EvidenceType.PR_MERGED
+    assert record is None
 
 
 def test_build_merge_evidence_is_pure_no_db_in_signature() -> None:

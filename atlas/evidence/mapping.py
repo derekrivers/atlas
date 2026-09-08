@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 from uuid import UUID, uuid4
@@ -63,6 +64,76 @@ _JOB_PREFIX_TYPES: tuple[tuple[str, EvidenceType], ...] = (
 # evidence, matching tests/test_evidence_model.py::evidence_kwargs. Defined here,
 # never imported from another component.
 GITHUB_ACTIONS_ACTOR_ID = "github-actions"
+
+
+@dataclass(frozen=True)
+class MergedPRIdentity:
+    """Bounded immutable identities from one canonical merged PR snapshot."""
+
+    repository_owner: str
+    repository_name: str
+    pr_number: int
+    contributor_head: str
+    merge_commit: str
+
+
+def canonical_merged_pr_identity(
+    pull_request: Mapping[str, Any],
+) -> MergedPRIdentity | None:
+    """Return strict merged-provider identity without accepting truthy guesses."""
+
+    def full_sha(value: object) -> str | None:
+        if (
+            not isinstance(value, str)
+            or len(value) != 40
+            or any(character not in "0123456789abcdefABCDEF" for character in value)
+        ):
+            return None
+        return value.lower()
+
+    number = pull_request.get("number")
+    head = pull_request.get("head")
+    base = pull_request.get("base")
+    merge_commit = full_sha(pull_request.get("merge_commit_sha"))
+    if (
+        pull_request.get("merged") is not True
+        or pull_request.get("state") != "closed"
+        or isinstance(number, bool)
+        or not isinstance(number, int)
+        or number <= 0
+        or not isinstance(head, Mapping)
+        or not isinstance(base, Mapping)
+        or base.get("ref") != "main"
+        or merge_commit is None
+    ):
+        return None
+    head_repo = head.get("repo")
+    base_repo = base.get("repo")
+    contributor_head = full_sha(head.get("sha"))
+    if (
+        not isinstance(head_repo, Mapping)
+        or not isinstance(base_repo, Mapping)
+        or contributor_head is None
+    ):
+        return None
+    head_full_name = head_repo.get("full_name")
+    base_full_name = base_repo.get("full_name")
+    if (
+        not isinstance(head_full_name, str)
+        or not isinstance(base_full_name, str)
+        or head_full_name.casefold() != base_full_name.casefold()
+    ):
+        return None
+    parts = base_full_name.split("/")
+    if len(parts) != 2 or not all(parts):
+        return None
+    return MergedPRIdentity(
+        repository_owner=parts[0].casefold(),
+        repository_name=parts[1].casefold(),
+        pr_number=number,
+        contributor_head=contributor_head,
+        merge_commit=merge_commit,
+    )
 
 
 def evidence_type_for_job(name: str) -> EvidenceType | None:
@@ -246,8 +317,10 @@ def build_merge_evidence(
     ``review_required -> done`` WITHOUT touching the verdict (which still means
     "is this PR acceptable", never "is it merged").
 
-    Returns ``None`` when ``pull_request.get("merged")`` is falsy/absent (an
-    unmerged PR produces no record), else a system-tier record:
+    Returns ``None`` unless the canonical payload strictly proves a closed,
+    merged PR, canonical repository/main base, exact contributor head and
+    immutable merge commit (an unmerged or malformed PR produces no record),
+    else a system-tier record:
     ``evidence_type=PR_MERGED``, ``status=PASSED``,
     ``created_by_type=SYSTEM``/``created_by_id=github-actions`` (the merge is
     observed by deterministic system logic, never an agent or human), pinned to
@@ -256,26 +329,47 @@ def build_merge_evidence(
 
     The full system-tier pin TRIPLE is populated so ``EvidenceRepo.add``'s
     ADR-0008 guard accepts it: ``commit_sha`` is the head, ``external_run_id`` is
-    the synthesised ``merge:<head_commit>`` id (mirroring the docs mapper's
-    ``docs:<sha>`` idiom), and ``payload_hash`` reuses :func:`atlas.github.
-    payload_hash` (one canonicalisation source) over the PR object. ``product_id``,
+    the schema-v2 repository/PR/head/merge identity, and ``payload_hash`` reuses
+    :func:`atlas.github.payload_hash` (one canonicalisation source) over the PR
+    object. ``product_id``,
     ``evidence_id``, and ``now`` are injected for the same purity/determinism
     reasons as the capture builders (ATLAS-132). Never raises on a degenerate
-    ``pull_request`` dict -- ``.get`` guards the only read.
+    ``pull_request`` mapping.
     """
 
-    if not pull_request.get("merged"):
+    identity = canonical_merged_pr_identity(pull_request)
+    if identity is None or identity.contributor_head != head_commit.lower():
         return None
+    projection = {
+        "schema_version": "pr-merged-evidence-v2",
+        "repository_owner": identity.repository_owner,
+        "repository_name": identity.repository_name,
+        "pr_number": identity.pr_number,
+        "contributor_head": identity.contributor_head,
+        "merge_commit": identity.merge_commit,
+    }
     return Evidence(
         id=evidence_id,
         product_id=product_id,
         ticket_id=ticket_id,
         evidence_type=EvidenceType.PR_MERGED,
         status=EvidenceStatus.PASSED,
-        summary=f"PR merged at {head_commit}",
-        commit_sha=head_commit,
-        external_run_id=f"merge:{head_commit}",
+        summary=(
+            f"PR {identity.repository_owner}/{identity.repository_name}#"
+            f"{identity.pr_number} merged as {identity.merge_commit}"
+        ),
+        commit_sha=identity.contributor_head,
+        external_run_id=(
+            "merge:v2:"
+            f"{identity.repository_owner}/{identity.repository_name}:"
+            f"{identity.pr_number}:{identity.contributor_head}:{identity.merge_commit}"
+        ),
         payload_hash=payload_hash(pull_request),
+        source_uri=(
+            f"https://github.com/{identity.repository_owner}/"
+            f"{identity.repository_name}/pull/{identity.pr_number}"
+        ),
+        raw_payload=projection,
         created_by_type=ActorType.SYSTEM,
         created_by_id=GITHUB_ACTIONS_ACTOR_ID,
         created_at=now,

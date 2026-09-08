@@ -33,6 +33,12 @@ class TicketTransitionOwner(StrEnum):
     ATLAS = "atlas"
 
 
+class RetrospectiveTransitionOwner(StrEnum):
+    """Authority permitted to write the proof-gated retrospective edge."""
+
+    PM_RETROSPECTIVE_COMPLETION_RECONCILER = "pm_retrospective_completion_reconciler"
+
+
 def ci_pending_transition_owner(
     from_status: TicketStatus, to_status: TicketStatus
 ) -> TicketTransitionOwner | None:
@@ -50,6 +56,21 @@ def ci_pending_transition_owner(
         TicketStatus.CHANGES_REQUESTED,
     }:
         return TicketTransitionOwner.ATLAS
+    return None
+
+
+def retrospective_completion_transition_owner(
+    from_status: TicketStatus, to_status: TicketStatus
+) -> RetrospectiveTransitionOwner | None:
+    """Return the sole owner of the direct retrospective completion edge.
+
+    This authority is separate from the ordinary CI reconciler. Its caller
+    must first establish the complete retained exact-head proof required by
+    the retrospective-completion reconciliation contract.
+    """
+
+    if (from_status, to_status) == (TicketStatus.CI_PENDING, TicketStatus.DONE):
+        return RetrospectiveTransitionOwner.PM_RETROSPECTIVE_COMPLETION_RECONCILER
     return None
 
 

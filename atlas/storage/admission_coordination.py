@@ -17,6 +17,7 @@ from atlas.storage.tables import (
     AdmissionLeaseRow,
     AdmissionWriteFenceRow,
     CIHandoffWriteFenceRow,
+    RetrospectiveCompletionWriteFenceRow,
 )
 
 
@@ -30,6 +31,10 @@ class AdmissionWriteFenceError(RuntimeError):
 
 class CIHandoffFencePresentError(RuntimeError):
     """An unresolved CI-handoff write closes the product's workflow window."""
+
+
+class RetrospectiveCompletionFencePresentError(RuntimeError):
+    """An unresolved retrospective write closes the product workflow window."""
 
 
 class AdmissionProviderCallIndeterminateError(RuntimeError):
@@ -238,6 +243,13 @@ class AdmissionCoordinationRepo:
                 raise CIHandoffFencePresentError(
                     "an unresolved CI handoff write blocks admission"
                 )
+            if (
+                session.get(RetrospectiveCompletionWriteFenceRow, product_id)
+                is not None
+            ):
+                raise RetrospectiveCompletionFencePresentError(
+                    "an unresolved retrospective write blocks admission"
+                )
             if session.get(AdmissionWriteFenceRow, product_id) is not None:
                 raise AdmissionWriteFenceError(
                     "an unresolved admission write already blocks this product"
@@ -300,6 +312,13 @@ class AdmissionCoordinationRepo:
                 raise CIHandoffFencePresentError(
                     "an unresolved CI handoff write blocks the workflow call"
                 )
+            if (
+                session.get(RetrospectiveCompletionWriteFenceRow, product_id)
+                is not None
+            ):
+                raise RetrospectiveCompletionFencePresentError(
+                    "an unresolved retrospective write blocks the workflow call"
+                )
             if session.get(AdmissionWriteFenceRow, product_id) is not None:
                 raise AdmissionWriteFenceError(
                     "an unresolved admission write blocks the workflow call"
@@ -347,6 +366,13 @@ class AdmissionCoordinationRepo:
             if session.get(CIHandoffWriteFenceRow, product_id) is not None:
                 raise CIHandoffFencePresentError(
                     "an unresolved CI handoff write blocks the admission call"
+                )
+            if (
+                session.get(RetrospectiveCompletionWriteFenceRow, product_id)
+                is not None
+            ):
+                raise RetrospectiveCompletionFencePresentError(
+                    "an unresolved retrospective write blocks admission"
                 )
             fence = session.get(AdmissionWriteFenceRow, product_id)
             if fence is None or fence.admission_run_id != admission_run_id:

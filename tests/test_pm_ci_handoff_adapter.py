@@ -40,7 +40,11 @@ from atlas.core.models import (
 )
 from atlas.core.models.pm_recovery import PmBlockerAuthorityKind, PmBlockerCode
 from atlas.evidence.pull import drive_evidence_pull
-from atlas.linear.client import LinearIssue, _github_publication_from_attachment
+from atlas.linear.client import (
+    LinearGitHubPublication,
+    LinearIssue,
+    _github_publication_from_attachment,
+)
 from atlas.pm import CIHandoffHooks, sync_tick
 from atlas.pm.admission_sync import AdmissionSyncReason
 from atlas.pm.ci_handoff import reconcile_ci_handoff_fence
@@ -154,6 +158,7 @@ def _draft_publication_issue(issue: LinearIssue) -> LinearIssue:
         }
     )
     assert publication is not None
+    assert isinstance(publication, LinearGitHubPublication)
     return LinearIssue(
         id=issue.id,
         title=issue.title,
@@ -1398,6 +1403,7 @@ def test_fenced_call_lock_blocks_replacement_until_provider_call_finishes(
     entered_call = Event()
     release_call = Event()
     replacement_started = Event()
+    replacement_acquired = Event()
 
     class BlockingClient(RecordingClient):
         def set_state(self, issue_id: str, state_id: str) -> LinearIssue:
@@ -1411,15 +1417,28 @@ def test_fenced_call_lock_blocks_replacement_until_provider_call_finishes(
 
     def replace_owner() -> bool:
         replacement_started.set()
-        return AdmissionCoordinationRepo(db).try_acquire(
+        acquired = AdmissionCoordinationRepo(db).try_acquire(
             product_id=PRODUCT_ID,
             owner_id=replacement_owner,
             acquired_at=NOW + timedelta(minutes=6),
             ttl=timedelta(minutes=5),
         )
+        replacement_acquired.set()
+        return acquired
+
+    def wait_for_replacement() -> None:
+        # Order the post-call race: replacement wins before finalization.
+        assert replacement_acquired.wait(timeout=5)
 
     with ThreadPoolExecutor(max_workers=2) as pool:
-        handoff_future = pool.submit(_run, db, client, _github(), now=NOW)
+        handoff_future = pool.submit(
+            _run,
+            db,
+            client,
+            _github(),
+            now=NOW,
+            hooks=CIHandoffHooks(after_provider_write=wait_for_replacement),
+        )
         assert entered_call.wait(timeout=5)
         replacement_future = pool.submit(replace_owner)
         assert replacement_started.wait(timeout=5)
@@ -1431,10 +1450,25 @@ def test_fenced_call_lock_blocks_replacement_until_provider_call_finishes(
 
     assert handoff.ci_handoff_mutations == 1
     assert client.state_writes == [(ticket.external_linear_id, "state-review-required")]
-    assert CIHandoffCoordinationRepo(db).get_fence(PRODUCT_ID) is None
+    decision = handoff.ci_handoff_decisions[0].reconciliation
+    assert decision is not None and decision.reason is CIHandoffReason.LEASE_LOST
+    assert CIHandoffCoordinationRepo(db).get_fence(PRODUCT_ID) is not None
+    stored = TicketRepo(db).get_by_key(ticket.key)
+    assert stored is not None and stored.status is TicketStatus.CI_PENDING
     AdmissionCoordinationRepo(db).release(
         product_id=PRODUCT_ID, owner_id=replacement_owner
     )
+    rebuilt = Database(str(db.engine.url))
+    recovered_client = _rebuilt_client(client)
+    recovered = _run(
+        rebuilt, recovered_client, _github(), now=NOW + timedelta(minutes=6, seconds=1)
+    )
+    assert recovered.ci_handoff_mutations == 0
+    stored = TicketRepo(rebuilt).get_by_key(ticket.key)
+    assert stored is not None and stored.status is TicketStatus.REVIEW_REQUIRED
+    assert CIHandoffCoordinationRepo(rebuilt).get_fence(PRODUCT_ID) is None
+    assert recovered_client.state_writes == []
+    rebuilt.engine.dispose()
 
 
 def test_guarded_ordinary_call_blocks_ci_fence_creation_until_call_finishes(

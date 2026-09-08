@@ -47,6 +47,7 @@ from atlas.verification import acceptance_criterion_hash
 
 NOW = datetime(2026, 6, 28, tzinfo=UTC)
 HEAD = "1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b"
+MERGE_COMMIT = "e" * 40
 PR_NUMBER = 126
 REPO = "atlas/atlas"
 
@@ -183,8 +184,17 @@ def fake(
 ) -> FakeGitHubClient:
     names = [IN_SCOPE_DOC, IN_SCOPE_SRC] if files is None else files
     pr_files = [{"filename": f} for f in names]
-    pull_request = (
-        {"head": {"sha": HEAD}, "title": title, "body": body, "merged": merged}
+    pull_request: dict[str, Any] | None = (
+        {
+            "number": PR_NUMBER,
+            "head": {"sha": HEAD, "repo": {"full_name": REPO}},
+            "base": {"ref": "main", "repo": {"full_name": REPO}},
+            "title": title,
+            "body": body,
+            "merged": merged,
+            "state": "closed" if merged else "open",
+            "merge_commit_sha": MERGE_COMMIT if merged else None,
+        }
         if with_pr
         else None
     )
@@ -520,6 +530,52 @@ def test_merged_pr_records_pr_merged_evidence_per_ticket(db: Database) -> None:
     assert merge.commit_sha == HEAD
     assert merge.status == ES.PASSED
     assert merge.created_by_type == ActorType.SYSTEM
+    assert merge.raw_payload == {
+        "schema_version": "pr-merged-evidence-v2",
+        "repository_owner": "atlas",
+        "repository_name": "atlas",
+        "pr_number": PR_NUMBER,
+        "contributor_head": HEAD,
+        "merge_commit": MERGE_COMMIT,
+    }
+    assert merge.external_run_id == (
+        f"merge:v2:{REPO}:{PR_NUMBER}:{HEAD}:{MERGE_COMMIT}"
+    )
+    assert merge.source_uri == f"https://github.com/{REPO}/pull/{PR_NUMBER}"
+    assert merge.payload_hash
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        pytest.param({"merge_commit_sha": None}, id="missing-merge-commit"),
+        pytest.param({"merge_commit_sha": "not-a-sha"}, id="invalid-merge-commit"),
+        pytest.param({"number": None}, id="missing-pr-number"),
+        pytest.param({"number": True}, id="boolean-pr-number"),
+        pytest.param({"state": "open"}, id="contradictory-state"),
+        pytest.param({"merged": "yes"}, id="truthy-merged"),
+        pytest.param({"head": {"sha": HEAD}}, id="missing-head-repository"),
+        pytest.param(
+            {"base": {"ref": "release", "repo": {"full_name": REPO}}},
+            id="non-main-base",
+        ),
+        pytest.param(
+            {"base": {"ref": "main", "repo": {"full_name": "other/atlas"}}},
+            id="repository-mismatch",
+        ),
+    ],
+)
+def test_incomplete_or_contradictory_merge_records_no_evidence(
+    db: Database, overrides: dict[str, Any]
+) -> None:
+    """Malformed provider identity cannot become system-tier merge proof."""
+    TicketRepo(db).add(make_ticket(key="ATLAS-200"))
+    pull_request = fake(merged=True).fetch_pull_request("atlas", "atlas", PR_NUMBER)
+    pull_request.update(overrides)
+    client = FakeGitHubClient(pull_request=pull_request)
+
+    assert run_verify(db, client) == EXIT_OK
+    assert not any(e.evidence_type == ET.PR_MERGED for e in EvidenceRepo(db).list())
 
 
 def test_unmerged_pr_records_no_pr_merged_evidence(db: Database) -> None:

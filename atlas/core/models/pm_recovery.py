@@ -73,6 +73,8 @@ class PmBlockerCode(StrEnum):
     CI_EVIDENCE_AMBIGUOUS = "ci_evidence_ambiguous"
     AUTHORITY_CHANGED = "authority_changed"
     WRITE_FENCE_UNRESOLVED = "write_fence_unresolved"
+    RETROSPECTIVE_PROOF_INCOMPLETE = "retrospective_proof_incomplete"
+    RETROSPECTIVE_PROOF_AMBIGUOUS = "retrospective_proof_ambiguous"
 
 
 class PmBlockerAuthorityKind(StrEnum):

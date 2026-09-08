@@ -9,7 +9,12 @@ from datetime import datetime, timedelta
 from uuid import UUID
 
 from atlas.core.keys import natural_key
-from atlas.core.models import CIHandoffReason, Ticket, TicketStatus
+from atlas.core.models import (
+    CIHandoffReason,
+    RetrospectiveCompletionReason,
+    Ticket,
+    TicketStatus,
+)
 from atlas.core.models.pm_recovery import (
     MAX_PM_STARVED_CANDIDATES,
     DurablePmBlocker,
@@ -23,16 +28,22 @@ from atlas.core.models.pm_recovery import (
     PmRecoveryEpisodeIdentity,
     PmStarvedCandidateRef,
 )
-from atlas.linear.client import LinearIssue
+from atlas.linear.client import (
+    LinearGitHubPublication,
+    LinearIssue,
+    LinearMergedGitHubPublication,
+)
 from atlas.pm.ci_handoff_adapter import (
     CIHandoffAdapterReason,
     CIHandoffAdapterResult,
     resolve_issue_bound_publication,
 )
+from atlas.pm.retrospective_completion import resolve_historical_publication
 from atlas.storage import (
     CIHandoffCoordinationRepo,
     Database,
     PmRecoveryRepo,
+    RetrospectiveCompletionCoordinationRepo,
     TicketRepo,
     TicketStatusTransitionRepo,
 )
@@ -111,11 +122,21 @@ def _lifecycle_entry(db: Database, ticket: Ticket) -> str:
 def _publication_generation(
     ticket: Ticket, initial_issues: list[LinearIssue]
 ) -> str | None:
-    publication, reason = resolve_issue_bound_publication(ticket, initial_issues)
-    if publication is None:
-        # Missing/ambiguous observations are blockers, never replacement proof.
-        assert reason is not None
-        return None
+    ordinary_publication, reason = resolve_issue_bound_publication(
+        ticket, initial_issues
+    )
+    publication: LinearGitHubPublication | LinearMergedGitHubPublication
+    if ordinary_publication is not None:
+        publication = ordinary_publication
+    else:
+        historical, historical_reason = resolve_historical_publication(
+            ticket, initial_issues
+        )
+        if historical is None:
+            # Missing/ambiguous observations are blockers, never replacement proof.
+            assert reason is not None and historical_reason is not None
+            return None
+        publication = historical
     return _canonical_hash(
         {
             "attachment_id": publication.attachment_id,
@@ -307,6 +328,24 @@ def _fence_authority_id(
     return f"ci-handoff-fence:{fence.reconciliation_id}"
 
 
+def _retrospective_fence_authority_id(
+    db: Database,
+    candidate: Ticket,
+    reconciliation_id: UUID | None,
+) -> str:
+    fence = RetrospectiveCompletionCoordinationRepo(db).get_fence(candidate.product_id)
+    if (
+        fence is None
+        or reconciliation_id is None
+        or fence.reconciliation_id != reconciliation_id
+        or fence.ticket_id != candidate.id
+    ):
+        raise CIHandoffFairnessError(
+            "retrospective result no longer matches the exact live fence"
+        )
+    return f"retrospective-completion-fence:{fence.reconciliation_id}"
+
+
 def _blocker_intent(
     *,
     db: Database,
@@ -332,21 +371,92 @@ def _blocker_intent(
     elif result.reason is CIHandoffAdapterReason.IDENTITY_UNAVAILABLE:
         code = PmBlockerCode.CI_EVIDENCE_AMBIGUOUS
         kind = PmBlockerKind.UNKNOWN
+    elif result.retrospective is not None:
+        retrospective_reason = result.retrospective.reason
+        surviving_retrospective_fence = RetrospectiveCompletionCoordinationRepo(
+            db
+        ).get_fence(candidate.product_id)
+        if retrospective_reason is RetrospectiveCompletionReason.LEASE_UNAVAILABLE or (
+            retrospective_reason is RetrospectiveCompletionReason.LEASE_LOST
+            and surviving_retrospective_fence is None
+        ):
+            code = PmBlockerCode.LEASE_UNAVAILABLE
+            kind = PmBlockerKind.RETRYABLE
+            authority_kind = PmBlockerAuthorityKind.LEASE
+            authority_id = f"pm-write-lease:{candidate.product_id}"
+        elif retrospective_reason in {
+            RetrospectiveCompletionReason.WRITE_INDETERMINATE,
+            RetrospectiveCompletionReason.FENCE_STILL_UNRESOLVED,
+            RetrospectiveCompletionReason.FENCE_RECONCILED_MOVED,
+            RetrospectiveCompletionReason.CONCURRENT_WRITE_FENCE,
+            RetrospectiveCompletionReason.LEASE_LOST,
+        }:
+            code = PmBlockerCode.WRITE_FENCE_UNRESOLVED
+            kind = PmBlockerKind.UNRESOLVED_FENCE
+            authority_kind = PmBlockerAuthorityKind.FENCE
+            authority_id = _retrospective_fence_authority_id(
+                db, candidate, result.retrospective.reconciliation_id
+            )
+        elif retrospective_reason in {
+            RetrospectiveCompletionReason.VERIFICATION_UNPROVEN,
+            RetrospectiveCompletionReason.ACCEPTANCE_UNPROVEN,
+            RetrospectiveCompletionReason.MERGED_EVIDENCE_UNPROVEN,
+            RetrospectiveCompletionReason.CONTRIBUTOR_HEAD_UNAVAILABLE,
+        }:
+            code = PmBlockerCode.RETROSPECTIVE_PROOF_INCOMPLETE
+            kind = PmBlockerKind.ROUTINE_WAIT
+        elif retrospective_reason in {
+            RetrospectiveCompletionReason.PUBLICATION_AMBIGUOUS,
+            RetrospectiveCompletionReason.MERGED_PR_IDENTITY_MISMATCH,
+            RetrospectiveCompletionReason.PROOF_CHANGED,
+        }:
+            code = PmBlockerCode.RETROSPECTIVE_PROOF_AMBIGUOUS
+            kind = PmBlockerKind.UNKNOWN
+        elif retrospective_reason in {
+            RetrospectiveCompletionReason.MERGED_PR_UNPROVEN,
+            RetrospectiveCompletionReason.CANONICAL_MAIN_UNPROVEN,
+            RetrospectiveCompletionReason.MERGE_ANCESTRY_UNPROVEN,
+            RetrospectiveCompletionReason.BOARD_REVALIDATION_FAILED,
+            RetrospectiveCompletionReason.POLICY_UNAVAILABLE,
+            RetrospectiveCompletionReason.SNAPSHOT_INCOMPLETE,
+        }:
+            code = PmBlockerCode.PROVIDER_UNAVAILABLE
+            kind = PmBlockerKind.RETRYABLE
+        elif retrospective_reason in {
+            RetrospectiveCompletionReason.PUBLICATION_UNAVAILABLE,
+        }:
+            code = PmBlockerCode.PUBLICATION_NOT_YET_COMPLETE
+            kind = PmBlockerKind.ROUTINE_WAIT
+        elif retrospective_reason in {
+            RetrospectiveCompletionReason.TICKET_NOT_CI_PENDING,
+            RetrospectiveCompletionReason.TICKET_IDENTITY_MISMATCH,
+            RetrospectiveCompletionReason.BOARD_STATE_MOVED,
+            RetrospectiveCompletionReason.POLICY_CHANGED,
+            RetrospectiveCompletionReason.SNAPSHOT_CHANGED,
+        }:
+            code = PmBlockerCode.AUTHORITY_CHANGED
+            kind = PmBlockerKind.RETRYABLE
+        else:
+            raise CIHandoffFairnessError(
+                f"unmapped held retrospective reason: {retrospective_reason.value}"
+            )
     elif result.reconciliation is not None:
-        reason = result.reconciliation.reason
-        surviving_fence = CIHandoffCoordinationRepo(db).get_fence(candidate.product_id)
+        ci_reason = result.reconciliation.reason
+        surviving_ci_fence = CIHandoffCoordinationRepo(db).get_fence(
+            candidate.product_id
+        )
         if (
-            reason is CIHandoffReason.LEASE_LOST
-            and surviving_fence is not None
-            and surviving_fence.ticket_id == candidate.id
-            and surviving_fence.reconciliation_id
+            ci_reason is CIHandoffReason.LEASE_LOST
+            and surviving_ci_fence is not None
+            and surviving_ci_fence.ticket_id == candidate.id
+            and surviving_ci_fence.reconciliation_id
             == result.reconciliation.reconciliation_id
         ):
             code = PmBlockerCode.WRITE_FENCE_UNRESOLVED
             kind = PmBlockerKind.UNRESOLVED_FENCE
             authority_kind = PmBlockerAuthorityKind.FENCE
-            authority_id = f"ci-handoff-fence:{surviving_fence.reconciliation_id}"
-        elif reason in {
+            authority_id = f"ci-handoff-fence:{surviving_ci_fence.reconciliation_id}"
+        elif ci_reason in {
             CIHandoffReason.LEASE_UNAVAILABLE,
             CIHandoffReason.LEASE_LOST,
         }:
@@ -354,7 +464,7 @@ def _blocker_intent(
             kind = PmBlockerKind.RETRYABLE
             authority_kind = PmBlockerAuthorityKind.LEASE
             authority_id = f"pm-write-lease:{candidate.product_id}"
-        elif reason in {
+        elif ci_reason in {
             CIHandoffReason.CONCURRENT_WRITE_FENCE,
             CIHandoffReason.FENCE_STILL_UNRESOLVED,
             CIHandoffReason.WRITE_INDETERMINATE,
@@ -367,14 +477,14 @@ def _blocker_intent(
                 candidate,
                 result.reconciliation.reconciliation_id,
             )
-        elif reason in {
+        elif ci_reason in {
             CIHandoffReason.REQUIRED_CHECKS_PENDING,
             CIHandoffReason.REQUIRED_CHECKS_MISSING,
             CIHandoffReason.NO_CI_REQUIRED_CHECKS,
         }:
             code = PmBlockerCode.CI_EVIDENCE_NOT_YET_COMPLETE
             kind = PmBlockerKind.ROUTINE_WAIT
-        elif reason in {
+        elif ci_reason in {
             CIHandoffReason.MALFORMED_EVIDENCE,
             CIHandoffReason.CONTRADICTORY_EVIDENCE,
             CIHandoffReason.INDETERMINATE_EVIDENCE,
@@ -382,10 +492,10 @@ def _blocker_intent(
             code = PmBlockerCode.CI_EVIDENCE_AMBIGUOUS
             kind = (
                 PmBlockerKind.RETRYABLE
-                if reason is CIHandoffReason.INDETERMINATE_EVIDENCE
+                if ci_reason is CIHandoffReason.INDETERMINATE_EVIDENCE
                 else PmBlockerKind.UNKNOWN
             )
-        elif reason in {
+        elif ci_reason in {
             CIHandoffReason.INFRASTRUCTURE_EVIDENCE,
             CIHandoffReason.GITHUB_INFRASTRUCTURE,
             CIHandoffReason.BOARD_REVALIDATION_FAILED,
@@ -394,7 +504,7 @@ def _blocker_intent(
         }:
             code = PmBlockerCode.PROVIDER_UNAVAILABLE
             kind = PmBlockerKind.RETRYABLE
-        elif reason in {
+        elif ci_reason in {
             CIHandoffReason.STALE_EVIDENCE,
             CIHandoffReason.EVIDENCE_CHANGED,
             CIHandoffReason.TICKET_IDENTITY_MISMATCH,
@@ -411,7 +521,7 @@ def _blocker_intent(
             kind = PmBlockerKind.RETRYABLE
         else:
             raise CIHandoffFairnessError(
-                f"unmapped held CI-handoff reason: {reason.value}"
+                f"unmapped held CI-handoff reason: {ci_reason.value}"
             )
     else:
         raise CIHandoffFairnessError(
@@ -459,6 +569,14 @@ def _evaluation_id(
     result: CIHandoffAdapterResult,
     now: datetime,
 ) -> str:
+    if (
+        result.retrospective is not None
+        and result.retrospective.reconciliation_id is not None
+    ):
+        return (
+            f"retrospective-reconciliation:{result.retrospective.reconciliation_id}:"
+            f"{episode.fairness_cursor}:{result.retrospective.reason.value}"
+        )
     if (
         result.reconciliation is not None
         and result.reconciliation.reconciliation_id is not None
@@ -522,6 +640,14 @@ def record_fair_ci_handoff_evaluation(
             CIHandoffReason.FENCE_RECONCILED_MOVED,
         }
     )
+    retrospective_resolved_fence = bool(
+        result.retrospective
+        and result.retrospective.reason
+        in {
+            RetrospectiveCompletionReason.FENCE_RECONCILED_TARGET,
+            RetrospectiveCompletionReason.FENCE_RECONCILED_SOURCE,
+        }
+    )
     fence_resolution_without_blocker = bool(
         result.reconciliation
         and result.reconciliation.reason
@@ -529,6 +655,9 @@ def record_fair_ci_handoff_evaluation(
             CIHandoffReason.FENCE_RECONCILED_TARGET,
             CIHandoffReason.FENCE_RECONCILED_SOURCE,
         }
+    )
+    fence_resolution_without_blocker = bool(
+        fence_resolution_without_blocker or retrospective_resolved_fence
     )
     authoritative_progress = bool(
         result.reconciliation
@@ -550,8 +679,11 @@ def record_fair_ci_handoff_evaluation(
     expected_fence_reconciliation_id = None
     expected_fence_ticket_id = None
     if blocker is not None and blocker.authority_kind is PmBlockerAuthorityKind.FENCE:
-        assert result.reconciliation is not None
-        expected_fence_reconciliation_id = result.reconciliation.reconciliation_id
+        if result.retrospective is not None:
+            expected_fence_reconciliation_id = result.retrospective.reconciliation_id
+        else:
+            assert result.reconciliation is not None
+            expected_fence_reconciliation_id = result.reconciliation.reconciliation_id
         expected_fence_ticket_id = candidate.id
     recorded = (
         PmRecoveryRepo(db)
@@ -570,9 +702,14 @@ def record_fair_ci_handoff_evaluation(
         .episode
     )
 
-    if resolved_fence:
-        assert result.reconciliation is not None
-        reconciliation_id = result.reconciliation.reconciliation_id
+    if resolved_fence or retrospective_resolved_fence:
+        reconciliation_id = (
+            result.retrospective.reconciliation_id
+            if retrospective_resolved_fence and result.retrospective is not None
+            else result.reconciliation.reconciliation_id
+            if result.reconciliation is not None
+            else None
+        )
         assert reconciliation_id is not None
         _supersede_fence_blockers(
             db=db,
@@ -584,6 +721,8 @@ def record_fair_ci_handoff_evaluation(
     current = TicketRepo(db).get_by_key(candidate.key)
     fence_remains = (
         CIHandoffCoordinationRepo(db).get_fence(candidate.product_id) is not None
+        or RetrospectiveCompletionCoordinationRepo(db).get_fence(candidate.product_id)
+        is not None
     )
     if (
         current is not None
@@ -621,10 +760,18 @@ def record_fair_ci_handoff_contention(
     episode = selection.episode
     if candidate is None or episode is None:
         raise CIHandoffFairnessError("cannot diagnose an empty fairness selection")
-    if (
-        result.reconciliation is None
-        or result.reconciliation.reason is not CIHandoffReason.LEASE_UNAVAILABLE
-    ):
+    lease_unavailable = bool(
+        (
+            result.reconciliation is not None
+            and result.reconciliation.reason is CIHandoffReason.LEASE_UNAVAILABLE
+        )
+        or (
+            result.retrospective is not None
+            and result.retrospective.reason
+            is RetrospectiveCompletionReason.LEASE_UNAVAILABLE
+        )
+    )
+    if not lease_unavailable:
         raise CIHandoffFairnessError("contention recording requires lease_unavailable")
     blocker = _blocker_intent(
         db=db,

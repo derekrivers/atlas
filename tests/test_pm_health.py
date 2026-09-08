@@ -446,8 +446,8 @@ def test_retrospective_done_contract_requires_complete_accepted_head_proof() -> 
         "PM Retrospective Completion Reconciler",
         "product-scoped retrospective-completion lease",
         "`retrospective_completion_write_fence`",
-        "This edge is **INACTIVE**",
-        "current runtime ownership remains unchanged",
+        "This edge is **ACTIVE IN REPOSITORY CODE**",
+        "Code acceptance is not deployment",
     ):
         assert required_clause in contract
     assert (
@@ -503,14 +503,14 @@ def test_fairness_contract_uses_a_monotonic_sequence_without_newcomer_cutting() 
     assert "greatest cursor" not in contract
 
 
-def test_manifest_keeps_specialist_authority_and_inactive_edge_coherent() -> None:
+def test_manifest_keeps_specialist_authority_and_active_edge_coherent() -> None:
     manifest = " ".join(
         (CONTRACT_PATH.parents[1] / "MANIFEST.md").read_text(encoding="utf-8").split()
     )
 
     assert "pm-resilience-and-retrospective-recovery.md" in manifest
     assert "write-boundary recovery, eventual convergence" in manifest
-    assert "target retrospective edge remains inactive" in manifest
+    assert "fenced retrospective edge is active in repository code" in manifest
 
 
 def test_policy_rejects_incoherent_thresholds() -> None:

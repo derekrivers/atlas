@@ -32,6 +32,7 @@ from atlas.storage.tables import (
     PmBlockerStarvedCandidateRow,
     PmRecoveryEpisodeRow,
     PmRecoverySequenceCounterRow,
+    RetrospectiveCompletionWriteFenceRow,
     TicketRow,
 )
 
@@ -732,9 +733,22 @@ class PmRecoveryRepo:
                     .values(state=CIHandoffWriteFenceRow.state)
                 )
                 if getattr(fence_lock, "rowcount", 0) != 1:
-                    raise PmRecoveryStorageError(
-                        PmRecoveryStorageCode.FENCE_IDENTITY_CONFLICT
+                    fence_lock = session.execute(
+                        sa.update(RetrospectiveCompletionWriteFenceRow)
+                        .where(
+                            RetrospectiveCompletionWriteFenceRow.product_id
+                            == current.product_id,
+                            RetrospectiveCompletionWriteFenceRow.reconciliation_id
+                            == expected_fence_reconciliation_id,
+                            RetrospectiveCompletionWriteFenceRow.ticket_id
+                            == expected_fence_ticket_id,
+                        )
+                        .values(state=RetrospectiveCompletionWriteFenceRow.state)
                     )
+                    if getattr(fence_lock, "rowcount", 0) != 1:
+                        raise PmRecoveryStorageError(
+                            PmRecoveryStorageCode.FENCE_IDENTITY_CONFLICT
+                        )
             episode = session.get(PmRecoveryEpisodeRow, episode_id)
             if episode is None:
                 raise PmRecoveryStorageError(PmRecoveryStorageCode.EPISODE_NOT_FOUND)

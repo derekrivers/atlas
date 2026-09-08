@@ -22,6 +22,7 @@ from atlas.linear.client import (
     LinearGitHubPublication,
     LinearGraphQLClient,
     LinearIssue,
+    LinearMergedGitHubPublication,
     LinearProjectIssues,
     LinearRateLimitError,
     MissingLinearTokenError,
@@ -37,6 +38,9 @@ from atlas.linear.ownership import (
     LinearStatusMapError,
     definition_payload,
     status_from_issue,
+)
+from atlas.linear.retrospective_completion import (
+    LinearRetrospectiveCompletionWriter,
 )
 
 __all__ = [
@@ -58,8 +62,10 @@ __all__ = [
     "LinearGitHubPublication",
     "LinearGraphQLClient",
     "LinearIssue",
+    "LinearMergedGitHubPublication",
     "LinearProjectIssues",
     "LinearRateLimitError",
+    "LinearRetrospectiveCompletionWriter",
     "LinearStatusMap",
     "LinearStatusMapError",
     "MissingLinearTokenError",

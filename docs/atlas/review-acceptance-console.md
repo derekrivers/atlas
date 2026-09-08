@@ -338,6 +338,16 @@ assessment, timeout, malformed response or other external-read failure returns
 evidence, verification-check, ticket or external-system write and never exposes
 cached true after a failed live read.
 
+After the exact head has merged, the immutable stored `MERGE_READY` session is
+also the retrospective completion owner's human-tier proof source. It is
+eligible only with the same current criteria fingerprint, exact contributor
+head, complete criterion/scope/blanket confirmations and shared verification
+receipt; recovery also requires the retained PASSED verdict and system-tier
+evidence and freshly re-evaluates them. The session alone grants no workflow
+write, no merge authority and no waiver. Missing or stale historical acceptance
+holds the candidate; the reconciler does not invent a console action or infer
+human approval from merge state.
+
 The console displays the exact verified head and a clear instruction to merge
 that head manually in GitHub. It does not expose a merge button.
 

@@ -78,13 +78,20 @@ from atlas.core.models.pm_sync_receipt import (
     PmSyncReceiptResult,
 )
 from atlas.core.models.product import Product
+from atlas.core.models.retrospective_completion import (
+    RetrospectiveCompletionDecision,
+    RetrospectiveCompletionReason,
+    RetrospectiveCompletionReconciliation,
+)
 from atlas.core.models.tick_failure import TickFailure
 from atlas.core.models.ticket import (
+    RetrospectiveTransitionOwner,
     Ticket,
     TicketStatus,
     TicketTransitionOwner,
     TicketType,
     ci_pending_transition_owner,
+    retrospective_completion_transition_owner,
 )
 from atlas.core.models.ticket_status_transition import TicketStatusTransition
 from atlas.core.models.verification_check import (
@@ -155,6 +162,10 @@ __all__ = [
     "PmSyncReceiptResult",
     "Product",
     "ProviderEvidenceAvailability",
+    "RetrospectiveCompletionDecision",
+    "RetrospectiveCompletionReason",
+    "RetrospectiveCompletionReconciliation",
+    "RetrospectiveTransitionOwner",
     "TickFailure",
     "Ticket",
     "TicketDependency",
@@ -165,4 +176,5 @@ __all__ = [
     "VerificationCheck",
     "VerificationCheckType",
     "ci_pending_transition_owner",
+    "retrospective_completion_transition_owner",
 ]
