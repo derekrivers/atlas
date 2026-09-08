@@ -160,6 +160,23 @@ entry. Every other entry and every exit remains unchanged and appends one
 deduplicated `out_of_ownership_transition` anomaly per observed state change;
 even a mapped Review Required or Changes Requested observation is not proof of
 the trusted Atlas CI classification that ATLAS-256 will own.
+Mapped Done observations are gated separately at the same inbound boundary. A
+provider state is not completion proof: generic pull may finalise only a local
+`review_required → done` whose current persisted checks and system-tier merged
+proof satisfy the ordinary completion owner's shared predicate. Every other
+Done observation leaves status, `completed_at`, transition history and
+completion feedback unchanged and appends one deduplicated
+`out_of_ownership_transition` anomaly per observed state change. Rejection
+commits that anomaly atomically with the observed-state dedup cursor, so a
+restart cannot retain the cursor while losing its diagnostic. The proof is
+re-evaluated while an identical Done observation persists so a legitimate
+ordinary provider effect can converge after process reconstruction. Direct
+`ci_pending → done` remains exclusively owned and locally finalised by the
+separately fenced PM Retrospective Completion Reconciler; generic pull never
+consumes retrospective records as authority. Ordinary proof reconstruction
+uses exact evidence ids plus an indexed ticket/type/actor/commit merge lookup;
+it neither materialises nor scans the global append-only evidence history for
+each Done observation.
 The Linear state `type` is used only as load-time validation
 (`validate_against_states`): it confirms each configured id still exists on
 the team's board (team-scoped since ATLAS-148; stale-map guard — rotated
@@ -811,11 +828,12 @@ stronger recovery, eventual-convergence and health contract is owned by
 interruption may instead leave a durable blocker. The scheduler is a plain loop
 (or cron) — no distributed job system.
 
-**Step → ticket map.** Steps 1+2 (pull a mapped status; push owned
-definitions) are ATLAS-42 (`atlas/pm/sync.py`, `sync_tick`). Step 1's "log
-anomalies otherwise" clause — an unmapped Linear state appends one
-`OUT_OF_OWNERSHIP_TRANSITION` `DebtItem` per transition — is ATLAS-118 (woven
-into `sync_tick`'s pull). AgentRun reconstruction after the pull is ATLAS-166.
+**Step → ticket map.** Steps 1+2 (pull an owner-authorised mapped status;
+push owned definitions) are ATLAS-42 (`atlas/pm/sync.py`, `sync_tick`). Step
+1's "log anomalies otherwise" clause — an unmapped Linear state or a mapped
+workflow edge lacking its recognised owner appends one
+`OUT_OF_OWNERSHIP_TRANSITION` `DebtItem` per observation transition — is woven
+into `sync_tick`'s pull. AgentRun reconstruction after the pull is ATLAS-166.
 Step 3's original readiness writer is ATLAS-43; ATLAS-249 replaces its
 promote-everything call site with the lease/revalidation/fence protocol while
 preserving `LinearClient.set_state` as the dedicated ownership boundary.
@@ -931,8 +949,9 @@ false-dedup (vanishingly unlikely).
 - Out-of-ownership state transitions (ATLAS-118): each observed transition
   appends one `OUT_OF_OWNERSHIP_TRANSITION` `DebtItem` row (append-only,
   system-written). The pull observes this when a Linear state does not follow
-  the ownership table — i.e. `status_from_issue` returns `None` (an unmapped
-  state). "Per transition" is enforced by `Ticket.last_observed_linear_state_id`:
+  the ownership table: either `status_from_issue` returns `None` (an unmapped
+  state), or a mapped CI-pending or Done edge lacks its owning authority.
+  "Per transition" is enforced by `Ticket.last_observed_linear_state_id`:
   the row fires only when the observed state id *changes* into an
   out-of-ownership state, so an unmapped state that persists across ticks logs
   one row, not one per tick, while a re-occurrence (unmapped → mapped →
@@ -945,9 +964,11 @@ false-dedup (vanishingly unlikely).
 the PM Engine from deterministic observation — `created_by_type = system`,
 so no trust tier and no PENDING cap (it is not evidence). One row per
 observation; recurrence and severity derive by query. Recording a
-`DebtItem` never changes ticket state: only the review-cycling rule below
-routes to `Needs Human`. Logging debt and moving a ticket are separate
-concerns.
+`DebtItem` never changes ticket lifecycle state: only the review-cycling rule
+below routes to `Needs Human`. The unowned Done path atomically advances only
+its observation-dedup cursor with the matching diagnostic, so a crash cannot
+suppress that completion-authority explanation. Logging debt and moving a
+ticket are otherwise separate concerns.
 
 After the review-cycle and dwell-breach clauses append their `DebtItem` rows,
 the same step-5 anomaly pass triggers lesson extraction for each newly observed

@@ -50,7 +50,7 @@ from uuid import UUID, uuid4
 
 import pytest
 from linear_fakes import InMemoryLinearClient
-from pm_temporal_harness import SimulatedProcessDeath
+from pm_temporal_harness import SimulatedProcessDeath, TemporalHarness
 from test_lesson_model import lesson_kwargs
 from test_models_validation import NOW, dependency_kwargs, product_kwargs, ticket_kwargs
 
@@ -60,6 +60,7 @@ from atlas.core.models import (
     AnomalyType,
     ContextPack,
     DebtItem,
+    Evidence,
     Lesson,
     PmSyncReceiptResult,
     Product,
@@ -67,6 +68,7 @@ from atlas.core.models import (
     TicketDependency,
     VerificationCheck,
 )
+from atlas.core.models.evidence import EvidenceType
 from atlas.core.models.ticket import TicketStatus
 from atlas.linear.client import (
     LinearAPIError,
@@ -92,6 +94,7 @@ from atlas.storage import (
     Database,
     DebtItemRepo,
     DeliveryAdmissionPolicyRepo,
+    EvidenceRepo,
     LessonRepo,
     PmSyncReceiptRepo,
     ProductRepo,
@@ -147,6 +150,7 @@ PROJECT_ID = "project-1"
 
 EARLIER = NOW
 LATER = NOW + timedelta(hours=1)
+PROOF_COMMIT = "a" * 40
 PACK_DOC = SourceDocument(
     path="docs/atlas/implementation-roadmap.md",
     sha="sha-pack-doc",
@@ -516,6 +520,65 @@ def seed_passed_verification(db: Database, ticket: Ticket, now: datetime = NOW) 
         )
 
 
+def seed_ordinary_completion_authority(
+    db: Database,
+    ticket: Ticket,
+    now: datetime = NOW,
+    *,
+    proof_commit: str = PROOF_COMMIT,
+    merge_commit: str | None = None,
+) -> None:
+    """Persist the ordinary owner's PASSED proof and matching merged record."""
+
+    proof = Evidence(
+        id=uuid4(),
+        product_id=ticket.product_id,
+        ticket_id=ticket.id,
+        evidence_type=EvidenceType.TEST_RESULT,
+        status=EvidenceStatus.PASSED,
+        summary="system proof",
+        commit_sha=proof_commit,
+        external_run_id=f"tests:{proof_commit}",
+        payload_hash="sha256:" + "0" * 64,
+        created_by_type=ActorType.SYSTEM,
+        created_by_id="github-actions",
+        created_at=now,
+    )
+    EvidenceRepo(db).add(proof)
+    for check in required_checks(ticket):
+        if not check.required:
+            continue
+        VerificationCheckRepo(db).add(
+            VerificationCheck(
+                id=uuid4(),
+                ticket_id=ticket.id,
+                check_type=check.check_type,
+                status=EvidenceStatus.PASSED,
+                summary=f"{check.check_type.value} passed",
+                required=True,
+                evidence_ids=[proof.id],
+                created_at=now,
+                completed_at=now,
+            )
+        )
+    EvidenceRepo(db).add(
+        Evidence(
+            id=uuid4(),
+            product_id=ticket.product_id,
+            ticket_id=ticket.id,
+            evidence_type=EvidenceType.PR_MERGED,
+            status=EvidenceStatus.PASSED,
+            summary="merged at the verified head",
+            commit_sha=merge_commit or proof_commit,
+            external_run_id=f"merge:{merge_commit or proof_commit}",
+            payload_hash="sha256:" + "1" * 64,
+            created_by_type=ActorType.SYSTEM,
+            created_by_id="github",
+            created_at=now,
+        )
+    )
+
+
 # --- idempotency -----------------------------------------------------------
 
 
@@ -767,15 +830,29 @@ def test_linear_status_change_lands_in_one_tick(db: Database) -> None:
     assert result.status_pulled == 1
 
 
-def test_done_pull_stamps_completed_at_and_preserves_updated_at(
-    db: Database,
+@pytest.mark.parametrize(
+    "source",
+    [
+        TicketStatus.BACKLOG,
+        TicketStatus.PLANNED,
+        TicketStatus.BLOCKED,
+        TicketStatus.READY_FOR_AGENT,
+        TicketStatus.IN_PROGRESS,
+        TicketStatus.PR_OPEN,
+        TicketStatus.REVIEW_REQUIRED,
+        TicketStatus.CHANGES_REQUESTED,
+        TicketStatus.NEEDS_HUMAN_DECISION,
+    ],
+)
+def test_unsupported_done_observation_from_each_nonterminal_source_fails_closed(
+    db: Database, source: TicketStatus
 ) -> None:
     client = RecordingClient()
     ticket = seed_ticket(
         db,
         client,
         key="ATLAS-206",
-        status=TicketStatus.REVIEW_REQUIRED,
+        status=source,
         updated_at=EARLIER,
         status_entered_at=NOW,
         issue_state=DONE_STATE,
@@ -786,10 +863,16 @@ def test_done_pull_stamps_completed_at_and_preserves_updated_at(
 
     pulled = TicketRepo(db).get_by_key("ATLAS-206")
     assert pulled is not None
-    assert result.status_pulled == 1
-    assert pulled.status == TicketStatus.DONE
-    assert pulled.completed_at == completed_at  # wrong answer: permanently NULL
-    assert pulled.updated_at == ticket.updated_at  # wrong answer: spurious re-push
+    assert result.status_pulled == 0
+    assert pulled.status is source
+    assert pulled.status_entered_at == NOW
+    assert pulled.completed_at is None
+    assert pulled.updated_at == ticket.updated_at
+    assert TicketStatusTransitionRepo(db).list_for_ticket(ticket.id) == []
+    rows = debt_rows(db, AnomalyType.OUT_OF_OWNERSHIP_TRANSITION, ticket.id)
+    assert len(rows) == 1
+    assert "lacks recognised completion authority" in rows[0].summary
+    assert (ticket.external_linear_id, DONE_STATE.id) not in client.state_writes
 
 
 def test_done_reobservation_does_not_restamp_completed_at(db: Database) -> None:
@@ -884,18 +967,21 @@ def test_done_transition_extracts_lesson_when_notable(db: Database) -> None:
         client,
         key="ATLAS-199",
         status=TicketStatus.REVIEW_REQUIRED,
-        issue_state=DONE_STATE,
+        issue_state=REVIEW_REQUIRED_STATE,
         updated_at=NOW - timedelta(hours=3),
         status_entered_at=NOW - timedelta(hours=1),
     )
     # Same ticket_type as the prior failure; PASSED on the first review cycle.
     assert prior.ticket_type == ticket.ticket_type
-    seed_passed_verification(db, ticket)
+    seed_ordinary_completion_authority(db, ticket)
 
+    first = run(db, client, lesson_client=lesson_client)
     result = run(db, client, lesson_client=lesson_client)
 
     pulled = TicketRepo(db).get_by_key("ATLAS-199")
     assert pulled is not None and pulled.status == TicketStatus.DONE
+    assert first.completed == 1
+    assert client.state_writes == [(ticket.external_linear_id, DONE_STATE.id)]
     lessons = draft_lessons(db)
     assert result.draft_lessons_filed == 1
     assert len(lessons) == 1
@@ -914,7 +1000,7 @@ def test_done_transition_records_citation_feedback_for_latest_pack(
         client,
         key="ATLAS-196",
         status=TicketStatus.REVIEW_REQUIRED,
-        issue_state=DONE_STATE,
+        issue_state=REVIEW_REQUIRED_STATE,
     )
     lesson = Lesson(
         **lesson_kwargs()
@@ -939,15 +1025,318 @@ def test_done_transition_records_citation_feedback_for_latest_pack(
         )
     )
 
+    seed_ordinary_completion_authority(db, ticket)
+    first = run(db, client)
     result = run(db, client)
 
     pulled = TicketRepo(db).get_by_key("ATLAS-196")
     cited = LessonRepo(db).get(lesson.id)
     assert pulled is not None and pulled.status == TicketStatus.DONE
+    assert first.completed == 1
+    assert client.state_writes == [(ticket.external_linear_id, DONE_STATE.id)]
     assert result.status_pulled == 1
     assert cited is not None
     assert cited.source_ticket_id == lesson.source_ticket_id
     assert cited.related_ticket_ids == [ticket.id]
+
+
+def test_unsupported_done_observation_has_no_completion_side_effects(
+    db: Database,
+) -> None:
+    client = RecordingClient()
+    lesson_client = FakeLessonClient(tag="unsupported-done")
+    prior = seed_ticket(
+        db,
+        client,
+        key="ATLAS-194",
+        status=TicketStatus.REJECTED,
+        status_entered_at=NOW - timedelta(days=3),
+        with_issue=False,
+    )
+    ticket = seed_ticket(
+        db,
+        client,
+        key="ATLAS-195",
+        status=TicketStatus.REVIEW_REQUIRED,
+        status_entered_at=NOW - timedelta(hours=1),
+        issue_state=DONE_STATE,
+    )
+    assert prior.ticket_type == ticket.ticket_type
+    lesson = Lesson(
+        **lesson_kwargs()
+        | {
+            "id": uuid4(),
+            "product_id": ticket.product_id,
+            "status": EntityStatus.ACTIVE,
+            "related_ticket_ids": [],
+        }
+    )
+    LessonRepo(db).add(lesson)
+    ContextPackRepo(db).add(
+        ContextPack(
+            id=uuid4(),
+            product_id=ticket.product_id,
+            ticket_id=ticket.id,
+            title=ticket.title,
+            objective=ticket.objective,
+            historical_lessons=[lesson.id],
+            rendered_markdown="## Lessons\n\n### Reused lesson",
+            created_at=NOW - timedelta(minutes=1),
+        )
+    )
+
+    result = run(db, client, lesson_client=lesson_client)
+
+    retained = TicketRepo(db).get_by_key(ticket.key)
+    cited = LessonRepo(db).get(lesson.id)
+    assert retained is not None
+    assert retained.status is TicketStatus.REVIEW_REQUIRED
+    assert retained.completed_at is None
+    assert retained.lesson_extraction_attempted_at is None
+    assert TicketStatusTransitionRepo(db).list_for_ticket(ticket.id) == []
+    assert result.draft_lessons_filed == 0
+    assert lesson_client.prompts == []
+    assert cited is not None and cited.related_ticket_ids == []
+
+
+def test_unsupported_done_diagnostic_deduplicates_and_records_recurrence(
+    db: Database,
+) -> None:
+    client = RecordingClient()
+    ticket = seed_ticket(
+        db,
+        client,
+        key="ATLAS-193",
+        status=TicketStatus.IN_PROGRESS,
+        issue_state=DONE_STATE,
+    )
+
+    first = run(db, client)
+    second = run(db, client)
+    client.simulate_linear_state(ticket.external_linear_id or "", STARTED)
+    run(db, client)
+    client.simulate_linear_state(ticket.external_linear_id or "", DONE_STATE)
+    recurrence = run(db, client)
+
+    rows = debt_rows(db, AnomalyType.OUT_OF_OWNERSHIP_TRANSITION, ticket.id)
+    assert first.anomalies_logged == 1
+    assert second.anomalies_logged == 0
+    assert recurrence.anomalies_logged == 1
+    assert len(rows) == 2
+    retained = TicketRepo(db).get_by_key(ticket.key)
+    assert retained is not None and retained.status is TicketStatus.IN_PROGRESS
+
+
+def test_done_diagnostic_append_failure_rolls_back_observation_cursor(
+    db: Database, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client = RecordingClient()
+    ticket = seed_ticket(
+        db,
+        client,
+        key="ATLAS-189",
+        status=TicketStatus.IN_PROGRESS,
+        issue_state=DONE_STATE,
+    )
+
+    def fail_append(_repo: DebtItemRepo, _item: DebtItem) -> object:
+        raise RuntimeError("injected debt append failure")
+
+    monkeypatch.setattr(DebtItemRepo, "_to_row", fail_append)
+
+    with pytest.raises(RuntimeError, match="injected debt append failure"):
+        run(db, client)
+
+    retained = TicketRepo(db).get_by_key(ticket.key)
+    assert retained is not None
+    assert retained.last_observed_linear_state_id is None
+    assert DebtItemRepo(db).list_for_ticket(ticket.id) == []
+
+
+def test_unsupported_done_does_not_block_independent_verified_completion(
+    db: Database,
+) -> None:
+    client = RecordingClient()
+    poison = seed_ticket(
+        db,
+        client,
+        key="ATLAS-191",
+        status=TicketStatus.IN_PROGRESS,
+        issue_state=DONE_STATE,
+    )
+    eligible = seed_ticket(
+        db,
+        client,
+        key="ATLAS-192",
+        status=TicketStatus.REVIEW_REQUIRED,
+        issue_state=REVIEW_REQUIRED_STATE,
+        product_id=uuid4(),
+    )
+    assert eligible.product_id != poison.product_id
+    seed_ordinary_completion_authority(db, eligible)
+
+    result = run(db, client)
+
+    retained_poison = TicketRepo(db).get_by_key(poison.key)
+    retained_eligible = TicketRepo(db).get_by_key(eligible.key)
+    assert retained_poison is not None
+    assert retained_poison.status is TicketStatus.IN_PROGRESS
+    assert retained_eligible is not None
+    assert retained_eligible.status is TicketStatus.REVIEW_REQUIRED
+    assert result.anomalies_logged == 1
+    assert result.completed == 1
+    assert client.state_writes == [(eligible.external_linear_id, DONE_STATE.id)]
+
+
+def test_stale_ordinary_completion_proof_cannot_authorize_done_pull(
+    db: Database, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client = RecordingClient()
+    ticket = seed_ticket(
+        db,
+        client,
+        key="ATLAS-188",
+        status=TicketStatus.REVIEW_REQUIRED,
+        issue_state=DONE_STATE,
+    )
+    seed_ordinary_completion_authority(
+        db,
+        ticket,
+        proof_commit=PROOF_COMMIT,
+        merge_commit="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    )
+    original_matching = EvidenceRepo.find_matching_for_ticket
+    bounded_reads = 0
+
+    def track_bounded_merge_read(
+        repo: EvidenceRepo,
+        ticket_id: UUID,
+        **kwargs: Any,
+    ) -> Evidence | None:
+        nonlocal bounded_reads
+        bounded_reads += 1
+        return original_matching(repo, ticket_id, **kwargs)
+
+    monkeypatch.setattr(
+        EvidenceRepo, "find_matching_for_ticket", track_bounded_merge_read
+    )
+
+    result = run(db, client)
+
+    retained = TicketRepo(db).get_by_key(ticket.key)
+    assert retained is not None
+    assert retained.status is TicketStatus.REVIEW_REQUIRED
+    assert retained.completed_at is None
+    assert result.status_pulled == 0
+    assert result.anomalies_logged == 1
+    assert bounded_reads == 1
+
+
+def test_ordinary_done_effect_recovers_after_fresh_process_without_duplicate_write(
+    tmp_path: Path,
+) -> None:
+    with TemporalHarness(
+        db_path=tmp_path / "ordinary-completion.sqlite3", initial_time=NOW
+    ) as harness:
+        seed_db = Database(f"sqlite:///{harness.db_path}")
+        seed_db.create_all()
+        seeder = RecordingClient()
+        ticket = seed_ticket(
+            seed_db,
+            seeder,
+            key="ATLAS-190",
+            status=TicketStatus.REVIEW_REQUIRED,
+            issue_state=REVIEW_REQUIRED_STATE,
+        )
+        seed_ordinary_completion_authority(seed_db, ticket)
+        issue_id = ticket.external_linear_id
+        assert issue_id is not None
+        provider_state = {"value": REVIEW_REQUIRED_STATE}
+        provider_writes: list[tuple[str, str]] = []
+
+        class ReconstructedLinearClient(RecordingClient):
+            def __init__(self, *, crash_after_write: bool) -> None:
+                super().__init__()
+                issue = self.create_issue(
+                    {"title": "Linear Title", "description": "linear"},
+                    team_id=TEAM_ID,
+                    project_id=PROJECT_ID,
+                )
+                assert issue.id == issue_id
+                self.simulate_linear_state(issue_id, provider_state["value"])
+                self.creates.clear()
+                self.create_scopes.clear()
+                self.write_events.clear()
+                self._crash_after_write = crash_after_write
+
+            def set_state(self, observed_issue_id: str, state_id: str) -> LinearIssue:
+                updated = super().set_state(observed_issue_id, state_id)
+                provider_state["value"] = DONE_STATE
+                provider_writes.append((observed_issue_id, state_id))
+                if self._crash_after_write:
+                    raise SimulatedProcessDeath("provider effect preceded process loss")
+                return updated
+
+        harness.register_generation_resource(
+            "db", lambda _generation: Database(f"sqlite:///{harness.db_path}")
+        )
+        harness.register_generation_resource(
+            "linear",
+            lambda generation: ReconstructedLinearClient(
+                crash_after_write=generation.generation_id == 1
+            ),
+        )
+
+        with harness.new_generation() as first:
+            db1 = first.resource("db")
+            linear1 = first.resource("linear")
+            assert isinstance(db1, Database)
+            assert isinstance(linear1, ReconstructedLinearClient)
+            with pytest.raises(SimulatedProcessDeath, match="provider effect"):
+                sync_tick(
+                    tickets=TicketRepo(db1),
+                    db=db1,
+                    client=linear1,
+                    status_map=status_map(),
+                    team_id=TEAM_ID,
+                    project_id=PROJECT_ID,
+                    inbox_dir=tmp_path / "inbox",
+                    documents=lambda: [PACK_DOC],
+                    now=NOW,
+                )
+            retained = TicketRepo(db1).get_by_key(ticket.key)
+            assert retained is not None
+            assert retained.status is TicketStatus.REVIEW_REQUIRED
+
+        with harness.new_generation() as second:
+            db2 = second.resource("db")
+            linear2 = second.resource("linear")
+            assert isinstance(db2, Database)
+            assert isinstance(linear2, ReconstructedLinearClient)
+            recovered = sync_tick(
+                tickets=TicketRepo(db2),
+                db=db2,
+                client=linear2,
+                status_map=status_map(),
+                team_id=TEAM_ID,
+                project_id=PROJECT_ID,
+                inbox_dir=tmp_path / "inbox",
+                documents=lambda: [PACK_DOC],
+                now=LATER,
+            )
+            retained = TicketRepo(db2).get_by_key(ticket.key)
+            assert retained is not None
+            assert retained.status is TicketStatus.DONE
+            assert retained.completed_at == LATER
+            assert recovered.status_pulled == 1
+
+        assert provider_writes == [(issue_id, DONE_STATE.id)]
+        transitions = TicketStatusTransitionRepo(
+            Database(f"sqlite:///{harness.db_path}")
+        ).list_for_ticket(ticket.id)
+        assert len(transitions) == 1
+        assert transitions[0].from_status == TicketStatus.REVIEW_REQUIRED.value
+        assert transitions[0].to_status == TicketStatus.DONE.value
 
 
 def test_rejected_transition_extracts_lesson(db: Database) -> None:
@@ -1128,19 +1517,18 @@ def test_generic_pull_cannot_impersonate_any_ci_pending_exit(
     assert client.state_writes == []
 
 
-def test_terminal_ticket_is_not_pulled(db: Database) -> None:
+@pytest.mark.parametrize("terminal", [TicketStatus.DONE, TicketStatus.REJECTED])
+def test_terminal_ticket_is_not_pulled(db: Database, terminal: TicketStatus) -> None:
     client = RecordingClient()
-    # A done ticket whose Linear issue sits in a 'started' state: a naive pull
-    # would drag it back to in_progress. Terminal work is not polled.
-    seed_ticket(
-        db, client, key="ATLAS-203", status=TicketStatus.DONE, issue_state=STARTED
-    )
+    # A terminal ticket whose Linear issue sits in a 'started' state: a naive
+    # pull would reopen it as in_progress. Terminal work is not polled.
+    seed_ticket(db, client, key="ATLAS-203", status=terminal, issue_state=STARTED)
 
     result = run(db, client)
 
     pulled = TicketRepo(db).get_by_key("ATLAS-203")
     assert pulled is not None
-    assert pulled.status == TicketStatus.DONE
+    assert pulled.status is terminal
     assert result.status_pulled == 0
 
 

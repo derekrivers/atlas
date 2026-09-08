@@ -241,6 +241,15 @@ class LessonRow(Base):
 
 class EvidenceRow(Base):
     __tablename__ = "evidence"
+    __table_args__ = (
+        sa.Index(
+            "ix_evidence_ticket_type_actor_commit",
+            "ticket_id",
+            "evidence_type",
+            "created_by_type",
+            "commit_sha",
+        ),
+    )
 
     id: Mapped[UUID] = mapped_column(sa.Uuid, primary_key=True)
     product_id: Mapped[UUID] = mapped_column(sa.Uuid, sa.ForeignKey("products.id"))
