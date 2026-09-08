@@ -519,6 +519,8 @@ test('session and destructive confirmation dialogs trap and return focus without
   })
   await expect(confirmation).toBeVisible()
   await expect(confirmation).toContainText('archives it for audit')
+  // Visibility includes the fade-in; inspect contrast at the settled opacity.
+  await expect(confirmation).toHaveCSS('opacity', '1')
   expect(await axeViolations(page)).toEqual([])
 
   for (let step = 0; step < 5; step += 1) {

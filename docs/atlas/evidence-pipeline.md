@@ -20,6 +20,22 @@ receiver can replace it without schema change — ADR-0008):
   requests replay cached state on `304 Not Modified`; repository dedup, not an
   empty-response sentinel, suppresses unchanged evidence.
 
+Before CI evidence is persisted, a workflow or check payload that supplies
+`head_sha` must supply a full 40-character hexadecimal SHA agreeing with the
+requested PR head (case-insensitive). Contradictory, null, empty or malformed
+supplied identities reject the pull before any of its evidence is ingested.
+The evidence CLI returns a clean precondition failure; managed consumers hold
+that observation and may retry normally when the source becomes consistent.
+Raw payloads and their hashes are preserved, never rewritten to hide a mismatch.
+
+Legacy payloads that entirely omit `head_sha` retain attribution from the
+head-scoped endpoint request. This compatibility case does not independently
+prove the absent source identity. A matching provider head also does not prove
+the runner's checkout tree: pull-request CI may execute a synthetic merge while
+GitHub attributes the run to its contributor head. Historical evidence remains
+append-only; this ingestion guard neither repairs old rows nor establishes the
+complete required-job inventory.
+
 ## Job-name convention (CI contract)
 
 Evidence typing is driven by CI job names, which makes the mapping a

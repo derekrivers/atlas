@@ -89,8 +89,17 @@ def make_fake(*, with_pr: bool = True) -> FakeGitHubClient:
     """A fixture-backed client replaying every recorded source. ``with_pr=False``
     leaves the pull-request unseeded, modelling an unknown PR (a 404)."""
     return FakeGitHubClient(
-        workflow_runs=load_fixture("workflow_runs.json", "workflow_runs"),
-        check_runs=load_fixture("check_runs.json", "check_runs"),
+        # Explicit synthetic projection: the archived foreign CI fixtures have
+        # unrelated heads. This test world belongs to the recorded PR head.
+        # Do not teach FakeGitHubClient to hide contradictory provider responses.
+        workflow_runs=[
+            {**run, "head_sha": HEAD_SHA}
+            for run in load_fixture("workflow_runs.json", "workflow_runs")
+        ],
+        check_runs=[
+            {**run, "head_sha": HEAD_SHA}
+            for run in load_fixture("check_runs.json", "check_runs")
+        ],
         pr_reviews=load_array_fixture("pr_reviews.json"),
         pr_files=load_array_fixture("pr_files.json"),
         pull_request=load_object_fixture("pull_request.json") if with_pr else None,
@@ -506,3 +515,74 @@ def test_operational_guard_is_narrow(
     monkeypatch.setattr(EvidenceRepo, "list", _boom)
     with pytest.raises(RuntimeError, match="not a schema problem"):
         main(["evidence", "list"], database=seeded_db)
+
+
+@pytest.mark.parametrize("source", ["_workflow_runs", "_check_runs"])
+def test_contradictory_ci_head_rejects_entire_pull_then_fresh_retry_converges(
+    seeded_db: Database, source: str
+) -> None:
+    product = ProductRepo(seeded_db).get_by_key("ATLAS")
+    assert product is not None
+    fake = make_fake()
+    # Put the bad item last so valid earlier items cannot leak into storage.
+    getattr(fake, source)[-1]["head_sha"] = "d" * 40
+    repo = EvidenceRepo(seeded_db)
+    with pytest.raises(EvidencePullMalformedSourceError):
+        drive_evidence_pull(
+            fake,
+            "cli",
+            "cli",
+            PR_NUMBER,
+            evidence_repo=repo,
+            product_id=product.id,
+            now=datetime.now(UTC),
+        )
+    assert repo.list() == []
+
+    # Fresh client/connection over the same durable store: a transient bad
+    # observation leaves no poisoned dedup record and needs no manual repair.
+    retry_db = Database(seeded_db.engine.url.render_as_string(hide_password=False))
+    try:
+        retry_repo = EvidenceRepo(retry_db)
+        recovered = drive_evidence_pull(
+            make_fake(),
+            "cli",
+            "cli",
+            PR_NUMBER,
+            evidence_repo=retry_repo,
+            product_id=product.id,
+            now=datetime.now(UTC),
+        )
+        assert len(recovered.observed) == N_TOTAL
+        repeated = drive_evidence_pull(
+            make_fake(),
+            "cli",
+            "cli",
+            PR_NUMBER,
+            evidence_repo=retry_repo,
+            product_id=product.id,
+            now=datetime.now(UTC),
+        )
+        assert (repeated.checks, repeated.reviews, repeated.docs) == ([], [], [])
+        assert {record.id for record in recovered.observed} == {
+            record.id for record in repeated.observed
+        }
+        assert len(retry_repo.list()) == N_TOTAL
+    finally:
+        retry_db.engine.dispose()
+
+
+@pytest.mark.parametrize("source", ["_workflow_runs", "_check_runs"])
+def test_pull_contradictory_ci_head_is_clean_precondition(
+    seeded_db: Database, capsys: pytest.CaptureFixture[str], source: str
+) -> None:
+    fake = make_fake()
+    getattr(fake, source)[-1]["head_sha"] = "d" * 40
+    assert run_pull(seeded_db, fake, "--json") == EXIT_PRECONDITION
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert (
+        captured.err
+        == "GitHub evidence source did not satisfy the canonical contract\n"
+    )
+    assert EvidenceRepo(seeded_db).list() == []
