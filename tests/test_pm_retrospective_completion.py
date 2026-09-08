@@ -1175,7 +1175,7 @@ def test_elapsed_lease_bounds_target_confirmation_and_fresh_process_recovery(
 
                 monkeypatch.setattr(linear1, "fetch_project_issues", slow_fetch)
             if path == "initial":
-                result = _run(
+                result: RetrospectiveCompletionResult | None = _run(
                     db1,
                     cast(LinearClient, linear1),
                     ticket,
@@ -1288,7 +1288,9 @@ def test_expired_lease_cannot_begin_provider_write(
         before_provider_write=advance_clock,
     )
     if path == "initial":
-        result = _run(db, linear, ticket, episode_id, _github(), hooks=hooks)
+        result: RetrospectiveCompletionResult | None = _run(
+            db, linear, ticket, episode_id, _github(), hooks=hooks
+        )
     else:
         result = reconcile_retrospective_completion_fence(
             db=db,
