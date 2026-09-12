@@ -151,6 +151,13 @@ AGENT_CONTRACT_PATHS = (
     "docs/runbooks/local-development.md",
     "docs/runbooks/pr-acceptance.md",
 )
+EXECUTION_OWNER_PATHS = (
+    "docs/runbooks/symphony-agent-execution.md",
+    ".codex/skills/atlas-ticket-execution/SKILL.md",
+    ".codex/skills/atlas-ticket-remediation/SKILL.md",
+    ".codex/skills/atlas-maintenance-execution/SKILL.md",
+    ".codex/skills/atlas-validation/SKILL.md",
+)
 SYMPHONY_MILESTONE_BRANCH = "phase-15-atlas-253-ceiling-ramp"
 SYMPHONY_MILESTONE_LEVELS = (1, 3, 5, 7, 10)
 
@@ -718,6 +725,13 @@ _CONTRACT_NEGATION_RE = re.compile(
     r"\b(?:don't|doesn't|isn't|aren't)\b",
     re.IGNORECASE,
 )
+_NON_AGENT_CI_ACTOR_PREFIX_RE = re.compile(
+    r"^\s*(?:(?:1\.|-|>)(?:\s+|\s*\[\s\]\s+))?"
+    r"(?:(?:but|yet)\s+)?"
+    r"(?:the\s+)?(?:coordinator|operator|reviewer|system(?:-tier)?)\s+"
+    r"(?:may|can|must|will|is\s+(?:allowed|permitted)\s+to)\s*$",
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True)
@@ -810,7 +824,10 @@ def _sentence_prefix(text: str, offset: int) -> str:
 
 
 def _positive_contract_matches(
-    text: str, patterns: tuple[re.Pattern[str], ...]
+    text: str,
+    patterns: tuple[re.Pattern[str], ...],
+    *,
+    allow_non_agent_ci_actor: bool = False,
 ) -> list[re.Match[str]]:
     """Return positive prohibited claims while allowing explicit negations."""
     matches: list[re.Match[str]] = []
@@ -822,6 +839,10 @@ def _positive_contract_matches(
                 continue
             prefix = _sentence_prefix(text, match.start())
             if _CONTRACT_NEGATION_RE.search(prefix + match.group(0)):
+                continue
+            if allow_non_agent_ci_actor and _NON_AGENT_CI_ACTOR_PREFIX_RE.fullmatch(
+                prefix
+            ):
                 continue
             seen.add(identity)
             matches.append(match)
@@ -840,12 +861,14 @@ def check_scoped_validation_handoff_contract(root: Path) -> list[Finding]:
         return []
 
     findings: list[Finding] = []
-    for rel in AGENT_CONTRACT_PATHS:
+    for rel in dict.fromkeys((*AGENT_CONTRACT_PATHS, *EXECUTION_OWNER_PATHS)):
         path = root / rel
         if not path.is_file():
             continue
         text = path.read_text(encoding="utf-8")
-        for match in _positive_contract_matches(text, _CI_WAITING_INSTRUCTION_RES):
+        for match in _positive_contract_matches(
+            text, _CI_WAITING_INSTRUCTION_RES, allow_non_agent_ci_actor=True
+        ):
             findings.append(
                 Finding(
                     rel,

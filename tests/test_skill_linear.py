@@ -16,12 +16,42 @@ from pathlib import Path
 
 import yaml
 
+from atlas.tools.doc_linter import check_scoped_validation_handoff_contract
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SKILL_PATH = REPO_ROOT / ".codex" / "skills" / "linear" / "SKILL.md"
 SKILLS_ROOT = REPO_ROOT / ".codex" / "skills"
 WORKFLOW_PATH = REPO_ROOT / "WORKFLOW.md"
 EXECUTION_RUNBOOK_PATH = REPO_ROOT / "docs" / "runbooks" / "symphony-agent-execution.md"
 AGENTS_PATH = REPO_ROOT / "AGENTS.md"
+
+
+def test_atlas_103m_selected_skill_suite_invokes_real_handoff_guard(
+    tmp_path: Path,
+) -> None:
+    assert check_scoped_validation_handoff_contract(REPO_ROOT) == []
+
+    workflow = REPO_ROOT / "WORKFLOW.md"
+    skill = REPO_ROOT / ".codex" / "skills" / "atlas-validation" / "SKILL.md"
+    seeded = tmp_path / ".codex" / "skills" / "atlas-validation" / "SKILL.md"
+    seeded.parent.mkdir(parents=True)
+    (tmp_path / "WORKFLOW.md").write_text(
+        workflow.read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    seeded.write_text(
+        skill.read_text(encoding="utf-8")
+        + "\nAgents must poll CI until required checks pass.\n",
+        encoding="utf-8",
+    )
+
+    findings = check_scoped_validation_handoff_contract(tmp_path)
+
+    assert any(
+        finding.code == "HND001"
+        and finding.path == ".codex/skills/atlas-validation/SKILL.md"
+        for finding in findings
+    )
+
 
 REQUIRED_SKILLS = (
     "linear",
