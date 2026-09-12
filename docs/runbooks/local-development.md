@@ -57,9 +57,24 @@ cannot count as mandatory evidence and selects `full-sweep`.
 Execute the exact plan with `atlas validation-run`, supplying the same
 base/head, changed paths, ticket requirements and ticket tests used for
 `validation-plan`. The runner re-calculates and proves the plan, requires the
-checked-out `HEAD` to equal the planned head, and refuses an unavailable or
-mismatched diff proof. Changed test files and proven explicit ticket test files
-appear in `test_targets` even when a broader profile command contains them.
+checked-out `HEAD` to equal the planned head, resolves Git's repository top
+level so a nested invocation cannot narrow input discovery or command scope,
+and refuses an unavailable or mismatched diff proof. Before starting any
+selected command it also requires a
+readable exact `HEAD` and tree, a clean index and tracked worktree, no index
+flags that hide tracked changes, and no uncontrolled untracked inputs. The
+untracked check includes repository, local and global ignore rules: ignored
+dependency caches and build directories have an explicit controlled-output
+allowlist, while an arbitrary ignored executable or configuration input still
+causes refusal. The runner records that identity and an index fingerprint, then
+reads them again after all commands finish. An unreadable or changed final
+identity fails the aggregate while retaining the commands' actual diagnostics;
+the JSON and human reports expose both observations. Restore clean inputs and
+invoke the command afresh after a refusal; results never carry across runs.
+These before-and-after observations rely on the exclusive-writer checkout rule
+and do not prove that a hostile transient edit, restored between observations,
+never occurred. Changed test files and proven explicit ticket test files appear
+in `test_targets` even when a broader profile command contains them.
 Unknown or invalid paths, an omitted or mismatched diff, Git discovery failure,
 an unprovable ticket test, ambiguous identities,
 registry-version/digest drift and input over the documented bounds select
@@ -91,6 +106,17 @@ pytest or Playwright workers, or system-tier GitHub CI authority. The runner's
 human output and `--json` payload retain exact base/head identity, total and
 per-lane elapsed time, and per-command lane, timestamps, duration and exit
 status.
+
+Before an expensive full sweep, check that the filesystem has enough capacity
+for all three lanes and place transient output outside the source checkout.
+Use an operator-owned artifact directory for `TMPDIR`, Pytest's base temporary
+directory, and `PLAYWRIGHT_LAST_RUN_OUTPUT_FILE`; retain the shared
+`/tmp/ms-playwright` browser cache instead of downloading a redundant browser.
+These settings control output location without changing the selected command
+inventory. Preserve actual failures and interruption exit codes. Reclaim only
+artifacts whose ownership and disposability are established; low capacity is a
+reason to stop before starting another expensive run, not to delete shared
+trees speculatively.
 
 ## The gates
 
