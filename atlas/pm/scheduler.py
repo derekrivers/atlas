@@ -53,6 +53,7 @@ import logging
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass
+from dataclasses import field as dataclass_field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
@@ -133,6 +134,35 @@ class TickConfig:
     github_client: GitHubClient | None = None
 
 
+@dataclass(frozen=True)
+class OneShotSyncFailure:
+    """Sanitized outcome for a failed one-shot scheduler invocation.
+
+    The original exception is retained only for the recurring scheduler's
+    rate-limit policy. Presentation code receives bounded type identities and
+    persistence facts, never provider-controlled exception text.
+    """
+
+    failure_signature: str
+    tick_failure_recorded: bool
+    exception: Exception = dataclass_field(repr=False, compare=False)
+    tick_failure_persistence_signature: str | None = None
+
+    def diagnostic(self) -> str:
+        """Render the bounded public diagnostic without exception messages."""
+
+        recorded = "recorded" if self.tick_failure_recorded else "not-recorded"
+        message = (
+            f"pm sync: tick failed; failure={self.failure_signature}; "
+            f"tick_failure={recorded}; effects=may-have-occurred"
+        )
+        if self.tick_failure_persistence_signature is not None:
+            message += (
+                f"; tick_failure_persistence={self.tick_failure_persistence_signature}"
+            )
+        return message
+
+
 def _signature(exc: BaseException) -> str:
     """The ``failure_signature`` for a caught tick crash (GAP 2): the exception's
     fully-qualified type name (``module.qualname``). Recurring crashes of the
@@ -153,10 +183,9 @@ def _record_crash(failures: TickFailureRepo, exc: Exception, now: datetime) -> b
     if failures.recorded_since(signature, now - CRASH_DEDUP_WINDOW):
         logger.warning(
             "pm-scheduler: tick crashed (%s); a matching TickFailure was already "
-            "recorded within the %s dedup window, not recording another: %s",
+            "recorded within the %s dedup window, not recording another",
             signature,
             CRASH_DEDUP_WINDOW,
-            exc,
         )
         return False
     failures.record(
@@ -171,9 +200,8 @@ def _record_crash(failures: TickFailureRepo, exc: Exception, now: datetime) -> b
     )
     logger.error(
         "pm-scheduler: tick crashed (%s); TickFailure recorded, loop continues "
-        "(retried next tick): %s",
+        "(retried next tick)",
         signature,
-        exc,
     )
     return True
 
@@ -185,7 +213,7 @@ def run_tick(
     now: datetime,
     completion_clock: Callable[[], datetime] = _utcnow,
     result_sink: Callable[[SyncResult], None] | None = None,
-) -> Exception | None:
+) -> OneShotSyncFailure | None:
     """Run exactly one sync tick. The single-tick body shared by ``--once`` and
     the loop.
 
@@ -194,9 +222,11 @@ def run_tick(
     after its body finishes (or at the failure boundary). On ANY exception it
     records one ``TickFailure`` (deduped per :func:`_record_crash`) and returns —
     a crashing tick NEVER escapes, so the loop is resilient by construction
-    (AC1). Returns ``None`` on a clean tick, the caught exception when the tick
-    crashed (recorded or deduped) — so the loop can stretch its next wait on a
-    :class:`LinearRateLimitError` (ATLAS-147) without the crash ever escaping."""
+    (AC1). Returns ``None`` on a clean tick and a typed failure when the tick
+    crashes (recorded or deduped). The failure retains the exception internally
+    so the recurring loop can stretch its next wait on a
+    :class:`LinearRateLimitError` (ATLAS-147), while one-shot presentation uses
+    only its sanitized fields."""
 
     try:
         tick_kwargs: dict[str, object] = {
@@ -221,8 +251,26 @@ def run_tick(
         if result_sink is not None:
             result_sink(result)
     except Exception as exc:  # create-on-crash: a tick crash never kills the loop
-        _record_crash(failures, exc, now)
-        return exc
+        try:
+            recorded = _record_crash(failures, exc, now)
+        except Exception as persistence_error:
+            logger.error(
+                "pm-scheduler: TickFailure persistence failed after tick crash "
+                "(%s); persistence_failure=%s",
+                _signature(exc),
+                _signature(persistence_error),
+            )
+            return OneShotSyncFailure(
+                failure_signature=_signature(exc),
+                tick_failure_recorded=False,
+                exception=exc,
+                tick_failure_persistence_signature=_signature(persistence_error),
+            )
+        return OneShotSyncFailure(
+            failure_signature=_signature(exc),
+            tick_failure_recorded=recorded,
+            exception=exc,
+        )
     return None
 
 
@@ -234,7 +282,7 @@ def run_scheduler(
     now: Callable[[], datetime] = _utcnow,
     shutdown: threading.Event | None = None,
     sleep: Callable[[float], bool] | None = None,
-) -> SyncResult | None:
+) -> SyncResult | OneShotSyncFailure | None:
     """Drive ``sync_tick`` on a cadence until shutdown (or once, with ``--once``).
 
     The loop body is thin: run one tick (:func:`run_tick`, which absorbs a crash),
@@ -249,7 +297,8 @@ def run_scheduler(
     fake sleep, no real time and no signals. The same injected clock is sampled at
     tick entry and again by ``sync_tick`` at its receipt completion boundary.
 
-    ``--once`` (``once=True``) runs exactly one tick and returns, ignoring the
+    ``--once`` (``once=True``) runs exactly one tick and returns its
+    :class:`SyncResult` or a sanitized :class:`OneShotSyncFailure`, ignoring the
     cadence entirely (AC3).
 
     Rate-limit backoff (ATLAS-147): when the tick crashed on a
@@ -286,7 +335,7 @@ def run_scheduler(
                 result_sink=remember_result,
             )
             if once:
-                return last_result
+                return crash if crash is not None else last_result
             if shutdown.is_set():
                 # The signal arrived during the tick we just finished: stop now,
                 # after the in-flight tick, never mid-write.
@@ -295,8 +344,8 @@ def run_scheduler(
                 )
                 return last_result
             wait = interval
-            if isinstance(crash, LinearRateLimitError):
-                reset = crash.reset_after_seconds
+            if crash is not None and isinstance(crash.exception, LinearRateLimitError):
+                reset = crash.exception.reset_after_seconds
                 wait = (
                     RATE_LIMIT_MAX_BACKOFF_SECONDS
                     if reset is None

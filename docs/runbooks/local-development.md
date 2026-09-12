@@ -326,6 +326,15 @@ the supported adapter from that exact code identity:
 uv run atlas pm sync --once -v
 ```
 
+A one-shot tick is successful only when its result and PM receipt both persist.
+If the tick body, receipt write, or scheduler `TickFailure` write fails, the CLI
+exits 1 with bounded exception-type metadata, reports that effects may already
+have occurred, and prints no success counters or no-work summary. This also
+applies to the effective one-shot `--repair-packs` mode. Retry through the same
+command after correcting the failure: durable effects such as atomic follow-up
+stubs are rediscovered and deduplicated by the normal tick, so do not delete or
+fabricate recovery artifacts.
+
 `GITHUB_TOKEN`, the existing Linear credentials/state map and
 `LINEAR_PROJECT_ID`/`LINEAR_TEAM_ID` are required production preconditions. The
 initial complete pull may observe Linear already at `CI Pending` while the local

@@ -1297,11 +1297,7 @@ def _install_shutdown_handlers(shutdown: threading.Event) -> None:
 
 
 def _pm_sync(args: argparse.Namespace, resolved_db: Database) -> int:
-    """Run the recurring sync scheduler (ATLAS-50). Builds the live injection,
-    installs the shutdown handlers, and drives `run_scheduler` (default 60s
-    cadence, or one tick with `--once`). A missing credential / team id / status
-    map is a clean EXIT_PRECONDITION, mirroring `plan`'s missing-key handling;
-    otherwise shutdown stops cleanly after the current tick and returns EXIT_OK."""
+    """Run recurring sync or one tick, with clean setup and failure exits."""
 
     shutdown = threading.Event()
     try:
@@ -1320,6 +1316,9 @@ def _pm_sync(args: argparse.Namespace, resolved_db: Database) -> int:
     except (SchemaDriftError, PMWriterOwnershipError) as error:
         print(error, file=sys.stderr)
         return EXIT_PRECONDITION
+    if result is not None and not isinstance(result, SyncResult):
+        print(result.diagnostic(), file=sys.stderr)
+        return EXIT_RECORDED_FAILURE
     if args.repair_packs:
         print(
             _format_repair_pack_result(

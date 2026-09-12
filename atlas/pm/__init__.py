@@ -118,6 +118,7 @@ from atlas.pm.retrospective_completion import (
 from atlas.pm.scheduler import (
     CRASH_DEDUP_WINDOW,
     DEFAULT_INTERVAL_SECONDS,
+    OneShotSyncFailure,
     TickConfig,
     run_scheduler,
     run_tick,
@@ -170,6 +171,7 @@ __all__ = [
     "MalformedLinearPullError",
     "OccupancyBreach",
     "OccupancyDimension",
+    "OneShotSyncFailure",
     "PMWriterAlreadyActiveError",
     "PMWriterOwnershipError",
     "PMWriterOwnershipUnavailableError",
