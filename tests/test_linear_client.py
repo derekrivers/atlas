@@ -24,11 +24,13 @@ from urllib import error as urllib_error
 import pytest
 from linear_fakes import InMemoryLinearClient
 
+import atlas.linear.client as linear_client_module
 from atlas.linear.client import (
     LINEAR_ERROR_BODY_MAX_LEN,
     LINEAR_HTTP_TIMEOUT_SECONDS,
     LinearAPIError,
     LinearClient,
+    LinearCommentPaginationError,
     LinearGraphQLClient,
     LinearProjectIssues,
     LinearRateLimitError,
@@ -163,7 +165,21 @@ class _Emulator:
             if variables["id"] not in self.issues:
                 return {"data": {"issue": None}}
             nodes = self.comments.get(variables["id"], [])
-            return {"data": {"issue": {"comments": {"nodes": nodes}}}}
+            start = 0 if variables.get("after") is None else int(variables["after"])
+            end = start + variables["first"]
+            return {
+                "data": {
+                    "issue": {
+                        "comments": {
+                            "nodes": nodes[start:end],
+                            "pageInfo": {
+                                "hasNextPage": end < len(nodes),
+                                "endCursor": str(end),
+                            },
+                        }
+                    }
+                }
+            }
         if "project(" in query:
             # The A2 preflight resolve (ATLAS-136): an unknown id yields
             # `project: null`, which the client maps to None.
@@ -299,6 +315,229 @@ def test_fetch_comments_reads_tagged_and_untagged(
     assert "atlas:proposed-follow-up" in comments[0].body
     assert "atlas:proposed-follow-up" not in comments[1].body
     assert all(comment.created_at for comment in comments)  # provenance carried
+
+
+def test_fetch_comments_traverses_past_250_to_final_tag(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    emulator = _Emulator()
+    monkeypatch.setattr(
+        "atlas.linear.client.urllib_request.urlopen", _stub_urlopen(emulator)
+    )
+    client = LinearGraphQLClient(api_key="sk-test", team_id="team-1")
+    created = client.create_issue(
+        {"title": "C", "description": "d"},
+        team_id="team-1",
+        project_id="project-1",
+    )
+    for index in range(251):
+        body = (
+            "atlas:proposed-follow-up final page"
+            if index == 250
+            else f"ordinary comment {index}"
+        )
+        emulator.add_comment(created.id, body, comment_id=f"comment-{index}")
+
+    comments = client.fetch_comments(created.id)
+
+    assert len(comments) == 251
+    assert comments[-1].id == "comment-250"
+    assert "atlas:proposed-follow-up" in comments[-1].body
+
+
+def _comment_page(
+    nodes: list[Any],
+    *,
+    has_next_page: object,
+    end_cursor: object = None,
+) -> dict[str, Any]:
+    return {
+        "issue": {
+            "comments": {
+                "nodes": nodes,
+                "pageInfo": {
+                    "hasNextPage": has_next_page,
+                    "endCursor": end_cursor,
+                },
+            }
+        }
+    }
+
+
+def _comment_node(comment_id: str, body: str = "body") -> dict[str, Any]:
+    return {
+        "id": comment_id,
+        "body": body,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+    }
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {},
+        {"issue": "wrong-shape"},
+        {"issue": {}},
+        {"issue": {"comments": {}}},
+        {"issue": {"comments": {"nodes": [], "pageInfo": {}}}},
+        _comment_page([], has_next_page="false"),
+        _comment_page([{"id": "c", "body": "body"}], has_next_page=False),
+        _comment_page([{"id": "c", "createdAt": "now"}], has_next_page=False),
+        _comment_page(["wrong-node"], has_next_page=False),
+    ],
+)
+def test_fetch_comments_rejects_malformed_pages_and_nodes(
+    monkeypatch: pytest.MonkeyPatch, payload: dict[str, Any]
+) -> None:
+    client = LinearGraphQLClient(api_key="sk-test", team_id="team-1")
+    monkeypatch.setattr(client, "_execute", lambda *_args, **_kwargs: payload)
+
+    with pytest.raises(LinearCommentPaginationError, match=r"malformed|missing"):
+        client.fetch_comments("issue-1")
+
+
+@pytest.mark.parametrize("cursor", [None, "", "cursor-1"])
+def test_fetch_comments_rejects_missing_or_repeated_cursor(
+    monkeypatch: pytest.MonkeyPatch, cursor: object
+) -> None:
+    client = LinearGraphQLClient(api_key="sk-test", team_id="team-1")
+    calls = 0
+
+    def execute(*_args: object, **_kwargs: object) -> dict[str, Any]:
+        nonlocal calls
+        calls += 1
+        return _comment_page(
+            [_comment_node(f"c-{calls}")],
+            has_next_page=True,
+            end_cursor=cursor,
+        )
+
+    monkeypatch.setattr(client, "_execute", execute)
+    with pytest.raises(LinearCommentPaginationError, match="cursor chain"):
+        client.fetch_comments("issue-1")
+
+
+def test_fetch_comments_rejects_cyclic_cursor_and_later_disappearance(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = LinearGraphQLClient(api_key="sk-test", team_id="team-1")
+    pages = iter(
+        [
+            _comment_page([_comment_node("c-1")], has_next_page=True, end_cursor="a"),
+            _comment_page([_comment_node("c-2")], has_next_page=True, end_cursor="b"),
+            _comment_page([_comment_node("c-3")], has_next_page=True, end_cursor="a"),
+        ]
+    )
+    monkeypatch.setattr(client, "_execute", lambda *_args, **_kwargs: next(pages))
+    with pytest.raises(LinearCommentPaginationError, match="cursor chain"):
+        client.fetch_comments("issue-1")
+
+    pages = iter(
+        [
+            _comment_page([_comment_node("c-1")], has_next_page=True, end_cursor="a"),
+            {"issue": None},
+        ]
+    )
+    monkeypatch.setattr(client, "_execute", lambda *_args, **_kwargs: next(pages))
+    with pytest.raises(LinearCommentPaginationError, match="disappeared"):
+        client.fetch_comments("issue-1")
+
+
+def test_fetch_comments_deduplicates_consistent_overlap_and_rejects_conflict(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = LinearGraphQLClient(api_key="sk-test", team_id="team-1")
+    original = _comment_node("same")
+    pages = iter(
+        [
+            _comment_page([original], has_next_page=True, end_cursor="a"),
+            _comment_page([dict(original)], has_next_page=False),
+        ]
+    )
+    monkeypatch.setattr(client, "_execute", lambda *_args, **_kwargs: next(pages))
+    comments = client.fetch_comments("issue-1")
+    assert [comment.id for comment in comments] == ["same"]
+
+    pages = iter(
+        [
+            _comment_page([original], has_next_page=True, end_cursor="a"),
+            _comment_page([_comment_node("same", body="changed")], has_next_page=False),
+        ]
+    )
+    monkeypatch.setattr(client, "_execute", lambda *_args, **_kwargs: next(pages))
+    with pytest.raises(LinearCommentPaginationError, match="inconsistent duplicate"):
+        client.fetch_comments("issue-1")
+
+
+def test_fetch_comments_enforces_exact_page_and_item_boundaries(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = LinearGraphQLClient(api_key="sk-test", team_id="team-1")
+    monkeypatch.setattr(linear_client_module, "LINEAR_COMMENTS_MAX_PAGES", 2)
+    pages = iter(
+        [
+            _comment_page([_comment_node("c-1")], has_next_page=True, end_cursor="a"),
+            _comment_page([_comment_node("c-2")], has_next_page=True, end_cursor="b"),
+        ]
+    )
+    monkeypatch.setattr(client, "_execute", lambda *_args, **_kwargs: next(pages))
+    with pytest.raises(LinearCommentPaginationError, match="page bound"):
+        client.fetch_comments("issue-1")
+
+    pages = iter(
+        [
+            _comment_page([_comment_node("c-1")], has_next_page=True, end_cursor="a"),
+            _comment_page([_comment_node("c-2")], has_next_page=False),
+        ]
+    )
+    monkeypatch.setattr(client, "_execute", lambda *_args, **_kwargs: next(pages))
+    assert len(client.fetch_comments("issue-1")) == 2
+
+    monkeypatch.setattr(linear_client_module, "LINEAR_COMMENTS_MAX_ITEMS", 2)
+    pages = iter(
+        [
+            _comment_page(
+                [_comment_node("c-1"), _comment_node("c-2")],
+                has_next_page=False,
+            )
+        ]
+    )
+    monkeypatch.setattr(client, "_execute", lambda *_args, **_kwargs: next(pages))
+    assert len(client.fetch_comments("issue-1")) == 2
+
+    pages = iter(
+        [
+            _comment_page(
+                [_comment_node("c-1"), _comment_node("c-2")],
+                has_next_page=True,
+                end_cursor="a",
+            )
+        ]
+    )
+    monkeypatch.setattr(client, "_execute", lambda *_args, **_kwargs: next(pages))
+    with pytest.raises(LinearCommentPaginationError, match="item bound"):
+        client.fetch_comments("issue-1")
+
+
+def test_fetch_comments_later_transport_failure_returns_no_partial_list(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = LinearGraphQLClient(api_key="sk-test", team_id="team-1")
+    calls = 0
+
+    def execute(*_args: object, **_kwargs: object) -> dict[str, Any]:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return _comment_page(
+                [_comment_node("c-1")], has_next_page=True, end_cursor="next"
+            )
+        raise LinearAPIError("controlled transport failure")
+
+    monkeypatch.setattr(client, "_execute", execute)
+    with pytest.raises(LinearAPIError, match="controlled transport failure"):
+        client.fetch_comments("issue-1")
+    assert calls == 2
 
 
 # A (client, seed) pair so the fetch_project resolve path (ATLAS-136) is held to

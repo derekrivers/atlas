@@ -58,6 +58,12 @@ LINEAR_ERROR_BODY_MAX_LEN = 1000
 # matching the repo's existing ``first: 250`` convention, so a 110-ticket board
 # pulls in one request and pagination only engages past 250 issues.
 LINEAR_ISSUES_PAGE_SIZE = 250
+# Comment reads must reach a proven terminal page before the PM Engine may act
+# on any comment.  These bounds prevent a malformed or permanently oversized
+# provider connection from keeping one sync tick alive indefinitely.
+LINEAR_COMMENTS_PAGE_SIZE = 250
+LINEAR_COMMENTS_MAX_PAGES = 100
+LINEAR_COMMENTS_MAX_ITEMS = 25_000
 
 
 class LinearClientError(RuntimeError):
@@ -70,6 +76,10 @@ class MissingLinearTokenError(LinearClientError):
 
 class LinearAPIError(LinearClientError):
     """A Linear GraphQL request failed (transport, HTTP, or GraphQL errors)."""
+
+
+class LinearCommentPaginationError(LinearAPIError):
+    """A comment connection could not be read completely within its bounds."""
 
 
 class LinearRateLimitError(LinearAPIError):
@@ -335,8 +345,9 @@ _ISSUE_QUERY = f"query Issue($id: String!) {{ issue(id: $id) {{ {_ISSUE_FIELDS} 
 # realistic comment thread, mirroring the workflow-states query's bound.
 _COMMENT_FIELDS = "id body createdAt"
 _COMMENTS_QUERY = (
-    "query IssueComments($id: String!) { "
-    f"issue(id: $id) {{ comments(first: 250) {{ nodes {{ {_COMMENT_FIELDS} }} }} }} }}"
+    "query IssueComments($id: String!, $first: Int!, $after: String) { "
+    f"issue(id: $id) {{ comments(first: $first, after: $after) {{ "
+    f"nodes {{ {_COMMENT_FIELDS} }} pageInfo {{ hasNextPage endCursor }} }} }} }}"
 )
 # The batched pull (ATLAS-148): every issue in the configured project, one
 # page of `LINEAR_ISSUES_PAGE_SIZE` per request, cursor-paginated until
@@ -543,11 +554,25 @@ def _issue_from_node(node: Mapping[str, Any]) -> LinearIssue:
 
 
 def _comment_from_node(node: Mapping[str, Any]) -> LinearComment:
-    return LinearComment(
-        id=node["id"],
-        body=node["body"],
-        created_at=node["createdAt"],
-    )
+    try:
+        comment_id = node["id"]
+        body = node["body"]
+        created_at = node["createdAt"]
+    except KeyError as error:
+        raise LinearCommentPaginationError(
+            "Linear comment pagination returned a node with missing fields"
+        ) from error
+    if (
+        not isinstance(comment_id, str)
+        or not comment_id
+        or not isinstance(body, str)
+        or not isinstance(created_at, str)
+        or not created_at
+    ):
+        raise LinearCommentPaginationError(
+            "Linear comment pagination returned a malformed node"
+        )
+    return LinearComment(id=comment_id, body=body, created_at=created_at)
 
 
 class LinearGraphQLClient:
@@ -721,14 +746,106 @@ class LinearGraphQLClient:
         return LinearProject(id=node["id"], slug_id=node["slugId"])
 
     def fetch_comments(self, issue_id: str) -> list[LinearComment]:
-        # Read-only (ATLAS-45): selects the issue's comment connection and
-        # assembles a DTO per node. A missing issue (or one with no comments)
-        # yields an empty list, never a raise -- the scan simply finds nothing.
-        data = self._execute(_COMMENTS_QUERY, {"id": issue_id})
-        issue = data.get("issue")
-        if not issue:
-            return []
-        return [_comment_from_node(node) for node in issue["comments"]["nodes"]]
+        # Read-only (ATLAS-45): traverse the complete bounded connection before
+        # returning any DTOs.  An issue absent on the initial observation keeps
+        # the historical empty-list meaning; disappearance after page one is an
+        # incomplete read and fails the tick without exposing a partial prefix.
+        comments: list[LinearComment] = []
+        comments_by_id: dict[str, LinearComment] = {}
+        after: str | None = None
+        seen_cursors: set[str] = set()
+        for page_number in range(1, LINEAR_COMMENTS_MAX_PAGES + 1):
+            data = self._execute(
+                _COMMENTS_QUERY,
+                {
+                    "id": issue_id,
+                    "first": LINEAR_COMMENTS_PAGE_SIZE,
+                    "after": after,
+                },
+            )
+            if "issue" not in data:
+                raise LinearCommentPaginationError(
+                    "Linear comment pagination returned a malformed issue"
+                )
+            issue = data["issue"]
+            if issue is None:
+                if page_number == 1:
+                    return []
+                raise LinearCommentPaginationError(
+                    "Linear issue disappeared during comment pagination"
+                )
+            if not isinstance(issue, Mapping):
+                raise LinearCommentPaginationError(
+                    "Linear comment pagination returned a malformed issue"
+                )
+            try:
+                connection = issue["comments"]
+                nodes = connection["nodes"]
+                page_info = connection["pageInfo"]
+                has_next_page = page_info["hasNextPage"]
+            except (KeyError, TypeError) as error:
+                raise LinearCommentPaginationError(
+                    "Linear comment pagination returned a malformed page"
+                ) from error
+            if (
+                not isinstance(connection, Mapping)
+                or not isinstance(nodes, list)
+                or not isinstance(page_info, Mapping)
+                or not isinstance(has_next_page, bool)
+            ):
+                raise LinearCommentPaginationError(
+                    "Linear comment pagination returned a malformed page"
+                )
+
+            page_comments: list[LinearComment] = []
+            for node in nodes:
+                if not isinstance(node, Mapping):
+                    raise LinearCommentPaginationError(
+                        "Linear comment pagination returned a malformed node"
+                    )
+                comment = _comment_from_node(node)
+                prior = comments_by_id.get(comment.id)
+                if prior is not None:
+                    if prior != comment:
+                        raise LinearCommentPaginationError(
+                            "Linear comment pagination returned an inconsistent "
+                            "duplicate id"
+                        )
+                    continue
+                page_comments.append(comment)
+                comments_by_id[comment.id] = comment
+
+            if len(comments) + len(page_comments) > LINEAR_COMMENTS_MAX_ITEMS:
+                raise LinearCommentPaginationError(
+                    "Linear comment pagination exceeded the item bound"
+                )
+            comments.extend(page_comments)
+            if not has_next_page:
+                return comments
+            if len(comments) >= LINEAR_COMMENTS_MAX_ITEMS:
+                raise LinearCommentPaginationError(
+                    "Linear comment pagination exhausted the item bound"
+                )
+            if page_number >= LINEAR_COMMENTS_MAX_PAGES:
+                raise LinearCommentPaginationError(
+                    "Linear comment pagination exhausted the page bound"
+                )
+            end_cursor = page_info.get("endCursor")
+            if (
+                not isinstance(end_cursor, str)
+                or not end_cursor
+                or end_cursor == after
+                or end_cursor in seen_cursors
+            ):
+                raise LinearCommentPaginationError(
+                    "Linear comment pagination returned an invalid cursor chain"
+                )
+            seen_cursors.add(end_cursor)
+            after = end_cursor
+
+        raise LinearCommentPaginationError(
+            "Linear comment pagination exhausted the page bound"
+        )
 
     def delete_issue(self, issue_id: str) -> bool:
         """Delete (trash) an issue. Not part of the ``LinearClient`` boundary
