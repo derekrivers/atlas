@@ -165,7 +165,7 @@ from atlas.pm.ci_handoff_fairness import (
     record_fair_ci_handoff_evaluation,
     select_fair_ci_handoff_candidate,
 )
-from atlas.pm.completion import complete_verified
+from atlas.pm.completion import complete_verified, ordinary_completion_authorized
 from atlas.pm.delivery_snapshot import LinearBoardPull, linear_board_fingerprint
 from atlas.pm.planned_ci_pending_recovery import recover_planned_ci_pending
 from atlas.pm.protected_lanes import (
@@ -188,10 +188,12 @@ from atlas.storage.repositories import (
     ADRRepo,
     ContextPackRepo,
     DebtItemRepo,
+    EvidenceRepo,
     LessonRepo,
     PmSyncReceiptRepo,
     ProductRepo,
     TicketRepo,
+    VerificationCheckRepo,
 )
 from atlas.storage.retrospective_completion import (
     RetrospectiveCompletionCoordinationRepo,
@@ -908,6 +910,28 @@ def _ci_pending_ownership_item(
     )
 
 
+def _done_completion_authority_item(
+    ticket: Ticket, issue: LinearIssue, now: datetime
+) -> DebtItem:
+    """Build the anomaly for a Done observation lacking completion authority."""
+
+    return DebtItem(
+        id=uuid4(),
+        product_id=ticket.product_id,
+        ticket_id=ticket.id,
+        anomaly_type=AnomalyType.OUT_OF_OWNERSHIP_TRANSITION,
+        summary=(
+            f"Linear state {issue.state_id!r} maps to 'done', but "
+            f"{ticket.status.value!r} -> 'done' lacks recognised completion "
+            "authority; generic pull left status unchanged"
+        ),
+        observed_at=now,
+        created_by_type=ActorType.SYSTEM,
+        created_by_id=CREATED_BY,
+        created_at=now,
+    )
+
+
 def _is_ci_pending_poll_compression(source: TicketStatus, target: TicketStatus) -> bool:
     """Whether a complete board pull may catch the local mirror up safely.
 
@@ -1333,7 +1357,8 @@ def _pull(
 ) -> Ticket:
     """Step 1 (Linear -> Atlas): mirror an owned mapped status onto a
     non-terminal ticket, and log an out-of-ownership anomaly for unmapped
-    states or CI-pending lifecycle edges this generic observation cannot own.
+    states or mapped CI-pending/Done lifecycle edges this observation cannot
+    own.
     Returns the possibly-updated ticket so the push step sees the post-pull
     status (a status pulled into a frozen state freezes the push).
 
@@ -1393,7 +1418,7 @@ def _pull(
                 None if recovery.recovery is None else recovery.recovery.id,
             )
             return updated
-    if transitioned:
+    if transitioned and mapped is not TicketStatus.DONE:
         tickets.mark_linear_state_observed(ticket.key, issue.state_id)
     if mapped is None:
         # Unmapped Linear state: never guessed. Count every observation; append
@@ -1432,7 +1457,11 @@ def _pull(
         # Invalid entries/exits likewise fail closed. Observation-transition
         # dedup matches the existing unmapped-state anomaly contract.
         if transitioned:
-            debt.record(_ci_pending_ownership_item(ticket, issue, mapped, owner, now))
+            item = _ci_pending_ownership_item(ticket, issue, mapped, owner, now)
+            if mapped is TicketStatus.DONE:
+                debt.record_linear_state_anomaly(ticket.key, issue.state_id, item)
+            else:
+                debt.record(item)
             result.anomalies_logged += 1
             logger.info(
                 "linear-sync: out-of-ownership CI-pending transition %s -> %s "
@@ -1450,6 +1479,36 @@ def _pull(
                 ticket.key,
             )
         return ticket
+    if mapped is TicketStatus.DONE and not ordinary_completion_authorized(
+        ticket,
+        ticket_checks=VerificationCheckRepo(db).list_for_ticket(ticket.id),
+        evidence=EvidenceRepo(db),
+    ):
+        # A provider state is an observation, not completion proof.  Re-evaluate
+        # the ordinary owner's durable proof even when the same Done state
+        # persists so a legitimate provider effect can converge after restart;
+        # ``transitioned`` controls only diagnostic deduplication.
+        if transitioned:
+            debt.record_linear_state_anomaly(
+                ticket.key,
+                issue.state_id,
+                _done_completion_authority_item(ticket, issue, now),
+            )
+            result.anomalies_logged += 1
+            logger.info(
+                "linear-sync: unsupported Done observation for %s; DebtItem "
+                "logged, status unchanged",
+                ticket.key,
+            )
+        else:
+            logger.info(
+                "linear-sync: unsupported Done observation for %s persists; "
+                "status unchanged, no new DebtItem",
+                ticket.key,
+            )
+        return ticket
+    if mapped is TicketStatus.DONE and transitioned:
+        tickets.mark_linear_state_observed(ticket.key, issue.state_id)
     transition_actor = (
         CI_PENDING_POLL_COMPRESSION_CREATED_BY
         if compressed_ci_pending and owner is not TicketTransitionOwner.AGENT
@@ -1967,7 +2026,8 @@ def _sync_tick_impl(
     issues are joined to tickets by ``external_linear_id`` ONLY. Per ticket:
     pull a mapped status (Linear -> Atlas) from the pre-fetched map — logging
     an out-of-ownership ``DebtItem``
-    (ATLAS-118) on a transition into an unmapped state — then push the owned
+    (ATLAS-118) on a transition into an unmapped state or an unowned mapped
+    CI-pending/Done edge — then push the owned
     definition (Atlas -> Linear) if the cursor says it changed (a first-sync
     create scopes the new issue to ``team_id`` AND ``project_id``, so it lands
     in the Symphony-polled Linear project; ATLAS-135). Every definition push

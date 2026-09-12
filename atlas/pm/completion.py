@@ -51,7 +51,8 @@ from __future__ import annotations
 
 import logging
 
-from atlas.core.enums import EvidenceStatus
+from atlas.core.enums import ActorType, EvidenceStatus
+from atlas.core.models import EvidenceType, Ticket, VerificationCheck
 from atlas.core.models.ticket import TicketStatus
 from atlas.linear.client import LinearClient
 from atlas.linear.ownership import LinearStatusMap
@@ -65,6 +66,48 @@ from atlas.verification.completion import (
 )
 
 logger = logging.getLogger("atlas.pm.completion")
+
+
+def ordinary_completion_authorized(
+    ticket: Ticket,
+    *,
+    ticket_checks: list[VerificationCheck],
+    evidence: EvidenceRepo,
+) -> bool:
+    """Whether the existing ordinary owner authorises this ticket's completion.
+
+    This is the single read-only proof predicate shared by the outbound
+    ``complete_verified`` writer and the later inbound Done finalisation.  It
+    deliberately recognises only the ordinary ``review_required -> done``
+    owner.  Retrospective ``ci_pending -> done`` remains exclusively owned by
+    its separately fenced reconciler.
+    """
+
+    if ticket.status is not TicketStatus.REVIEW_REQUIRED:
+        return False
+    verdict = ticket_verdict_from_checks(ticket, ticket_checks)
+    if verdict is not EvidenceStatus.PASSED:
+        return False
+    proof_ids = proof_evidence_ids(ticket, ticket_checks)
+    evidence_by_id = {record.id: record for record in evidence.get_many(proof_ids)}
+    commit_shas = {
+        record.commit_sha
+        for proof_id in proof_ids
+        if (record := evidence_by_id.get(proof_id)) is not None
+        and record.commit_sha is not None
+    }
+    # Fetch at most one candidate merge row. The append-only evidence table may
+    # grow without bound, so completion must never materialise its full history
+    # (globally or per ticket) on the serial PM pull path.
+    merge_record = evidence.find_matching_for_ticket(
+        ticket.id,
+        evidence_type=EvidenceType.PR_MERGED,
+        created_by_type=ActorType.SYSTEM,
+        commit_shas=commit_shas,
+    )
+    return merge_confirmed(
+        () if merge_record is None else (merge_record,), commit_shas=commit_shas
+    )
 
 
 def complete_verified(
@@ -107,35 +150,22 @@ def complete_verified(
     done_state_id = status_map.state_id_for(TicketStatus.DONE)
     checks = VerificationCheckRepo(db)
     # ATLAS-134: the merge gate reads persisted evidence locally (verify is the only
-    # GitHub-touching writer). Load once and index by id so the proof commit can be
-    # resolved from the PASSED checks' evidence_ids without a per-ticket round trip.
-    all_evidence = EvidenceRepo(db).list()
-    evidence_by_id = {e.id: e for e in all_evidence}
+    # GitHub-touching writer). The shared predicate issues bounded exact-id and
+    # exact-commit reads rather than materialising the append-only evidence history.
+    evidence = EvidenceRepo(db)
     completed = 0
     for ticket in tickets.list():
         if ticket.status is not TicketStatus.REVIEW_REQUIRED:
             continue  # only a ticket awaiting review can be completed by this step
         ticket_checks = checks.list_for_ticket(ticket.id)
-        verdict = ticket_verdict_from_checks(ticket, ticket_checks)
-        if verdict is not EvidenceStatus.PASSED:
-            continue  # FAILED is the changes-requested path; PENDING waits
-        # ATLAS-134: Done also requires the PR to be MERGED (operator ruling, Option A
-        # -- a separate condition; the verdict still means "acceptable"). The verdict
-        # carries no commit, so its commit is read from its proof: the evidence backing
-        # the PASSED checks. A PR_MERGED at that commit completes; no record, or one at
-        # a different commit (a re-push / second PR), waits -- exactly like a PENDING
-        # verdict does today.
-        proof_ids = proof_evidence_ids(ticket, ticket_checks)
-        commit_shas: set[str] = set()
-        for proof_id in proof_ids:
-            record = evidence_by_id.get(proof_id)
-            if record is not None and record.commit_sha is not None:
-                commit_shas.add(record.commit_sha)
-        ticket_evidence = [e for e in all_evidence if e.ticket_id == ticket.id]
-        if not merge_confirmed(ticket_evidence, commit_shas=commit_shas):
+        if not ordinary_completion_authorized(
+            ticket,
+            ticket_checks=ticket_checks,
+            evidence=evidence,
+        ):
             logger.info(
-                "linear-sync: %s verified PASSED but its PR is not merged at the "
-                "verdict commit; completion deferred",
+                "linear-sync: %s lacks current ordinary completion authority; "
+                "completion deferred",
                 ticket.key,
             )
             continue

@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import builtins
 import json
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Generic, TypeVar, cast
@@ -44,6 +44,7 @@ from atlas.core.models import (
     Epic,
     EpicStatus,
     Evidence,
+    EvidenceType,
     Lesson,
     OperatorActionReceipt,
     PlanRun,
@@ -656,9 +657,10 @@ class TicketRepo(_KeyedRepo[Ticket]):
 
         The out-of-ownership anomaly detector's dedup signal: the next pull
         compares the freshly fetched id against ``last_observed_linear_state_id``
-        and logs one ``DebtItem`` only on a *transition* into an unmapped state,
-        so a persisting unmapped state writes no new row while a genuine
-        re-occurrence (unmapped -> mapped -> unmapped) is a new transition.
+        and logs one ``DebtItem`` only on a *transition* into an out-of-ownership
+        state (unmapped, or a mapped lifecycle edge without its authority), so
+        a persisting observation writes no new row while a genuine re-occurrence
+        after an intervening state is a new transition.
 
         ``updated_at`` is DELIBERATELY left untouched: this is an inbound
         observation, not an Atlas edit, and the sync cursor compares
@@ -1184,6 +1186,46 @@ class EvidenceRepo(_Repo[Evidence]):
             )
             return [self._to_model(row) for row in rows]
 
+    def get_many(self, evidence_ids: Collection[UUID]) -> list[Evidence]:
+        """Return only the named immutable evidence rows in stable id order."""
+
+        ids = tuple(evidence_ids)
+        if not ids:
+            return []
+        with self._db.session() as session:
+            rows = session.scalars(
+                sa.select(EvidenceRow)
+                .where(EvidenceRow.id.in_(ids))
+                .order_by(EvidenceRow.id)
+            )
+            return [self._to_model(row) for row in rows]
+
+    def find_matching_for_ticket(
+        self,
+        ticket_id: UUID,
+        *,
+        evidence_type: EvidenceType,
+        created_by_type: ActorType,
+        commit_shas: Collection[str],
+    ) -> Evidence | None:
+        """Return one exact-match record through the completion lookup index."""
+
+        commits = tuple(commit_shas)
+        if not commits:
+            return None
+        with self._db.session() as session:
+            row = session.scalars(
+                sa.select(EvidenceRow)
+                .where(
+                    EvidenceRow.ticket_id == ticket_id,
+                    EvidenceRow.evidence_type == evidence_type.value,
+                    EvidenceRow.created_by_type == created_by_type.value,
+                    EvidenceRow.commit_sha.in_(commits),
+                )
+                .limit(1)
+            ).first()
+            return None if row is None else self._to_model(row)
+
     def list_for_product(self, product_id: UUID) -> list[Evidence]:
         """Return one product's evidence in stable history order."""
 
@@ -1223,8 +1265,9 @@ class EvidenceRepo(_Repo[Evidence]):
 class DebtItemRepo(_Repo[DebtItem]):
     """Append-only delivery-anomaly log (ATLAS-116).
 
-    Mirrors EvidenceRepo's append-only shape: it exposes an append verb
-    (``record``) and queries only — no update, no delete, no bypass — so
+    Mirrors EvidenceRepo's append-only shape: it is the sole repository
+    boundary that appends debt items and otherwise exposes queries only — no
+    update, no delete, no bypass — so
     one-row-per-observation (decision D1) is structural (decision D4). It
     is NOT EvidenceRepo: a DebtItem is an operational record, not
     evidence, so there is no trust-tier cap (decision D2).
@@ -1240,11 +1283,40 @@ class DebtItemRepo(_Repo[DebtItem]):
     def record(self, model: DebtItem) -> DebtItem:
         """Append one observation and return the persisted row.
 
-        The PM Engine's sole append verb. Recording never reads or writes
-        ticket state and never consults recurrence — logging debt and
-        moving a ticket are separate concerns (pm-engine-and-linear-sync.md).
+        The standard append verb for state-independent anomalies. Recording
+        never reads or writes ticket state and never consults recurrence —
+        logging debt and moving a ticket are separate concerns
+        (pm-engine-and-linear-sync.md). ``record_linear_state_anomaly`` is the
+        sole specialised append and couples only the diagnostic dedup cursor.
         """
         return self.add(model)
+
+    def record_linear_state_anomaly(
+        self, ticket_key: str, state_id: str | None, item: DebtItem
+    ) -> DebtItem:
+        """Append an anomaly and advance its dedup cursor atomically.
+
+        Completion-authority rejection uses this specialised append boundary
+        so a process cannot commit the observation cursor without also leaving
+        the diagnostic that explains why state was preserved. The DebtItem
+        must name the exact stored ticket and product.
+        """
+
+        _reject_naive(item)
+        with self._db.session() as session, session.begin():
+            ticket_row = session.scalars(
+                sa.select(TicketRow).where(TicketRow.key == ticket_key)
+            ).first()
+            if ticket_row is None:
+                raise TicketNotFoundError(f"no ticket with key {ticket_key!r}")
+            if (
+                item.ticket_id != ticket_row.id
+                or item.product_id != ticket_row.product_id
+            ):
+                raise ValueError("linear-state anomaly must match its stored ticket")
+            ticket_row.last_observed_linear_state_id = state_id
+            session.add(self._to_row(item))
+        return item
 
     def list_for_ticket(self, ticket_id: UUID) -> list[DebtItem]:
         """Every recorded anomaly for ``ticket_id``, oldest observation

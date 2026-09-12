@@ -54,13 +54,15 @@ def test_record_round_trips_model_to_database(db: Database) -> None:
 
 
 def test_repo_exposes_append_and_queries_only() -> None:
-    # No update, no delete, no finalize, no set_*: append-only is
-    # structural, by surface absence, exactly as EvidenceRepo.
+    # No DebtItem update/delete/finalize exists: append-only is structural,
+    # exactly as EvidenceRepo. The specialised Linear-state anomaly append
+    # atomically advances only the ticket's observation-dedup cursor.
     assert public_methods(DebtItemRepo) == {
         "add",
         "get",
         "list",
         "record",
+        "record_linear_state_anomaly",
         "list_for_ticket",
         "logged_since",
         "recurring",

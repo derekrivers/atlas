@@ -1125,7 +1125,7 @@ def test_pm_sync_receipt_migration_preserves_ticket_definition_cursors(
 def test_alembic_upgrades_fresh_db_and_matches_metadata(tmp_path: Path) -> None:
     url = f"sqlite:///{tmp_path}/migrated.db"
     config = _alembic_config(url)
-    assert ScriptDirectory.from_config(config).get_heads() == ["0038"]
+    assert ScriptDirectory.from_config(config).get_heads() == ["0039"]
     command.upgrade(config, "head")
 
     engine = sa.create_engine(url)
@@ -1143,6 +1143,69 @@ def test_alembic_upgrades_fresh_db_and_matches_metadata(tmp_path: Path) -> None:
         context = MigrationContext.configure(connection)
         diff = compare_metadata(context, Base.metadata)
     assert diff == [], f"migration drifts from ORM metadata: {diff}"
+
+
+def test_completion_evidence_lookup_index_migrates_and_drives_query_plan(
+    tmp_path: Path,
+) -> None:
+    url = f"sqlite:///{tmp_path}/completion-evidence-index.db"
+    config = _alembic_config(url)
+    command.upgrade(config, "0038")
+    engine = sa.create_engine(url)
+
+    with engine.connect() as connection:
+        assert "ix_evidence_ticket_type_actor_commit" not in {
+            index["name"] for index in sa.inspect(connection).get_indexes("evidence")
+        }
+
+    command.upgrade(config, "0039")
+    with engine.connect() as connection:
+        index = next(
+            index
+            for index in sa.inspect(connection).get_indexes("evidence")
+            if index["name"] == "ix_evidence_ticket_type_actor_commit"
+        )
+        assert index["column_names"] == [
+            "ticket_id",
+            "evidence_type",
+            "created_by_type",
+            "commit_sha",
+        ]
+        plan = connection.execute(
+            sa.text(
+                "EXPLAIN QUERY PLAN SELECT id FROM evidence "
+                "WHERE ticket_id = '11111111111141118111111111111111' "
+                "AND evidence_type = 'pr_merged' "
+                "AND created_by_type = 'system' "
+                "AND commit_sha IN ('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa') "
+                "LIMIT 1"
+            )
+        ).all()
+        detail = [str(row[-1]) for row in plan]
+        assert any(
+            "USING INDEX ix_evidence_ticket_type_actor_commit" in item
+            for item in detail
+        )
+        assert all("SCAN evidence" not in item for item in detail)
+
+    command.downgrade(config, "0038")
+    with engine.connect() as connection:
+        assert "ix_evidence_ticket_type_actor_commit" not in {
+            index["name"] for index in sa.inspect(connection).get_indexes("evidence")
+        }
+
+    output = StringIO()
+    postgres = Config(str(REPO_ROOT / "alembic.ini"), output_buffer=output)
+    postgres.set_main_option(
+        "script_location", str(REPO_ROOT / "atlas" / "storage" / "migrations")
+    )
+    postgres.set_main_option(
+        "sqlalchemy.url", "postgresql://atlas:atlas@localhost/atlas"
+    )
+    command.upgrade(postgres, "0038:0039", sql=True)
+    migration_sql = output.getvalue()
+    assert "-- Running upgrade 0038 -> 0039" in migration_sql
+    assert "CREATE INDEX ix_evidence_ticket_type_actor_commit" in migration_sql
 
 
 def test_evidence_docs_paths_migration_preserves_historical_rows(
@@ -1983,7 +2046,7 @@ def test_acceptance_evidence_receipt_outcomes_migrate_without_losing_guards(
 ) -> None:
     url = f"sqlite:///{tmp_path}/acceptance-evidence-outcomes.db"
     config = _alembic_config(url)
-    assert ScriptDirectory.from_config(config).get_heads() == ["0038"]
+    assert ScriptDirectory.from_config(config).get_heads() == ["0039"]
     command.upgrade(config, "head")
 
     engine = sa.create_engine(url)
