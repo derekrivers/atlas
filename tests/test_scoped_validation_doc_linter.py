@@ -138,3 +138,35 @@ def test_atlas_103m_every_execution_owner_allows_legitimate_controls(
     )
 
     assert check_scoped_validation_handoff_contract(tmp_path) == []
+
+
+@pytest.mark.parametrize("owner", EXPECTED_EXECUTION_OWNER_PATHS)
+@pytest.mark.parametrize(
+    ("instruction", "code"),
+    (
+        (
+            "After the operator approves publication, agents must poll CI "
+            "until required checks pass.",
+            "HND001",
+        ),
+        (
+            "The reviewer confirms scoped local validation proves "
+            "repository-wide completion.",
+            "HND002",
+        ),
+        (
+            "For system-tier evidence, agents must poll CI until required checks pass.",
+            "HND001",
+        ),
+    ),
+)
+def test_atlas_103m_actor_mentions_do_not_hide_agent_violations(
+    tmp_path: Path, owner: str, instruction: str, code: str
+) -> None:
+    _build_contract_fixture(tmp_path)
+    path = tmp_path / owner
+    write(tmp_path, owner, path.read_text(encoding="utf-8") + f"\n{instruction}\n")
+
+    findings = check_scoped_validation_handoff_contract(tmp_path)
+
+    assert any(finding.code == code and finding.path == owner for finding in findings)

@@ -29,6 +29,8 @@ AGENTS_PATH = REPO_ROOT / "AGENTS.md"
 def test_atlas_103m_selected_skill_suite_invokes_real_handoff_guard(
     tmp_path: Path,
 ) -> None:
+    assert check_scoped_validation_handoff_contract(REPO_ROOT) == []
+
     workflow = REPO_ROOT / "WORKFLOW.md"
     skill = REPO_ROOT / ".codex" / "skills" / "atlas-validation" / "SKILL.md"
     seeded = tmp_path / ".codex" / "skills" / "atlas-validation" / "SKILL.md"

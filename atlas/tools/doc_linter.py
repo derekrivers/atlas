@@ -725,8 +725,9 @@ _CONTRACT_NEGATION_RE = re.compile(
     r"\b(?:don't|doesn't|isn't|aren't)\b",
     re.IGNORECASE,
 )
-_NON_AGENT_ACTOR_SCOPE_RE = re.compile(
-    r"\b(?:coordinator|operator|reviewer|system(?:-tier)?)\b",
+_NON_AGENT_CI_ACTOR_PREFIX_RE = re.compile(
+    r"^\s*(?:the\s+)?(?:coordinator|operator|reviewer|system(?:-tier)?)\s+"
+    r"(?:may|can|must|will|is\s+(?:allowed|permitted)\s+to)\s*$",
     re.IGNORECASE,
 )
 
@@ -821,7 +822,10 @@ def _sentence_prefix(text: str, offset: int) -> str:
 
 
 def _positive_contract_matches(
-    text: str, patterns: tuple[re.Pattern[str], ...]
+    text: str,
+    patterns: tuple[re.Pattern[str], ...],
+    *,
+    allow_non_agent_ci_actor: bool = False,
 ) -> list[re.Match[str]]:
     """Return positive prohibited claims while allowing explicit negations."""
     matches: list[re.Match[str]] = []
@@ -834,7 +838,9 @@ def _positive_contract_matches(
             prefix = _sentence_prefix(text, match.start())
             if _CONTRACT_NEGATION_RE.search(prefix + match.group(0)):
                 continue
-            if _NON_AGENT_ACTOR_SCOPE_RE.search(prefix):
+            if allow_non_agent_ci_actor and _NON_AGENT_CI_ACTOR_PREFIX_RE.fullmatch(
+                prefix
+            ):
                 continue
             seen.add(identity)
             matches.append(match)
@@ -858,7 +864,9 @@ def check_scoped_validation_handoff_contract(root: Path) -> list[Finding]:
         if not path.is_file():
             continue
         text = path.read_text(encoding="utf-8")
-        for match in _positive_contract_matches(text, _CI_WAITING_INSTRUCTION_RES):
+        for match in _positive_contract_matches(
+            text, _CI_WAITING_INSTRUCTION_RES, allow_non_agent_ci_actor=True
+        ):
             findings.append(
                 Finding(
                     rel,
