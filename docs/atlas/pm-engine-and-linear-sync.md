@@ -766,9 +766,20 @@ Pull-based, consistent with ADR-0008 (no webhooks before hosting):
 4. Scan issue comments for the `atlas:proposed-follow-up` tag — but only
    for tickets in the **active-state set** `{ready_for_agent, in_progress,
    pr_open, review_required, changes_requested}` (ATLAS-148; one
-   `fetch_comments` request per member, so the scan costs O(active), not
-   O(board) — the pre-148 shape scanned every non-terminal ticket, ~108
-   more requests per tick). Per included state: `ready_for_agent` is
+   bounded `fetch_comments` traversal per member, so the scan costs O(active)
+   issue connections plus the pages required to read each connection, not
+   O(board) — the pre-148 shape scanned every non-terminal ticket, ~108 more
+   issue connections per tick). A comment connection is consumed completely
+   before any stub is written. The client follows cursors with finite page and
+   item caps (100 pages and 25,000 distinct comments) and raises a typed
+   `LinearAPIError` subtype on malformed pages,
+   discontinuous cursors, issue disappearance after the first page, conflicting
+   duplicate identities, or cap exhaustion; it never returns a partial prefix.
+   An issue absent on the initial read and a valid empty connection still yield
+   an empty list. A permanently oversized or malformed issue therefore fails
+   its current scan until the provider data is corrected, while a later fresh
+   tick retries the complete history without a timestamp cursor. Per included
+   state: `ready_for_agent` is
    scanned because a dispatched agent may comment the moment it picks the
    ticket up, before the state flips. `in_progress` is scanned because it
    is where an agent actively works and files most follow-up proposals.
@@ -901,9 +912,12 @@ only through plan/apply (ADR-0007), never as direct ticket creation.
 
 - The **producer** (step 4, ATLAS-45) is the comment scan. Per synced ticket
   (one with an `external_linear_id`, in a non-terminal status), the sync loop
-  reads the issue's comments through the read-only `LinearClient.fetch_comments`
-  and, for each comment whose body contains the `atlas:proposed-follow-up` tag,
-  writes one stub to the working tree. The stub carries a title, the verbatim
+  reads the issue's complete bounded comment connection through the read-only
+  `LinearClient.fetch_comments` and, only after that read reaches a proven final
+  page, writes one stub for each comment whose body contains the
+  `atlas:proposed-follow-up` tag. A later-page transport, provider-shape, cursor,
+  or bound failure returns no comment prefix, so the tick records failure and
+  writes no stub for that incomplete issue observation. The stub carries a title, the verbatim
   comment body, an honest source reference (the source ticket key and its Linear
   issue id), and the source comment id. The write is atomic (temp + rename) and
   is the **one sanctioned `docs/planning/` write** outside `atlas apply` — the
