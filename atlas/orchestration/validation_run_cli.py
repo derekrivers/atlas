@@ -207,6 +207,17 @@ def _git_identity_command(
     )
 
 
+def _repository_root(start: Path) -> Path | None:
+    try:
+        result = _git_identity_command(start, "rev-parse", "--show-toplevel")
+    except OSError:
+        return None
+    if result.returncode != 0:
+        return None
+    value = result.stdout.decode(errors="surrogateescape").strip()
+    return Path(value).resolve() if value else None
+
+
 def _read_candidate_identity(repo_root: Path) -> CandidateIdentity:
     """Read candidate and relevant input identity without changing Git state."""
 
@@ -336,11 +347,15 @@ def run_command(
     checkout_head: str | None = None,
     identity_reader: CandidateIdentityReader = _read_candidate_identity,
 ) -> int:
-    root = repo_root or Path.cwd()
+    requested_root = repo_root or Path.cwd()
+    discovered_root = _repository_root(requested_root)
+    root = discovered_root or requested_root
     plan = validation_plan_cli.build_plan(args, git_runner=git_runner, repo_root=root)
     initial_identity = identity_reader(root)
     actual_head = checkout_head if checkout_head is not None else initial_identity.head
     precondition_errors: list[str] = []
+    if discovered_root is None:
+        precondition_errors.append("Git repository top level is unreadable")
     if plan.base is None or plan.head is None:
         precondition_errors.append("plan does not contain exact base/head identities")
     if plan.diff_verification != "verified":

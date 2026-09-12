@@ -57,8 +57,10 @@ cannot count as mandatory evidence and selects `full-sweep`.
 Execute the exact plan with `atlas validation-run`, supplying the same
 base/head, changed paths, ticket requirements and ticket tests used for
 `validation-plan`. The runner re-calculates and proves the plan, requires the
-checked-out `HEAD` to equal the planned head, and refuses an unavailable or
-mismatched diff proof. Before starting any selected command it also requires a
+checked-out `HEAD` to equal the planned head, resolves Git's repository top
+level so a nested invocation cannot narrow input discovery or command scope,
+and refuses an unavailable or mismatched diff proof. Before starting any
+selected command it also requires a
 readable exact `HEAD` and tree, a clean index and tracked worktree, no index
 flags that hide tracked changes, and no uncontrolled untracked inputs. The
 untracked check includes repository, local and global ignore rules: ignored

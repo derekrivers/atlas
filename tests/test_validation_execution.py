@@ -452,6 +452,43 @@ def test_atlas_102m_ignore_rules_cannot_hide_arbitrary_untracked_inputs(
     ]
 
 
+def test_atlas_102m_nested_invocation_checks_the_complete_repository_preflight(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo, args, _base, _head = _candidate_repo(tmp_path)
+    nested = repo / "nested"
+    nested.mkdir()
+    (repo / "conftest.py").write_text("raise RuntimeError('root input')\n")
+    calls: list[tuple[Path, str]] = []
+
+    def runner(cwd: Path, command: str) -> int:
+        calls.append((cwd, command))
+        return 0
+
+    assert run_command(args, command_runner=runner, repo_root=nested) == 1
+    assert calls == []
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["initial_candidate_identity"]["untracked_paths"] == ["conftest.py"]
+
+
+def test_atlas_102m_nested_invocation_detects_mid_run_root_input_change(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo, args, _base, _head = _candidate_repo(tmp_path)
+    nested = repo / "nested"
+    nested.mkdir()
+
+    def runner(cwd: Path, _command: str) -> int:
+        assert cwd == repo.resolve()
+        (repo / "conftest.py").write_text("raise RuntimeError('mid-run root input')\n")
+        return 0
+
+    assert run_command(args, command_runner=runner, repo_root=nested) == 1
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "failed"
+    assert payload["final_candidate_identity"]["untracked_paths"] == ["conftest.py"]
+
+
 def test_atlas_102m_real_git_clean_candidate_reports_pre_and_post_identity(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
