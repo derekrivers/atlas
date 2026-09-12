@@ -14,6 +14,7 @@ import pytest
 
 from atlas.orchestration.validation_run_cli import execute_plan, run_command
 from atlas.verification.validation_execution import (
+    CandidateIdentity,
     ValidationCommandResult,
     ValidationLaneResult,
     aggregate_execution_result,
@@ -31,6 +32,17 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 REGISTRY_PATH = REPO_ROOT / "atlas" / "verification" / "validation_registry_v1.json"
 BASE = "a" * 40
 HEAD = "b" * 40
+
+
+def _clean_identity(head: str = HEAD) -> CandidateIdentity:
+    return CandidateIdentity(
+        head=head,
+        head_tree="d" * 40,
+        index_clean=True,
+        tracked_worktree_clean=True,
+        untracked_paths=(),
+        index_fingerprint="index",
+    )
 
 
 def _registry() -> ValidationRegistry:
@@ -285,6 +297,7 @@ def test_atlas_083m_cli_runs_the_proved_exact_candidate(
             command_runner=lambda _cwd, _command: 0,
             repo_root=REPO_ROOT,
             checkout_head=HEAD,
+            identity_reader=lambda _repo: _clean_identity(),
         )
         == 0
     )
@@ -322,3 +335,250 @@ def test_atlas_083m_execution_refuses_a_checkout_head_mismatch() -> None:
         == 1
     )
     assert calls == []
+
+
+def _git(repo: Path, *argv: str) -> str:
+    result = subprocess.run(
+        ["git", *argv], cwd=repo, capture_output=True, text=True, check=True
+    )
+    return result.stdout.strip()
+
+
+def _candidate_repo(tmp_path: Path) -> tuple[Path, argparse.Namespace, str, str]:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q")
+    _git(repo, "config", "user.email", "validation@example.test")
+    _git(repo, "config", "user.name", "Validation Test")
+    (repo / "README.md").write_text("base\n")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-qm", "base")
+    base = _git(repo, "rev-parse", "HEAD")
+    (repo / "README.md").write_text("candidate\n")
+    _git(repo, "commit", "-qam", "candidate")
+    head = _git(repo, "rev-parse", "HEAD")
+    args = argparse.Namespace(
+        base=base,
+        head=head,
+        changed_path=["README.md"],
+        ticket_requirement=["documentation"],
+        ticket_test=[],
+        expect_registry_version=None,
+        json=True,
+    )
+    return repo, args, base, head
+
+
+@pytest.mark.parametrize(
+    "dirty",
+    ("tracked", "staged", "deletion", "rename", "type-change", "untracked"),
+)
+def test_atlas_102m_real_git_preflight_refuses_influential_dirty_inputs(
+    tmp_path: Path, dirty: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo, args, _base, _head = _candidate_repo(tmp_path)
+    if dirty == "tracked":
+        (repo / "README.md").write_text("dirty\n")
+    elif dirty == "staged":
+        (repo / "README.md").write_text("staged\n")
+        _git(repo, "add", "README.md")
+    elif dirty == "deletion":
+        (repo / "README.md").unlink()
+    elif dirty == "rename":
+        (repo / "README.md").rename(repo / "RENAMED.md")
+    elif dirty == "type-change":
+        (repo / "README.md").unlink()
+        (repo / "README.md").symlink_to("missing-target")
+    else:
+        (repo / "influential.py").write_text("raise SystemExit(1)\n")
+    calls: list[str] = []
+
+    def runner(_cwd: Path, command: str) -> int:
+        calls.append(command)
+        return 0
+
+    assert (
+        run_command(
+            args,
+            command_runner=runner,
+            repo_root=repo,
+        )
+        == 1
+    )
+    assert calls == []
+    assert "candidate inputs are not clean" in capsys.readouterr().err
+
+
+def test_atlas_102m_real_git_clean_candidate_reports_pre_and_post_identity(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo, args, _base, head = _candidate_repo(tmp_path)
+
+    assert run_command(args, command_runner=lambda *_: 0, repo_root=repo) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "passed"
+    assert payload["initial_candidate_identity"]["head"] == head
+    assert payload["final_candidate_identity"] == payload["initial_candidate_identity"]
+    assert payload["candidate_identity_errors"] == []
+
+
+def test_atlas_102m_human_report_names_both_candidate_observations(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo, args, _base, head = _candidate_repo(tmp_path)
+    args.json = False
+
+    assert run_command(args, command_runner=lambda *_: 0, repo_root=repo) == 0
+
+    output = capsys.readouterr().out
+    assert f"Initial candidate identity: head={head}" in output
+    assert f"Final candidate identity: head={head}" in output
+
+
+def test_atlas_102m_restored_clean_inputs_succeed_on_fresh_invocation(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo, args, _base, _head = _candidate_repo(tmp_path)
+    (repo / "README.md").write_text("dirty\n")
+
+    assert run_command(args, command_runner=lambda *_: 0, repo_root=repo) == 1
+    assert json.loads(capsys.readouterr().out)["status"] == "refused"
+
+    (repo / "README.md").write_text("candidate\n")
+    assert run_command(args, command_runner=lambda *_: 0, repo_root=repo) == 0
+    assert json.loads(capsys.readouterr().out)["status"] == "passed"
+
+
+@pytest.mark.parametrize("change", ("head", "index", "tracked", "untracked"))
+def test_atlas_102m_mid_run_input_change_fails_but_retains_command_diagnostics(
+    tmp_path: Path,
+    change: str,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo, args, _base, _head = _candidate_repo(tmp_path)
+
+    def runner(_cwd: Path, _command: str) -> int:
+        if change == "head":
+            (repo / "README.md").write_text("new head\n")
+            _git(repo, "commit", "-qam", "mid-run")
+        elif change == "index":
+            (repo / "README.md").write_text("staged mid-run\n")
+            _git(repo, "add", "README.md")
+        elif change == "tracked":
+            (repo / "README.md").write_text("dirty mid-run\n")
+        else:
+            (repo / "influential.toml").write_text("enabled = true\n")
+        return 0
+
+    assert run_command(args, command_runner=runner, repo_root=repo) == 1
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "failed"
+    assert payload["lane_results"][0]["command_results"][0]["exit_code"] == 0
+    assert payload["candidate_identity_errors"] == [
+        "candidate identity or relevant inputs changed during execution"
+    ]
+
+
+def test_atlas_102m_final_identity_read_failure_cannot_report_success(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo, args, _base, head = _candidate_repo(tmp_path)
+    clean = CandidateIdentity(
+        head=head,
+        head_tree=_git(repo, "rev-parse", "HEAD^{tree}"),
+        index_clean=True,
+        tracked_worktree_clean=True,
+        untracked_paths=(),
+        index_fingerprint="index",
+    )
+    unreadable = CandidateIdentity(
+        head=None,
+        head_tree=None,
+        index_clean=None,
+        tracked_worktree_clean=None,
+        untracked_paths=(),
+        index_fingerprint=None,
+        errors=("HEAD: seeded read failure",),
+    )
+    reads = iter((clean, unreadable))
+
+    assert (
+        run_command(
+            args,
+            command_runner=lambda *_: 0,
+            repo_root=repo,
+            identity_reader=lambda _repo: next(reads),
+        )
+        == 1
+    )
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "failed"
+    assert payload["lane_results"][0]["command_results"][0]["exit_code"] == 0
+    assert (
+        "final candidate identity is unreadable" in payload["candidate_identity_errors"]
+    )
+
+
+def test_atlas_102m_initial_identity_read_failure_refuses_before_execution(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo, args, _base, _head = _candidate_repo(tmp_path)
+    calls: list[str] = []
+    unreadable = CandidateIdentity(
+        head=None,
+        head_tree=None,
+        index_clean=None,
+        tracked_worktree_clean=None,
+        untracked_paths=(),
+        index_fingerprint=None,
+        errors=("HEAD: seeded read failure",),
+    )
+
+    def runner(_cwd: Path, command: str) -> int:
+        calls.append(command)
+        return 0
+
+    assert (
+        run_command(
+            args,
+            command_runner=runner,
+            repo_root=repo,
+            identity_reader=lambda _repo: unreadable,
+        )
+        == 1
+    )
+    assert calls == []
+    assert "initial candidate identity is unreadable" in capsys.readouterr().err
+
+
+def test_atlas_102m_ignored_outputs_do_not_poison_fresh_runs(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo, _args, _base, _head = _candidate_repo(tmp_path)
+    (repo / ".gitignore").write_text(".cache/\n")
+    _git(repo, "add", ".gitignore")
+    _git(repo, "commit", "-qm", "ignore controlled cache")
+    head = _git(repo, "rev-parse", "HEAD")
+    base = _git(repo, "rev-parse", "HEAD^")
+    args = argparse.Namespace(
+        base=base,
+        head=head,
+        changed_path=[".gitignore"],
+        ticket_requirement=["documentation"],
+        ticket_test=[],
+        expect_registry_version=None,
+        json=True,
+    )
+
+    def generate_cache(_cwd: Path, _command: str) -> int:
+        cache = repo / ".cache"
+        cache.mkdir(exist_ok=True)
+        (cache / "result").write_text("generated\n")
+        return 0
+
+    assert run_command(args, command_runner=generate_cache, repo_root=repo) == 0
+    capsys.readouterr()
+    assert run_command(args, command_runner=lambda *_: 0, repo_root=repo) == 0
+    assert json.loads(capsys.readouterr().out)["status"] == "passed"

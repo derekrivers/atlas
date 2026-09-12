@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Final, Literal
 
 from atlas.verification.validation_plan import FULL_SWEEP_COMMANDS, ValidationPlan
@@ -21,6 +21,44 @@ FULL_SWEEP_LANE_INDICES: Final = (
 
 class ValidationTopologyError(ValueError):
     """The planned inventory cannot be mapped to governed execution groups."""
+
+
+@dataclass(frozen=True)
+class CandidateIdentity:
+    """One read-only observation of the inputs attributed to a validation run."""
+
+    head: str | None
+    head_tree: str | None
+    index_clean: bool | None
+    tracked_worktree_clean: bool | None
+    untracked_paths: tuple[str, ...]
+    index_fingerprint: str | None
+    errors: tuple[str, ...] = ()
+
+    @property
+    def readable(self) -> bool:
+        return not self.errors and self.head is not None and self.head_tree is not None
+
+    @property
+    def clean(self) -> bool:
+        return (
+            self.readable
+            and self.index_clean is True
+            and self.tracked_worktree_clean is True
+            and not self.untracked_paths
+        )
+
+    def payload(self) -> dict[str, object]:
+        return {
+            "clean": self.clean,
+            "errors": list(self.errors),
+            "head": self.head,
+            "head_tree": self.head_tree,
+            "index_clean": self.index_clean,
+            "index_fingerprint": self.index_fingerprint,
+            "tracked_worktree_clean": self.tracked_worktree_clean,
+            "untracked_paths": list(self.untracked_paths),
+        }
 
 
 @dataclass(frozen=True)
@@ -100,6 +138,9 @@ class ValidationExecutionResult:
     duplicate_results: tuple[tuple[str, str], ...]
     unexpected_results: tuple[tuple[str, str], ...]
     topology_errors: tuple[str, ...]
+    initial_candidate_identity: CandidateIdentity | None = None
+    final_candidate_identity: CandidateIdentity | None = None
+    candidate_identity_errors: tuple[str, ...] = ()
 
     def payload(self) -> dict[str, object]:
         return {
@@ -110,6 +151,17 @@ class ValidationExecutionResult:
             ],
             "finished_at": self.finished_at,
             "groups": [group.payload() for group in self.groups],
+            "candidate_identity_errors": list(self.candidate_identity_errors),
+            "final_candidate_identity": (
+                self.final_candidate_identity.payload()
+                if self.final_candidate_identity is not None
+                else None
+            ),
+            "initial_candidate_identity": (
+                self.initial_candidate_identity.payload()
+                if self.initial_candidate_identity is not None
+                else None
+            ),
             "lane_results": [lane.payload() for lane in self.lane_results],
             "missing_results": [
                 {"command": command, "lane": lane}
@@ -132,6 +184,22 @@ class ValidationExecutionResult:
             f"Head: {self.plan.head or 'ambiguous'}",
             f"Wall time: {self.duration_seconds:.3f}s",
         ]
+        for label, identity in (
+            ("Initial candidate identity", self.initial_candidate_identity),
+            ("Final candidate identity", self.final_candidate_identity),
+        ):
+            if identity is not None:
+                lines.append(
+                    f"{label}: head={identity.head or 'unreadable'} "
+                    f"tree={identity.head_tree or 'unreadable'} "
+                    f"index_clean={identity.index_clean} "
+                    f"tracked_clean={identity.tracked_worktree_clean} "
+                    f"untracked={len(identity.untracked_paths)}"
+                )
+                for error in identity.errors:
+                    lines.append(f"  Identity read error: {error}")
+        for error in self.candidate_identity_errors:
+            lines.append(f"Candidate identity error: {error}")
         for lane_result in self.lane_results:
             lines.append(
                 f"Lane {lane_result.name}: {lane_result.duration_seconds:.3f}s"
@@ -260,13 +328,37 @@ def aggregate_execution_result(
     )
 
 
+def attribute_candidate_identity(
+    result: ValidationExecutionResult,
+    *,
+    initial: CandidateIdentity,
+    final: CandidateIdentity,
+) -> ValidationExecutionResult:
+    """Attach pre/post identity and fail a result whose attribution is unsafe."""
+
+    errors: list[str] = []
+    if not final.readable:
+        errors.append("final candidate identity is unreadable")
+    if final != initial:
+        errors.append("candidate identity or relevant inputs changed during execution")
+    return replace(
+        result,
+        status="failed" if errors else result.status,
+        initial_candidate_identity=initial,
+        final_candidate_identity=final,
+        candidate_identity_errors=tuple(errors),
+    )
+
+
 __all__ = [
     "FULL_SWEEP_LANE_INDICES",
+    "CandidateIdentity",
     "ValidationCommandResult",
     "ValidationExecutionGroup",
     "ValidationExecutionResult",
     "ValidationLaneResult",
     "ValidationTopologyError",
     "aggregate_execution_result",
+    "attribute_candidate_identity",
     "execution_groups_for_plan",
 ]

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import subprocess
 import sys
@@ -15,18 +16,21 @@ from pathlib import Path
 
 from atlas.orchestration import validation_plan_cli
 from atlas.verification.validation_execution import (
+    CandidateIdentity,
     ValidationCommandResult,
     ValidationExecutionGroup,
     ValidationExecutionResult,
     ValidationLaneResult,
     ValidationTopologyError,
     aggregate_execution_result,
+    attribute_candidate_identity,
     execution_groups_for_plan,
 )
 from atlas.verification.validation_plan import ValidationPlan
 
 MAX_PARALLEL_VALIDATION_LANES = 3
 CommandRunner = Callable[[Path, str], int]
+CandidateIdentityReader = Callable[[Path], CandidateIdentity]
 
 
 def add_parser(subcommands: argparse._SubParsersAction) -> None:  # type: ignore[type-arg]
@@ -178,18 +182,90 @@ def execute_plan(
     )
 
 
-def _checkout_head(repo_root: Path) -> str | None:
-    try:
-        result = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
-            cwd=repo_root,
-            capture_output=True,
-            text=True,
-            shell=False,
+def _git_identity_command(
+    repo_root: Path, *argv: str
+) -> subprocess.CompletedProcess[bytes]:
+    return subprocess.run(
+        ["git", *argv],
+        cwd=repo_root,
+        capture_output=True,
+        shell=False,
+    )
+
+
+def _read_candidate_identity(repo_root: Path) -> CandidateIdentity:
+    """Read candidate and relevant input identity without changing Git state."""
+
+    errors: list[str] = []
+
+    def run(
+        label: str, *argv: str, allowed_returncodes: tuple[int, ...] = (0,)
+    ) -> subprocess.CompletedProcess[bytes] | None:
+        try:
+            result = _git_identity_command(repo_root, *argv)
+        except OSError as error:
+            errors.append(f"{label}: {type(error).__name__}: {error}")
+            return None
+        if result.returncode not in allowed_returncodes:
+            detail = result.stderr.decode(errors="replace").strip()
+            errors.append(f"{label}: git exited {result.returncode}: {detail}")
+            return None
+        return result
+
+    head_result = run("HEAD", "rev-parse", "--verify", "HEAD")
+    tree_result = run("HEAD tree", "rev-parse", "--verify", "HEAD^{tree}")
+    index_result = run(
+        "index",
+        "diff",
+        "--no-ext-diff",
+        "--cached",
+        "--quiet",
+        "HEAD",
+        "--",
+        allowed_returncodes=(0, 1),
+    )
+    tracked_result = run(
+        "tracked worktree",
+        "diff",
+        "--no-ext-diff",
+        "--quiet",
+        "--",
+        allowed_returncodes=(0, 1),
+    )
+    untracked_result = run(
+        "untracked inputs", "ls-files", "--others", "--exclude-standard", "-z"
+    )
+    index_listing = run("index fingerprint", "ls-files", "--stage", "-z")
+
+    def oid(result: subprocess.CompletedProcess[bytes] | None) -> str | None:
+        return result.stdout.decode(errors="replace").strip() if result else None
+
+    untracked = (
+        tuple(
+            sorted(
+                path.decode(errors="surrogateescape")
+                for path in untracked_result.stdout.split(b"\0")
+                if path
+            )
         )
-    except OSError:
-        return None
-    return result.stdout.strip() if result.returncode == 0 else None
+        if untracked_result is not None
+        else ()
+    )
+    return CandidateIdentity(
+        head=oid(head_result),
+        head_tree=oid(tree_result),
+        index_clean=index_result.returncode == 0 if index_result is not None else None,
+        tracked_worktree_clean=(
+            tracked_result.returncode == 0 if tracked_result is not None else None
+        ),
+        untracked_paths=untracked,
+        index_fingerprint=(
+            hashlib.sha256(index_listing.stdout).hexdigest()
+            if index_listing is not None
+            else None
+        ),
+        errors=tuple(errors),
+    )
 
 
 def run_command(
@@ -199,10 +275,12 @@ def run_command(
     command_runner: CommandRunner | None = None,
     repo_root: Path | None = None,
     checkout_head: str | None = None,
+    identity_reader: CandidateIdentityReader = _read_candidate_identity,
 ) -> int:
     root = repo_root or Path.cwd()
     plan = validation_plan_cli.build_plan(args, git_runner=git_runner, repo_root=root)
-    actual_head = checkout_head if checkout_head is not None else _checkout_head(root)
+    initial_identity = identity_reader(root)
+    actual_head = checkout_head if checkout_head is not None else initial_identity.head
     precondition_errors: list[str] = []
     if plan.base is None or plan.head is None:
         precondition_errors.append("plan does not contain exact base/head identities")
@@ -214,15 +292,52 @@ def run_command(
         precondition_errors.append(
             "checked-out HEAD does not match the planned candidate head"
         )
+    if not initial_identity.readable:
+        precondition_errors.append("initial candidate identity is unreadable")
+    elif not initial_identity.clean:
+        precondition_errors.append(
+            "candidate inputs are not clean (index, tracked worktree, or "
+            "nonignored untracked files)"
+        )
     if precondition_errors:
         for error in precondition_errors:
             print(f"validation-run refused: {error}", file=sys.stderr)
+        if args.json:
+            print(
+                json.dumps(
+                    {
+                        "initial_candidate_identity": initial_identity.payload(),
+                        "plan": plan.payload(),
+                        "precondition_errors": precondition_errors,
+                        "status": "refused",
+                    },
+                    ensure_ascii=True,
+                    separators=(",", ":"),
+                    sort_keys=True,
+                )
+            )
+        else:
+            print(
+                "validation-run initial identity: "
+                f"head={initial_identity.head or 'unreadable'} "
+                f"tree={initial_identity.head_tree or 'unreadable'} "
+                f"index_clean={initial_identity.index_clean} "
+                f"tracked_clean={initial_identity.tracked_worktree_clean} "
+                f"untracked={len(initial_identity.untracked_paths)}",
+                file=sys.stderr,
+            )
+            for error in initial_identity.errors:
+                print(f"validation-run identity read error: {error}", file=sys.stderr)
         return 1
     try:
         result = execute_plan(plan, repo_root=root, command_runner=command_runner)
     except ValidationTopologyError as error:
         print(f"validation-run refused: {error}", file=sys.stderr)
         return 1
+    final_identity = identity_reader(root)
+    result = attribute_candidate_identity(
+        result, initial=initial_identity, final=final_identity
+    )
     if args.json:
         print(
             json.dumps(
@@ -254,6 +369,7 @@ def run_routed_command(
 
 __all__: Sequence[str] = (
     "MAX_PARALLEL_VALIDATION_LANES",
+    "CandidateIdentityReader",
     "CommandRunner",
     "add_parser",
     "add_parsers",
