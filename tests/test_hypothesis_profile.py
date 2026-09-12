@@ -7,6 +7,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from typing import cast
 
 import pytest
 from hypothesis import settings
@@ -71,7 +72,7 @@ def _probe_settings(profile: str | None) -> dict[str, object]:
         if line.startswith(_PROBE_MARKER)
     ]
     assert len(payloads) == 1, result.stdout + result.stderr
-    return json.loads(payloads[0])
+    return cast(dict[str, object], json.loads(payloads[0]))
 
 
 def test_missing_profile_uses_deterministic_atlas_defaults() -> None:
