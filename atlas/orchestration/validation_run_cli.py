@@ -32,6 +32,20 @@ MAX_PARALLEL_VALIDATION_LANES = 3
 CommandRunner = Callable[[Path, str], int]
 CandidateIdentityReader = Callable[[Path], CandidateIdentity]
 
+_CONTROLLED_IGNORED_PREFIXES = (
+    ".hypothesis/",
+    ".import_linter_cache/",
+    ".mypy_cache/",
+    ".pytest_cache/",
+    ".ruff_cache/",
+    ".venv/",
+    "apps/operator-ui/coverage/",
+    "apps/operator-ui/dist/",
+    "apps/operator-ui/node_modules/",
+    "build/",
+    "dist/",
+)
+
 
 def add_parser(subcommands: argparse._SubParsersAction) -> None:  # type: ignore[type-arg]
     parser = subcommands.add_parser(
@@ -236,6 +250,16 @@ def _read_candidate_identity(repo_root: Path) -> CandidateIdentity:
         "untracked inputs", "ls-files", "--others", "--exclude-standard", "-z"
     )
     index_listing = run("index fingerprint", "ls-files", "--stage", "-z")
+    index_flags = run("index flags", "ls-files", "-v", "-z")
+    ignored_result = run(
+        "ignored inputs",
+        "ls-files",
+        "--others",
+        "--ignored",
+        "--exclude-standard",
+        "--directory",
+        "-z",
+    )
 
     def oid(result: subprocess.CompletedProcess[bytes] | None) -> str | None:
         return result.stdout.decode(errors="replace").strip() if result else None
@@ -251,6 +275,30 @@ def _read_candidate_identity(repo_root: Path) -> CandidateIdentity:
         if untracked_result is not None
         else ()
     )
+    flagged_entries = (
+        tuple(entry for entry in index_flags.stdout.split(b"\0") if entry)
+        if index_flags is not None
+        else ()
+    )
+    hidden_tracked = tuple(
+        sorted(
+            entry[2:].decode(errors="surrogateescape")
+            for entry in flagged_entries
+            if entry[:1] != b"H"
+        )
+    )
+    ignored_paths = (
+        tuple(
+            path.decode(errors="surrogateescape")
+            for path in ignored_result.stdout.split(b"\0")
+            if path
+        )
+        if ignored_result is not None
+        else ()
+    )
+    unexpected_ignored = tuple(
+        sorted(path for path in ignored_paths if not _is_controlled_ignored(path))
+    )
     return CandidateIdentity(
         head=oid(head_result),
         head_tree=oid(tree_result),
@@ -260,12 +308,23 @@ def _read_candidate_identity(repo_root: Path) -> CandidateIdentity:
         ),
         untracked_paths=untracked,
         index_fingerprint=(
-            hashlib.sha256(index_listing.stdout).hexdigest()
-            if index_listing is not None
+            hashlib.sha256(
+                index_listing.stdout + b"\0" + index_flags.stdout
+            ).hexdigest()
+            if index_listing is not None and index_flags is not None
             else None
         ),
         errors=tuple(errors),
+        hidden_tracked_paths=hidden_tracked,
+        unexpected_ignored_paths=unexpected_ignored,
     )
+
+
+def _is_controlled_ignored(path: str) -> bool:
+    if path.startswith(_CONTROLLED_IGNORED_PREFIXES):
+        return True
+    parts = path.split("/")
+    return "__pycache__" in parts or any(part.endswith(".egg-info") for part in parts)
 
 
 def run_command(
@@ -297,7 +356,7 @@ def run_command(
     elif not initial_identity.clean:
         precondition_errors.append(
             "candidate inputs are not clean (index, tracked worktree, or "
-            "nonignored untracked files)"
+            "untracked files, hidden tracked inputs, or uncontrolled ignored inputs)"
         )
     if precondition_errors:
         for error in precondition_errors:
@@ -323,7 +382,9 @@ def run_command(
                 f"tree={initial_identity.head_tree or 'unreadable'} "
                 f"index_clean={initial_identity.index_clean} "
                 f"tracked_clean={initial_identity.tracked_worktree_clean} "
-                f"untracked={len(initial_identity.untracked_paths)}",
+                f"untracked={len(initial_identity.untracked_paths)} "
+                f"hidden_tracked={len(initial_identity.hidden_tracked_paths)} "
+                f"unexpected_ignored={len(initial_identity.unexpected_ignored_paths)}",
                 file=sys.stderr,
             )
             for error in initial_identity.errors:

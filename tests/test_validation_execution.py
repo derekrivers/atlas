@@ -371,7 +371,16 @@ def _candidate_repo(tmp_path: Path) -> tuple[Path, argparse.Namespace, str, str]
 
 @pytest.mark.parametrize(
     "dirty",
-    ("tracked", "staged", "deletion", "rename", "type-change", "untracked"),
+    (
+        "tracked",
+        "staged",
+        "deletion",
+        "rename",
+        "type-change",
+        "untracked",
+        "assume-unchanged",
+        "skip-worktree",
+    ),
 )
 def test_atlas_102m_real_git_preflight_refuses_influential_dirty_inputs(
     tmp_path: Path, dirty: str, capsys: pytest.CaptureFixture[str]
@@ -389,8 +398,14 @@ def test_atlas_102m_real_git_preflight_refuses_influential_dirty_inputs(
     elif dirty == "type-change":
         (repo / "README.md").unlink()
         (repo / "README.md").symlink_to("missing-target")
-    else:
+    elif dirty == "untracked":
         (repo / "influential.py").write_text("raise SystemExit(1)\n")
+    else:
+        flag = (
+            "--assume-unchanged" if dirty == "assume-unchanged" else "--skip-worktree"
+        )
+        _git(repo, "update-index", flag, "README.md")
+        (repo / "README.md").write_text("hidden dirty input\n")
     calls: list[str] = []
 
     def runner(_cwd: Path, command: str) -> int:
@@ -407,6 +422,34 @@ def test_atlas_102m_real_git_preflight_refuses_influential_dirty_inputs(
     )
     assert calls == []
     assert "candidate inputs are not clean" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("ignore_source", ("info-exclude", "global-ignore"))
+def test_atlas_102m_ignore_rules_cannot_hide_arbitrary_untracked_inputs(
+    tmp_path: Path,
+    ignore_source: str,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo, args, _base, _head = _candidate_repo(tmp_path)
+    if ignore_source == "info-exclude":
+        (repo / ".git" / "info" / "exclude").write_text("conftest.py\n")
+    else:
+        excludes = tmp_path / "global-ignore"
+        excludes.write_text("conftest.py\n")
+        _git(repo, "config", "core.excludesFile", str(excludes))
+    (repo / "conftest.py").write_text("raise RuntimeError('hidden input')\n")
+    calls: list[str] = []
+
+    def runner(_cwd: Path, command: str) -> int:
+        calls.append(command)
+        return 0
+
+    assert run_command(args, command_runner=runner, repo_root=repo) == 1
+    assert calls == []
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["initial_candidate_identity"]["unexpected_ignored_paths"] == [
+        "conftest.py"
+    ]
 
 
 def test_atlas_102m_real_git_clean_candidate_reports_pre_and_post_identity(
@@ -557,7 +600,7 @@ def test_atlas_102m_ignored_outputs_do_not_poison_fresh_runs(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     repo, _args, _base, _head = _candidate_repo(tmp_path)
-    (repo / ".gitignore").write_text(".cache/\n")
+    (repo / ".gitignore").write_text(".pytest_cache/\n")
     _git(repo, "add", ".gitignore")
     _git(repo, "commit", "-qm", "ignore controlled cache")
     head = _git(repo, "rev-parse", "HEAD")
@@ -573,7 +616,7 @@ def test_atlas_102m_ignored_outputs_do_not_poison_fresh_runs(
     )
 
     def generate_cache(_cwd: Path, _command: str) -> int:
-        cache = repo / ".cache"
+        cache = repo / ".pytest_cache"
         cache.mkdir(exist_ok=True)
         (cache / "result").write_text("generated\n")
         return 0

@@ -34,6 +34,8 @@ class CandidateIdentity:
     untracked_paths: tuple[str, ...]
     index_fingerprint: str | None
     errors: tuple[str, ...] = ()
+    hidden_tracked_paths: tuple[str, ...] = ()
+    unexpected_ignored_paths: tuple[str, ...] = ()
 
     @property
     def readable(self) -> bool:
@@ -46,6 +48,8 @@ class CandidateIdentity:
             and self.index_clean is True
             and self.tracked_worktree_clean is True
             and not self.untracked_paths
+            and not self.hidden_tracked_paths
+            and not self.unexpected_ignored_paths
         )
 
     def payload(self) -> dict[str, object]:
@@ -54,10 +58,12 @@ class CandidateIdentity:
             "errors": list(self.errors),
             "head": self.head,
             "head_tree": self.head_tree,
+            "hidden_tracked_paths": list(self.hidden_tracked_paths),
             "index_clean": self.index_clean,
             "index_fingerprint": self.index_fingerprint,
             "tracked_worktree_clean": self.tracked_worktree_clean,
             "untracked_paths": list(self.untracked_paths),
+            "unexpected_ignored_paths": list(self.unexpected_ignored_paths),
         }
 
 
@@ -194,7 +200,9 @@ class ValidationExecutionResult:
                     f"tree={identity.head_tree or 'unreadable'} "
                     f"index_clean={identity.index_clean} "
                     f"tracked_clean={identity.tracked_worktree_clean} "
-                    f"untracked={len(identity.untracked_paths)}"
+                    f"untracked={len(identity.untracked_paths)} "
+                    f"hidden_tracked={len(identity.hidden_tracked_paths)} "
+                    f"unexpected_ignored={len(identity.unexpected_ignored_paths)}"
                 )
                 for error in identity.errors:
                     lines.append(f"  Identity read error: {error}")
