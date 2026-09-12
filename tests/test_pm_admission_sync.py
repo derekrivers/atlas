@@ -255,7 +255,8 @@ def test_ac1_periodic_and_once_share_database_lease_and_record_typed_hold(
     )
 
     assert periodic_results[0].held == 1
-    assert once_result is not None and once_result.held == 1
+    assert isinstance(once_result, SyncResult)
+    assert once_result.held == 1
     assert all(
         detail.reason.value == "lease_unavailable"
         for result in [periodic_results[0], once_result]

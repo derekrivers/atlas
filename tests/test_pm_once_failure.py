@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib
 import subprocess
 import sys
 import threading
@@ -10,9 +11,9 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from test_pm_sync import PACK_DOC, RecordingClient, status_map
 
 from atlas.cli import EXIT_RECORDED_FAILURE, main
-from atlas.linear.ownership import LinearStatusMap
 from atlas.pm.scheduler import OneShotSyncFailure, TickConfig, run_scheduler
 from atlas.storage import Database, PmSyncReceiptRepo, TicketRepo, TickFailureRepo
 
@@ -26,23 +27,16 @@ def db(tmp_path: Path) -> Database:
     return database
 
 
-class ControlledClient:
-    """The empty-board client keeps the actual sync body network-free."""
-
-    def fetch_issues(self) -> list[object]:
-        return []
-
-
 def config(db: Database, tmp_path: Path) -> TickConfig:
     return TickConfig(
         tickets=TicketRepo(db),
         db=db,
-        client=ControlledClient(),  # type: ignore[arg-type]
-        status_map=LinearStatusMap({}),
+        client=RecordingClient(),
+        status_map=status_map(),
         team_id="team",
         project_id="project",
         inbox_dir=tmp_path / "inbox",
-        documents=lambda: [],
+        documents=lambda: [PACK_DOC],
     )
 
 
@@ -124,6 +118,17 @@ def test_receipt_persistence_failure_after_successful_body_is_not_success(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    sync_module = importlib.import_module("atlas.pm.sync")
+    original_body = sync_module._sync_tick_impl
+    body_completed = False
+
+    def witnessed_body(**kwargs: Any) -> Any:
+        nonlocal body_completed
+        result = original_body(**kwargs)
+        body_completed = True
+        return result
+
+    monkeypatch.setattr(sync_module, "_sync_tick_impl", witnessed_body)
     monkeypatch.setattr(
         PmSyncReceiptRepo,
         "record",
@@ -134,6 +139,7 @@ def test_receipt_persistence_failure_after_successful_body_is_not_success(
     captured = capsys.readouterr()
 
     assert code == EXIT_RECORDED_FAILURE
+    assert body_completed is True
     assert "SyncReceiptPersistenceError" in captured.err
     assert "disk-secret" not in captured.err
     assert PmSyncReceiptRepo(db).list() == []
