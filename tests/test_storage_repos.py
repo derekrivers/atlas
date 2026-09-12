@@ -49,8 +49,10 @@ def test_evidence_repo_exposes_add_and_queries_only() -> None:
     assert public_methods(EvidenceRepo) == {
         "add",
         "count",
+        "find_matching_for_ticket",
         "get",
         "get_by_dedup_key",
+        "get_many",
         "latest_system_created_at",
         "list",
         "list_for_product",
