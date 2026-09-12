@@ -20,6 +20,17 @@ EXPECTED_EXECUTION_OWNER_PATHS = (
     ".codex/skills/atlas-maintenance-execution/SKILL.md",
     ".codex/skills/atlas-validation/SKILL.md",
 )
+PERMITTED_CI_ACTORS = ("coordinator", "operator", "reviewer", "system")
+CI_OBSERVATION_PREFIXES = (
+    "",
+    "1. ",
+    "- ",
+    "- [ ] ",
+    "> ",
+    "Agents must not poll CI; ",
+    "Agents must not poll CI, but ",
+    "Agents must not poll CI, yet ",
+)
 
 
 def _codes(findings: list[Finding]) -> set[str]:
@@ -170,3 +181,42 @@ def test_atlas_103m_actor_mentions_do_not_hide_agent_violations(
     findings = check_scoped_validation_handoff_contract(tmp_path)
 
     assert any(finding.code == code and finding.path == owner for finding in findings)
+
+
+@pytest.mark.parametrize("owner", EXPECTED_EXECUTION_OWNER_PATHS)
+@pytest.mark.parametrize("actor", PERMITTED_CI_ACTORS)
+@pytest.mark.parametrize("prefix", CI_OBSERVATION_PREFIXES)
+def test_atlas_103m_allows_bounded_actor_observation_forms(
+    tmp_path: Path, owner: str, actor: str, prefix: str
+) -> None:
+    _build_contract_fixture(tmp_path)
+    path = tmp_path / owner
+    write(
+        tmp_path,
+        owner,
+        path.read_text(encoding="utf-8")
+        + f"\n{prefix}the {actor} may monitor checks for the frozen candidate.\n",
+    )
+
+    assert check_scoped_validation_handoff_contract(tmp_path) == []
+
+
+@pytest.mark.parametrize("owner", EXPECTED_EXECUTION_OWNER_PATHS)
+@pytest.mark.parametrize("prefix", CI_OBSERVATION_PREFIXES)
+def test_atlas_103m_actor_form_normalization_never_hides_worker_instruction(
+    tmp_path: Path, owner: str, prefix: str
+) -> None:
+    _build_contract_fixture(tmp_path)
+    path = tmp_path / owner
+    write(
+        tmp_path,
+        owner,
+        path.read_text(encoding="utf-8")
+        + f"\n{prefix}agents must monitor checks for the frozen candidate.\n",
+    )
+
+    findings = check_scoped_validation_handoff_contract(tmp_path)
+
+    assert any(
+        finding.code == "HND001" and finding.path == owner for finding in findings
+    )

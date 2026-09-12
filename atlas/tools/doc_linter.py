@@ -726,7 +726,9 @@ _CONTRACT_NEGATION_RE = re.compile(
     re.IGNORECASE,
 )
 _NON_AGENT_CI_ACTOR_PREFIX_RE = re.compile(
-    r"^\s*(?:the\s+)?(?:coordinator|operator|reviewer|system(?:-tier)?)\s+"
+    r"^\s*(?:(?:1\.|-|>)(?:\s+|\s*\[\s\]\s+))?"
+    r"(?:(?:but|yet)\s+)?"
+    r"(?:the\s+)?(?:coordinator|operator|reviewer|system(?:-tier)?)\s+"
     r"(?:may|can|must|will|is\s+(?:allowed|permitted)\s+to)\s*$",
     re.IGNORECASE,
 )
