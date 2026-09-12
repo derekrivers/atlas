@@ -151,6 +151,13 @@ AGENT_CONTRACT_PATHS = (
     "docs/runbooks/local-development.md",
     "docs/runbooks/pr-acceptance.md",
 )
+EXECUTION_OWNER_PATHS = (
+    "docs/runbooks/symphony-agent-execution.md",
+    ".codex/skills/atlas-ticket-execution/SKILL.md",
+    ".codex/skills/atlas-ticket-remediation/SKILL.md",
+    ".codex/skills/atlas-maintenance-execution/SKILL.md",
+    ".codex/skills/atlas-validation/SKILL.md",
+)
 SYMPHONY_MILESTONE_BRANCH = "phase-15-atlas-253-ceiling-ramp"
 SYMPHONY_MILESTONE_LEVELS = (1, 3, 5, 7, 10)
 
@@ -718,6 +725,10 @@ _CONTRACT_NEGATION_RE = re.compile(
     r"\b(?:don't|doesn't|isn't|aren't)\b",
     re.IGNORECASE,
 )
+_NON_AGENT_ACTOR_SCOPE_RE = re.compile(
+    r"\b(?:coordinator|operator|reviewer|system(?:-tier)?)\b",
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True)
@@ -823,6 +834,8 @@ def _positive_contract_matches(
             prefix = _sentence_prefix(text, match.start())
             if _CONTRACT_NEGATION_RE.search(prefix + match.group(0)):
                 continue
+            if _NON_AGENT_ACTOR_SCOPE_RE.search(prefix):
+                continue
             seen.add(identity)
             matches.append(match)
     return sorted(matches, key=lambda match: (match.start(), match.end()))
@@ -840,7 +853,7 @@ def check_scoped_validation_handoff_contract(root: Path) -> list[Finding]:
         return []
 
     findings: list[Finding] = []
-    for rel in AGENT_CONTRACT_PATHS:
+    for rel in dict.fromkeys((*AGENT_CONTRACT_PATHS, *EXECUTION_OWNER_PATHS)):
         path = root / rel
         if not path.is_file():
             continue
